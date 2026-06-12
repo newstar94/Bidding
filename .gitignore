@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Bắt buộc giữ lại các module Python được biên dịch sẵn vì không có file nguồn .py tương ứng
+!models/*.cpython-314.pyc
+!controllers/*.cpython-314.pyc
+
+# Cấu hình môi trường chứa thông tin nhạy cảm
+.env
+
+# Database SQLite (Bỏ qua file DB thay đổi cục bộ)
+models/bidding.db
+
+# Log files
+*.log
+
+# Uploaded assets
+uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
