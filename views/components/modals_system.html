@@ -1,0 +1,518 @@
+﻿    <div class="modal-overlay" id="modal-detail-goithau">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3>Chi tiết Gói thầu</h3>
+                <button class="modal-close" data-close="modal-detail-goithau">&times;</button>
+            </div>
+            <div class="modal-body" id="detail-goithau-content">
+                <!-- Content will be injected dynamically via JS -->
+            </div>
+            <div class="modal-footer"
+                style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <button type="button" class="btn btn-emerald" id="btn-export-docx-report"
+                    style="display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="file-down"></i> Xuất Báo cáo (Word)
+                </button>
+                <button type="button" class="btn btn-primary" data-close="modal-detail-goithau">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 7: Xem chi tiết kế hoạch LCNT (View Detailed Plan with Dropdown Version Selector) -->
+    <div class="modal-overlay" id="modal-detail-kehoach">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3>Chi tiết Kế hoạch Lựa chọn Nhà thầu</h3>
+                <button class="modal-close" data-close="modal-detail-kehoach">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Dropdown version selector area -->
+                <div class="form-group col-span-2"
+                    style="margin-bottom: 24px; background-color: var(--neutral-soft); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+                    <label for="detail-kh-version-select"
+                        style="font-weight: 800; text-transform: uppercase; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0;">Lịch
+                        sử Phiên bản Kế hoạch:</label>
+                    <div class="select-wrapper" style="flex-grow: 1; max-width: 320px; min-width: 220px;">
+                        <select id="detail-kh-version-select" style="width: 100%; border-radius: var(--radius-sm);">
+                            <!-- Dynamic Options Rendered via JS -->
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Detailed contents injected here -->
+                <div id="detail-kehoach-content">
+                    <!-- Dynamic fields rendered via JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-close="modal-detail-kehoach">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 8: Xem chi tiết chuyên gia (View Detailed Expert Profile) -->
+    <div class="modal-overlay" id="modal-detail-chuyengia">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3>Hồ sơ Lý lịch Chuyên gia</h3>
+                <button class="modal-close" data-close="modal-detail-chuyengia">&times;</button>
+            </div>
+            <div class="modal-body" id="detail-chuyengia-content">
+                <!-- Content will be injected dynamically via JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-close="modal-detail-chuyengia">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 9: Hợp đồng -->
+
+    <div class="modal-overlay" id="modal-manager-employee">
+        <div class="modal-card" style="max-width: 500px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="modal-employee-title">Thêm Nhân sự phòng thầu</h3>
+                <button class="modal-close" data-close="modal-manager-employee">&times;</button>
+            </div>
+            <form id="form-manager-employee" novalidate>
+                <input type="hidden" id="form-employee-id">
+                <div class="modal-body">
+                    <div class="form-grid" style="grid-template-columns: 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label for="emp-name">Họ và tên nhân sự <span class="required">*</span></label>
+                            <input type="text" id="emp-name" required placeholder="Ví dụ: Hoàng Văn Bảo">
+                            <span class="error-text">Vui lòng nhập họ tên nhân sự</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="emp-email">Địa chỉ Email <span class="required">*</span></label>
+                            <input type="email" id="emp-email" required placeholder="bao.hv@vinacorp.vn">
+                            <span class="error-text">Vui lòng nhập địa chỉ email hợp lệ</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="emp-phone">Số điện thoại</label>
+                            <input type="tel" id="emp-phone" placeholder="Ví dụ: 0912334455">
+                            <span class="error-text">Vui lòng nhập số điện thoại</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="emp-role">Vai trò hệ thống</label>
+                            <select id="emp-role" disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;">
+                                <option value="employee" selected>Chuyên viên thầu (Nhân viên)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-manager-employee">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu nhân sự</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 10: Xem trước dữ liệu Excel (Excel Import Preview) -->
+    <div class="modal-overlay" id="modal-excel-preview">
+        <div class="modal-card modal-lg" style="max-width: 90%; width: 95%;">
+            <div class="modal-header">
+                <h3 id="modal-excel-import-title">Xem trước dữ liệu Nhập từ Excel</h3>
+                <button class="modal-close" data-close="modal-excel-preview">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height: 65vh; overflow-y: auto;">
+                <div class="excel-drag-drop-zone" id="excel-drag-drop-zone"
+                    style="border: 2px dashed var(--border-color); border-radius: var(--radius-md); padding: 36px; text-align: center; cursor: pointer; transition: border-color var(--transition-fast);">
+                    <i data-lucide="cloud-upload"
+                        style="width: 48px; height: 48px; color: var(--primary); margin: 0 auto;"></i>
+                    <p class="mt-2" style="margin-top: 12px; font-weight: 600;">Kéo thả tệp Excel vào đây hoặc
+                        <strong>Nhấp để chọn tệp</strong>
+                    </p>
+                    <span class="text-muted" style="font-size: 0.8rem;">Chấp nhận các định dạng .xlsx, .xls</span>
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls" style="display: none;">
+                </div>
+
+                <!-- Elegant uploaded file metadata summary -->
+                <div id="excel-file-info"
+                    style="display: none; align-items: center; gap: 12px; margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.05); border-radius: var(--radius-md); border: 1px solid rgba(59, 130, 246, 0.15);">
+                    <i data-lucide="file-spreadsheet" style="color: var(--primary); width: 24px; height: 24px;"></i>
+                    <div style="flex: 1; min-width: 0;">
+                        <div id="excel-filename"
+                            style="font-weight: 600; font-size: 0.95rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            -</div>
+                        <div id="excel-filesize" style="font-size: 0.8rem; color: var(--text-muted);">-</div>
+                    </div>
+                </div>
+
+                <div id="excel-preview-container" style="display: none; margin-top: 20px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="font-size: 1rem; font-weight: 700;" id="excel-preview-subtitle">Dữ liệu phân tích
+                            được:</h4>
+                        <div id="excel-validation-summary" style="font-size: 0.85rem; font-weight: 600;"></div>
+                    </div>
+                    <div class="table-container"
+                        style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-height: 400px; overflow-y: auto;">
+                        <table class="data-table" id="excel-preview-table">
+                            <thead id="excel-preview-header">
+                                <!-- Rendered via JS -->
+                            </thead>
+                            <tbody id="excel-preview-tbody">
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline text-blue" id="btn-download-excel-template"
+                    style="margin-right: auto; display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="download"></i> Tải Excel Mẫu
+                </button>
+                <button type="button" class="btn btn-outline" data-close="modal-excel-preview">Hủy bỏ</button>
+                <button type="button" class="btn btn-primary" id="btn-save-excel-import" style="display: none;"
+                    disabled>Xác nhận lưu vào CSDL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Chỉnh sửa Gói dịch vụ thương mại -->
+    <div class="modal-overlay" id="modal-edit-package">
+        <div class="modal-card" style="max-width: 500px; width: 90%;">
+            <div class="modal-header">
+                <h3>Chỉnh sửa Gói Dịch Vụ</h3>
+                <button class="modal-close" data-close="modal-edit-package">&times;</button>
+            </div>
+            <form id="form-edit-package" novalidate>
+                <input type="hidden" id="edit-pkg-id">
+                <div class="modal-body">
+                    <div class="form-grid" style="grid-template-columns: 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label for="edit-pkg-name">Tên gói dịch vụ <span class="required">*</span></label>
+                            <input type="text" id="edit-pkg-name" required placeholder="Ví dụ: Gói Vàng (Gold)">
+                            <span class="error-text">Vui lòng nhập tên gói</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-pkg-price">Đơn giá (VND/năm) <span class="required">*</span></label>
+                            <input type="text" id="edit-pkg-price" required placeholder="Ví dụ: 35.000.000">
+                            <span class="error-text">Vui lòng nhập đơn giá hợp lệ</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-pkg-quota">Hạn mức nhân viên tối đa <span class="required">*</span></label>
+                            <input type="number" id="edit-pkg-quota" required
+                                placeholder="Ví dụ: 15 (Nhập 999 nếu không giới hạn)">
+                            <span class="error-text">Vui lòng nhập số nhân sự hợp lệ</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-pkg-desc">Mô tả tóm tắt <span class="required">*</span></label>
+                            <textarea id="edit-pkg-desc" required rows="3"
+                                placeholder="Mô tả quyền lợi và đối tượng áp dụng gói"
+                                style="width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border-color); padding: 8px; font-family: inherit; background: var(--bg-card); color: var(--text-main);"></textarea>
+                            <span class="error-text">Vui lòng nhập mô tả gói</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-edit-package">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Chi tiết & Chỉnh sửa Tài khoản (Super Admin User Detail Modal) -->
+    <div class="modal-overlay" id="modal-detail-system-user">
+        <div class="modal-card" style="max-width: 550px; width: 90%;">
+            <div class="modal-header">
+                <h3>Chi tiết & Thiết lập Tài khoản</h3>
+                <button class="modal-close" data-close="modal-detail-system-user">&times;</button>
+            </div>
+            <form id="form-detail-system-user" novalidate>
+                <input type="hidden" id="detail-su-id">
+                <div class="modal-body">
+                    <div class="form-grid" style="grid-template-columns: 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label for="detail-su-username">Tên tài khoản (Username)</label>
+                            <input type="text" id="detail-su-username" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;">
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-name">Họ tên thành viên</label>
+                            <input type="text" id="detail-su-name" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;"
+                                placeholder="Họ tên thành viên...">
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-email">Địa chỉ Email <span class="required">*</span></label>
+                            <input type="email" id="detail-su-email" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;"
+                                placeholder="Nhập địa chỉ email...">
+                            <span class="error-text">Vui lòng nhập địa chỉ email hợp lệ</span>
+                        </div>
+                        <div class="form-group" id="detail-su-org-container">
+                            <label for="detail-su-organization">Tên tổ chức</label>
+                            <input type="text" id="detail-su-organization" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;"
+                                placeholder="Nhập tên tổ chức, doanh nghiệp...">
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-role">Vai trò hệ thống (Role)</label>
+                            <select id="detail-su-role">
+                                <option value="super_admin">Super Admin</option>
+                                <option value="manager">Quản lý</option>
+                                <option value="employee">Chuyên viên</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-package">Gói đăng ký dịch vụ</label>
+                            <select id="detail-su-package">
+                                <option value="none">-- Chọn Gói --</option>
+                                <option value="silver">Gói Bạc (Silver)</option>
+                                <option value="gold">Gói Vàng (Gold)</option>
+                                <option value="diamond">Gói Kim Cương (Diamond)</option>
+                            </select>
+                        </div>
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="detail-su-startdate">Ngày bắt đầu gói</label>
+                                <input type="text" id="detail-su-startdate" placeholder="dd/mm/yyyy">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="detail-su-enddate">Ngày kết thúc gói</label>
+                                <input type="text" id="detail-su-enddate" placeholder="dd/mm/yyyy">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-detail-system-user">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu thiết lập</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Custom Alert/Confirm Dialog -->
+    <div class="modal-overlay" id="modal-custom-dialog" style="z-index: 9999;">
+        <div class="modal-card"
+            style="max-width: 480px; width: 90%; padding: 24px; text-align: center; position: relative; overflow: visible;">
+            <button class="modal-close" id="btn-dialog-close"
+                style="position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: none; border: none; outline: none; padding: 0;"
+                aria-label="Close dialog">&times;</button>
+            <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+                <div id="dialog-icon-container"
+                    style="width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(59, 130, 246, 0.1); color: var(--primary);">
+                    <i data-lucide="help-circle" style="width: 32px; height: 32px;" id="dialog-icon"></i>
+                </div>
+            </div>
+            <h3 id="dialog-title"
+                style="font-size: 1.25rem; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">Xác nhận
+            </h3>
+            <p id="dialog-message"
+                style="font-size: 0.95rem; color: var(--text-light); line-height: 1.6; white-space: pre-line; margin-bottom: 24px; text-align: left; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;" id="dialog-buttons">
+                <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1;">Hủy</button>
+                <button type="button" class="btn btn-primary" id="btn-dialog-ok" style="flex: 1;">Xác nhận</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ================= AUTHENTICATION OVERLAY ================= -->
+    <div class="auth-overlay" id="auth-overlay" style="display: none;">
+        <div class="auth-card">
+            <!-- Brand -->
+            <div class="auth-brand">
+                <div class="brand-icon">
+                    <i data-lucide="layers"></i>
+                </div>
+                <h2>BiddingFlow</h2>
+                <span>Hệ Thống Đấu Thầu v1.0</span>
+            </div>
+
+            <!-- Login Form -->
+            <form id="form-auth-login" class="auth-form-pane active">
+                <h3 class="auth-title">Đăng nhập hệ thống</h3>
+                <p class="auth-subtitle">Nhập tài khoản để truy cập hệ thống đấu thầu</p>
+                <div id="login-error" class="auth-error-msg" style="display: none;"></div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
+                        / Email
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="user"></i>
+                        <input type="text" id="login-username" required placeholder="Tên đăng nhập hoặc email">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Mật khẩu
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="lock"></i>
+                        <input type="password" id="login-password" required placeholder="Nhập mật khẩu">
+                        <button type="button" class="toggle-password" data-target="login-password">
+                            <i data-lucide="eye"
+                                style="position:static; pointer-events:none; width:16px; height:16px;"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
+                    <span>Đăng nhập</span>
+                    <i data-lucide="arrow-right"></i>
+                </button>
+
+                <div class="auth-footer-links">
+                    <a href="#" id="link-show-register">Đăng ký tài khoản</a>
+                    <span class="bullet">•</span>
+                    <a href="#" id="link-show-forgot">Quên mật khẩu?</a>
+                </div>
+            </form>
+
+            <!-- Register Form -->
+            <form id="form-auth-register" class="auth-form-pane" style="display: none;">
+                <h3 class="auth-title">Đăng ký thành viên</h3>
+                <p class="auth-subtitle">Tạo tài khoản mới để tham gia</p>
+                <div id="register-error" class="auth-error-msg" style="display: none;"></div>
+                <div id="register-success" class="auth-success-msg" style="display: none;"></div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="user"></i>
+                        <input type="text" id="register-username" required
+                            placeholder="Tên đăng nhập viết liền không dấu">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Họ và tên
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="file-signature"></i>
+                        <input type="text" id="register-fullname" required placeholder="Nhập họ và tên đầy đủ">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Địa chỉ Email
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="mail"></i>
+                        <input type="email" id="register-email" required placeholder="Ví dụ: duong.vt@vinacorp.vn">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Mật khẩu
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="lock"></i>
+                        <input type="password" id="register-password" required placeholder="Mật khẩu tối thiểu 6 ký tự">
+                        <button type="button" class="toggle-password" data-target="register-password">
+                            <i data-lucide="eye"
+                                style="position:static; pointer-events:none; width:16px; height:16px;"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Nhập lại mật
+                        khẩu
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="lock"></i>
+                        <input type="password" id="register-confirm-password" required
+                            placeholder="Xác nhận lại mật khẩu">
+                        <button type="button" class="toggle-password" data-target="register-confirm-password">
+                            <i data-lucide="eye"
+                                style="position:static; pointer-events:none; width:16px; height:16px;"></i>
+                        </button>
+                    </div>
+                </div>
+
+
+                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
+                    <span>Đăng ký</span>
+                    <i data-lucide="user-plus"></i>
+                </button>
+
+                <div class="auth-footer-links">
+                    <a href="#" id="link-show-login-from-reg">Quay lại Đăng nhập</a>
+                </div>
+            </form>
+
+            <!-- Forgot Password Form -->
+            <form id="form-auth-forgot" class="auth-form-pane" style="display: none;">
+                <h3 class="auth-title">Khôi phục mật khẩu</h3>
+                <p class="auth-subtitle">Nhập thông tin đã đăng ký để tìm lại mật khẩu</p>
+                <div id="forgot-error" class="auth-error-msg" style="display: none;"></div>
+                <div id="forgot-success" class="auth-success-msg" style="display: none;"></div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
+                        <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="user"></i>
+                        <input type="text" id="forgot-username" required placeholder="Nhập tài khoản của bạn">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Địa chỉ Email
+                        đã đăng ký <span class="required">*</span></label>
+                    <div class="auth-input-wrapper">
+                        <i data-lucide="mail"></i>
+                        <input type="email" id="forgot-email" required placeholder="Nhập email liên kết với tài khoản">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
+                    <span>Tìm mật khẩu</span>
+                    <i data-lucide="help-circle"></i>
+                </button>
+
+                <div class="auth-footer-links">
+                    <a href="#" id="link-show-login-from-forgot">Quay lại Đăng nhập</a>
+                </div>
+            </form>
+
+            <!-- Email Verification Form -->
+            <form id="form-auth-verify" class="auth-form-pane" style="display: none;">
+                <h3 class="auth-title">Xác thực Email</h3>
+                <p class="auth-subtitle">Một mã OTP 6 chữ số đã được gửi đến email của bạn. Vui lòng nhập mã để kích hoạt tài khoản.</p>
+                <div id="verify-error" class="auth-error-msg" style="display: none;"></div>
+                <div id="verify-success" class="auth-success-msg" style="display: none;"></div>
+
+                <input type="hidden" id="verify-username-hidden">
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block; text-align: center;">Mã xác thực OTP</label>
+                    <div class="auth-input-wrapper" style="justify-content: center; position: relative; border: none; background: transparent; padding: 0;">
+                        <input type="text" id="verify-code" required placeholder="******" maxlength="6" 
+                               style="text-align: center; font-size: 1.8rem; letter-spacing: 0.8rem; padding-left: 0.8rem; font-weight: 800; border-radius: var(--radius-md); border: 2px solid var(--border-color); height: 56px; width: 100%; box-shadow: var(--shadow-sm); background: var(--bg-card); color: var(--text-main);">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%; margin-bottom: 12px; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                    <span>Xác nhận tài khoản</span>
+                    <i data-lucide="check-circle"></i>
+                </button>
+
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <button type="button" id="btn-resend-otp" style="border: none; background: none; color: var(--primary); font-weight: 700; font-size: 0.85rem; cursor: pointer; text-decoration: underline;">
+                        Gửi lại mã OTP
+                    </button>
+                    <span id="otp-timer" style="font-size: 0.85rem; color: var(--text-muted); display: none;">(Gửi lại sau <span id="otp-countdown">60</span>s)</span>
+                </div>
+
+                <div class="auth-footer-links" style="justify-content: center;">
+                    <a href="#" id="link-show-login-from-verify">Quay lại Đăng nhập</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- App Script -->

@@ -1,0 +1,411 @@
+﻿                <!-- ================= TAB: KẾ HOẠCH LCNT ================= -->
+                <section class="tab-pane" id="tab-kehoach">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm kế hoạch (mã, tên)..." id="search-kehoach">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="kehoach" style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-kehoach">
+                            <i data-lucide="plus"></i> Thêm Kế hoạch mới
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="kehoach-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã Kế Hoạch</th>
+                                    <th>Phiên bản</th>
+                                    <th>Tên Kế Hoạch Lựa Chọn Nhà Thầu</th>
+                                    <th>Phân loại</th>
+                                    <th>Dự án / Dự toán</th>
+                                    <th>Chủ Đầu Tư</th>
+                                    <th>Tổng Giá Trị</th>
+                                    <th>Ngày Phê Duyệt</th>
+                                    <th>Quyết Định</th>
+                                    <th>Thời Gian Đăng Mã</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="kehoach-pagination"></div>
+                </section>
+
+
+                <!-- ================= TAB: GÓI THẦU CHI TIẾT WORKFLOW ================= -->
+                <section class="tab-pane" id="tab-goithau-detail">
+                    <div class="card"
+                        style="margin-bottom: 24px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-card); overflow: hidden;">
+                        <div class="card-header"
+                            style="padding: 20px 24px; border-bottom: 1px solid var(--border-color); background: rgba(59, 130, 246, 0.02); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <span id="detail-workflow-code" class="detail-code"
+                                        style="font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">--</span>
+                                    <span id="detail-workflow-status-badge">--</span>
+                                </div>
+                                <h3 id="detail-workflow-title"
+                                    style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">
+                                    Tên gói thầu</h3>
+                            </div>
+                            <div style="display: flex; gap: 12px; align-items: center;">
+                                <button class="btn btn-outline" onclick="window.switchTab('goithau')"
+                                    style="padding: 10px 20px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                    <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Quay lại danh
+                                    sách
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card-body" style="padding: 24px;">
+                            <!-- Top Workflow Navigation Tabs -->
+                            <div id="detail-workflow-tabs-header"
+                                style="display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 24px; gap: 4px; overflow-x: auto; white-space: nowrap; padding-bottom: 2px;">
+                                <!-- Tabs dynamically generated -->
+                            </div>
+
+                            <!-- Content Wrapper -->
+                            <div id="detail-workflow-content-wrapper">
+                                <!-- Dynamic Tab Content -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+
+                <!-- ================= TAB: GÓI THẦU ================= -->
+                <section class="tab-pane" id="tab-goithau">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group flex-wrap">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm gói thầu (mã, tên)..." id="search-goithau">
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="filter-goithau-trangthai">
+                                    <option value="">Tất cả trạng thái</option>
+                                    <option value="Chuẩn bị">Chuẩn bị</option>
+                                    <option value="Đang mời thầu">Đang mời thầu</option>
+                                    <option value="Đã mở thầu">Đã mở thầu</option>
+                                    <option value="Đang chấm thầu">Đang chấm thầu</option>
+                                    <option value="Đã có kết quả">Đã có kết quả</option>
+                                    <option value="Hủy thầu">Hủy thầu</option>
+                                </select>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="filter-goithau-hinhthuc">
+                                    <option value="">Tất cả hình thức</option>
+                                    <option value="Đấu thầu rộng rãi">Đấu thầu rộng rãi</option>
+                                    <option value="Đấu thầu hạn chế">Đấu thầu hạn chế</option>
+                                    <option value="Chỉ định thầu">Chỉ định thầu</option>
+                                    <option value="Chỉ định thầu rút gọn">Chỉ định thầu rút gọn</option>
+                                    <option value="Chào hàng cạnh tranh">Chào hàng cạnh tranh</option>
+                                    <option value="Lựa chọn nhà thầu trong trường hợp đặc biệt">Lựa chọn nhà thầu trong
+                                        trường hợp đặc biệt</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="goithau" style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-goithau">
+                            <i data-lucide="plus"></i> Thêm Gói thầu mới
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="goithau-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã gói</th>
+                                    <th>Phiên bản</th>
+                                    <th>Tên Gói Thầu</th>
+                                    <th>Kế Hoạch Liên Kết</th>
+                                    <th>Giá Gói Thầu</th>
+                                    <th>Hình Thức LCNT</th>
+                                    <th>Trạng Thái</th>
+                                    <th>Nhà Thầu Trúng Thầu</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="goithau-pagination"></div>
+                </section>
+
+
+                <!-- ================= TAB: MỞ THẦU & E-HSDT / E-HSĐXKT ================= -->
+                <section class="tab-pane" id="tab-mothau">
+                    <div class="dashboard-grid" style="grid-template-columns: 1fr; gap: 20px; margin-bottom: 20px;">
+                        <div class="dashboard-card card-primary" style="padding: 24px;">
+                            <div class="card-header"
+                                style="border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h3 class="card-title"
+                                        style="font-size: 1.15rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+                                        <i data-lucide="unlock" style="width: 20px; height: 20px;"></i>
+                                        Nhập thông tin Mở thầu (E-HSDT / E-HSĐXKT)
+                                    </h3>
+                                    <p class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">Hệ thống tự động
+                                        hiển thị bảng nhập liệu tương thích với cấu hình gói thầu được chọn.</p>
+                                </div>
+                            </div>
+
+                            <div class="card-body">
+                                <div class="form-grid"
+                                    style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; margin-bottom: 24px;">
+                                    <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                                        <label for="mothau-goithau-select"
+                                            style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">1.
+                                            Chọn Gói thầu cần nhập thông tin mở thầu <span
+                                                class="required">*</span></label>
+                                        <div class="select-wrapper">
+                                            <select id="mothau-goithau-select" class="form-control" required
+                                                style="font-weight: 600;">
+                                                <option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang
+                                                    chấm thầu) --</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-group" id="mothau-goithau-summary"
+                                        style="display: none; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6;">
+                                        <!-- Will be rendered dynamically via JS -->
+                                    </div>
+                                </div>
+
+                                <div id="mothau-bid-container" style="display: none;">
+                                    <div
+                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                        <h4 id="mothau-table-title"
+                                            style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">Danh
+                                            sách Nhà thầu tham dự & Nộp hồ sơ</h4>
+                                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                            <button class="btn btn-outline btn-sm" id="btn-mothau-import-excel"
+                                                style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 6px; background: #ffffff; color: var(--text-main); border: 1px solid var(--border-color);">
+                                                <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                                            </button>
+                                            <button class="btn btn-outline btn-sm" id="btn-mothau-add-bid"
+                                                style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600;">
+                                                <i data-lucide="plus"></i> Thêm Nhà thầu nộp hồ sơ
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="table-container"
+                                        style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 24px;">
+                                        <table class="data-table" id="mothau-table" style="min-width: 100%;">
+                                            <thead id="mothau-table-thead">
+                                                <!-- Dynamic columns based on 5 cases -->
+                                            </thead>
+                                            <tbody id="mothau-table-tbody">
+                                                <!-- Dynamic rows based on inputs -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                                        <button class="btn btn-outline" onclick="window.switchTab('goithau')"
+                                            style="padding: 10px 20px; font-weight: 600;">Quay lại danh sách</button>
+                                        <button class="btn btn-primary" id="btn-mothau-save"
+                                            style="padding: 10px 24px; font-weight: 700; background: var(--success); border-color: var(--success);">
+                                            <i data-lucide="save"></i> Lưu thông tin mở thầu
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="mothau-empty-state"
+                                    style="text-align: center; padding: 48px 24px; color: var(--text-muted);">
+                                    <i data-lucide="inbox"
+                                        style="width: 48px; height: 48px; color: var(--neutral-dark); margin: 0 auto 16px;"></i>
+                                    <h4
+                                        style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); margin-bottom: 6px;">
+                                        Chưa chọn Gói thầu</h4>
+                                    <p style="font-size: 0.82rem;">Vui lòng chọn một gói thầu ở danh sách phía trên để
+                                        tiến hành nhập thông tin mở thầu.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+
+                <!-- ================= TAB: ĐÁNH GIÁ HSDT ================= -->
+                <section class="tab-pane" id="tab-danhgiahsdt">
+                    <div class="dashboard-grid" style="grid-template-columns: 1fr; gap: 20px; margin-bottom: 20px;">
+                        <div class="dashboard-card card-primary" style="padding: 24px;">
+                            <div class="card-header"
+                                style="border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h3 class="card-title"
+                                        style="font-size: 1.15rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+                                        <i data-lucide="clipboard-check" style="width: 20px; height: 20px;"></i>
+                                        Đánh giá Hồ sơ dự thầu (E-HSDT)
+                                    </h3>
+                                    <p class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">Nhập báo cáo đánh
+                                        giá và kết quả đánh giá chi tiết cho gói thầu đang chấm thầu.</p>
+                                </div>
+                            </div>
+
+                            <div class="card-body">
+                                <div class="form-grid"
+                                    style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; margin-bottom: 24px;">
+                                    <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                                        <label for="danhgiahsdt-goithau-select"
+                                            style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">1.
+                                            Chọn Gói thầu cần đánh giá <span class="required">*</span></label>
+                                        <div class="select-wrapper">
+                                            <select id="danhgiahsdt-goithau-select" class="form-control" required
+                                                style="font-weight: 600;">
+                                                <option value="">-- Chọn Gói thầu (Đang chấm thầu) --</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-group" id="danhgiahsdt-goithau-summary"
+                                        style="display: none; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6;">
+                                    </div>
+                                </div>
+
+                                <div id="danhgiahsdt-container" style="display: none;">
+                                    <div id="danhgiahsdt-tabs-header"
+                                        style="display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 20px; gap: 8px;">
+                                        <button type="button" id="tab-btn-hsdxt-kt" class="btn active"
+                                            style="border-radius: var(--radius-md) var(--radius-md) 0 0; border: 1px solid var(--border-color); border-bottom: none; margin-bottom: -2px; font-weight: 700; font-size: 0.85rem; padding: 10px 20px; background: var(--bg-card); color: var(--primary);">
+                                            Báo cáo đánh giá E-HSĐXKT
+                                        </button>
+                                        <button type="button" id="tab-btn-hsdxt-tc" class="btn"
+                                            style="border-radius: var(--radius-md) var(--radius-md) 0 0; border: 1px solid transparent; margin-bottom: -2px; font-weight: 700; font-size: 0.85rem; padding: 10px 20px; background: transparent; color: var(--text-muted); cursor: not-allowed; opacity: 0.6;"
+                                            disabled>
+                                            Báo cáo đánh giá E-HSĐXTC
+                                        </button>
+                                    </div>
+
+                                    <!-- Report Basic Info -->
+                                    <div class="form-grid"
+                                        style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
+                                        <div class="form-group">
+                                            <label
+                                                style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); display: block; margin-bottom: 6px;">Số
+                                                báo cáo đánh giá <span class="required">*</span></label>
+                                            <input type="text" id="danhgiahsdt-so-baocao" class="form-control" required
+                                                placeholder="Ví dụ: 12/BC-TCD">
+                                            <span class="error-text">Vui lòng nhập số báo cáo đánh giá</span>
+                                        </div>
+                                        <div class="form-group">
+                                            <label
+                                                style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); display: block; margin-bottom: 6px;">Ngày
+                                                báo cáo đánh giá <span class="required">*</span></label>
+                                            <input type="text" id="danhgiahsdt-ngay-baocao"
+                                                class="form-control flatpickr-dmy" required
+                                                placeholder="Chọn ngày (dd/MM/yyyy)">
+                                            <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
+                                        </div>
+                                    </div>
+
+
+
+                                    <!-- Table for Bidder Evaluation -->
+                                    <div
+                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                        <h4
+                                            style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); margin: 0;">
+                                            Đánh giá chi tiết các HSDT nộp</h4>
+                                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                            <button class="btn btn-outline btn-sm btn-import-excel"
+                                                data-type="danhgiahsdt" id="btn-danhgiahsdt-import-excel"
+                                                style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 6px; background: #ffffff; color: var(--text-main); border: 1px solid var(--border-color);">
+                                                <i data-lucide="file-spreadsheet"
+                                                    style="width: 14px; height: 14px;"></i> Nhập từ Excel
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="table-container"
+                                        style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 24px;">
+                                        <table class="data-table" id="danhgiahsdt-table" style="min-width: 100%;">
+                                            <thead id="danhgiahsdt-table-thead"></thead>
+                                            <tbody id="danhgiahsdt-table-tbody"></tbody>
+                                        </table>
+                                    </div>
+
+                                    <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                                        <button class="btn btn-outline" onclick="window.switchTab('goithau')"
+                                            style="padding: 10px 20px; font-weight: 600;">Quay lại danh sách</button>
+                                        <button class="btn btn-emerald" id="btn-danhgiahsdt-save"
+                                            style="padding: 10px 24px; font-weight: 700;">
+                                            <i data-lucide="save" style="width: 16px; height: 16px;"></i> <span>Lưu
+                                                thông tin đánh giá</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="danhgiahsdt-empty-state"
+                                    style="text-align: center; padding: 48px 24px; color: var(--text-muted);">
+                                    <i data-lucide="inbox"
+                                        style="width: 48px; height: 48px; color: var(--neutral-dark); margin: 0 auto 16px;"></i>
+                                    <h4
+                                        style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); margin-bottom: 6px;">
+                                        Chưa chọn Gói thầu</h4>
+                                    <p style="font-size: 0.82rem;">Vui lòng chọn một gói thầu ở danh sách phía trên để
+                                        tiến hành đánh giá HSDT.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+
+
+                <!-- ================= TAB: HỢP ĐỒNG ================= -->
+                <section class="tab-pane" id="tab-hopdong">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm hợp đồng (số, tên)..." id="search-hopdong">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="hopdong" style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-hopdong">
+                            <i data-lucide="plus"></i> Thêm Hợp đồng mới
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="hopdong-table">
+                            <thead>
+                                <tr>
+                                    <th>Số Hợp Đồng</th>
+                                    <th>Tên Hợp Đồng</th>
+                                    <th>Ngày Ký</th>
+                                    <th>Chủ Đầu Tư</th>
+                                    <th>Nhà Thầu</th>
+                                    <th>Giá Trị Hợp Đồng</th>
+                                    <th>Loại Hợp Đồng</th>
+                                    <th>Thời Gian Thực Hiện</th>
+                                    <th>Gói Thầu Liên Kết</th>
+                                    <th>Trạng Thái Hồ Sơ</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="hopdong-pagination"></div>
+                </section>
+
+
