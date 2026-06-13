@@ -1,40 +1,34 @@
 import sys
 import os
-
-# Reconfigure stdout/stderr to use UTF-8 to prevent UnicodeEncodeError on Windows terminals
-if hasattr(sys.stdout, 'reconfigure'):
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
-if hasattr(sys.stderr, 'reconfigure'):
-    try:
-        sys.stderr.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
-
 import json
-import uvicorn
-import shutil
+import base64
+import uuid
+import hashlib
+import secrets
 from datetime import datetime
-import pandas as pd
+import re
+import traceback
+import smtplib
+import random
+import time
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # ==========================================
-# 1. CẤU HÌNH ĐƯỜNG DẪN & TẢI MODULE BIÊN DỊCH
+# CẤU HÌNH ĐƯỜNG DẪN & TẢI MODULE BIÊN DỊCH
 # ==========================================
 
-# Lấy đường dẫn của thư mục controllers/ và thư mục gốc của dự án
-current_dir = os.path.dirname(os.path.abspath(__file__)) # controllers/
-project_root = os.path.dirname(current_dir) # root
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
 models_dir = os.path.join(project_root, 'models')
 controllers_dir = os.path.join(project_root, 'controllers')
 
-# Thêm các thư mục MVC vào sys.path để Python có thể nạp chéo giữa các mô-đun
 sys.path.insert(0, project_root)
 sys.path.append(models_dir)
 sys.path.append(controllers_dir)
 
-# Tự động tải các cấu hình từ file .env nếu có
+# Load env file if any
 env_path = os.path.join(project_root, '.env')
 if os.path.exists(env_path):
     with open(env_path, 'r', encoding='utf-8') as f:
@@ -48,35 +42,30 @@ if os.path.exists(env_path):
                 v = v.strip().strip("'").strip('"')
                 os.environ[k] = v
 
-
 import importlib.machinery
 import importlib.util
 
 def load_and_register(name, filepath):
-    """
-    Hàm load động các module Python đã được biên dịch sẵn (.pyc) từ các thư mục MVC tương ứng.
-    """
     loader = importlib.machinery.SourcelessFileLoader(name, filepath)
     module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
     sys.modules[name] = module
     loader.exec_module(module)
     return module
 
-# Tải các module chức năng chính được biên dịch sẵn từ các thư mục MVC mới:
 models = load_and_register('models', os.path.join(models_dir, 'models.cpython-314.pyc'))
 database = load_and_register('database', os.path.join(models_dir, 'database.cpython-314.pyc'))
 
-# Monkey patch database.get_connection to automatically run optimizations and create indexes
 db_indexes_created = False
 orig_get_connection = database.get_connection
+
 def optimized_get_connection(*args, **kwargs):
     conn = orig_get_connection(*args, **kwargs)
     try:
         cursor = conn.cursor()
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA foreign_keys = ON")
-        cursor.execute("PRAGMA cache_size = -65536")   # 64MB cache
-        cursor.execute("PRAGMA synchronous = NORMAL")  # An toàn + nhanh hơn FULL
+        cursor.execute("PRAGMA cache_size = -65536")
+        cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.execute("PRAGMA temp_store = MEMORY")
         
         global db_indexes_created
@@ -98,13 +87,11 @@ def optimized_get_connection(*args, **kwargs):
     except Exception as e:
         print(f"Error applying SQLite PRAGMAs or indexes: {e}")
     return conn
+
 database.get_connection = optimized_get_connection
 
 # exporter = load_and_register('exporter', os.path.join(controllers_dir, 'exporter.cpython-314.pyc'))
 import custom_exporter
-import uuid
-import hashlib
-import secrets
 
 def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> str:
     if not base64_str:
@@ -133,8 +120,6 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         ext = "gif"
         
     try:
-        import base64
-        import os
         upload_dir = os.path.join(project_root, "uploads", subfolder)
         os.makedirs(upload_dir, exist_ok=True)
         
@@ -142,24 +127,18 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         filename = f"{filename_prefix}.{ext}"
         filepath = os.path.join(upload_dir, filename)
         
-        # Thử nén và tối ưu hóa bằng Pillow
         try:
-            # pyrefly: ignore [missing-import]
             from PIL import Image
             import io
             
             img = Image.open(io.BytesIO(file_data))
-            
-            # Đặt giới hạn kích thước tối đa tùy theo loại ảnh
             max_size = 1200
             if "sig" in filename_prefix:
                 max_size = 600
                 
-            # Resize nếu vượt quá kích thước tối đa (giữ nguyên tỷ lệ)
             if img.width > max_size or img.height > max_size:
                 img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
                 
-            # Lưu ảnh mới, tự động xóa EXIF/Metadata và nén chất lượng
             save_format = "PNG" if ext == "png" else ("JPEG" if ext in ["jpg", "jpeg"] else img.format)
             save_kwargs = {}
             if save_format == "JPEG":
@@ -186,8 +165,6 @@ def load_base64_image(db_value: str) -> str:
         return ""
     if db_value.startswith("uploads/"):
         try:
-            import base64
-            import os
             filepath = os.path.join(project_root, db_value)
             if os.path.exists(filepath):
                 with open(filepath, "rb") as f:
@@ -218,7 +195,6 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
         if not stored_password:
             return False
         if ":" not in stored_password:
-            # Safe plain-text fallback (backward compatibility for old plain DB entries if any)
             return stored_password == provided_password
         salt, stored_hash = stored_password.split(":")
         pwd_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt.encode('utf-8'), 100000)
@@ -226,11 +202,6 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
     except Exception:
         return False
 
-# ==========================================
-# ROLE HIERARCHY (thứ bậc phân quyền)
-# super_admin kế thừa manager và employee
-# manager kế thừa employee
-# ==========================================
 ROLE_HIERARCHY = {
     'super_admin': ['super_admin', 'manager', 'employee'],
     'manager':     ['manager', 'employee'],
@@ -238,10 +209,6 @@ ROLE_HIERARCHY = {
 }
 
 def get_effective_roles(role_str):
-    """
-    Trả về tập hợp tất cả role hữu hiệu của user, kể cả kế thừa.
-    Hỗ trợ nhiều role phân tách bằng dấu phẩy (VD: 'super_admin,manager').
-    """
     roles = [r.strip() for r in (role_str or '').split(',') if r.strip()]
     effective = set()
     for r in roles:
@@ -282,17 +249,11 @@ def verify_session(request, required_role=None):
         except Exception:
             pass
         
-    # Kiểm tra quyền theo thứ bậc kế thừa
     if required_role and required_role not in get_effective_roles(user['vai_tro']):
         return False, "Bạn không có quyền thực hiện thao tác này!"
         
     return True, SessionRole(user['vai_tro'], user['id'])
 
-# ==========================================
-# CẤU TRÚC DB VÀ CÁC HÀM TRỢ GIÚP ĐỒNG BỘ ĐỘNG
-# ==========================================
-
-# 1. Định nghĩa cấu trúc Schema cơ sở dữ liệu (Nguồn sự thật duy nhất)
 SCHEMA_DINH_NGHIA = {
     "goi_dich_vu": {
         "columns": {
@@ -643,7 +604,6 @@ SCHEMA_DINH_NGHIA = {
     }
 }
 
-# 2. Ánh xạ đặc biệt giữa JSON camelCase (Frontend) và DB snake_case (Backend)
 SPECIAL_FIELD_MAPS = {
     "ke_hoach_lcnt": {
         "thoi_gian_dang_tai": "thoiGianDangMa"
@@ -715,7 +675,6 @@ SPECIAL_FIELD_MAPS = {
 }
 
 def to_snake_case(name):
-    import re
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
@@ -727,7 +686,6 @@ def clean_id(val):
     if val is None or val == "":
         return None
     val_str = str(val).strip()
-    import re
     val_str = re.sub(r'^(cdt-|kh-|gt-|cg-|nt-|hd-|emp-|user-|tm-)', '', val_str)
     return val_str
 
@@ -736,13 +694,11 @@ def khoi_tao_va_di_tru_he_thong():
         conn = database.get_connection()
         cursor = conn.cursor()
         
-        # Kiểm tra và di trú dữ liệu từ cột ten_to_chuc cũ trong tai_khoan trước khi nó bị xóa bởi schema alignment
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tai_khoan'")
         if cursor.fetchone():
             cursor.execute("PRAGMA table_info(tai_khoan)")
             cols = [row[1] for row in cursor.fetchall()]
             if 'ten_to_chuc' in cols:
-                # Đảm bảo bảng to_chuc và thanh_vien_to_chuc tồn tại
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS to_chuc (
                         id TEXT PRIMARY KEY,
@@ -784,7 +740,6 @@ def khoi_tao_va_di_tru_he_thong():
                             if role_weight(vai_tro) > role_weight(current_mgr_role):
                                 org_managers[org] = u_id
                 
-                import hashlib
                 for org_name, mgr_id in org_managers.items():
                     org_hash_id = "org-" + hashlib.md5(org_name.encode('utf-8')).hexdigest()[:16]
                     cursor.execute("""
@@ -812,47 +767,34 @@ def khoi_tao_va_di_tru_he_thong():
                             """, (u_id, org_id, role_in_org))
                 print("Đồng bộ: Di trú trước dữ liệu tổ chức từ tai_khoan.ten_to_chuc thành công!")
         
-        # ----------------------------------------------------
-        # TỰ ĐỘNG KHỞI TẠO BẢNG & SO KHỚP CẤU TRÚC (MIGRATION)
-        # ----------------------------------------------------
         for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
-            # Kiểm tra xem bảng đã tồn tại trong DB chưa
             cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
             table_exists = cursor.fetchone()
             
             if not table_exists:
-                # Nếu bảng chưa tồn tại, tạo bảng động hoàn toàn dựa trên SCHEMA_DINH_NGHIA
                 cols_def = []
                 primary_keys = table_spec.get("primary_keys", [])
-                
                 for col_name, col_def in table_spec["columns"].items():
                     if primary_keys and col_name in primary_keys:
-                        # Bỏ 'PRIMARY KEY' đơn lẻ nếu sử dụng Khóa chính hỗn hợp (composite key)
                         clean_def = col_def.replace("PRIMARY KEY", "")
                         cols_def.append(f"{col_name} {clean_def}")
                     else:
                         cols_def.append(f"{col_name} {col_def}")
-                        
                 if primary_keys:
                     cols_def.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
-                    
                 for constraint in table_spec.get("unique_constraints", []):
                     cols_def.append(constraint)
-                    
                 for fk in table_spec.get("foreign_keys", []):
                     cols_def.append(fk)
-                    
                 sql_create = f"CREATE TABLE {table_name} ({', '.join(cols_def)})"
                 print(f"Đồng bộ: Tạo bảng mới '{table_name}' theo cấu trúc code định nghĩa.")
                 cursor.execute(sql_create)
                 continue
             
-            # Nếu bảng đã tồn tại, tiến hành đối chiếu từng cột để tự động nâng cấp cấu trúc
             cursor.execute(f"PRAGMA table_info({table_name})")
             current_cols = {row[1]: row for row in cursor.fetchall()}
             expected_cols = table_spec["columns"]
             
-            # RÚT GỌN/ĐỔI TÊN ĐẶC BIỆT CỦA CỘT CŨ (NẾU CÓ)
             if table_name == "hop_dong" and "thoi_gian_thuc_hien" not in current_cols and "so_ngay_thuc_hien" in current_cols:
                 print("Đồng bộ: Đổi tên cột 'so_ngay_thuc_hien' thành 'thoi_gian_thuc_hien' trong bảng 'hop_dong'")
                 try:
@@ -862,7 +804,6 @@ def khoi_tao_va_di_tru_he_thong():
                 except Exception as ex:
                     print(f"Lỗi khi đổi tên cột: {ex}")
 
-            # Phát hiện xem có sự lệch kiểu dữ liệu hoặc thiếu cột đặc trưng nào không để xây dựng lại bảng
             rebuild_needed = False
             for col_name, col_def in expected_cols.items():
                 if col_name in current_cols:
@@ -888,8 +829,6 @@ def khoi_tao_va_di_tru_he_thong():
                         rebuild_needed = True
                         break
                 else:
-                    # SQLite không cho phép thêm cột mới có DEFAULT động (như strftime) hoặc NOT NULL mà không có default tĩnh qua ALTER TABLE.
-                    # Nếu cột thiếu có DEFAULT, NOT NULL, UNIQUE hoặc REFERENCES, ta rebuild lại bảng.
                     col_def_upper = col_def.upper()
                     if "DEFAULT" in col_def_upper or "NOT NULL" in col_def_upper or "UNIQUE" in col_def_upper or "REFERENCES" in col_def_upper:
                         print(f"Đồng bộ: Phát hiện thiếu cột phức tạp '{col_name}' trong '{table_name}', cần xây dựng lại bảng.")
@@ -899,14 +838,10 @@ def khoi_tao_va_di_tru_he_thong():
             if rebuild_needed:
                 print(f"Đồng bộ: Tiến hành xây dựng lại bảng '{table_name}' để đồng bộ cấu trúc...")
                 try:
-                    # Tạm thời tắt kiểm tra khóa ngoại để đổi tên / xây dựng lại bảng
                     cursor.execute("PRAGMA foreign_keys = OFF")
-                    
-                    # 1. Đổi tên bảng hiện tại sang bảng tạm
                     temp_table = f"{table_name}_old_{int(datetime.now().timestamp())}"
                     cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table}")
                     
-                    # 2. Tạo bảng mới theo cấu trúc chuẩn từ SCHEMA_DINH_NGHIA
                     cols_def = []
                     primary_keys = table_spec.get("primary_keys", [])
                     for col_name, col_def in table_spec["columns"].items():
@@ -925,7 +860,6 @@ def khoi_tao_va_di_tru_he_thong():
                     sql_create = f"CREATE TABLE {table_name} ({', '.join(cols_def)})"
                     cursor.execute(sql_create)
                     
-                    # 3. Lấy giao các cột có mặt ở cả hai cấu hình để sao chép dữ liệu
                     cursor.execute(f"PRAGMA table_info({temp_table})")
                     old_cols = [row[1] for row in cursor.fetchall()]
                     common_cols = [c for c in expected_cols.keys() if c in old_cols]
@@ -934,7 +868,6 @@ def khoi_tao_va_di_tru_he_thong():
                         cols_str = ", ".join(common_cols)
                         cursor.execute(f"INSERT INTO {table_name} ({cols_str}) SELECT {cols_str} FROM {temp_table}")
                     
-                    # 4. Xóa bảng tạm
                     cursor.execute(f"DROP TABLE {temp_table}")
                     cursor.execute("PRAGMA foreign_keys = ON")
                     print(f"Đồng bộ: Xây dựng lại bảng '{table_name}' thành công và bảo toàn dữ liệu!")
@@ -943,7 +876,6 @@ def khoi_tao_va_di_tru_he_thong():
                     cursor.execute("PRAGMA foreign_keys = ON")
                     print(f"Lỗi nghiêm trọng khi xây dựng lại bảng '{table_name}': {ex}")
 
-            # 1. Thêm các cột thiếu từ code vào database
             for col_name, col_def in expected_cols.items():
                 if col_name not in current_cols:
                     print(f"Đồng bộ: Thêm cột mới '{col_name}' ({col_def}) vào bảng '{table_name}'")
@@ -954,21 +886,15 @@ def khoi_tao_va_di_tru_he_thong():
                         alter_def = col_def.replace("NOT NULL", "")
                     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {alter_def}")
             
-            # 2. Xóa các cột thừa trong database không còn tồn tại trong code định nghĩa
             for col_name in list(current_cols.keys()):
                 if col_name not in expected_cols:
                     print(f"Đồng bộ: Xóa cột thừa '{col_name}' khỏi bảng '{table_name}' để khớp định nghĩa code")
                     try:
                         cursor.execute(f"ALTER TABLE {table_name} DROP COLUMN {col_name}")
                     except Exception as ex:
-                        # Một số phiên bản SQLite cũ không hỗ trợ ALTER TABLE DROP COLUMN
                         print(f"Không thể xóa trực tiếp cột '{col_name}' trong SQLite (phiên bản cũ): {ex}")
                         
-        # ----------------------------------------------------
-        # DI TRÚ DỮ LIỆU TỪ HỆ THỐNG BẢNG TIẾNG ANH CŨ
-        # ----------------------------------------------------
-        
-        # Chuyển đổi system_packages -> goi_dich_vu
+        # English system legacy migration
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='system_packages'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM system_packages")
@@ -977,8 +903,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO goi_dich_vu (id, ten_goi, gia_ca, han_muc_nhan_su, mo_ta) VALUES (?, ?, ?, ?, ?)",
                                (d['id'], d['name'], d['price'], d['quota'], d['description']))
             print("Đã di trú system_packages -> goi_dich_vu")
-  
-        # Chuyển đổi users -> tai_khoan
+   
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM users")
@@ -987,10 +912,8 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, token_phien, anh_dai_dien, goi_dich_vu_id, ngay_bat_dau_goi, ngay_het_han_goi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (d['id'], d['username'], d['password'], d['name'], d['role'], d['email'], d['active_session_token'], d.get('avatar'), d.get('package_id', 'silver'), d.get('package_start_date'), d.get('package_end_date')))
                 
-                # Di trú organization_name của user này sang to_chuc & thanh_vien_to_chuc
                 org_name = d.get('organization_name')
                 if org_name:
-                    import hashlib
                     orgs = [o.strip() for o in org_name.split(',') if o.strip()]
                     for org in orgs:
                         org_hash_id = "org-" + hashlib.md5(org.encode('utf-8')).hexdigest()[:16]
@@ -1004,8 +927,7 @@ def khoi_tao_va_di_tru_he_thong():
                         cursor.execute("INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
                                        (d['id'], org_hash_id, role_in_org))
             print("Đã di trú users -> tai_khoan")
-  
-        # Chuyển đổi investors -> chu_dau_tu
+   
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='investors'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM investors")
@@ -1014,8 +936,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO chu_dau_tu (id, ten_chu_dau_tu, ma_chu_dau_tu, ma_so_thue, chuc_vu_nguoi_dung_dau, nguoi_ky_quyet_dinh, chuc_vu_nguoi_ky, danh_xung, dia_chi, so_dien_thoai, so_tai_khoan, noi_mo_tai_khoan, email, ma_qhns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (d['id'], d['name'], d.get('code', ''), d.get('tax_code', ''), d.get('head_position', ''), d.get('signer_name', ''), d.get('signer_position', ''), d.get('honorific', 'Ông'), d.get('address', ''), d.get('phone', ''), d.get('bank_account', ''), d.get('bank_name', ''), d.get('email', ''), d.get('budget_code', '')))
             print("Đã di trú investors -> chu_dau_tu")
-  
-        # Chuyển đổi plans -> ke_hoach_lcnt
+   
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='plans'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM plans")
@@ -1024,8 +945,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO ke_hoach_lcnt (id, id_goc, ma_ke_hoach, phien_ban, ten_ke_hoach, ten_du_an_du_toan, loai_hinh_mua_sam, chu_dau_tu_id, tong_muc_dau_tu, ngay_phe_duyet, quyet_dinh_phe_duyet, thoi_gian_dang_tai, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien, nguon_von, thoi_gian_du_an, dia_diem_quy_mo, thong_tin_khac) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (d['id'], d.get('root_id'), d.get('code'), d.get('version', '00'), d['name'], d.get('project_name'), d.get('loai_hinh'), d.get('investor_id'), d.get('total_investment', 0), d.get('approval_date'), d.get('approval_decision'), d.get('publish_date'), d.get('cv_da_thuc_hien', '[]'), d.get('cv_khong_ap_dung', '[]'), d.get('cv_chua_du_dieu_kien', '[]'), d.get('nguon_von', ''), d.get('thoigian_duan', ''), d.get('diadiem_quymo', ''), d.get('thongtin_khac', '')))
             print("Đã di trú plans -> ke_hoach_lcnt")
-  
-        # Chuyển đổi contractors -> nha_thau
+   
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='contractors'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM contractors")
@@ -1034,8 +954,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO nha_thau (id, ten_nha_thau, loai_nha_thau, thanh_vien_lien_danh, ma_so_thue, nguoi_dai_dien, danh_xung, so_dien_thoai, email, dia_chi, so_tai_khoan, noi_mo_tai_khoan, ma_ngan_hang, ma_nha_thau) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (d['id'], d['name'], d.get('type', 'Độc lập'), d.get('members', '[]'), d.get('tax_code', ''), d.get('representative', ''), d.get('honorific', 'Ông'), d.get('phone', ''), d.get('email', ''), d.get('address', ''), d.get('bank_account', ''), d.get('bank_name', ''), d.get('bank_code', ''), d.get('code', '')))
             print("Đã di trú contractors -> nha_thau")
-  
-        # Chuyển đổi experts -> chuyen_gia
+   
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='experts'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM experts")
@@ -1044,8 +963,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO chuyen_gia (id, ho_ten, so_chung_chi, ngay_cap_chung_chi, so_cccd, ngay_cap_cccd, anh_chung_chi) VALUES (?, ?, ?, ?, ?, ?, ?)",
                                (d['id'], d['full_name'], d.get('certificate_code'), d.get('certificate_date'), d.get('cccd'), d.get('cccd_date'), d.get('certificate_image')))
             print("Đã di trú experts -> chuyen_gia")
-  
-        # Chuyển đổi packages -> goi_thau
+   
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='packages'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM packages")
@@ -1054,8 +972,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO goi_thau (id, id_goc, ma_goi_thau, phien_ban, ke_hoach_id, ten_goi_thau, gia_goi_thau, loai_hop_dong, hinh_thuc_lua_chon, phuong_thuc_lua_chon, thoi_gian_thuc_hien, nguon_von, nha_thau_trung_thau_id, linh_vuc, tuy_chon_mua_them, thoi_gian_to_chuc, thoi_gian_bat_dau_to_chuc, phan_lo, phan_lo_list, tuy_chon_mua_them_list, thoi_gian_goi_thau, thoi_gian_hop_dong, awarded_phan_lo_list, trang_thai) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (d['id'], d.get('root_id'), d.get('code'), d.get('version', '00'), d.get('plan_id'), d['name'], d.get('price', 0), d.get('contract_type'), d.get('selection_method'), d.get('phuong_thuc_lua_chon', 'Một giai đoạn một túi hồ sơ'), d.get('execution_time'), d.get('capital_source'), d.get('awarded_contractor_id'), d.get('linh_vuc'), d.get('purchase_option', 'Không'), d.get('org_time'), d.get('org_start_time'), d.get('phan_lo', 'Không'), d.get('phan_lo_list', '[]'), d.get('tuy_chon_mua_them_list', '[]'), d.get('thoi_gian_goi_thau'), d.get('thoi_gian_hop_dong'), d.get('awarded_phan_lo_list', '[]'), d.get('status', 'Chuẩn bị')))
             print("Đã di trú packages -> goi_thau")
-  
-        # Chuyển đổi contracts -> hop_dong
+   
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='contracts'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM contracts")
@@ -1064,8 +981,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO hop_dong (id, ten_hop_dong, so_hop_dong, ngay_ky, chu_dau_tu_id, nha_thau_id, gia_tri, loai_hop_dong, thoi_gian_thuc_hien, trang_thai_ho_so) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (d['id'], d.get('name'), d.get('code'), d.get('sign_date'), d.get('investor_id'), d.get('contractor_id'), d.get('value', 0), d.get('type'), str(d.get('execution_time', '')), d.get('paper_status')))
             print("Đã di trú contracts -> hop_dong")
- 
-        # Chuyển đổi contract_package -> hop_dong_goi_thau
+  
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='contract_package'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM contract_package")
@@ -1074,8 +990,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute("INSERT OR IGNORE INTO hop_dong_goi_thau (hop_dong_id, goi_thau_id) VALUES (?, ?)",
                                (d['contract_id'], d['package_id']))
             print("Đã di trú contract_package -> hop_dong_goi_thau")
- 
-        # Chuyển đổi assignments -> phan_cong_nhan_su
+  
         cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='assignments'")
         if cursor.fetchone()[0] > 0:
             cursor.execute("SELECT * FROM assignments")
@@ -1085,12 +1000,10 @@ def khoi_tao_va_di_tru_he_thong():
                                (d['id'], d['emp_id'], d['target_id'], d['type']))
             print("Đã di trú assignments -> phan_cong_nhan_su")
             
-        # Dọn dẹp: Xóa sạch các bảng tiếng Anh cũ để tối ưu hóa và sạch sẽ database
         old_tables = ['users', 'system_packages', 'investors', 'plans', 'packages', 'experts', 'contractors', 'contracts', 'contract_package', 'assignments']
         for tbl in old_tables:
             cursor.execute(f"DROP TABLE IF EXISTS {tbl}")
             
-        # Gieo dữ liệu bản quyền mặc định nếu trống
         cursor.execute("SELECT COUNT(*) FROM goi_dich_vu")
         if cursor.fetchone()[0] == 0:
             cursor.execute("INSERT INTO goi_dich_vu (id, ten_goi, gia_ca, han_muc_nhan_su, mo_ta) VALUES (?, ?, ?, ?, ?)",
@@ -1100,16 +1013,12 @@ def khoi_tao_va_di_tru_he_thong():
             cursor.execute("INSERT INTO goi_dich_vu (id, ten_goi, gia_ca, han_muc_nhan_su, mo_ta) VALUES (?, ?, ?, ?, ?)",
                            ('diamond', 'Gói Kim Cương (Diamond)', 75000000.0, 999, 'Đặc quyền quản trị thầu tối cao, không giới hạn số lượng nhân sự.'))
                            
-        # Gieo tài khoản mẫu mặc định nếu trống
         cursor.execute("SELECT COUNT(*) FROM tai_khoan")
         if cursor.fetchone()[0] == 0:
-            import uuid
-            import hashlib
             admin_uuid = "user-" + str(uuid.uuid4())
             cursor.execute("INSERT INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, goi_dich_vu_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                            (admin_uuid, 'admin', hash_password('123456'), 'Vy Tuấn Dương', 'super_admin', 'tuanduong51794@gmail.com', 'diamond'))
             
-            # Gieo tổ chức mặc định HTD cho admin
             org_name = 'HTD'
             org_hash_id = "org-" + hashlib.md5(org_name.encode('utf-8')).hexdigest()[:16]
             cursor.execute("""
@@ -1121,10 +1030,8 @@ def khoi_tao_va_di_tru_he_thong():
                 VALUES (?, ?, ?)
             """, (admin_uuid, org_hash_id, 'super_admin'))
                            
-        # Cập nhật da_xac_minh = 1 cho các tài khoản hiện tại để tránh bị khóa
         cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE da_xac_minh IS NULL OR da_xac_minh = 0")
 
-        # Gán quyền sở hữu mặc định cho các dữ liệu cũ (legacy data)
         cursor.execute("SELECT id FROM tai_khoan WHERE vai_tro = 'super_admin' OR ten_dang_nhap = 'admin' LIMIT 1")
         admin_row = cursor.fetchone()
         admin_id = str(admin_row[0]) if admin_row else "1"
@@ -1139,7 +1046,6 @@ def khoi_tao_va_di_tru_he_thong():
             if tbl != "hop_dong_goi_thau":
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{tbl}_owner ON {tbl}(owner_id)")
 
-        # Bổ sung indexes tối ưu hóa hiệu năng
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_chudaututu ON ke_hoach_lcnt(chu_dau_tu_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_kehoach ON goi_thau(ke_hoach_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_nhathau ON goi_thau(nha_thau_trung_thau_id)")
@@ -1148,11 +1054,9 @@ def khoi_tao_va_di_tru_he_thong():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdong_chudautu ON hop_dong(chu_dau_tu_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdong_nhathau ON hop_dong(nha_thau_id)")
         
-        # Index token & email
         cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_taikhoan_token ON tai_khoan(token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_taikhoan_email ON tai_khoan(email) WHERE email != ''")
         
-        # Index versioning
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_idgoc ON chu_dau_tu(owner_id, id_goc)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_idgoc ON ke_hoach_lcnt(owner_id, id_goc)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_idgoc ON nha_thau(owner_id, id_goc)")
@@ -1160,11 +1064,9 @@ def khoi_tao_va_di_tru_he_thong():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_latest ON goi_thau(owner_id, id_goc, is_latest)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_latest ON nha_thau(owner_id, id_goc, is_latest)")
         
-        # Bổ sung indexes tối ưu hóa hiệu năng versioning còn thiếu
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_latest ON chu_dau_tu(owner_id, id_goc, is_latest)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_latest ON ke_hoach_lcnt(owner_id, id_goc, is_latest)")
 
-        # Backfill is_latest = 1 cho phiên bản cao nhất
         for tbl in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
             cursor.execute(f"UPDATE {tbl} SET is_latest = 0")
             cursor.execute(f"""
@@ -1178,25 +1080,17 @@ def khoi_tao_va_di_tru_he_thong():
                 )
             """)
 
-        # ----------------------------------------------------
-        # DỌN DẸP LIÊN KẾT MỒ CÔI TỔ CHỨC
-        # ----------------------------------------------------
         try:
-            # Dọn dẹp các liên kết mồ côi (không tồn tại trong tai_khoan) để tránh lỗi Foreign Key
             cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id NOT IN (SELECT id FROM tai_khoan)")
             cursor.execute("UPDATE to_chuc SET quan_ly_id = NULL WHERE quan_ly_id NOT IN (SELECT id FROM tai_khoan)")
             print("Đồng bộ: Dọn dẹp các liên kết mồ côi tổ chức thành công!")
         except Exception as migration_ex:
             print("Lỗi khi di trú dữ liệu tổ chức:", migration_ex)
 
-        # ----------------------------------------------------
-        # TỰ ĐỘNG ĐỒNG BỘ CHUYÊN GIA GÓI THẦU BẰNG TRIGGERS
-        # ----------------------------------------------------
         try:
             cursor.execute("DROP TRIGGER IF EXISTS tg_sync_goithau_chuyengia_insert")
             cursor.execute("DROP TRIGGER IF EXISTS tg_sync_goithau_chuyengia_update")
 
-            # Tạo các trigger tự động đồng bộ khi INSERT / UPDATE goi_thau
             cursor.execute("""
                 CREATE TRIGGER IF NOT EXISTS tg_sync_goithau_chuyengia_insert
                 AFTER INSERT ON goi_thau
@@ -1271,7 +1165,6 @@ def khoi_tao_va_di_tru_he_thong():
                 END;
             """)
 
-            # Di trú dữ liệu chuyên gia lịch sử (nếu có) vào goi_thau_chuyen_gia
             cursor.execute("SELECT id, chuyen_gia_list, tham_dinh_list FROM goi_thau")
             gt_rows = cursor.fetchall()
             for gt_row in gt_rows:
@@ -1288,7 +1181,7 @@ def khoi_tao_va_di_tru_he_thong():
                                 cursor.execute("""
                                     INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
                                     VALUES (?, ?, 'chuyen_gia')
-                                """, (gt_id, clean_cg_id))
+                                 """, (gt_id, clean_cg_id))
                     except Exception:
                         pass
                 if td_list_str:
@@ -1301,16 +1194,13 @@ def khoi_tao_va_di_tru_he_thong():
                                 cursor.execute("""
                                     INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
                                     VALUES (?, ?, 'tham_dinh')
-                                """, (gt_id, clean_td_id))
+                                 """, (gt_id, clean_td_id))
                     except Exception:
                         pass
             print("Đồng bộ: Thiết lập trigger và di trú chuyên gia sang goi_thau_chuyen_gia thành công!")
         except Exception as trigger_ex:
             print("Lỗi khi thiết lập trigger/di trú chuyên gia:", trigger_ex)
                            
-        # ----------------------------------------------------
-        # DI TRÚ CỘT owner_id TỪ TÊN TỔ CHỨC SANG ID TỔ CHỨC
-        # ----------------------------------------------------
         try:
             cursor.execute("SELECT id, ten_to_chuc FROM to_chuc")
             org_rows = cursor.fetchall()
@@ -1319,7 +1209,6 @@ def khoi_tao_va_di_tru_he_thong():
                 o_name = org_row['ten_to_chuc']
                 for tbl in business_tables:
                     cursor.execute(f"UPDATE {tbl} SET owner_id = ? WHERE owner_id = ?", (o_id, o_name))
-            # Also migrate deleted_records owner_id
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_records'")
             if cursor.fetchone():
                 for org_row in org_rows:
@@ -1327,9 +1216,7 @@ def khoi_tao_va_di_tru_he_thong():
             print("Đồng bộ: Di trú cột owner_id từ Tên tổ chức sang ID tổ chức thành công!")
         except Exception as migration_owner_ex:
             print("Lỗi khi di trú owner_id sang ID tổ chức:", migration_owner_ex)
-            
 
-                           
         conn.commit()
         conn.close()
         print("Khởi tạo và di trú cơ sở dữ liệu Tiếng Việt thành công!")
@@ -1338,176 +1225,117 @@ def khoi_tao_va_di_tru_he_thong():
 
 khoi_tao_va_di_tru_he_thong()
 
-# Prewarm cache ảnh trong nền (không chặn khởi động server)
-import threading
-threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()
+def log_error(e_or_msg, context="System"):
+    log_file = os.path.join(project_root, "sync_error.log")
+    try:
+        now_str = datetime.now().isoformat()
+        if isinstance(e_or_msg, Exception):
+            tb = traceback.format_exc()
+            msg = f"[{now_str}] [{context}] LỖI: {str(e_or_msg)}\n{tb}\n"
+        else:
+            msg = f"[{now_str}] [{context}] THÔNG BÁO: {str(e_or_msg)}\n"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(msg)
+    except Exception:
+        pass
+    print(f"[{context}] {e_or_msg}")
 
-# Import các thành phần của framework Starlette để dựng Web API Server
-from starlette.applications import Starlette
-from starlette.routing import Route, Mount, WebSocketRoute
-from starlette.staticfiles import StaticFiles
-from starlette.responses import StreamingResponse, JSONResponse, FileResponse
-from starlette.middleware import Middleware
-from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.background import BackgroundTasks
+class ErrorLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        try:
+            response = await call_next(request)
+            if response.status_code >= 500:
+                log_error(f"Phản hồi lỗi server {response.status_code}", f"HTTP {request.method} {request.url.path}")
+            return response
+        except Exception as e:
+            log_error(e, f"HTTP {request.method} {request.url.path}")
+            raise e
 
+def format_date_str(date_str):
+    if not date_str:
+        return '--'
+    date_str = str(date_str).strip().split(' ')[0]
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(date_str, fmt).strftime('%d/%m/%Y')
+        except ValueError:
+            pass
+    return date_str
 
-# Import helpers and routes from separate files
-from helpers import (
-    log_error,
-    ErrorLoggingMiddleware,
-    format_date_str,
-    VietnameseFloat,
-    clean_admin_prefix,
-    gui_email
-)
-from auth_routes import (
-    register_api,
-    verify_email_api,
-    resend_code_api,
-    login_api,
-    check_session_api,
-    forgot_password_api,
-    update_profile_api,
-    change_password_api,
-    list_users_api,
-    delete_user_api,
-    update_user_role_api,
-    update_user_package_api,
-    update_user_metadata_api,
-    list_system_packages_api,
-    update_system_package_api
-)
-from sync_routes import (
-    sync_websocket_endpoint,
-    sync_api,
-    get_all_data_api,
-    paginate_api
-)
-from export_routes import (
-    export_report_api,
-    list_templates_api,
-    set_active_template_api,
-    upload_template_api,
-    list_word_mappings_api,
-    save_word_mapping_api,
-    delete_word_mapping_api,
-    import_excel_api,
-    export_excel_template_api,
-    export_mothau_template_api,
-    export_danhgiahsdt_template_api,
-    export_ketquaqd_template_api
-)
+class VietnameseFloat(float):
+    def __str__(self):
+        try:
+            formatted = format(float(self), ",.0f")
+            return formatted.replace(",", ".")
+        except Exception:
+            return super().__str__()
 
-async def index(request):
-    """
-    [GET] /
-    Trả về tệp index.html từ thư mục views.
-    """
-    return FileResponse(os.path.join(project_root, 'views', 'index.html'))
+    def __repr__(self):
+        return self.__str__()
 
+    def __format__(self, spec):
+        try:
+            formatted = format(float(self), ",.0f")
+            return formatted.replace(",", ".")
+        except Exception:
+            return super().__format__(spec)
 
-# ==========================================
-# 4. KHAI BÁO PATH ROUTING & STATIC FILES
-# ==========================================
-routes = [
-    Route("/", index, methods=["GET"]),
-    Route("/api/sync", sync_api, methods=["POST"]),
-    Route("/api/paginate", paginate_api, methods=["GET"]),
-    Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
-    WebSocketRoute("/ws/sync", sync_websocket_endpoint),
-    Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
-    Route("/api/templates", list_templates_api, methods=["GET"]),
-    Route("/api/templates/active", set_active_template_api, methods=["POST"]),
-    Route("/api/templates/upload", upload_template_api, methods=["POST"]),
-    Route("/api/word-mappings", list_word_mappings_api, methods=["GET"]),
-    Route("/api/word-mappings", save_word_mapping_api, methods=["POST"]),
-    Route("/api/word-mappings/{mapping_id}", delete_word_mapping_api, methods=["DELETE"]),
-    Route("/api/import-excel", import_excel_api, methods=["POST"]),
-    Route("/api/export-excel-template/{import_type}", export_excel_template_api, methods=["GET"]),
-    Route("/api/export-mothau-template", export_mothau_template_api, methods=["GET"]),
-    Route("/api/export-danhgiahsdt-template", export_danhgiahsdt_template_api, methods=["GET"]),
-    Route("/api/export-ketquaqd-template", export_ketquaqd_template_api, methods=["GET"]),
-    Route("/api/system-packages", list_system_packages_api, methods=["GET"]),
-    Route("/api/system-packages/update", update_system_package_api, methods=["POST"]),
+def clean_admin_prefix(name):
+    if not name:
+        return ""
+    pattern = r"^(thành phố|tỉnh|phường|xã|thị trấn)\s+"
+    return re.sub(pattern, name, flags=re.IGNORECASE)
+
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_SENDER = os.environ.get("SMTP_SENDER", SMTP_USER)
+
+def gui_email(email_nhan, tieu_de, noi_dung_html):
+    if not SMTP_USER or not SMTP_PASSWORD:
+        msg = f"[MOCK MAIL] Gửi tới: {email_nhan}\nTiêu đề: {tieu_de}\nNội dung:\n{noi_dung_html}\n"
+        log_error(msg, context="EmailMock")
+        return True
     
-    # Auth Routes
-    Route("/api/auth/register", register_api, methods=["POST"]),
-    Route("/api/auth/verify", verify_email_api, methods=["POST"]),
-    Route("/api/auth/resend-code", resend_code_api, methods=["POST"]),
-    Route("/api/auth/login", login_api, methods=["POST"]),
-    Route("/api/auth/check-session", check_session_api, methods=["POST"]),
-    Route("/api/auth/forgot-password", forgot_password_api, methods=["POST"]),
-    Route("/api/auth/update-profile", update_profile_api, methods=["POST"]),
-    Route("/api/auth/change-password", change_password_api, methods=["POST"]),
-    Route("/api/auth/users", list_users_api, methods=["GET"]),
-    Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
-    Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
-    Route("/api/auth/users/update-package", update_user_package_api, methods=["POST"]),
-    Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_SENDER
+        msg['To'] = email_nhan
+        msg['Subject'] = tieu_de
+        msg.attach(MIMEText(noi_dung_html, 'html', 'utf-8'))
+        
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_SENDER, email_nhan, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        log_error(f"Lỗi gửi email tới {email_nhan}: {str(e)}", context="EmailSender")
+        return False
+
+def get_active_org(request, user_id):
+    active_org = request.headers.get('X-Active-Org')
+    if active_org:
+        import urllib.parse
+        active_org = urllib.parse.unquote(active_org)
+    conn = database.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT tc.id, tc.ten_to_chuc 
+        FROM thanh_vien_to_chuc tvtc
+        JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
+        WHERE tvtc.user_id = ?
+    """, (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
     
-    # SPA Clean Paths Fallback to serve index.html for browser routes (Kebab-Case Standardized)
-    Route("/tong-quan", index, methods=["GET"]),
-    Route("/ke-hoach", index, methods=["GET"]),
-    Route("/ke-hoach/{action}", index, methods=["GET"]),
-    Route("/goi-thau", index, methods=["GET"]),
-    Route("/goi-thau/{action}", index, methods=["GET"]),
-    Route("/mothau", index, methods=["GET"]),
-    Route("/mothau/{action}", index, methods=["GET"]),
-    Route("/danh-gia-hsdt", index, methods=["GET"]),
-    Route("/danh-gia-hsdt/{action}", index, methods=["GET"]),
-    Route("/chu-dau-tu", index, methods=["GET"]),
-    Route("/chu-dau-tu/{action}", index, methods=["GET"]),
-    Route("/nha-thau", index, methods=["GET"]),
-    Route("/nha-thau/{action}", index, methods=["GET"]),
-    Route("/chuyen-gia", index, methods=["GET"]),
-    Route("/chuyen-gia/{action}", index, methods=["GET"]),
-    Route("/hop-dong", index, methods=["GET"]),
-    Route("/hop-dong/{action}", index, methods=["GET"]),
-    Route("/bieu-mau", index, methods=["GET"]),
-    Route("/tong-quan-admin", index, methods=["GET"]),
-    Route("/quan-ly-tai-khoan", index, methods=["GET"]),
-    Route("/nhan-su", index, methods=["GET"]),
-    Route("/trang-thai-ho-so", index, methods=["GET"]),
-    Route("/trang-ca-nhan", index, methods=["GET"]),
-    Route("/goi-thau-chi-tiet", index, methods=["GET"]),
-    Route("/goi-thau-chi-tiet/{action}", index, methods=["GET"]),
-
-    # Mount các thư mục MVC tĩnh để client có thể tải ES Modules
-    Mount("/models", app=StaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
-    Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
-    Mount("/controllers", app=StaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
-    
-    # Mount gốc views cho tệp index.html và style.css
-    Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
-]
-
-APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
-APP_PORT = int(os.environ.get("APP_PORT", "8000"))
-APP_DEBUG = os.environ.get("APP_DEBUG", "True").lower() == "true"
-
-cors_origins_str = os.environ.get("CORS_ORIGINS", "*")
-cors_origins = [o.strip() for o in cors_origins_str.split(",")] if cors_origins_str else ["*"]
-
-middleware = [
-    Middleware(CORSMiddleware, allow_origins=cors_origins, allow_methods=['*'], allow_headers=['*']),
-    Middleware(ErrorLoggingMiddleware)
-]
-
-import contextlib
-
-@contextlib.asynccontextmanager
-async def lifespan(app):
-    import threading
-    threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()
-    yield
-
-app = Starlette(debug=APP_DEBUG, routes=routes, middleware=middleware, lifespan=lifespan)
-
-# ==========================================
-# 5. KHỞI CHẠY MÁY CHỦ UVICORN
-# ==========================================
-if __name__ == "__main__":
-    # Khởi chạy server sử dụng đường dẫn import dạng module chính xác 'controllers.app:app'
-    uvicorn.run("controllers.app:app", host=APP_HOST, port=APP_PORT, reload=APP_DEBUG)
+    if not rows:
+        return str(user_id)
+        
+    for row in rows:
+        if active_org and (active_org == row['id'] or active_org == row['ten_to_chuc']):
+            return row['id']
+            
+    return rows[0]['id']

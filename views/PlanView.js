@@ -1109,20 +1109,14 @@ export function showPackageDetails(id) {
                         exportBtn.innerHTML = '<i data-lucide="loader-2" class="animate-spin" style="width:16px;"></i> Đang xuất...';
                         lucide.createIcons();
 
+                        // Gọi thẳng API xuất Word, không cần sync lại toàn bộ state
+                        // Dữ liệu đã được đồng bộ tự động khi người dùng lưu
                         const dbId = id;
-                        fetch('/api/sync', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                                'X-Username': localStorage.getItem('bf_username') || ''
-                            },
-                            body: JSON.stringify(this.model.state)
-                        })
-                            .then(s => {
-                                if (!s.ok) throw new Error('Không thể đồng bộ dữ liệu');
-                                return fetch(`/api/export-report/${dbId}`);
-                            })
+                        const headers = {
+                            'X-Session-Token': localStorage.getItem('bf_session_token') || '',
+                            'X-Username': localStorage.getItem('bf_username') || ''
+                        };
+                        fetch(`/api/export-report/${dbId}`, { headers })
                             .then(r => {
                                 if (!r.ok) throw new Error('Không thể xuất báo cáo');
                                 return r.blob();

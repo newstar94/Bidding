@@ -4,7 +4,8 @@ import json
 import sqlite3
 import zipfile
 from io import BytesIO
-from docxtpl import DocxTemplate
+from docxtpl import DocxTemplate, InlineImage
+from docx.shared import Inches
 from datetime import datetime
 
 # Path setup
@@ -193,7 +194,7 @@ def normalize_date_str(val_str):
         
     return val_str
 
-def format_vietnamese_datetime(val_str):
+def format_vietnamese_datetime(val_str, key_name=None):
     if not isinstance(val_str, str):
         return val_str
     val_str = normalize_date_str(val_str)
@@ -204,6 +205,15 @@ def format_vietnamese_datetime(val_str):
         d, m, y, hh, mm = dt_match.groups()
         m_int = int(m)
         m_str = f"{m_int:02d}" if m_int in [1, 2] else str(m_int)
+        if hh == "00" and mm == "00":
+            is_datetime_field = False
+            if key_name:
+                key_lower = str(key_name).lower()
+                datetime_keywords = ['dong_thau', 'mo_thau', 'dang_tai', 'dang_ma', 'thoi_gian']
+                if any(kw in key_lower for kw in datetime_keywords):
+                    is_datetime_field = True
+            if not is_datetime_field:
+                return f"ngày {d} tháng {m_str} năm {y}"
         return f"{hh} giờ {mm} phút ngày {d}/{m_str}/{y}"
         
     # Check dd/MM/yyyy format -> ngày dd tháng MM năm yyyy (month 1,2: 01,02; other months: no leading zero)
@@ -306,7 +316,7 @@ def format_context_dates(data):
                     
                 if is_date:
                     # Original key gets formatted to Vietnamese speech format
-                    data[k] = SmartDate(format_vietnamese_datetime(v_norm))
+                    data[k] = SmartDate(format_vietnamese_datetime(v_norm, key_name=k))
                     
                     # Create S_ and s_ version (date-only: dd/MM/yyyy) to support case-insensitivity
                     clean_k = k
@@ -456,7 +466,10 @@ def translate_xml_tags(xml_content, valid_vars):
         block_content = match.group(2)
         
         def replace_var(var_match):
-            var_name = var_match.group(1).lower()
+            raw_var = var_match.group(1)
+            var_name = raw_var.lower()
+            if var_name.startswith('item.'):
+                var_name = var_name[5:]
             # Avoid replacing nested loop tags or conditionals
             if var_name.startswith('#') or var_name.startswith('/') or var_name.startswith('%') or var_name.startswith('^'):
                 return var_match.group(0)
@@ -464,7 +477,7 @@ def translate_xml_tags(xml_content, valid_vars):
                 return f"{{{{ item.{var_name} }}}}"
             return var_match.group(0)
             
-        new_content = re.sub(r'(?<!\{)\{([A-Za-z0-9_]+)\}(?!\})', replace_var, block_content)
+        new_content = re.sub(r'(?<!\{)\{((?:item\.)?[A-Za-z0-9_]+)\}(?!\})', replace_var, block_content, flags=re.IGNORECASE)
         return f"{{#{loop_name}}}{new_content}{{/{loop_name}}}"
         
     xml_content = re.sub(r'\{#([A-Za-z0-9_]+)\}(.*?)\{/\1\}', replace_generic_loop, xml_content, flags=re.DOTALL)
@@ -538,15 +551,20 @@ def translate_xml_tags(xml_content, valid_vars):
     xml_content = pull_tr_loops_out(xml_content)
     return xml_content
 
+_TRANSLATED_TEMPLATES_CACHE = {}
+
+_TRANSLATED_DOCXTPL_CACHE = {}  # template_path -> (mtime, valid_vars_hash, DocxTemplate_instance)
+
 def translate_docx_template(template_path, context):
     """
     Reads the docx, extracts XMLs, translates custom syntax to Jinja2, and returns a DocxTemplate.
     """
-    # Keep original keys and enrich with lowercase variants
+    global _TRANSLATED_DOCXTPL_CACHE
+    
+    mtime = os.path.getmtime(template_path)
+    
     enrich_context_with_lowercase_keys(context)
-
     valid_vars = set(context.keys())
-    # Dynamically extract nested dictionary keys from context lists/dicts to avoid hardcoding subkeys
     for val in context.values():
         if isinstance(val, list):
             for item in val:
@@ -555,6 +573,14 @@ def translate_docx_template(template_path, context):
         elif isinstance(val, dict):
             valid_vars.update(val.keys())
 
+    valid_vars_hash = hash(frozenset(valid_vars))
+
+    cached = _TRANSLATED_DOCXTPL_CACHE.get(template_path)
+    if cached and cached[0] == mtime and cached[1] == valid_vars_hash:
+        # Clone or re-use a DocxTemplate using a lightweight reload or directly returning a new instance initialized with cached translated bytes
+        return DocxTemplate(BytesIO(cached[3]))
+
+    # 3. Tiến hành giải nén và dịch dịch tag nếu cache miss
     temp_bytes = BytesIO()
     with zipfile.ZipFile(template_path, 'r') as yin:
         with zipfile.ZipFile(temp_bytes, 'w', zipfile.ZIP_DEFLATED) as yout:
@@ -566,8 +592,11 @@ def translate_docx_template(template_path, context):
                     data = translated_xml.encode('utf-8')
                 yout.writestr(item, data)
                 
-    temp_bytes.seek(0)
-    return DocxTemplate(temp_bytes)
+    translated_data = temp_bytes.getvalue()
+    # Lưu kết quả biên dịch vào cache RAM dưới dạng bytes và đối tượng DocxTemplate
+    _TRANSLATED_DOCXTPL_CACHE[template_path] = (mtime, valid_vars_hash, DocxTemplate(BytesIO(translated_data)), translated_data)
+    
+    return DocxTemplate(BytesIO(translated_data))
 
 def replace_placeholders_with_empty(data):
     if isinstance(data, dict):
@@ -577,6 +606,153 @@ def replace_placeholders_with_empty(data):
     elif data == '--':
         return ''
     return data
+
+_OPTIMIZED_IMAGE_CACHE = {}  # filepath -> (mtime, bytes)
+
+def optimize_image_for_docx(filepath, max_width=800):
+    try:
+        mtime = os.path.getmtime(filepath)
+        cache_key = (filepath, max_width)
+        
+        # Check memory cache first
+        if cache_key in _OPTIMIZED_IMAGE_CACHE:
+            cached_mtime, cached_data = _OPTIMIZED_IMAGE_CACHE[cache_key]
+            if cached_mtime == mtime:
+                return BytesIO(cached_data)
+                
+        # 1. Kiểm tra cache file trên đĩa đã tồn tại chưa
+        dir_name = os.path.dirname(filepath)
+        base_name = os.path.basename(filepath)
+        name, ext = os.path.splitext(base_name)
+        cache_filename = f"{name}_opt_{max_width}.jpg"
+        cache_path = os.path.join(dir_name, cache_filename)
+        
+        # Nếu đã có file cache và file gốc không bị chỉnh sửa sau đó, đọc trực tiếp từ cache
+        if os.path.exists(cache_path) and os.path.getmtime(cache_path) >= mtime:
+            with open(cache_path, "rb") as f:
+                data = f.read()
+            _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
+            return BytesIO(data)
+
+        # 2. Tiến hành tối ưu hóa nếu chưa có cache
+        # Check original file size. If it is already a small JPEG, we can just load the raw bytes to save CPU
+        file_size = os.path.getsize(filepath)
+        if ext.lower() in ['.jpg', '.jpeg'] and file_size < 50000: # < 50KB
+            with open(filepath, "rb") as f:
+                data = f.read()
+            _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
+            return BytesIO(data)
+
+        from PIL import Image
+        with Image.open(filepath) as img:
+            w, h = img.size
+            if w > max_width:
+                ratio = max_width / w
+                new_w = int(w * ratio)
+                new_h = int(h * ratio)
+                # Sử dụng NEAREST hoặc BOX nếu ảnh cực kì nhỏ (ví dụ chữ ký), BILINEAR cho ảnh to để cân bằng chất lượng/tốc độ
+                resample = Image.Resampling.BOX if max_width <= 300 else Image.Resampling.BILINEAR
+                img = img.resize((new_w, new_h), resample)
+            
+            # Convert sang RGB để lưu định dạng JPEG siêu nhẹ
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new("RGB", img.size, (255, 255, 255))
+                if img.mode == 'RGBA':
+                    background.paste(img, mask=img.split()[3])
+                else:
+                    background.paste(img)
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+                
+            out = BytesIO()
+            img.save(out, format="JPEG", quality=80)
+            data = out.getvalue()
+            
+            # Lưu lại vào cache để phục vụ cho các lần xuất tiếp theo
+            try:
+                with open(cache_path, "wb") as f:
+                    f.write(data)
+            except Exception as cache_err:
+                print("Không thể ghi cache ảnh tối ưu:", cache_err)
+                
+            _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
+            out.seek(0)
+            return out
+    except Exception as e:
+        print("Lỗi tối ưu ảnh:", e)
+        return filepath
+
+def prewarm_image_cache():
+    """
+    Chạy ở nền khi server khởi động: tối ưu hóa và cache trước toàn bộ ảnh chứng chỉ 
+    và chữ ký của chuyên gia trong thư mục uploads/chuyen_gia/.
+    Điều này đảm bảo lần xuất Word đầu tiên cũng nhanh gần như tức thì.
+    """
+    try:
+        uploads_dir = os.path.join(project_root, 'uploads', 'chuyen_gia')
+        if not os.path.exists(uploads_dir):
+            return
+        
+        count = 0
+        for fname in os.listdir(uploads_dir):
+            # Chỉ xử lý file ảnh gốc (cert hoặc sig), bỏ qua file cache
+            if '_opt_' in fname:
+                continue
+            if not any(fname.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp']):
+                continue
+            
+            fpath = os.path.join(uploads_dir, fname)
+            max_w = 1200 if '_cert' in fname else 300
+            
+            # Kiểm tra xem cache đã tồn tại và còn hiệu lực chưa
+            name_no_ext, _ = os.path.splitext(fname)
+            cache_path = os.path.join(uploads_dir, f"{name_no_ext}_opt_{max_w}.jpg")
+            if os.path.exists(cache_path) and os.path.getmtime(cache_path) >= os.path.getmtime(fpath):
+                continue  # Cache còn hiệu lực, bỏ qua
+            
+            optimize_image_for_docx(fpath, max_w)
+            count += 1
+        
+        if count > 0:
+            print(f"[prewarm] Đã tối ưu hóa {count} ảnh chuyên gia vào cache.")
+    except Exception as e:
+        print(f"[prewarm] Lỗi khi prewarm cache ảnh: {e}")
+
+
+def convert_images_in_context(doc, data):
+    # Tự động tính toán chiều rộng khả dụng của khổ giấy (Chiều rộng giấy - Lề trái - Lề phải)
+    try:
+        section = doc.sections[0]
+        usable_width = section.page_width - section.left_margin - section.right_margin
+    except Exception:
+        usable_width = Inches(6.0)
+
+    if isinstance(data, dict):
+        for k, v in list(data.items()):
+            if isinstance(v, str) and v.startswith('uploads/'):
+                filepath = os.path.join(project_root, v)
+                if os.path.exists(filepath):
+                    try:
+                        width_val = Inches(1.5)
+                        max_w = 300
+                        if 'chung_chi' in k or 'cert' in k:
+                            width_val = usable_width
+                            max_w = 1200
+                        elif 'signature' in k or 'chu_ky' in k:
+                            width_val = Inches(1.5)
+                            max_w = 300
+                        
+                        # Tối ưu hóa ảnh trước khi đưa vào InlineImage để tăng tốc độ xuất và giảm dung lượng file
+                        image_stream = optimize_image_for_docx(filepath, max_w)
+                        data[k] = InlineImage(doc, image_stream, width=width_val)
+                    except Exception as img_ex:
+                        print("Lỗi chuyển đổi ảnh trong docx context:", img_ex)
+            else:
+                convert_images_in_context(doc, v)
+    elif isinstance(data, list):
+        for item in data:
+            convert_images_in_context(doc, item)
 
 def generate_report_from_custom_template(template_path, context, custom_vars=[]):
     """
@@ -592,6 +768,7 @@ def generate_report_from_custom_template(template_path, context, custom_vars=[])
     doc = None
     try:
         doc = translate_docx_template(template_path, context)
+        convert_images_in_context(doc, context)
         doc.render(context)
     except Exception as e:
         # Log error to export_error.log in workspace root
