@@ -485,24 +485,26 @@ export function showPackageDetails(id) {
                             <div>• <strong>Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
                             <div>• <strong>Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                             <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
-                            <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                            <div>• <strong>Thời gian mở thầu:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
+                            <div>• <strong>Thời gian đóng thầu:</strong> <span id="display-thoigiandongthau" style="font-weight:700;">${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</span></div>
+                            <div>• <strong>Thời gian mở thầu:</strong> <span id="display-thoigianmothau" style="font-weight:700;">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</span></div>
                         </div>
                     </div>
 
-                    <div style="text-align: center; padding: 48px; color: var(--text-muted); background: var(--bg-card); border-radius: var(--radius-lg); border: 1px dashed var(--border-color); margin: 20px 0;">
-                        <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(59, 130, 246, 0.08); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
-                            <i data-lucide="unlock" style="width: 32px; height: 32px; color: var(--primary);"></i>
+                    <div class="card" style="padding: 24px; border: 1px dashed var(--border-color); text-align: center; background: rgba(59, 130, 246, 0.02); border-radius: var(--radius-lg); margin-top: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
+                        <div style="width: 54px; height: 54px; border-radius: 50%; background: rgba(59, 130, 246, 0.08); display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="folder-open" style="width: 26px; height: 26px; color: var(--primary);"></i>
                         </div>
-                        <h4 style="font-weight: 700; color: var(--text-main); margin-bottom: 8px; font-size: 1.1rem;">Gói thầu đang trong thời gian mời thầu</h4>
-                        <p style="font-size: 0.85rem; margin-bottom: 24px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.5; color: var(--text-muted);">
-                            Gói thầu này hiện đang mời thầu và chưa được mở. Để thực hiện ghi nhận thông tin nộp thầu và lập biên bản mở thầu, vui lòng tiến hành mở thầu chính thức.
+                        <h4 style="font-weight: 700; color: var(--text-main); margin: 0; font-size: 1.05rem;">Mở thầu Gói thầu</h4>
+                        <p style="font-size: 0.82rem; color: var(--text-muted); max-width: 440px; margin: 0; line-height: 1.5;">
+                            Nếu thời gian đóng thầu đã hết và không có gia hạn hay làm rõ HSMT nào, vui lòng tiến hành mở thầu để bắt đầu ghi nhận hồ sơ thầu.<br>
+                            <em style="font-size:0.78rem; opacity:0.75;">Để ghi nhận gia hạn hoặc làm rõ HSMT, vui lòng chỉnh sửa gói thầu.</em>
                         </p>
-                        <button class="btn btn-primary" onclick="window.moThauGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
-                            <i data-lucide="folder-open"></i> Tiến hành Mở thầu
+                        <button class="btn btn-primary" onclick="window.moThauGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; margin-top:8px;">
+                            <i data-lucide="unlock"></i> Tiến hành Mở thầu
                         </button>
                     </div>
                 `;
+
                 lucide.createIcons();
             } else {
                 contentWrapper.innerHTML = `
@@ -553,29 +555,7 @@ export function showPackageDetails(id) {
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:24px; border-bottom:1px solid var(--border-color); padding-bottom:20px;">
-                        <div style="background:var(--bg-nested); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                <h5 style="margin:0; font-size:0.85rem; font-weight:700;">Công văn Yêu cầu làm rõ</h5>
-                                <button type="button" class="btn btn-outline btn-xs" id="btn-add-cv-lamro">+ Thêm</button>
-                            </div>
-                            <div id="list-cv-lamro"></div>
-                        </div>
-                        <div style="background:var(--bg-nested); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                <h5 style="margin:0; font-size:0.85rem; font-weight:700;">Công văn Trả lời làm rõ</h5>
-                                <button type="button" class="btn btn-outline btn-xs" id="btn-add-cv-traloi">+ Thêm</button>
-                            </div>
-                            <div id="list-cv-traloi"></div>
-                        </div>
-                        <div style="background:var(--bg-nested); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                <h5 style="margin:0; font-size:0.85rem; font-weight:700;">CV Tư vấn gửi CĐT</h5>
-                                <button type="button" class="btn btn-outline btn-xs" id="btn-add-cv-guicdt">+ Thêm</button>
-                            </div>
-                            <div id="list-cv-guicdt"></div>
-                        </div>
-                    </div>
+
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                         <h4 style="font-weight:700; font-size:0.95rem;">Đánh giá chi tiết các HSDT nộp</h4>
                         <button class="btn btn-outline btn-sm btn-import-excel" id="btn-danhgiahsdt-import-excel"><i data-lucide="file-spreadsheet"></i> Nhập từ Excel</button>
@@ -617,29 +597,7 @@ export function showPackageDetails(id) {
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:24px; border-bottom:1px solid var(--border-color); padding-bottom:20px;">
-                        <div style="background:var(--bg-nested); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                <h5 style="margin:0; font-size:0.85rem; font-weight:700;">Công văn Yêu cầu làm rõ</h5>
-                                <button type="button" class="btn btn-outline btn-xs" id="btn-add-cv-lamro">+ Thêm</button>
-                            </div>
-                            <div id="list-cv-lamro"></div>
-                        </div>
-                        <div style="background:var(--bg-nested); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                <h5 style="margin:0; font-size:0.85rem; font-weight:700;">Công văn Trả lời làm rõ</h5>
-                                <button type="button" class="btn btn-outline btn-xs" id="btn-add-cv-traloi">+ Thêm</button>
-                            </div>
-                            <div id="list-cv-traloi"></div>
-                        </div>
-                        <div style="background:var(--bg-nested); padding:14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                <h5 style="margin:0; font-size:0.85rem; font-weight:700;">CV Tư vấn gửi CĐT</h5>
-                                <button type="button" class="btn btn-outline btn-xs" id="btn-add-cv-guicdt">+ Thêm</button>
-                            </div>
-                            <div id="list-cv-guicdt"></div>
-                        </div>
-                    </div>
+
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                         <h4 style="font-weight:700; font-size:0.95rem;">Đánh giá chi tiết các HSDT nộp</h4>
                         <button class="btn btn-outline btn-sm btn-import-excel" id="btn-danhgiahsdt-import-excel"><i data-lucide="file-spreadsheet"></i> Nhập từ Excel</button>
@@ -818,7 +776,7 @@ export function showPackageDetails(id) {
                         Biên bản mở hồ sơ đề xuất tài chính (E-HSĐXTC)
                     </h4>
                     <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 20px;">
-                        Nhập giá dự thầu, tỷ lệ giảm giá, và thông tin bảo đảm dự thầu của các nhà thầu vượt qua bước đánh giá kỹ thuật.
+                        Nhập giá dự thầu, tỷ lệ giảm giá của các nhà thầu vượt qua bước đánh giá kỹ thuật.
                     </p>
                     <div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 24px;">
                         <table class="data-table" id="opening-fin-table" style="min-width: 100%;">
@@ -829,8 +787,6 @@ export function showPackageDetails(id) {
                                     <th style="width:160px;">Giá dự thầu (VNĐ)</th>
                                     <th style="width:80px;">Tỷ lệ %</th>
                                     <th style="width:160px;">Giá sau giảm</th>
-                                    <th style="width:140px;">Đảm bảo dự thầu (VNĐ)</th>
-                                    <th style="width:100px;">Hiệu lực ĐB (ngày)</th>
                                     <th style="width:120px;">Hiệu lực HSDT</th>
                                     <th style="width:120px;">Thời gian TH</th>
                                 </tr>
@@ -840,8 +796,6 @@ export function showPackageDetails(id) {
                     const valGiaDuThau = this.model.formatVND(b.giaDuThau) || '';
                     const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
                     const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
-                    const valDamBao = this.model.formatVND(b.damBaoDuThau) || '';
-                    const valHieuLucDb = b.hieuLucDamBao || '';
                     const valHieuLucHsdt = b.hieuLucHsdt || '';
                     const valThoiGianTh = b.thoiGianThucHien || '';
 
@@ -853,8 +807,6 @@ export function showPackageDetails(id) {
                                                 <td>${valGiaDuThau || '--'}</td>
                                                 <td style="text-align:right;">${valTyLeGiam}</td>
                                                 <td>${valGiaSauGiam || '--'}</td>
-                                                <td>${valDamBao || '--'}</td>
-                                                <td style="text-align:right;">${valHieuLucDb || '--'}</td>
                                                 <td>${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : '--'}</td>
                                                 <td>${valThoiGianTh || '--'}</td>
                                             </tr>
@@ -867,8 +819,6 @@ export function showPackageDetails(id) {
                                                 <td><input type="text" class="form-control op-gia-du-thau" value="${valGiaDuThau}" placeholder="Nhập giá..." style="padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-ty-le-giam" value="${valTyLeGiam}" placeholder="0" style="text-align:right; padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-gia-sau-giam" value="${valGiaSauGiam}" readonly style="background:#f1f5f9; padding:4px 8px; font-size:0.8rem;"></td>
-                                                <td><input type="text" class="form-control op-dam-bao" value="${valDamBao}" placeholder="Nhập giá..." style="padding:4px 8px; font-size:0.8rem;"></td>
-                                                <td><input type="text" class="form-control op-hieu-luc-db" value="${valHieuLucDb}" placeholder="Ví dụ: 120 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : ''}" placeholder="Ví dụ: 90 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-thoi-gian-th" value="${valThoiGianTh}" placeholder="Ví dụ: 60 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>
                                             </tr>
@@ -890,7 +840,6 @@ export function showPackageDetails(id) {
                     rows.forEach(tr => {
                         const inpGia = tr.querySelector('.op-gia-du-thau');
                         const inpTyLe = tr.querySelector('.op-ty-le-giam');
-                        const inpDamBao = tr.querySelector('.op-dam-bao');
                         const inpGiaSauGiam = tr.querySelector('.op-gia-sau-giam');
 
                         const reCalc = () => {
@@ -916,7 +865,6 @@ export function showPackageDetails(id) {
 
                         setupAutoFormatOnInput(inpGia);
                         inpGia.addEventListener('input', reCalc);
-                        setupAutoFormatOnInput(inpDamBao);
                     });
 
                     const saveBtn = document.getElementById('btn-save-opening-fin');
@@ -930,8 +878,6 @@ export function showPackageDetails(id) {
                                     const tyLeValRaw = tr.querySelector('.op-ty-le-giam')?.value || '0';
                                     bid.tyLeGiamGia = parseFloat(tyLeValRaw.replace(/,/g, '.')) || 0;
                                     bid.giaSauGiamGia = this.model.parseVND(tr.querySelector('.op-gia-sau-giam')?.value || '');
-                                    bid.damBaoDuThau = this.model.parseVND(tr.querySelector('.op-dam-bao')?.value || '');
-                                    bid.hieuLucDamBao = tr.querySelector('.op-hieu-luc-db')?.value.trim() || '';
                                     bid.hieuLucHsdt = parseInt(tr.querySelector('.op-hieu-luc-hsdt')?.value || '0', 10);
                                     bid.thoiGianThucHien = tr.querySelector('.op-thoi-gian-th')?.value.trim() || '';
                                 }
@@ -949,10 +895,16 @@ export function showPackageDetails(id) {
             break;
 
         case 'result':
-            const allBidsForResult = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+            const allBidsForResult = this.model.state.thongtinmothau.filter(b => 
+                String(b.goiThauId) === String(gt.id) &&
+                (b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
+            );
             const isAwarded = gt.trangThai === 'Đã có kết quả';
 
             if (isAwarded) {
+                if (!gt.nhaThauTrungThauId && allBidsForResult.length === 1) {
+                    gt.nhaThauTrungThauId = allBidsForResult[0].nhaThauId || allBidsForResult[0].id;
+                }
                 const winnerBid = allBidsForResult.find(b => String(b.nhaThauId) === String(gt.nhaThauTrungThauId)) || allBidsForResult[0];
                 const savings = gt.giaGoiThau - (gt.giaTrungThau || 0);
                 const savingsPct = gt.giaGoiThau > 0 ? ((savings / gt.giaGoiThau) * 100).toFixed(2) : '0,00';
@@ -1003,6 +955,86 @@ export function showPackageDetails(id) {
                     winnerDisplayHtml = `<h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">Chưa xác định</h5>`;
                 }
 
+                const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                const winningIds = new Set();
+                if (gt.nhaThauTrungThauId) {
+                    winningIds.add(String(gt.nhaThauTrungThauId));
+                }
+                if (gt.phanLo === 'Có' && gt.phanLoList) {
+                    try {
+                        const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList) : gt.phanLoList;
+                        plList.forEach(pl => {
+                            if (pl.nhaThauTrungThauId) winningIds.add(String(pl.nhaThauTrungThauId));
+                        });
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+
+                const bidsByNt = {};
+                allBids.forEach(b => {
+                    const ntId = String(b.nhaThauId || b.id || '');
+                    if (!ntId) return;
+                    if (!bidsByNt[ntId]) bidsByNt[ntId] = [];
+                    bidsByNt[ntId].push(b);
+                });
+
+                const uniqueBidders = Object.values(bidsByNt);
+                const allBiddersHtml = uniqueBidders.map((ntBids, idx) => {
+                    const firstBid = ntBids[0];
+                    const ntId = String(firstBid.nhaThauId || firstBid.id);
+                    const isWinner = winningIds.has(ntId);
+                    
+                    const badge = isWinner 
+                        ? `<span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px;">Trúng thầu</span>`
+                        : `<span class="badge badge-neutral" style="font-size:0.75rem; padding: 4px 10px; background:#f1f5f9; color:#64748b;">Trượt thầu</span>`;
+                    
+                    let lyDo = '';
+                    if (isWinner) {
+                        lyDo = '—';
+                    } else {
+                        const lotReasons = [];
+                        ntBids.forEach(b => {
+                            let r = b.lyDoTruot || '';
+                            if (!r) {
+                                const ketLuan = b.danhGiaKetLuan;
+                                if (ketLuan === 'Không đạt') {
+                                    const failedSteps = [];
+                                    if (b.danhGiaHopLe === 'Không đạt') failedSteps.push("Đánh giá hợp lệ");
+                                    if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
+                                    if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
+                                    if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
+                                    
+                                    if (failedSteps.length > 0) {
+                                        r = `Không đạt ở bước: ${failedSteps.join(', ')}`;
+                                    } else {
+                                        r = "Không đạt đánh giá chi tiết";
+                                    }
+                                } else {
+                                    r = "Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau";
+                                }
+                            }
+                            if (gt.phanLo === 'Có' && (b.tenPhanLo || b.maPhanLo)) {
+                                const tenLo = b.tenPhanLo || b.maPhanLo;
+                                lotReasons.push(`${tenLo}: ${r}`);
+                            } else {
+                                lotReasons.push(r);
+                            }
+                        });
+                        lyDo = lotReasons.join('; ');
+                    }
+
+                    return `
+                        <tr>
+                            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+                            <td><code>${firstBid.maNhaThau || firstBid.maDinhDanh || '--'}</code></td>
+                            <td class="fw-bold">${firstBid.tenNhaThau || '--'}</td>
+                            <td style="text-align: center;">${badge}</td>
+                            <td class="text-muted" style="font-size: 0.82rem;">${lyDo}</td>
+                        </tr>
+                    `;
+                }).join('');
+
                 contentWrapper.innerHTML = `
                     <div class="card" style="padding: 24px; border: 1px solid rgba(16, 185, 129, 0.25); background: rgba(16, 185, 129, 0.02); border-radius: var(--radius-lg); margin-bottom: 24px; display: flex; flex-direction: column; gap: 16px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
@@ -1010,13 +1042,15 @@ export function showPackageDetails(id) {
                                 <i data-lucide="check-circle" class="text-success" style="width:36px; height:36px;"></i>
                                 <div>
                                     <h4 style="margin:0; font-size:1.15rem; font-weight:800; color:var(--text-main);">Gói thầu đã hoàn thành LCNT</h4>
-                                    <p class="text-muted" style="margin:0; font-size:0.8rem;">Đã phê duyệt kết quả lựa chọn nhà thầu chính thức.</p>
-                                </div>
+                                    <p class="text-muted" style="margin:0; font-size:0.8rem;">Đã phê duyệt kết quả lựa chọn nhà thầu chính thức.</p>                                </div>
                             </div>
-                            <button class="btn btn-primary" id="btn-export-docx-report" style="font-weight:700;"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-outline-primary" id="btn-result-import-excel" style="font-weight:700; display:flex; align-items:center; gap:6px;">
+                                    <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                                </button>
+                                <button class="btn btn-primary" id="btn-export-docx-report" style="font-weight:700;"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
+                            </div>
                         </div>
-
-                        <hr style="border-color:var(--border-color); margin:4px 0;">
 
                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:20px;">
                             <div>
@@ -1045,6 +1079,26 @@ export function showPackageDetails(id) {
                             </div>
                         </div>
                     </div>
+
+                    <h5 style="margin-top:24px; margin-bottom:12px; font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="list"></i> Danh sách Nhà thầu tham dự và kết quả đánh giá
+                    </h5>
+                    <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
+                        <table class="data-table" style="min-width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%; text-align: center;">STT</th>
+                                    <th style="width: 15%;">Mã nhà thầu</th>
+                                    <th style="width: 30%;">Tên nhà thầu</th>
+                                    <th style="width: 15%; text-align: center;">Trạng thái</th>
+                                    <th style="width: 35%;">Lý do trượt thầu</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${allBiddersHtml}
+                            </tbody>
+                        </table>
+                    </div>
                 `;
 
                 const exportBtn = document.getElementById('btn-export-docx-report');
@@ -1055,7 +1109,7 @@ export function showPackageDetails(id) {
                         exportBtn.innerHTML = '<i data-lucide="loader-2" class="animate-spin" style="width:16px;"></i> Đang xuất...';
                         lucide.createIcons();
 
-                        const dbId = parseInt(id.replace('gt-', '')) || 1;
+                        const dbId = id;
                         fetch('/api/sync', {
                             method: 'POST',
                             headers: {
@@ -1094,59 +1148,126 @@ export function showPackageDetails(id) {
                     };
                 }
             } else {
-                contentWrapper.innerHTML = `
-                    <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin-bottom: 16px;">
-                        Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)
-                    </h4>
-                    <p class="text-muted" style="font-size:0.82rem; margin-bottom: 20px;">
-                        Vui lòng chọn nhà thầu trúng thầu chính thức và cập nhật các thông số phê duyệt hợp đồng để hoàn tất gói thầu.
-                    </p>
+                const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                const allBidsForResult = this.model.state.thongtinmothau.filter(b => 
+                    String(b.goiThauId) === String(gt.id) &&
+                    (b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
+                );
 
-                    <div class="card" style="padding: 24px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-card); display: flex; flex-direction: column; gap: 16px; max-width: 600px;">
-                        <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
-                            <label for="award-winner-select" style="font-weight:700; font-size:0.85rem;">Chọn nhà thầu trúng thầu <span class="required">*</span></label>
-                            <div class="select-wrapper">
-                                <select id="award-winner-select" class="form-control" required style="font-weight:600;">
-                                    <option value="">-- Chọn Nhà thầu thắng thầu --</option>
-                                    ${allBidsForResult.map(b => `<option value="${b.nhaThauId || b.id}">${b.tenNhaThau}</option>`).join('')}
+                const allBiddersHtml = allBids.map((b, idx) => {
+                    const isQualified = b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '');
+                    
+                    let defaultReason = '';
+                    if (!isQualified) {
+                        const failedSteps = [];
+                        if (b.danhGiaHopLe === 'Không đạt') failedSteps.push("Đánh giá hợp lệ");
+                        if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
+                        if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
+                        if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
+                        
+                        if (failedSteps.length > 0) {
+                            defaultReason = `Không đạt ở bước: ${failedSteps.join(', ')}`;
+                        } else {
+                            defaultReason = "Không đạt đánh giá chi tiết";
+                        }
+                    } else {
+                        defaultReason = "Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau";
+                    }
+
+                    const displayReason = b.lyDoTruot || defaultReason;
+                    
+                    const defaultPrice = this.model.formatVND(b.giaSauGiamGia || b.giaDuThau || '') || '';
+                    const defaultDurationPkg = b.thoiGianThucHien || '';
+                    const defaultDurationCtr = b.thoiGianThucHien ? (b.thoiGianThucHien + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
+                    const isRowWinner = isQualified && ((gt.nhaThauTrungThauId && String(gt.nhaThauTrungThauId) === String(b.nhaThauId || b.id)) || (!gt.nhaThauTrungThauId && allBidsForResult.length === 1));
+
+                    return `
+                        <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}">
+                            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+                            <td><code>${b.maNhaThau || b.maDinhDanh || '--'}</code></td>
+                            <td class="fw-bold">${b.tenNhaThau || '--'}</td>
+                            <td>
+                                <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? 'disabled' : ''}>
+                                    <option value="truot" ${!isRowWinner ? 'selected' : ''}>Trượt thầu</option>
+                                    ${isQualified ? `<option value="trung" ${isRowWinner ? 'selected' : ''}>Trúng thầu</option>` : ''}
                                 </select>
-                            </div>
-                            <span class="error-text">Vui lòng chọn nhà thầu trúng thầu</span>
-                        </div>
+                            </td>
+                            <td>
+                                <input type="text" class="form-control row-ly-do-truot" value="${!isQualified ? displayReason : ''}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                            </td>
+                            <td>
+                                <input type="text" class="form-control row-gia-trung" value="${defaultPrice}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                            </td>
+                            <td>
+                                <input type="text" class="form-control row-tg-goithau" value="${defaultDurationPkg}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                            </td>
+                            <td>
+                                <input type="text" class="form-control row-tg-hopdong" value="${defaultDurationCtr}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
 
-                        <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
-                            <label style="font-weight:700; font-size:0.85rem;">Giá trúng thầu (VNĐ) <span class="required">*</span></label>
-                            <input type="text" id="award-price" class="form-control" required placeholder="Ví dụ: 1.000.000.000">
-                            <span class="error-text">Vui lòng nhập giá trúng thầu</span>
+                contentWrapper.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin: 0;">
+                                Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)
+                            </h4>
+                            <p class="text-muted" style="font-size:0.82rem; margin: 4px 0 0 0;">
+                                Vui lòng nhập quyết định phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.
+                            </p>
                         </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-outline" id="btn-result-export-excel-template" style="font-weight:700; display:flex; align-items:center; gap:6px;">
+                                <i data-lucide="download"></i> Tải file mẫu Excel
+                            </button>
+                            <button class="btn btn-emerald-light" id="btn-result-import-excel" style="font-weight:700; display:flex; align-items:center; gap:6px;">
+                                <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                            </button>
+                        </div>
+                    </div>
 
+                    <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-card); display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
                         <div class="form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
                                 <label style="font-weight:700; font-size:0.85rem;">Quyết định phê duyệt số <span class="required">*</span></label>
                                 <input type="text" id="award-decision-no" class="form-control" required value="${gt.soQuyetDinhKetQua || ''}" placeholder="Số quyết định...">
                                 <span class="error-text">Vui lòng nhập số quyết định</span>
                             </div>
-                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
                                 <label style="font-weight:700; font-size:0.85rem;">Ngày ký quyết định <span class="required">*</span></label>
                                 <input type="text" id="award-decision-date" class="form-control flatpickr-dmy" required value="${gt.ngayQuyetDinhKetQua ? this.model.formatDate(gt.ngayQuyetDinhKetQua) : ''}" placeholder="Chọn ngày...">
                                 <span class="error-text">Vui lòng chọn ngày ký quyết định</span>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
-                                <label style="font-weight:700; font-size:0.85rem;">Thời gian thực hiện gói thầu <span class="required">*</span></label>
-                                <input type="text" id="award-duration-package" class="form-control" required placeholder="Ví dụ: 60 ngày">
-                                <span class="error-text">Vui lòng nhập thời gian thực hiện gói thầu</span>
-                            </div>
-                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
-                                <label style="font-weight:700; font-size:0.85rem;">Thời gian thực hiện hợp đồng <span class="required">*</span></label>
-                                <input type="text" id="award-duration-contract" class="form-control" required placeholder="Ví dụ: 60 ngày">
-                                <span class="error-text">Vui lòng nhập thời gian thực hiện hợp đồng</span>
-                            </div>
-                        </div>
+                    <h5 style="margin-top:24px; margin-bottom:12px; font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="list"></i> Danh sách nhà thầu tham dự & Kết quả LCNT
+                    </h5>
+                    <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
+                        <table class="data-table" style="min-width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 4%; text-align: center;">STT</th>
+                                    <th style="width: 10%;">Mã nhà thầu</th>
+                                    <th style="width: 18%;">Tên nhà thầu</th>
+                                    <th style="width: 12%;">Trúng thầu/trượt thầu</th>
+                                    <th style="width: 20%;">Lý do trượt</th>
+                                    <th style="width: 12%;">Giá trúng thầu</th>
+                                    <th style="width: 12%;">Thời gian thực hiện gói thầu</th>
+                                    <th style="width: 12%;">Thời gian thực hiện hợp đồng</th>
+                                </tr>
+                            </thead>
+                            <tbody id="approve-bidders-tbody">
+                                ${allBiddersHtml}
+                            </tbody>
+                        </table>
+                    </div>
 
-                        <button class="btn btn-emerald" id="btn-approve-award" style="padding:12px; font-weight:700; margin-top:8px; display:flex; justify-content:center; align-items:center; gap:8px;">
+                    <div style="display:flex; justify-content:flex-end; gap:12px;">
+                        <button class="btn btn-emerald" id="btn-approve-award" style="padding:12px 24px; font-weight:700; display:flex; align-items:center; gap:8px;">
                             <i data-lucide="check-circle2"></i> Phê duyệt & Hoàn thành LCNT
                         </button>
                     </div>
@@ -1158,67 +1279,94 @@ export function showPackageDetails(id) {
                     allowInput: true
                 });
 
-                const inpPrice = document.getElementById('award-price');
-                if (inpPrice) {
-                    inpPrice.addEventListener('input', (e) => {
-                        e.target.value = this.model.formatVND(e.target.value);
+                const tbodyApprove = document.getElementById('approve-bidders-tbody');
+                if (tbodyApprove) {
+                    // Format VND currency input
+                    tbodyApprove.querySelectorAll('.row-gia-trung').forEach(inp => {
+                        inp.addEventListener('input', (e) => {
+                            const formatted = this.model.formatVND(e.target.value);
+                            e.target.value = formatted;
+                        });
                     });
-                }
 
-                const winnerSelect = document.getElementById('award-winner-select');
-                if (winnerSelect) {
-                    winnerSelect.addEventListener('change', () => {
-                        const winnerId = winnerSelect.value;
-                        if (winnerId) {
-                            const selectedBid = allBidsForResult.find(b => String(b.nhaThauId || b.id) === String(winnerId));
-                            if (selectedBid) {
-                                const bidPrice = (selectedBid.giaSauGiamGia && selectedBid.giaSauGiamGia > 0) ? selectedBid.giaSauGiamGia : (selectedBid.giaDuThau || 0);
-                                if (inpPrice) {
-                                    inpPrice.value = this.model.formatVND(bidPrice) || '';
-                                }
-                                const inpPkgDur = document.getElementById('award-duration-package');
-                                if (inpPkgDur) {
-                                    inpPkgDur.value = selectedBid.thoiGianThucHien || '';
-                                }
-                                const inpCtrDur = document.getElementById('award-duration-contract');
-                                if (inpCtrDur) {
-                                    const child_val = selectedBid.thoiGianThucHien || '';
-                                    inpCtrDur.value = child_val ? (child_val + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
+                    // Dropdown status change listeners
+                    tbodyApprove.querySelectorAll('.row-status-select').forEach(selectEl => {
+                        selectEl.addEventListener('change', (e) => {
+                            const tr = e.target.closest('tr');
+                            const val = e.target.value;
+
+                            if (val === 'trung') {
+                                // Reset all other rows to 'truot'
+                                tbodyApprove.querySelectorAll('tr').forEach(otherTr => {
+                                    if (otherTr !== tr) {
+                                        const otherSelect = otherTr.querySelector('.row-status-select');
+                                        if (otherSelect && !otherSelect.disabled) {
+                                            otherSelect.value = 'truot';
+                                        }
+                                        
+                                        const otherLyDo = otherTr.querySelector('.row-ly-do-truot');
+                                        if (otherLyDo) {
+                                            otherLyDo.disabled = false;
+                                            otherLyDo.style.background = '';
+                                            if (!otherLyDo.value) {
+                                                otherLyDo.value = 'Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau';
+                                            }
+                                        }
+
+                                        const otherGia = otherTr.querySelector('.row-gia-trung');
+                                        if (otherGia) { otherGia.disabled = true; otherGia.style.background = '#f1f5f9'; }
+                                        const otherDurationPkg = otherTr.querySelector('.row-tg-goithau');
+                                        if (otherDurationPkg) { otherDurationPkg.disabled = true; otherDurationPkg.style.background = '#f1f5f9'; }
+                                        const otherDurationCtr = otherTr.querySelector('.row-tg-hopdong');
+                                        if (otherDurationCtr) { otherDurationCtr.disabled = true; otherDurationCtr.style.background = '#f1f5f9'; }
+                                    }
+                                });
+
+                                // Enable winning inputs on this row
+                                const inpGia = tr.querySelector('.row-gia-trung');
+                                if (inpGia) { inpGia.disabled = false; inpGia.style.background = ''; }
+                                const inpDurationPkg = tr.querySelector('.row-tg-goithau');
+                                if (inpDurationPkg) { inpDurationPkg.disabled = false; inpDurationPkg.style.background = ''; }
+                                const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
+                                if (inpDurationCtr) { inpDurationCtr.disabled = false; inpDurationCtr.style.background = ''; }
+
+                                // Disable failure reason input on this row
+                                const inpLyDo = tr.querySelector('.row-ly-do-truot');
+                                if (inpLyDo) { inpLyDo.disabled = true; inpLyDo.style.background = '#f1f5f9'; inpLyDo.value = ''; }
+                            } else {
+                                // Enable failure reason, disable winning inputs on this row
+                                const inpGia = tr.querySelector('.row-gia-trung');
+                                if (inpGia) { inpGia.disabled = true; inpGia.style.background = '#f1f5f9'; }
+                                const inpDurationPkg = tr.querySelector('.row-tg-goithau');
+                                if (inpDurationPkg) { inpDurationPkg.disabled = true; inpDurationPkg.style.background = '#f1f5f9'; }
+                                const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
+                                if (inpDurationCtr) { inpDurationCtr.disabled = true; inpDurationCtr.style.background = '#f1f5f9'; }
+
+                                const inpLyDo = tr.querySelector('.row-ly-do-truot');
+                                if (inpLyDo) { 
+                                    inpLyDo.disabled = false; 
+                                    inpLyDo.style.background = ''; 
+                                    inpLyDo.value = 'Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau';
                                 }
                             }
-                        } else {
-                            if (inpPrice) inpPrice.value = '';
-                            const inpPkgDur = document.getElementById('award-duration-package');
-                            if (inpPkgDur) inpPkgDur.value = '';
-                            const inpCtrDur = document.getElementById('award-duration-contract');
-                            if (inpCtrDur) inpCtrDur.value = '';
-                        }
+                        });
                     });
                 }
 
                 const approveBtn = document.getElementById('btn-approve-award');
                 if (approveBtn) {
                     approveBtn.onclick = async () => {
-                        const winnerSelect = document.getElementById('award-winner-select');
-                        const finalPriceRaw = document.getElementById('award-price')?.value || '';
                         const decNo = document.getElementById('award-decision-no')?.value.trim() || '';
                         const decDateRaw = document.getElementById('award-decision-date')?.value || '';
-                        const durPkg = document.getElementById('award-duration-package')?.value.trim() || '';
-                        const durCtr = document.getElementById('award-duration-contract')?.value.trim() || '';
-
-                        const winnerIdStr = winnerSelect.value;
-                        const finalPrice = this.model.parseVND(finalPriceRaw);
                         const decDate = this.model.convertDMYToYMD(decDateRaw);
 
                         let hasError = false;
                         const errorInputs = [];
+                        
+                        // Validate QĐ inputs
                         const fields = [
-                            { el: winnerSelect, val: winnerIdStr },
-                            { el: document.getElementById('award-price'), val: finalPriceRaw },
                             { el: document.getElementById('award-decision-no'), val: decNo },
-                            { el: document.getElementById('award-decision-date'), val: decDateRaw },
-                            { el: document.getElementById('award-duration-package'), val: durPkg },
-                            { el: document.getElementById('award-duration-contract'), val: durCtr }
+                            { el: document.getElementById('award-decision-date'), val: decDateRaw }
                         ];
 
                         fields.forEach(f => {
@@ -1229,14 +1377,55 @@ export function showPackageDetails(id) {
                                     f.el.closest('.form-group')?.classList.add('invalid');
                                     const clearInvalid = () => {
                                         f.el.closest('.form-group')?.classList.remove('invalid');
-                                        f.el.removeEventListener('input', clearInvalid);
-                                        f.el.removeEventListener('change', clearInvalid);
                                     };
                                     f.el.addEventListener('input', clearInvalid);
                                     f.el.addEventListener('change', clearInvalid);
                                 }
                             }
                         });
+
+                        // Identify winner row if any
+                        let winnerTr = null;
+                        tbodyApprove.querySelectorAll('tr').forEach(tr => {
+                            const status = tr.querySelector('.row-status-select')?.value;
+                            if (status === 'trung') {
+                                winnerTr = tr;
+                            }
+                        });
+
+                        let winnerIdStr = 'none';
+                        let finalPrice = 0;
+                        let durPkg = '';
+                        let durCtr = '';
+
+                        if (winnerTr) {
+                            winnerIdStr = winnerTr.getAttribute('data-nt-id');
+                            const finalPriceRaw = winnerTr.querySelector('.row-gia-trung')?.value || '';
+                            finalPrice = this.model.parseVND(finalPriceRaw);
+                            durPkg = winnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
+                            durCtr = winnerTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
+
+                            // Validate winner row inputs
+                            const rowInputs = [
+                                { el: winnerTr.querySelector('.row-gia-trung'), val: finalPriceRaw },
+                                { el: winnerTr.querySelector('.row-tg-goithau'), val: durPkg },
+                                { el: winnerTr.querySelector('.row-tg-hopdong'), val: durCtr }
+                            ];
+
+                            rowInputs.forEach(f => {
+                                if (!f.val) {
+                                    hasError = true;
+                                    if (f.el) {
+                                        errorInputs.push(f.el);
+                                        f.el.style.border = '1px solid var(--danger)';
+                                        const clearInvalid = () => {
+                                            f.el.style.border = '';
+                                        };
+                                        f.el.addEventListener('input', clearInvalid);
+                                    }
+                                }
+                            });
+                        }
 
                         if (hasError) {
                             if (errorInputs.length > 0) {
@@ -1247,22 +1436,55 @@ export function showPackageDetails(id) {
                             return;
                         }
 
-                        gt.nhaThauTrungThauId = isNaN(winnerIdStr) ? winnerIdStr : parseInt(winnerIdStr);
+                        // Save bidder failure reasons to database / model state
+                        tbodyApprove.querySelectorAll('tr').forEach(tr => {
+                            const bidId = tr.getAttribute('data-approve-bid-id');
+                            const bid = this.model.state.thongtinmothau.find(b => b.id === bidId);
+                            if (bid) {
+                                const status = tr.querySelector('.row-status-select')?.value;
+                                if (status === 'trung') {
+                                    bid.lyDoTruot = '';
+                                } else {
+                                    bid.lyDoTruot = tr.querySelector('.row-ly-do-truot')?.value.trim() || '';
+                                }
+                            }
+                        });
+
+                        gt.nhaThauTrungThauId = winnerIdStr === 'none' ? '' : (isNaN(winnerIdStr) ? winnerIdStr : parseInt(winnerIdStr));
                         gt.giaTrungThau = finalPrice;
                         gt.soQuyetDinhKetQua = decNo;
                         gt.ngayQuyetDinhKetQua = decDate;
-                        gt.thoiGianGoiThau = durPkg;
-                        gt.thoiGianHopDong = durCtr;
-                        gt.trangThai = 'Đã có kết quả';
+                        gt.thoiGianGoiThau = winnerIdStr === 'none' ? '' : durPkg;
+                        gt.thoiGianHopDong = winnerIdStr === 'none' ? '' : durCtr;
+                        gt.trangThai = winnerIdStr === 'none' ? 'Hủy thầu' : 'Đã có kết quả';
 
                         this.model.persistData('goithau');
+                        this.model.persistData('thongtinmothau');
                         this.renderGoiThauTable();
                         window.appController.autoSync();
 
-                        await this.customAlert('Chúc mừng', `Đã phê duyệt trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`, 'check-circle');
+                        const alertTitle = winnerIdStr === 'none' ? 'Hủy thầu thành công' : 'Chúc mừng';
+                        const alertMsg = winnerIdStr === 'none' ? `Đã cập nhật trạng thái hủy thầu cho gói thầu "${gt.tenGoiThau}" thành công!` : `Đã phê duyệt trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`;
+                        await this.customAlert(alertTitle, alertMsg, 'check-circle');
                         this.showPackageDetails(id);
                     };
                 }
+            }
+            
+            const resultExportBtn = document.getElementById('btn-result-export-excel-template');
+            if (resultExportBtn) {
+                resultExportBtn.onclick = () => {
+                    const safeCode = (gt.tenGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9]/g, '_');
+                    window.location.href = `/api/export-ketquaqd-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`;
+                };
+            }
+
+            const resultImportBtn = document.getElementById('btn-result-import-excel');
+            if (resultImportBtn) {
+                resultImportBtn.onclick = () => {
+                    window.appController._currentResultPackageId = gt.id;
+                    window.appController.openExcelImportModal('ketquaqd');
+                };
             }
             break;
     }
@@ -1638,7 +1860,13 @@ export function renderExcelPreview(rows, importType) {
         danhGiaHopLe: 'Đánh giá hợp lệ',
         danhGiaNangLuc: 'Đánh giá năng lực',
         danhGiaKyThuat: 'Đánh giá kỹ thuật',
-        danhGiaKetLuan: 'Kết luận'
+        danhGiaKetLuan: 'Kết luận',
+
+        // ketquaqd
+        giaTrungThau: 'Giá trúng thầu',
+        thoiGianGoiThau: 'Thời gian thực hiện gói thầu',
+        thoiGianHopDong: 'Thời gian thực hiện hợp đồng',
+        lyDoTruot: 'Lý do trượt thầu'
     };
 
     // Find keys of interest (skip internal meta keys)

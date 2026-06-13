@@ -201,7 +201,7 @@ export class BiddingController {
             if (!token || !username) return; // Only sync if logged in
 
             console.log("Triggering automatic background delta sync...");
-            this.forceSyncData().catch(err => console.error("Auto sync failed:", err));
+            this.forceSyncData(true).catch(err => console.error("Auto sync failed:", err));
         };
 
         // Check every 30 seconds
@@ -297,6 +297,57 @@ export class BiddingController {
 
         window.editHopDong = (id) => this.editHopDong(id);
         window.deleteHopDong = (id) => this.deleteHopDong(id);
+        
+        window.exportContractFromHopDong = (pkgId, soHopDong) => {
+            const dbId = pkgId;
+            
+            // Show dynamic loading indicator if available
+            const btn = document.querySelector(`button[onclick*="${pkgId}"][onclick*="${soHopDong}"]`);
+            const origHTML = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i data-lucide="loader-2" class="animate-spin" style="width:14px;height:14px;"></i>';
+                lucide.createIcons({ root: btn });
+            }
+
+            fetch('/api/sync', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
+                    'X-Username': localStorage.getItem('bf_username') || ''
+                },
+                body: JSON.stringify(this.model.state)
+            })
+            .then(s => {
+                if (!s.ok) throw new Error('Không thể đồng bộ dữ liệu');
+                return fetch(`/api/export-report/${dbId}?type=contract`);
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('Không thể xuất hợp đồng');
+                return r.blob();
+            })
+            .then(b => {
+                const url = window.URL.createObjectURL(b);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Hop_dong_${soHopDong || 'LCNT'}.docx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(err => {
+                alert('Lỗi xuất hợp đồng: ' + err.message);
+            })
+            .finally(() => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHTML;
+                    lucide.createIcons({ root: btn });
+                }
+            });
+        };
 
         window.addJointVentureMemberCard = (data) => this.addJointVentureMemberCard(data);
         window.removeJointVentureMemberCard = (id) => this.removeJointVentureMemberCard(id);
@@ -1763,7 +1814,7 @@ export class BiddingController {
         return rows;
     }
 
-    async forceSyncData() {
+    async forceSyncData(isBackground = false) {
         const syncBtn = document.getElementById('btn-force-sync');
         const syncIcon = document.getElementById('sync-icon');
         const syncStatusText = document.getElementById('sync-status-text');
@@ -1834,23 +1885,27 @@ export class BiddingController {
                 }
                 localStorage.setItem('bf_last_fetch_time', Date.now().toString());
                 
-                // Trigger immediate UI updates
-                this.view.renderDashboard();
-                this.view.renderKeHoachTable();
-                this.view.renderGoiThauTable();
-                this.view.renderChuDauTuTable();
-                this.view.renderNhaThauTable();
-                this.view.renderChuyenGiaTable();
-                this.view.renderHopDongTable();
+                if (!isBackground) {
+                    // Trigger immediate UI updates
+                    this.view.renderDashboard();
+                    this.view.renderKeHoachTable();
+                    this.view.renderGoiThauTable();
+                    this.view.renderChuDauTuTable();
+                    this.view.renderNhaThauTable();
+                    this.view.renderChuyenGiaTable();
+                    this.view.renderHopDongTable();
+                }
 
                 this.updateSyncStatusDisplay(Date.now());
 
-                // Re-evaluate URL mapping to replace raw ID with maGoiThau now that database data has loaded
-                const cleanPath = window.location.pathname.startsWith('/') ? window.location.pathname.substring(1) : window.location.pathname;
-                const parts = cleanPath.split('/').filter(Boolean);
-                const urlTab = parts[0] || '';
-                if (this.routeMap['goithau-detail'] === urlTab && parts[1]) {
-                    this.handlePathRouting(window.location.pathname, false, true);
+                if (!isBackground) {
+                    // Re-evaluate URL mapping to replace raw ID with maGoiThau now that database data has loaded
+                    const cleanPath = window.location.pathname.startsWith('/') ? window.location.pathname.substring(1) : window.location.pathname;
+                    const parts = cleanPath.split('/').filter(Boolean);
+                    const urlTab = parts[0] || '';
+                    if (this.routeMap['goithau-detail'] === urlTab && parts[1]) {
+                        this.handlePathRouting(window.location.pathname, false, true);
+                    }
                 }
             }
         } catch (err) {
@@ -1901,7 +1956,7 @@ export class BiddingController {
                         return;
                     }
                     console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
-                    this.forceSyncData().catch(err => console.error("Real-time sync failed:", err));
+                    this.forceSyncData(true).catch(err => console.error("Real-time sync failed:", err));
                 }
             } catch (e) {
                 console.error("Error handling WebSocket message:", e);

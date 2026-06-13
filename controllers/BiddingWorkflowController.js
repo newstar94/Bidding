@@ -1603,6 +1603,7 @@ export function openExcelImportModal(type) {
         else if (type === 'hopdong') typeText = 'Hợp đồng';
         else if (type === 'mothau') typeText = 'Thông tin Mở thầu';
         else if (type === 'danhgiahsdt') typeText = 'Đánh giá HSDT';
+        else if (type === 'ketquaqd') typeText = 'Kết quả phê duyệt LCNT';
 
         modalTitle.textContent = `Nhập khẩu ${typeText} từ Excel`;
     }
@@ -1653,6 +1654,16 @@ export function openExcelImportModal(type) {
                 if (!gt) return;
                 const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
                 window.location.href = `/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`;
+            } else if (this._excelImportType === 'ketquaqd') {
+                const gtId = this._currentResultPackageId;
+                if (!gtId) {
+                    this.view.customAlert('Chưa chọn Gói thầu', 'Không tìm thấy thông tin gói thầu hiện tại!', 'alert-triangle');
+                    return;
+                }
+                const gt = this.model.state.goithau.find(g => g.id === gtId);
+                if (!gt) return;
+                const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
+                window.location.href = `/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`;
             } else {
                 const type = this._excelImportType || 'kehoach';
                 window.location.href = `/api/export-excel-template/${type}`;
@@ -1704,6 +1715,10 @@ export async function handleExcelUpload(file) {
                     const danhGiaNangLuc = String(row['Đánh giá năng lực'] || row['Đánh giá năng lực kinh nghiệm'] || row['Năng lực'] || '').trim();
                     const danhGiaKyThuat = String(row['Đánh giá kỹ thuật'] || row['Kỹ thuật'] || '').trim();
                     const danhGiaKetLuan = String(row['Kết luận'] || row['Kết quả'] || '').trim();
+                    const lamRoHopLe = String(row['Làm rõ hợp lệ'] || row['Làm rõ tính hợp lệ'] || '').trim();
+                    const lamRoNangLuc = String(row['Làm rõ năng lực'] || row['Làm rõ năng lực kinh nghiệm'] || '').trim();
+                    const lamRoKyThuat = String(row['Làm rõ kỹ thuật'] || '').trim();
+                    const lamRoTaiChinh = String(row['Làm rõ tài chính'] || '').trim();
 
                     const existingBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gtId));
                     let foundBid = existingBids.find(b => {
@@ -1732,13 +1747,95 @@ export async function handleExcelUpload(file) {
                         danhGiaHopLe,
                         danhGiaNangLuc,
                         danhGiaKyThuat,
-                        danhGiaKetLuan
+                        danhGiaKetLuan,
+                        lamRoHopLe,
+                        lamRoNangLuc,
+                        lamRoKyThuat,
+                        lamRoTaiChinh
                     };
                     if (hasPhanLo) {
                         rec.maPhanLo = foundBid ? foundBid.maPhanLo : maPhanLo;
                         rec.tenPhanLo = foundBid ? foundBid.tenPhanLo : '';
                     }
                     return rec;
+                });
+
+                this._excelImportData = parsedBids;
+                this.view.renderExcelPreview(this._excelImportData, this._excelImportType);
+
+                const saveBtn = document.getElementById('btn-save-excel-import');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.style.display = 'inline-flex';
+                }
+            } catch (err) {
+                console.error(err);
+                await this.view.customAlert('Lỗi', 'Không thể đọc tệp tin Excel này. Vui lòng kiểm tra lại!', 'alert-triangle');
+            }
+        };
+        reader.readAsBinaryString(file);
+        return;
+    }
+
+    if (this._excelImportType === 'ketquaqd') {
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const data = evt.target.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(sheet);
+
+                if (!json || json.length === 0) {
+                    await this.view.customAlert('Thất bại', 'File Excel không có dữ liệu kết quả phê duyệt LCNT!', 'alert-triangle');
+                    return;
+                }
+
+                const gtId = this._currentResultPackageId;
+                const gt = this.model.state.goithau.find(g => g.id === gtId);
+                if (!gt) {
+                    await this.view.customAlert('Thất bại', 'Vui lòng chọn gói thầu trước khi nhập Excel!', 'alert-triangle');
+                    return;
+                }
+
+                const parsedBids = json.map(row => {
+                    const maNhaThau = String(row['Mã nhà thầu'] || row['Mã định danh'] || row['Mã số thuế'] || row['Mã'] || '').trim();
+                    const tenNhaThau = String(row['Tên nhà thầu'] || row['Nhà thầu'] || '').trim();
+                    const trangThai = String(row['Trúng thầu/Trượt thầu'] || row['Trúng thầu/trượt thầu'] || row['Trạng thái'] || row['Kết quả'] || '').trim();
+                    const lyDoTruot = String(row['Lý do trượt'] || row['Lý do trượt thầu'] || '').trim();
+                    const giaTrungThauRaw = String(row['Giá trúng thầu'] || row['Giá trúng'] || row['Giá trúng thầu (VND)'] || '').trim();
+                    const thoiGianGoiThau = String(row['Thời gian thực hiện gói thầu'] || row['Thời gian gói'] || '').trim();
+                    const thoiGianHopDong = String(row['Thời gian thực hiện hợp đồng'] || row['Thời gian hợp đồng'] || '').trim();
+
+                    const existingBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gtId));
+                    let foundBid = existingBids.find(b => {
+                        const bMa = b.maNhaThau || b.maDinhDanh || '';
+                        return (bMa && maNhaThau && bMa.toLowerCase() === maNhaThau.toLowerCase()) ||
+                            (b.tenNhaThau && tenNhaThau && b.tenNhaThau.toLowerCase() === tenNhaThau.toLowerCase());
+                    });
+
+                    let isValid = true;
+                    let comment = 'Hợp lệ';
+
+                    if (!foundBid) {
+                        isValid = false;
+                        comment = `Không tìm thấy nhà thầu tương ứng trong thông tin mở thầu của gói thầu này!`;
+                    }
+
+                    return {
+                        _valid: isValid,
+                        _comment: comment,
+                        id: foundBid ? foundBid.id : '',
+                        nhaThauId: foundBid ? foundBid.nhaThauId : '',
+                        maNhaThau: foundBid ? foundBid.maNhaThau : maNhaThau,
+                        tenNhaThau: foundBid ? foundBid.tenNhaThau : tenNhaThau,
+                        trangThai,
+                        lyDoTruot,
+                        giaTrungThau: this.model.parseVND(giaTrungThauRaw) || 0,
+                        thoiGianGoiThau,
+                        thoiGianHopDong
+                    };
                 });
 
                 this._excelImportData = parsedBids;
@@ -2123,7 +2220,7 @@ export async function saveExcelImport() {
                 const nhaThauId = foundNt ? foundNt.id : row.nhaThauId;
 
                 this.model.state.thongtinmothau.push({
-                    id: row.id,
+                    id: row.id || ('tm-' + window.generateUUID()),
                     goiThauId: gtId,
                     nhaThauId: nhaThauId,
                     maPhanLo: row.maPhanLo || '',
@@ -2188,11 +2285,65 @@ export async function saveExcelImport() {
                     if (row.danhGiaKetLuan) {
                         bid.danhGiaKetLuan = row.danhGiaKetLuan || '';
                     }
+                    bid.lamRoHopLe = row.lamRoHopLe || '';
+                    bid.lamRoNangLuc = row.lamRoNangLuc || '';
+                    bid.lamRoKyThuat = row.lamRoKyThuat || '';
+                    bid.lamRoTaiChinh = row.lamRoTaiChinh || '';
                 }
             });
             this.model.persistData('thongtinmothau');
             this.renderDanhGiaHsdtPanel();
             count = validRows.length;
+        }
+    } else if (type === 'ketquaqd') {
+        const gtId = this._currentResultPackageId;
+        if (gtId) {
+            const gt = this.model.state.goithau.find(g => g.id === gtId);
+            if (gt) {
+                const validRows = this._excelImportData.filter(r => r._valid);
+                let winnerRow = validRows.find(r => r.trangThai === 'Trúng thầu' || r.trangThai === 'trung');
+                
+                validRows.forEach(row => {
+                    const bid = this.model.state.thongtinmothau.find(b => b.id === row.id);
+                    if (bid) {
+                        if (row.trangThai === 'Trúng thầu' || row.trangThai === 'trung') {
+                            bid.lyDoTruot = '';
+                        } else {
+                            bid.lyDoTruot = row.lyDoTruot || 'Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau';
+                        }
+                    }
+                });
+
+                if (winnerRow) {
+                    let wId = winnerRow.nhaThauId;
+                    if (!wId) {
+                        const matchedBid = this.model.state.thongtinmothau.find(b => 
+                            String(b.goiThauId) === String(gtId) && 
+                            ((winnerRow.maNhaThau && String(b.maNhaThau || b.maDinhDanh || '').toLowerCase() === String(winnerRow.maNhaThau).toLowerCase()) ||
+                             (winnerRow.tenNhaThau && String(b.tenNhaThau || '').toLowerCase() === String(winnerRow.tenNhaThau).toLowerCase()))
+                        );
+                        if (matchedBid) {
+                            wId = matchedBid.nhaThauId;
+                        }
+                    }
+                    gt.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
+                    gt.giaTrungThau = winnerRow.giaTrungThau || 0;
+                    gt.thoiGianGoiThau = winnerRow.thoiGianGoiThau || '';
+                    gt.thoiGianHopDong = winnerRow.thoiGianHopDong || '';
+                    gt.trangThai = 'Đã có kết quả';
+                } else {
+                    gt.nhaThauTrungThauId = '';
+                    gt.giaTrungThau = 0;
+                    gt.thoiGianGoiThau = '';
+                    gt.thoiGianHopDong = '';
+                    gt.trangThai = 'Hủy thầu';
+                }
+
+                this.model.persistData('goithau');
+                this.model.persistData('thongtinmothau');
+                this.view.showPackageDetails(gtId);
+                count = validRows.length;
+            }
         }
     }
 
@@ -2717,6 +2868,267 @@ export function setupWordTemplatesEvents() {
             this.setupCopyVariableEvents();
         });
     }
+
+    // --- CUSTOM WORD MAPPINGS INTERACTIVE LOGIC ---
+    const MAPPING_COLUMNS = {
+        'chu_dau_tu': [
+            { value: 'ma_chu_dau_tu', label: 'Mã chủ đầu tư' },
+            { value: 'ten_chu_dau_tu', label: 'Tên chủ đầu tư' },
+            { value: 'ma_so_thue', label: 'Mã số thuế' },
+            { value: 'chuc_vu_nguoi_dung_dau', label: 'Chức vụ người đứng đầu' },
+            { value: 'nguoi_ky_quyet_dinh', label: 'Người ký quyết định' },
+            { value: 'chuc_vu_nguoi_ky', label: 'Chức vụ người ký' },
+            { value: 'danh_xung', label: 'Danh xưng' },
+            { value: 'dia_chi', label: 'Địa chỉ đầy đủ' },
+            { value: 'so_dien_thoai', label: 'Số điện thoại' },
+            { value: 'so_tai_khoan', label: 'Số tài khoản' },
+            { value: 'noi_mo_tai_khoan', label: 'Nơi mở tài khoản' },
+            { value: 'email', label: 'Email' },
+            { value: 'ma_qhns', label: 'Mã QHNS' },
+            { value: 'co_quan_chu_quan', label: 'Cơ quan chủ quản' },
+            { value: 'phien_ban', label: 'Phiên bản' }
+        ],
+        'ke_hoach_lcnt': [
+            { value: 'ma_ke_hoach', label: 'Mã kế hoạch LCNT' },
+            { value: 'ma_du_an', label: 'Mã dự án' },
+            { value: 'ten_ke_hoach', label: 'Tên kế hoạch LCNT' },
+            { value: 'ten_du_an_du_toan', label: 'Tên dự án / Dự toán' },
+            { value: 'loai_hinh_mua_sam', label: 'Loại hình mua sắm' },
+            { value: 'tong_muc_dau_tu', label: 'Tổng mức đầu tư' },
+            { value: 'is_tong_muc_tu_dong', label: 'Tự động tính tổng mức (0/1)' },
+            { value: 'ngay_phe_duyet', label: 'Ngày phê duyệt' },
+            { value: 'quyet_dinh_phe_duyet', label: 'Quyết định phê duyệt' },
+            { value: 'thoi_gian_dang_tai', label: 'Thời gian đăng tải' },
+            { value: 'nguon_von', label: 'Nguồn vốn' },
+            { value: 'thoi_gian_du_an', label: 'Thời gian dự án' },
+            { value: 'dia_diem_quy_mo', label: 'Địa điểm quy mô' },
+            { value: 'thong_tin_khac', label: 'Thông tin khác' },
+            { value: 'so_qd_phe_duyet_du_an', label: 'Số QĐ phê duyệt dự án' },
+            { value: 'ngay_qd_phe_duyet_du_an', label: 'Ngày QĐ phê duyệt dự án' },
+            { value: 'co_quan_phe_duyet_du_an', label: 'Cơ quan phê duyệt dự án' },
+            { value: 'phien_ban', label: 'Phiên bản' }
+        ],
+        'goi_thau': [
+            { value: 'ma_goi_thau', label: 'Mã gói thầu (Mã TBMT)' },
+            { value: 'ten_goi_thau', label: 'Tên gói thầu' },
+            { value: 'gia_goi_thau', label: 'Giá dự toán gói thầu' },
+            { value: 'hinh_thuc_lua_chon', label: 'Hình thức LCNT' },
+            { value: 'phuong_thuc_lua_chon', label: 'Phương thức LCNT' },
+            { value: 'loai_hop_dong', label: 'Loại hợp đồng' },
+            { value: 'thoi_gian_thuc_hien', label: 'Thời gian thực hiện' },
+            { value: 'nguon_von', label: 'Nguồn vốn' },
+            { value: 'gia_trung_thau', label: 'Giá trúng thầu' },
+            { value: 'linh_vuc', label: 'Lĩnh vực' },
+            { value: 'tuy_chon_mua_them', label: 'Tùy chọn mua thêm' },
+            { value: 'thoi_gian_to_chuc', label: 'Thời gian tổ chức' },
+            { value: 'thoi_gian_bat_dau_to_chuc', label: 'Thời gian bắt đầu tổ chức' },
+            { value: 'phan_lo', label: 'Phân lô' },
+            { value: 'thoi_gian_dang_tai', label: 'Thời gian đăng tải' },
+            { value: 'thoi_gian_dong_thau', label: 'Thời gian đóng thầu' },
+            { value: 'thoi_gian_mo_thau', label: 'Thời gian mở thầu' },
+            { value: 'so_quyet_dinh', label: 'Số quyết định phê duyệt' },
+            { value: 'ngay_quyet_dinh', label: 'Ngày quyết định phê duyệt' },
+            { value: 'so_quyet_dinh_ket_qua', label: 'Số quyết định kết quả' },
+            { value: 'ngay_quyet_dinh_ket_qua', label: 'Ngày quyết định kết quả' },
+            { value: 'thoi_gian_goi_thau', label: 'Thời gian gói thầu' },
+            { value: 'thoi_gian_hop_dong', label: 'Thời gian hợp đồng' },
+            { value: 'gia_tri_dam_bao_du_thau', label: 'Giá trị bảo đảm dự thầu' },
+            { value: 'hieu_luc_hsdt', label: 'Hiệu lực HSDT' },
+            { value: 'hieu_luc_dam_bao_du_thau', label: 'Hiệu lực bảo đảm dự thầu' },
+            { value: 'trang_thai', label: 'Trạng thái' },
+            { value: 'phien_ban', label: 'Phiên bản' }
+        ],
+        'nha_thau': [
+            { value: 'ma_nha_thau', label: 'Mã nhà thầu' },
+            { value: 'ten_nha_thau', label: 'Tên nhà thầu' },
+            { value: 'loai_nha_thau', label: 'Loại nhà thầu (Độc lập/Liên danh)' },
+            { value: 'ma_so_thue', label: 'Mã số thuế' },
+            { value: 'nguoi_dai_dien', label: 'Người đại diện' },
+            { value: 'danh_xung', label: 'Danh xưng' },
+            { value: 'so_dien_thoai', label: 'Số điện thoại' },
+            { value: 'email', label: 'Email' },
+            { value: 'dia_chi', label: 'Địa chỉ' },
+            { value: 'so_tai_khoan', label: 'Số tài khoản' },
+            { value: 'noi_mo_tai_khoan', label: 'Nơi mở tài khoản' },
+            { value: 'ma_ngan_hang', label: 'Mã ngân hàng' },
+            { value: 'phien_ban', label: 'Phiên bản' }
+        ],
+        'hop_dong': [
+            { value: 'ten_hop_dong', label: 'Tên hợp đồng' },
+            { value: 'so_hop_dong', label: 'Số hợp đồng' },
+            { value: 'ngay_ky', label: 'Ngày ký' },
+            { value: 'gia_tri', label: 'Giá trị hợp đồng' },
+            { value: 'loai_hop_dong', label: 'Loại hợp đồng' },
+            { value: 'thoi_gian_thuc_hien', label: 'Thời gian thực hiện' },
+            { value: 'trang_thai_ho_so', label: 'Trạng thái hồ sơ' }
+        ],
+        'chuyen_gia': [
+            { value: 'ho_ten', label: 'Họ tên chuyên gia' },
+            { value: 'so_cccd', label: 'Số CCCD' },
+            { value: 'ngay_cap_cccd', label: 'Ngày cấp CCCD' },
+            { value: 'noi_cap_cccd', label: 'Nơi cấp CCCD' },
+            { value: 'so_chung_chi', label: 'Số chứng chỉ' },
+            { value: 'ngay_cap_chung_chi', label: 'Ngày cấp chứng chỉ' },
+            { value: 'don_vi_cap_chung_chi', label: 'Đơn vị cấp chứng chỉ' },
+            { value: 'chuc_vu', label: 'Chức vụ trong tổ' },
+            { value: 'cong_viec', label: 'Nhiệm vụ phân công' }
+        ],
+        'thong_tin_mo_thau': [
+            { value: 'ma_phan_lo', label: 'Mã phân lô' },
+            { value: 'ten_phan_lo', label: 'Tên phân lô' },
+            { value: 'ma_dinh_danh', label: 'Mã định danh' },
+            { value: 'gia_du_thau', label: 'Giá dự thầu' },
+            { value: 'dam_bao_du_thau', label: 'Bảo đảm dự thầu' },
+            { value: 'hieu_luc_dam_bao', label: 'Hiệu lực bảo đảm' },
+            { value: 'hieu_luc_hsdxt', label: 'Hiệu lực HSDXT' },
+            { value: 'ty_le_giam_gia', label: 'Tỷ lệ giảm giá' },
+            { value: 'gia_sau_giam_gia', label: 'Giá sau giảm giá' },
+            { value: 'hieu_luc_hsdt', label: 'Hiệu lực HSDT' },
+            { value: 'gia_tri_dam_bao', label: 'Giá trị bảo đảm' },
+            { value: 'hieu_luc_bao_dam_ngay', label: 'Hiệu lực bảo đảm (ngày)' },
+            { value: 'thoi_gian_thuc_hien', label: 'Thời gian thực hiện' },
+            { value: 'ten_nha_thau', label: 'Tên nhà thầu' },
+            { value: 'loai_nha_thau', label: 'Loại nhà thầu' },
+            { value: 'danh_gia_hop_le', label: 'Đánh giá hợp lệ' },
+            { value: 'danh_gia_nang_luc', label: 'Đánh giá năng lực' },
+            { value: 'danh_gia_ky_thuat', label: 'Đánh giá kỹ thuật' },
+            { value: 'danh_gia_tai_chinh', label: 'Đánh giá tài chính' },
+            { value: 'danh_gia_ket_luan', label: 'Đánh giá kết luận' },
+            { value: 'ly_do_truot', label: 'Lý do trượt' },
+            { value: 'lam_ro_hop_le', label: 'Làm rõ hợp lệ' },
+            { value: 'lam_ro_nang_luc', label: 'Làm rõ năng lực' },
+            { value: 'lam_ro_ky_thuat', label: 'Làm rõ kỹ thuật' },
+            { value: 'lam_ro_tai_chinh', label: 'Làm rõ tài chính' }
+        ],
+        'tai_khoan': [
+            { value: 'ten_dang_nhap', label: 'Tên đăng nhập' },
+            { value: 'ho_ten', label: 'Họ tên người dùng' },
+            { value: 'vai_tro', label: 'Vai trò tài khoản' },
+            { value: 'email', label: 'Email tài khoản' },
+            { value: 'ngay_bat_dau_goi', label: 'Ngày bắt đầu gói' },
+            { value: 'ngay_het_han_goi', label: 'Ngày hết hạn gói' },
+            { value: 'da_xac_minh', label: 'Đã xác minh (0/1)' }
+        ],
+        'to_chuc': [
+            { value: 'ten_to_chuc', label: 'Tên tổ chức / Doanh nghiệp' }
+        ],
+        'goi_dich_vu': [
+            { value: 'ten_goi', label: 'Tên gói dịch vụ' },
+            { value: 'gia_ca', label: 'Giá gói dịch vụ' },
+            { value: 'han_muc_nhan_su', label: 'Hạn mức nhân sự tối đa' },
+            { value: 'mo_ta', label: 'Mô tả chi tiết gói' }
+        ]
+    };
+
+    const tableSelect = document.getElementById('wm-source-table');
+    const columnSelect = document.getElementById('wm-source-column');
+    const formWm = document.getElementById('form-word-mapping');
+    const cancelWmBtn = document.getElementById('btn-wm-cancel');
+
+    if (tableSelect && columnSelect) {
+        tableSelect.addEventListener('change', (e) => {
+            const table = e.target.value;
+            columnSelect.innerHTML = '<option value="">-- Chọn cột --</option>';
+            if (table && MAPPING_COLUMNS[table]) {
+                columnSelect.disabled = false;
+                MAPPING_COLUMNS[table].forEach(col => {
+                    const opt = document.createElement('option');
+                    opt.value = col.value;
+                    opt.textContent = col.label;
+                    columnSelect.appendChild(opt);
+                });
+            } else {
+                columnSelect.disabled = true;
+            }
+        });
+    }
+
+    const resetWmForm = () => {
+        if (formWm) {
+            formWm.reset();
+            document.getElementById('wm-id').value = '';
+            if (columnSelect) columnSelect.disabled = true;
+            if (cancelWmBtn) cancelWmBtn.style.display = 'none';
+            const submitBtn = formWm.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Lưu biến';
+                lucide.createIcons({ root: submitBtn });
+            }
+        }
+    };
+
+    if (cancelWmBtn) {
+        cancelWmBtn.addEventListener('click', resetWmForm);
+    }
+
+    if (formWm) {
+        formWm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('wm-id').value;
+            const tenBien = document.getElementById('wm-ten-bien').value.trim();
+            const sourceTable = tableSelect.value;
+            const sourceColumn = columnSelect.value;
+
+            if (!tenBien || !sourceTable || !sourceColumn) return;
+
+            try {
+                const res = await fetch('/api/word-mappings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, tenBien, sourceTable, sourceColumn })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    resetWmForm();
+                    await this.loadWordMappings();
+                } else {
+                    alert(data.error || 'Lỗi khi lưu biến ánh xạ.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Không thể kết nối máy chủ.');
+            }
+        });
+    }
+
+    // Register global edit/delete handlers on window for HTML onclick compatibility
+    window.editWordMapping = (id) => {
+        const m = (this.model.state.wordMappings || []).find(x => x.id === id);
+        if (!m) return;
+
+        document.getElementById('wm-id').value = m.id;
+        document.getElementById('wm-ten-bien').value = m.tenBien;
+
+        tableSelect.value = m.sourceTable;
+        tableSelect.dispatchEvent(new Event('change'));
+
+        columnSelect.value = m.sourceColumn;
+
+        if (cancelWmBtn) cancelWmBtn.style.display = 'inline-block';
+
+        const submitBtn = formWm.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Cập nhật';
+            lucide.createIcons({ root: submitBtn });
+        }
+    };
+
+    window.deleteWordMapping = async (id) => {
+        if (!confirm('Bạn có chắc chắn muốn xóa biến ánh xạ này không?')) return;
+        try {
+            const res = await fetch(`/api/word-mappings/${id}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) {
+                await this.loadWordMappings();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Có lỗi xảy ra khi xóa biến ánh xạ.');
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
 }
 
 export function setupCopyVariableEvents() {
@@ -2753,8 +3165,34 @@ export async function loadWordTemplates() {
             this.view.renderWordTemplates(templates);
             this.setupTemplateActivationEvents();
         }
+        // Load the custom mappings concurrently
+        await this.loadWordMappings();
     } catch (err) {
         console.error("Failed to load templates:", err);
+    }
+}
+
+export async function loadWordMappings() {
+    try {
+        const res = await fetch('/api/word-mappings');
+        if (res.ok) {
+            const mappings = await res.json();
+            if (!this.model.state) this.model.state = {};
+            this.model.state.wordMappings = mappings;
+
+            // Render the mappings list table
+            if (this.view.renderWordMappingsTable) {
+                this.view.renderWordMappingsTable(mappings);
+            }
+
+            // Re-render the dictionary to include the custom mappings
+            const dictionarySelect = document.getElementById('dictionary-group-select');
+            const group = dictionarySelect ? dictionarySelect.value : 'global';
+            this.view.renderDictionary(group);
+            this.setupCopyVariableEvents();
+        }
+    } catch (err) {
+        console.error("Failed to load word mappings:", err);
     }
 }
 
@@ -3643,7 +4081,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     if (!tbody) return;
 
     const tr = document.createElement('tr');
-    tr.setAttribute('data-id', bidData.id || 'bid-' + window.generateUUID());
+    tr.setAttribute('data-id', bidData.id || 'tm-' + window.generateUUID());
     let ntCode = bidData.maNhaThau || '';
     let ntName = bidData.tenNhaThau || '';
     let ntType = bidData.loaiNhaThau || 'Độc lập';
@@ -4105,7 +4543,7 @@ export async function saveThongTinMoThau() {
                 };
                 this.model.state.nhathau.push(foundNt);
                 this.model.persistData('nhathau');
-                
+
                 // Add to temporary list to ensure it can be found in subsequent rows of the same save operation
                 latestNhaThauList.push(foundNt);
             } else {
@@ -4496,26 +4934,39 @@ export function renderDanhGiaHsdtPanel() {
             ngayBaocaoInput.readOnly = isReadOnly;
         }
         if (saveBtn) saveBtn.style.display = isReadOnly ? 'none' : 'block';
-        if (addCvLamroBtn) addCvLamroBtn.style.display = isReadOnly ? 'none' : 'block';
-        if (addCvTraloiBtn) addCvTraloiBtn.style.display = isReadOnly ? 'none' : 'block';
-        if (addCvGuicdtBtn) addCvGuicdtBtn.style.display = isReadOnly ? 'none' : 'block';
+        if (addCvLamroBtn) {
+            addCvLamroBtn.style.display = isReadOnly ? 'none' : 'block';
+            addCvLamroBtn.onclick = () => addLetterRow('list-cv-lamro', { soCv: '', ngayCv: '' }, false);
+        }
+        if (addCvTraloiBtn) {
+            addCvTraloiBtn.style.display = isReadOnly ? 'none' : 'block';
+            addCvTraloiBtn.onclick = () => addLetterRow('list-cv-traloi', { soCv: '', ngayCv: '' }, false);
+        }
+        if (addCvGuicdtBtn) {
+            addCvGuicdtBtn.style.display = isReadOnly ? 'none' : 'block';
+            addCvGuicdtBtn.onclick = () => addLetterRow('list-cv-guicdt', { soCv: '', ngayCv: '' }, false);
+        }
 
         const importExcelBtn = this.view.getActiveElement('btn-danhgiahsdt-import-excel');
         if (importExcelBtn) importExcelBtn.style.display = isReadOnly ? 'none' : 'flex';
 
-        // Render dynamic CV fields
-        this.view.getActiveElement('list-cv-lamro').innerHTML = '';
-        this.view.getActiveElement('list-cv-traloi').innerHTML = '';
-        this.view.getActiveElement('list-cv-guicdt').innerHTML = '';
+        // Render dynamic CV fields if elements exist
+        const listCvLamro = this.view.getActiveElement('list-cv-lamro');
+        const listCvTraloi = this.view.getActiveElement('list-cv-traloi');
+        const listCvGuicdt = this.view.getActiveElement('list-cv-guicdt');
 
-        (activeMeta.cvLamRo || []).forEach(item => addLetterRow('list-cv-lamro', item, isReadOnly));
-        (activeMeta.cvTraLoi || []).forEach(item => addLetterRow('list-cv-traloi', item, isReadOnly));
-        (activeMeta.cvGuiCdt || []).forEach(item => addLetterRow('list-cv-guicdt', item, isReadOnly));
-
-        // Setup add button click listeners
-        addCvLamroBtn.onclick = () => addLetterRow('list-cv-lamro', { soCv: '', ngayCv: '' }, false);
-        addCvTraloiBtn.onclick = () => addLetterRow('list-cv-traloi', { soCv: '', ngayCv: '' }, false);
-        addCvGuicdtBtn.onclick = () => addLetterRow('list-cv-guicdt', { soCv: '', ngayCv: '' }, false);
+        if (listCvLamro) {
+            listCvLamro.innerHTML = '';
+            (activeMeta.cvLamRo || []).forEach(item => addLetterRow('list-cv-lamro', item, isReadOnly));
+        }
+        if (listCvTraloi) {
+            listCvTraloi.innerHTML = '';
+            (activeMeta.cvTraLoi || []).forEach(item => addLetterRow('list-cv-traloi', item, isReadOnly));
+        }
+        if (listCvGuicdt) {
+            listCvGuicdt.innerHTML = '';
+            (activeMeta.cvGuiCdt || []).forEach(item => addLetterRow('list-cv-guicdt', item, isReadOnly));
+        }
 
         // 4. Identify dynamic table fields
         const isTuVan = gt.linhVuc === 'Tư vấn';
@@ -4540,47 +4991,56 @@ export function renderDanhGiaHsdtPanel() {
         if (caseType === 'TU_VAN') {
             theadHtml = `
                 <tr>
-                    <th style="width: 10%;">Loại nhà thầu</th>
-                    <th style="width: 12%;">Mã nhà thầu</th>
-                    <th style="width: 18%;">Tên nhà thầu</th>
+                    <th style="width: 8%;">Loại nhà thầu</th>
+                    <th style="width: 10%;">Mã nhà thầu</th>
+                    <th style="width: 14%;">Tên nhà thầu</th>
                     <th style="width: 10%;">Hiệu lực E-HSĐXKT</th>
                     <th style="width: 10%;">Thời gian thực hiện</th>
-                    <th style="width: 11%;">Đánh giá hợp lệ</th>
-                    <th style="width: 11%;">Đánh giá năng lực</th>
-                    <th style="width: 11%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 9%;">Kết luận</th>
+                    <th style="width: 8%;">Đánh giá hợp lệ</th>
+                    <th style="width: 8%;">Làm rõ tính hợp lệ</th>
+                    <th style="width: 8%;">Đánh giá năng lực</th>
+                    <th style="width: 8%;">Làm rõ năng lực kinh nghiệm</th>
+                    <th style="width: 8%;">Đánh giá kỹ thuật</th>
+                    <th style="width: 8%;">Làm rõ kỹ thuật</th>
+                    <th style="width: 8%;">Kết luận</th>
                 </tr>
             `;
         } else if (caseType === '1G2T_NO_LOT') {
             theadHtml = `
                 <tr>
-                    <th style="width: 10%;">Loại nhà thầu</th>
-                    <th style="width: 10%;">Mã nhà thầu</th>
-                    <th style="width: 14%;">Tên nhà thầu</th>
-                    <th style="width: 9%;">Đảm bảo dự thầu</th>
-                    <th style="width: 9%;">Hiệu lực đảm bảo</th>
-                    <th style="width: 9%;">Hiệu lực E-HSĐXKT</th>
-                    <th style="width: 10%;">Đánh giá hợp lệ</th>
-                    <th style="width: 10%;">Đánh giá năng lực</th>
-                    <th style="width: 10%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 11%;">Kết luận</th>
+                    <th style="width: 8%;">Loại nhà thầu</th>
+                    <th style="width: 8%;">Mã nhà thầu</th>
+                    <th style="width: 12%;">Tên nhà thầu</th>
+                    <th style="width: 8%;">Đảm bảo dự thầu</th>
+                    <th style="width: 8%;">Hiệu lực đảm bảo</th>
+                    <th style="width: 8%;">Hiệu lực E-HSĐXKT</th>
+                    <th style="width: 8%;">Đánh giá hợp lệ</th>
+                    <th style="width: 8%;">Làm rõ tính hợp lệ</th>
+                    <th style="width: 8%;">Đánh giá năng lực</th>
+                    <th style="width: 8%;">Làm rõ năng lực kinh nghiệm</th>
+                    <th style="width: 8%;">Đánh giá kỹ thuật</th>
+                    <th style="width: 8%;">Làm rõ kỹ thuật</th>
+                    <th style="width: 8%;">Kết luận</th>
                 </tr>
             `;
         } else if (caseType === '1G2T_WITH_LOT') {
             theadHtml = `
                 <tr>
-                    <th style="width: 7%;">Loại nhà thầu</th>
+                    <th style="width: 6%;">Loại nhà thầu</th>
                     <th style="width: 8%;">Mã phần lô</th>
                     <th style="width: 8%;">Tên phần lô</th>
-                    <th style="width: 10%;">Mã nhà thầu</th>
+                    <th style="width: 8%;">Mã nhà thầu</th>
                     <th style="width: 10%;">Tên nhà thầu</th>
-                    <th style="width: 8%;">Đảm bảo</th>
-                    <th style="width: 8%;">Hiệu lực ĐB</th>
-                    <th style="width: 8%;">Hiệu lực E-HSĐXKT</th>
-                    <th style="width: 9%;">Đánh giá hợp lệ</th>
-                    <th style="width: 9%;">Đánh giá năng lực</th>
-                    <th style="width: 9%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 8%;">Kết luận</th>
+                    <th style="width: 7%;">Đảm bảo</th>
+                    <th style="width: 7%;">Hiệu lực ĐB</th>
+                    <th style="width: 7%;">Hiệu lực E-HSĐXKT</th>
+                    <th style="width: 8%;">Đánh giá hợp lệ</th>
+                    <th style="width: 8%;">Làm rõ tính hợp lệ</th>
+                    <th style="width: 8%;">Đánh giá năng lực</th>
+                    <th style="width: 8%;">Làm rõ năng lực kinh nghiệm</th>
+                    <th style="width: 8%;">Đánh giá kỹ thuật</th>
+                    <th style="width: 8%;">Làm rõ kỹ thuật</th>
+                    <th style="width: 7%;">Kết luận</th>
                 </tr>
             `;
         } else if (caseType === '1G2T_TC_NO_LOT') {
@@ -4596,6 +5056,7 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 9%;">Giá trị ĐB</th>
                     <th style="width: 7%;">Hiệu lực ĐB</th>
                     <th style="width: 9%;">Thời gian TH</th>
+                    <th style="width: 10%;">Làm rõ tài chính</th>
                     <th style="width: 10%;">Đánh giá tài chính</th>
                 </tr>
             `;
@@ -4611,48 +5072,57 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 5%;">Tỷ lệ %</th>
                     <th style="width: 9%;">Giá sau giảm</th>
                     <th style="width: 8%;">Hiệu lực E-HSĐXTC</th>
-                    <th style="width: 8%;">Giá trị ĐB</th>
+                    <th style="width: 9%;">Giá trị ĐB</th>
                     <th style="width: 6%;">Hiệu lực ĐB</th>
                     <th style="width: 8%;">Thời gian TH</th>
-                    <th style="width: 11%;">Đánh giá tài chính</th>
+                    <th style="width: 10%;">Làm rõ tài chính</th>
+                    <th style="width: 10%;">Đánh giá tài chính</th>
                 </tr>
             `;
         } else if (caseType === '1G1T_NO_LOT') {
             theadHtml = `
                 <tr>
-                    <th style="width: 8%;">Loại nhà thầu</th>
-                    <th style="width: 10%;">Mã nhà thầu</th>
-                    <th style="width: 12%;">Tên nhà thầu</th>
+                    <th style="width: 6%;">Loại nhà thầu</th>
+                    <th style="width: 8%;">Mã nhà thầu</th>
+                    <th style="width: 10%;">Tên nhà thầu</th>
                     <th style="width: 8%;">Giá dự thầu</th>
-                    <th style="width: 5%;">Tỷ lệ %</th>
+                    <th style="width: 4%;">Tỷ lệ %</th>
                     <th style="width: 8%;">Giá sau giảm</th>
-                    <th style="width: 7%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 7%;">Giá trị ĐB</th>
+                    <th style="width: 6%;">Hiệu lực E-HSDT</th>
+                    <th style="width: 6%;">Giá trị ĐB</th>
                     <th style="width: 5%;">Hiệu lực ĐB</th>
-                    <th style="width: 6%;">Thời gian TH</th>
-                    <th style="width: 8%;">Đánh giá hợp lệ</th>
-                    <th style="width: 8%;">Đánh giá năng lực</th>
-                    <th style="width: 8%;">Đánh giá kỹ thuật</th>
+                    <th style="width: 5%;">Thời gian TH</th>
+                    <th style="width: 7%;">Đánh giá hợp lệ</th>
+                    <th style="width: 7%;">Làm rõ hợp lệ</th>
+                    <th style="width: 7%;">Đánh giá năng lực</th>
+                    <th style="width: 7%;">Làm rõ năng lực</th>
+                    <th style="width: 7%;">Đánh giá kỹ thuật</th>
+                    <th style="width: 7%;">Làm rõ kỹ thuật</th>
+                    <th style="width: 7%;">Làm rõ tài chính</th>
                 </tr>
             `;
         } else if (caseType === '1G1T_WITH_LOT') {
             theadHtml = `
                 <tr>
-                    <th style="width: 6%;">Loại nhà thầu</th>
-                    <th style="width: 6%;">Mã phần lô</th>
-                    <th style="width: 6%;">Tên phần lô</th>
-                    <th style="width: 8%;">Mã nhà thầu</th>
-                    <th style="width: 10%;">Tên nhà thầu</th>
-                    <th style="width: 8%;">Giá dự thầu</th>
-                    <th style="width: 5%;">Tỷ lệ %</th>
-                    <th style="width: 8%;">Giá sau giảm</th>
-                    <th style="width: 7%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 7%;">Giá trị ĐB</th>
+                    <th style="width: 4%;">Loại nhà thầu</th>
+                    <th style="width: 5%;">Mã phần lô</th>
+                    <th style="width: 5%;">Tên phần lô</th>
+                    <th style="width: 6%;">Mã nhà thầu</th>
+                    <th style="width: 8%;">Tên nhà thầu</th>
+                    <th style="width: 7%;">Giá dự thầu</th>
+                    <th style="width: 4%;">Tỷ lệ %</th>
+                    <th style="width: 7%;">Giá sau giảm</th>
+                    <th style="width: 5%;">Hiệu lực E-HSDT</th>
+                    <th style="width: 5%;">Giá trị ĐB</th>
                     <th style="width: 5%;">Hiệu lực ĐB</th>
-                    <th style="width: 6%;">Thời gian TH</th>
-                    <th style="width: 9%;">Đánh giá hợp lệ</th>
-                    <th style="width: 9%;">Đánh giá năng lực</th>
-                    <th style="width: 10%;">Đánh giá kỹ thuật</th>
+                    <th style="width: 5%;">Thời gian TH</th>
+                    <th style="width: 6%;">Đánh giá hợp lệ</th>
+                    <th style="width: 6%;">Làm rõ hợp lệ</th>
+                    <th style="width: 6%;">Đánh giá năng lực</th>
+                    <th style="width: 6%;">Làm rõ năng lực</th>
+                    <th style="width: 6%;">Đánh giá kỹ thuật</th>
+                    <th style="width: 6%;">Làm rõ kỹ thuật</th>
+                    <th style="width: 6%;">Làm rõ tài chính</th>
                 </tr>
             `;
         }
@@ -4660,7 +5130,12 @@ export function renderDanhGiaHsdtPanel() {
 
         // Render bidder rows
         tbody.innerHTML = '';
-        const bids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gtId));
+        let bids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gtId));
+        if (is1G2T && this.currentDanhGiaTab === 'financial') {
+            bids = bids.filter(b =>
+                b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '')
+            );
+        }
         if (bids.length === 0) {
             tbody.innerHTML = `<tr><td colspan="15" style="text-align:center; padding: 24px; color: var(--text-muted);"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>`;
         } else {
@@ -4781,6 +5256,7 @@ export function renderDanhGiaHsdtPanel() {
                     const valHieuLucDb = bid.hieuLucBaoDamNgay || '';
                     const valThoiGianTh = bid.thoiGianThucHien || '';
                     const valTaiChinh = bid.danhGiaTaiChinh || '';
+                    const valLamRoTaiChinh = bid.lamRoTaiChinh || '';
 
                     if (isReadOnly) {
                         cellHtml += `
@@ -4791,6 +5267,7 @@ export function renderDanhGiaHsdtPanel() {
                             <td><span>${valGiaTriDb || '--'}</span></td>
                             <td style="text-align:right;"><span>${valHieuLucDb ? valHieuLucDb + ' ngày' : '--'}</span></td>
                             <td><span>${valThoiGianTh || '--'}</span></td>
+                            <td><span>${valLamRoTaiChinh || '--'}</span></td>
                             <td><span style="font-weight:600;">${valTaiChinh || '--'}</span></td>
                         `;
                     } else {
@@ -4802,29 +5279,40 @@ export function renderDanhGiaHsdtPanel() {
                             <td><input type="text" class="form-control mt-gia-tri-dam-bao" value="${valGiaTriDb}" placeholder="Ví dụ: 10.000.000" style="padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay" value="${valHieuLucDb ? valHieuLucDb + ' ngày' : ''}" placeholder="Ví dụ: 120 ngày" style="text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${valThoiGianTh}" placeholder="Ví dụ: 60 ngày" style="padding: 4px 6px; font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${valLamRoTaiChinh}" placeholder="Nhập làm rõ tài chính..." style="padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-dg-tai-chinh" value="${valTaiChinh}" placeholder="Xếp hạng..." style="padding: 4px 6px; font-size:0.8rem;"></td>
                         `;
                     }
                 } else {
                     // Technical or Unified Evaluation view (E-HSĐXKT or 1G1T)
                     const valHopLe = bid.danhGiaHopLe || '';
+                    const valLamRoHopLe = bid.lamRoHopLe || '';
                     const valNangLuc = bid.danhGiaNangLuc || '';
+                    const valLamRoNangLuc = bid.lamRoNangLuc || '';
                     const valKyThuat = bid.danhGiaKyThuat || '';
+                    const valLamRoKyThuat = bid.lamRoKyThuat || '';
+                    const valLamRoTaiChinh = bid.lamRoTaiChinh || '';
                     const valKetLuan = bid.danhGiaKetLuan || '';
                     const isTechnical = caseType === 'TU_VAN' || caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT';
-
+ 
                     if (isReadOnly) {
                         cellHtml += `
                             <td><span style="font-weight:600;">${valHopLe || '--'}</span></td>
+                            <td><span>${valLamRoHopLe || '--'}</span></td>
                             <td><span style="font-weight:600;">${valNangLuc || '--'}</span></td>
+                            <td><span>${valLamRoNangLuc || '--'}</span></td>
                             <td><span style="font-weight:600;">${valKyThuat || '--'}</span></td>
-                            ${isTechnical ? `<td><span style="font-weight:600;">${valKetLuan || '--'}</span></td>` : ''}
+                            <td><span>${valLamRoKyThuat || '--'}</span></td>
+                            ${isTechnical ? `<td><span style="font-weight:600;">${valKetLuan || '--'}</span></td>` : `<td><span>${valLamRoTaiChinh || '--'}</span></td>`}
                         `;
                     } else {
                         cellHtml += `
                             <td><input type="text" class="form-control mt-dg-hop-le" value="${valHopLe}" placeholder="Đạt / Không đạt..."></td>
+                            <td><input type="text" class="form-control mt-lam-ro-hop-le" value="${valLamRoHopLe}" placeholder="Nhập làm rõ hợp lệ..."></td>
                             <td><input type="text" class="form-control mt-dg-nang-luc" value="${valNangLuc}" placeholder="Đạt / Không đạt..."></td>
+                            <td><input type="text" class="form-control mt-lam-ro-nang-luc" value="${valLamRoNangLuc}" placeholder="Nhập làm rõ năng lực..."></td>
                             <td><input type="text" class="form-control mt-dg-ky-thuat" value="${valKyThuat}" placeholder="Điểm hoặc Đạt..."></td>
+                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat" value="${valLamRoKyThuat}" placeholder="Nhập làm rõ kỹ thuật..."></td>
                             ${isTechnical ? `
                             <td>
                                 <select class="form-control mt-dg-ketluan" style="padding: 4px 6px; font-size:0.8rem;">
@@ -4832,7 +5320,7 @@ export function renderDanhGiaHsdtPanel() {
                                     <option value="Đạt" ${valKetLuan === 'Đạt' ? 'selected' : ''}>Đạt</option>
                                     <option value="Không đạt" ${valKetLuan === 'Không đạt' ? 'selected' : ''}>Không đạt</option>
                                 </select>
-                            </td>` : ''}
+                            </td>` : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${valLamRoTaiChinh}" placeholder="Nhập làm rõ tài chính..."></td>`}
                         `;
                     }
                 }
@@ -5063,6 +5551,7 @@ export async function saveDanhGiaHsdt() {
                 bid.hieuLucBaoDamNgay = parseInt(tr.querySelector('.mt-hieu-luc-bao-dam-ngay')?.value || '0', 10);
                 bid.thoiGianThucHien = tr.querySelector('.mt-thoi-gian-thuc-hien')?.value.trim() || '';
                 bid.danhGiaTaiChinh = tr.querySelector('.mt-dg-tai-chinh')?.value.trim() || '';
+                bid.lamRoTaiChinh = tr.querySelector('.mt-lam-ro-tai-chinh')?.value.trim() || '';
             } else {
                 // Save Technical / Unified ratings
                 bid.danhGiaHopLe = tr.querySelector('.mt-dg-hop-le')?.value.trim() || '';
@@ -5072,6 +5561,18 @@ export async function saveDanhGiaHsdt() {
                 if (selectKetLuan) {
                     bid.danhGiaKetLuan = selectKetLuan.value;
                 }
+
+                const inpLamRoHopLe = tr.querySelector('.mt-lam-ro-hop-le');
+                if (inpLamRoHopLe) bid.lamRoHopLe = inpLamRoHopLe.value.trim();
+
+                const inpLamRoNangLuc = tr.querySelector('.mt-lam-ro-nang-luc');
+                if (inpLamRoNangLuc) bid.lamRoNangLuc = inpLamRoNangLuc.value.trim();
+
+                const inpLamRoKyThuat = tr.querySelector('.mt-lam-ro-ky-thuat');
+                if (inpLamRoKyThuat) bid.lamRoKyThuat = inpLamRoKyThuat.value.trim();
+
+                const inpLamRoTaiChinh = tr.querySelector('.mt-lam-ro-tai-chinh');
+                if (inpLamRoTaiChinh) bid.lamRoTaiChinh = inpLamRoTaiChinh.value.trim();
             }
         }
     });

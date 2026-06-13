@@ -695,57 +695,7 @@
                                         </div>
                                     </div>
 
-                                    <!-- Clarifications and Letters -->
-                                    <div
-                                        style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
-                                        <!-- Yêu cầu làm rõ HSDT -->
-                                        <div
-                                            style="background: var(--bg-nested, rgba(0,0,0,0.01)); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                                            <div
-                                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                                <h5
-                                                    style="margin:0; font-size:0.85rem; font-weight:700; color:var(--text-main);">
-                                                    Công văn Yêu cầu làm rõ</h5>
-                                                <button type="button" class="btn btn-outline btn-xs"
-                                                    id="btn-add-cv-lamro" style="padding:2px 6px; font-size:0.7rem;">+
-                                                    Thêm</button>
-                                            </div>
-                                            <div id="list-cv-lamro"
-                                                style="display:flex; flex-direction:column; gap:8px;"></div>
-                                        </div>
 
-                                        <!-- Trả lời làm rõ -->
-                                        <div
-                                            style="background: var(--bg-nested, rgba(0,0,0,0.01)); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                                            <div
-                                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                                <h5
-                                                    style="margin:0; font-size:0.85rem; font-weight:700; color:var(--text-main);">
-                                                    Công văn Trả lời làm rõ</h5>
-                                                <button type="button" class="btn btn-outline btn-xs"
-                                                    id="btn-add-cv-traloi" style="padding:2px 6px; font-size:0.7rem;">+
-                                                    Thêm</button>
-                                            </div>
-                                            <div id="list-cv-traloi"
-                                                style="display:flex; flex-direction:column; gap:8px;"></div>
-                                        </div>
-
-                                        <!-- Đơn vị tư vấn gửi CĐT -->
-                                        <div
-                                            style="background: var(--bg-nested, rgba(0,0,0,0.01)); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                                            <div
-                                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                                                <h5
-                                                    style="margin:0; font-size:0.85rem; font-weight:700; color:var(--text-main);">
-                                                    CV Tư vấn gửi CĐT</h5>
-                                                <button type="button" class="btn btn-outline btn-xs"
-                                                    id="btn-add-cv-guicdt" style="padding:2px 6px; font-size:0.7rem;">+
-                                                    Thêm</button>
-                                            </div>
-                                            <div id="list-cv-guicdt"
-                                                style="display:flex; flex-direction:column; gap:8px;"></div>
-                                        </div>
-                                    </div>
 
                                     <!-- Table for Bidder Evaluation -->
                                     <div
@@ -961,94 +911,140 @@
 
                 <!-- ================= TAB: BIỂU MẪU WORD ================= -->
                 <section class="tab-pane" id="tab-bieumau">
-                    <div class="dashboard-grid" style="grid-template-columns: 1fr 1.5fr; gap: 24px;">
-
-                        <!-- Left Panel: Upload & Manage Templates -->
-                        <div class="dashboard-card">
-                            <div class="card-header">
-                                <h3 class="card-title">Quản lý biểu mẫu Word (.docx)</h3>
-                                <i data-lucide="file-text" class="text-muted"></i>
+                    <div style="display: flex; flex-direction: column; gap: 24px;">
+                        
+                        <!-- Top Row: 2 Columns Layout -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+                            
+                            <!-- Top Left: Custom Variable Mappings Form -->
+                            <div class="dashboard-card" style="height: 100%;">
+                                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <h3 class="card-title">Cấu hình biến tùy chỉnh</h3>
+                                    <i data-lucide="settings" class="text-muted"></i>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted mb-3" style="font-size: 0.85rem; margin-bottom: 12px;">
+                                        Tự thiết lập các biến tùy ý dạng <code>{tên_biến}</code> để bản báo cáo Word tự điền dữ liệu tương ứng.
+                                    </p>
+                                    
+                                    <form id="form-word-mapping" style="padding: 16px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                                        <h5 style="margin: 0 0 12px 0; font-size: 0.88rem; font-weight: 700; color: var(--text-main);">Thêm / Cập nhật biến ánh xạ</h5>
+                                        <input type="hidden" id="wm-id">
+                                        <div class="form-grid" style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                                            <div class="form-group">
+                                                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Tên biến trong Word (Ví dụ: chu_dau_tu)</label>
+                                                <div style="position: relative; display: flex; align-items: center;">
+                                                    <span style="position: absolute; left: 8px; font-weight: bold; color: var(--primary);">{</span>
+                                                    <input type="text" id="wm-ten-bien" class="form-control" placeholder="chu_dau_tu" style="padding-left: 18px; padding-right: 18px; font-weight: 600;" required>
+                                                    <span style="position: absolute; right: 8px; font-weight: bold; color: var(--primary);">}</span>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Bảng dữ liệu nguồn</label>
+                                                <select id="wm-source-table" class="form-control" required>
+                                                    <option value="">-- Chọn bảng --</option>
+                                                    <option value="chu_dau_tu">Chủ đầu tư</option>
+                                                    <option value="ke_hoach_lcnt">Kế hoạch LCNT</option>
+                                                    <option value="goi_thau">Gói thầu</option>
+                                                    <option value="nha_thau">Nhà thầu trúng thầu</option>
+                                                    <option value="hop_dong">Hợp đồng</option>
+                                                    <option value="chuyen_gia">Chuyên gia</option>
+                                                    <option value="thong_tin_mo_thau">Thông tin mở thầu</option>
+                                                    <option value="tai_khoan">Tài khoản cá nhân</option>
+                                                    <option value="to_chuc">Tổ chức / Doanh nghiệp</option>
+                                                    <option value="goi_dich_vu">Gói dịch vụ</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Cột dữ liệu lấy giá trị</label>
+                                                <select id="wm-source-column" class="form-control" required disabled>
+                                                    <option value="">-- Chọn cột --</option>
+                                                </select>
+                                            </div>
+                                            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+                                                <button type="button" id="btn-wm-cancel" class="btn btn-outline btn-sm" style="display: none;">Hủy</button>
+                                                <button type="submit" class="btn btn-primary btn-sm"><i data-lucide="save" style="width: 14px; height: 14px;"></i> Lưu biến</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <!-- Upload Box -->
-                                <div class="excel-drag-drop-zone" id="word-drag-drop-zone"
-                                    style="padding: 24px 16px; margin-bottom: 20px; border: 2px dashed var(--border-color); border-radius: var(--radius-md); text-align: center; cursor: pointer; transition: border-color var(--transition-fast);">
-                                    <i data-lucide="file-up"
-                                        style="width: 36px; height: 36px; color: var(--primary); margin: 0 auto;"></i>
-                                    <p class="mt-2" style="font-size: 0.9rem; margin-top: 8px;"><strong>Nhấp hoặc kéo
-                                            thả để tải biểu mẫu .docx</strong></p>
-                                    <span class="text-muted" style="font-size: 0.75rem;">Biểu mẫu chứa các biến dạng
-                                        {Biến}</span>
-                                    <input type="file" id="word-file-input" accept=".docx" style="display: none;">
+                            
+                            <!-- Top Right: Word Template Card -->
+                            <div class="dashboard-card" style="height: 100%;">
+                                <div class="card-header">
+                                    <h3 class="card-title">Quản lý biểu mẫu Word (.docx)</h3>
+                                    <i data-lucide="file-text" class="text-muted"></i>
                                 </div>
-                                <div id="word-validation-result" class="mb-3"
-                                    style="display: none; padding: 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">
-                                    <!-- Dynamic Validation Result message -->
-                                </div>
-
-                                <h4 class="mb-2" style="font-size: 0.95rem; font-weight: 700; margin-bottom: 8px;">Danh
-                                    sách biểu mẫu hệ thống</h4>
-                                <div class="table-container"
-                                    style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-height: 250px; overflow-y: auto;">
-                                    <table class="data-table" id="word-templates-table" style="font-size: 0.85rem;">
-                                        <thead>
-                                            <tr>
-                                                <th>Tên biểu mẫu</th>
-                                                <th>Trạng thái</th>
-                                                <th class="text-right">Thao tác</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="word-templates-tbody">
-                                            <tr>
-                                                <td class="fw-bold">Bản báo cáo đánh giá mặc định</td>
-                                                <td><span class="badge badge-success"><i data-lucide="check"></i> Hợp
-                                                        lệ</span></td>
-                                                <td class="text-right"><span class="badge badge-info">Hệ thống</span>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                <div class="card-body">
+                                    <div class="excel-drag-drop-zone" id="word-drag-drop-zone"
+                                        style="padding: 20px 16px; margin-bottom: 16px; border: 2px dashed var(--border-color); border-radius: var(--radius-md); text-align: center; cursor: pointer; transition: border-color var(--transition-fast);">
+                                        <i data-lucide="file-up" style="width: 32px; height: 32px; color: var(--primary); margin: 0 auto;"></i>
+                                        <p class="mt-2" style="font-size: 0.85rem; margin-top: 6px;"><strong>Nhấp hoặc kéo thả để tải biểu mẫu .docx</strong></p>
+                                        <span class="text-muted" style="font-size: 0.72rem;">Biểu mẫu chứa các biến dạng {Biến}</span>
+                                        <input type="file" id="word-file-input" accept=".docx" style="display: none;">
+                                    </div>
+                                    <div id="word-validation-result" class="mb-3" style="display: none; padding: 10px; border-radius: var(--radius-sm); font-size: 0.82rem;"></div>
+                                    
+                                    <h4 style="font-size: 0.88rem; font-weight: 700; margin-bottom: 8px;">Danh sách biểu mẫu hệ thống</h4>
+                                    <div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-height: 160px; overflow-y: auto;">
+                                        <table class="data-table" id="word-templates-table" style="font-size: 0.8rem;">
+                                            <thead>
+                                                <tr>
+                                                    <th>Tên biểu mẫu</th>
+                                                    <th>Trạng thái</th>
+                                                    <th class="text-right">Thao tác</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="word-templates-tbody">
+                                                <tr>
+                                                    <td class="fw-bold">Bản báo cáo đánh giá mặc định</td>
+                                                    <td><span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span></td>
+                                                    <td class="text-right"><span class="badge badge-info">Hệ thống</span></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Right Panel: Data Dictionary -->
-                        <div class="dashboard-card">
-                            <div class="card-header">
-                                <h3 class="card-title">Từ điển dữ liệu (Data Dictionary)</h3>
+                        
+                        <!-- Bottom Row: 1 Column Layout (Merged Data Dictionary & Mapped Variables) -->
+                        <div class="dashboard-card" style="width: 100%;">
+                            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                <h3 class="card-title">Từ điển dữ liệu & Danh sách biến đã ánh xạ (Data Dictionary & Mapped Variables)</h3>
                                 <i data-lucide="book-open" class="text-muted"></i>
                             </div>
                             <div class="card-body">
-                                <p class="text-muted mb-3" style="font-size: 0.85rem; margin-bottom: 12px;">Sao chép các
-                                    mã biến dưới đây và dán vào tệp Word của bạn để hệ thống tự động điền dữ liệu khi
-                                    xuất.</p>
-
-                                <div class="select-wrapper mb-3" style="max-width: 250px; margin-bottom: 12px;">
+                                <p class="text-muted mb-3" style="font-size: 0.82rem; margin-bottom: 12px;">
+                                    Chọn nhóm biến bên dưới để xem danh sách biến hệ thống hoặc quản lý các biến đã được ánh xạ tùy chỉnh.
+                                </p>
+                                
+                                <div class="select-wrapper mb-3" style="max-width: 350px; margin-bottom: 12px;">
                                     <select id="dictionary-group-select" class="form-control">
-                                        <option value="global">1. Các biến đơn lẻ (1-1)</option>
+                                        <option value="global">1. Các biến đơn lẻ (1-1) - Đã ánh xạ</option>
                                         <option value="experts">2. Vòng lặp Chuyên gia (1-N)</option>
                                         <option value="contractors">3. Vòng lặp Nhà thầu (1-N)</option>
+                                        <option value="phanlo">4. Vòng lặp Phân lô (1-N)</option>
+                                        <option value="tuychonmuathem">5. Vòng lặp Mua thêm (1-N)</option>
                                     </select>
                                 </div>
-
-                                <div class="table-container"
-                                    style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-height: 380px; overflow-y: auto;">
-                                    <table class="data-table" id="dictionary-table" style="font-size: 0.85rem;">
+                                
+                                <div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; max-height: 400px;">
+                                    <table class="data-table" id="dictionary-table" style="min-width: 100%;">
                                         <thead>
                                             <tr>
-                                                <th>Mã biến</th>
-                                                <th>Ý nghĩa dữ liệu</th>
-                                                <th class="text-right">Sao chép</th>
+                                                <th style="width: 30%;">Mã biến</th>
+                                                <th style="width: 50%;">Ý nghĩa / Nguồn ánh xạ</th>
+                                                <th class="text-right" style="width: 20%;">Thao tác</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="dictionary-table-body">
-                                            <!-- Rendered dynamically -->
-                                        </tbody>
+                                        <tbody id="dictionary-table-body"></tbody>
                                     </table>
                                 </div>
                             </div>
                         </div>
-
+                        
                     </div>
                 </section>
 
@@ -1976,7 +1972,7 @@
 
     <!-- Modal: Nhập thông tin phát hành HSMT -->
     <div class="modal-overlay" id="modal-phathanh-hsmt">
-        <div class="modal-card modal-md">
+        <div class="modal-card modal-lg">
             <div class="modal-header">
                 <h3>Phát hành HSMT & Mời thầu</h3>
                 <button class="modal-close" data-close="modal-phathanh-hsmt">&times;</button>
@@ -1988,8 +1984,8 @@
                         Vui lòng nhập các thông tin bắt buộc dưới đây để tiến hành phát hành hồ sơ mời thầu và chuyển
                         trạng thái gói thầu sang <strong>Đang mời thầu</strong>.
                     </div>
-                    <div class="form-grid" style="grid-template-columns: 1fr;">
-                        <div class="form-group" id="phathanh-magoithau-container">
+                    <div class="form-grid">
+                        <div class="form-group col-span-2" id="phathanh-magoithau-container">
                             <label for="phathanh-magoithau">Mã gói thầu <span class="required">*</span></label>
                             <input type="text" id="phathanh-magoithau" required placeholder="Ví dụ: GT-01">
                             <span class="error-text">Vui lòng nhập Mã gói thầu</span>

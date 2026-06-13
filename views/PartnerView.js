@@ -464,6 +464,11 @@ export async function renderHopDongTable() {
                     <td>${statusBadge}</td>
                     <td class="text-right">
                         <div class="action-btn-group">
+                            ${(h.goiThauIds && h.goiThauIds.length > 0) ? `
+                            <button class="action-btn btn-export" onclick="window.exportContractFromHopDong('${h.goiThauIds[0]}', '${h.soHopDong}')" title="Xuất hợp đồng" style="color: var(--emerald);">
+                                <i data-lucide="file-text"></i>
+                            </button>
+                            ` : ''}
                             <button class="action-btn btn-edit" onclick="window.editHopDong('${h.id}')" title="Sửa">
                                 <i data-lucide="edit-2"></i>
                             </button>
@@ -599,112 +604,293 @@ export function renderDictionary(group) {
     if (!tbody) return;
 
     const DICTIONARY = {
-        global: [
-            { code: '{Ten_Chu_Dau_Tu}', desc: 'Tên Chủ đầu tư (Bên mời thầu)' },
-            { code: '{Ma_Chu_Dau_Tu}', desc: 'Mã Chủ đầu tư' },
-            { code: '{Dia_Chi_Day_Du_CDT}', desc: 'Địa chỉ đầy đủ Chủ đầu tư (gồm Xã, Tỉnh)' },
-            { code: '{Tinh_Rieng_CDT}', desc: 'Tên Tỉnh/Thành phố riêng của Chủ đầu tư (đã xóa tiền tố)' },
-            { code: '{Xa_Rieng_CDT}', desc: 'Tên Xã/Phường riêng của Chủ đầu tư (đã xóa tiền tố)' },
-            { code: '{Dia_Chi_Rut_Gon_CDT}', desc: 'Địa chỉ rút gọn Chủ đầu tư (tên Tỉnh/Thành phố riêng)' },
-            { code: '{SDT_CDT}', desc: 'Số điện thoại Chủ đầu tư' },
-            { code: '{Email_CDT}', desc: 'Email Chủ đầu tư' },
-            { code: '{MST_CDT}', desc: 'Mã số thuế Chủ đầu tư' },
-            { code: '{Nguoi_Dai_Dien_CDT}', desc: 'Người đại diện pháp luật của Chủ đầu tư' },
-            { code: '{Chuc_Vu_CDT}', desc: 'Chức vụ người đại diện Chủ đầu tư' },
-            { code: '{So_Tai_Khoan_CDT}', desc: 'Số tài khoản ngân hàng Chủ đầu tư' },
-            { code: '{Noi_Mo_Tai_Khoan_CDT}', desc: 'Ngân hàng mở tài khoản Chủ đầu tư' },
-            { code: '{Co_Quan_Chu_Quan}', desc: 'Cơ quan chủ quản của Chủ đầu tư' },
-            { code: '{So_Quyet_Dinh}', desc: 'Số Quyết định phê duyệt kế hoạch' },
-            { code: '{Ngay_Phe_Duyet}', desc: 'Ngày ký Quyết định phê duyệt (dd/MM/yyyy)' },
-            { code: '{Ten_Ke_Hoach}', desc: 'Tên Kế hoạch LCNT' },
-            { code: '{Ma_Ke_Hoach}', desc: 'Mã Kế hoạch LCNT' },
-            { code: '{Ma_Du_An}', desc: 'Mã dự án (nếu loại hình là Dự án)' },
-            { code: '{Tong_Muc_Dau_Tu}', desc: 'Tổng mức đầu tư (đã định dạng VND)' },
-            { code: '{Nguon_Von}', desc: 'Nguồn vốn' },
-            { code: '{Ten_Goi_Thau}', desc: 'Tên Gói thầu' },
-            { code: '{Ma_Goi_Thau}', desc: 'Mã thông báo mời thầu' },
-            { code: '{Gia_Goi_Thau}', desc: 'Giá dự toán gói thầu (đã định dạng VND)' },
-            { code: '{Phuong_Thuc_Lua_Chon}', desc: 'Phương thức lựa chọn nhà thầu' },
-            { code: '{Hinh_Thuc_LCNT}', desc: 'Hình thức lựa chọn nhà thầu (đấu thầu rộng rãi,...)' },
-            { code: '{Loai_Hop_Dong}', desc: 'Loại hợp đồng áp dụng' },
-            { code: '{Thoi_Gian_Thuc_Hien}', desc: 'Thời gian thực hiện hợp đồng (số ngày)' },
-            { code: '{Linh_Vuc}', desc: 'Lĩnh vực gói thầu (Hàng hóa / Xây lắp / Tư vấn / Phi tư vấn)' },
-            { code: '{Thoi_Gian_Dong_Thau}', desc: 'Thời gian đóng thầu / hạn nộp hồ sơ dự thầu' },
-            { code: '{Thoi_Gian_Mo_Thau}', desc: 'Thời gian mở thầu' },
-            { code: '{Gia_Tri_Bao_Dam}', desc: 'Giá trị bảo đảm dự thầu (VND)' },
-            { code: '{Loai_Nha_Thau}', desc: 'Hình thức nhà thầu trúng thầu (Liên danh / Độc lập)' },
-            { code: '{Ten_Nha_Thau_Trung}', desc: 'Tên nhà thầu trúng thầu (tên liên danh hoặc nhà thầu độc lập)' },
-            { code: '{Ma_Nha_Thau_Trung}', desc: 'Mã nhà thầu trúng thầu' },
-            { code: '{MST_Nha_Thau_Trung}', desc: 'Mã số thuế nhà thầu trúng thầu' },
-            { code: '{Nguoi_Dai_Dien_NT}', desc: 'Người đại diện nhà thầu trúng thầu' },
-            { code: '{Dia_Chi_NT}', desc: 'Địa chỉ nhà thầu trúng thầu' },
-            { code: '{So_Tai_Khoan_NT}', desc: 'Số tài khoản ngân hàng nhà thầu trúng thầu' },
-            { code: '{Noi_Mo_Tai_Khoan_NT}', desc: 'Ngân hàng mở tài khoản nhà thầu trúng thầu' },
-            { code: '{Gia_Du_Thau}', desc: 'Giá dự thầu ban đầu' },
-            { code: '{Gia_Sau_Giam_Gia}', desc: 'Giá dự thầu sau giảm giá' },
-            { code: '{Ty_Le_Giam_Gia}', desc: 'Tỷ lệ giảm giá (%)' },
-            { code: '{So_Hop_Dong}', desc: 'Số hợp đồng' },
-            { code: '{Ten_Hop_Dong}', desc: 'Tên hợp đồng' },
-            { code: '{Ngay_Ky_Hop_Dong}', desc: 'Ngày ký hợp đồng (dd/MM/yyyy)' },
-            { code: '{Gia_Tri_Hop_Dong}', desc: 'Giá trị hợp đồng (đã định dạng VND)' },
-            { code: '{So_Ngay_Thuc_Hien}', desc: 'Số ngày thực hiện hợp đồng' },
-            { code: '{Ngay_Hien_Tai}', desc: 'Ngày hiện tại (dd/MM/yyyy)' },
-            { code: '{Ngay_}', desc: 'Ngày (dd) của ngày hiện tại' },
-            { code: '{Thang_}', desc: 'Tháng (MM) của ngày hiện tại' },
-            { code: '{Nam_}', desc: 'Năm (yyyy) của ngày hiện tại' }
-        ],
+        global: [],
         experts: [
-            { code: '{#Danh_Sach_Chuyen_Gia}', desc: 'Bắt đầu vòng lặp danh sách chuyên gia tổ chuyên gia' },
-            { code: '{STT}', desc: 'Số thứ tự trong danh sách' },
-            { code: '{Ho_Ten}', desc: 'Họ và tên chuyên gia' },
-            { code: '{So_CCCD}', desc: 'Số Căn cước công dân' },
-            { code: '{Ngay_Cap_CCCD}', desc: 'Ngày cấp Căn cước công dân' },
-            { code: '{Noi_Cap_CCCD}', desc: 'Nơi cấp Căn cước công dân' },
-            { code: '{So_Chung_Chi}', desc: 'Số Chứng chỉ hành nghề đấu thầu' },
-            { code: '{Ngay_Cap_Chung_Chi}', desc: 'Ngày cấp chứng chỉ (dd/MM/yyyy)' },
-            { code: '{Don_Vi_Cap_Chung_Chi}', desc: 'Đơn vị cấp chứng chỉ hành nghề' },
-            { code: '{Chuc_Vu}', desc: 'Chức vụ trong tổ chuyên gia (Tổ trưởng / Thành viên)' },
-            { code: '{/Danh_Sach_Chuyen_Gia}', desc: 'Kết thúc vòng lặp chuyên gia' }
+            { code: '{#Danh_Sach_Chuyen_Gia}', desc: 'Bắt đầu vòng lặp tổ chuyên gia' },
+            { code: '{STT}', desc: 'Số thứ tự chuyên gia' },
+            { code: '{/Danh_Sach_Chuyen_Gia}', desc: 'Kết thúc vòng lặp tổ chuyên gia' },
+            { code: '{#Danh_Sach_Tham_Dinh}', desc: 'Bắt đầu vòng lặp tổ thẩm định' },
+            { code: '{STT}', desc: 'Số thứ tự thẩm định viên' },
+            { code: '{/Danh_Sach_Tham_Dinh}', desc: 'Kết thúc vòng lặp tổ thẩm định' }
         ],
         contractors: [
             { code: '{#Danh_Sach_Nha_Thau}', desc: 'Bắt đầu vòng lặp danh sách nhà thầu tham dự' },
-            { code: '{STT}', desc: 'Số thứ tự trong danh sách' },
-            { code: '{Ten_Nha_Thau}', desc: 'Tên nhà thầu (tên liên danh hoặc tên độc lập)' },
-            { code: '{Loai_Nha_Thau}', desc: 'Loại hình nhà thầu (Độc lập / Liên danh)' },
-            { code: '{Ma_So_Thue}', desc: 'Mã số thuế / mã định danh nhà thầu' },
-            { code: '{Nguoi_Dai_Dien}', desc: 'Người đại diện pháp luật' },
-            { code: '{So_Dien_Thoai}', desc: 'Số điện thoại liên hệ' },
-            { code: '{Email}', desc: 'Email liên hệ nhà thầu' },
-            { code: '{Dia_Chi}', desc: 'Địa chỉ nhà thầu' },
-            { code: '{Gia_Du_Thau}', desc: 'Giá dự thầu (VND)' },
-            { code: '{Ty_Le_Giam_Gia}', desc: 'Tỷ lệ giảm giá (%)' },
-            { code: '{Gia_Sau_Giam}', desc: 'Giá dự thầu sau giảm giá' },
-            { code: '{Hieu_Luc_HSDT}', desc: 'Hiệu lực hồ sơ dự thầu (ngày)' },
-            { code: '{Gia_Tri_Dam_Bao}', desc: 'Giá trị bảo đảm dự thầu' },
-            { code: '{Hieu_Luc_Dam_Bao}', desc: 'Hiệu lực bảo đảm dự thầu (ngày)' },
-            { code: '{Thoi_Gian_Thuc_Hien}', desc: 'Thời gian thực hiện đề xuất (ngày)' },
-            { code: '{#Thanh_Vien_Lien_Danh}', desc: '(Liên danh) Bắt đầu vòng lặp thành viên liên danh' },
+            { code: '{STT}', desc: 'Số thứ tự nhà thầu tham dự' },
+            { code: '{#Thanh_Vien_Lien_Danh}', desc: '(Liên danh) Bắt đầu vòng lặp thành viên liên danh của nhà thầu trúng' },
             { code: '{Ten_TV}', desc: '(Liên danh) Tên thành viên liên danh' },
             { code: '{MST_TV}', desc: '(Liên danh) Mã số thuế thành viên liên danh' },
-            { code: '{Vai_Tro_TV}', desc: '(Liên danh) Vai trò thành viên (Đứng đầu / Thành viên)' },
-            { code: '{/Thanh_Vien_Lien_Danh}', desc: '(Liên danh) Kết thúc vòng lặp thành viên' },
-            { code: '{/Danh_Sach_Nha_Thau}', desc: 'Kết thúc vòng lặp nhà thầu' }
+            { code: '{Vai_Tro_TV}', desc: '(Liên danh) Vai trò thành viên (Liên danh chính / liên danh phụ)' },
+            { code: '{Nguoi_Dai_Dien_TV}', desc: '(Liên danh) Người đại diện thành viên liên danh' },
+            { code: '{Dia_Chi_TV}', desc: '(Liên danh) Địa chỉ thành viên liên danh' },
+            { code: '{So_Tai_Khoan_TV}', desc: '(Liên danh) Số tài khoản thành viên liên danh' },
+            { code: '{Noi_Mo_Tai_Khoan_TV}', desc: '(Liên danh) Nơi mở tài khoản thành viên liên danh' },
+            { code: '{/Thanh_Vien_Lien_Danh}', desc: '(Liên danh) Kết thúc vòng lặp thành viên liên danh' },
+            { code: '{/Danh_Sach_Nha_Thau}', desc: 'Kết thúc vòng lặp nhà thầu' },
+            { code: '{#Danh_Sach_Nha_Thau_Truot}', desc: 'Bắt đầu vòng lặp danh sách nhà thầu trượt thầu' },
+            { code: '{Ten_Nha_Thau}', desc: 'Tên nhà thầu trượt thầu' },
+            { code: '{Ma_Nha_Thau}', desc: 'Mã định danh/MST nhà thầu trượt' },
+            { code: '{Ly_Do_Truot}', desc: 'Lý do trượt thầu (phân tích tự động hoặc người dùng tự gõ)' },
+            { code: '{/Danh_Sach_Nha_Thau_Truot}', desc: 'Kết thúc vòng lặp danh sách nhà thầu trượt' }
+        ],
+        phanlo: [
+            { code: '{#Danh_Sach_Phan_Lo}', desc: 'Bắt đầu vòng lặp danh sách phân lô gói thầu' },
+            { code: '{STT}', desc: 'Số thứ tự phân lô' },
+            { code: '{Ten_Phan_Lo}', desc: 'Tên phân lô' },
+            { code: '{Gia_Tri_Phan_Lo}', desc: 'Giá trúng thầu phân lô (VND)' },
+            { code: '{Gia_Tri_So}', desc: 'Giá trị số thô của phân lô' },
+            { code: '{Nha_Thau_Trung}', desc: 'Tên nhà thầu trúng thầu phân lô tương ứng' },
+            { code: '{Thoi_Gian_Thuc_Hien}', desc: 'Thời gian thực hiện hợp đồng phân lô' },
+            { code: '{/Danh_Sach_Phan_Lo}', desc: 'Kết thúc vòng lặp phân lô' }
+        ],
+        tuychonmuathem: [
+            { code: '{#Danh_Sach_Tuy_Chon_Mua_Them}', desc: 'Bắt đầu vòng lặp tùy chọn mua thêm' },
+            { code: '{STT}', desc: 'Số thứ tự tùy chọn mua thêm' },
+            { code: '{Hang_Muc}', desc: 'Tên hạng mục tùy chọn mua thêm' },
+            { code: '{Don_Vi}', desc: 'Đơn vị tính' },
+            { code: '{So_Luong}', desc: 'Số lượng mua thêm' },
+            { code: '{Ty_Le}', desc: 'Tỷ lệ % mua thêm' },
+            { code: '{Gia_Tri_Uoc_Tinh}', desc: 'Giá trị ước tính mua thêm (VND)' },
+            { code: '{/Danh_Sach_Tuy_Chon_Mua_Them}', desc: 'Kết thúc vòng lặp mua thêm' }
         ]
     };
 
-    const variables = DICTIONARY[group] || [];
-    tbody.innerHTML = variables.map(v => `
-        <tr>
-            <td><code style="font-size:0.85rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:4px 8px; border-radius:4px;">${v.code}</code></td>
-            <td>${v.desc}</td>
-            <td class="text-right">
-                <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}">
-                    <i data-lucide="copy" style="width:14px; height:14px;"></i> Sao chép
+    // Helper functions for labels mapping
+    const getTableLabel = (tbl) => {
+        const labels = {
+            'chu_dau_tu': 'Chủ đầu tư',
+            'ke_hoach_lcnt': 'Kế hoạch LCNT',
+            'goi_thau': 'Gói thầu',
+            'nha_thau': 'Nhà thầu',
+            'hop_dong': 'Hợp đồng',
+            'chuyen_gia': 'Chuyên gia',
+            'thong_tin_mo_thau': 'Thông tin mở thầu',
+            'tai_khoan': 'Tài khoản cá nhân',
+            'to_chuc': 'Tổ chức / Doanh nghiệp',
+            'goi_dich_vu': 'Gói dịch vụ'
+        };
+        return labels[tbl] || tbl;
+    };
+
+    const getColumnLabel = (tbl, col) => {
+        const cols = {
+            'chu_dau_tu': {
+                'ten_chu_dau_tu': 'Tên chủ đầu tư',
+                'ma_chu_dau_tu': 'Mã chủ đầu tư',
+                'ma_so_thue': 'Mã số thuế',
+                'chuc_vu_nguoi_dung_dau': 'Chức vụ người đứng đầu',
+                'nguoi_ky_quyet_dinh': 'Người ký quyết định',
+                'chuc_vu_nguoi_ky': 'Chức vụ người ký',
+                'danh_xung': 'Danh xưng',
+                'dia_chi': 'Địa chỉ',
+                'so_dien_thoai': 'Số điện thoại',
+                'email': 'Email',
+                'so_tai_khoan': 'Số tài khoản',
+                'noi_mo_tai_khoan': 'Nơi mở tài khoản',
+                'ma_qhns': 'Mã QHNS',
+                'co_quan_chu_quan': 'Cơ quan chủ quản',
+                'phien_ban': 'Phiên bản'
+            },
+            'ke_hoach_lcnt': {
+                'ten_ke_hoach': 'Tên kế hoạch LCNT',
+                'ma_ke_hoach': 'Mã kế hoạch LCNT',
+                'ma_du_an': 'Mã dự án',
+                'ten_du_an_du_toan': 'Tên dự án / Dự toán',
+                'loai_hinh_mua_sam': 'Loại hình mua sắm',
+                'tong_muc_dau_tu': 'Tổng mức đầu tư',
+                'quyet_dinh_phe_duyet': 'Quyết định phê duyệt',
+                'ngay_phe_duyet': 'Ngày phê duyệt',
+                'thoi_gian_dang_tai': 'Thời gian đăng tải',
+                'nguon_von': 'Nguồn vốn',
+                'thoi_gian_du_an': 'Thời gian dự án',
+                'dia_diem_quy_mo': 'Địa điểm quy mô',
+                'thong_tin_khac': 'Thông tin khác',
+                'so_qd_phe_duyet_du_an': 'Số QĐ phê duyệt dự án',
+                'ngay_qd_phe_duyet_du_an': 'Ngày QĐ phê duyệt dự án',
+                'co_quan_phe_duyet_du_an': 'Cơ quan phê duyệt dự án',
+                'phien_ban': 'Phiên bản'
+            },
+            'goi_thau': {
+                'ten_goi_thau': 'Tên gói thầu',
+                'ma_goi_thau': 'Mã gói thầu',
+                'gia_goi_thau': 'Giá gói thầu',
+                'hinh_thuc_lua_chon': 'Hình thức LCNT',
+                'phuong_thuc_lua_chon': 'Phương thức LCNT',
+                'loai_hop_dong': 'Loại hợp đồng',
+                'thoi_gian_thuc_hien': 'Thời gian thực hiện',
+                'nguon_von': 'Nguồn vốn',
+                'gia_trung_thau': 'Giá trúng thầu',
+                'linh_vuc': 'Lĩnh vực',
+                'tuy_chon_mua_them': 'Tùy chọn mua thêm',
+                'thoi_gian_to_chuc': 'Thời gian tổ chức',
+                'thoi_gian_bat_dau_to_chuc': 'Thời gian bắt đầu tổ chức',
+                'phan_lo': 'Phân lô',
+                'thoi_gian_dang_tai': 'Thời gian đăng tải',
+                'thoi_gian_dong_thau': 'Thời gian đóng thầu',
+                'thoi_gian_mo_thau': 'Thời gian mở thầu',
+                'so_quyet_dinh': 'Số quyết định phê duyệt',
+                'ngay_quyet_dinh': 'Ngày quyết định phê duyệt',
+                'so_quyet_dinh_ket_qua': 'Số quyết định kết quả',
+                'ngay_quyet_dinh_ket_qua': 'Ngày quyết định kết quả',
+                'thoi_gian_goi_thau': 'Thời gian gói thầu',
+                'thoi_gian_hop_dong': 'Thời gian hợp đồng',
+                'gia_tri_dam_bao_du_thau': 'Giá trị bảo đảm dự thầu',
+                'hieu_luc_hsdt': 'Hiệu lực HSDT',
+                'hieu_luc_dam_bao_du_thau': 'Hiệu lực bảo đảm dự thầu',
+                'trang_thai': 'Trạng thái',
+                'phien_ban': 'Phiên bản'
+            },
+            'nha_thau': {
+                'ten_nha_thau': 'Tên nhà thầu',
+                'ma_nha_thau': 'Mã nhà thầu',
+                'loai_nha_thau': 'Loại nhà thầu',
+                'ma_so_thue': 'Mã số thuế',
+                'nguoi_dai_dien': 'Người đại diện',
+                'danh_xung': 'Danh xưng',
+                'so_dien_thoai': 'Số điện thoại',
+                'email': 'Email',
+                'dia_chi': 'Địa chỉ',
+                'so_tai_khoan': 'Số tài khoản',
+                'noi_mo_tai_khoan': 'Nơi mở tài khoản',
+                'ma_ngan_hang': 'Mã ngân hàng',
+                'phien_ban': 'Phiên bản'
+            },
+            'hop_dong': {
+                'ten_hop_dong': 'Tên hợp đồng',
+                'so_hop_dong': 'Số hợp đồng',
+                'ngay_ky': 'Ngày ký',
+                'gia_tri': 'Giá trị hợp đồng',
+                'loai_hop_dong': 'Loại hợp đồng',
+                'thoi_gian_thuc_hien': 'Thời gian thực hiện',
+                'trang_thai_ho_so': 'Trạng thái hồ sơ'
+            },
+            'chuyen_gia': {
+                'ho_ten': 'Họ tên chuyên gia',
+                'so_cccd': 'Số CCCD',
+                'ngay_cap_cccd': 'Ngày cấp CCCD',
+                'noi_cap_cccd': 'Nơi cấp CCCD',
+                'so_chung_chi': 'Số chứng chỉ',
+                'ngay_cap_chung_chi': 'Ngày cấp chứng chỉ',
+                'don_vi_cap_chung_chi': 'Đơn vị cấp chứng chỉ',
+                'chuc_vu': 'Chức vụ trong tổ',
+                'cong_viec': 'Nhiệm vụ phân công'
+            },
+            'thong_tin_mo_thau': {
+                'gia_du_thau': 'Giá dự thầu',
+                'dam_bao_du_thau': 'Bảo đảm dự thầu',
+                'hieu_luc_dam_bao': 'Hiệu lực bảo đảm',
+                'hieu_luc_hsdxt': 'Hiệu lực HSDXT',
+                'ty_le_giam_gia': 'Tỷ lệ giảm giá',
+                'gia_sau_giam_gia': 'Giá sau giảm giá',
+                'hieu_luc_hsdt': 'Hiệu lực HSDT',
+                'gia_tri_dam_bao': 'Giá trị bảo đảm',
+                'hieu_luc_bao_dam_ngay': 'Hiệu lực bảo đảm (ngày)',
+                'thoi_gian_thuc_hien': 'Thời gian thực hiện',
+                'ten_nha_thau': 'Tên nhà thầu',
+                'loai_nha_thau': 'Loại nhà thầu',
+                'danh_gia_hop_le': 'Đánh giá hợp lệ',
+                'danh_gia_nang_luc': 'Đánh giá năng lực',
+                'danh_gia_ky_thuat': 'Đánh giá kỹ thuật',
+                'danh_gia_tai_chinh': 'Đánh giá tài chính',
+                'danh_gia_ket_luan': 'Đánh giá kết luận',
+                'ly_do_truot': 'Lý do trượt',
+                'lam_ro_hop_le': 'Làm rõ hợp lệ',
+                'lam_ro_nang_luc': 'Làm rõ năng lực',
+                'lam_ro_ky_thuat': 'Làm rõ kỹ thuật',
+                'lam_ro_tai_chinh': 'Làm rõ tài chính'
+            },
+            'tai_khoan': {
+                'ten_dang_nhap': 'Tên đăng nhập',
+                'ho_ten': 'Họ và tên',
+                'email': 'Email',
+                'so_dien_thoai': 'Số điện thoại',
+                'chuc_vu': 'Chức vụ'
+            },
+            'to_chuc': {
+                'ten_to_chuc': 'Tên tổ chức',
+                'ma_so_thue': 'Mã số thuế',
+                'dia_chi': 'Địa chỉ',
+                'nguoi_dai_dien': 'Người đại diện'
+            },
+            'goi_dich_vu': {
+                'ten_goi': 'Tên gói dịch vụ',
+                'gia_goi': 'Giá gói dịch vụ',
+                'thoi_han_thang': 'Thời hạn (tháng)'
+            }
+        };
+        return (cols[tbl] && cols[tbl][col]) || col;
+    };
+
+    // Append custom user mappings if group is global
+    let variables = DICTIONARY[group] || [];
+    if (group === 'global' && this.model.state && this.model.state.wordMappings) {
+        const customVars = this.model.state.wordMappings.map(m => ({
+            code: `{${m.tenBien}}`,
+            desc: `Biến tự định nghĩa (Ánh xạ: Bảng ${getTableLabel(m.sourceTable)} -> ${getColumnLabel(m.sourceTable, m.sourceColumn)})`,
+            isCustom: true,
+            id: m.id,
+            sourceTable: m.sourceTable,
+            sourceColumn: m.sourceColumn,
+            tenBien: m.tenBien
+        }));
+        variables = [...variables, ...customVars];
+    }
+
+    if (variables.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted" style="padding: 24px;">Chưa có biến nào trong nhóm này.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = variables.map(v => {
+        let actionHTML = '';
+        if (v.isCustom) {
+            actionHTML = `
+                <div class="action-btn-group" style="justify-content: flex-end; gap: 8px;">
+                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" title="Sao chép" style="padding: 4px 8px; font-size: 0.75rem;">
+                        <i data-lucide="copy" style="width:12px; height:12px;"></i>
+                    </button>
+                    <button class="action-btn btn-edit" onclick="window.editWordMapping('${v.id}')" title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                        <i data-lucide="edit-2" style="width:12px; height:12px; color: var(--text-muted);"></i>
+                    </button>
+                    <button class="action-btn btn-delete" onclick="window.deleteWordMapping('${v.id}')" title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                        <i data-lucide="trash-2" style="width:12px; height:12px; color: var(--danger);"></i>
+                    </button>
+                </div>
+            `;
+        } else {
+            actionHTML = `
+                <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" style="padding: 4px 8px; font-size: 0.75rem;">
+                    <i data-lucide="copy" style="width:12px; height:12px;"></i> Sao chép
                 </button>
-            </td>
-        </tr>
-    `).join('');
+            `;
+        }
+
+        let descHTML = '';
+        if (v.isCustom) {
+            descHTML = `
+                <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">${getTableLabel(v.sourceTable)}</span>
+                <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
+                <span class="fw-bold" style="font-size: 0.8rem;">${getColumnLabel(v.sourceTable, v.sourceColumn)}</span>
+            `;
+        } else {
+            descHTML = `<span style="font-size: 0.8rem; color: var(--text-muted);">${v.desc}</span>`;
+        }
+
+        return `
+            <tr>
+                <td><code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:4px 8px; border-radius:4px;">${v.code}</code></td>
+                <td>${descHTML}</td>
+                <td class="text-right">${actionHTML}</td>
+            </tr>
+        `;
+    }).join('');
     lucide.createIcons({ root: tbody });
+}
+
+export function renderWordMappingsTable(mappingsList = []) {
+    // Merged table updates: refresh dictionary table rendering
+    const dictionarySelect = document.getElementById('dictionary-group-select');
+    const group = dictionarySelect ? dictionarySelect.value : 'global';
+    renderDictionary.call(this, group);
 }
 
 export function renderWordTemplates(templatesList = []) {
