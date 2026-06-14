@@ -203,7 +203,7 @@ export async function renderGoiThauTable() {
                 const allJvMembers = matchBid.thanhVienLienDanh || [];
                 const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
                 const leadName = leadMember?.tenNhaThau || ntDisplayName;
-                const leadCode = leadMember?.maSoThue || matchBid.maNhaThau || '';
+                const leadCode = leadMember?.maSoThue || nt?.maSoThue || nt?.maNhaThau || matchBid.maDinhDanh || matchBid.maNhaThau || '';
                 // Lọc bỏ thành viên đứng đầu khỏi danh sách thành viên phụ
                 const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
                 // Lưu vào global map để tránh inline JSON
@@ -916,11 +916,12 @@ export function showPackageDetails(id) {
                         const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
                         const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
 
+                        const winnerNt = this.model.state.nhathau.find(n => String(n.id) === String(winnerBid.nhaThauId));
                         window._jvDataMap = window._jvDataMap || {};
                         window._jvDataMap[gt.id] = {
                             members: subMembers,
                             leadName: leadMember?.tenNhaThau || winnerBid.tenNhaThau,
-                            leadCode: leadMember?.maSoThue || winnerBid.maNhaThau || ''
+                            leadCode: leadMember?.maSoThue || winnerNt?.maSoThue || winnerNt?.maNhaThau || winnerBid.maDinhDanh || winnerBid.maNhaThau || ''
                         };
 
                         const membersListHtml = allJvMembers.map(m => {
@@ -942,12 +943,14 @@ export function showPackageDetails(id) {
                             </div>
                         `;
                     } else {
+                        const winnerNt = this.model.state.nhathau.find(n => String(n.id) === String(winnerBid.nhaThauId));
+                        const winnerMst = winnerNt ? (winnerNt.maSoThue || winnerNt.maNhaThau) : (winnerBid.maDinhDanh || winnerBid.maNhaThau);
                         winnerDisplayHtml = `
                             <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
                                 <a href="#" onclick="event.preventDefault(); window.editNhaThau('${winnerBid.nhaThauId}')" class="link-hover" style="color:var(--primary);">${winnerBid.tenNhaThau}</a>
                             </h5>
                             <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
-                                MST: <strong>${winnerBid.maNhaThau || 'Chưa có'}</strong>
+                                MST: <strong>${winnerMst || 'Chưa có'}</strong>
                             </div>
                         `;
                     }
