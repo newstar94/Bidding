@@ -2,6 +2,13 @@
    BiddingFlow - PlanView (Part of View split)
    ========================================================================== */
 
+function getAuthDownloadUrl(url) {
+    const token = localStorage.getItem('bf_session_token') || '';
+    const username = localStorage.getItem('bf_username') || '';
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}token=${encodeURIComponent(token)}&username=${encodeURIComponent(username)}`;
+}
+
 export async function renderKeHoachTable() {
     const tableBody = document.getElementById('kehoach-table').querySelector('tbody');
     const searchVal = document.getElementById('search-kehoach').value.toLowerCase();
@@ -1472,7 +1479,7 @@ export function showPackageDetails(id) {
             if (resultExportBtn) {
                 resultExportBtn.onclick = () => {
                     const safeCode = (gt.tenGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9]/g, '_');
-                    window.location.href = `/api/export-ketquaqd-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`;
+                    window.location.href = getAuthDownloadUrl(`/api/export-ketquaqd-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`);
                 };
             }
 

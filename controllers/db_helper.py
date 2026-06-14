@@ -49,6 +49,9 @@ def optimized_get_connection(*args, **kwargs):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdonggoithau_goithau ON hop_dong_goi_thau(goi_thau_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_deletedrecords_lookup ON deleted_records(owner_id, deleted_at)")
             
+            # Reverse lookup indexes for relationship tables
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithauchuyengia_chuyengia ON goi_thau_chuyen_gia(chuyen_gia_id)")
+            
             # Compound indexes for sync queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_owner_updated ON chu_dau_tu(owner_id, updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_owner_updated ON ke_hoach_lcnt(owner_id, updated_at)")
@@ -81,6 +84,10 @@ def optimized_get_connection(*args, **kwargs):
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_matran_owner_updated ON ma_tran_phan_quyen(owner_id, updated_at)")
             except Exception:
                 pass  # Bảng chưa tồn tại, sẽ tạo khi ứng dụng khởi động
+            
+            # Indexes for organizations and members
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_thanhvientochuc_tochuc ON thanh_vien_to_chuc(to_chuc_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tochuc_quanly ON to_chuc(quan_ly_id)")
             
             db_indexes_created = True
     except Exception as e:

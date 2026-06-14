@@ -13,7 +13,8 @@ from helpers import (
     clean_id,
     save_base64_image,
     load_base64_image,
-    log_error
+    log_error,
+    get_active_org
 )
 
 # Global dictionary to store active WebSocket connections
@@ -62,30 +63,28 @@ def safe_int(val):
     except Exception:
         return 0
 
-def get_active_org(request, user_id):
-    active_org = request.headers.get('X-Active-Org')
-    if active_org:
-        import urllib.parse
-        active_org = urllib.parse.unquote(active_org)
-    conn = database.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT tc.id, tc.ten_to_chuc 
-        FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
-        WHERE tvtc.user_id = ?
-    """, (user_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    
-    if not rows:
-        return str(user_id)
-        
-    for row in rows:
-        if active_org and (active_org == row['id'] or active_org == row['ten_to_chuc']):
-            return row['id']
-            
-    return rows[0]['id']
+def map_db_to_json(table_name, row_dict):
+    item = {}
+    table_spec = SCHEMA_DINH_NGHIA[table_name]
+    for col in table_spec["columns"].keys():
+        json_key = SPECIAL_FIELD_MAPS.get(table_name, {}).get(col)
+        if not json_key:
+            if col == "id_goc":
+                json_key = "rootId"
+            else:
+                json_key = to_camel_case(col)
+        val = row_dict.get(col)
+        is_json_field = col.endswith("_list") or col.startswith("cv_") or col == "thanh_vien_lien_danh"
+        if is_json_field:
+            if val:
+                try:
+                    val = json.loads(val)
+                except Exception:
+                    val = []
+            else:
+                val = []
+        item[json_key] = val
+    return item
 
 # ==========================================
 # WEBSOCKET & ĐỒNG BỘ DỮ LIỆU
@@ -437,38 +436,7 @@ async def get_all_data_api(request):
         cursor = conn.cursor()
         current_time = int(datetime.utcnow().timestamp())
         
-        # Hàm ánh xạ động DB snake_case sang JSON camelCase
-        def map_db_to_json(table_name, row_dict):
-            item = {}
-            table_spec = SCHEMA_DINH_NGHIA[table_name]
-            
-            for col in table_spec["columns"].keys():
-                json_key = SPECIAL_FIELD_MAPS.get(table_name, {}).get(col)
-                if not json_key:
-                    if col == "id_goc":
-                        json_key = "rootId"
-                    else:
-                        json_key = to_camel_case(col)
-                        
-                val = row_dict.get(col)
-                
-                # 2. Xử lý các trường dạng List/Dict đã lưu chuỗi JSON
-                is_json_field = (
-                    col.endswith("_list") or 
-                    col.startswith("cv_") or 
-                    col == "thanh_vien_lien_danh"
-                )
-                if is_json_field:
-                    if val:
-                        try:
-                            val = json.loads(val)
-                        except Exception:
-                            val = []
-                    else:
-                        val = []
-                        
-                item[json_key] = val
-            return item
+
 
         org_name = get_active_org(request, role_or_err.user_id)
         
@@ -735,32 +703,7 @@ async def paginate_api(request):
         cursor.execute(items_sql, tuple(query_params + [page_size, offset]))
         rows = cursor.fetchall()
         
-        # Map DB snake_case to JSON camelCase
-        def map_db_to_json(tbl, row_dict):
-            item = {}
-            table_spec = SCHEMA_DINH_NGHIA[tbl]
-            for col in table_spec["columns"].keys():
-                json_key = SPECIAL_FIELD_MAPS.get(tbl, {}).get(col)
-                if not json_key:
-                    if col == "id_goc":
-                        json_key = "rootId"
-                    else:
-                        json_key = to_camel_case(col)
-                val = row_dict.get(col)
-                
 
-                        
-                is_json_field = col.endswith("_list") or col.startswith("cv_") or col == "thanh_vien_lien_danh"
-                if is_json_field:
-                    if val:
-                        try:
-                            val = json.loads(val)
-                        except Exception:
-                            val = []
-                    else:
-                        val = []
-                item[json_key] = val
-            return item
             
         items = []
         for row in rows:

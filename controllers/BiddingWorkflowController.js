@@ -2,6 +2,13 @@
    BiddingFlow - BiddingWorkflowController (Part of Controller split)
    ========================================================================== */
 
+function getAuthDownloadUrl(url) {
+    const token = localStorage.getItem('bf_session_token') || '';
+    const username = localStorage.getItem('bf_username') || '';
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}token=${encodeURIComponent(token)}&username=${encodeURIComponent(username)}`;
+}
+
 export async function deleteKeHoach(id) {
     const targetPlan = this.model.state.kehoach.find(k => k.id === id);
     if (!targetPlan) return;
@@ -1570,7 +1577,7 @@ export function setupExcelImportEvents() {
     if (downloadTemplateBtn) {
         downloadTemplateBtn.addEventListener('click', () => {
             const type = this._excelImportType || 'kehoach';
-            window.location.href = `/api/export-excel-template/${type}`;
+            window.location.href = getAuthDownloadUrl(`/api/export-excel-template/${type}`);
         });
     }
 }
@@ -1642,7 +1649,7 @@ export function openExcelImportModal(type) {
                 const lotCodes = (gt.phanLoList || []).map(l => l.maPhanLo).join(',');
 
                 // Redirect to backend API for downloading the strictly validated template
-                window.location.href = `/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeCode)}&lot_codes=${encodeURIComponent(lotCodes)}`;
+                window.location.href = getAuthDownloadUrl(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeCode)}&lot_codes=${encodeURIComponent(lotCodes)}`);
             } else if (this._excelImportType === 'danhgiahsdt') {
                 const select = document.getElementById('danhgiahsdt-goithau-select');
                 if (!select || !select.value) {
@@ -1653,7 +1660,7 @@ export function openExcelImportModal(type) {
                 const gt = this.model.state.goithau.find(g => g.id === gtId);
                 if (!gt) return;
                 const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                window.location.href = `/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`;
+                window.location.href = getAuthDownloadUrl(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`);
             } else if (this._excelImportType === 'ketquaqd') {
                 const gtId = this._currentResultPackageId;
                 if (!gtId) {
@@ -1663,10 +1670,10 @@ export function openExcelImportModal(type) {
                 const gt = this.model.state.goithau.find(g => g.id === gtId);
                 if (!gt) return;
                 const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                window.location.href = `/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`;
+                window.location.href = getAuthDownloadUrl(`/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`);
             } else {
                 const type = this._excelImportType || 'kehoach';
-                window.location.href = `/api/export-excel-template/${type}`;
+                window.location.href = getAuthDownloadUrl(`/api/export-excel-template/${type}`);
             }
         };
     }
@@ -3762,7 +3769,7 @@ export function renderMoThauPanel() {
             const lotCodes = (gt.phanLoList || []).map(l => l.maPhanLo).join(',');
 
             // Redirect to backend API for downloading the strictly validated template
-            window.location.href = `/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeName)}&lot_codes=${encodeURIComponent(lotCodes)}`;
+            window.location.href = getAuthDownloadUrl(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeName)}&lot_codes=${encodeURIComponent(lotCodes)}`);
         };
     }
 
