@@ -370,6 +370,8 @@ SCHEMA_DINH_NGHIA = {
             "goi_thau_id": "TEXT NOT NULL",
             "chuyen_gia_id": "TEXT NOT NULL",
             "loai": "TEXT NOT NULL DEFAULT 'chuyen_gia'",
+            "chuc_vu": "TEXT",
+            "cong_viec": "TEXT",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
         "primary_keys": ["goi_thau_id", "chuyen_gia_id", "loai"],
@@ -900,28 +902,32 @@ def khoi_tao_va_di_tru_he_thong():
                     DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = NEW.id;
                     
                     -- Chèn chuyên gia
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
+                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                     SELECT DISTINCT NEW.id,
                         CASE 
                             WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
                             THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
                             ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
                         END,
-                        'chuyen_gia'
+                        'chuyen_gia',
+                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
+                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
                     FROM json_each(NEW.chuyen_gia_list)
                     WHERE NEW.chuyen_gia_list IS NOT NULL 
                       AND json_valid(NEW.chuyen_gia_list)
                       AND COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) IS NOT NULL;
 
                     -- Chèn thẩm định
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
+                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                     SELECT DISTINCT NEW.id,
                         CASE 
                             WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
                             THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
                             ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
                         END,
-                        'tham_dinh'
+                        'tham_dinh',
+                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
+                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
                     FROM json_each(NEW.tham_dinh_list)
                     WHERE NEW.tham_dinh_list IS NOT NULL 
                       AND json_valid(NEW.tham_dinh_list)
@@ -937,28 +943,32 @@ def khoi_tao_va_di_tru_he_thong():
                     DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = NEW.id;
                     
                     -- Chèn chuyên gia
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
+                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                     SELECT DISTINCT NEW.id,
                         CASE 
                             WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
                             THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
                             ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
                         END,
-                        'chuyen_gia'
+                        'chuyen_gia',
+                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
+                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
                     FROM json_each(NEW.chuyen_gia_list)
                     WHERE NEW.chuyen_gia_list IS NOT NULL 
                       AND json_valid(NEW.chuyen_gia_list)
                       AND COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) IS NOT NULL;
 
                     -- Chèn thẩm định
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
+                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                     SELECT DISTINCT NEW.id,
                         CASE 
                             WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
                             THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
                             ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
                         END,
-                        'tham_dinh'
+                        'tham_dinh',
+                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
+                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
                     FROM json_each(NEW.tham_dinh_list)
                     WHERE NEW.tham_dinh_list IS NOT NULL 
                       AND json_valid(NEW.tham_dinh_list)
@@ -979,10 +989,12 @@ def khoi_tao_va_di_tru_he_thong():
                             cg_id = cg_item.get('chuyenGiaId') or cg_item.get('id')
                             if cg_id:
                                 clean_cg_id = clean_id(cg_id)
+                                chuc_vu = cg_item.get('chucVu') or cg_item.get('chuc_vu') or 'Tổ viên'
+                                cong_viec = cg_item.get('congViec') or cg_item.get('cong_viec') or ''
                                 cursor.execute("""
-                                    INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
-                                    VALUES (?, ?, 'chuyen_gia')
-                                 """, (gt_id, clean_cg_id))
+                                    INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
+                                    VALUES (?, ?, 'chuyen_gia', ?, ?)
+                                 """, (gt_id, clean_cg_id, chuc_vu, cong_viec))
                     except Exception:
                         pass
                 if td_list_str:
@@ -992,10 +1004,12 @@ def khoi_tao_va_di_tru_he_thong():
                             td_id = td_item.get('chuyenGiaId') or td_item.get('id')
                             if td_id:
                                 clean_td_id = clean_id(td_id)
+                                chuc_vu = td_item.get('chucVu') or td_item.get('chuc_vu') or 'Tổ viên'
+                                cong_viec = td_item.get('congViec') or td_item.get('cong_viec') or ''
                                 cursor.execute("""
-                                    INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai)
-                                    VALUES (?, ?, 'tham_dinh')
-                                 """, (gt_id, clean_td_id))
+                                    INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
+                                    VALUES (?, ?, 'tham_dinh', ?, ?)
+                                 """, (gt_id, clean_td_id, chuc_vu, cong_viec))
                     except Exception:
                         pass
             print("Đồng bộ: Thiết lập trigger và di trú chuyên gia sang goi_thau_chuyen_gia thành công!")
