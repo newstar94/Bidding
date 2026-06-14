@@ -351,7 +351,7 @@ export function setupAuth() {
             else if (effectiveRoles.includes('employee')) activeRole = 'employee';
 
             const resolvedUserId = !this.model.hasEffectiveRole(data.role, 'manager')
-                ? (data.id ? (data.id.startsWith('user-') ? data.id : 'user-' + data.id) : 'emp-1')
+                ? (data.id ? data.id : '1')
                 : (this.model.hasEffectiveRole(data.role, 'super_admin') ? 'sa-1' : 'mgr-1');
 
             this.model.switchActiveRole(activeRole, data.name, resolvedUserId);

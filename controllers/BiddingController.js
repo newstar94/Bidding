@@ -90,6 +90,18 @@ export class BiddingController {
         };
 
         await this.model.init();
+
+        if (localStorage.getItem('bf_id_prefix_cleaned_v2') !== 'true') {
+            localStorage.setItem('bf_last_sync_timestamp', '0');
+            if (this.model.db && this.model.db.stores) {
+                this.model.db.stores.forEach(storeName => {
+                    this.model.db.putTableData(storeName, []).catch(() => {});
+                });
+            }
+            localStorage.setItem('bf_id_prefix_cleaned_v2', 'true');
+            console.log("Client-side IndexedDB cache reset for ID prefix removal migration.");
+        }
+
         this.view.initDOM();
         this.setupAuth();
         this.setupActivityTracker();
@@ -158,7 +170,7 @@ export class BiddingController {
                 this.model.state.employees = users.map(u => {
                     const localEmp = localEmployees.find(le => le.email && le.email.trim().toLowerCase() === (u.email || '').trim().toLowerCase());
                     return {
-                        id: `user-${u.id}`,
+                        id: u.id,
                         username: u.username,
                         name: localEmp ? localEmp.name : u.name,
                         email: u.email || '',

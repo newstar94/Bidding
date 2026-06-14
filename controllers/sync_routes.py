@@ -321,6 +321,58 @@ async def sync_api(request):
                                         "INSERT OR REPLACE INTO hop_dong_goi_thau (hop_dong_id, goi_thau_id) VALUES (?, ?)",
                                         (c_hd_id, gt_id)
                                     )
+
+                    # Ràng buộc thêm: Đồng bộ tổ chuyên gia và tổ thẩm định của gói thầu sang bảng goi_thau_chuyen_gia
+                    if table_name == "goi_thau":
+                        c_gt_id = get_clean_id("goi_thau", item.get('id'))
+                        
+                        # Xử lý Tổ chuyên gia
+                        if any(k in item for k in ['toChuyenGia', 'chuyenGiaList', 'chuyen_gia_list']):
+                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'chuyen_gia'", (c_gt_id,))
+                            cg_raw = item.get('toChuyenGia') or item.get('chuyenGiaList') or item.get('chuyen_gia_list') or []
+                            log_error(f"Syncing Package {c_gt_id}: cg_raw = {cg_raw}", "SyncAPI")
+                            if isinstance(cg_raw, str):
+                                try:
+                                    cg_raw = json.loads(cg_raw)
+                                except Exception:
+                                    cg_raw = []
+                            if isinstance(cg_raw, list):
+                                for cg_item in cg_raw:
+                                    if isinstance(cg_item, dict):
+                                        cg_id = cg_item.get('chuyenGiaId') or cg_item.get('id')
+                                        if cg_id:
+                                            clean_cg_id = clean_id(cg_id)
+                                            chuc_vu = cg_item.get('chucVu') or cg_item.get('chuc_vu') or 'Tổ viên'
+                                            cong_viec = cg_item.get('congViec') or cg_item.get('cong_viec') or ''
+                                            log_error(f"Inserting expert relation: {c_gt_id} - {clean_cg_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
+                                            cursor.execute("""
+                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
+                                                VALUES (?, ?, 'chuyen_gia', ?, ?)
+                                            """, (c_gt_id, clean_cg_id, chuc_vu, cong_viec))
+                                            
+                        # Xử lý Tổ thẩm định
+                        if any(k in item for k in ['toThamDinh', 'thamDinhList', 'tham_dinh_list']):
+                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'tham_dinh'", (c_gt_id,))
+                            td_raw = item.get('toThamDinh') or item.get('thamDinhList') or item.get('tham_dinh_list') or []
+                            log_error(f"Syncing Package {c_gt_id}: td_raw = {td_raw}", "SyncAPI")
+                            if isinstance(td_raw, str):
+                                try:
+                                    td_raw = json.loads(td_raw)
+                                except Exception:
+                                    td_raw = []
+                            if isinstance(td_raw, list):
+                                for td_item in td_raw:
+                                    if isinstance(td_item, dict):
+                                        td_id = td_item.get('chuyenGiaId') or td_item.get('id')
+                                        if td_id:
+                                            clean_td_id = clean_id(td_id)
+                                            chuc_vu = td_item.get('chucVu') or td_item.get('chuc_vu') or 'Tổ viên'
+                                            cong_viec = td_item.get('congViec') or td_item.get('cong_viec') or ''
+                                            log_error(f"Inserting appraiser relation: {c_gt_id} - {clean_td_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
+                                            cursor.execute("""
+                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
+                                                VALUES (?, ?, 'tham_dinh', ?, ?)
+                                            """, (c_gt_id, clean_td_id, chuc_vu, cong_viec))
                 except Exception as item_err:
                     import traceback
                     log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
@@ -393,43 +445,6 @@ async def get_all_data_api(request):
                         
                 val = row_dict.get(col)
                 
-                # 1. Thêm tiền tố ID cho client
-                if col == "id" or col.endswith("_id") or col == "id_goc":
-                    if table_name != "phan_cong_nhan_su" and val is not None:
-                        prefix = ""
-                        if col == "id":
-                            prefix_map = {
-                                "chu_dau_tu": "cdt-",
-                                "ke_hoach_lcnt": "kh-",
-                                "goi_thau": "gt-",
-                                "chuyen_gia": "cg-",
-                                "nha_thau": "nt-",
-                                "hop_dong": "hd-",
-                                "thong_tin_mo_thau": "tm-"
-                            }
-                            prefix = prefix_map.get(table_name, "")
-                        elif col == "chu_dau_tu_id":
-                            prefix = "cdt-"
-                        elif col == "ke_hoach_id":
-                            prefix = "kh-"
-                        elif col == "goi_thau_id":
-                            prefix = "gt-"
-                        elif col == "nha_thau_trung_thau_id" or col == "nha_thau_id":
-                            prefix = "nt-"
-                        elif col == "id_goc":
-                            prefix_map = {
-                                "ke_hoach_lcnt": "kh-",
-                                "goi_thau": "gt-",
-                                "chu_dau_tu": "cdt-",
-                                "nha_thau": "nt-"
-                            }
-                            prefix = prefix_map.get(table_name, "")
-                            
-                        if isinstance(val, str) and prefix and val.startswith(prefix):
-                            pass
-                        else:
-                            val = f"{prefix}{val}"
-                        
                 # 2. Xử lý các trường dạng List/Dict đã lưu chuỗi JSON
                 is_json_field = (
                     col.endswith("_list") or 
@@ -511,9 +526,7 @@ async def get_all_data_api(request):
                 for x in item.get("toChuyenGia", []):
                     if isinstance(x, dict) and 'id' in x:
                         val = x['id']
-                        if val and not str(val).startswith("cg-"):
-                            cg_ids.append(f"cg-{val}")
-                        else:
+                        if val:
                             cg_ids.append(val)
             item["chuyenGiaIds"] = cg_ids
             for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "toChuyenGia", "toThamDinh", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
@@ -531,9 +544,7 @@ async def get_all_data_api(request):
             cursor.execute("SELECT goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id = ?", (row_dict["id"],))
             for subrow in cursor.fetchall():
                 val = subrow[0]
-                if val and not val.startswith("gt-"):
-                    goithau_ids.append(f"gt-{val}")
-                else:
+                if val:
                     goithau_ids.append(val)
             item["goiThauIds"] = goithau_ids
             hopdong.append(item)
@@ -580,17 +591,7 @@ async def get_all_data_api(request):
             for row in cursor.fetchall():
                 tbl_key = TABLE_KEYS_INV.get(row[0])
                 if tbl_key:
-                    prefix_map = {
-                        "chu_dau_tu": "cdt-",
-                        "ke_hoach_lcnt": "kh-",
-                        "goi_thau": "gt-",
-                        "chuyen_gia": "cg-",
-                        "nha_thau": "nt-",
-                        "hop_dong": "hd-",
-                        "thong_tin_mo_thau": "tm-"
-                    }
-                    pfx = prefix_map.get(row[0], "")
-                    deletions.append({"table": tbl_key, "id": f"{pfx}{row[1]}"})
+                    deletions.append({"table": tbl_key, "id": row[1]})
                     
         conn.close()
         
@@ -710,41 +711,7 @@ async def paginate_api(request):
                         json_key = to_camel_case(col)
                 val = row_dict.get(col)
                 
-                # Prepend prefix
-                if col == "id" or col.endswith("_id") or col == "id_goc":
-                    if tbl != "phan_cong_nhan_su" and val is not None:
-                        prefix = ""
-                        if col == "id":
-                            prefix_map = {
-                                "chu_dau_tu": "cdt-",
-                                "ke_hoach_lcnt": "kh-",
-                                "goi_thau": "gt-",
-                                "chuyen_gia": "cg-",
-                                "nha_thau": "nt-",
-                                "hop_dong": "hd-",
-                                "thong_tin_mo_thau": "tm-"
-                            }
-                            prefix = prefix_map.get(tbl, "")
-                        elif col == "chu_dau_tu_id":
-                            prefix = "cdt-"
-                        elif col == "ke_hoach_id":
-                            prefix = "kh-"
-                        elif col == "goi_thau_id":
-                            prefix = "gt-"
-                        elif col == "nha_thau_trung_thau_id" or col == "nha_thau_id":
-                            prefix = "nt-"
-                        elif col == "id_goc":
-                            prefix_map = {
-                                "ke_hoach_lcnt": "kh-",
-                                "goi_thau": "gt-",
-                                "chu_dau_tu": "cdt-",
-                                "nha_thau": "nt-"
-                            }
-                            prefix = prefix_map.get(tbl, "")
-                        if isinstance(val, str) and prefix and val.startswith(prefix):
-                            pass
-                        else:
-                            val = f"{prefix}{val}"
+
                         
                 is_json_field = col.endswith("_list") or col.startswith("cv_") or col == "thanh_vien_lien_danh"
                 if is_json_field:
@@ -801,15 +768,8 @@ async def paginate_api(request):
                 cursor.execute(f"SELECT id, phien_ban FROM {table_name} WHERE owner_id = ? AND (id_goc = ? OR id = ?) ORDER BY CAST(phien_ban AS INTEGER) DESC", (org_name, root_val, root_val))
                 versions = []
                 for v_row in cursor.fetchall():
-                    prefix_map = {
-                        "chu_dau_tu": "cdt-",
-                        "ke_hoach_lcnt": "kh-",
-                        "goi_thau": "gt-",
-                        "nha_thau": "nt-"
-                    }
-                    pfx = prefix_map.get(table_name, "")
                     versions.append({
-                        "id": f"{pfx}{v_row[0]}",
+                        "id": v_row[0],
                         "phienBan": v_row[1]
                     })
                 item["allVersions"] = versions

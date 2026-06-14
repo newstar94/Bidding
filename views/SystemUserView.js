@@ -187,7 +187,7 @@ export function renderSuperAdminPanel() {
                 if (u.organization_name) {
                     if (!orgMap[u.organization_name]) {
                         orgMap[u.organization_name] = {
-                            id: `org-${u.id}`,
+                            id: u.id,
                             name: u.organization_name,
                             contact: '',
                             phone: '',
@@ -209,7 +209,7 @@ export function renderSuperAdminPanel() {
 
             // Build employees list
             this.model.state.employees = users.map(u => ({
-                id: `user-${u.id}`,
+                id: u.id,
                 name: u.name,
                 email: u.email || '',
                 phone: '',
@@ -402,7 +402,7 @@ export function renderManagerNhanVienPanel() {
 }
 
 export function renderManagerHoSoGiayPanel() {
-    const orgId = 'org-1'; // VinaCorp
+    const orgId = '1'; // VinaCorp
     const orgStatuses = this.model.state.custompaperstatuses.filter(s => s.orgId === orgId);
     
     const tbody = document.getElementById('manager-hosogiay-tbody');
@@ -525,7 +525,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
         const isSelf = user.username === currentUsername;
         const deleteBtn = isSelf ? 
             `<span class="text-muted" style="font-size:0.8rem; font-style:italic;">(Tài khoản hiện tại)</span>` : 
-            `<button class="action-btn btn-delete" onclick="window.deleteSystemUser(${user.id}, '${user.username}')" title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
+            `<button class="action-btn btn-delete" onclick="window.deleteSystemUser('${user.id}', '${user.username}')" title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
         
         const detailBtn = `<button class="action-btn btn-edit" onclick="window.showSystemUserDetail('${user.id}')" title="Xem chi tiết & Cấu hình"><i data-lucide="user-cog"></i></button>`;
 

@@ -488,9 +488,7 @@ def to_camel_case(snake_str):
 def clean_id(val):
     if val is None or val == "":
         return None
-    val_str = str(val).strip()
-    val_str = re.sub(r'^(cdt-|kh-|gt-|cg-|nt-|hd-|emp-|user-|tm-)', '', val_str)
-    return val_str
+    return str(val).strip()
 
 def khoi_tao_va_di_tru_he_thong():
     try:
@@ -893,88 +891,7 @@ def khoi_tao_va_di_tru_he_thong():
         try:
             cursor.execute("DROP TRIGGER IF EXISTS tg_sync_goithau_chuyengia_insert")
             cursor.execute("DROP TRIGGER IF EXISTS tg_sync_goithau_chuyengia_update")
-
-            cursor.execute("""
-                CREATE TRIGGER IF NOT EXISTS tg_sync_goithau_chuyengia_insert
-                AFTER INSERT ON goi_thau
-                FOR EACH ROW
-                BEGIN
-                    DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = NEW.id;
-                    
-                    -- Chèn chuyên gia
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                    SELECT DISTINCT NEW.id,
-                        CASE 
-                            WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
-                            THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
-                            ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
-                        END,
-                        'chuyen_gia',
-                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
-                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
-                    FROM json_each(NEW.chuyen_gia_list)
-                    WHERE NEW.chuyen_gia_list IS NOT NULL 
-                      AND json_valid(NEW.chuyen_gia_list)
-                      AND COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) IS NOT NULL;
-
-                    -- Chèn thẩm định
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                    SELECT DISTINCT NEW.id,
-                        CASE 
-                            WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
-                            THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
-                            ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
-                        END,
-                        'tham_dinh',
-                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
-                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
-                    FROM json_each(NEW.tham_dinh_list)
-                    WHERE NEW.tham_dinh_list IS NOT NULL 
-                      AND json_valid(NEW.tham_dinh_list)
-                      AND COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) IS NOT NULL;
-                END;
-            """)
-
-            cursor.execute("""
-                CREATE TRIGGER IF NOT EXISTS tg_sync_goithau_chuyengia_update
-                AFTER UPDATE OF chuyen_gia_list, tham_dinh_list ON goi_thau
-                FOR EACH ROW
-                BEGIN
-                    DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = NEW.id;
-                    
-                    -- Chèn chuyên gia
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                    SELECT DISTINCT NEW.id,
-                        CASE 
-                            WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
-                            THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
-                            ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
-                        END,
-                        'chuyen_gia',
-                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
-                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
-                    FROM json_each(NEW.chuyen_gia_list)
-                    WHERE NEW.chuyen_gia_list IS NOT NULL 
-                      AND json_valid(NEW.chuyen_gia_list)
-                      AND COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) IS NOT NULL;
-
-                    -- Chèn thẩm định
-                    INSERT INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                    SELECT DISTINCT NEW.id,
-                        CASE 
-                            WHEN COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) LIKE 'cg-%' 
-                            THEN SUBSTR(COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')), 4)
-                            ELSE COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id'))
-                        END,
-                        'tham_dinh',
-                        COALESCE(json_extract(value, '$.chucVu'), json_extract(value, '$.chuc_vu'), 'Tổ viên'),
-                        COALESCE(json_extract(value, '$.congViec'), json_extract(value, '$.cong_viec'), '')
-                    FROM json_each(NEW.tham_dinh_list)
-                    WHERE NEW.tham_dinh_list IS NOT NULL 
-                      AND json_valid(NEW.tham_dinh_list)
-                      AND COALESCE(json_extract(value, '$.chuyenGiaId'), json_extract(value, '$.id')) IS NOT NULL;
-                END;
-            """)
+            print("Đồng bộ: Đã dọn dẹp các trigger của goi_thau_chuyen_gia (lưu trực tiếp qua code ứng dụng).")
 
             cursor.execute("SELECT id, chuyen_gia_list, tham_dinh_list FROM goi_thau")
             gt_rows = cursor.fetchall()
@@ -1012,9 +929,9 @@ def khoi_tao_va_di_tru_he_thong():
                                  """, (gt_id, clean_td_id, chuc_vu, cong_viec))
                     except Exception:
                         pass
-            print("Đồng bộ: Thiết lập trigger và di trú chuyên gia sang goi_thau_chuyen_gia thành công!")
+            print("Đồng bộ: Di trú chuyên gia sang goi_thau_chuyen_gia thành công!")
         except Exception as trigger_ex:
-            print("Lỗi khi thiết lập trigger/di trú chuyên gia:", trigger_ex)
+            print("Lỗi khi dọn dẹp trigger/di trú chuyên gia:", trigger_ex)
                            
         try:
             cursor.execute("SELECT id, ten_to_chuc FROM to_chuc")

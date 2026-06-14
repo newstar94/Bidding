@@ -86,7 +86,7 @@ export async function changeUserPackage(userId, newPackage) {
 }
 
 export async function toggleUserPackage(userId, packageId, isChecked) {
-    const user = this.model.state.employees.find(e => e.id === `user-${userId}`);
+    const user = this.model.state.employees.find(e => String(e.id) === String(userId));
     if (!user) return;
 
     let userPkgs = user.package_id ? user.package_id.split(',').filter(p => p && p !== 'none') : [];
@@ -318,7 +318,7 @@ export function setupRBACEvents() {
                 const existingEmp = this.model.state.employees.find(em => em.id === id);
                 if (existingEmp && existingEmp.email.trim().toLowerCase() !== emailInput) {
                     try {
-                        const oldUserId = id.replace('user-', '');
+                        const oldUserId = id;
                         const oldUser = systemUsers.find(u => String(u.id) === oldUserId);
                         if (oldUser) {
                             let oldPkgs = oldUser.package_id ? oldUser.package_id.split(',').filter(p => p && p !== 'none') : [];
@@ -339,7 +339,7 @@ export function setupRBACEvents() {
                     localStorage.setItem('bf_employees', JSON.stringify(newLocal));
 
                     // Swap IDs in permission matrix & assignments
-                    const newEmpId = `user-${foundUser.id}`;
+                    const newEmpId = foundUser.id;
                     this.model.state.permissionmatrix.forEach(m => {
                         if (m.empId === id) m.empId = newEmpId;
                     });
@@ -392,7 +392,7 @@ export function setupRBACEvents() {
 
             // Save custom name and phone locally so reloadEmployeesFromDatabase will preserve it
             const localEmployees = JSON.parse(localStorage.getItem('bf_employees') || '[]');
-            const empIdInState = `user-${foundUser.id}`;
+            const empIdInState = foundUser.id;
             const customEmp = {
                 id: empIdInState,
                 name: document.getElementById('emp-name').value.trim(),
@@ -465,14 +465,14 @@ export function setupRBACEvents() {
             e.preventDefault();
             if (!this.view.validateForm(formHsg)) return;
 
-            const orgId = 'org-1'; // VinaCorp
+            const orgId = '1'; // VinaCorp
             const id = document.getElementById('form-hosogiay-id').value;
             const name = document.getElementById('hsg-name').value.trim();
             const color = document.getElementById('hsg-color').value;
 
             const data = {
                 orgId: orgId,
-                id: id || 'ps-' + window.generateUUID(),
+                id: id || window.generateUUID(),
                 name: name,
                 color: color
             };
@@ -783,7 +783,7 @@ export async function deleteEmployee(id) {
             empPkgs = empPkgs.filter(p => !managerPkgs.includes(p));
 
             const newPackageIds = empPkgs.join(',');
-            const userIdStr = id.replace('user-', '');
+            const userIdStr = id;
             const res = await fetch('/api/auth/users/update-package', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -825,7 +825,7 @@ export async function reloadEmployeesFromDatabase() {
             this.model.state.employees = users.map(u => {
                 const localEmp = localEmployees.find(le => le.email && le.email.trim().toLowerCase() === (u.email || '').trim().toLowerCase());
                 return {
-                    id: `user-${u.id}`,
+                    id: u.id,
                     username: u.username,
                     name: localEmp ? localEmp.name : u.name,
                     email: u.email || '',

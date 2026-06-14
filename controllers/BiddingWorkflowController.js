@@ -277,7 +277,7 @@ export async function handleKeHoachSubmit(e) {
             const relatedPlans = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
             const maxVersion = Math.max(...relatedPlans.map(k => parseInt(k.phienBan) || 0));
             const nextVersion = String(maxVersion + 1).padStart(2, '0');
-            const newId = 'kh-' + window.generateUUID();
+            const newId = window.generateUUID();
 
             relatedPlans.forEach(k => { k.isLatest = 0; k.is_latest = 0; });
 
@@ -348,7 +348,7 @@ export async function handleKeHoachSubmit(e) {
             oldKh.soQdPheDuyetDuToan = pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : '';
         }
     } else {
-        const planId = 'kh-' + window.generateUUID();
+        const planId = window.generateUUID();
         targetPlanId = planId;
         const loaiHinhVal = document.getElementById('kh-loaihinh').value;
         this.model.state.kehoach.push({
@@ -1422,7 +1422,7 @@ export async function handleGoiThauSubmit(e) {
             const nextVersion = String(maxVersion + 1).padStart(2, '0');
 
             relatedGts.forEach(g => { g.isLatest = 0; g.is_latest = 0; });
-            const newGtId = 'gt-' + window.generateUUID();
+            const newGtId = window.generateUUID();
             this.model.state.goithau.push({
                 id: newGtId,
                 maGoiThau: inputCode,
@@ -1464,7 +1464,7 @@ export async function handleGoiThauSubmit(e) {
 
             const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
             if (assignedEmpId) {
-                this.model.state.assignments.push({ id: 'asm-' + window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
+                this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
                 this.model.persistData('assignments');
             }
         } else {
@@ -1477,12 +1477,12 @@ export async function handleGoiThauSubmit(e) {
             const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
             this.model.state.assignments = this.model.state.assignments.filter(a => a.targetId !== id || a.type !== 'goithau');
             if (assignedEmpId) {
-                this.model.state.assignments.push({ id: 'asm-' + window.generateUUID(), empId: assignedEmpId, targetId: id, type: 'goithau' });
+                this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: id, type: 'goithau' });
             }
             this.model.persistData('assignments');
         }
     } else {
-        const newGtId = 'gt-' + window.generateUUID();
+        const newGtId = window.generateUUID();
         this.model.state.goithau.push({
             id: newGtId,
             maGoiThau: inputCode,
@@ -1499,7 +1499,7 @@ export async function handleGoiThauSubmit(e) {
 
         const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
         if (assignedEmpId) {
-            this.model.state.assignments.push({ id: 'asm-' + window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
+            this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
             this.model.persistData('assignments');
         }
     }
@@ -1897,7 +1897,7 @@ export async function handleExcelUpload(file) {
                         (n.tenNhaThau && rawNhaThau && n.tenNhaThau.toLowerCase() === rawNhaThau.toLowerCase())
                     );
 
-                    const nhaThauId = foundNhaThau ? foundNhaThau.id : 'temp-' + window.generateUUID();
+                    const nhaThauId = foundNhaThau ? foundNhaThau.id : window.generateUUID();
 
                     const maPhanLo = String(row['Mã phần lô'] || row['Phần lô'] || row['Mã lô'] || '').trim();
                     let tenPhanLo = String(row['Tên phần lô (Tự động điền)'] || row['Tên phần lô'] || row['Tên lô'] || '').trim();
@@ -2023,7 +2023,7 @@ export async function saveExcelImport() {
 
     if (type === 'plan' || type === 'kehoach') {
         const mappedData = this._excelImportData.map(row => {
-            const planId = 'kh-' + window.generateUUID();
+            const planId = window.generateUUID();
             return {
                 id: planId,
                 maKeHoach: row.maKeHoach || '',
@@ -2048,7 +2048,7 @@ export async function saveExcelImport() {
         const latestPlans = this.model.getLatestPlans();
         const mappedData = this._excelImportData.map(row => {
             const matchedPlan = latestPlans.find(p => p.maKeHoach.toLowerCase() === (row.keHoachId || row.maKeHoach || '').toLowerCase());
-            const gtId = 'gt-' + window.generateUUID();
+            const gtId = window.generateUUID();
             return {
                 id: gtId,
                 maGoiThau: row.maGoiThau || '',
@@ -2090,7 +2090,7 @@ export async function saveExcelImport() {
     } else if (type === 'chudautu') {
         const mappedData = this._excelImportData.map(row => {
             return {
-                id: 'cdt-' + window.generateUUID(),
+                id: window.generateUUID(),
                 maChuDauTu: row.maChuDauTu || '',
                 maSoThue: row.maSoThue || '',
                 tenChuDauTu: row.tenChuDauTu || '',
@@ -2113,7 +2113,7 @@ export async function saveExcelImport() {
     } else if (type === 'nhathau') {
         const mappedData = this._excelImportData.map(row => {
             return {
-                id: 'nt-' + window.generateUUID(),
+                id: window.generateUUID(),
                 maNhaThau: row.maNhaThau || '',
                 tenNhaThau: row.tenNhaThau || '',
                 loaiNhaThau: row.loaiNhaThau || 'Độc lập',
@@ -2136,7 +2136,7 @@ export async function saveExcelImport() {
     } else if (type === 'chuyengia') {
         const mappedData = this._excelImportData.map(row => {
             return {
-                id: 'cg-' + window.generateUUID(),
+                id: window.generateUUID(),
                 hoTen: row.hoTen || '',
                 soCCCD: row.soCCCD || '',
                 ngayCapCCCD: row.ngayCapCCCD ? this.model.convertDMYToYMD(row.ngayCapCCCD) : '',
@@ -2159,7 +2159,7 @@ export async function saveExcelImport() {
             const cdt = this.model.state.chudautu.find(c => c.maChuDauTu.toLowerCase() === (row.chuDauTuId || '').toLowerCase());
             const nt = this.model.state.nhathau.find(n => n.maNhaThau.toLowerCase() === (row.nhaThauId || '').toLowerCase());
 
-            const newId = 'hd-' + window.generateUUID();
+            const newId = window.generateUUID();
             return {
                 id: newId,
                 tenHopDong: row.tenHopDong || '',
@@ -2193,7 +2193,7 @@ export async function saveExcelImport() {
                 );
 
                 if (!foundNt && row.tenNhaThau) {
-                    const newId = 'nt-' + window.generateUUID();
+                    const newId = window.generateUUID();
                     foundNt = {
                         id: newId,
                         maNhaThau: row.maNhaThau || 'NT-' + window.generateUUID().toString().substr(8),
@@ -2220,7 +2220,7 @@ export async function saveExcelImport() {
                 const nhaThauId = foundNt ? foundNt.id : row.nhaThauId;
 
                 this.model.state.thongtinmothau.push({
-                    id: row.id || ('tm-' + window.generateUUID()),
+                    id: row.id || window.generateUUID(),
                     goiThauId: gtId,
                     nhaThauId: nhaThauId,
                     maPhanLo: row.maPhanLo || '',
@@ -2356,7 +2356,7 @@ export function addPhanLoRow(data = {}) {
     const tbody = document.getElementById('phanlo-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || 'pl-' + window.generateUUID();
+    const rowId = data.id || window.generateUUID();
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -2451,7 +2451,7 @@ export function addTuyChonMuaThemRow(data = {}) {
     const tbody = document.getElementById('tuychonmuathem-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || 'tc-' + window.generateUUID();
+    const rowId = data.id || window.generateUUID();
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -2602,7 +2602,7 @@ export function addGiaHanRow(data = {}) {
     const tbody = document.getElementById('gt-giahan-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || 'gh-' + window.generateUUID();
+    const rowId = data.id || window.generateUUID();
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -2674,7 +2674,7 @@ export function addYeuCauLamRoRow(data = {}) {
     const tbody = document.getElementById('gt-yeucaulamro-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || 'yc-' + window.generateUUID();
+    const rowId = data.id || window.generateUUID();
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -2743,7 +2743,7 @@ export function addTraLoiLamRoRow(data = {}) {
     const tbody = document.getElementById('gt-traloilamro-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || 'tl-' + window.generateUUID();
+    const rowId = data.id || window.generateUUID();
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -4081,7 +4081,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     if (!tbody) return;
 
     const tr = document.createElement('tr');
-    tr.setAttribute('data-id', bidData.id || 'tm-' + window.generateUUID());
+    tr.setAttribute('data-id', bidData.id || window.generateUUID());
     let ntCode = bidData.maNhaThau || '';
     let ntName = bidData.tenNhaThau || '';
     let ntType = bidData.loaiNhaThau || 'Độc lập';
@@ -4523,7 +4523,7 @@ export async function saveThongTinMoThau() {
         if (loaiNhaThau === 'Độc lập') {
             if (!foundNt) {
                 // Register new Independent Contractor in Database!
-                const newId = 'nt-' + window.generateUUID();
+                const newId = window.generateUUID();
                 foundNt = {
                     id: newId,
                     maNhaThau: maNhaThau,
@@ -4558,7 +4558,7 @@ export async function saveThongTinMoThau() {
         } else {
             // JV: The leading member is treated as an independent contractor
             if (!foundNt) {
-                const newId = 'nt-' + window.generateUUID();
+                const newId = window.generateUUID();
                 foundNt = {
                     id: newId,
                     maNhaThau: maNhaThau,
@@ -4597,7 +4597,7 @@ export async function saveThongTinMoThau() {
                     n.maNhaThau && n.maNhaThau.trim().toLowerCase() === member.maSoThue.trim().toLowerCase()
                 );
                 if (!subNt) {
-                    const newSubId = 'nt-' + window.generateUUID();
+                    const newSubId = window.generateUUID();
                     subNt = {
                         id: newSubId,
                         maNhaThau: member.maSoThue,

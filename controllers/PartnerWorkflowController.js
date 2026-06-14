@@ -163,7 +163,7 @@ export async function handleChuDauTuSubmit(e) {
 
         if (isNewVersion) {
             versions.forEach(c => { c.isLatest = 0; c.is_latest = 0; });
-            data.id = 'cdt-' + window.generateUUID();
+            data.id = window.generateUUID();
             data.rootId = rootId;
             data.phienBan = nextVerStr;
             data.phien_ban = nextVerStr;
@@ -189,7 +189,7 @@ export async function handleChuDauTuSubmit(e) {
             this.model.state.chudautu[idx] = data;
         }
     } else {
-        const newId = 'cdt-' + window.generateUUID();
+        const newId = window.generateUUID();
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';
@@ -477,7 +477,7 @@ export async function handleNhaThauSubmit(e) {
 
         if (isNewVersion) {
             versions.forEach(n => { n.isLatest = 0; n.is_latest = 0; });
-            data.id = 'nt-' + window.generateUUID();
+            data.id = window.generateUUID();
             data.rootId = rootId;
             data.phienBan = nextVerStr;
             data.phien_ban = nextVerStr;
@@ -503,7 +503,7 @@ export async function handleNhaThauSubmit(e) {
             this.model.state.nhathau[idx] = data;
         }
     } else {
-        const newId = 'nt-' + window.generateUUID();
+        const newId = window.generateUUID();
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';
@@ -747,7 +747,7 @@ export function handleChuyenGiaSubmit(e) {
     const sigExt = this.model.getFileExtensionFromBase64(this.tempChuyenGiaSignatureBase64);
 
     const data = {
-        id: id || 'cg-' + window.generateUUID(),
+        id: id || window.generateUUID(),
         hoTen: document.getElementById('cg-hoten').value.trim(),
 
         soCCCD: cccdVal,
@@ -990,7 +990,7 @@ export function editHopDong(id) {
         // Populate Trạng thái hồ sơ giấy dropdown
         const statusSelect = document.getElementById('hd-trangthai');
         if (statusSelect) {
-            const orgId = 'org-1'; // VinaCorp
+            const orgId = '1'; // VinaCorp
             const orgStatuses = Array.isArray(this.model.state.custompaperstatuses)
                 ? this.model.state.custompaperstatuses.filter(s => s.orgId === orgId)
                 : [];
@@ -1153,7 +1153,7 @@ export function handleHopDongSubmit(e) {
             this.model.state.hopdong[idx] = { id, tenHopDong, soHopDong, ngayKy, chuDauTuId, nhaThauId, giaTri, loaiHopDong, soNgayThucHien, goiThauIds, trangThaiHoSo };
         }
     } else {
-        const newId = 'hd-' + (this.model.state.hopdong.length > 0 ? (Math.max(...this.model.state.hopdong.map(h => parseInt(h.id.replace('hd-', '')) || 0)) + 1) : 1);
+        const newId = window.generateUUID();
         this.model.state.hopdong.push({ id: newId, tenHopDong, soHopDong, ngayKy, chuDauTuId, nhaThauId, giaTri, loaiHopDong, soNgayThucHien, goiThauIds, trangThaiHoSo });
         finalHdId = newId;
     }
@@ -1161,7 +1161,7 @@ export function handleHopDongSubmit(e) {
     if (finalHdId) {
         this.model.state.assignments = this.model.state.assignments.filter(a => a.targetId !== finalHdId || a.type !== 'hopdong');
         if (assignedEmpId) {
-            this.model.state.assignments.push({ id: 'asm-' + window.generateUUID(), empId: assignedEmpId, targetId: finalHdId, type: 'hopdong' });
+            this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: finalHdId, type: 'hopdong' });
         }
         this.model.persistData('assignments');
     }
