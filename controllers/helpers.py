@@ -16,7 +16,7 @@ from email.mime.text import MIMEText
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # ==========================================
-# CẤU HÌNH ĐƯỜNG DẪN & TẢI MODULE BIÊN DỊCH
+# CẤU HÌNH ĐƯỜNG DẪN & RE-EXPORT CÁC THÀNH PHẦN CON
 # ==========================================
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,286 +28,30 @@ sys.path.insert(0, project_root)
 sys.path.append(models_dir)
 sys.path.append(controllers_dir)
 
-# Load env file if any
-env_path = os.path.join(project_root, '.env')
-if os.path.exists(env_path):
-    with open(env_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            if '=' in line:
-                k, v = line.split('=', 1)
-                k = k.strip()
-                v = v.strip().strip("'").strip('"')
-                os.environ[k] = v
+# Nạp các thành phần từ helper nhỏ hơn để tương thích ngược
+import db_helper
+from db_helper import (
+    load_and_register,
+    models,
+    database
+)
 
-import importlib.machinery
-import importlib.util
+import media_helper
+from media_helper import (
+    save_base64_image,
+    load_base64_image
+)
 
-def load_and_register(name, filepath):
-    loader = importlib.machinery.SourcelessFileLoader(name, filepath)
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
-    sys.modules[name] = module
-    loader.exec_module(module)
-    return module
-
-models = load_and_register('models', os.path.join(models_dir, 'models.cpython-314.pyc'))
-database = load_and_register('database', os.path.join(models_dir, 'database.cpython-314.pyc'))
-
-db_indexes_created = False
-orig_get_connection = database.get_connection
-
-def optimized_get_connection(*args, **kwargs):
-    conn = orig_get_connection(*args, **kwargs)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode = WAL")
-        cursor.execute("PRAGMA foreign_keys = ON")
-        cursor.execute("PRAGMA cache_size = -65536")
-        cursor.execute("PRAGMA synchronous = NORMAL")
-        cursor.execute("PRAGMA temp_store = MEMORY")
-        
-        global db_indexes_created
-        if not db_indexes_created:
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_kehoach ON goi_thau(ke_hoach_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_chudautu ON ke_hoach_lcnt(chu_dau_tu_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_thongtinmothau_goithau ON thong_tin_mo_thau(goi_thau_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_latest ON chu_dau_tu(id_goc, is_latest)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_latest ON nha_thau(id_goc, is_latest)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdong_chudautu ON hop_dong(chu_dau_tu_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdong_nhathau ON hop_dong(nha_thau_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_latest ON ke_hoach_lcnt(id_goc, is_latest)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_latest ON goi_thau(id_goc, is_latest)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_nhathau ON goi_thau(nha_thau_trung_thau_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_thongtinmothau_nhathau ON thong_tin_mo_thau(nha_thau_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdonggoithau_goithau ON hop_dong_goi_thau(goi_thau_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_deletedrecords_lookup ON deleted_records(owner_id, deleted_at)")
-            db_indexes_created = True
-    except Exception as e:
-        print(f"Error applying SQLite PRAGMAs or indexes: {e}")
-    return conn
-
-database.get_connection = optimized_get_connection
-
-# exporter = load_and_register('exporter', os.path.join(controllers_dir, 'exporter.cpython-314.pyc'))
-import custom_exporter
-
-def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> str:
-    if not base64_str:
-        return ""
-    if not isinstance(base64_str, str):
-        return base64_str
-    if not (base64_str.startswith("data:image") or len(base64_str) > 100):
-        return base64_str
-        
-    header = ""
-    data_str = base64_str
-    if base64_str.startswith("data:image"):
-        try:
-            parts = base64_str.split(";base64,")
-            header = parts[0]
-            data_str = parts[1]
-        except Exception:
-            return base64_str
-            
-    ext = "png"
-    if "jpeg" in header or "jpg" in header:
-        ext = "jpg"
-    elif "webp" in header:
-        ext = "webp"
-    elif "gif" in header:
-        ext = "gif"
-        
-    try:
-        upload_dir = os.path.join(project_root, "uploads", subfolder)
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        file_data = base64.b64decode(data_str)
-        filename = f"{filename_prefix}.{ext}"
-        filepath = os.path.join(upload_dir, filename)
-        
-        try:
-            from PIL import Image
-            import io
-            
-            img = Image.open(io.BytesIO(file_data))
-            max_size = 1200
-            if "sig" in filename_prefix:
-                max_size = 600
-                
-            if img.width > max_size or img.height > max_size:
-                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                
-            save_format = "PNG" if ext == "png" else ("JPEG" if ext in ["jpg", "jpeg"] else img.format)
-            save_kwargs = {}
-            if save_format == "JPEG":
-                save_kwargs["quality"] = 100
-                save_kwargs["optimize"] = True
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-            elif save_format == "PNG":
-                save_kwargs["optimize"] = True
-                
-            img.save(filepath, format=save_format, **save_kwargs)
-        except Exception as pil_err:
-            print(f"Pillow optimization failed, falling back to raw save: {pil_err}")
-            with open(filepath, "wb") as f:
-                f.write(file_data)
-                
-        return f"uploads/{subfolder}/{filename}"
-    except Exception as e:
-        print(f"Error saving base64 image: {e}")
-        return base64_str
-
-def load_base64_image(db_value: str) -> str:
-    if not db_value or not isinstance(db_value, str):
-        return ""
-    if not db_value.startswith("uploads/"):
-        return db_value
-    # LRU cache cục bộ – tránh đọc file lặp lại và encode base64 nhiều lần
-    _cache = _load_image_cache
-    if db_value in _cache:
-        return _cache[db_value]
-    try:
-        filepath = os.path.join(project_root, db_value)
-        if os.path.exists(filepath):
-            with open(filepath, "rb") as f:
-                file_data = f.read()
-            ext = db_value.split(".")[-1].lower()
-            mime = "image/png"
-            if ext in ["jpg", "jpeg"]:
-                mime = "image/jpeg"
-            elif ext == "webp":
-                mime = "image/webp"
-            elif ext == "gif":
-                mime = "image/gif"
-            
-            b64 = f"data:{mime};base64,{base64.b64encode(file_data).decode('utf-8')}"
-            # Cache kết quả (giới hạn 256 entry)
-            if len(_cache) >= 256:
-                _cache.pop(next(iter(_cache)))
-            _cache[db_value] = b64
-            return b64
-    except Exception as e:
-        print(f"Error loading image path {db_value}: {e}")
-    return db_value
-
-# Dict dùng cho image cache (họạt động như LRU thủ công)
-_load_image_cache: dict = {}
-
-def hash_password(password: str, salt: str = None) -> str:
-    if salt is None:
-        salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
-    return f"{salt}:{pwd_hash.hex()}"
-
-def verify_password(stored_password: str, provided_password: str) -> bool:
-    try:
-        if not stored_password:
-            return False
-        if ":" not in stored_password:
-            # Không còn hỗ trợ so sánh plain-text – tất cả mật khẩu phải qua hash
-            # (backward compat cho DB cũ đã được xử lý trong migration)
-            return False
-        salt, stored_hash = stored_password.split(":", 1)
-        pwd_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt.encode('utf-8'), 100000)
-        return secrets.compare_digest(stored_hash, pwd_hash.hex())
-    except Exception:
-        return False
-
-ROLE_HIERARCHY = {
-    'super_admin': ['super_admin', 'manager', 'employee'],
-    'manager':     ['manager', 'employee'],
-    'employee':    ['employee'],
-}
-
-def get_effective_roles(role_str):
-    roles = [r.strip() for r in (role_str or '').split(',') if r.strip()]
-    effective = set()
-    for r in roles:
-        effective.update(ROLE_HIERARCHY.get(r, [r]))
-    return effective
-
-# ==========================================
-# SESSION CACHE (In-memory, TTL 60 giây)
-# Giảm số lần truy vấn DB cho verify_session
-# ==========================================
-import threading
-_session_cache = {}          # token -> (user_dict, expire_at)
-_session_cache_lock = threading.Lock()
-SESSION_CACHE_TTL = 60      # giây
-
-def _session_cache_get(token: str):
-    with _session_cache_lock:
-        entry = _session_cache.get(token)
-        if entry and time.time() < entry[1]:
-            return entry[0]
-        if entry:
-            del _session_cache[token]
-    return None
-
-def _session_cache_set(token: str, user_dict: dict):
-    with _session_cache_lock:
-        _session_cache[token] = (user_dict, time.time() + SESSION_CACHE_TTL)
-
-def _session_cache_invalidate(token: str):
-    """Gọi khi đăng xuất hoặc đổi mật khẩu."""
-    with _session_cache_lock:
-        _session_cache.pop(token, None)
-
-class SessionRole(str):
-    def __new__(cls, role, user_id):
-        instance = super().__new__(cls, role)
-        instance.user_id = user_id
-        return instance
-
-def verify_session(request, required_role=None):
-    token = request.headers.get('X-Session-Token')
-    username = request.headers.get('X-Username')
-    
-    if not token or not username:
-        return False, "Thiếu thông tin xác thực phiên làm việc!"
-
-    # 1. Kiểm tra cache trước khi gọi DB
-    cached_user = _session_cache_get(token)
-    if cached_user:
-        if cached_user.get('token_phien') != token:
-            _session_cache_invalidate(token)
-        else:
-            if required_role and required_role not in get_effective_roles(cached_user['vai_tro']):
-                return False, "Bạn không có quyền thực hiện thao tác này!"
-            return True, SessionRole(cached_user['vai_tro'], cached_user['id'])
-    
-    # 2. Truy vấn DB nếu chưa có trong cache
-    conn = database.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, vai_tro, token_phien, han_su_dung_token FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
-    row = cursor.fetchone()
-    conn.close()
-    
-    if not row:
-        return False, "Tài khoản không tồn tại!"
-        
-    user = dict(row)
-    if user['token_phien'] != token:
-        return False, "Phiên làm việc đã hết hạn hoặc không hợp lệ!"
-
-    if user.get('han_su_dung_token'):
-        try:
-            expiry = datetime.fromisoformat(user['han_su_dung_token'])
-            if datetime.utcnow() > expiry:
-                _session_cache_invalidate(token)
-                return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
-        except Exception:
-            pass
-        
-    if required_role and required_role not in get_effective_roles(user['vai_tro']):
-        return False, "Bạn không có quyền thực hiện thao tác này!"
-
-    # Lưu vào cache để các request tiếp theo khỏi truy vấn DB
-    _session_cache_set(token, user)
-    return True, SessionRole(user['vai_tro'], user['id'])
+import auth_helper
+from auth_helper import (
+    ROLE_HIERARCHY,
+    get_effective_roles,
+    hash_password,
+    verify_password,
+    SessionRole,
+    verify_session,
+    _session_cache_invalidate
+)
 
 SCHEMA_DINH_NGHIA = {
     "goi_dich_vu": {
@@ -676,6 +420,8 @@ SPECIAL_FIELD_MAPS = {
         "gia_han_list": "giaHanList",
         "yeu_cau_lam_ro_list": "yeuCauLamRoList",
         "tra_loi_lam_ro_list": "traLoiLamRoList",
+        "so_quyet_dinh": "soQuyetDinh",
+        "ngay_quyet_dinh": "ngayQuyetDinh",
         "so_quyet_dinh_ket_qua": "soQuyetDinhKetQua",
         "ngay_quyet_dinh_ket_qua": "ngayQuyetDinhKetQua",
         "gia_tri_dam_bao_du_thau": "giaToDamBaoDuThau",
@@ -1278,6 +1024,7 @@ def khoi_tao_va_di_tru_he_thong():
     except Exception as e:
         print("Lỗi khởi tạo/di trú database Tiếng Việt:", e)
 
+# Trigger migration once at helper module import
 khoi_tao_va_di_tru_he_thong()
 
 def log_error(e_or_msg, context="System"):
@@ -1293,7 +1040,6 @@ def log_error(e_or_msg, context="System"):
             f.write(msg)
     except Exception:
         pass
-    # Chỉ in ra stdout khi ở chế độ DEBUG
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
         print(f"[{context}] {e_or_msg}")
 
@@ -1340,7 +1086,6 @@ class VietnameseFloat(float):
 def clean_admin_prefix(name):
     if not name:
         return ""
-    # Fix: thay thế tiền tố địa danh bằng chuỗi rỗng (không phải `name`)
     pattern = r"^(thành phố|tỉnh|phường|xã|thị trấn)\s+"
     return re.sub(pattern, '', name, flags=re.IGNORECASE)
 
