@@ -548,6 +548,13 @@ async def upload_template_api(request):
         if not file_obj:
             return JSONResponse({"error": "No file uploaded"}, status_code=400)
         
+        # Làm sạch tên file để tránh lỗi Path Traversal
+        filename = os.path.basename(file_obj.filename)
+        # Chỉ cho phép các định dạng tệp .docx và .doc
+        _, ext = os.path.splitext(filename.lower())
+        if ext not in ['.docx', '.doc']:
+            return JSONResponse({"success": False, "error": "Chỉ cho phép tải lên tệp tin định dạng .docx hoặc .doc!"}, status_code=400)
+
         file_bytes = await file_obj.read()
         valid, msg = custom_exporter.validate_template_syntax(file_bytes)
         
@@ -555,11 +562,11 @@ async def upload_template_api(request):
             return JSONResponse({"success": False, "error": msg}, status_code=200)
         
         user_dir = custom_exporter.get_user_template_dir(user_id)
-        save_path = os.path.join(user_dir, file_obj.filename)
+        save_path = os.path.join(user_dir, filename)
         with open(save_path, 'wb') as f:
             f.write(file_bytes)
             
-        custom_exporter.set_active_template(file_obj.filename, user_id)
+        custom_exporter.set_active_template(filename, user_id)
         return JSONResponse({"success": True, "message": "Tải biểu mẫu lên thành công và đã được kích hoạt!"})
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)

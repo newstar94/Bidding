@@ -48,6 +48,40 @@ def optimized_get_connection(*args, **kwargs):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_thongtinmothau_nhathau ON thong_tin_mo_thau(nha_thau_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdonggoithau_goithau ON hop_dong_goi_thau(goi_thau_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_deletedrecords_lookup ON deleted_records(owner_id, deleted_at)")
+            
+            # Compound indexes for sync queries
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_owner_updated ON chu_dau_tu(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_owner_updated ON ke_hoach_lcnt(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_owner_updated ON goi_thau(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_owner_updated ON nha_thau(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chuyengia_owner_updated ON chuyen_gia(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdong_owner_updated ON hop_dong(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_assignments_owner_updated ON phan_cong_nhan_su(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_paperstatus_owner_updated ON trang_thai_ho_so_giay(owner_id, updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_thongtinmothau_owner_updated ON thong_tin_mo_thau(owner_id, updated_at)")
+            
+            # [MỚI] Composite indexes tối ưu cho API phân trang (owner_id + is_latest)
+            # Trước đây chỉ có index đơn, nay thêm index ghép để tránh table scan khi lọc đồng thời
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_owner_latest ON chu_dau_tu(owner_id, is_latest)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_owner_latest ON ke_hoach_lcnt(owner_id, is_latest)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_owner_latest ON goi_thau(owner_id, is_latest)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_owner_latest ON nha_thau(owner_id, is_latest)")
+            
+            # [MỚI] Composite indexes cho versioning queries (id_goc + phien_ban)
+            # Tối ưu truy vấn tìm phiên bản mới nhất theo id_goc nhóm
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_goc_ver ON chu_dau_tu(id_goc, phien_ban)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_goc_ver ON ke_hoach_lcnt(id_goc, phien_ban)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_goc_ver ON goi_thau(id_goc, phien_ban)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_goc_ver ON nha_thau(id_goc, phien_ban)")
+            
+            # [MỚI] Indexes cho bảng phân quyền nhân viên (ma_tran_phan_quyen)
+            # Tạo index cho bảng ma_tran_phan_quyen nếu bảng tồn tại
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_matran_owner_empid ON ma_tran_phan_quyen(owner_id, emp_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_matran_owner_updated ON ma_tran_phan_quyen(owner_id, updated_at)")
+            except Exception:
+                pass  # Bảng chưa tồn tại, sẽ tạo khi ứng dụng khởi động
+            
             db_indexes_created = True
     except Exception as e:
         print(f"Error applying SQLite PRAGMAs or indexes: {e}")

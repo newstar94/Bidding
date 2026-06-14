@@ -177,6 +177,10 @@ def _schema_to_options(entity_type):
 
 async def import_excel_api(request):
     try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
         from io import BytesIO
         form = await request.form()
         file_obj = form.get('file')
@@ -317,6 +321,10 @@ async def import_excel_api(request):
 
 async def export_excel_template_api(request):
     try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
         import_type = request.path_params.get('import_type')
         from io import BytesIO
         cols = _schema_to_headers(import_type)
@@ -436,6 +444,10 @@ async def export_excel_template_api(request):
 
 async def export_mothau_template_api(request):
     try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
         case_type = request.query_params.get('case_type', '1G1T_NO_LOT')
         package_name = request.query_params.get('package_name', 'GoiThau')
         lot_codes_str = request.query_params.get('lot_codes', '')
@@ -536,6 +548,11 @@ async def export_mothau_template_api(request):
 
 async def export_danhgiahsdt_template_api(request):
     try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        org_name = get_active_org(request, role_or_err.user_id)
+
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
         
@@ -549,11 +566,11 @@ async def export_danhgiahsdt_template_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT linh_vuc, phuong_thuc_lua_chon, phan_lo, phan_lo_list FROM goi_thau WHERE id = ?", (pkg_id_clean,))
+        cursor.execute("SELECT linh_vuc, phuong_thuc_lua_chon, phan_lo, phan_lo_list FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
         gt_row = cursor.fetchone()
         if not gt_row:
             conn.close()
-            return JSONResponse({"error": "Package not found"}, status_code=404)
+            return JSONResponse({"error": "Package not found or access denied"}, status_code=404)
             
         linh_vuc, phuong_thuc_lua_chon, phan_lo, phan_lo_list_str = gt_row
         
@@ -565,8 +582,8 @@ async def export_danhgiahsdt_template_api(request):
                    danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
                    lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh
             FROM thong_tin_mo_thau
-            WHERE goi_thau_id = ?
-        """, (pkg_id_clean,))
+            WHERE goi_thau_id = ? AND owner_id = ?
+        """, (pkg_id_clean, org_name))
         bids = cursor.fetchall()
         conn.close()
         
@@ -675,6 +692,11 @@ async def export_danhgiahsdt_template_api(request):
 
 async def export_ketquaqd_template_api(request):
     try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        org_name = get_active_org(request, role_or_err.user_id)
+
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
         
@@ -688,14 +710,17 @@ async def export_ketquaqd_template_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau, thoi_gian_hop_dong FROM goi_thau WHERE id = ?", (pkg_id_clean,))
+        cursor.execute("SELECT nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau, thoi_gian_hop_dong FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
         gt_row = cursor.fetchone()
+        if not gt_row:
+            conn.close()
+            return JSONResponse({"error": "Package not found or access denied"}, status_code=404)
         
         cursor.execute("""
             SELECT ma_dinh_danh, ten_nha_thau, nha_thau_id, ly_do_truot, loai_nha_thau, ma_phan_lo, ten_phan_lo
             FROM thong_tin_mo_thau
-            WHERE goi_thau_id = ?
-        """, (pkg_id_clean,))
+            WHERE goi_thau_id = ? AND owner_id = ?
+        """, (pkg_id_clean, org_name))
         bids = cursor.fetchall()
         conn.close()
         

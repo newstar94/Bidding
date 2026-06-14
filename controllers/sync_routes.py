@@ -198,7 +198,8 @@ async def sync_api(request):
             "hopdong": "hop_dong",
             "assignments": "phan_cong_nhan_su",
             "custompaperstatuses": "trang_thai_ho_so_giay",
-            "thongtinmothau": "thong_tin_mo_thau"
+            "thongtinmothau": "thong_tin_mo_thau",
+            "permissionmatrix": "ma_tran_phan_quyen"  # [MỚI] Đồng bộ phân quyền nhân viên
         }
         
         def get_clean_id(tbl, raw_id):
@@ -378,17 +379,23 @@ async def sync_api(request):
                     log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
                     
         # Cập nhật cờ is_latest cho các bảng versioning sau khi lưu xong dữ liệu
+        # [TỐI ƯU] Dùng CASE WHEN thay COALESCE để SQLite có thể tận dụng index (id_goc, phien_ban)
         for tbl in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
             cursor.execute(f"UPDATE {tbl} SET is_latest = 0 WHERE owner_id = ?", (org_name,))
             cursor.execute(f"""
                 UPDATE {tbl} SET is_latest = 1 WHERE owner_id = ? AND id IN (
                     SELECT t1.id FROM {tbl} t1
                     INNER JOIN (
-                        SELECT COALESCE(id_goc, id) as id_goc_group, MAX(CAST(phien_ban AS INTEGER)) as max_ver
+                        SELECT
+                            CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END as id_goc_group,
+                            MAX(CAST(phien_ban AS INTEGER)) as max_ver
                         FROM {tbl}
                         WHERE owner_id = ?
-                        GROUP BY COALESCE(id_goc, id)
-                    ) t2 ON COALESCE(t1.id_goc, t1.id) = t2.id_goc_group AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
+                        GROUP BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
+                    ) t2 ON (
+                        CASE WHEN t1.id_goc IS NOT NULL AND t1.id_goc != '' THEN t1.id_goc ELSE t1.id END
+                    ) = t2.id_goc_group
+                    AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
                     WHERE t1.owner_id = ?
                 )
             """, (org_name, org_name, org_name))
@@ -521,15 +528,31 @@ async def get_all_data_api(request):
         for row in query_table("goi_thau"):
             row_dict = dict(row)
             item = map_db_to_json("goi_thau", row_dict)
+            gt_id = row_dict["id"]
+            # Đọc tổ chuyên gia từ bảng quan hệ (nguồn dữ liệu chính xác)
+            cursor.execute("""
+                SELECT chuyen_gia_id, loai, chuc_vu, cong_viec
+                FROM goi_thau_chuyen_gia WHERE goi_thau_id = ?
+            """, (gt_id,))
+            to_cg = []
+            to_td = []
             cg_ids = []
-            if item.get("toChuyenGia"):
-                for x in item.get("toChuyenGia", []):
-                    if isinstance(x, dict) and 'id' in x:
-                        val = x['id']
-                        if val:
-                            cg_ids.append(val)
+            for rel_row in cursor.fetchall():
+                entry = {
+                    "chuyenGiaId": rel_row[0],
+                    "id": rel_row[0],
+                    "chucVu": rel_row[2] or "Tổ viên",
+                    "congViec": rel_row[3] or ""
+                }
+                if rel_row[1] == "chuyen_gia":
+                    to_cg.append(entry)
+                    cg_ids.append(rel_row[0])
+                elif rel_row[1] == "tham_dinh":
+                    to_td.append(entry)
+            item["toChuyenGia"] = to_cg
+            item["toThamDinh"] = to_td
             item["chuyenGiaIds"] = cg_ids
-            for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "toChuyenGia", "toThamDinh", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
+            for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
                 if item.get(list_key) is None:
                     item[list_key] = []
             goithau.append(item)
@@ -571,8 +594,20 @@ async def get_all_data_api(request):
         thongtinmothau = []
         for row in query_table("thong_tin_mo_thau"):
             thongtinmothau.append(map_db_to_json("thong_tin_mo_thau", dict(row)))
+
+        # 10. Permission Matrix - [MỚI] Đồng bộ phân quyền nhân viên từ server
+        permissionmatrix = []
+        try:
+            if since > 0:
+                cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+            else:
+                cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ?", (org_name,))
+            for row in cursor.fetchall():
+                permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
+        except Exception:
+            pass  # Bảng chưa tồn tại, trả về mảng rỗng
             
-        # 10. Deletions
+        # 11. Deletions
         deletions = []
         if since > 0:
             cursor.execute("SELECT table_name, record_id FROM deleted_records WHERE owner_id = ? AND deleted_at > ?", (org_name, since))
@@ -585,7 +620,8 @@ async def get_all_data_api(request):
                 "hopdong": "hop_dong",
                 "assignments": "phan_cong_nhan_su",
                 "custompaperstatuses": "trang_thai_ho_so_giay",
-                "thongtinmothau": "thong_tin_mo_thau"
+                "thongtinmothau": "thong_tin_mo_thau",
+                "permissionmatrix": "ma_tran_phan_quyen"  # [MỚI]
             }
             TABLE_KEYS_INV = {v: k for k, v in TABLE_KEYS.items()}
             for row in cursor.fetchall():
@@ -605,6 +641,7 @@ async def get_all_data_api(request):
             "assignments": assignments,
             "custompaperstatuses": custompaperstatuses,
             "thongtinmothau": thongtinmothau,
+            "permissionmatrix": permissionmatrix,  # [MỚI] Phân quyền nhân viên
             "deletions": deletions,
             "useServerSidePagination": use_server_pagination,
             "timestamp": current_time
@@ -737,17 +774,31 @@ async def paginate_api(request):
             
             # Additional relationships for goithau/hopdong
             if table_name == "goi_thau":
+                gt_id = row_dict["id"]
+                # Đọc tổ chuyên gia từ bảng quan hệ (nguồn dữ liệu chính xác)
+                cursor.execute("""
+                    SELECT chuyen_gia_id, loai, chuc_vu, cong_viec
+                    FROM goi_thau_chuyen_gia WHERE goi_thau_id = ?
+                """, (gt_id,))
+                to_cg = []
+                to_td = []
                 cg_ids = []
-                if item.get("toChuyenGia"):
-                    for x in item.get("toChuyenGia", []):
-                        if isinstance(x, dict) and 'id' in x:
-                            val = x['id']
-                            if val and not str(val).startswith("cg-"):
-                                cg_ids.append(f"cg-{val}")
-                            else:
-                                cg_ids.append(val)
+                for rel_row in cursor.fetchall():
+                    entry = {
+                        "chuyenGiaId": rel_row[0],
+                        "id": rel_row[0],
+                        "chucVu": rel_row[2] or "Tổ viên",
+                        "congViec": rel_row[3] or ""
+                    }
+                    if rel_row[1] == "chuyen_gia":
+                        to_cg.append(entry)
+                        cg_ids.append(rel_row[0])
+                    elif rel_row[1] == "tham_dinh":
+                        to_td.append(entry)
+                item["toChuyenGia"] = to_cg
+                item["toThamDinh"] = to_td
                 item["chuyenGiaIds"] = cg_ids
-                for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "toChuyenGia", "toThamDinh", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
+                for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
                     if item.get(list_key) is None:
                         item[list_key] = []
             elif table_name == "hop_dong":
@@ -755,9 +806,7 @@ async def paginate_api(request):
                 cursor.execute("SELECT goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id = ?", (row_dict["id"],))
                 for subrow in cursor.fetchall():
                     val = subrow[0]
-                    if val and not val.startswith("gt-"):
-                        goithau_ids.append(f"gt-{val}")
-                    else:
+                    if val:
                         goithau_ids.append(val)
                 item["goiThauIds"] = goithau_ids
                 

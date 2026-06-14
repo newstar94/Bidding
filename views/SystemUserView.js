@@ -128,7 +128,7 @@ export function populateNhanVienPhuTrachDropdowns() {
     };
     const optionsHtml = employees.map(e => {
         const roleLabel = roleLabelMap[e.role] || e.role;
-        return `<option value="${e.id}">${e.name} — ${roleLabel}${e.email ? ' (' + e.email + ')' : ''}</option>`;
+        return `<option value="${escapeHTML(e.id)}">${escapeHTML(e.name)} — ${escapeHTML(roleLabel)}${e.email ? ' (' + escapeHTML(e.email) + ')' : ''}</option>`;
     }).join('');
     
     if (gtDropdown) {
@@ -267,9 +267,9 @@ export function renderSuperAdminPanel() {
 
                     return `
                         <tr>
-                            <td class="fw-bold">${org.name}</td>
-                            <td><span class="fw-bold">${org.contact}</span></td>
-                            <td>${org.phone || '--'}</td>
+                            <td class="fw-bold">${escapeHTML(org.name)}</td>
+                            <td><span class="fw-bold">${escapeHTML(org.contact)}</span></td>
+                            <td>${escapeHTML(org.phone) || '--'}</td>
                             <td>${pkgLabel}</td>
                             <td>${this.model.formatDate(org.regDate)}</td>
                             <td><small class="fw-bold">${this.model.formatDate(org.expDate)}</small></td>
@@ -349,9 +349,9 @@ export function renderManagerNhanVienPanel() {
 
             return `
                 <tr>
-                    <td class="fw-bold" style="text-align: center; vertical-align: middle;">${emp.name}</td>
-                    <td style="text-align: center; vertical-align: middle;">${emp.email}</td>
-                    <td style="text-align: center; vertical-align: middle;">${emp.phone}</td>
+                    <td class="fw-bold" style="text-align: center; vertical-align: middle;">${escapeHTML(emp.name)}</td>
+                    <td style="text-align: center; vertical-align: middle;">${escapeHTML(emp.email)}</td>
+                    <td style="text-align: center; vertical-align: middle;">${escapeHTML(emp.phone)}</td>
                     <td style="max-width: 250px; text-align: center; vertical-align: middle;">${assignedTasks || '<span class="text-muted">Chưa giao thầu</span>'}</td>
                     <td style="text-align: center; vertical-align: middle;">
                         <div class="action-btn-group" style="justify-content: center; display: inline-flex;">
@@ -531,9 +531,9 @@ export function renderSystemUsersTable(usersList, currentUsername) {
 
         return `
             <tr style="cursor: pointer;" onclick="window.showSystemUserDetail('${user.id}')">
-                <td class="fw-bold" style="color: var(--text-main); font-size: 0.9rem;">${user.username}</td>
-                <td style="font-weight: 600;">${user.name}</td>
-                <td>${user.email || '--'}</td>
+                <td class="fw-bold" style="color: var(--text-main); font-size: 0.9rem;">${escapeHTML(user.username)}</td>
+                <td style="font-weight: 600;">${escapeHTML(user.name)}</td>
+                <td>${escapeHTML(user.email) || '--'}</td>
                 <td>${getRoleBadge(user.role)}</td>
                 <td>${getPackageBadge(user.package_id)}</td>
                 <td>${calculateRemainingDays(user.package_end_date)}</td>

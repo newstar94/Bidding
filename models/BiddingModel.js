@@ -12,6 +12,16 @@ window.generateUUID = function() {
     });
 };
 
+window.escapeHTML = function(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+
 class BrowserDB {
     constructor(dbName = "BiddingFlowDB") {
         this.dbName = dbName;

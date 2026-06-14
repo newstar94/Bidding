@@ -289,6 +289,9 @@ SCHEMA_DINH_NGHIA = {
         "unique_constraints": [
             "UNIQUE(id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
         ]
+        # Note: id_nhan_vien references tai_khoan.id but FK constraint omitted intentionally
+        # because tai_khoan uses ON DELETE CASCADE would auto-delete assignments,
+        # which may not always be desired (employee re-assignment scenarios).
     },
     "trang_thai_ho_so_giay": {
         "columns": {
@@ -402,6 +405,28 @@ SCHEMA_DINH_NGHIA = {
         "unique_constraints": [
             "UNIQUE(owner_id, ten_bien)"
         ]
+    },
+    # Bảng ma_tran_phan_quyen: lưu phân quyền theo module của từng nhân viên trong tổ chức.
+    # Trước đây chỉ lưu trên IndexedDB client-side, dẫn đến mất dữ liệu khi đổi thiết bị.
+    # Nay đồng bộ lên server để đảm bảo bền vững.
+    "ma_tran_phan_quyen": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT NOT NULL",
+            "emp_id": "TEXT NOT NULL",
+            "kehoach": "TEXT",
+            "goithau": "TEXT",
+            "chudautu": "TEXT",
+            "nhathau": "TEXT",
+            "chuyengia": "TEXT",
+            "hopdong": "TEXT",
+            "thongtinmothau": "TEXT",
+            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
+            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+        },
+        "unique_constraints": [
+            "UNIQUE(owner_id, emp_id)"
+        ]
     }
 }
 
@@ -474,6 +499,16 @@ SPECIAL_FIELD_MAPS = {
         "id_nhan_vien": "empId",
         "id_muc_tieu": "targetId",
         "loai_doi_tuong": "type"
+    },
+    "ma_tran_phan_quyen": {
+        "emp_id": "empId",
+        "kehoach": "kehoach",
+        "goithau": "goithau",
+        "chudautu": "chudautu",
+        "nhathau": "nhathau",
+        "chuyengia": "chuyengia",
+        "hopdong": "hopdong",
+        "thongtinmothau": "thongtinmothau"
     }
 }
 
