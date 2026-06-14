@@ -264,7 +264,7 @@ async def export_report_api(request):
             if val is None:
                 val = '--'
             elif isinstance(val, (int, float)) and ('gia' in src_column or 'tong_muc' in src_column or 'gia_tri' in src_column):
-                val = f'{VietnameseFloat(val)} VND'
+                val = f'{VietnameseFloat(val)}'
             elif isinstance(val, (int, float)):
                 val = str(val)
             else:
@@ -367,8 +367,7 @@ async def export_report_api(request):
                 custom_context['Danh_Sach_Phan_Lo'].append({
                     'STT': idx + 1,
                     'Ten_Phan_Lo': pl.get('tenPhanLo', '--'),
-                    'Gia_Tri_Phan_Lo': f"{VietnameseFloat(raw_val)} VND" if raw_val else '0 VND',
-                    'Gia_Tri_So': float(raw_val),
+                    'Gia_Tri_Phan_Lo': f"{VietnameseFloat(raw_val)}" if raw_val else '0',
                     'Nha_Thau_Trung': nt_name,
                     'Thoi_Gian_Thuc_Hien': pl.get('thoiGianHopDong') or pl.get('thoiGianThucHien') or '--'
                 })
@@ -385,7 +384,7 @@ async def export_report_api(request):
                     'Don_Vi': tc.get('donVi', '--'),
                     'So_Luong': str(tc.get('soLuong', 0)),
                     'Ty_Le': str(tc.get('tyLe', 0)),
-                    'Gia_Tri_Uoc_Tinh': f"{VietnameseFloat(tc.get('giaTriUocTinh', 0))} VND" if tc.get('giaTriUocTinh') else '0 VND'
+                    'Gia_Tri_Uoc_Tinh': f"{VietnameseFloat(tc.get('giaTriUocTinh', 0))}" if tc.get('giaTriUocTinh') else '0'
                 })
         except Exception:
             pass

@@ -34,6 +34,7 @@ ENTITY_SCHEMA = {
         {'field': 'noiMoTaiKhoan',        'label': 'Nơi mở tài khoản',            'aliases': ['Nơi mở tài khoản', 'Ngân hàng', 'noiMoTaiKhoan']},
         {'field': 'email',                'label': 'Email',                       'aliases': ['Email', 'Địa chỉ email', 'email']},
         {'field': 'maQHNS',               'label': 'Mã QHNS',                    'aliases': ['Mã QHNS', 'maQHNS']},
+        {'field': 'coQuanChuQuan',        'label': 'Cơ quan chủ quản',            'aliases': ['Cơ quan chủ quản', 'coQuanChuQuan']},
     ],
     'kehoach': [
         {'field': 'maKeHoach',            'label': 'Mã kế hoạch',                'aliases': ['Mã kế hoạch', 'maKeHoach']},
@@ -50,6 +51,10 @@ ENTITY_SCHEMA = {
         {'field': 'soQdPheDuyetDuAn',     'label': 'Số QĐ phê duyệt dự án',       'aliases': ['Số QĐ phê duyệt dự án', 'soQdPheDuyetDuAn']},
         {'field': 'ngayQdPheDuyetDuAn',   'label': 'Ngày QĐ phê duyệt dự án',     'aliases': ['Ngày QĐ phê duyệt dự án', 'ngayQdPheDuyetDuAn']},
         {'field': 'coQuanPheDuyetDuAn',   'label': 'Cơ quan phê duyệt dự án',     'aliases': ['Cơ quan phê duyệt dự án', 'coQuanPheDuyetDuAn']},
+        {'field': 'nguonVon',             'label': 'Nguồn vốn',                   'aliases': ['Nguồn vốn', 'nguonVon']},
+        {'field': 'thoiGianDuAn',         'label': 'Thời gian dự án',             'aliases': ['Thời gian dự án', 'thoiGianDuAn']},
+        {'field': 'diaDiemQuyMo',         'label': 'Địa điểm quy mô',             'aliases': ['Địa điểm quy mô', 'diaDiemQuyMo']},
+        {'field': 'thongTinKhac',         'label': 'Thông tin khác',              'aliases': ['Thông tin khác', 'thongTinKhac']},
     ],
     'goithau': [
         {'field': 'maGoiThau',            'label': 'Mã gói thầu',                 'aliases': ['Mã gói thầu', 'maGoiThau']},

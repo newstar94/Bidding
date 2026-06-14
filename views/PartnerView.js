@@ -636,8 +636,7 @@ export function renderDictionary(group) {
             { code: '{#Danh_Sach_Phan_Lo}', desc: 'Bắt đầu vòng lặp danh sách phân lô gói thầu' },
             { code: '{STT}', desc: 'Số thứ tự phân lô' },
             { code: '{Ten_Phan_Lo}', desc: 'Tên phân lô' },
-            { code: '{Gia_Tri_Phan_Lo}', desc: 'Giá trúng thầu phân lô (VND)' },
-            { code: '{Gia_Tri_So}', desc: 'Giá trị số thô của phân lô' },
+            { code: '{Gia_Tri_Phan_Lo}', desc: 'Giá trúng thầu phân lô' },
             { code: '{Nha_Thau_Trung}', desc: 'Tên nhà thầu trúng thầu phân lô tương ứng' },
             { code: '{Thoi_Gian_Thuc_Hien}', desc: 'Thời gian thực hiện hợp đồng phân lô' },
             { code: '{/Danh_Sach_Phan_Lo}', desc: 'Kết thúc vòng lặp phân lô' }
@@ -649,7 +648,7 @@ export function renderDictionary(group) {
             { code: '{Don_Vi}', desc: 'Đơn vị tính' },
             { code: '{So_Luong}', desc: 'Số lượng mua thêm' },
             { code: '{Ty_Le}', desc: 'Tỷ lệ % mua thêm' },
-            { code: '{Gia_Tri_Uoc_Tinh}', desc: 'Giá trị ước tính mua thêm (VND)' },
+            { code: '{Gia_Tri_Uoc_Tinh}', desc: 'Giá trị ước tính mua thêm' },
             { code: '{/Danh_Sach_Tuy_Chon_Mua_Them}', desc: 'Kết thúc vòng lặp mua thêm' }
         ]
     };
