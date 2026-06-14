@@ -67,7 +67,25 @@ export class BiddingController {
                 };
             }
             
+            if (typeof url === 'string' && url.includes('/api/sync') && options.method === 'POST') {
+                try {
+                    let bodyObj = {};
+                    if (options.body) {
+                        bodyObj = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+                    }
+                    const localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
+                    bodyObj.deletions = localDeletions;
+                    options.body = JSON.stringify(bodyObj);
+                } catch (e) {
+                    console.error("Failed to inject local deletions to sync request", e);
+                }
+            }
+            
             const response = await originalFetch(url, options);
+            
+            if (response.ok && typeof url === 'string' && url.includes('/api/sync') && options.method === 'POST') {
+                localStorage.setItem('bf_local_deletions', '[]');
+            }
             
             // Nếu phản hồi là 403 hoặc 401 và không phải là yêu cầu đăng nhập/kiểm tra phiên
             if ((response.status === 403 || response.status === 401) && typeof url === 'string' && url.startsWith('/api/') && !url.includes('/api/auth/login') && !url.includes('/api/auth/check-session')) {
@@ -90,6 +108,32 @@ export class BiddingController {
         };
 
         await this.model.init();
+
+        // Create offline banner dynamically
+        const banner = document.createElement('div');
+        banner.id = 'offline-indicator-banner';
+        banner.className = 'offline-banner';
+        banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
+        document.body.appendChild(banner);
+        if (window.lucide) {
+            window.lucide.createIcons({ root: banner });
+        }
+
+        const updateOnlineStatus = () => {
+            if (navigator.onLine) {
+                banner.classList.remove('visible');
+            } else {
+                banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
+                if (window.lucide) {
+                    window.lucide.createIcons({ root: banner });
+                }
+                banner.classList.add('visible');
+            }
+        };
+
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        updateOnlineStatus(); // initial check
 
         if (localStorage.getItem('bf_id_prefix_cleaned_v2') !== 'true') {
             localStorage.setItem('bf_last_sync_timestamp', '0');
@@ -217,7 +261,7 @@ export class BiddingController {
         };
 
         // Check every 30 seconds
-        setInterval(checkAndSync, 30000);
+        // setInterval(checkAndSync, 30000); // Tắt cơ chế polling tự động 30 giây
 
         // Check on window focus (user switches tab or returns to app)
         window.addEventListener('focus', checkAndSync);
@@ -1923,6 +1967,25 @@ export class BiddingController {
         } catch (err) {
             console.error("Failed to sync data from SQLite:", err);
             if (syncStatusText) syncStatusText.textContent = 'Lỗi đồng bộ';
+            
+            const banner = document.getElementById('offline-indicator-banner');
+            if (banner) {
+                banner.innerHTML = `<i data-lucide="alert-triangle"></i> Lỗi đồng bộ. Máy chủ không phản hồi.`;
+                if (window.lucide) {
+                    window.lucide.createIcons({ root: banner });
+                }
+                banner.classList.add('visible');
+                setTimeout(() => {
+                    if (navigator.onLine) {
+                        banner.classList.remove('visible');
+                    } else {
+                        banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
+                        if (window.lucide) {
+                            window.lucide.createIcons({ root: banner });
+                        }
+                    }
+                }, 5000);
+            }
         } finally {
             if (syncIcon) syncIcon.classList.remove('anim-spin');
         }

@@ -259,8 +259,8 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE CASCADE",
-            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE CASCADE"
+            "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
         ]
     },
     "hop_dong_goi_thau": {
@@ -530,6 +530,14 @@ def khoi_tao_va_di_tru_he_thong():
         conn = database.get_connection()
         cursor = conn.cursor()
         
+        # Tránh kiểm tra DB liên tục mỗi khi import module
+        cursor.execute("CREATE TABLE IF NOT EXISTS sys_config (key TEXT PRIMARY KEY, val TEXT)")
+        cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v2'")
+        config_row = cursor.fetchone()
+        if config_row and config_row[0] == '1':
+            conn.close()
+            return
+            
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tai_khoan'")
         if cursor.fetchone():
             cursor.execute("PRAGMA table_info(tai_khoan)")
@@ -852,8 +860,14 @@ def khoi_tao_va_di_tru_he_thong():
         cursor.execute("SELECT COUNT(*) FROM tai_khoan")
         if cursor.fetchone()[0] == 0:
             admin_uuid = "user-" + str(uuid.uuid4())
+            admin_pass = os.environ.get("ADMIN_PASSWORD")
+            if not admin_pass:
+                admin_pass = secrets.token_urlsafe(12)
+                print("*" * 60)
+                print(f"Mật khẩu admin khởi tạo ngẫu nhiên: {admin_pass}")
+                print("*" * 60)
             cursor.execute("INSERT INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, goi_dich_vu_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                           (admin_uuid, 'admin', hash_password('123456'), 'Vy Tuấn Dương', 'super_admin', 'tuanduong51794@gmail.com', 'diamond'))
+                           (admin_uuid, 'admin', hash_password(admin_pass), 'Vy Tuấn Dương', 'super_admin', 'tuanduong51794@gmail.com', 'diamond'))
             
             org_name = 'HTD'
             org_hash_id = "org-" + hashlib.md5(org_name.encode('utf-8')).hexdigest()[:16]
@@ -879,29 +893,7 @@ def khoi_tao_va_di_tru_he_thong():
         ]
         for tbl in business_tables:
             cursor.execute(f"UPDATE {tbl} SET owner_id = ? WHERE owner_id IS NULL OR owner_id = ''", (admin_id,))
-            if tbl != "hop_dong_goi_thau":
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{tbl}_owner ON {tbl}(owner_id)")
-
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_chudaututu ON ke_hoach_lcnt(chu_dau_tu_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_kehoach ON goi_thau(ke_hoach_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_nhathau ON goi_thau(nha_thau_trung_thau_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mothau_goithau ON thong_tin_mo_thau(goi_thau_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mothau_nhathau ON thong_tin_mo_thau(nha_thau_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdong_chudautu ON hop_dong(chu_dau_tu_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdong_nhathau ON hop_dong(nha_thau_id)")
-        
-        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_taikhoan_token ON tai_khoan(token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_taikhoan_email ON tai_khoan(email) WHERE email != ''")
-        
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_idgoc ON chu_dau_tu(owner_id, id_goc)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_idgoc ON ke_hoach_lcnt(owner_id, id_goc)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_idgoc ON nha_thau(owner_id, id_goc)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_idgoc ON goi_thau(owner_id, id_goc)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_latest ON goi_thau(owner_id, id_goc, is_latest)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_latest ON nha_thau(owner_id, id_goc, is_latest)")
-        
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_latest ON chu_dau_tu(owner_id, id_goc, is_latest)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_latest ON ke_hoach_lcnt(owner_id, id_goc, is_latest)")
+        # Các chỉ mục (indexes) đã được chuyển toàn bộ sang db_helper.py để tập trung quản lý.
 
         for tbl in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
             cursor.execute(f"UPDATE {tbl} SET is_latest = 0")
@@ -984,6 +976,7 @@ def khoi_tao_va_di_tru_he_thong():
         except Exception as migration_owner_ex:
             print("Lỗi khi di trú owner_id sang ID tổ chức:", migration_owner_ex)
 
+        cursor.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('migration_done_v2', '1')")
         conn.commit()
         conn.close()
         print("Khởi tạo và di trú cơ sở dữ liệu Tiếng Việt thành công!")
@@ -993,21 +986,38 @@ def khoi_tao_va_di_tru_he_thong():
 # Trigger migration once at helper module import
 khoi_tao_va_di_tru_he_thong()
 
-def log_error(e_or_msg, context="System"):
+def log_error(e_or_msg, context="System", level="ERROR"):
     log_file = os.path.join(project_root, "sync_error.log")
     try:
+        # Xoay vòng file log nếu > 5MB
+        if os.path.exists(log_file) and os.path.getsize(log_file) > 5 * 1024 * 1024:
+            try:
+                backup_file = log_file + ".1"
+                if os.path.exists(backup_file):
+                    os.remove(backup_file)
+                os.rename(log_file, backup_file)
+            except Exception:
+                try:
+                    with open(log_file, "w", encoding="utf-8") as f:
+                        f.write(f"[{datetime.now().isoformat()}] Log file truncated due to size limit.\n")
+                except Exception:
+                    pass
+
         now_str = datetime.now().isoformat()
         if isinstance(e_or_msg, Exception):
             tb = traceback.format_exc()
-            msg = f"[{now_str}] [{context}] LỖI: {str(e_or_msg)}\n{tb}\n"
+            msg = f"[{now_str}] [{context}] [{level}] LỖI: {str(e_or_msg)}\n{tb}\n"
         else:
-            msg = f"[{now_str}] [{context}] THÔNG BÁO: {str(e_or_msg)}\n"
+            msg = f"[{now_str}] [{context}] [{level}] THÔNG BÁO: {str(e_or_msg)}\n"
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(msg)
     except Exception:
         pass
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
-        print(f"[{context}] {e_or_msg}")
+        print(f"[{context}] [{level}] {e_or_msg}")
+
+def log_info(msg, context="System"):
+    log_error(msg, context, level="INFO")
 
 class ErrorLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -1084,11 +1094,27 @@ def gui_email(email_nhan, tieu_de, noi_dung_html):
         log_error(f"Lỗi gửi email tới {email_nhan}: {str(e)}", context="EmailSender")
         return False
 
+import threading
+_org_cache = {}
+_org_cache_lock = threading.Lock()
+ORG_CACHE_TTL = 60
+
 def get_active_org(request, user_id):
     active_org = request.headers.get('X-Active-Org')
     if active_org:
         import urllib.parse
         active_org = urllib.parse.unquote(active_org)
+        
+    cache_key = (user_id, active_org)
+    now = time.time()
+    with _org_cache_lock:
+        if cache_key in _org_cache:
+            val, expire = _org_cache[cache_key]
+            if now < expire:
+                return val
+            else:
+                del _org_cache[cache_key]
+                
     conn = database.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -1101,10 +1127,15 @@ def get_active_org(request, user_id):
     conn.close()
     
     if not rows:
-        return str(user_id)
+        result = str(user_id)
+    else:
+        result = rows[0]['id']
+        for row in rows:
+            if active_org and (active_org == row['id'] or active_org == row['ten_to_chuc']):
+                result = row['id']
+                break
+                
+    with _org_cache_lock:
+        _org_cache[cache_key] = (result, now + ORG_CACHE_TTL)
         
-    for row in rows:
-        if active_org and (active_org == row['id'] or active_org == row['ten_to_chuc']):
-            return row['id']
-            
-    return rows[0]['id']
+    return result

@@ -14,11 +14,25 @@ from helpers import (
     save_base64_image,
     load_base64_image,
     log_error,
+    log_info,
     get_active_org
 )
 
 # Global dictionary to store active WebSocket connections
 active_connections = {}  # owner_id -> set of websocket instances
+
+TABLE_KEYS = {
+    "chudautu": "chu_dau_tu",
+    "kehoach": "ke_hoach_lcnt",
+    "goithau": "goi_thau",
+    "chuyengia": "chuyen_gia",
+    "nhathau": "nha_thau",
+    "hopdong": "hop_dong",
+    "assignments": "phan_cong_nhan_su",
+    "custompaperstatuses": "trang_thai_ho_so_giay",
+    "thongtinmothau": "thong_tin_mo_thau",
+    "permissionmatrix": "ma_tran_phan_quyen"
+}
 
 # ==========================================
 # CÁC HÀM TRỢ GIÚP CHO ĐỒNG BỘ DỮ LIỆU
@@ -85,6 +99,33 @@ def map_db_to_json(table_name, row_dict):
                 val = []
         item[json_key] = val
     return item
+
+def _get_expert_relations_for_packages(cursor, gt_ids):
+    if not gt_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(gt_ids))
+    cursor.execute(f"""
+        SELECT goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
+        FROM goi_thau_chuyen_gia
+        WHERE goi_thau_id IN ({placeholders})
+    """, tuple(gt_ids))
+    relations_map = {}
+    for rel_row in cursor.fetchall():
+        gt_id = rel_row[0]
+        entry = {
+            "chuyenGiaId": rel_row[1],
+            "id": rel_row[1],
+            "chucVu": rel_row[3] or "Tổ viên",
+            "congViec": rel_row[4] or ""
+        }
+        if gt_id not in relations_map:
+            relations_map[gt_id] = {"to_cg": [], "to_td": [], "cg_ids": []}
+        if rel_row[2] == "chuyen_gia":
+            relations_map[gt_id]["to_cg"].append(entry)
+            relations_map[gt_id]["cg_ids"].append(rel_row[1])
+        else:
+            relations_map[gt_id]["to_td"].append(entry)
+    return relations_map
 
 # ==========================================
 # WEBSOCKET & ĐỒNG BỘ DỮ LIỆU
@@ -187,19 +228,7 @@ async def sync_api(request):
         org_name = get_active_org(request, role_or_err.user_id)
         current_time = int(datetime.utcnow().timestamp())
         
-        # Map of API payload key to DB table name
-        TABLE_KEYS = {
-            "chudautu": "chu_dau_tu",
-            "kehoach": "ke_hoach_lcnt",
-            "goithau": "goi_thau",
-            "chuyengia": "chuyen_gia",
-            "nhathau": "nha_thau",
-            "hopdong": "hop_dong",
-            "assignments": "phan_cong_nhan_su",
-            "custompaperstatuses": "trang_thai_ho_so_giay",
-            "thongtinmothau": "thong_tin_mo_thau",
-            "permissionmatrix": "ma_tran_phan_quyen"  # [MỚI] Đồng bộ phân quyền nhân viên
-        }
+        # Sử dụng hằng số TABLE_KEYS toàn cục
         
         def get_clean_id(tbl, raw_id):
             if raw_id is None:
@@ -207,6 +236,8 @@ async def sync_api(request):
             if tbl in ["phan_cong_nhan_su", "trang_thai_ho_so_giay"]:
                 return str(raw_id).strip()
             return clean_id(raw_id)
+            
+        updated_versioned_tables = set()
         
         for payload_key, table_name in TABLE_KEYS.items():
             if payload_key not in data:
@@ -218,29 +249,9 @@ async def sync_api(request):
             table_spec = SCHEMA_DINH_NGHIA[table_name]
             columns = list(table_spec["columns"].keys())
             
-            # 1. Phát hiện và xử lý các bản ghi bị xóa
-            incoming_ids = set()
-            for item in items:
-                raw_id = item.get('id')
-                c_id = get_clean_id(table_name, raw_id)
-                if c_id:
-                    incoming_ids.add(str(c_id))
-            
-            cursor.execute(f"SELECT id FROM {table_name} WHERE owner_id = ?", (org_name,))
-            existing_ids = set(str(row[0]) for row in cursor.fetchall())
-            
-            deleted_ids = existing_ids - incoming_ids
-            if deleted_ids:
-                deleted_list = list(deleted_ids)
-                # Xóa khỏi bảng chính
-                placeholders = ", ".join(["?"] * len(deleted_list))
-                cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id IN ({placeholders})", (org_name, *deleted_list))
-                # Ghi vào bảng deleted_records
-                for d_id in deleted_list:
-                    cursor.execute(
-                        "INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
-                        (table_name, d_id, org_name, current_time)
-                    )
+            # Lưu vết các bảng thay đổi dữ liệu có cơ chế phiên bản
+            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"] and items:
+                updated_versioned_tables.add(table_name)
             
             # 2. Thêm hoặc cập nhật (INSERT OR REPLACE) các bản ghi
             for item in items:
@@ -302,17 +313,28 @@ async def sync_api(request):
                                     
                         row_data[col] = val
                         
-                    # Thực thi INSERT OR REPLACE
+                    # Thực thi UPSERT thay cho INSERT OR REPLACE để bảo toàn created_at
                     non_null_row_data = {k: v for k, v in row_data.items() if v is not None}
                     cols_str = ", ".join(non_null_row_data.keys())
                     placeholders = ", ".join(["?"] * len(non_null_row_data))
-                    sql = f"INSERT OR REPLACE INTO {table_name} ({cols_str}) VALUES ({placeholders})"
+                    update_assignments = ", ".join([f"{k}=excluded.{k}" for k in non_null_row_data.keys() if k not in ["id", "created_at"]])
+                    if update_assignments:
+                        sql = f"""
+                            INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})
+                            ON CONFLICT(id) DO UPDATE SET {update_assignments}
+                        """
+                    else:
+                        sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) ON CONFLICT(id) DO NOTHING"
                     cursor.execute(sql, tuple(non_null_row_data.values()))
                     
                     # Ràng buộc thêm: Gắn các gói thầu với hợp đồng (junction table)
                     if table_name == "hop_dong":
                         c_hd_id = get_clean_id("hop_dong", item.get('id'))
-                        cursor.execute("DELETE FROM hop_dong_goi_thau WHERE hop_dong_id = ?", (c_hd_id,))
+                        cursor.execute("""
+                            DELETE FROM hop_dong_goi_thau 
+                            WHERE hop_dong_id = ? 
+                              AND hop_dong_id IN (SELECT id FROM hop_dong WHERE owner_id = ?)
+                        """, (c_hd_id, org_name))
                         for gt_id_str in item.get('goiThauIds', []):
                             if gt_id_str:
                                 gt_id = clean_id(gt_id_str)
@@ -330,7 +352,7 @@ async def sync_api(request):
                         if any(k in item for k in ['toChuyenGia', 'chuyenGiaList', 'chuyen_gia_list']):
                             cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'chuyen_gia'", (c_gt_id,))
                             cg_raw = item.get('toChuyenGia') or item.get('chuyenGiaList') or item.get('chuyen_gia_list') or []
-                            log_error(f"Syncing Package {c_gt_id}: cg_raw = {cg_raw}", "SyncAPI")
+                            log_info(f"Syncing Package {c_gt_id}: cg_raw = {cg_raw}", "SyncAPI")
                             if isinstance(cg_raw, str):
                                 try:
                                     cg_raw = json.loads(cg_raw)
@@ -344,7 +366,7 @@ async def sync_api(request):
                                             clean_cg_id = clean_id(cg_id)
                                             chuc_vu = cg_item.get('chucVu') or cg_item.get('chuc_vu') or 'Tổ viên'
                                             cong_viec = cg_item.get('congViec') or cg_item.get('cong_viec') or ''
-                                            log_error(f"Inserting expert relation: {c_gt_id} - {clean_cg_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
+                                            log_info(f"Inserting expert relation: {c_gt_id} - {clean_cg_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
                                             cursor.execute("""
                                                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, 'chuyen_gia', ?, ?)
@@ -354,7 +376,7 @@ async def sync_api(request):
                         if any(k in item for k in ['toThamDinh', 'thamDinhList', 'tham_dinh_list']):
                             cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'tham_dinh'", (c_gt_id,))
                             td_raw = item.get('toThamDinh') or item.get('thamDinhList') or item.get('tham_dinh_list') or []
-                            log_error(f"Syncing Package {c_gt_id}: td_raw = {td_raw}", "SyncAPI")
+                            log_info(f"Syncing Package {c_gt_id}: td_raw = {td_raw}", "SyncAPI")
                             if isinstance(td_raw, str):
                                 try:
                                     td_raw = json.loads(td_raw)
@@ -368,7 +390,7 @@ async def sync_api(request):
                                             clean_td_id = clean_id(td_id)
                                             chuc_vu = td_item.get('chucVu') or td_item.get('chuc_vu') or 'Tổ viên'
                                             cong_viec = td_item.get('congViec') or td_item.get('cong_viec') or ''
-                                            log_error(f"Inserting appraiser relation: {c_gt_id} - {clean_td_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
+                                            log_info(f"Inserting appraiser relation: {c_gt_id} - {clean_td_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
                                             cursor.execute("""
                                                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, 'tham_dinh', ?, ?)
@@ -377,9 +399,29 @@ async def sync_api(request):
                     import traceback
                     log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
                     
-        # Cập nhật cờ is_latest cho các bảng versioning sau khi lưu xong dữ liệu
+        # 3. Xử lý xóa bản ghi tường minh được gửi từ Client (Explicit Deletions)
+        deletions = data.get("deletions", [])
+        if isinstance(deletions, list):
+            for del_item in deletions:
+                if isinstance(del_item, dict):
+                    tbl_key = del_item.get("table")
+                    rec_id = del_item.get("id")
+                    if tbl_key in TABLE_KEYS:
+                        table_name = TABLE_KEYS[tbl_key]
+                        c_id = get_clean_id(table_name, rec_id)
+                        if c_id:
+                            cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
+                            cursor.execute(
+                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
+                                (table_name, c_id, org_name, current_time)
+                            )
+                            # Cần cập nhật lại is_latest nếu bảng bị xóa là bảng versioning
+                            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
+                                updated_versioned_tables.add(table_name)
+
+        # Cập nhật cờ is_latest cho các bảng versioning (chỉ khi có thay đổi)
         # [TỐI ƯU] Dùng CASE WHEN thay COALESCE để SQLite có thể tận dụng index (id_goc, phien_ban)
-        for tbl in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
+        for tbl in updated_versioned_tables:
             cursor.execute(f"UPDATE {tbl} SET is_latest = 0 WHERE owner_id = ?", (org_name,))
             cursor.execute(f"""
                 UPDATE {tbl} SET is_latest = 1 WHERE owner_id = ? AND id IN (
@@ -479,11 +521,12 @@ async def get_all_data_api(request):
         chuyengia = []
         for row in query_table("chuyen_gia"):
             row_dict = dict(row)
-            img = load_base64_image(row_dict.get("anh_chung_chi", ""))
-            sig = load_base64_image(row_dict.get("anh_chu_ky", ""))
+            # Trả về đường dẫn tương đối thay vì mã hóa base64 toàn bộ ảnh ở danh sách
+            img_path = row_dict.get("anh_chung_chi", "")
+            sig_path = row_dict.get("anh_chu_ky", "")
             item = map_db_to_json("chuyen_gia", row_dict)
-            item["anhChungChi"] = img
-            item["anhChuKy"] = sig
+            item["anhChungChi"] = "/" + img_path if img_path and img_path.startswith("uploads") else img_path
+            item["anhChuKy"] = "/" + sig_path if sig_path and sig_path.startswith("uploads") else sig_path
             chuyengia.append(item)
             
         # 4. Nhathau
@@ -493,33 +536,21 @@ async def get_all_data_api(request):
             
         # 5. Goithau
         goithau = []
-        for row in query_table("goi_thau"):
+        goithau_rows = query_table("goi_thau")
+        gt_ids = [row["id"] for row in goithau_rows]
+        relations_map = _get_expert_relations_for_packages(cursor, gt_ids)
+        
+        for row in goithau_rows:
             row_dict = dict(row)
             item = map_db_to_json("goi_thau", row_dict)
             gt_id = row_dict["id"]
-            # Đọc tổ chuyên gia từ bảng quan hệ (nguồn dữ liệu chính xác)
-            cursor.execute("""
-                SELECT chuyen_gia_id, loai, chuc_vu, cong_viec
-                FROM goi_thau_chuyen_gia WHERE goi_thau_id = ?
-            """, (gt_id,))
-            to_cg = []
-            to_td = []
-            cg_ids = []
-            for rel_row in cursor.fetchall():
-                entry = {
-                    "chuyenGiaId": rel_row[0],
-                    "id": rel_row[0],
-                    "chucVu": rel_row[2] or "Tổ viên",
-                    "congViec": rel_row[3] or ""
-                }
-                if rel_row[1] == "chuyen_gia":
-                    to_cg.append(entry)
-                    cg_ids.append(rel_row[0])
-                elif rel_row[1] == "tham_dinh":
-                    to_td.append(entry)
-            item["toChuyenGia"] = to_cg
-            item["toThamDinh"] = to_td
-            item["chuyenGiaIds"] = cg_ids
+            
+            # Lấy tổ chuyên gia từ relations_map đã batch query để tránh N+1
+            pkg_rels = relations_map.get(gt_id, {"to_cg": [], "to_td": [], "cg_ids": []})
+            item["toChuyenGia"] = pkg_rels.get("to_cg", [])
+            item["toThamDinh"] = pkg_rels.get("to_td", [])
+            item["chuyenGiaIds"] = pkg_rels.get("cg_ids", [])
+            
             for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
                 if item.get(list_key) is None:
                     item[list_key] = []
@@ -579,18 +610,6 @@ async def get_all_data_api(request):
         deletions = []
         if since > 0:
             cursor.execute("SELECT table_name, record_id FROM deleted_records WHERE owner_id = ? AND deleted_at > ?", (org_name, since))
-            TABLE_KEYS = {
-                "chudautu": "chu_dau_tu",
-                "kehoach": "ke_hoach_lcnt",
-                "goithau": "goi_thau",
-                "chuyengia": "chuyen_gia",
-                "nhathau": "nha_thau",
-                "hopdong": "hop_dong",
-                "assignments": "phan_cong_nhan_su",
-                "custompaperstatuses": "trang_thai_ho_so_giay",
-                "thongtinmothau": "thong_tin_mo_thau",
-                "permissionmatrix": "ma_tran_phan_quyen"  # [MỚI]
-            }
             TABLE_KEYS_INV = {v: k for k, v in TABLE_KEYS.items()}
             for row in cursor.fetchall():
                 tbl_key = TABLE_KEYS_INV.get(row[0])
@@ -631,14 +650,7 @@ async def paginate_api(request):
         page_size = int(params.get("pageSize", 10))
         search = params.get("search", "").strip().lower()
         
-        TABLE_KEYS = {
-            "chudautu": "chu_dau_tu",
-            "kehoach": "ke_hoach_lcnt",
-            "goithau": "goi_thau",
-            "chuyengia": "chuyen_gia",
-            "nhathau": "nha_thau",
-            "hopdong": "hop_dong"
-        }
+        # Sử dụng TABLE_KEYS toàn cục
         
         if table_key not in TABLE_KEYS:
             return JSONResponse({"error": "Invalid table key"}, status_code=400)
@@ -703,44 +715,31 @@ async def paginate_api(request):
         cursor.execute(items_sql, tuple(query_params + [page_size, offset]))
         rows = cursor.fetchall()
         
-
+        # Gộp truy vấn danh sách chuyên gia/thẩm định để tránh N+1
+        relations_map = {}
+        if table_name == "goi_thau" and rows:
+            gt_ids = [r["id"] for r in rows]
+            relations_map = _get_expert_relations_for_packages(cursor, gt_ids)
             
         items = []
         for row in rows:
             row_dict = dict(row)
-            # handle base64 images for chuyengia
+            # Trả về đường dẫn tương đối thay vì mã hóa base64 toàn bộ ảnh ở danh sách
             if table_name == "chuyen_gia":
-                row_dict["anh_chung_chi"] = load_base64_image(row_dict.get("anh_chung_chi", ""))
-                row_dict["anh_chu_ky"] = load_base64_image(row_dict.get("anh_chu_ky", ""))
+                img_path = row_dict.get("anh_chung_chi", "")
+                sig_path = row_dict.get("anh_chu_ky", "")
+                row_dict["anh_chung_chi"] = "/" + img_path if img_path and img_path.startswith("uploads") else img_path
+                row_dict["anh_chu_ky"] = "/" + sig_path if sig_path and sig_path.startswith("uploads") else sig_path
                 
             item = map_db_to_json(table_name, row_dict)
             
-            # Additional relationships for goithau/hopdong
+            # Khôi phục quan hệ cho gói thầu và hợp đồng
             if table_name == "goi_thau":
                 gt_id = row_dict["id"]
-                # Đọc tổ chuyên gia từ bảng quan hệ (nguồn dữ liệu chính xác)
-                cursor.execute("""
-                    SELECT chuyen_gia_id, loai, chuc_vu, cong_viec
-                    FROM goi_thau_chuyen_gia WHERE goi_thau_id = ?
-                """, (gt_id,))
-                to_cg = []
-                to_td = []
-                cg_ids = []
-                for rel_row in cursor.fetchall():
-                    entry = {
-                        "chuyenGiaId": rel_row[0],
-                        "id": rel_row[0],
-                        "chucVu": rel_row[2] or "Tổ viên",
-                        "congViec": rel_row[3] or ""
-                    }
-                    if rel_row[1] == "chuyen_gia":
-                        to_cg.append(entry)
-                        cg_ids.append(rel_row[0])
-                    elif rel_row[1] == "tham_dinh":
-                        to_td.append(entry)
-                item["toChuyenGia"] = to_cg
-                item["toThamDinh"] = to_td
-                item["chuyenGiaIds"] = cg_ids
+                pkg_rels = relations_map.get(gt_id, {"to_cg": [], "to_td": [], "cg_ids": []})
+                item["toChuyenGia"] = pkg_rels.get("to_cg", [])
+                item["toThamDinh"] = pkg_rels.get("to_td", [])
+                item["chuyenGiaIds"] = pkg_rels.get("cg_ids", [])
                 for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
                     if item.get(list_key) is None:
                         item[list_key] = []

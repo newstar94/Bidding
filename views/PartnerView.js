@@ -735,6 +735,9 @@ export function renderDictionary(group) {
                 'gia_tri_dam_bao_du_thau': 'Giá trị bảo đảm dự thầu',
                 'hieu_luc_hsdt': 'Hiệu lực HSDT',
                 'hieu_luc_dam_bao_du_thau': 'Hiệu lực bảo đảm dự thầu',
+                'gia_han_list': 'Gia hạn thời gian mở thầu / đóng thầu',
+                'yeu_cau_lam_ro_list': 'Làm rõ hồ sơ mời thầu (Yêu cầu)',
+                'tra_loi_lam_ro_list': 'Trả lời làm rõ hồ sơ mời thầu',
                 'trang_thai': 'Trạng thái',
                 'phien_ban': 'Phiên bản'
             },

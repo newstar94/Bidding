@@ -52,6 +52,25 @@ def optimized_get_connection(*args, **kwargs):
             # Reverse lookup indexes for relationship tables
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithauchuyengia_chuyengia ON goi_thau_chuyen_gia(chuyen_gia_id)")
             
+            # Indexes từ helpers.py di chuyển sang
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_taikhoan_token ON tai_khoan(token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_taikhoan_email ON tai_khoan(email) WHERE email != ''")
+            
+            # Owner indexes
+            business_tables = [
+                "chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "chuyen_gia", 
+                "nha_thau", "hop_dong", "phan_cong_nhan_su", 
+                "trang_thai_ho_so_giay", "thong_tin_mo_thau"
+            ]
+            for tbl in business_tables:
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{tbl}_owner ON {tbl}(owner_id)")
+                
+            # Id_goc composite indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_idgoc ON chu_dau_tu(owner_id, id_goc)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_idgoc ON ke_hoach_lcnt(owner_id, id_goc)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_idgoc ON nha_thau(owner_id, id_goc)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_idgoc ON goi_thau(owner_id, id_goc)")
+            
             # Compound indexes for sync queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_owner_updated ON chu_dau_tu(owner_id, updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_owner_updated ON ke_hoach_lcnt(owner_id, updated_at)")
@@ -88,6 +107,7 @@ def optimized_get_connection(*args, **kwargs):
             # Indexes for organizations and members
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_thanhvientochuc_tochuc ON thanh_vien_to_chuc(to_chuc_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tochuc_quanly ON to_chuc(quan_ly_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_taikhoan_tendangnhap ON tai_khoan(ten_dang_nhap)")
             
             db_indexes_created = True
     except Exception as e:

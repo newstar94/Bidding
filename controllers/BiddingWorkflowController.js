@@ -2942,6 +2942,9 @@ export function setupWordTemplatesEvents() {
             { value: 'gia_tri_dam_bao_du_thau', label: 'Giá trị bảo đảm dự thầu' },
             { value: 'hieu_luc_hsdt', label: 'Hiệu lực HSDT' },
             { value: 'hieu_luc_dam_bao_du_thau', label: 'Hiệu lực bảo đảm dự thầu' },
+            { value: 'gia_han_list', label: 'Gia hạn thời gian mở thầu / đóng thầu' },
+            { value: 'yeu_cau_lam_ro_list', label: 'Làm rõ hồ sơ mời thầu (Yêu cầu)' },
+            { value: 'tra_loi_lam_ro_list', label: 'Trả lời làm rõ hồ sơ mời thầu' },
             { value: 'trang_thai', label: 'Trạng thái' },
             { value: 'phien_ban', label: 'Phiên bản' }
         ],

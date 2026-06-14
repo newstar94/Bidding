@@ -622,10 +622,23 @@ async def list_users_api(request):
                 """, req_org_ids)
                 users_raw = cursor.fetchall()
                 
+        user_ids = [r['id'] for r in users_raw]
+        orgs_by_user = defaultdict(list)
+        if user_ids:
+            placeholders = ",".join("?" for _ in user_ids)
+            cursor.execute(f"""
+                SELECT tvtc.user_id, tc.ten_to_chuc
+                FROM thanh_vien_to_chuc tvtc
+                JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
+                WHERE tvtc.user_id IN ({placeholders})
+            """, user_ids)
+            for row in cursor.fetchall():
+                orgs_by_user[row['user_id']].append(row['ten_to_chuc'])
+                
         users = []
         for row in users_raw:
             u = dict(row)
-            u['organization_name'] = get_user_org_names(cursor, u['id'])
+            u['organization_name'] = ", ".join(orgs_by_user[u['id']])
             users.append(u)
         conn.close()
         return JSONResponse(users)

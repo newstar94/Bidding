@@ -282,6 +282,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Thêm CSP hỗ trợ tải tài nguyên tự host và các CDN cần thiết
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' ws: wss: http: https:; "
+            "font-src 'self' https://fonts.gstatic.com https://unpkg.com https://cdn.jsdelivr.net;"
+        )
         # Chỉ cache tài nguyên tĩnh, không cache API
         if request.url.path.startswith("/api/") or request.url.path.startswith("/ws/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"

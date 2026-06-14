@@ -4068,5 +4068,79 @@ select.form-control:focus {
     animation: spin 1s linear infinite;
 }
 
+/* ==========================================================
+   SKELETON LOADING & OFFLINE INDICATOR
+   ========================================================== */
+
+/* Skeleton Loading Animation */
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.skeleton-item {
+    background: linear-gradient(90deg, var(--neutral-soft) 25%, var(--neutral-hover) 37%, var(--neutral-soft) 63%);
+    background-size: 400% 100%;
+    animation: skeleton-loading 1.4s ease infinite;
+    border-radius: var(--radius-sm);
+    display: inline-block;
+    height: 1.2em;
+    width: 100%;
+}
+
+.skeleton-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+}
+
+.skeleton-title {
+    width: 60%;
+    height: 1.5em;
+    margin-bottom: 8px;
+}
+
+.skeleton-text {
+    width: 90%;
+    height: 1em;
+    margin-bottom: 6px;
+}
+
+/* Offline Indicator Bar */
+.offline-banner {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: linear-gradient(135deg, var(--danger) 0%, #b91c1c 100%);
+    color: white;
+    padding: 12px 20px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 10000;
+    font-size: 0.88rem;
+    font-weight: 700;
+    transform: translateY(150%);
+    transition: transform var(--transition-normal) cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.offline-banner.visible {
+    transform: translateY(0);
+}
+
+.offline-banner i {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
 
 

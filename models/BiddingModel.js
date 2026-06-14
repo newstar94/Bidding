@@ -370,8 +370,30 @@ export class BiddingModel {
         const key = type.toUpperCase();
         if (this.STORAGE_KEYS[key]) {
             if (this.db.stores.includes(type)) {
-                this.db.putTableData(type, this.state[type]).catch(err => {
-                    console.error("Failed to persist data for type:", type, err);
+                this.db.getTableData(type).then(oldData => {
+                    if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
+                        const newIds = new Set(this.state[type].map(x => x.id).filter(Boolean));
+                        const deletedIds = oldData.map(x => x.id).filter(id => id && !newIds.has(id));
+                        if (deletedIds.length > 0) {
+                            let localDeletions = [];
+                            try {
+                                localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
+                            } catch (e) {
+                                localDeletions = [];
+                            }
+                            deletedIds.forEach(id => {
+                                if (!localDeletions.some(d => d.id === id && d.table === type)) {
+                                    localDeletions.push({ table: type, id: id });
+                                }
+                            });
+                            localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
+                        }
+                    }
+                }).catch(e => console.error("Error checking deletions in persistData:", e))
+                .finally(() => {
+                    this.db.putTableData(type, this.state[type]).catch(err => {
+                        console.error("Failed to persist data for type:", type, err);
+                    });
                 });
             } else {
                 this.db.set(this.STORAGE_KEYS[key], this.state[type]).catch(err => {
@@ -414,6 +436,18 @@ export class BiddingModel {
         if (this.state[type]) {
             this.state[type] = this.state[type].filter(x => x.id !== recordId);
         }
+        
+        let localDeletions = [];
+        try {
+            localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
+        } catch (e) {
+            localDeletions = [];
+        }
+        if (!localDeletions.some(d => d.id === recordId && d.table === type)) {
+            localDeletions.push({ table: type, id: recordId });
+            localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
+        }
+
         if (this.db.stores.includes(type)) {
             await this.db.deleteRecord(type, recordId);
         } else {
@@ -733,7 +767,7 @@ export class BiddingModel {
     }
 
     getLatestPlans() {
-        const latest = (this.state.kehoach || []).filter(kh => kh.isLatest == 1 || kh.is_latest == 1);
+        const latest = (this.state.kehoach || []).filter(kh => kh.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
         this.state.kehoach.forEach(kh => {
@@ -751,7 +785,7 @@ export class BiddingModel {
     }
 
     getLatestPackages() {
-        const latest = (this.state.goithau || []).filter(gt => gt.isLatest == 1 || gt.is_latest == 1);
+        const latest = (this.state.goithau || []).filter(gt => gt.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
         this.state.goithau.forEach(gt => {
@@ -780,7 +814,7 @@ export class BiddingModel {
 
     getLatestChuDauTu() {
         const chudautuList = Array.isArray(this.state.chudautu) ? this.state.chudautu : [];
-        const latest = chudautuList.filter(c => c.isLatest == 1 || c.is_latest == 1);
+        const latest = chudautuList.filter(c => c.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
         chudautuList.forEach(c => {
@@ -799,7 +833,7 @@ export class BiddingModel {
 
     getLatestNhaThau() {
         const nhathauList = Array.isArray(this.state.nhathau) ? this.state.nhathau : [];
-        const latest = nhathauList.filter(n => n.isLatest == 1 || n.is_latest == 1);
+        const latest = nhathauList.filter(n => n.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
         nhathauList.forEach(n => {
