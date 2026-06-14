@@ -1,0 +1,125 @@
+    <!-- Modal 9: Hợp đồng -->
+    <div class="modal-overlay" id="modal-hopdong">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3 id="modal-hopdong-title">Thêm Hợp đồng</h3>
+                <button class="modal-close" data-close="modal-hopdong">&times;</button>
+            </div>
+            <form id="form-hopdong" novalidate>
+                <input type="hidden" id="form-hopdong-id">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto; padding-right: 8px;">
+                    <div class="form-grid">
+                        <div class="form-group col-span-2">
+                            <label for="hd-ten">Tên hợp đồng <span class="required">*</span></label>
+                            <input type="text" id="hd-ten" required
+                                placeholder="Ví dụ: Hợp đồng cung cấp dịch vụ máy chủ năm 2026">
+                            <span class="error-text">Vui lòng nhập tên hợp đồng</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="hd-so">Số hợp đồng <span class="required">*</span></label>
+                            <input type="text" id="hd-so" required placeholder="Ví dụ: 01/2026/HĐ-CD">
+                            <span class="error-text">Vui lòng nhập số hợp đồng</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="hd-ngayky">Ngày ký hợp đồng <span class="required">*</span></label>
+                            <input type="text" id="hd-ngayky" required placeholder="Chọn ngày (dd/MM/yyyy)">
+                            <span class="error-text">Vui lòng chọn ngày ký</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="hd-chudautuid">Chủ đầu tư <span class="required">*</span></label>
+                            <select id="hd-chudautuid" required>
+                                <option value="">-- Chọn Chủ đầu tư --</option>
+                                <!-- Rendered via JS -->
+                            </select>
+                            <span class="error-text">Vui lòng chọn Chủ đầu tư</span>
+                        </div>
+                        <div class="form-group" id="hd-chudautu-version-group" style="display: none;">
+                            <label for="hd-chudautu-version-select">Phiên bản Chủ đầu tư <span
+                                    class="required">*</span></label>
+                            <select id="hd-chudautu-version-select" required>
+                                <option value="">-- Chọn Phiên bản --</option>
+                            </select>
+                            <span class="error-text">Vui lòng chọn Phiên bản Chủ đầu tư</span>
+                        </div>
+                        <div class="form-group col-span-2" id="hd-chudautu-confirm-container"
+                            style="display: none; background: rgba(var(--primary-rgb), 0.03); border: 1px dashed var(--border-color); padding: 12px; border-radius: var(--radius-md); margin-top: -8px;">
+                            <div
+                                style="font-weight: 700; font-size: 0.85rem; color: var(--primary); margin-bottom: 4px;">
+                                Xác nhận Thông tin Chủ đầu tư:</div>
+                            <div id="hd-chudautu-confirm-info"
+                                style="font-size: 0.82rem; line-height: 1.5; color: var(--text-muted);"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="hd-nhathauid">Nhà thầu <span class="required">*</span></label>
+                            <select id="hd-nhathauid" required>
+                                <option value="">-- Chọn Nhà thầu --</option>
+                                <!-- Rendered via JS -->
+                            </select>
+                            <span class="error-text">Vui lòng chọn Nhà thầu</span>
+                        </div>
+                        <div class="form-group" id="hd-nhathau-version-group" style="display: none;">
+                            <label for="hd-nhathau-version-select">Phiên bản Nhà thầu <span
+                                    class="required">*</span></label>
+                            <select id="hd-nhathau-version-select" required>
+                                <option value="">-- Chọn Phiên bản --</option>
+                            </select>
+                            <span class="error-text">Vui lòng chọn Phiên bản Nhà thầu</span>
+                        </div>
+                        <div class="form-group col-span-2" id="hd-nhathau-confirm-container"
+                            style="display: none; background: rgba(var(--primary-rgb), 0.03); border: 1px dashed var(--border-color); padding: 12px; border-radius: var(--radius-md); margin-top: -8px;">
+                            <div
+                                style="font-weight: 700; font-size: 0.85rem; color: var(--primary); margin-bottom: 4px;">
+                                Xác nhận Thông tin Nhà thầu:</div>
+                            <div id="hd-nhathau-confirm-info"
+                                style="font-size: 0.82rem; line-height: 1.5; color: var(--text-muted);"></div>
+                        </div>
+                        <div class="form-group">
+                            <label for="hd-giatri">Giá trị hợp đồng (VND) <span class="required">*</span></label>
+                            <input type="text" id="hd-giatri" required placeholder="Nhập giá trị hợp đồng">
+                            <span class="error-text">Giá trị hợp đồng phải lớn hơn hoặc bằng 0</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="hd-loai">Loại hợp đồng <span class="required">*</span></label>
+                            <select id="hd-loai" required>
+                                <option value="Trọn gói" selected>Trọn gói</option>
+                                <option value="Theo đơn giá cố định">Theo đơn giá cố định</option>
+                                <option value="Theo đơn giá điều chỉnh">Theo đơn giá điều chỉnh</option>
+                                <option value="Theo thời gian">Theo thời gian</option>
+                                <option value="Hỗn hợp">Hỗn hợp</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="hd-nhanvienphutrach-container">
+                            <label for="hd-nhanvienphutrach">Chuyên viên phụ trách <span
+                                    class="required">*</span></label>
+                            <select id="hd-nhanvienphutrach" required>
+                                <!-- Rendered dynamically by JS based on employees -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="hd-trangthai">Trạng thái hồ sơ giấy <span class="required">*</span></label>
+                            <select id="hd-trangthai" required>
+                                <option value="">-- Chọn Trạng thái --</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label for="hd-songay">Thời gian thực hiện hợp đồng <span class="required">*</span></label>
+                            <input type="text" id="hd-songay" required placeholder="Ví dụ: 90 ngày hoặc 3 tháng">
+                            <span class="error-text">Vui lòng nhập thời gian thực hiện hợp đồng</span>
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label>Gói thầu liên kết (Chọn một hoặc nhiều)</label>
+                            <div class="checkbox-group-container" id="hd-goithau-list">
+                                <!-- Checkboxes will be rendered dynamically via JS -->
+                            </div>
+                            <span class="helper-text">Chọn các gói thầu được áp dụng trong hợp đồng này.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-hopdong">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu thông tin</button>
+                </div>
+            </form>
+        </div>
+    </div>

@@ -1,0 +1,109 @@
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-icon">
+                    <i data-lucide="layers"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>BiddingFlow</h1>
+                    <span>Hệ Thống Đấu Thầu v1.0</span>
+                </div>
+                <button id="btn-sidebar-collapse" title="Đóng thanh bên" aria-label="Toggle sidebar">
+                    <i data-lucide="panel-left-close"></i>
+                </button>
+            </div>
+
+            <nav class="sidebar-menu">
+                <ul>
+                    <li class="role-menu-client">
+                        <button class="nav-btn active" data-tab="dashboard" id="btn-tab-dashboard"
+                            data-tooltip="Tổng quan">
+                            <i data-lucide="layout-dashboard"></i>
+                            <span>Tổng quan</span>
+                        </button>
+                    </li>
+                    <li class="menu-divider role-menu-client">Nghiệp vụ chính</li>
+                    <li class="role-menu-client">
+                        <button class="nav-btn" data-tab="kehoach" id="btn-tab-kehoach" data-tooltip="Kế hoạch LCNT">
+                            <i data-lucide="file-text"></i>
+                            <span>Kế hoạch LCNT</span>
+                        </button>
+                    </li>
+                    <li class="role-menu-client">
+                        <button class="nav-btn" data-tab="goithau" id="btn-tab-goithau" data-tooltip="Gói thầu">
+                            <i data-lucide="briefcase"></i>
+                            <span>Gói thầu</span>
+                        </button>
+                    </li>
+
+                    <li class="role-menu-client">
+                        <button class="nav-btn" data-tab="hopdong" id="btn-tab-hopdong" data-tooltip="Hợp đồng">
+                            <i data-lucide="file-check-2"></i>
+                            <span>Hợp đồng</span>
+                        </button>
+                    </li>
+                    <li class="menu-divider role-menu-client">Đối tác & Nhân sự</li>
+                    <li class="role-menu-client">
+                        <button class="nav-btn" data-tab="chudautu" id="btn-tab-chudautu">
+                            <i data-lucide="building-2"></i>
+                            <span>Chủ đầu tư</span>
+                        </button>
+                    </li>
+                    <li class="role-menu-client">
+                        <button class="nav-btn" data-tab="nhathau" id="btn-tab-nhathau">
+                            <i data-lucide="shield-check"></i>
+                            <span>Nhà thầu</span>
+                        </button>
+                    </li>
+                    <li class="role-menu-client">
+                        <button class="nav-btn" data-tab="chuyengia" id="btn-tab-chuyengia">
+                            <i data-lucide="users"></i>
+                            <span>Chuyên gia</span>
+                        </button>
+                    </li>
+                    <li class="menu-divider role-menu-client">Hệ thống mẫu</li>
+                    <li class="role-menu-client">
+                        <button class="nav-btn" data-tab="bieumau" id="btn-tab-bieumau">
+                            <i data-lucide="file-check"></i>
+                            <span>Biểu mẫu Word</span>
+                        </button>
+                    </li>
+                    <!-- Phân quyền Super Admin -->
+                    <li class="menu-divider role-menu-superadmin" style="display:none;">Super Admin</li>
+                    <li class="role-menu-superadmin" style="display:none;">
+                        <button class="nav-btn text-purple fw-bold" data-tab="superadmin-dashboard"
+                            id="btn-tab-superadmin-dashboard">
+                            <i data-lucide="line-chart" class="text-purple"></i>
+                            <span>Tổng quan SA</span>
+                        </button>
+                    </li>
+                    <li class="role-menu-superadmin" style="display:none;">
+                        <button class="nav-btn text-purple fw-bold" data-tab="superadmin" id="btn-tab-superadmin">
+                            <i data-lucide="users-2" class="text-purple"></i>
+                            <span>Quản lý Người dùng</span>
+                        </button>
+                    </li>
+                    <!-- Phân quyền Manager -->
+                    <li class="menu-divider role-menu-manager" style="display:none;">Quản lý đơn vị</li>
+                    <li class="role-menu-manager" style="display:none;">
+                        <button class="nav-btn text-blue fw-bold" data-tab="managernhanvien"
+                            id="btn-tab-managernhanvien">
+                            <i data-lucide="users-2" class="text-blue"></i>
+                            <span>Nhân sự & Phân quyền</span>
+                        </button>
+                    </li>
+                    <li class="role-menu-manager" style="display:none;">
+                        <button class="nav-btn text-blue fw-bold" data-tab="managerhosogiay"
+                            id="btn-tab-managerhosogiay">
+                            <i data-lucide="folder-cog" class="text-blue"></i>
+                            <span>Trạng thái Hồ sơ giấy</span>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer"
+                style="padding: 12px; text-align: center; font-size: 0.72rem; color: var(--text-muted); border-top: 1px solid var(--border-color);">
+                BiddingFlow &copy; 2026
+            </div>
+        </aside>

@@ -1,0 +1,62 @@
+    <!-- Modal 10: Xem trước dữ liệu Excel (Excel Import Preview) -->
+    <div class="modal-overlay" id="modal-excel-preview">
+        <div class="modal-card modal-lg" style="max-width: 90%; width: 95%;">
+            <div class="modal-header">
+                <h3 id="modal-excel-import-title">Xem trước dữ liệu Nhập từ Excel</h3>
+                <button class="modal-close" data-close="modal-excel-preview">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height: 65vh; overflow-y: auto;">
+                <div class="excel-drag-drop-zone" id="excel-drag-drop-zone"
+                    style="border: 2px dashed var(--border-color); border-radius: var(--radius-md); padding: 36px; text-align: center; cursor: pointer; transition: border-color var(--transition-fast);">
+                    <i data-lucide="cloud-upload"
+                        style="width: 48px; height: 48px; color: var(--primary); margin: 0 auto;"></i>
+                    <p class="mt-2" style="margin-top: 12px; font-weight: 600;">Kéo thả tệp Excel vào đây hoặc
+                        <strong>Nhấp để chọn tệp</strong>
+                    </p>
+                    <span class="text-muted" style="font-size: 0.8rem;">Chấp nhận các định dạng .xlsx, .xls</span>
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls" style="display: none;">
+                </div>
+
+                <!-- Elegant uploaded file metadata summary -->
+                <div id="excel-file-info"
+                    style="display: none; align-items: center; gap: 12px; margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.05); border-radius: var(--radius-md); border: 1px solid rgba(59, 130, 246, 0.15);">
+                    <i data-lucide="file-spreadsheet" style="color: var(--primary); width: 24px; height: 24px;"></i>
+                    <div style="flex: 1; min-width: 0;">
+                        <div id="excel-filename"
+                            style="font-weight: 600; font-size: 0.95rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            -</div>
+                        <div id="excel-filesize" style="font-size: 0.8rem; color: var(--text-muted);">-</div>
+                    </div>
+                </div>
+
+                <div id="excel-preview-container" style="display: none; margin-top: 20px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="font-size: 1rem; font-weight: 700;" id="excel-preview-subtitle">Dữ liệu phân tích
+                            được:</h4>
+                        <div id="excel-validation-summary" style="font-size: 0.85rem; font-weight: 600;"></div>
+                    </div>
+                    <div class="table-container"
+                        style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-height: 400px; overflow-y: auto;">
+                        <table class="data-table" id="excel-preview-table">
+                            <thead id="excel-preview-header">
+                                <!-- Rendered via JS -->
+                            </thead>
+                            <tbody id="excel-preview-tbody">
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline text-blue" id="btn-download-excel-template"
+                    style="margin-right: auto; display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="download"></i> Tải Excel Mẫu
+                </button>
+                <button type="button" class="btn btn-outline" data-close="modal-excel-preview">Hủy bỏ</button>
+                <button type="button" class="btn btn-primary" id="btn-save-excel-import" style="display: none;"
+                    disabled>Xác nhận lưu vào CSDL</button>
+            </div>
+        </div>
+    </div>

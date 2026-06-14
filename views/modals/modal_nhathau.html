@@ -1,0 +1,99 @@
+    <!-- Modal 4: Nhà thầu -->
+    <div class="modal-overlay" id="modal-nhathau">
+        <div class="modal-card modal-lg">
+            <div class="modal-header"
+                style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <h3 id="modal-nhathau-title" style="margin: 0;">Thêm Nhà thầu</h3>
+                    <div id="nt-version-select-container" style="display: none; align-items: center; gap: 8px;">
+                        <label for="nt-version-select"
+                            style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0;">Phiên bản:</label>
+                        <select id="nt-version-select"
+                            style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-main); font-weight: 700; font-size: 0.85rem;"></select>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" data-close="modal-nhathau">&times;</button>
+            </div>
+            <form id="form-nhathau" novalidate>
+                <input type="hidden" id="form-nhathau-id">
+                <div class="modal-body" style="max-height: 72vh; overflow-y: auto;">
+                    <div class="form-grid">
+                        <div class="form-group col-span-2">
+                            <label for="nt-ma">Mã nhà thầu <span class="required">*</span></label>
+                            <input type="text" id="nt-ma" required placeholder="Ví dụ: NT-ECO">
+                            <span class="error-text">Vui lòng nhập mã nhà thầu</span>
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label for="nt-ten">Tên nhà thầu <span class="required">*</span></label>
+                            <input type="text" id="nt-ten" required placeholder="Tên đầy đủ của doanh nghiệp">
+                            <span class="error-text">Vui lòng nhập tên doanh nghiệp</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="nt-mst">Mã số thuế <span class="required">*</span></label>
+                            <input type="text" id="nt-mst" required placeholder="Mã số thuế doanh nghiệp">
+                            <span class="error-text">Vui lòng nhập mã số thuế</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="nt-nguoidaidien">Người đại diện <span class="required">*</span></label>
+                            <input type="text" id="nt-nguoidaidien" required placeholder="Họ và tên">
+                            <span class="error-text">Vui lòng nhập người đại diện</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="nt-danhxung">Danh xưng <span class="required">*</span></label>
+                            <select id="nt-danhxung" required>
+                                <option value="Ông" selected>Ông</option>
+                                <option value="Bà">Bà</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="nt-sdt">Điện thoại</label>
+                            <input type="tel" id="nt-sdt" placeholder="Số điện thoại">
+                            <span class="error-text">Vui lòng nhập số điện thoại</span>
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label for="nt-email">Email <span class="required">*</span></label>
+                            <input type="email" id="nt-email" required placeholder="contact@nhathau.com">
+                            <span class="error-text">Email không hợp lệ</span>
+                        </div>
+                        <div class="form-group">
+                            <label>Tỉnh/Thành phố <span class="required">*</span></label>
+                            <select id="nt-tinh" class="select-province" required>
+                                <option value="">-- Chọn Tỉnh/Thành phố --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Xã/Phường <span class="required">*</span></label>
+                            <select id="nt-xa" class="select-ward" required disabled>
+                                <option value="">-- Chọn Xã/Phường --</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label for="nt-diachichitiet">Địa chỉ chi tiết <span class="required">*</span></label>
+                            <input type="text" id="nt-diachichitiet" required
+                                placeholder="Số nhà, tên đường, thôn/xóm...">
+                            <span class="error-text">Vui lòng nhập địa chỉ chi tiết</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="nt-sotaikhoan">Số tài khoản <span class="required">*</span></label>
+                            <input type="text" id="nt-sotaikhoan" required placeholder="Số tài khoản ngân hàng">
+                            <span class="error-text">Vui lòng nhập số tài khoản</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="nt-noimotaikhoan">Nơi mở tài khoản <span class="required">*</span></label>
+                            <input type="text" id="nt-noimotaikhoan" required placeholder="Tên ngân hàng">
+                            <span class="error-text">Vui lòng nhập nơi mở tài khoản</span>
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label for="nt-manganhang">Mã ngân hàng</label>
+                            <input type="text" id="nt-manganhang" placeholder="Mã CITAD hoặc Swift Code">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-nhathau">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu thông tin</button>
+                </div>
+            </form>
+        </div>
+    </div>

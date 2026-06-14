@@ -1,0 +1,38 @@
+                <!-- ================= TAB: NHÀ THẦU ================= -->
+                <section class="tab-pane" id="tab-nhathau">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm nhà thầu..." id="search-nhathau">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="nhathau" style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-nhathau">
+                            <i data-lucide="plus"></i> Thêm Nhà thầu mới
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="nhathau-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã Nhà Thầu</th>
+                                    <th>Phiên bản</th>
+                                    <th>Tên Nhà Thầu</th>
+                                    <th>Mã Số Thuế</th>
+                                    <th>Người Đại Diện</th>
+                                    <th>Liên Hệ</th>
+                                    <th>Tài Khoản Ngân Hàng</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="nhathau-pagination"></div>
+                </section>

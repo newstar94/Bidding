@@ -23,8 +23,62 @@ import pandas as pd
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
-from starlette.responses import StreamingResponse, JSONResponse, FileResponse
+from starlette.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse
 from starlette.middleware import Middleware
+# ... (các imports khác giữ nguyên)
+
+import re
+
+# Cache cho HTML đã biên dịch/ghép nối
+_compiled_html_cache = None
+
+def compile_html(file_path):
+    global _compiled_html_cache
+    
+    # Nếu không phải chế độ debug và đã có cache, trả về cache luôn
+    if not APP_DEBUG and _compiled_html_cache:
+        return _compiled_html_cache
+        
+    def replace_include(match):
+        include_path = match.group(1).strip()
+        # Đường dẫn trong placeholder ví dụ: views/components/sidebar.html
+        # Ta sẽ giải quyết đường dẫn tuyệt đối dựa trên thư mục gốc dự án (project_root)
+        full_path = os.path.join(project_root, include_path)
+        
+        # Thử lại nếu không chứa views/ hoặc tìm kiếm trực tiếp
+        if not os.path.exists(full_path) and include_path.startswith("views/"):
+            full_path = os.path.join(project_root, include_path.replace("views/", ""))
+            
+        if os.path.exists(full_path):
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Biên dịch đệ quy phòng trường hợp file con cũng chứa placeholder INCLUDE
+                return compile_content(content)
+        else:
+            return f"<!-- INCLUDE ERROR: File not found {include_path} ({full_path}) -->"
+
+    def compile_content(content):
+        # Trận khớp dạng <!-- INCLUDE: đường_dẫn_file -->
+        pattern = r'<!--\s*INCLUDE:\s*([^\s\-]+)\s*-->'
+        return re.sub(pattern, replace_include, content)
+
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+        compiled = compile_content(raw_content)
+        if not APP_DEBUG:
+            _compiled_html_cache = compiled
+        return compiled
+    return "<h1>Error: Main template index.html not found</h1>"
+
+
+async def index(request):
+    """
+    [GET] /
+    Biên dịch và trả về tệp index.html đã được ghép nối từ các partials.
+    """
+    html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
+    return HTMLResponse(content=html_content, status_code=200)
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.background import BackgroundTasks
@@ -124,13 +178,6 @@ from export_routes import (
     export_danhgiahsdt_template_api,
     export_ketquaqd_template_api
 )
-
-async def index(request):
-    """
-    [GET] /
-    Trả về tệp index.html từ thư mục views.
-    """
-    return FileResponse(os.path.join(project_root, 'views', 'index.html'))
 
 
 class SafeStaticFiles(StaticFiles):

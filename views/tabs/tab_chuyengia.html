@@ -1,0 +1,37 @@
+                <!-- ================= TAB: CHUYÊN GIA ================= -->
+                <section class="tab-pane" id="tab-chuyengia">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm kiếm chuyên gia..." id="search-chuyengia">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="chuyengia"
+                            style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-chuyengia">
+                            <i data-lucide="plus"></i> Thêm Chuyên gia
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="chuyengia-table">
+                            <thead>
+                                <tr>
+                                    <th>Họ và tên Chuyên gia</th>
+                                    <th>Số Căn cước công dân</th>
+                                    <th>Số Chứng chỉ Đấu thầu</th>
+                                    <th>Đơn vị cấp Chứng chỉ</th>
+                                    <th>Ngày cấp Chứng chỉ</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="chuyengia-pagination"></div>
+                </section>

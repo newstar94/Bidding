@@ -1,0 +1,165 @@
+                <!-- ================= TAB: SUPER ADMIN DASHBOARD ================= -->
+                <section class="tab-pane" id="tab-superadmin-dashboard">
+                    <!-- Stats Grid for Super Admin Platform -->
+                    <div class="stats-grid">
+                        <div class="stat-card"
+                            style="background: linear-gradient(135deg, rgba(147, 51, 234, 0.1) 0%, rgba(79, 70, 229, 0.1) 100%); border: 1px solid rgba(147, 51, 234, 0.2);">
+                            <div class="stat-icon bg-purple-soft text-purple">
+                                <i data-lucide="gem"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Tổng Doanh thu Hệ thống</span>
+                                <h3 class="stat-value text-purple" id="sad-stat-revenue">0 VND</h3>
+                                <span class="stat-trend text-purple"><i data-lucide="trending-up"></i> +12.4% so với quý
+                                    trước</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-blue-soft text-blue">
+                                <i data-lucide="building"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Tổng Đơn vị đăng ký</span>
+                                <h3 class="stat-value text-blue" id="sad-stat-orgs">0 Đơn vị</h3>
+                                <span class="stat-trend text-green" id="sad-stat-active-orgs">Đang hoạt động: 0</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-emerald-soft text-emerald">
+                                <i data-lucide="users-2"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Tổng số Chuyên viên</span>
+                                <h3 class="stat-value text-emerald" id="sad-stat-users">0 Người dùng</h3>
+                                <span class="stat-trend text-emerald">Trên toàn hệ thống</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-amber-soft text-amber">
+                                <i data-lucide="shield-check"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Tỷ lệ Kích hoạt Gói</span>
+                                <h3 class="stat-value text-amber" id="sad-stat-packages">0%</h3>
+                                <span class="stat-trend text-amber">Tài khoản trả phí</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Double Column Layout for Super Admin Insights -->
+                    <div class="dashboard-grid">
+                        <!-- Left Column: Subscription Distribution Chart / Progress Bars -->
+                        <div class="dashboard-card card-primary">
+                            <div class="card-header">
+                                <h3 class="card-title">Cơ cấu Doanh thu & Gói dịch vụ Thương mại</h3>
+                                <i data-lucide="pie-chart" class="text-muted"></i>
+                            </div>
+                            <div class="card-body">
+                                <div style="display: flex; flex-direction: column; gap: 20px; padding: 10px 0;">
+                                    <div>
+                                        <div
+                                            style="display:flex; justify-content:space-between; margin-bottom: 6px; font-size: 0.85rem; font-weight: 700;">
+                                            <span>Gói Bạc (Silver) - 15M/năm</span>
+                                            <span id="sad-pkg-silver-percent">0% (0 Đơn vị)</span>
+                                        </div>
+                                        <div class="quota-progress-bar-bg" style="height: 8px;">
+                                            <div id="sad-pkg-silver-fill" class="quota-progress-bar-fill"
+                                                style="width: 0%; background: var(--neutral-active);"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div
+                                            style="display:flex; justify-content:space-between; margin-bottom: 6px; font-size: 0.85rem; font-weight: 700;">
+                                            <span>Gói Vàng (Gold) - 35M/năm</span>
+                                            <span id="sad-pkg-gold-percent">0% (0 Đơn vị)</span>
+                                        </div>
+                                        <div class="quota-progress-bar-bg" style="height: 8px;">
+                                            <div id="sad-pkg-gold-fill" class="quota-progress-bar-fill"
+                                                style="width: 0%; background: var(--primary);"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div
+                                            style="display:flex; justify-content:space-between; margin-bottom: 6px; font-size: 0.85rem; font-weight: 700;">
+                                            <span>Gói Kim Cương (Diamond) - 75M/năm</span>
+                                            <span id="sad-pkg-diamond-percent">0% (0 Đơn vị)</span>
+                                        </div>
+                                        <div class="quota-progress-bar-bg" style="height: 8px;">
+                                            <div id="sad-pkg-diamond-fill" class="quota-progress-bar-fill"
+                                                style="width: 0%; background: linear-gradient(90deg, #a855f7 0%, #4f46e5 100%);">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: System Health & Quick Actions -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3 class="card-title">Bảo mật & Kênh Người dùng</h3>
+                                <i data-lucide="server" class="text-muted"></i>
+                            </div>
+                            <div class="card-body">
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    <div
+                                        style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--neutral-soft); border-radius: var(--radius-sm);">
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <i data-lucide="activity"
+                                                style="color: var(--success); width: 18px; height: 18px;"></i>
+                                            <span style="font-weight: 600; font-size: 0.85rem;">Trạng thái CSDL
+                                                (SQLite)</span>
+                                        </div>
+                                        <span class="badge badge-success"><i data-lucide="check"></i> Trực tuyến</span>
+                                    </div>
+                                    <div
+                                        style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--neutral-soft); border-radius: var(--radius-sm);">
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <i data-lucide="database"
+                                                style="color: var(--primary); width: 18px; height: 18px;"></i>
+                                            <span style="font-weight: 600; font-size: 0.85rem;">Đồng bộ máy chủ</span>
+                                            <small style="color:var(--text-muted);">JSON API</small>
+                                        </div>
+                                        <span class="badge badge-info">Sẵn sàng</span>
+                                    </div>
+                                    <div
+                                        style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--neutral-soft); border-radius: var(--radius-sm);">
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <i data-lucide="key"
+                                                style="color: var(--warning); width: 18px; height: 18px;"></i>
+                                            <span style="font-weight: 600; font-size: 0.85rem;">Bảo mật RBAC</span>
+                                        </div>
+                                        <span class="badge badge-warning">Đã bật (Bắt buộc)</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Company Registration Feed -->
+                    <div class="dashboard-card recent-activity" style="margin-top: 24px;">
+                        <div class="card-header"
+                            style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 class="card-title">Đơn vị mới đăng ký & Tài khoản Quản lý</h3>
+                            <button class="btn btn-outline btn-sm" onclick="window.switchTab('superadmin')">Quản lý Tài
+                                khoản</button>
+                        </div>
+                        <div class="card-body overflow-x">
+                            <table class="data-table" id="sad-recent-orgs-table">
+                                <thead>
+                                    <tr>
+                                        <th>Đơn vị / Doanh nghiệp</th>
+                                        <th>Đại diện Quản lý (Manager)</th>
+                                        <th>Số điện thoại</th>
+                                        <th>Gói cước</th>
+                                        <th>Hạn sử dụng</th>
+                                        <th>Trạng thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sad-recent-orgs-tbody">
+                                    <!-- Rendered dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>

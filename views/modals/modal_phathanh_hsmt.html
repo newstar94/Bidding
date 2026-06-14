@@ -1,0 +1,71 @@
+    <!-- Modal: Nhập thông tin phát hành HSMT -->
+    <div class="modal-overlay" id="modal-phathanh-hsmt">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3>Phát hành HSMT & Mời thầu</h3>
+                <button class="modal-close" data-close="modal-phathanh-hsmt">&times;</button>
+            </div>
+            <form id="form-phathanh-hsmt" novalidate>
+                <input type="hidden" id="phathanh-gt-id">
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted);">
+                        Vui lòng nhập các thông tin bắt buộc dưới đây để tiến hành phát hành hồ sơ mời thầu và chuyển
+                        trạng thái gói thầu sang <strong>Đang mời thầu</strong>.
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group col-span-2" id="phathanh-magoithau-container">
+                            <label for="phathanh-magoithau">Mã gói thầu <span class="required">*</span></label>
+                            <input type="text" id="phathanh-magoithau" required placeholder="Ví dụ: GT-01">
+                            <span class="error-text">Vui lòng nhập Mã gói thầu</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="phathanh-soquyetdinh">Số quyết định phê duyệt <span
+                                    class="required">*</span></label>
+                            <input type="text" id="phathanh-soquyetdinh" required placeholder="Ví dụ: 456/QĐ-BTTTT">
+                            <span class="error-text">Vui lòng nhập Số quyết định phê duyệt</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="phathanh-ngayquyetdinh">Ngày quyết định phê duyệt <span
+                                    class="required">*</span></label>
+                            <input type="text" id="phathanh-ngayquyetdinh" required
+                                placeholder="Chọn ngày (dd/MM/yyyy)">
+                            <span class="error-text">Vui lòng chọn Ngày quyết định phê duyệt</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="phathanh-thoigiandangtai">Thời gian đăng tải thông báo <span
+                                    class="required">*</span></label>
+                            <input type="text" id="phathanh-thoigiandangtai" required
+                                placeholder="Chọn ngày giờ (dd/MM/yyyy HH:mm)">
+                            <span class="error-text">Vui lòng chọn Thời gian đăng tải thông báo</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="phathanh-thoigiandongthau">Thời gian đóng thầu <span
+                                    class="required">*</span></label>
+                            <input type="text" id="phathanh-thoigiandongthau" required
+                                placeholder="Chọn ngày giờ (dd/MM/yyyy HH:mm)">
+                            <span class="error-text">Vui lòng chọn Thời gian đóng thầu</span>
+                        </div>
+                        <div class="form-group" id="phathanh-baodam-container">
+                            <label for="phathanh-giatribaomothau">Giá trị bảo đảm dự thầu (VNĐ) <span
+                                    class="required">*</span></label>
+                            <input type="text" id="phathanh-giatribaomothau" placeholder="Nhập giá trị bảo đảm dự thầu">
+                            <span class="error-text">Vui lòng nhập giá trị bảo đảm dự thầu</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="phathanh-hieuluchsdt">Thời gian hiệu lực hồ sơ dự thầu (ngày) <span
+                                    class="required">*</span></label>
+                            <input type="number" id="phathanh-hieuluchsdt" required placeholder="Ví dụ: 90" min="1">
+                            <span class="error-text">Vui lòng nhập thời gian hiệu lực hồ sơ dự thầu</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-phathanh-hsmt">Hủy</button>
+                    <button type="submit" class="btn btn-primary" id="btn-confirm-phathanh"
+                        style="display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="send" style="width:16px; height:16px;"></i> Phát hành HSMT
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>

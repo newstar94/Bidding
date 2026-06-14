@@ -1,0 +1,25 @@
+    <!-- Modal: Custom Alert/Confirm Dialog -->
+    <div class="modal-overlay" id="modal-custom-dialog" style="z-index: 9999;">
+        <div class="modal-card"
+            style="max-width: 480px; width: 90%; padding: 24px; text-align: center; position: relative; overflow: visible;">
+            <button class="modal-close" id="btn-dialog-close"
+                style="position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: none; border: none; outline: none; padding: 0;"
+                aria-label="Close dialog">&times;</button>
+            <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+                <div id="dialog-icon-container"
+                    style="width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(59, 130, 246, 0.1); color: var(--primary);">
+                    <i data-lucide="help-circle" style="width: 32px; height: 32px;" id="dialog-icon"></i>
+                </div>
+            </div>
+            <h3 id="dialog-title"
+                style="font-size: 1.25rem; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">Xác nhận
+            </h3>
+            <p id="dialog-message"
+                style="font-size: 0.95rem; color: var(--text-light); line-height: 1.6; white-space: pre-line; margin-bottom: 24px; text-align: left; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;" id="dialog-buttons">
+                <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1;">Hủy</button>
+                <button type="button" class="btn btn-primary" id="btn-dialog-ok" style="flex: 1;">Xác nhận</button>
+            </div>
+        </div>
+    </div>

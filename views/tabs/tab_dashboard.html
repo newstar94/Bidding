@@ -1,0 +1,127 @@
+                <!-- ================= TAB: DASHBOARD ================= -->
+                <section class="tab-pane active" id="tab-dashboard">
+                    <!-- Stats Grid -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon bg-blue-soft text-blue">
+                                <i data-lucide="file-spreadsheet"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Kế hoạch LCNT</span>
+                                <h3 class="stat-value" id="stat-count-kehoach">0</h3>
+                                <span class="stat-trend text-green"><i data-lucide="trending-up"></i> Chủ động</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-emerald-soft text-emerald">
+                                <i data-lucide="package"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Tổng số Gói thầu</span>
+                                <h3 class="stat-value" id="stat-count-goithau">0</h3>
+                                <span class="stat-trend text-blue" id="stat-active-goithau">0 đang mời thầu</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-purple-soft text-purple">
+                                <i data-lucide="file-check-2"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Tổng giá trị Hợp đồng</span>
+                                <h3 class="stat-value text-lg" id="stat-total-budget">0 VND</h3>
+                                <span class="stat-trend text-purple"><i data-lucide="bar-chart-2"></i> Giá trị thực tế
+                                    ký kết</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-amber-soft text-amber">
+                                <i data-lucide="sparkles"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Hợp đồng phụ trách</span>
+                                <h3 class="stat-value" id="stat-savings-value">0 Hợp đồng</h3>
+                                <span class="stat-trend text-amber" id="stat-savings-percent">Đang thực hiện</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Double Column Layout -->
+                    <div class="dashboard-grid">
+                        <!-- Left Column: Quick Stats & Chart Mockup -->
+                        <div class="dashboard-card card-primary">
+                            <div class="card-header">
+                                <h3 class="card-title">Cơ cấu Trạng thái Gói thầu</h3>
+                                <i data-lucide="pie-chart" class="text-muted"></i>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-summary-wrapper">
+                                    <div class="status-donut-chart">
+                                        <div class="donut-inner">
+                                            <span class="donut-total" id="donut-total-count">0</span>
+                                            <span class="donut-label">Gói thầu</span>
+                                        </div>
+                                    </div>
+                                    <div class="status-legend-list" id="status-legend-list">
+                                        <!-- Will be rendered via JS -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Partners Count -->
+                        <div class="dashboard-card">
+                            <div class="card-header">
+                                <h3 class="card-title">Đối tác & Hợp đồng</h3>
+                                <i data-lucide="network" class="text-muted"></i>
+                            </div>
+                            <div class="card-body">
+                                <div class="partners-summary-grid" style="grid-template-columns: repeat(4, 1fr);">
+                                    <div class="partner-box" style="cursor: pointer;" onclick="switchTab('chudautu')">
+                                        <i data-lucide="building-2" class="text-blue"></i>
+                                        <h4 id="stat-count-chudautu">0</h4>
+                                        <p>Chủ đầu tư</p>
+                                    </div>
+                                    <div class="partner-box" style="cursor: pointer;" onclick="switchTab('nhathau')">
+                                        <i data-lucide="shield-check" class="text-emerald"></i>
+                                        <h4 id="stat-count-nhathau">0</h4>
+                                        <p>Nhà thầu</p>
+                                    </div>
+                                    <div class="partner-box" style="cursor: pointer;" onclick="switchTab('chuyengia')">
+                                        <i data-lucide="users" class="text-purple"></i>
+                                        <h4 id="stat-count-chuyengia">0</h4>
+                                        <p>Chuyên gia</p>
+                                    </div>
+                                    <div class="partner-box" style="cursor: pointer;" onclick="switchTab('hopdong')">
+                                        <i data-lucide="file-check-2" class="text-amber"></i>
+                                        <h4 id="stat-count-hopdong">0</h4>
+                                        <p>Hợp đồng</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity Section -->
+                    <div class="dashboard-card recent-activity">
+                        <div class="card-header">
+                            <h3 class="card-title">Gói thầu mới cập nhật</h3>
+                            <button class="btn btn-outline btn-sm" id="btn-view-all-packages">Xem tất cả</button>
+                        </div>
+                        <div class="card-body overflow-x">
+                            <table class="data-table" id="recent-packages-table">
+                                <thead>
+                                    <tr>
+                                        <th>Mã Gói</th>
+                                        <th>Tên Gói thầu</th>
+                                        <th>Giá Gói thầu</th>
+                                        <th>Hình thức</th>
+                                        <th>Trạng thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Rendered via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>

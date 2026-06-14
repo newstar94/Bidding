@@ -1,0 +1,38 @@
+                <!-- ================= TAB: CHỦ ĐẦU TƯ ================= -->
+                <section class="tab-pane" id="tab-chudautu">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm chủ đầu tư..." id="search-chudautu">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="chudautu" style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-chudautu">
+                            <i data-lucide="plus"></i> Thêm Chủ đầu tư
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="chudautu-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã CĐT</th>
+                                    <th>Phiên bản</th>
+                                    <th>Tên Chủ Đầu Tư</th>
+                                    <th>Mã Số Thuế</th>
+                                    <th>Đại diện</th>
+                                    <th>Địa Chỉ & SĐT</th>
+                                    <th>Số Tài Khoản</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="chudautu-pagination"></div>
+                </section>

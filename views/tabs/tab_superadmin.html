@@ -1,0 +1,140 @@
+                <!-- ================= TAB: SUPER ADMIN ================= -->
+                <section class="tab-pane" id="tab-superadmin">
+                    <!-- Stats of Bidding Platform Revenue -->
+                    <div class="stats-grid">
+                        <div class="stat-card"
+                            style="background: linear-gradient(135deg, rgba(147, 51, 234, 0.1) 0%, rgba(79, 70, 229, 0.1) 100%); border: 1px solid rgba(147, 51, 234, 0.2);">
+                            <div class="stat-icon bg-purple-soft text-purple">
+                                <i data-lucide="gem"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Doanh thu nền tảng (YTD)</span>
+                                <h3 class="stat-value text-purple" id="sa-stat-revenue">0 VND</h3>
+                                <span class="stat-trend text-purple"><i data-lucide="trending-up"></i> Chủ động</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-blue-soft text-blue">
+                                <i data-lucide="building"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Tổng Đơn vị đăng ký</span>
+                                <h3 class="stat-value text-blue" id="sa-stat-orgs">0 Đơn vị</h3>
+                                <span class="stat-trend text-green">Đang hoạt động: 0</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon bg-emerald-soft text-emerald">
+                                <i data-lucide="users-2"></i>
+                            </div>
+                            <div class="stat-data">
+                                <span class="stat-label">Số lượng Nhân viên (Sàn)</span>
+                                <h3 class="stat-value text-emerald" id="sa-stat-employees">0 Nhân sự</h3>
+                                <span class="stat-trend text-emerald">Được cấp quyền thầu</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage Subscription Packages & Pricing Cards -->
+                    <div class="dashboard-card mb-4" style="margin-bottom: 24px;">
+                        <div class="card-header">
+                            <h3 class="card-title">Cấu hình Gói Dịch vụ Thương mại BiddingFlow</h3>
+                            <i data-lucide="sliders" class="text-muted"></i>
+                        </div>
+                        <div class="card-body">
+                            <div class="pricing-grid" id="sa-pricing-grid">
+                                <!-- Silver Package -->
+                                <div class="pricing-card silver-card">
+                                    <div class="pricing-badge">Silver</div>
+                                    <h4 class="package-name">Gói Bạc (Silver)</h4>
+                                    <div class="package-price">15.000.000đ<span>/năm</span></div>
+                                    <p class="package-desc">Tối ưu cho đơn vị quy mô nhỏ</p>
+                                    <ul class="package-features">
+                                        <li><i data-lucide="check"></i> Quản lý tối đa <strong>5 Nhân sự</strong></li>
+                                        <li><i data-lucide="check"></i> Lập ma trận phân quyền</li>
+                                        <li><i data-lucide="check"></i> Đồng bộ dữ liệu SQLite</li>
+                                        <li><i data-lucide="check"></i> Nhập dữ liệu thầu từ Excel</li>
+                                    </ul>
+                                    <div class="package-action-btn-group">
+                                        <button class="btn btn-outline btn-full-width mb-2"
+                                            onclick="window.editPackageQuota('silver', 5)">Chỉnh sửa hạn mức</button>
+                                        <button class="btn btn-emerald btn-full-width" id="btn-lock-silver"
+                                            onclick="window.togglePackageLock('silver')">Hoạt động</button>
+                                    </div>
+                                </div>
+
+                                <!-- Gold Package -->
+                                <div class="pricing-card gold-card popular">
+                                    <div class="pricing-badge badge-popular">Bán chạy</div>
+                                    <h4 class="package-name">Gói Vàng (Gold)</h4>
+                                    <div class="package-price">35.000.000đ<span>/năm</span></div>
+                                    <p class="package-desc">Đơn vị đấu thầu chuyên nghiệp</p>
+                                    <ul class="package-features">
+                                        <li><i data-lucide="check"></i> Quản lý tối đa <strong>15 Nhân sự</strong></li>
+                                        <li><i data-lucide="check"></i> Lập ma trận phân quyền chi tiết</li>
+                                        <li><i data-lucide="check"></i> Cấu hình riêng Hồ sơ giấy</li>
+                                        <li><i data-lucide="check"></i> Phân công thầu & hợp đồng</li>
+                                        <li><i data-lucide="check"></i> Xuất kết xuất Word chuyên nghiệp</li>
+                                    </ul>
+                                    <div class="package-action-btn-group">
+                                        <button class="btn btn-outline btn-full-width mb-2"
+                                            onclick="window.editPackageQuota('gold', 15)">Chỉnh sửa hạn mức</button>
+                                        <button class="btn btn-emerald btn-full-width" id="btn-lock-gold"
+                                            onclick="window.togglePackageLock('gold')">Hoạt động</button>
+                                    </div>
+                                </div>
+
+                                <!-- Diamond Package -->
+                                <div class="pricing-card diamond-card">
+                                    <div class="pricing-badge">Diamond</div>
+                                    <h4 class="package-name">Gói Kim Cương</h4>
+                                    <div class="package-price">75.000.000đ<span>/năm</span></div>
+                                    <p class="package-desc">Giải pháp tối cao & toàn diện</p>
+                                    <ul class="package-features">
+                                        <li><i data-lucide="check"></i> <strong>Không giới hạn</strong> Nhân sự</li>
+                                        <li><i data-lucide="check"></i> Toàn bộ tính năng Gói Vàng</li>
+                                        <li><i data-lucide="check"></i> Hỗ trợ VIP 24/7</li>
+                                        <li><i data-lucide="check"></i> Backup cơ sở dữ liệu tự động</li>
+                                    </ul>
+                                    <div class="package-action-btn-group">
+                                        <button class="btn btn-outline btn-full-width mb-2"
+                                            onclick="window.editPackageQuota('diamond', 999)">Chỉnh sửa hạn mức</button>
+                                        <button class="btn btn-emerald btn-full-width" id="btn-lock-diamond"
+                                            onclick="window.togglePackageLock('diamond')">Hoạt động</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage System User Accounts -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Quản lý Tài khoản Người dùng trên Toàn Hệ thống</h3>
+                            <i data-lucide="shield-check" class="text-muted"></i>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-3" style="font-size: 0.85rem; margin-bottom: 16px;">Super Admin có
+                                quyền giám sát, rà soát danh sách và xóa tài khoản của bất kỳ thành viên nào tham gia
+                                BiddingFlow để bảo vệ an ninh hệ thống.</p>
+                            <div class="table-container">
+                                <table class="data-table" id="sa-users-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Tên tài khoản (Username)</th>
+                                            <th>Họ tên thành viên</th>
+                                            <th>Địa chỉ Email</th>
+                                            <th>Vai trò (Role)</th>
+                                            <th>Gói đăng ký</th>
+                                            <th>Thời hạn còn lại</th>
+                                            <th class="text-right">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sa-users-tbody">
+                                        <!-- Rendered dynamically via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>

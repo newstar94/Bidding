@@ -1,0 +1,41 @@
+                <!-- ================= TAB: HỢP ĐỒNG ================= -->
+                <section class="tab-pane" id="tab-hopdong">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm hợp đồng (số, tên)..." id="search-hopdong">
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="hopdong" style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-hopdong">
+                            <i data-lucide="plus"></i> Thêm Hợp đồng mới
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="hopdong-table">
+                            <thead>
+                                <tr>
+                                    <th>Số Hợp Đồng</th>
+                                    <th>Tên Hợp Đồng</th>
+                                    <th>Ngày Ký</th>
+                                    <th>Chủ Đầu Tư</th>
+                                    <th>Nhà Thầu</th>
+                                    <th>Giá Trị Hợp Đồng</th>
+                                    <th>Loại Hợp Đồng</th>
+                                    <th>Thời Gian Thực Hiện</th>
+                                    <th>Gói Thầu Liên Kết</th>
+                                    <th>Trạng Thái Hồ Sơ</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="hopdong-pagination"></div>
+                </section>

@@ -1,0 +1,96 @@
+            <!-- Top Header -->
+            <header class="app-header">
+                <div class="header-left">
+                    <button class="menu-toggle-btn" id="sidebar-toggle" aria-label="Toggle Sidebar">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <h2 class="page-title" id="page-title">Tổng quan hệ thống</h2>
+                </div>
+                <div class="header-right">
+                    <div class="date-display" id="current-date">
+                        <i data-lucide="calendar"></i>
+                        <span>Thứ Tư, 27/05/2026</span>
+                    </div>
+                    <button class="theme-toggle" id="theme-toggle" title="Chuyển đổi giao diện"
+                        aria-label="Toggle Dark Mode" style="margin-right: 4px;">
+                        <i data-lucide="sun" id="sun-icon"></i>
+                        <i data-lucide="moon" id="moon-icon" style="display: none;"></i>
+                    </button>
+                    <button class="btn btn-outline btn-sm" id="btn-force-sync" title="Đồng bộ lại dữ liệu"
+                        style="display: none; margin-right: 4px; padding: 6px 12px; font-size: 0.8rem; font-weight: 600; align-items: center; gap: 6px; height: 34px; border-radius: var(--radius-md);">
+                        <i data-lucide="refresh-cw" id="sync-icon" style="width: 14px; height: 14px;"></i>
+                        <span id="sync-status-text">Đồng bộ</span>
+                    </button>
+
+                    <!-- Workspace Pill Indicator -->
+                    <div class="workspace-pill" id="header-active-org-pill" style="display: none; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary); font-size: 0.78rem; font-weight: 700; height: 38px; margin-right: 8px; border: 1px solid rgba(37, 99, 235, 0.15); cursor: pointer; transition: all 0.2s;">
+                        <i data-lucide="building-2" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                        <span id="header-active-org-name" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">HTD</span>
+                    </div>
+
+                    <!-- Header Profile Dropdown Container -->
+                    <div class="header-profile-container" id="header-profile-menu">
+                        <div class="header-profile-trigger">
+                            <div class="profile-avatar" id="header-profile-avatar">AD</div>
+                            <div class="profile-info"
+                                style="display: flex; flex-direction: column; text-align: left; margin-right: 4px;">
+                                <h4 id="header-profile-name"
+                                    style="margin: 0; font-size: 0.82rem; font-weight: 700; color: var(--text-main); line-height: 1.2;">
+                                    Administrator</h4>
+                                <p id="header-profile-role"
+                                    style="margin: 0; font-size: 0.7rem; color: var(--text-muted); font-weight: 500; line-height: 1.2;">
+                                    Chế độ: Ngoại tuyến</p>
+                            </div>
+                            <i data-lucide="chevron-down"
+                                style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+                        </div>
+
+                        <!-- Dropdown Menu -->
+                        <div class="header-profile-dropdown" id="profile-dropdown-menu">
+                            <button class="dropdown-item" id="btn-dropdown-profile">
+                                <i data-lucide="user-cog" style="width:16px; height:16px;"></i>
+                                <span>Thông tin tài khoản</span>
+                            </button>
+
+                            <!-- Workspace Switcher Section -->
+                            <div id="org-switch-section" style="display: none;">
+                                <div class="dropdown-divider"></div>
+                                <div
+                                    style="padding: 6px 16px; font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Tổ chức hoạt động</div>
+                                <div id="org-switch-list"
+                                    style="display: flex; flex-direction: column; max-height: 200px; overflow-y: auto;">
+                                    <!-- Rendered via JS -->
+                                </div>
+                            </div>
+
+                            <!-- Super Admin Role Switcher Section -->
+                            <div id="sa-role-switch-section" style="display: none;">
+                                <div class="dropdown-divider"></div>
+                                <div
+                                    style="padding: 6px 16px; font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Xem dưới vai trò</div>
+                                <button class="dropdown-item dropdown-role-btn" data-switch-role="super_admin">
+                                    <i data-lucide="shield-alert" style="width:14px; height:14px;"></i>
+                                    <span>Super Admin</span>
+                                </button>
+                                <button class="dropdown-item dropdown-role-btn" data-switch-role="manager">
+                                    <i data-lucide="shield-check" style="width:14px; height:14px;"></i>
+                                    <span>Quản lý</span>
+                                </button>
+                                <button class="dropdown-item dropdown-role-btn" data-switch-role="employee">
+                                    <i data-lucide="user" style="width:14px; height:14px;"></i>
+                                    <span>Chuyên viên</span>
+                                </button>
+                            </div>
+
+                            <div class="dropdown-divider"></div>
+                            <button class="dropdown-item text-danger" id="btn-auth-logout"
+                                style="border: none; background: none; display: flex; align-items: center; gap: 10px;">
+                                <i data-lucide="log-out" style="width:16px; height:16px;"></i>
+                                <span>Đăng xuất</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>

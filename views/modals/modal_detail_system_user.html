@@ -1,0 +1,71 @@
+    <!-- Modal: Chi tiết & Chỉnh sửa Tài khoản (Super Admin User Detail Modal) -->
+    <div class="modal-overlay" id="modal-detail-system-user">
+        <div class="modal-card" style="max-width: 550px; width: 90%;">
+            <div class="modal-header">
+                <h3>Chi tiết & Thiết lập Tài khoản</h3>
+                <button class="modal-close" data-close="modal-detail-system-user">&times;</button>
+            </div>
+            <form id="form-detail-system-user" novalidate>
+                <input type="hidden" id="detail-su-id">
+                <div class="modal-body">
+                    <div class="form-grid" style="grid-template-columns: 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label for="detail-su-username">Tên tài khoản (Username)</label>
+                            <input type="text" id="detail-su-username" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;">
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-name">Họ tên thành viên</label>
+                            <input type="text" id="detail-su-name" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;"
+                                placeholder="Họ tên thành viên...">
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-email">Địa chỉ Email <span class="required">*</span></label>
+                            <input type="email" id="detail-su-email" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;"
+                                placeholder="Nhập địa chỉ email...">
+                            <span class="error-text">Vui lòng nhập địa chỉ email hợp lệ</span>
+                        </div>
+                        <div class="form-group" id="detail-su-org-container">
+                            <label for="detail-su-organization">Tên tổ chức</label>
+                            <input type="text" id="detail-su-organization" readonly disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;"
+                                placeholder="Nhập tên tổ chức, doanh nghiệp...">
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-role">Vai trò hệ thống (Role)</label>
+                            <select id="detail-su-role">
+                                <option value="super_admin">Super Admin</option>
+                                <option value="manager">Quản lý</option>
+                                <option value="employee">Chuyên viên</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="detail-su-package">Gói đăng ký dịch vụ</label>
+                            <select id="detail-su-package">
+                                <option value="none">-- Chọn Gói --</option>
+                                <option value="silver">Gói Bạc (Silver)</option>
+                                <option value="gold">Gói Vàng (Gold)</option>
+                                <option value="diamond">Gói Kim Cương (Diamond)</option>
+                            </select>
+                        </div>
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="detail-su-startdate">Ngày bắt đầu gói</label>
+                                <input type="text" id="detail-su-startdate" placeholder="dd/mm/yyyy">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="detail-su-enddate">Ngày kết thúc gói</label>
+                                <input type="text" id="detail-su-enddate" placeholder="dd/mm/yyyy">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-detail-system-user">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu thiết lập</button>
+                </div>
+            </form>
+        </div>
+    </div>

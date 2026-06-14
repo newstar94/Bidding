@@ -1,0 +1,504 @@
+    <!-- Modal 2: Gói thầu -->
+    <div class="modal-overlay" id="modal-goithau">
+        <div class="modal-card modal-lg">
+            <div class="modal-header">
+                <h3 id="modal-goithau-title">Thêm Gói thầu</h3>
+                <button class="modal-close" data-close="modal-goithau">&times;</button>
+            </div>
+            <form id="form-goithau" novalidate>
+                <input type="hidden" id="form-goithau-id">
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="gt-ma">Mã thông báo mời thầu</label>
+                            <input type="text" id="gt-ma" placeholder="Nhập mã thông báo mời thầu">
+                            <span class="error-text">Vui lòng nhập mã thông báo mời thầu</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-kehoachid">Kế hoạch LCNT liên kết <span class="required">*</span></label>
+                            <select id="gt-kehoachid" required>
+                                <option value="">-- Chọn Kế hoạch --</option>
+                                <!-- Rendered via JS -->
+                            </select>
+                            <span class="error-text">Vui lòng chọn Kế hoạch LCNT</span>
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label for="gt-ten">Tên gói thầu <span class="required">*</span></label>
+                            <input type="text" id="gt-ten" required
+                                placeholder="Ví dụ: Gói thầu mua sắm thiết bị máy chủ chuyên dụng">
+                            <span class="error-text">Vui lòng nhập tên gói thầu</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-gia">Giá gói thầu (VND) <span class="required">*</span></label>
+                            <input type="text" id="gt-gia" required placeholder="Nhập giá gói thầu">
+                            <span class="error-text">Giá gói thầu phải lớn hơn hoặc bằng 0</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-thoigian">Thời gian thực hiện <span class="required">*</span></label>
+                            <input type="text" id="gt-thoigian" required placeholder="Ví dụ: 90 ngày hoặc 3 tháng">
+                            <span class="error-text">Vui lòng nhập thời gian thực hiện</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-linhvuc">Lĩnh vực <span class="required">*</span></label>
+                            <select id="gt-linhvuc" required>
+                                <option value="Tư vấn">Tư vấn</option>
+                                <option value="Phi tư vấn">Phi tư vấn</option>
+                                <option value="Xây lắp">Xây lắp</option>
+                                <option value="Hỗn hợp">Hỗn hợp</option>
+                                <option value="Hàng hóa">Hàng hóa</option>
+                            </select>
+                            <span class="error-text">Vui lòng chọn lĩnh vực</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-hinhthuc">Hình thức lựa chọn <span class="required">*</span></label>
+                            <select id="gt-hinhthuc" required>
+                                <option value="Đấu thầu rộng rãi">Đấu thầu rộng rãi</option>
+                                <option value="Đấu thầu hạn chế">Đấu thầu hạn chế</option>
+                                <option value="Chỉ định thầu">Chỉ định thầu</option>
+                                <option value="Chỉ định thầu rút gọn">Chỉ định thầu rút gọn</option>
+                                <option value="Chào hàng cạnh tranh">Chào hàng cạnh tranh</option>
+                                <option value="Lựa chọn nhà thầu trong trường hợp đặc biệt">Lựa chọn nhà thầu trong
+                                    trường hợp đặc biệt</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="gt-phuongthuc-container" style="display: none;">
+                            <label for="gt-phuongthuc">Phương thức lựa chọn <span class="required">*</span></label>
+                            <select id="gt-phuongthuc" required>
+                                <option value="Một giai đoạn một túi hồ sơ">Một giai đoạn một túi hồ sơ</option>
+                                <option value="Một giai đoạn hai túi hồ sơ">Một giai đoạn hai túi hồ sơ</option>
+                                <option value="Hai giai đoạn hai túi hồ sơ">Hai giai đoạn hai túi hồ sơ</option>
+                                <option value="Không có">Không có</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-quatmang">Đấu thầu qua mạng <span class="required">*</span></label>
+                            <select id="gt-quatmang" required>
+                                <option value="Qua mạng">Qua mạng</option>
+                                <option value="Không qua mạng">Không qua mạng</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-trongnuocquocte">Trong nước / Quốc tế <span class="required">*</span></label>
+                            <select id="gt-trongnuocquocte" required>
+                                <option value="Trong nước">Trong nước</option>
+                                <option value="Quốc tế">Quốc tế</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="gt-tuychonmuathem-container" style="display: none;">
+                            <label for="gt-tuychonmuathem">Tùy chọn mua thêm <span class="required">*</span></label>
+                            <select id="gt-tuychonmuathem">
+                                <option value="Không">Không</option>
+                                <option value="Có">Có</option>
+                            </select>
+                        </div>
+                        <!-- Bảng nhập tùy chọn mua thêm – chỉ hiện khi Tùy chọn mua thêm = Có -->
+                        <div class="col-span-2" id="gt-tuychonmuathem-table-container" style="display: none;">
+                            <div class="phanlo-header">
+                                <label>Danh sách tùy chọn mua thêm</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="button" id="btn-template-tuychonmuathem" class="btn-add-row"
+                                        style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                            <polyline points="7 10 12 15 17 10" />
+                                            <line x1="12" y1="15" x2="12" y2="3" />
+                                        </svg>
+                                        Tải Excel Mẫu
+                                    </button>
+                                    <button type="button" id="btn-import-excel-tuychonmuathem" class="btn-add-row"
+                                        style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                            <polyline points="17 8 12 3 7 8" />
+                                            <line x1="12" y1="3" x2="12" y2="15" />
+                                        </svg>
+                                        Nhập từ Excel
+                                    </button>
+                                    <button type="button" id="btn-them-tuychonmuathem" class="btn-add-row">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="12" y1="5" x2="12" y2="19" />
+                                            <line x1="5" y1="12" x2="19" y2="12" />
+                                        </svg>
+                                        Thêm hạng mục
+                                    </button>
+                                </div>
+                                <input type="file" id="excel-file-input-tuychonmuathem" style="display: none;"
+                                    accept=".xlsx, .xls">
+                            </div>
+                            <div class="phanlo-table-wrap">
+                                <table class="phanlo-table" id="tuychonmuathem-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Hạng mục <span class="required">*</span></th>
+                                            <th>Đơn vị <span class="required">*</span></th>
+                                            <th>Khối lượng / Số lượng <span class="required">*</span></th>
+                                            <th>Tỷ lệ phần trăm (%) <span class="required">*</span></th>
+                                            <th>Giá trị ước tính (VNĐ) <span class="required">*</span></th>
+                                            <th class="col-action"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tuychonmuathem-tbody">
+                                        <!-- Rows inserted by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="form-group" id="gt-phanlo-container" style="display: none;">
+                            <label for="gt-phanlo">Phân lô <span class="required">*</span></label>
+                            <select id="gt-phanlo">
+                                <option value="Không">Không</option>
+                                <option value="Có">Có</option>
+                            </select>
+                        </div>
+                        <!-- Bảng nhập phần lô – chỉ hiện khi Phân lô = Có -->
+                        <div class="col-span-2" id="gt-phanlo-table-container" style="display: none;">
+                            <div class="phanlo-header">
+                                <label>Danh sách phần lô</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <button type="button" id="btn-template-phanlo" class="btn-add-row"
+                                        style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                            <polyline points="7 10 12 15 17 10" />
+                                            <line x1="12" y1="15" x2="12" y2="3" />
+                                        </svg>
+                                        Tải Excel Mẫu
+                                    </button>
+                                    <button type="button" id="btn-import-excel-phanlo" class="btn-add-row"
+                                        style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                            <polyline points="17 8 12 3 7 8" />
+                                            <line x1="12" y1="3" x2="12" y2="15" />
+                                        </svg>
+                                        Nhập từ Excel
+                                    </button>
+                                    <button type="button" id="btn-them-phanlo" class="btn-add-row">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2.5">
+                                            <line x1="12" y1="5" x2="12" y2="19" />
+                                            <line x1="5" y1="12" x2="19" y2="12" />
+                                        </svg>
+                                        Thêm phần lô
+                                    </button>
+                                </div>
+                                <input type="file" id="excel-file-input-phanlo" style="display: none;"
+                                    accept=".xlsx, .xls">
+                            </div>
+                            <div class="phanlo-table-wrap">
+                                <table class="phanlo-table" id="phanlo-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-ma-phanlo" id="th-ma-phanlo">Mã phần lô</th>
+                                            <th>Tên phần lô <span class="required">*</span></th>
+                                            <th>Giá trị phần lô (VNĐ) <span class="required">*</span></th>
+                                            <th class="col-baodam-phanlo" id="th-baodam-phanlo" style="display: none;">
+                                                Bảo đảm dự thầu (VNĐ) <span class="required">*</span></th>
+                                            <th>Thời gian thực hiện <span class="required">*</span></th>
+                                            <th class="col-action"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="phanlo-tbody">
+                                        <!-- Rows inserted by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-nguonvon">Nguồn vốn <span class="required">*</span></label>
+                            <input type="text" id="gt-nguonvon" required placeholder="Ví dụ: Ngân sách nhà nước">
+                            <span class="error-text">Vui lòng nhập nguồn vốn</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-loaihopdong">Loại hợp đồng <span class="required">*</span></label>
+                            <select id="gt-loaihopdong" required>
+                                <option value="Trọn gói">Trọn gói</option>
+                                <option value="Theo đơn giá cố định">Theo đơn giá cố định</option>
+                                <option value="Theo đơn giá điều chỉnh">Theo đơn giá điều chỉnh</option>
+                                <option value="Theo thời gian">Theo thời gian</option>
+                                <option value="Hỗn hợp">Hỗn hợp</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-thoigiantochuc">Thời gian tổ chức LCNT <span
+                                    class="required">*</span></label>
+                            <input type="text" id="gt-thoigiantochuc" required placeholder="Ví dụ: 45 ngày">
+                            <span class="error-text">Vui lòng nhập thời gian tổ chức</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-thoigianbatdautochuc">Thời gian bắt đầu tổ chức <span
+                                    class="required">*</span></label>
+                            <input type="text" id="gt-thoigianbatdautochuc" required placeholder="Ví dụ: Quý II/2026">
+                            <span class="error-text">Vui lòng nhập thời gian bắt đầu tổ chức</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-soquyetdinh">Số quyết định phê duyệt</label>
+                            <input type="text" id="gt-soquyetdinh" placeholder="Ví dụ: 456/QĐ-BTTTT">
+                            <span class="error-text">Vui lòng nhập Số quyết định phê duyệt</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-ngayquyetdinh">Ngày quyết định phê duyệt</label>
+                            <input type="text" id="gt-ngayquyetdinh" placeholder="Chọn ngày (dd/MM/yyyy)">
+                            <span class="error-text">Vui lòng chọn Ngày quyết định phê duyệt</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-thoigiandangtai">Thời gian đăng tải thông báo</label>
+                            <input type="text" id="gt-thoigiandangtai" placeholder="Chọn ngày giờ (dd/MM/yyyy HH:mm)">
+                            <span class="error-text">Vui lòng chọn Thời gian đăng tải thông báo</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-thoigiandongthau">Thời gian đóng thầu</label>
+                            <input type="text" id="gt-thoigiandongthau" placeholder="Chọn ngày giờ (dd/MM/yyyy HH:mm)">
+                            <span class="error-text">Vui lòng chọn Thời gian đóng thầu</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-thoigianmothau">Thời gian mở thầu</label>
+                            <input type="text" id="gt-thoigianmothau" placeholder="Chọn ngày giờ (dd/MM/yyyy HH:mm)">
+                        </div>
+                        <div class="form-group">
+                            <label for="gt-trangthai">Trạng thái gói thầu <span class="required">*</span></label>
+                            <select id="gt-trangthai" required>
+                                <option value="Chuẩn bị">Chuẩn bị</option>
+                                <option value="Đang mời thầu">Đang mời thầu</option>
+                                <option value="Đã mở thầu">Đã mở thầu</option>
+                                <option value="Đang chấm thầu">Đang chấm thầu</option>
+                                <option value="Đã có kết quả">Đã có kết quả</option>
+                                <option value="Hủy thầu">Hủy thầu</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="gt-nhanvienphutrach-container">
+                            <label for="gt-nhanvienphutrach">Chuyên viên phụ trách</label>
+                            <select id="gt-nhanvienphutrach">
+                                <!-- Rendered dynamically by JS based on employees -->
+                            </select>
+                        </div>
+
+                        <!-- Các trường xuất hiện khi trạng thái chuyển sang Đang mời thầu hoặc sau đó -->
+                        <div class="form-group" id="gt-giatribaomothau-container" style="display: none;">
+                            <label for="gt-giatribaomothau">Giá trị bảo đảm dự thầu (VNĐ)</label>
+                            <input type="text" id="gt-giatribaomothau" placeholder="Nhập giá trị bảo đảm dự thầu">
+                            <span class="error-text">Vui lòng nhập giá trị bảo đảm dự thầu</span>
+                        </div>
+                        <div class="form-group" id="gt-hieuluchsdt-container" style="display: none;">
+                            <label for="gt-hieuluchsdt">Thời gian hiệu lực hồ sơ dự thầu (ngày)</label>
+                            <input type="number" id="gt-hieuluchsdt" min="1" placeholder="Ví dụ: 90">
+                            <span class="error-text">Thời gian hiệu lực phải lớn hơn 0</span>
+                        </div>
+                        <div class="form-group" id="gt-hieuluchbaomothau-container" style="display: none;">
+                            <label for="gt-hieuluchbaomothau">Thời gian hiệu lực bảo đảm dự thầu (ngày)</label>
+                            <input type="text" id="gt-hieuluchbaomothau" readonly placeholder="">
+                        </div>
+
+                        <!-- Gia hạn thời điểm đóng thầu -->
+                        <div class="form-group col-span-2" id="gt-giahan-container"
+                            style="margin-top: 15px; display: none;">
+                            <div class="phanlo-header">
+                                <label style="font-weight: 700; color: var(--primary);">Gia hạn thời điểm đóng
+                                    thầu</label>
+                                <button type="button" id="btn-them-giahan" class="btn-add-row">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2.5">
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                    Thêm gia hạn
+                                </button>
+                            </div>
+                            <div class="phanlo-table-wrap">
+                                <table class="phanlo-table" id="giahan-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 120px; text-align: center !important;">Lần gia hạn</th>
+                                            <th>Thời gian đóng thầu <span class="required">*</span></th>
+                                            <th>Lý do gia hạn <span class="required">*</span></th>
+                                            <th class="col-action" style="width: 50px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gt-giahan-tbody">
+                                        <!-- Rows inserted by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Danh sách Thời gian yêu cầu làm rõ HSMT -->
+                        <div class="form-group col-span-2" id="gt-yeucaulamro-container"
+                            style="margin-top: 15px; display: none;">
+                            <div class="phanlo-header">
+                                <label style="font-weight: 700; color: var(--primary);">Yêu cầu làm
+                                    rõ HSMT</label>
+                                <button type="button" id="btn-them-yeucaulamro" class="btn-add-row">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2.5">
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                    Thêm yêu cầu
+                                </button>
+                            </div>
+                            <div class="phanlo-table-wrap">
+                                <table class="phanlo-table" id="yeucaulamro-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 80px; text-align: center !important;">STT</th>
+                                            <th>Yêu cầu làm rõ HSMT <span class="required">*</span></th>
+                                            <th>Nội dung yêu cầu <span class="required">*</span></th>
+                                            <th class="col-action" style="width: 50px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gt-yeucaulamro-tbody">
+                                        <!-- Rows inserted by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Danh sách Thời gian trả lời làm rõ -->
+                        <div class="form-group col-span-2" id="gt-traloilamro-container"
+                            style="margin-top: 15px; display: none;">
+                            <div class="phanlo-header">
+                                <label style="font-weight: 700; color: var(--primary);">Trả lời làm rõ</label>
+                                <button type="button" id="btn-them-traloilamro" class="btn-add-row">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2.5">
+                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                    </svg>
+                                    Thêm trả lời
+                                </button>
+                            </div>
+                            <div class="phanlo-table-wrap">
+                                <table class="phanlo-table" id="traloilamro-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 80px; text-align: center !important;">STT</th>
+                                            <th>Thời gian trả lời làm rõ <span class="required">*</span></th>
+                                            <th>Nội dung trả lời <span class="required">*</span></th>
+                                            <th class="col-action" style="width: 50px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gt-traloilamro-tbody">
+                                        <!-- Rows inserted by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Conditionally Displayed: Awarded contractor info -->
+                        <div class="form-group-conditional col-span-2" id="conditional-awarded-contractor"
+                            style="display: none;">
+                            <div class="form-grid border-nested" id="awarded-single-container">
+                                <h4 class="col-span-2"
+                                    style="font-size: 0.88rem; font-weight: 700; color: var(--primary); margin-bottom: 8px;">
+                                    Thông tin Nhà thầu trúng thầu</h4>
+                                <div class="form-group">
+                                    <label for="gt-nhathautrungthauid">Nhà thầu trúng thầu <span
+                                            class="required">*</span></label>
+                                    <select id="gt-nhathautrungthauid">
+                                        <option value="">-- Chọn Nhà thầu trúng thầu --</option>
+                                        <!-- Rendered via JS -->
+                                    </select>
+                                    <span class="error-text">Vui lòng chọn nhà thầu trúng thầu</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="gt-giatrungthau">Giá trúng thầu (VND) <span
+                                            class="required">*</span></label>
+                                    <input type="text" id="gt-giatrungthau" placeholder="Nhập giá trúng thầu thực tế">
+                                    <span class="error-text">Giá trúng thầu không được nhỏ hơn 0</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="gt-thoigian-goithau">Thời gian thực hiện gói thầu <span
+                                            class="required">*</span></label>
+                                    <input type="text" id="gt-thoigian-goithau" placeholder="Ví dụ: 90 ngày">
+                                    <span class="error-text">Vui lòng nhập thời gian thực hiện gói thầu</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="gt-thoigian-hopdong">Thời gian thực hiện hợp đồng <span
+                                            class="required">*</span></label>
+                                    <input type="text" id="gt-thoigian-hopdong" placeholder="Ví dụ: 90 ngày">
+                                    <span class="error-text">Vui lòng nhập thời gian thực hiện hợp đồng</span>
+                                </div>
+                            </div>
+
+                            <!-- Trực quan khi CÓ phân lô -->
+                            <div class="col-span-2" id="awarded-multi-container"
+                                style="display: none; margin-top: 10px;">
+                                <h4
+                                    style="font-size: 0.88rem; font-weight: 700; color: var(--primary); margin-bottom: 8px;">
+                                    Thông tin Nhà thầu trúng thầu theo Phần lô</h4>
+                                <div class="phanlo-table-wrap">
+                                    <table class="phanlo-table" id="awarded-phanlo-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Phần lô</th>
+                                                <th>Nhà thầu trúng thầu <span class="required">*</span></th>
+                                                <th>Giá trúng thầu (VNĐ) <span class="required">*</span></th>
+                                                <th>Thời gian thực hiện gói thầu <span class="required">*</span></th>
+                                                <th>Thời gian thực hiện hợp đồng <span class="required">*</span></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="awarded-phanlo-tbody">
+                                            <!-- Rows dynamically generated based on phanLoList via JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tổ Chuyên gia -->
+                        <div class="form-group col-span-2" id="to-chuyengia-section" style="margin-top: 15px;">
+                            <label style="font-weight: 700; color: var(--primary);">Tổ Chuyên gia</label>
+                            <div class="phanlo-table-wrap">
+                                <table class="phanlo-table" id="table-to-chuyengia">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 50px; text-align: center;">Chọn</th>
+                                            <th style="text-align: left !important;">Họ và tên</th>
+                                            <th style="width: 150px; text-align: left !important;">Chức vụ trong tổ</th>
+                                            <th style="text-align: left !important;">Công việc</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="to-chuyengia-tbody">
+                                        <!-- Rendered via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Tổ Thẩm định -->
+                        <div class="form-group col-span-2" id="to-thamdinh-section" style="margin-top: 15px;">
+                            <label style="font-weight: 700; color: var(--primary);">Tổ Thẩm định</label>
+                            <div class="phanlo-table-wrap">
+                                <table class="phanlo-table" id="table-to-thamdinh">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 50px; text-align: center;">Chọn</th>
+                                            <th style="text-align: left !important;">Họ và tên</th>
+                                            <th style="width: 150px; text-align: left !important;">Chức vụ trong tổ</th>
+                                            <th style="text-align: left !important;">Công việc</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="to-thamdinh-tbody">
+                                        <!-- Rendered via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-goithau">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu thông tin</button>
+                </div>
+            </form>
+        </div>
+    </div>

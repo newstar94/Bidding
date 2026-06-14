@@ -1,0 +1,92 @@
+                <!-- ================= TAB: MANAGER STAFF & PERMISSIONS ================= -->
+                <section class="tab-pane" id="tab-managernhanvien">
+                    <!-- Progress of employee quota -->
+                    <div class="dashboard-card mb-4" style="margin-bottom: 24px; padding: 20px;">
+                        <div class="quota-progress-container">
+                            <div class="quota-progress-header">
+                                <h4 class="quota-title"><i data-lucide="info"
+                                        style="color: var(--primary); margin-right: 6px; width: 18px; height: 18px;"></i>
+                                    Hạn mức nhân sự đơn vị:</h4>
+                                <span class="quota-badge" id="manager-quota-label">Đang tải...</span>
+                            </div>
+                            <div class="quota-progress-bar-bg">
+                                <div class="quota-progress-bar-fill" id="manager-quota-progress-fill"
+                                    style="width: 0%;"></div>
+                            </div>
+                            <div class="quota-progress-footer">
+                                <span>Gói dịch vụ hiện tại: <strong id="manager-package-name"
+                                        style="color: var(--primary);">Đang tải...</strong></span>
+                                <a href="#" onclick="event.preventDefault(); window.triggerUpgradePrompt();"
+                                    class="upgrade-link text-blue fw-bold link-hover"><i data-lucide="zap"
+                                        style="width: 14px; height: 14px; margin-right: 2px;"></i> Nâng cấp Gói để thêm
+                                    nhân sự</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Staff management table -->
+                    <div class="dashboard-card mb-4" style="margin-bottom: 24px;">
+                        <div class="card-header"
+                            style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 class="card-title">Danh sách nhân viên</h3>
+                            <button class="btn btn-primary" id="btn-manager-add-employee">
+                                <i data-lucide="user-plus"></i> Thêm Nhân sự mới
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-container">
+                                <table class="data-table" id="manager-employees-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center;">Họ và tên</th>
+                                            <th style="text-align: center;">Địa chỉ Email</th>
+                                            <th style="text-align: center;">Số điện thoại</th>
+                                            <th style="text-align: center;">Công việc được giao</th>
+                                            <th style="text-align: center;">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="manager-employees-tbody">
+                                        <!-- Rendered dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Permission Matrix Grid -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Phân quyền nhân viên</h3>
+                            <i data-lucide="grid" class="text-muted"></i>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-3" style="font-size: 0.85rem; margin-bottom: 16px;"><i
+                                    data-lucide="shield-check"
+                                    style="width: 14px; height: 14px; margin-right: 2px;"></i> Quản lý có đặc quyền tối
+                                cao. Chuyên viên thầu chỉ được thao tác các danh mục được bật quyền bên dưới và trong
+                                phạm vi gói thầu được phân công phụ trách.</p>
+                            <div class="table-container">
+                                <table class="data-table" id="manager-matrix-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Tên Nhân sự</th>
+                                            <th>Kế hoạch LCNT</th>
+                                            <th>Gói thầu</th>
+                                            <th>Hợp đồng</th>
+                                            <th>Chủ đầu tư</th>
+                                            <th>Nhà thầu</th>
+                                            <th>Chuyên gia</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="manager-matrix-tbody">
+                                        <!-- Matrix rendered dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                                <button class="btn btn-primary" id="btn-save-permission-matrix"><i
+                                        data-lucide="save"></i> Lưu Ma trận phân quyền</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>

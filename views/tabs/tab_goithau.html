@@ -1,0 +1,62 @@
+                <!-- ================= TAB: GÓI THẦU ================= -->
+                <section class="tab-pane" id="tab-goithau">
+                    <div class="table-actions-bar">
+                        <div class="search-filter-group flex-wrap">
+                            <div class="search-box">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Tìm gói thầu (mã, tên)..." id="search-goithau">
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="filter-goithau-trangthai">
+                                    <option value="">Tất cả trạng thái</option>
+                                    <option value="Chuẩn bị">Chuẩn bị</option>
+                                    <option value="Đang mời thầu">Đang mời thầu</option>
+                                    <option value="Đã mở thầu">Đã mở thầu</option>
+                                    <option value="Đang chấm thầu">Đang chấm thầu</option>
+                                    <option value="Đã có kết quả">Đã có kết quả</option>
+                                    <option value="Hủy thầu">Hủy thầu</option>
+                                </select>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="filter-goithau-hinhthuc">
+                                    <option value="">Tất cả hình thức</option>
+                                    <option value="Đấu thầu rộng rãi">Đấu thầu rộng rãi</option>
+                                    <option value="Đấu thầu hạn chế">Đấu thầu hạn chế</option>
+                                    <option value="Chỉ định thầu">Chỉ định thầu</option>
+                                    <option value="Chỉ định thầu rút gọn">Chỉ định thầu rút gọn</option>
+                                    <option value="Chào hàng cạnh tranh">Chào hàng cạnh tranh</option>
+                                    <option value="Lựa chọn nhà thầu trong trường hợp đặc biệt">Lựa chọn nhà thầu trong
+                                        trường hợp đặc biệt</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-import-excel" data-type="goithau" style="margin-left: 8px;">
+                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                        </button>
+                        <button class="btn btn-primary" id="btn-add-goithau">
+                            <i data-lucide="plus"></i> Thêm Gói thầu mới
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="goithau-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã gói</th>
+                                    <th>Phiên bản</th>
+                                    <th>Tên Gói Thầu</th>
+                                    <th>Kế Hoạch Liên Kết</th>
+                                    <th>Giá Gói Thầu</th>
+                                    <th>Hình Thức LCNT</th>
+                                    <th>Trạng Thái</th>
+                                    <th>Nhà Thầu Trúng Thầu</th>
+                                    <th class="text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rendered via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-container" id="goithau-pagination"></div>
+                </section>

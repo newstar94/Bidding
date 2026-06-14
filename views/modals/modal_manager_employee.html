@@ -1,0 +1,42 @@
+    <!-- Modal: Thêm/Sửa Nhân sự (Manager internal staff modal) -->
+    <div class="modal-overlay" id="modal-manager-employee">
+        <div class="modal-card" style="max-width: 500px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="modal-employee-title">Thêm Nhân sự phòng thầu</h3>
+                <button class="modal-close" data-close="modal-manager-employee">&times;</button>
+            </div>
+            <form id="form-manager-employee" novalidate>
+                <input type="hidden" id="form-employee-id">
+                <div class="modal-body">
+                    <div class="form-grid" style="grid-template-columns: 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label for="emp-name">Họ và tên nhân sự <span class="required">*</span></label>
+                            <input type="text" id="emp-name" required placeholder="Ví dụ: Hoàng Văn Bảo">
+                            <span class="error-text">Vui lòng nhập họ tên nhân sự</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="emp-email">Địa chỉ Email <span class="required">*</span></label>
+                            <input type="email" id="emp-email" required placeholder="bao.hv@vinacorp.vn">
+                            <span class="error-text">Vui lòng nhập địa chỉ email hợp lệ</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="emp-phone">Số điện thoại</label>
+                            <input type="tel" id="emp-phone" placeholder="Ví dụ: 0912334455">
+                            <span class="error-text">Vui lòng nhập số điện thoại</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="emp-role">Vai trò hệ thống</label>
+                            <select id="emp-role" disabled
+                                style="background-color: var(--neutral-soft); cursor: not-allowed;">
+                                <option value="employee" selected>Chuyên viên thầu (Nhân viên)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" data-close="modal-manager-employee">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu nhân sự</button>
+                </div>
+            </form>
+        </div>
+    </div>
