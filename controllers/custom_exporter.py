@@ -774,10 +774,29 @@ def generate_report_from_custom_template(template_path, context, custom_vars=[])
         # Log error to export_error.log in workspace root
         log_path = os.path.join(project_root, 'export_error.log')
         try:
+            # Mask sensitive info in logged context to prevent data leakage
+            masked_context = {}
+            if isinstance(context, dict):
+                def mask_sensitive(d):
+                    res = {}
+                    for k, v in d.items():
+                        if isinstance(v, dict):
+                            res[k] = mask_sensitive(v)
+                        elif isinstance(v, list):
+                            res[k] = [mask_sensitive(x) if isinstance(x, dict) else x for x in v]
+                        elif any(sub in str(k).lower() for sub in ['cccd', 'cmt', 'passport', 'token', 'mat_khau', 'password', 'anh_chung_chi', 'anh_chu_ky', 'signature', 'base64']):
+                            res[k] = '[MASKED]'
+                        else:
+                            res[k] = v
+                    return res
+                masked_context = mask_sensitive(context)
+            else:
+                masked_context = context
+
             with open(log_path, 'a', encoding='utf-8') as lf:
                 import traceback
                 lf.write(f"[{datetime.now().isoformat()}] ERROR: Failed rendering template {template_path}\n")
-                lf.write(f"Context: {json.dumps(context, ensure_ascii=False, default=str)}\n")
+                lf.write(f"Context: {json.dumps(masked_context, ensure_ascii=False, default=str)}\n")
                 lf.write(traceback.format_exc())
                 lf.write("\n" + "="*50 + "\n")
         except Exception:

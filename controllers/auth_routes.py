@@ -3,9 +3,9 @@ import sys
 import json
 import uuid
 import time
-import random
 import secrets
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
@@ -18,8 +18,39 @@ from helpers import (
     verify_password,
     get_effective_roles,
     gui_email,
-    log_error
+    log_error,
+    _session_cache_invalidate
 )
+
+# ==========================================
+# RATE LIMITER (In-memory, per IP)
+# Bảo vệ chống brute force / spam OTP
+# ==========================================
+_rate_limit_store = defaultdict(list)   # ip -> [timestamps]
+RATE_LIMIT_MAX = 5         # Tối đa 5 lần
+RATE_LIMIT_WINDOW = 60     # Trong vòng 60 giây
+
+def _get_client_ip(request) -> str:
+    """Lấy IP thật từ header X-Forwarded-For (nếu qua proxy/nginx) hoặc client.host"""
+    forwarded = request.headers.get('X-Forwarded-For')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return getattr(request.client, 'host', 'unknown')
+
+def _check_rate_limit(ip: str) -> bool:
+    """Trả về True nếu chưa vượt giới hạn, False nếu bị throttle."""
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+    # Xóa các timestamp cũ hơn cửa sổ thời gian
+    _rate_limit_store[ip] = [t for t in _rate_limit_store[ip] if t > window_start]
+    if len(_rate_limit_store[ip]) >= RATE_LIMIT_MAX:
+        return False
+    _rate_limit_store[ip].append(now)
+    return True
+
+def _generate_otp() -> str:
+    """Tạo mã OTP 6 số dùng secrets (cryptographically secure)."""
+    return str(secrets.randbelow(900000) + 100000)
 
 # ==========================================
 # CÁC HÀM TRỢ GIÚP CHO TÀI KHOẢN / TỔ CHỨC
@@ -90,6 +121,11 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
 
 async def register_api(request):
     try:
+        # Rate limiting
+        ip = _get_client_ip(request)
+        if not _check_rate_limit(f"register:{ip}"):
+            return JSONResponse({"error": "Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau 60 giây."}, status_code=429)
+
         data = await request.json()
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
@@ -118,8 +154,8 @@ async def register_api(request):
         import uuid
         user_uuid = "user-" + str(uuid.uuid4())
         
-        # Generate verification code
-        code = str(random.randint(100000, 999999))
+        # Generate verification code (cryptographically secure OTP)
+        code = _generate_otp()
         expiry = int(time.time()) + 600 # 10 minutes from now
         
         cursor.execute(
@@ -156,7 +192,8 @@ async def register_api(request):
             background=tasks
         )
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "register_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau."}, status_code=500)
 
 async def verify_email_api(request):
     try:
@@ -193,7 +230,8 @@ async def verify_email_api(request):
         
         return JSONResponse({"success": True, "message": "Xác thực email thành công! Bạn có thể đăng nhập ngay bây giờ."})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "verify_email_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi xác thực. Vui lòng thử lại sau."}, status_code=500)
 
 async def resend_code_api(request):
     try:
@@ -217,7 +255,12 @@ async def resend_code_api(request):
             conn.close()
             return JSONResponse({"error": "Tài khoản này đã được xác thực trước đó!"}, status_code=400)
             
-        code = str(random.randint(100000, 999999))
+        # Rate limiting cho resend
+        ip = _get_client_ip(request)
+        if not _check_rate_limit(f"resend:{ip}"):
+            return JSONResponse({"error": "Quá nhiều yêu cầu gửi lại OTP. Vui lòng thử lại sau 60 giây."}, status_code=429)
+
+        code = _generate_otp()
         expiry = int(time.time()) + 600
         
         cursor.execute("UPDATE tai_khoan SET ma_xac_minh = ?, han_xac_minh = ? WHERE id = ?", (code, expiry, user['id']))
@@ -250,10 +293,16 @@ async def resend_code_api(request):
             background=tasks
         )
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "resend_code_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
 
 async def login_api(request):
     try:
+        # Rate limiting bảo vệ brute force
+        ip = _get_client_ip(request)
+        if not _check_rate_limit(f"login:{ip}"):
+            return JSONResponse({"error": "Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau 60 giây."}, status_code=429)
+
         data = await request.json()
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
@@ -317,7 +366,8 @@ async def login_api(request):
             "organization_name": org_names
         })
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "login_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi đăng nhập. Vui lòng thử lại sau."}, status_code=500)
 
 async def check_session_api(request):
     try:
@@ -369,10 +419,16 @@ async def check_session_api(request):
             }
         })
     except Exception as e:
-        return JSONResponse({"valid": False, "error": str(e)}, status_code=500)
+        log_error(e, "check_session_api")
+        return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
 
 async def forgot_password_api(request):
     try:
+        # Rate limiting cho quên mật khẩu
+        ip = _get_client_ip(request)
+        if not _check_rate_limit(f"forgot:{ip}"):
+            return JSONResponse({"error": "Quá nhiều yêu cầu. Vui lòng thử lại sau 60 giây."}, status_code=429)
+
         data = await request.json()
         username = data.get('username', '').strip()
         email = data.get('email', '').strip()
@@ -424,7 +480,8 @@ async def forgot_password_api(request):
             "message": "Yêu cầu khôi phục mật khẩu thành công! Mật khẩu mới đã được gửi tới địa chỉ email của bạn. Vui lòng kiểm tra hộp thư (và thư mục Spam nếu không thấy)."
         }, background=tasks)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "forgot_password_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
 
 async def update_profile_api(request):
     try:
@@ -467,7 +524,8 @@ async def update_profile_api(request):
         
         return JSONResponse({"success": True, "message": "Cập nhật thông tin tài khoản thành công!"})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "update_profile_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi cập nhật hồ sơ."}, status_code=500)
 
 async def change_password_api(request):
     try:
@@ -497,7 +555,8 @@ async def change_password_api(request):
             conn.close()
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
             
-        # Update password and invalidate other sessions
+        # Đổi mật khẩu và làm mới token (kích hoạt đăng xuất thiết bị khác)
+        old_token = request.headers.get('X-Session-Token')
         new_token = str(uuid.uuid4())
         cursor.execute(
             "UPDATE tai_khoan SET mat_khau = ?, token_phien = ? WHERE id = ?",
@@ -505,6 +564,9 @@ async def change_password_api(request):
         )
         conn.commit()
         conn.close()
+        # Xóa session cũ khỏi cache
+        if old_token:
+            _session_cache_invalidate(old_token)
         
         return JSONResponse({
             "success": True, 
@@ -512,7 +574,8 @@ async def change_password_api(request):
             "message": "Thay đổi mật khẩu thành công! Các phiên đăng nhập trên thiết bị khác đã bị đăng xuất."
         })
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "change_password_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi đổi mật khẩu."}, status_code=500)
 
 async def list_users_api(request):
     try:
@@ -567,7 +630,8 @@ async def list_users_api(request):
         conn.close()
         return JSONResponse(users)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "list_users_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
 
 async def delete_user_api(request):
     try:
@@ -583,7 +647,8 @@ async def delete_user_api(request):
         conn.close()
         return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "delete_user_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi xóa tài khoản."}, status_code=500)
 
 async def update_user_role_api(request):
     try:

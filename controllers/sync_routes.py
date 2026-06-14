@@ -144,21 +144,25 @@ async def sync_websocket_endpoint(websocket):
                 del active_connections[owner_id]
 
 def broadcast_websocket_event(owner_id, message):
-    if owner_id in active_connections:
-        import asyncio
-        websockets = list(active_connections[owner_id])
-        msg_str = json.dumps(message)
-        
-        async def broadcast():
-            for ws in websockets:
-                try:
-                    await ws.send_text(msg_str)
-                except Exception:
-                    pass
-        
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(broadcast())
+    if owner_id not in active_connections:
+        return
+    import asyncio
+    websockets = list(active_connections[owner_id])
+    msg_str = json.dumps(message)
+    
+    async def broadcast():
+        for ws in websockets:
+            try:
+                await ws.send_text(msg_str)
+            except Exception:
+                pass
+    
+    # Dùng get_running_loop() thay get_event_loop() (deprecated Python 3.10+)
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(broadcast())
+    except RuntimeError:
+        pass  # Không có event loop đang chạy – bỏ qua
 
 async def sync_api(request):
     """
@@ -305,33 +309,6 @@ async def sync_api(request):
                     sql = f"INSERT OR REPLACE INTO {table_name} ({cols_str}) VALUES ({placeholders})"
                     cursor.execute(sql, tuple(non_null_row_data.values()))
                     
-                    # Ràng buộc thêm: Gắn Tổ chuyên gia/Tổ thẩm định với Gói thầu (junction table)
-                    if table_name == "goi_thau":
-                        c_gt_id = get_clean_id("goi_thau", item.get('id'))
-                        cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ?", (c_gt_id,))
-                        # Chèn Tổ chuyên gia
-                        for cg_item in item.get('toChuyenGia', []):
-                            if isinstance(cg_item, dict):
-                                cg_id = clean_id(cg_item.get('chuyenGiaId') or cg_item.get('id'))
-                                chuc_vu = cg_item.get('chucVu') or cg_item.get('chuc_vu') or 'Tổ viên'
-                                cong_viec = cg_item.get('congViec') or cg_item.get('cong_viec') or ''
-                                if cg_id:
-                                    cursor.execute("""
-                                        INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                                        VALUES (?, ?, 'chuyen_gia', ?, ?)
-                                    """, (c_gt_id, cg_id, chuc_vu, cong_viec))
-                        # Chèn Tổ thẩm định
-                        for td_item in item.get('toThamDinh', []):
-                            if isinstance(td_item, dict):
-                                td_id = clean_id(td_item.get('chuyenGiaId') or td_item.get('id'))
-                                chuc_vu = td_item.get('chucVu') or td_item.get('chuc_vu') or 'Tổ viên'
-                                cong_viec = td_item.get('congViec') or td_item.get('cong_viec') or ''
-                                if td_id:
-                                    cursor.execute("""
-                                        INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                                        VALUES (?, ?, 'tham_dinh', ?, ?)
-                                    """, (c_gt_id, td_id, chuc_vu, cong_viec))
-
                     # Ràng buộc thêm: Gắn các gói thầu với hợp đồng (junction table)
                     if table_name == "hop_dong":
                         c_hd_id = get_clean_id("hop_dong", item.get('id'))
@@ -373,7 +350,7 @@ async def sync_api(request):
     except Exception as e:
         import traceback
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)
     finally:
         if conn:
             try:
@@ -529,42 +506,16 @@ async def get_all_data_api(request):
         for row in query_table("goi_thau"):
             row_dict = dict(row)
             item = map_db_to_json("goi_thau", row_dict)
-            
-            # Lấy Tổ chuyên gia & Tổ thẩm định từ goi_thau_chuyen_gia
-            cursor.execute("""
-                SELECT chuyen_gia_id, loai, chuc_vu, cong_viec 
-                FROM goi_thau_chuyen_gia 
-                WHERE goi_thau_id = ?
-            """, (row_dict["id"],))
-            cg_rows = cursor.fetchall()
-            to_chuyen_gia = []
-            to_tham_dinh = []
             cg_ids = []
-            for cg_row in cg_rows:
-                cg_id = cg_row["chuyen_gia_id"]
-                loai = cg_row["loai"]
-                chuc_vu = cg_row["chuc_vu"]
-                cong_viec = cg_row["cong_viec"]
-                
-                # Format ID prefix for frontend (cg-)
-                cg_id_prefixed = f"cg-{cg_id}" if cg_id and not str(cg_id).startswith("cg-") else cg_id
-                
-                expert_item = {
-                    "chuyenGiaId": cg_id_prefixed,
-                    "chucVu": chuc_vu,
-                    "congViec": cong_viec
-                }
-                
-                if loai == "chuyen_gia":
-                    to_chuyen_gia.append(expert_item)
-                    cg_ids.append(cg_id_prefixed)
-                elif loai == "tham_dinh":
-                    to_tham_dinh.append(expert_item)
-            
-            item["toChuyenGia"] = to_chuyen_gia
-            item["toThamDinh"] = to_tham_dinh
+            if item.get("toChuyenGia"):
+                for x in item.get("toChuyenGia", []):
+                    if isinstance(x, dict) and 'id' in x:
+                        val = x['id']
+                        if val and not str(val).startswith("cg-"):
+                            cg_ids.append(f"cg-{val}")
+                        else:
+                            cg_ids.append(val)
             item["chuyenGiaIds"] = cg_ids
-            
             for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "toChuyenGia", "toThamDinh", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
                 if item.get(list_key) is None:
                     item[list_key] = []
@@ -819,38 +770,15 @@ async def paginate_api(request):
             
             # Additional relationships for goithau/hopdong
             if table_name == "goi_thau":
-                # Lấy Tổ chuyên gia & Tổ thẩm định từ goi_thau_chuyen_gia
-                cursor.execute("""
-                    SELECT chuyen_gia_id, loai, chuc_vu, cong_viec 
-                    FROM goi_thau_chuyen_gia 
-                    WHERE goi_thau_id = ?
-                """, (row_dict["id"],))
-                cg_rows = cursor.fetchall()
-                to_chuyen_gia = []
-                to_tham_dinh = []
                 cg_ids = []
-                for cg_row in cg_rows:
-                    cg_id = cg_row["chuyen_gia_id"]
-                    loai = cg_row["loai"]
-                    chuc_vu = cg_row["chuc_vu"]
-                    cong_viec = cg_row["cong_viec"]
-                    
-                    cg_id_prefixed = f"cg-{cg_id}" if cg_id and not str(cg_id).startswith("cg-") else cg_id
-                    
-                    expert_item = {
-                        "chuyenGiaId": cg_id_prefixed,
-                        "chucVu": chuc_vu,
-                        "congViec": cong_viec
-                    }
-                    
-                    if loai == "chuyen_gia":
-                        to_chuyen_gia.append(expert_item)
-                        cg_ids.append(cg_id_prefixed)
-                    elif loai == "tham_dinh":
-                        to_tham_dinh.append(expert_item)
-                
-                item["toChuyenGia"] = to_chuyen_gia
-                item["toThamDinh"] = to_tham_dinh
+                if item.get("toChuyenGia"):
+                    for x in item.get("toChuyenGia", []):
+                        if isinstance(x, dict) and 'id' in x:
+                            val = x['id']
+                            if val and not str(val).startswith("cg-"):
+                                cg_ids.append(f"cg-{val}")
+                            else:
+                                cg_ids.append(val)
                 item["chuyenGiaIds"] = cg_ids
                 for list_key in ["phanLoList", "tuyChonMuaThemList", "awardedPhanLoList", "toChuyenGia", "toThamDinh", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"]:
                     if item.get(list_key) is None:
