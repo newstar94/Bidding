@@ -173,36 +173,14 @@ export class BiddingController {
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
 
-        // Check client-side database cache first (TTL 5 mins)
-        const lastFetchTime = localStorage.getItem('bf_last_fetch_time');
-        const cacheTTL = 5 * 60 * 1000;
-        const now = Date.now();
-        let shouldFetch = true;
-
-        if (lastFetchTime && (now - parseInt(lastFetchTime, 10) < cacheTTL)) {
-            shouldFetch = false;
-        }
+        // Always force a FULL sync on every page load/refresh to ensure data freshness.
+        // We reset bf_last_sync_timestamp to '0' so the server returns ALL records,
+        // not just delta changes — this catches deletions & edits made directly in the DB.
+        const shouldFetch = true;
 
         if (shouldFetch) {
+            localStorage.setItem('bf_last_sync_timestamp', '0');
             this.forceSyncData();
-        } else {
-            console.log("Loading initial data from client cache...");
-            this.view.renderDashboard();
-            this.view.renderKeHoachTable();
-            this.view.renderGoiThauTable();
-            this.view.renderChuDauTuTable();
-            this.view.renderNhaThauTable();
-            this.view.renderChuyenGiaTable();
-            this.view.renderHopDongTable();
-            this.updateSyncStatusDisplay(parseInt(lastFetchTime, 10));
-
-            // Re-evaluate URL mapping
-            const cleanPath = window.location.pathname.startsWith('/') ? window.location.pathname.substring(1) : window.location.pathname;
-            const parts = cleanPath.split('/').filter(Boolean);
-            const urlTab = parts[0] || '';
-            if (this.routeMap['goithau-detail'] === urlTab && parts[1]) {
-                this.handlePathRouting(window.location.pathname, false, true);
-            }
         }
 
         // Always load real users from DB into model.state.employees for assignment dropdowns
