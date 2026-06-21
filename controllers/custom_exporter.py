@@ -4,9 +4,13 @@ import json
 import sqlite3
 import zipfile
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Inches
 from datetime import datetime
+
+# Thread pool dùng chung để xử lý ảnh song song — tránh tốn overhead tạo thread mới mỗi lần export
+_IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
 
 # Path setup
 def number_to_vietnamese_words(n):
@@ -687,14 +691,14 @@ def prewarm_image_cache():
     """
     Chạy ở nền khi server khởi động: tối ưu hóa và cache trước toàn bộ ảnh chứng chỉ 
     và chữ ký của chuyên gia trong thư mục uploads/chuyen_gia/.
-    Điều này đảm bảo lần xuất Word đầu tiên cũng nhanh gần như tức thì.
+    Chạy song song bằng ThreadPoolExecutor để hoàn thành nhanh hơn.
     """
     try:
         uploads_dir = os.path.join(project_root, 'uploads', 'chuyen_gia')
         if not os.path.exists(uploads_dir):
             return
         
-        count = 0
+        tasks = []
         for fname in os.listdir(uploads_dir):
             # Chỉ xử lý file ảnh gốc (cert hoặc sig), bỏ qua file cache
             if '_opt_' in fname:
@@ -711,48 +715,83 @@ def prewarm_image_cache():
             if os.path.exists(cache_path) and os.path.getmtime(cache_path) >= os.path.getmtime(fpath):
                 continue  # Cache còn hiệu lực, bỏ qua
             
-            optimize_image_for_docx(fpath, max_w)
-            count += 1
+            tasks.append((fpath, max_w))
+        
+        if not tasks:
+            return
+
+        # Xử lý song song tất cả ảnh cần tối ưu
+        futures = [_IMAGE_THREAD_POOL.submit(optimize_image_for_docx, fpath, max_w) for fpath, max_w in tasks]
+        count = 0
+        for f in as_completed(futures):
+            try:
+                f.result()
+                count += 1
+            except Exception as e:
+                print(f"[prewarm] Lỗi tối ưu ảnh: {e}")
         
         if count > 0:
-            print(f"[prewarm] Đã tối ưu hóa {count} ảnh chuyên gia vào cache.")
+            print(f"[prewarm] Đã tối ưu hóa song song {count} ảnh chuyên gia vào cache.")
     except Exception as e:
         print(f"[prewarm] Lỗi khi prewarm cache ảnh: {e}")
 
 
+def _collect_image_tasks(data, project_root, tasks=None):
+    """
+    Duyệt đệ quy context để gom tất cả (data_ref, key, filepath, max_w, width_val)
+    cần xử lý ảnh vào một danh sách — phục vụ xử lý song song.
+    """
+    if tasks is None:
+        tasks = []
+    if isinstance(data, dict):
+        for k, v in list(data.items()):
+            if isinstance(v, str) and v.startswith('uploads/'):
+                filepath = os.path.join(project_root, v)
+                if os.path.exists(filepath):
+                    max_w = 300
+                    width_hint = 'small'
+                    if 'chung_chi' in k or 'cert' in k:
+                        max_w = 1200
+                        width_hint = 'full'
+                    tasks.append((data, k, filepath, max_w, width_hint))
+            else:
+                _collect_image_tasks(v, project_root, tasks)
+    elif isinstance(data, list):
+        for item in data:
+            _collect_image_tasks(item, project_root, tasks)
+    return tasks
+
+
 def convert_images_in_context(doc, data):
-    # Tự động tính toán chiều rộng khả dụng của khổ giấy (Chiều rộng giấy - Lề trái - Lề phải)
+    """Chuyển đổi tất cả đường dẫn ảnh trong context thành InlineImage.
+    Ảnh được tối ưu hóa SONG SONG bằng ThreadPoolExecutor để giảm thời gian chờ.
+    """
+    # Tính chiều rộng khả dụng của khổ giấy (Chiều rộng - Lề trái - Lề phải)
     try:
         section = doc.sections[0]
         usable_width = section.page_width - section.left_margin - section.right_margin
     except Exception:
         usable_width = Inches(6.0)
 
-    if isinstance(data, dict):
-        for k, v in list(data.items()):
-            if isinstance(v, str) and v.startswith('uploads/'):
-                filepath = os.path.join(project_root, v)
-                if os.path.exists(filepath):
-                    try:
-                        width_val = Inches(1.5)
-                        max_w = 300
-                        if 'chung_chi' in k or 'cert' in k:
-                            width_val = usable_width
-                            max_w = 1200
-                        elif 'signature' in k or 'chu_ky' in k:
-                            width_val = Inches(1.5)
-                            max_w = 300
-                        
-                        # Tối ưu hóa ảnh trước khi đưa vào InlineImage để tăng tốc độ xuất và giảm dung lượng file
-                        image_stream = optimize_image_for_docx(filepath, max_w)
-                        data[k] = InlineImage(doc, image_stream, width=width_val)
-                    except Exception as img_ex:
-                        print("Lỗi chuyển đổi ảnh trong docx context:", img_ex)
-            else:
-                convert_images_in_context(doc, v)
-    elif isinstance(data, list):
-        for item in data:
-            convert_images_in_context(doc, item)
+    # 1. Gom tất cả ảnh cần xử lý
+    tasks = _collect_image_tasks(data, project_root)
+    if not tasks:
+        return
+
+    # 2. Xử lý song song — optimize_image_for_docx đã có cache nên safe để gọi đa luồng
+    def _process_one(task):
+        data_ref, k, filepath, max_w, width_hint = task
+        image_stream = optimize_image_for_docx(filepath, max_w)
+        return data_ref, k, image_stream, width_hint
+
+    futures = {_IMAGE_THREAD_POOL.submit(_process_one, t): t for t in tasks}
+    for future in as_completed(futures):
+        try:
+            data_ref, k, image_stream, width_hint = future.result()
+            width_val = usable_width if width_hint == 'full' else Inches(1.5)
+            data_ref[k] = InlineImage(doc, image_stream, width=width_val)
+        except Exception as img_ex:
+            print("Lỗi chuyển đổi ảnh trong docx context:", img_ex)
 
 def generate_report_from_custom_template(template_path, context, custom_vars=[]):
     """
