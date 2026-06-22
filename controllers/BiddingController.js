@@ -14,6 +14,20 @@ export class BiddingController {
         this.view = view;
         window.appController = this;
 
+        // Tối ưu hóa hiệu năng vẽ Icons của Lucide globally
+        if (window.lucide && window.lucide.createIcons) {
+            const originalCreateIcons = window.lucide.createIcons;
+            window.lucide.createIcons = function(options) {
+                if (!options || !options.root) {
+                    const activePane = document.querySelector('.tab-pane.active') || document.querySelector('.content-viewport');
+                    if (activePane) {
+                        options = Object.assign({}, options, { root: activePane });
+                    }
+                }
+                return originalCreateIcons(options);
+            };
+        }
+
         this.tempChuyenGiaImageBase64 = '';
         this.tempChuyenGiaSignatureBase64 = '';
 
@@ -173,11 +187,8 @@ export class BiddingController {
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
 
-        // Luôn thực hiện full sync khi tải lại trang (F5/refresh) để đảm bảo dữ liệu mới nhất.
-        // Điều này cho phép bắt các thay đổi được thực hiện trực tiếp trong DB bằng công cụ bên ngoài,
-        // cũng như các bản ghi bị xoá thủ công (không qua ứng dụng).
-        // Tab focus vẫn dùng delta sync (nhẹ hơn) — xem setupAutoSyncBackground().
-        localStorage.setItem('bf_last_sync_timestamp', '0');
+        // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
+        // localStorage.setItem('bf_last_sync_timestamp', '0');
         this.forceSyncData();
 
 

@@ -80,6 +80,19 @@ def optimized_get_connection(*args, **kwargs):
                     END
                 """)
                 
+            # Triggers tự động ghi log vào deleted_records khi xóa trực tiếp qua công cụ ngoài (DB Browser, SQLite CLI...)
+            # Giúp delta sync đồng bộ chính xác các bản ghi bị xóa thủ công từ DB
+            for tbl in business_tables:
+                cursor.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS trg_{tbl}_deleted_log
+                    AFTER DELETE ON {tbl}
+                    FOR EACH ROW
+                    BEGIN
+                        INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at)
+                        VALUES ('{tbl}', OLD.id, OLD.owner_id, CAST(strftime('%s','now') AS INTEGER));
+                    END
+                """)
+                
             # Id_goc composite indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_idgoc ON chu_dau_tu(owner_id, id_goc)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_idgoc ON ke_hoach_lcnt(owner_id, id_goc)")

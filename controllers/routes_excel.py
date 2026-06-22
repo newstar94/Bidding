@@ -3,7 +3,6 @@ import json
 import secrets
 from datetime import datetime
 from io import BytesIO
-import pandas as pd  # lazy: chỉ load khi routes_excel được import (khi cần xuất/nhập Excel)
 from starlette.responses import StreamingResponse, JSONResponse
 
 from helpers import (
@@ -186,6 +185,7 @@ async def import_excel_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
+        import pandas as pd
         from io import BytesIO
         form = await request.form()
         file_obj = form.get('file')

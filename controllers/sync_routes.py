@@ -754,6 +754,12 @@ async def paginate_api(request):
             gt_ids = [r["id"] for r in rows]
             relations_map = _get_expert_relations_for_packages(cursor, gt_ids)
             
+        # Gộp truy vấn danh sách gói thầu của hợp đồng để tránh N+1
+        contract_packages_map = {}
+        if table_name == "hop_dong" and rows:
+            hd_ids = [r["id"] for r in rows]
+            contract_packages_map = _get_contract_package_ids(cursor, hd_ids)
+            
         items = []
         for row in rows:
             row_dict = dict(row)
@@ -777,13 +783,7 @@ async def paginate_api(request):
                     if item.get(list_key) is None:
                         item[list_key] = []
             elif table_name == "hop_dong":
-                goithau_ids = []
-                cursor.execute("SELECT goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id = ?", (row_dict["id"],))
-                for subrow in cursor.fetchall():
-                    val = subrow[0]
-                    if val:
-                        goithau_ids.append(val)
-                item["goiThauIds"] = goithau_ids
+                item["goiThauIds"] = contract_packages_map.get(row_dict["id"], [])
                 
             # If versioned table, query all versions for the dropdown
             if table_name in versioned_tables:
