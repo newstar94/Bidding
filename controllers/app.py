@@ -171,6 +171,10 @@ from export_routes import (
     export_danhgiahsdt_template_api,
     export_ketquaqd_template_api
 )
+from address_routes import (
+    get_provinces_api,
+    get_wards_api
+)
 
 
 class SafeStaticFiles(StaticFiles):
@@ -206,6 +210,10 @@ routes = [
     Route("/api/export-ketquaqd-template", export_ketquaqd_template_api, methods=["GET"]),
     Route("/api/system-packages", list_system_packages_api, methods=["GET"]),
     Route("/api/system-packages/update", update_system_package_api, methods=["POST"]),
+
+    # Address proxy routes (tránh bị chặn CSP, server gọi API bên ngoài thay browser)
+    Route("/api/address/provinces", get_provinces_api, methods=["GET"]),
+    Route("/api/address/wards/{province_code}", get_wards_api, methods=["GET"]),
     
     # Auth Routes
     Route("/api/auth/register", register_api, methods=["POST"]),

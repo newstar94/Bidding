@@ -1181,18 +1181,27 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
     xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
     xaSelect.disabled = true;
 
-    // Fetch provinces if not already cached
-    if (!window._vietnamProvinces) {
+    // Fetch provinces if not already cached (qua proxy nội bộ, tránh bị chặn CSP)
+    if (!window._vietnamProvinces || !Array.isArray(window._vietnamProvinces) || window._vietnamProvinces.length === 0) {
+        window._vietnamProvinces = null;
         try {
-            const res = await fetch('https://provinces.open-api.vn/api/v2/p/');
+            const res = await fetch('/api/address/provinces');
             if (res.ok) {
-                window._vietnamProvinces = await res.json();
+                const data = await res.json();
+                window._vietnamProvinces = Array.isArray(data) ? data : null;
+                if (!window._vietnamProvinces || window._vietnamProvinces.length === 0) {
+                    console.error("Provinces API returned empty data");
+                    tinhSelect.innerHTML = '<option value="">Lỗi: Dữ liệu tỉnh thành trống</option>';
+                    return;
+                }
             } else {
-                console.error("Failed to fetch provinces");
+                console.error("Failed to fetch provinces, status:", res.status);
+                tinhSelect.innerHTML = '<option value="">Lỗi tải danh sách tỉnh thành</option>';
                 return;
             }
         } catch (err) {
             console.error("Error loading provinces:", err);
+            tinhSelect.innerHTML = '<option value="">Không thể tải danh sách tỉnh thành</option>';
             return;
         }
     }
@@ -1220,12 +1229,13 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
         xaSelect.disabled = true;
 
         window._vietnamWards = window._vietnamWards || {};
-        if (!window._vietnamWards[provinceCode]) {
+        if (!window._vietnamWards[provinceCode] || !Array.isArray(window._vietnamWards[provinceCode])) {
             try {
-                const res = await fetch(`https://provinces.open-api.vn/api/v2/p/${provinceCode}?depth=2`);
+                // Proxy nội bộ: server gọi API v2 và trả về danh sách xã/phường trực tiếp
+                const res = await fetch(`/api/address/wards/${provinceCode}`);
                 if (res.ok) {
                     const data = await res.json();
-                    window._vietnamWards[provinceCode] = data.wards || [];
+                    window._vietnamWards[provinceCode] = Array.isArray(data) ? data : [];
                 } else {
                     xaSelect.innerHTML = '<option value="">Lỗi tải dữ liệu</option>';
                     return;
