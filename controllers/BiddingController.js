@@ -14,20 +14,6 @@ export class BiddingController {
         this.view = view;
         window.appController = this;
 
-        // Tối ưu hóa hiệu năng vẽ Icons của Lucide globally
-        if (window.lucide && window.lucide.createIcons) {
-            const originalCreateIcons = window.lucide.createIcons;
-            window.lucide.createIcons = function(options) {
-                if (!options || !options.root) {
-                    const activePane = document.querySelector('.tab-pane.active') || document.querySelector('.content-viewport');
-                    if (activePane) {
-                        options = Object.assign({}, options, { root: activePane });
-                    }
-                }
-                return originalCreateIcons(options);
-            };
-        }
-
         this.tempChuyenGiaImageBase64 = '';
         this.tempChuyenGiaSignatureBase64 = '';
 
