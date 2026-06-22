@@ -34,9 +34,9 @@ export async function deleteKeHoach(id) {
     );
     if (confirmed) {
         this.model.state.kehoach = this.model.state.kehoach.filter(kh => this.model.getPlanBaseCode(kh.maKeHoach) !== baseCode);
-        this.model.persistData('kehoach');
+        await this.model.persistData('kehoach');
         this.view.renderKeHoachTable();
-        this.autoSync();
+        await this.autoSync();
     }
 }
 
@@ -437,8 +437,8 @@ export async function deleteGoiThau(id) {
         }
         // Also remove related thongtinmothau entries
         this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(id));
-        this.model.persistData('goithau');
-        this.model.persistData('thongtinmothau');
+        await this.model.persistData('goithau');
+        await this.model.persistData('thongtinmothau');
         this.view.renderGoiThauTable();
 
         // Await sync to ensure DB is updated; alert on failure

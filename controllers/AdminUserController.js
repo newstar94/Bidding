@@ -801,11 +801,11 @@ export async function deleteEmployee(id) {
                 this.model.state.permissionmatrix = this.model.state.permissionmatrix.filter(m => m.empId !== id);
                 this.model.state.assignments = this.model.state.assignments.filter(a => a.empId !== id);
 
-                this.model.persistData('permissionmatrix');
-                this.model.persistData('assignments');
+                await this.model.persistData('permissionmatrix');
+                await this.model.persistData('assignments');
 
                 this.view.renderManagerNhanVienPanel();
-                this.autoSync();
+                await this.autoSync();
             } else {
                 const data = await res.json();
                 await this.view.customAlert('Thất bại', data.error || 'Không thể gỡ bỏ nhân sự này.', 'alert-triangle');
@@ -865,7 +865,7 @@ export async function deleteHoSoGiayStatus(id) {
     if (!confirmed) return;
 
     this.model.state.custompaperstatuses = this.model.state.custompaperstatuses.filter(s => s.id !== id);
-    this.model.persistData('custompaperstatuses');
+    await this.model.persistData('custompaperstatuses');
 
     // Reset form in case we were editing this specific status
     const editingId = document.getElementById('form-hosogiay-id').value;
@@ -877,7 +877,7 @@ export async function deleteHoSoGiayStatus(id) {
 
     this.view.renderManagerHoSoGiayPanel();
     await this.view.customAlert('Thành công', 'Đã xóa trạng thái hồ sơ giấy thành công!', 'check-circle');
-    this.autoSync();
+    await this.autoSync();
 }
 
 export function editSystemPackage(pkgId) {

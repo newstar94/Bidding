@@ -376,11 +376,12 @@ export class BiddingModel {
     }
 
 
-    persistData(type) {
+    async persistData(type) {
         const key = type.toUpperCase();
         if (this.STORAGE_KEYS[key]) {
             if (this.db.stores.includes(type)) {
-                this.db.getTableData(type).then(oldData => {
+                try {
+                    const oldData = await this.db.getTableData(type);
                     if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
                         const newIds = new Set(this.state[type].map(x => x.id).filter(Boolean));
                         const deletedIds = oldData.map(x => x.id).filter(id => id && !newIds.has(id));
@@ -399,16 +400,21 @@ export class BiddingModel {
                             localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
                         }
                     }
-                }).catch(e => console.error("Error checking deletions in persistData:", e))
-                .finally(() => {
-                    this.db.putTableData(type, this.state[type]).catch(err => {
-                        console.error("Failed to persist data for type:", type, err);
-                    });
-                });
-            } else {
-                this.db.set(this.STORAGE_KEYS[key], this.state[type]).catch(err => {
+                } catch (e) {
+                    console.error("Error checking deletions in persistData:", e);
+                }
+                
+                try {
+                    await this.db.putTableData(type, this.state[type]);
+                } catch (err) {
                     console.error("Failed to persist data for type:", type, err);
-                });
+                }
+            } else {
+                try {
+                    await this.db.set(this.STORAGE_KEYS[key], this.state[type]);
+                } catch (err) {
+                    console.error("Failed to persist data for type:", type, err);
+                }
             }
         }
     }

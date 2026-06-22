@@ -1378,7 +1378,7 @@ export class BiddingController {
     }
 
     autoSync() {
-        fetch('/api/sync', {
+        return fetch('/api/sync', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',

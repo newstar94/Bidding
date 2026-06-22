@@ -20,9 +20,9 @@ export async function deleteChuDauTu(id) {
     );
     if (confirmed) {
         this.model.state.chudautu = this.model.state.chudautu.filter(c => c.id !== id);
-        this.model.persistData('chudautu');
+        await this.model.persistData('chudautu');
         this.view.renderChuDauTuTable();
-        this.autoSync();
+        await this.autoSync();
     }
 }
 
@@ -276,9 +276,9 @@ export async function deleteNhaThau(id) {
     );
     if (confirmed) {
         this.model.state.nhathau = this.model.state.nhathau.filter(n => n.id !== id);
-        this.model.persistData('nhathau');
+        await this.model.persistData('nhathau');
         this.view.renderNhaThauTable();
-        this.autoSync();
+        await this.autoSync();
     }
 }
 
@@ -556,9 +556,9 @@ export async function deleteChuyenGia(id) {
     );
     if (confirmed) {
         this.model.state.chuyengia = this.model.state.chuyengia.filter(cg => cg.id !== id);
-        this.model.persistData('chuyengia');
+        await this.model.persistData('chuyengia');
         this.view.renderChuyenGiaTable();
-        this.autoSync();
+        await this.autoSync();
     }
 }
 
@@ -785,9 +785,9 @@ export async function deleteHopDong(id) {
     );
     if (confirmed) {
         this.model.state.hopdong = this.model.state.hopdong.filter(h => h.id !== id);
-        this.model.persistData('hopdong');
+        await this.model.persistData('hopdong');
         this.view.renderHopDongTable();
-        this.autoSync();
+        await this.autoSync();
     }
 }
 
