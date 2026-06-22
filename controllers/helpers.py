@@ -525,6 +525,16 @@ def khoi_tao_va_di_tru_he_thong():
         
         # Tránh kiểm tra DB liên tục mỗi khi import module
         cursor.execute("CREATE TABLE IF NOT EXISTS sys_config (key TEXT PRIMARY KEY, val TEXT)")
+
+        # Tự động loại bỏ mọi bảng không được định nghĩa trong SCHEMA_DINH_NGHIA và không phải bảng hệ thống
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        db_tables = [row[0] for row in cursor.fetchall()]
+        for tbl in db_tables:
+            if tbl not in SCHEMA_DINH_NGHIA and tbl not in ['sys_config', 'sqlite_sequence']:
+                print(f"Đồng bộ: Loại bỏ bảng vô nghĩa/không sử dụng khỏi DB: '{tbl}'")
+                cursor.execute(f"DROP TABLE IF EXISTS '{tbl}'")
+        conn.commit()
+
         cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v3'")
         config_row = cursor.fetchone()
         if config_row and config_row[0] == '1':
@@ -837,9 +847,8 @@ def khoi_tao_va_di_tru_he_thong():
                                (d['id'], d['emp_id'], d['target_id'], d['type']))
             print("Đã di trú assignments -> phan_cong_nhan_su")
             
-        old_tables = ['users', 'system_packages', 'investors', 'plans', 'packages', 'experts', 'contractors', 'contracts', 'contract_package', 'assignments']
-        for tbl in old_tables:
-            cursor.execute(f"DROP TABLE IF EXISTS {tbl}")
+        # Bảng cũ đã được loại bỏ động ở đầu hàm.
+        pass
             
         cursor.execute("SELECT COUNT(*) FROM goi_dich_vu")
         if cursor.fetchone()[0] == 0:
