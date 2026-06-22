@@ -287,7 +287,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
             "img-src 'self' data: blob:; "
-            f"connect-src 'self' ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT}; "
+            f"connect-src 'self' https://unpkg.com https://cdn.jsdelivr.net ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT}; "
             "font-src 'self' https://fonts.gstatic.com https://unpkg.com https://cdn.jsdelivr.net;"
         )
         # Chỉ cache tài nguyên tĩnh, không cache API
