@@ -9,6 +9,34 @@ function getAuthDownloadUrl(url) {
     return `${url}${separator}token=${encodeURIComponent(token)}&username=${encodeURIComponent(username)}`;
 }
 
+/**
+ * Tải file từ API có xác thực qua fetch (auth headers đúng chuẩn).
+ * Thay thế window.location.href để tránh lỗi thiếu session khi browser GET.
+ */
+function authFetchDownload(url, filename) {
+    return fetch(url, {
+        headers: {
+            'X-Session-Token': localStorage.getItem('bf_session_token') || '',
+            'X-Username': localStorage.getItem('bf_username') || ''
+        }
+    })
+    .then(res => {
+        if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Lỗi tải file'); });
+        return res.blob();
+    })
+    .then(blob => {
+        const a = document.createElement('a');
+        const objectUrl = URL.createObjectURL(blob);
+        a.href = objectUrl;
+        a.download = filename || 'download';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+    })
+    .catch(err => alert('Lỗi tải file: ' + err.message));
+}
+
 export async function deleteKeHoach(id) {
     const targetPlan = this.model.state.kehoach.find(k => k.id === id);
     if (!targetPlan) return;
@@ -1577,7 +1605,8 @@ export function setupExcelImportEvents() {
     if (downloadTemplateBtn) {
         downloadTemplateBtn.addEventListener('click', () => {
             const type = this._excelImportType || 'kehoach';
-            window.location.href = getAuthDownloadUrl(`/api/export-excel-template/${type}`);
+            authFetchDownload(`/api/export-excel-template/${type}`, `Mau_nhap_lieu_${type}.xlsx`);
+
         });
     }
 }
@@ -1649,7 +1678,7 @@ export function openExcelImportModal(type) {
                 const lotCodes = (gt.phanLoList || []).map(l => l.maPhanLo).join(',');
 
                 // Redirect to backend API for downloading the strictly validated template
-                window.location.href = getAuthDownloadUrl(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeCode)}&lot_codes=${encodeURIComponent(lotCodes)}`);
+                authFetchDownload(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeCode)}&lot_codes=${encodeURIComponent(lotCodes)}`, `Mau_Mo_Thau_${caseType}_${safeCode}.xlsx`);
             } else if (this._excelImportType === 'danhgiahsdt') {
                 const select = document.getElementById('danhgiahsdt-goithau-select');
                 if (!select || !select.value) {
@@ -1660,7 +1689,7 @@ export function openExcelImportModal(type) {
                 const gt = this.model.state.goithau.find(g => g.id === gtId);
                 if (!gt) return;
                 const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                window.location.href = getAuthDownloadUrl(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`);
+                authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `DanhGia_HSDT_${safeCode}.xlsx`);
             } else if (this._excelImportType === 'ketquaqd') {
                 const gtId = this._currentResultPackageId;
                 if (!gtId) {
@@ -1670,10 +1699,10 @@ export function openExcelImportModal(type) {
                 const gt = this.model.state.goithau.find(g => g.id === gtId);
                 if (!gt) return;
                 const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                window.location.href = getAuthDownloadUrl(`/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`);
+                authFetchDownload(`/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `KetQua_QD_${safeCode}.xlsx`);
             } else {
                 const type = this._excelImportType || 'kehoach';
-                window.location.href = getAuthDownloadUrl(`/api/export-excel-template/${type}`);
+                authFetchDownload(`/api/export-excel-template/${type}`, `Mau_nhap_lieu_${type}.xlsx`);
             }
         };
     }
@@ -3772,7 +3801,7 @@ export function renderMoThauPanel() {
             const lotCodes = (gt.phanLoList || []).map(l => l.maPhanLo).join(',');
 
             // Redirect to backend API for downloading the strictly validated template
-            window.location.href = getAuthDownloadUrl(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeName)}&lot_codes=${encodeURIComponent(lotCodes)}`);
+            authFetchDownload(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeName)}&lot_codes=${encodeURIComponent(lotCodes)}`, `Mau_Mo_Thau_${caseType}_${safeName}.xlsx`);
         };
     }
 

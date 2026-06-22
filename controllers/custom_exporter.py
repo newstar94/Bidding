@@ -745,15 +745,20 @@ def _collect_image_tasks(data, project_root, tasks=None):
         tasks = []
     if isinstance(data, dict):
         for k, v in list(data.items()):
-            if isinstance(v, str) and v.startswith('uploads/'):
-                filepath = os.path.join(project_root, v)
-                if os.path.exists(filepath):
-                    max_w = 300
-                    width_hint = 'small'
-                    if 'chung_chi' in k or 'cert' in k:
-                        max_w = 1200
-                        width_hint = 'full'
-                    tasks.append((data, k, filepath, max_w, width_hint))
+            if isinstance(v, str):
+                # Chuẩn hóa path: strip dấu / đầu nếu có
+                norm_v = v.lstrip('/')
+                if norm_v.startswith('uploads/'):
+                    filepath = os.path.join(project_root, norm_v)
+                    if os.path.exists(filepath):
+                        # Cập nhật giá trị key về dạng không có / đầu để filepath khớp
+                        data[k] = norm_v
+                        max_w = 300
+                        width_hint = 'small'
+                        if 'chung_chi' in k or 'cert' in k:
+                            max_w = 1200
+                            width_hint = 'full'
+                        tasks.append((data, k, filepath, max_w, width_hint))
             else:
                 _collect_image_tasks(v, project_root, tasks)
     elif isinstance(data, list):

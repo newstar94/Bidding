@@ -198,8 +198,6 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_dang_tai": "TEXT",
             "thoi_gian_dong_thau": "TEXT",
             "thoi_gian_mo_thau": "TEXT",
-            "chuyen_gia_list": "TEXT",
-            "tham_dinh_list": "TEXT",
             "so_quyet_dinh": "TEXT",
             "ngay_quyet_dinh": "TEXT",
             "so_quyet_dinh_ket_qua": "TEXT",
@@ -441,8 +439,6 @@ SPECIAL_FIELD_MAPS = {
         "ma_qhns": "maQHNS"
     },
     "goi_thau": {
-        "chuyen_gia_list": "toChuyenGia",
-        "tham_dinh_list": "toThamDinh",
         "nha_thau_trung_thau_id": "nhaThauTrungThauId",
         "thoi_gian_dang_tai": "thoiGianDangTai",
         "thoi_gian_dong_thau": "thoiGianDongThau",
@@ -529,7 +525,7 @@ def khoi_tao_va_di_tru_he_thong():
         
         # Tránh kiểm tra DB liên tục mỗi khi import module
         cursor.execute("CREATE TABLE IF NOT EXISTS sys_config (key TEXT PRIMARY KEY, val TEXT)")
-        cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v2'")
+        cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v3'")
         config_row = cursor.fetchone()
         if config_row and config_row[0] == '1':
             conn.close()
@@ -917,47 +913,22 @@ def khoi_tao_va_di_tru_he_thong():
         try:
             cursor.execute("DROP TRIGGER IF EXISTS tg_sync_goithau_chuyengia_insert")
             cursor.execute("DROP TRIGGER IF EXISTS tg_sync_goithau_chuyengia_update")
-            print("Đồng bộ: Đã dọn dẹp các trigger của goi_thau_chuyen_gia (lưu trực tiếp qua code ứng dụng).")
+            print("Đồng bộ: Đã dọn dẹp trigger goi_thau_chuyen_gia.")
 
-            cursor.execute("SELECT id, chuyen_gia_list, tham_dinh_list FROM goi_thau")
-            gt_rows = cursor.fetchall()
-            for gt_row in gt_rows:
-                gt_id = gt_row['id']
-                cg_list_str = gt_row['chuyen_gia_list']
-                td_list_str = gt_row['tham_dinh_list']
-                if cg_list_str:
-                    try:
-                        cg_list = json.loads(cg_list_str)
-                        for cg_item in cg_list:
-                            cg_id = cg_item.get('chuyenGiaId') or cg_item.get('id')
-                            if cg_id:
-                                clean_cg_id = clean_id(cg_id)
-                                chuc_vu = cg_item.get('chucVu') or cg_item.get('chuc_vu') or 'Tổ viên'
-                                cong_viec = cg_item.get('congViec') or cg_item.get('cong_viec') or ''
-                                cursor.execute("""
-                                    INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                                    VALUES (?, ?, 'chuyen_gia', ?, ?)
-                                 """, (gt_id, clean_cg_id, chuc_vu, cong_viec))
-                    except Exception:
-                        pass
-                if td_list_str:
-                    try:
-                        td_list = json.loads(td_list_str)
-                        for td_item in td_list:
-                            td_id = td_item.get('chuyenGiaId') or td_item.get('id')
-                            if td_id:
-                                clean_td_id = clean_id(td_id)
-                                chuc_vu = td_item.get('chucVu') or td_item.get('chuc_vu') or 'Tổ viên'
-                                cong_viec = td_item.get('congViec') or td_item.get('cong_viec') or ''
-                                cursor.execute("""
-                                    INSERT OR IGNORE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                                    VALUES (?, ?, 'tham_dinh', ?, ?)
-                                 """, (gt_id, clean_td_id, chuc_vu, cong_viec))
-                    except Exception:
-                        pass
-            print("Đồng bộ: Di trú chuyên gia sang goi_thau_chuyen_gia thành công!")
+            # Xóa các cột JSON dư thừa nếu SQLite hỗ trợ (>= 3.35.0)
+            sqlite_ver = tuple(int(x) for x in conn.execute("SELECT sqlite_version()").fetchone()[0].split("."))
+            if sqlite_ver >= (3, 35, 0):
+                existing_cols = [row[1] for row in cursor.execute("PRAGMA table_info(goi_thau)").fetchall()]
+                if 'chuyen_gia_list' in existing_cols:
+                    cursor.execute("ALTER TABLE goi_thau DROP COLUMN chuyen_gia_list")
+                    print("Đồng bộ: Đã xóa cột chuyen_gia_list khỏi bảng goi_thau.")
+                if 'tham_dinh_list' in existing_cols:
+                    cursor.execute("ALTER TABLE goi_thau DROP COLUMN tham_dinh_list")
+                    print("Đồng bộ: Đã xóa cột tham_dinh_list khỏi bảng goi_thau.")
+            else:
+                print(f"Đồng bộ: SQLite {'.'.join(str(x) for x in sqlite_ver)} chưa hỗ trợ DROP COLUMN — bỏ qua, cột thừa không ảnh hưởng chức năng.")
         except Exception as trigger_ex:
-            print("Lỗi khi dọn dẹp trigger/di trú chuyên gia:", trigger_ex)
+            print("Lỗi khi dọn dẹp trigger/cột JSON:", trigger_ex)
                            
         try:
             cursor.execute("SELECT id, ten_to_chuc FROM to_chuc")
@@ -975,7 +946,7 @@ def khoi_tao_va_di_tru_he_thong():
         except Exception as migration_owner_ex:
             print("Lỗi khi di trú owner_id sang ID tổ chức:", migration_owner_ex)
 
-        cursor.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('migration_done_v2', '1')")
+        cursor.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('migration_done_v3', '1')")
         conn.commit()
         conn.close()
         print("Khởi tạo và di trú cơ sở dữ liệu Tiếng Việt thành công!")

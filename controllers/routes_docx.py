@@ -54,63 +54,26 @@ async def export_report_api(request):
                 investor_name = inv_data.get('ten_chu_dau_tu', '--')
                 investor_address = inv_data.get('dia_chi', '')
                 
-        expert_ids = []
-        cg_meta = {}
-        if pkg.get('chuyen_gia_list'):
-            try:
-                cg_list = json.loads(pkg['chuyen_gia_list'])
-                for x in cg_list:
-                    cg_id = x.get('chuyenGiaId') or x.get('id')
-                    if cg_id:
-                        norm_id = str(cg_id).replace("cg-", "")
-                        expert_ids.append(norm_id)
-                        cg_meta[norm_id] = {
-                            'chuc_vu': x.get('chucVu') or x.get('chuc_vu') or 'Tổ viên',
-                            'cong_viec': x.get('congViec') or x.get('cong_viec') or ''
-                        }
-            except Exception:
-                pass
-                
+        # Đọc tổ chuyên gia và tổ thẩm định từ bảng quan hệ goi_thau_chuyen_gia (nguồn chính thức)
+        cursor.execute("""
+            SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec, gtcg.loai
+            FROM chuyen_gia cg
+            JOIN goi_thau_chuyen_gia gtcg ON cg.id = gtcg.chuyen_gia_id
+            WHERE gtcg.goi_thau_id = ?
+            ORDER BY gtcg.loai, gtcg.rowid
+        """, (package_id,))
+        
         chuyen_gia_list = []
-        if expert_ids:
-            placeholders = ",".join(["?"] * len(expert_ids))
-            cursor.execute(f"SELECT * FROM chuyen_gia WHERE id IN ({placeholders})", expert_ids)
-            for row_cg in cursor.fetchall():
-                cg = dict(row_cg)
-                cg_id_str = str(cg.get('id', ''))
-                meta = cg_meta.get(cg_id_str, {})
-                cg['chuc_vu'] = meta.get('chuc_vu', 'Tổ viên')
-                cg['cong_viec'] = meta.get('cong_viec', '')
-                chuyen_gia_list.append(cg)
-                
-        appraisal_ids = []
-        td_meta = {}
-        if pkg.get('tham_dinh_list'):
-            try:
-                td_list = json.loads(pkg['tham_dinh_list'])
-                for x in td_list:
-                    td_id = x.get('chuyenGiaId') or x.get('id')
-                    if td_id:
-                        norm_id = str(td_id).replace("cg-", "")
-                        appraisal_ids.append(norm_id)
-                        td_meta[norm_id] = {
-                            'chuc_vu': x.get('chucVu') or x.get('chuc_vu') or 'Tổ viên',
-                            'cong_viec': x.get('congViec') or x.get('cong_viec') or ''
-                        }
-            except Exception:
-                pass
-                
         tham_dinh_list = []
-        if appraisal_ids:
-            placeholders = ",".join(["?"] * len(appraisal_ids))
-            cursor.execute(f"SELECT * FROM chuyen_gia WHERE id IN ({placeholders})", appraisal_ids)
-            for row_td in cursor.fetchall():
-                td = dict(row_td)
-                td_id_str = str(td.get('id', ''))
-                meta = td_meta.get(td_id_str, {})
-                td['chuc_vu'] = meta.get('chuc_vu', 'Tổ viên')
-                td['cong_viec'] = meta.get('cong_viec', '')
-                tham_dinh_list.append(td)
+        expert_ids = []
+        for row_rel in cursor.fetchall():
+            member = dict(row_rel)
+            loai = member.pop('loai', '')
+            if loai == 'chuyen_gia':
+                chuyen_gia_list.append(member)
+                expert_ids.append(str(member.get('id', '')))
+            elif loai == 'tham_dinh':
+                tham_dinh_list.append(member)
                 
         awarded_id = pkg.get('nha_thau_trung_thau_id')
         if not awarded_id and pkg.get('trang_thai') == 'Đã có kết quả':

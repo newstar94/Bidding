@@ -1260,7 +1260,12 @@ export class BiddingController {
             const originalText = btn.innerHTML;
             btn.innerHTML = 'Đang tải...';
 
-            fetch(`/api/export-excel-template/${type}`)
+            fetch(`/api/export-excel-template/${type}`, {
+                headers: {
+                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
+                    'X-Username': localStorage.getItem('bf_username') || ''
+                }
+            })
                 .then(res => {
                     if (!res.ok) throw new Error('Không thể tải tệp mẫu');
                     return res.blob();
@@ -1397,9 +1402,35 @@ export class BiddingController {
             if (data.timestamp) {
                 localStorage.setItem('bf_last_sync_timestamp', data.timestamp);
             }
+            // Xóa các record mồ côi (parent đã bị xóa trên server) khỏi local state
+            if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
+                let stateChanged = false;
+                for (const orphan of data.orphanedIds) {
+                    const { table, id } = orphan;
+                    // Map table_name -> state key
+                    const tableToStateKey = {
+                        'thong_tin_mo_thau': 'thongtinmothau',
+                        'phan_cong_nhan_su': 'assignments',
+                        'hop_dong_goi_thau': null, // junction table, no direct state key
+                    };
+                    const stateKey = tableToStateKey.hasOwnProperty(table) ? tableToStateKey[table] : table;
+                    if (stateKey && Array.isArray(this.model.state[stateKey])) {
+                        const before = this.model.state[stateKey].length;
+                        this.model.state[stateKey] = this.model.state[stateKey].filter(item => String(item.id) !== String(id));
+                        if (this.model.state[stateKey].length < before) {
+                            this.model.persistData(stateKey);
+                            stateChanged = true;
+                        }
+                    }
+                }
+                if (stateChanged) {
+                    console.info(`[Sync] Đã xóa ${data.orphanedIds.length} record mồ côi khỏi IndexedDB:`, data.orphanedIds);
+                }
+            }
         })
         .catch(err => console.error("Error auto sync:", err));
     }
+
 
     handleInlineExcelUpload(file, type) {
         const fd = new FormData();

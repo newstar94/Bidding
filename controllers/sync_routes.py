@@ -265,6 +265,7 @@ async def sync_api(request):
             return clean_id(raw_id)
             
         updated_versioned_tables = set()
+        orphaned_ids = []  # Danh sách record bị từ chối do FK (parent đã bị xóa) — gửi về client để xóa khỏi IndexedDB
         
         for payload_key, table_name in TABLE_KEYS.items():
             if payload_key not in data:
@@ -374,10 +375,10 @@ async def sync_api(request):
                     if table_name == "goi_thau":
                         c_gt_id = get_clean_id("goi_thau", item.get('id'))
                         
-                        # Xử lý Tổ chuyên gia
-                        if any(k in item for k in ['toChuyenGia', 'chuyenGiaList', 'chuyen_gia_list']):
+                        # Xử lý Tổ chuyên gia — chỉ đọc từ toChuyenGia (nguồn duy nhất từ client)
+                        if 'toChuyenGia' in item:
                             cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'chuyen_gia'", (c_gt_id,))
-                            cg_raw = item.get('toChuyenGia') or item.get('chuyenGiaList') or item.get('chuyen_gia_list') or []
+                            cg_raw = item.get('toChuyenGia') or []
                             if isinstance(cg_raw, str):
                                 try:
                                     cg_raw = json.loads(cg_raw)
@@ -396,10 +397,10 @@ async def sync_api(request):
                                                 VALUES (?, ?, 'chuyen_gia', ?, ?)
                                             """, (c_gt_id, clean_cg_id, chuc_vu, cong_viec))
                                             
-                        # Xử lý Tổ thẩm định
-                        if any(k in item for k in ['toThamDinh', 'thamDinhList', 'tham_dinh_list']):
+                        # Xử lý Tổ thẩm định — chỉ đọc từ toThamDinh (nguồn duy nhất từ client)
+                        if 'toThamDinh' in item:
                             cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'tham_dinh'", (c_gt_id,))
-                            td_raw = item.get('toThamDinh') or item.get('thamDinhList') or item.get('tham_dinh_list') or []
+                            td_raw = item.get('toThamDinh') or []
                             if isinstance(td_raw, str):
                                 try:
                                     td_raw = json.loads(td_raw)
@@ -418,7 +419,20 @@ async def sync_api(request):
                                                 VALUES (?, ?, 'tham_dinh', ?, ?)
                                             """, (c_gt_id, clean_td_id, chuc_vu, cong_viec))
                 except Exception as item_err:
-                    log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
+                    err_str = str(item_err)
+                    item_id = get_clean_id(table_name, item.get('id'))
+                    # FK constraint: parent bị xóa — ghi orphan vào deleted_records và bỏ qua lặng lẽ
+                    if "FOREIGN KEY constraint failed" in err_str and item_id:
+                        try:
+                            cursor.execute(
+                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
+                                (table_name, item_id, org_name, current_time)
+                            )
+                            orphaned_ids.append({"table": table_name, "id": item_id})
+                        except Exception:
+                            pass
+                    else:
+                        log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
                     
         # 3. Xử lý xóa bản ghi tường minh được gửi từ Client (Explicit Deletions)
         deletions = data.get("deletions", [])
@@ -467,7 +481,10 @@ async def sync_api(request):
         # Broadcast WebSocket update
         broadcast_websocket_event(org_name, {"event": "db_changed", "sender_session": request.headers.get('X-Session-Token')})
         
-        return JSONResponse({"status": "success", "timestamp": current_time})
+        response_data = {"status": "success", "timestamp": current_time}
+        if orphaned_ids:
+            response_data["orphanedIds"] = orphaned_ids  # Client sẽ xóa các record này khỏi IndexedDB
+        return JSONResponse(response_data)
     except Exception as e:
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
         return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)

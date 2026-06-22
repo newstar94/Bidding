@@ -9,6 +9,31 @@ function getAuthDownloadUrl(url) {
     return `${url}${separator}token=${encodeURIComponent(token)}&username=${encodeURIComponent(username)}`;
 }
 
+function authFetchDownload(url, filename) {
+    return fetch(url, {
+        headers: {
+            'X-Session-Token': localStorage.getItem('bf_session_token') || '',
+            'X-Username': localStorage.getItem('bf_username') || ''
+        }
+    })
+    .then(res => {
+        if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Lỗi tải file'); });
+        return res.blob();
+    })
+    .then(blob => {
+        const a = document.createElement('a');
+        const objectUrl = URL.createObjectURL(blob);
+        a.href = objectUrl;
+        a.download = filename || 'download';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+    })
+    .catch(err => alert('Lỗi tải file: ' + err.message));
+}
+
+
 export async function renderKeHoachTable() {
     const tableBody = document.getElementById('kehoach-table').querySelector('tbody');
     const searchVal = document.getElementById('search-kehoach').value.toLowerCase();
@@ -1479,7 +1504,7 @@ export function showPackageDetails(id) {
             if (resultExportBtn) {
                 resultExportBtn.onclick = () => {
                     const safeCode = (gt.tenGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9]/g, '_');
-                    window.location.href = getAuthDownloadUrl(`/api/export-ketquaqd-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`);
+                    authFetchDownload(`/api/export-ketquaqd-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`, `KetQua_QD_${safeCode}.xlsx`);
                 };
             }
 
