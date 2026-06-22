@@ -119,7 +119,7 @@ export async function renderKeHoachTable() {
                 </tr>
             `;
         }).join('');
-        
+
         if (window.renderTablePagination) {
             window.renderTablePagination('kehoach-pagination', totalItems, currentPage, pageSize);
         }
@@ -266,7 +266,7 @@ export async function renderGoiThauTable() {
                 </tr>
             `;
         }).join('');
-        
+
         if (window.renderTablePagination) {
             window.renderTablePagination('goithau-pagination', totalItems, currentPage, pageSize);
         }
@@ -404,7 +404,7 @@ export function showPackageDetails(id) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdtStr}</span></div>
-                            <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Khác'}</div>
+                            <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
                             <div>• <strong>Giá gói thầu:</strong> <span class="text-blue fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
@@ -447,7 +447,7 @@ export function showPackageDetails(id) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdtStr}</span></div>
-                            <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Khác'}</div>
+                            <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
                             <div>• <strong>Giá gói thầu:</strong> <span class="text-blue fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
@@ -484,7 +484,7 @@ export function showPackageDetails(id) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdtStr}</span></div>
-                            <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Khác'}</div>
+                            <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
                             <div>• <strong>Giá gói thầu:</strong> <span class="text-blue fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
@@ -902,7 +902,7 @@ export function showPackageDetails(id) {
             break;
 
         case 'result':
-            const allBidsForResult = this.model.state.thongtinmothau.filter(b => 
+            const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
                 String(b.goiThauId) === String(gt.id) &&
                 (b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
             );
@@ -994,11 +994,11 @@ export function showPackageDetails(id) {
                     const firstBid = ntBids[0];
                     const ntId = String(firstBid.nhaThauId || firstBid.id);
                     const isWinner = winningIds.has(ntId);
-                    
-                    const badge = isWinner 
+
+                    const badge = isWinner
                         ? `<span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px;">Trúng thầu</span>`
                         : `<span class="badge badge-neutral" style="font-size:0.75rem; padding: 4px 10px; background:#f1f5f9; color:#64748b;">Trượt thầu</span>`;
-                    
+
                     let lyDo = '';
                     if (isWinner) {
                         lyDo = '—';
@@ -1014,7 +1014,7 @@ export function showPackageDetails(id) {
                                     if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
                                     if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
                                     if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
-                                    
+
                                     if (failedSteps.length > 0) {
                                         r = `Không đạt ở bước: ${failedSteps.join(', ')}`;
                                     } else {
@@ -1153,14 +1153,14 @@ export function showPackageDetails(id) {
                 }
             } else {
                 const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
-                const allBidsForResult = this.model.state.thongtinmothau.filter(b => 
+                const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
                     String(b.goiThauId) === String(gt.id) &&
                     (b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
                 );
 
                 const allBiddersHtml = allBids.map((b, idx) => {
                     const isQualified = b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '');
-                    
+
                     let defaultReason = '';
                     if (!isQualified) {
                         const failedSteps = [];
@@ -1168,7 +1168,7 @@ export function showPackageDetails(id) {
                         if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
                         if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
                         if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
-                        
+
                         if (failedSteps.length > 0) {
                             defaultReason = `Không đạt ở bước: ${failedSteps.join(', ')}`;
                         } else {
@@ -1179,7 +1179,7 @@ export function showPackageDetails(id) {
                     }
 
                     const displayReason = b.lyDoTruot || defaultReason;
-                    
+
                     const defaultPrice = this.model.formatVND(b.giaSauGiamGia || b.giaDuThau || '') || '';
                     const defaultDurationPkg = b.thoiGianThucHien || '';
                     const defaultDurationCtr = b.thoiGianThucHien ? (b.thoiGianThucHien + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
@@ -1307,7 +1307,7 @@ export function showPackageDetails(id) {
                                         if (otherSelect && !otherSelect.disabled) {
                                             otherSelect.value = 'truot';
                                         }
-                                        
+
                                         const otherLyDo = otherTr.querySelector('.row-ly-do-truot');
                                         if (otherLyDo) {
                                             otherLyDo.disabled = false;
@@ -1347,9 +1347,9 @@ export function showPackageDetails(id) {
                                 if (inpDurationCtr) { inpDurationCtr.disabled = true; inpDurationCtr.style.background = '#f1f5f9'; }
 
                                 const inpLyDo = tr.querySelector('.row-ly-do-truot');
-                                if (inpLyDo) { 
-                                    inpLyDo.disabled = false; 
-                                    inpLyDo.style.background = ''; 
+                                if (inpLyDo) {
+                                    inpLyDo.disabled = false;
+                                    inpLyDo.style.background = '';
                                     inpLyDo.value = 'Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau';
                                 }
                             }
@@ -1366,7 +1366,7 @@ export function showPackageDetails(id) {
 
                         let hasError = false;
                         const errorInputs = [];
-                        
+
                         // Validate QĐ inputs
                         const fields = [
                             { el: document.getElementById('award-decision-no'), val: decNo },
@@ -1474,7 +1474,7 @@ export function showPackageDetails(id) {
                     };
                 }
             }
-            
+
             const resultExportBtn = document.getElementById('btn-result-export-excel-template');
             if (resultExportBtn) {
                 resultExportBtn.onclick = () => {

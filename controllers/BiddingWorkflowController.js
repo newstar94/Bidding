@@ -969,9 +969,9 @@ export function editGoiThau(id) {
         form.reset();
         form.removeAttribute('data-original-status');
         document.getElementById('form-goithau-id').value = '';
-        document.getElementById('gt-linhvuc').value = '';
+        document.getElementById('gt-linhvuc').value = 'Hàng hóa';
         document.getElementById('gt-tuychonmuathem').value = 'Không';
-        document.getElementById('gt-nguonvon').value = 'Ngân sách nhà nước';
+        document.getElementById('gt-nguonvon').value = '';
         document.getElementById('gt-loaihopdong').value = 'Trọn gói';
         document.getElementById('gt-thoigiantochuc').value = '';
         document.getElementById('gt-thoigianbatdautochuc').value = '';
@@ -2309,7 +2309,7 @@ export async function saveExcelImport() {
             if (gt) {
                 const validRows = this._excelImportData.filter(r => r._valid);
                 let winnerRow = validRows.find(r => r.trangThai === 'Trúng thầu' || r.trangThai === 'trung');
-                
+
                 validRows.forEach(row => {
                     const bid = this.model.state.thongtinmothau.find(b => b.id === row.id);
                     if (bid) {
@@ -2324,10 +2324,10 @@ export async function saveExcelImport() {
                 if (winnerRow) {
                     let wId = winnerRow.nhaThauId;
                     if (!wId) {
-                        const matchedBid = this.model.state.thongtinmothau.find(b => 
-                            String(b.goiThauId) === String(gtId) && 
+                        const matchedBid = this.model.state.thongtinmothau.find(b =>
+                            String(b.goiThauId) === String(gtId) &&
                             ((winnerRow.maNhaThau && String(b.maNhaThau || b.maDinhDanh || '').toLowerCase() === String(winnerRow.maNhaThau).toLowerCase()) ||
-                             (winnerRow.tenNhaThau && String(b.tenNhaThau || '').toLowerCase() === String(winnerRow.tenNhaThau).toLowerCase()))
+                                (winnerRow.tenNhaThau && String(b.tenNhaThau || '').toLowerCase() === String(winnerRow.tenNhaThau).toLowerCase()))
                         );
                         if (matchedBid) {
                             wId = matchedBid.nhaThauId;
@@ -3611,7 +3611,7 @@ export function renderMoThauPanel() {
             <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem; margin-bottom: 12px;">
                 <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
-                <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Khác'}</div>
+                <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                 <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                 <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
                 <div>• <strong>Giá gói thầu:</strong> <span class="text-blue fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
@@ -4805,7 +4805,7 @@ export function renderDanhGiaHsdtPanel() {
             <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem; margin-bottom: 12px;">
                 <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
-                <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Khác'}</div>
+                <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                 <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                 <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
                 <div>• <strong>Giá gói thầu:</strong> <span class="text-blue fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
@@ -5304,7 +5304,7 @@ export function renderDanhGiaHsdtPanel() {
                     const valLamRoTaiChinh = bid.lamRoTaiChinh || '';
                     const valKetLuan = bid.danhGiaKetLuan || '';
                     const isTechnical = caseType === 'TU_VAN' || caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT';
- 
+
                     if (isReadOnly) {
                         cellHtml += `
                             <td><span style="font-weight:600;">${valHopLe || '--'}</span></td>
