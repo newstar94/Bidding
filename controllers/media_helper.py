@@ -56,7 +56,7 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
             save_format = "PNG" if ext == "png" else ("JPEG" if ext in ["jpg", "jpeg"] else img.format)
             save_kwargs = {}
             if save_format == "JPEG":
-                save_kwargs["quality"] = 100
+                save_kwargs["quality"] = 85  # 85 = cân bằng tối ưu giữa chất lượng & dung lượng (tiết kiệm ~50%)
                 save_kwargs["optimize"] = True
                 if img.mode in ("RGBA", "P"):
                     img = img.convert("RGB")
@@ -79,12 +79,21 @@ def load_base64_image(db_value: str) -> str:
         return ""
     if not db_value.startswith("uploads/"):
         return db_value
-    # LRU cache cục bộ
+    # Cache key bao gồm mời lần file được chỉnh sửa (mà tử vựa) — tự invalidate khi upload ảnh mới
     _cache = _load_image_cache
-    if db_value in _cache:
-        return _cache[db_value]
     try:
         filepath = os.path.join(project_root, db_value)
+        if not os.path.exists(filepath):
+            return db_value
+        mtime = os.path.getmtime(filepath)
+        cache_key = (db_value, mtime)
+    except Exception:
+        cache_key = (db_value, 0)
+        filepath = os.path.join(project_root, db_value)
+    
+    if cache_key in _cache:
+        return _cache[cache_key]
+    try:
         if os.path.exists(filepath):
             with open(filepath, "rb") as f:
                 file_data = f.read()
@@ -98,10 +107,10 @@ def load_base64_image(db_value: str) -> str:
                 mime = "image/gif"
             
             b64 = f"data:{mime};base64,{base64.b64encode(file_data).decode('utf-8')}"
-            # Cache kết quả (giới hạn 256 entry)
+            # Cache kết quả (giới hạn 256 entry — LRU thủ công)
             if len(_cache) >= 256:
                 _cache.pop(next(iter(_cache)))
-            _cache[db_value] = b64
+            _cache[cache_key] = b64
             return b64
     except Exception as e:
         print(f"Error loading image path {db_value}: {e}")

@@ -205,18 +205,30 @@ export function setupAuth() {
                 overlay.style.display = 'none';
                 document.querySelector('.app-container').style.filter = 'none';
 
-                this.forceSyncData().catch(err => {
-                    console.error("Failed to force sync data after F5 restore:", err);
-                });
-
                 // Bootstrap visual profile and tab
                 this.view.updateActiveUserProfileDisplay();
-                const activeRole = this.model.state.activerole;
-                if (activeRole === 'super_admin') {
-                    this.switchTab('superadmin-dashboard');
+
+                // Khôi phục tab từ URL ngay lập tức (không đợi sync để tránh trễ)
+                if (typeof this.handlePathRouting === 'function') {
+                    this.handlePathRouting(window.location.pathname, false, true);
                 } else {
-                    this.switchTab('dashboard');
+                    const activeRole = this.model.state.activerole;
+                    if (activeRole === 'super_admin') {
+                        this.switchTab('superadmin-dashboard');
+                    } else {
+                        this.switchTab('dashboard');
+                    }
                 }
+
+                // Sync data — sau khi sync xong, re-route để giải mã mã gói thầu từ URL
+                this.forceSyncData().then(() => {
+                    // Re-route sau sync để đảm bảo goithau-detail có thể map maGoiThau → id
+                    if (typeof this.handlePathRouting === 'function') {
+                        this.handlePathRouting(window.location.pathname, false, true);
+                    }
+                }).catch(err => {
+                    console.error("Failed to force sync data after F5 restore:", err);
+                });
 
                 this.startBackgroundSessionChecker();
             }
@@ -280,16 +292,11 @@ export function setupAuth() {
             const confirmed = await this.view.customConfirm('Xác nhận đăng xuất', 'Bạn có chắc chắn muốn đăng xuất tài khoản này không?', 'log-out');
             if (confirmed) {
                 try {
-                    // Trigger a final sync to ensure everything is saved in the SQLite database before session clear
-                    await fetch('/api/sync', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                            'X-Username': localStorage.getItem('bf_username') || ''
-                        },
-                        body: JSON.stringify(this.model.state)
-                    });
+                    // Trigger a final sync to ensure all unsaved changes are pushed before logout
+                    // Dùng autoSync() thay vì JSON.stringify(model.state) toàn bộ để giảm payload
+                    if (typeof this.autoSync === 'function') {
+                        await this.autoSync();
+                    }
                 } catch (e) {
                     console.error("Failed final sync during logout:", e);
                 }
@@ -382,6 +389,7 @@ export function setupAuth() {
             if (typeof this.renderWorkspaceSwitcher === 'function') {
                 this.renderWorkspaceSwitcher();
             }
+            // Sau khi đăng nhập: về dashboard theo role (không restore URL vì URL có thể là /) 
             if (activeRole === 'super_admin') {
                 this.switchTab('superadmin-dashboard');
             } else {

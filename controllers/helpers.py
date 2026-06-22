@@ -9,7 +9,7 @@ from datetime import datetime
 import re
 import traceback
 import smtplib
-import random
+# import random — removed: unused import
 import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -144,7 +144,7 @@ SCHEMA_DINH_NGHIA = {
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
-        "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE CASCADE"]
+        "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL"]
     },
     "nha_thau": {
         "columns": {
@@ -341,7 +341,7 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE CASCADE"
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
         ]
     },
     "to_chuc": {
@@ -432,7 +432,10 @@ SCHEMA_DINH_NGHIA = {
 
 SPECIAL_FIELD_MAPS = {
     "ke_hoach_lcnt": {
-        "thoi_gian_dang_tai": "thoiGianDangMa"
+        "thoi_gian_dang_tai": "thoiGianDangMa",
+        "cv_da_thuc_hien": "cvDaThucHienList",
+        "cv_khong_ap_dung": "cvKhongApDungList",
+        "cv_chua_du_dieu_kien": "cvChuaDuDieuKienList"
     },
     "chu_dau_tu": {
         "ma_qhns": "maQHNS"
@@ -451,8 +454,8 @@ SPECIAL_FIELD_MAPS = {
         "ngay_quyet_dinh": "ngayQuyetDinh",
         "so_quyet_dinh_ket_qua": "soQuyetDinhKetQua",
         "ngay_quyet_dinh_ket_qua": "ngayQuyetDinhKetQua",
-        "gia_tri_dam_bao_du_thau": "giaToDamBaoDuThau",
-        "hieu_luc_hsdt": "hieuLucHsdtGoiThau",
+        "gia_tri_dam_bao_du_thau": "giaTriDamBaoDuThau",
+        "hieu_luc_hsdt": "hieuLucHsdt",
         "hieu_luc_dam_bao_du_thau": "hieuLucDamBaoDuThau",
         "danh_gia_hsdt_metadata": "danhGiaHsdtMetadata",
         "awarded_phan_lo_list": "awardedPhanLoList"
@@ -501,14 +504,8 @@ SPECIAL_FIELD_MAPS = {
         "loai_doi_tuong": "type"
     },
     "ma_tran_phan_quyen": {
-        "emp_id": "empId",
-        "kehoach": "kehoach",
-        "goithau": "goithau",
-        "chudautu": "chudautu",
-        "nhathau": "nhathau",
-        "chuyengia": "chuyengia",
-        "hopdong": "hopdong",
-        "thongtinmothau": "thongtinmothau"
+        "emp_id": "empId"
+        # Các trường còn lại (kehoach, goithau...) to_camel_case() đã map đúng
     }
 }
 
@@ -866,8 +863,10 @@ def khoi_tao_va_di_tru_he_thong():
                 print("*" * 60)
                 print(f"Mật khẩu admin khởi tạo ngẫu nhiên: {admin_pass}")
                 print("*" * 60)
+            admin_name = os.environ.get("ADMIN_NAME", "Administrator")
+            admin_email = os.environ.get("ADMIN_EMAIL", "admin@localhost")
             cursor.execute("INSERT INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, goi_dich_vu_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                           (admin_uuid, 'admin', hash_password(admin_pass), 'Vy Tuấn Dương', 'super_admin', 'tuanduong51794@gmail.com', 'diamond'))
+                           (admin_uuid, 'admin', hash_password(admin_pass), admin_name, 'super_admin', admin_email, 'diamond'))
             
             org_name = 'HTD'
             org_hash_id = "org-" + hashlib.md5(org_name.encode('utf-8')).hexdigest()[:16]

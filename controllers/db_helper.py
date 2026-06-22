@@ -48,6 +48,7 @@ def optimized_get_connection(*args, **kwargs):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_thongtinmothau_nhathau ON thong_tin_mo_thau(nha_thau_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_hopdonggoithau_goithau ON hop_dong_goi_thau(goi_thau_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_deletedrecords_lookup ON deleted_records(owner_id, deleted_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_deletedrecords_id ON deleted_records(table_name, record_id, owner_id)")
             
             # Reverse lookup indexes for relationship tables
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithauchuyengia_chuyengia ON goi_thau_chuyen_gia(chuyen_gia_id)")
@@ -64,6 +65,20 @@ def optimized_get_connection(*args, **kwargs):
             ]
             for tbl in business_tables:
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{tbl}_owner ON {tbl}(owner_id)")
+            
+            # Triggers tự động cập nhật updated_at khi sửa trực tiếp qua công cụ ngoài (DB Browser, SQLite CLI...)
+            # Cho phép delta sync phát hiện thay đổi mà không cần full sync mỗi lần
+            for tbl in business_tables:
+                cursor.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS trg_{tbl}_updated_at
+                    AFTER UPDATE ON {tbl}
+                    FOR EACH ROW
+                    WHEN OLD.updated_at = NEW.updated_at
+                    BEGIN
+                        UPDATE {tbl} SET updated_at = CAST(strftime('%s','now') AS INTEGER)
+                        WHERE id = NEW.id;
+                    END
+                """)
                 
             # Id_goc composite indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_idgoc ON chu_dau_tu(owner_id, id_goc)")

@@ -1,4 +1,7 @@
 import json
+import re
+import asyncio
+import traceback
 from datetime import datetime
 
 from starlette.responses import JSONResponse
@@ -14,7 +17,6 @@ from helpers import (
     save_base64_image,
     load_base64_image,
     log_error,
-    log_info,
     get_active_org
 )
 
@@ -44,7 +46,6 @@ def safe_int_id(val, prefix=""):
     val_str = str(val).strip()
     if prefix:
         val_str = val_str.replace(prefix, "")
-    import re
     digits = re.findall(r'\d+', val_str)
     if digits:
         return int(digits[0])
@@ -127,6 +128,23 @@ def _get_expert_relations_for_packages(cursor, gt_ids):
             relations_map[gt_id]["to_td"].append(entry)
     return relations_map
 
+def _get_contract_package_ids(cursor, hd_ids):
+    """Batch query: lấy toàn bộ gói thầu thuộc danh sách hợp đồng để tránh N+1."""
+    if not hd_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(hd_ids))
+    cursor.execute(
+        f"SELECT hop_dong_id, goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id IN ({placeholders})",
+        tuple(hd_ids)
+    )
+    result = {}
+    for row in cursor.fetchall():
+        hd_id = row[0]
+        gt_id = row[1]
+        if gt_id:
+            result.setdefault(hd_id, []).append(gt_id)
+    return result
+
 # ==========================================
 # WEBSOCKET & ĐỒNG BỘ DỮ LIỆU
 # ==========================================
@@ -173,7 +191,12 @@ async def sync_websocket_endpoint(websocket):
         active_connections[owner_id].add(websocket)
         
         while True:
-            await websocket.receive_text()
+            try:
+                # Chờ tối đa 60 giây — nếu timeout thì gửi ping để kiểm tra kết nối còn sống
+                await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+            except asyncio.TimeoutError:
+                # Gửi ping — nếu connection đã chết sẽ raise exception và thoát loop
+                await websocket.send_text('{"type":"ping"}')
             
     except Exception:
         pass
@@ -186,18 +209,22 @@ async def sync_websocket_endpoint(websocket):
 def broadcast_websocket_event(owner_id, message):
     if owner_id not in active_connections:
         return
-    import asyncio
     websockets = list(active_connections[owner_id])
     msg_str = json.dumps(message)
     
     async def broadcast():
+        dead = []
         for ws in websockets:
             try:
                 await ws.send_text(msg_str)
             except Exception:
-                pass
+                dead.append(ws)
+        # Remove dead sockets
+        for ws in dead:
+            active_connections[owner_id].discard(ws)
+        if not active_connections.get(owner_id):
+            active_connections.pop(owner_id, None)
     
-    # Dùng get_running_loop() thay get_event_loop() (deprecated Python 3.10+)
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(broadcast())
@@ -300,7 +327,6 @@ async def sync_api(request):
                                     
                             # Gán giá trị mặc định của schema nếu val là None
                             if val is None and "DEFAULT" in col_type_upper:
-                                import re
                                 default_match = re.search(r"DEFAULT\s+'([^']+)'", col_type_upper)
                                 if default_match:
                                     val = default_match.group(1)
@@ -352,7 +378,6 @@ async def sync_api(request):
                         if any(k in item for k in ['toChuyenGia', 'chuyenGiaList', 'chuyen_gia_list']):
                             cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'chuyen_gia'", (c_gt_id,))
                             cg_raw = item.get('toChuyenGia') or item.get('chuyenGiaList') or item.get('chuyen_gia_list') or []
-                            log_info(f"Syncing Package {c_gt_id}: cg_raw = {cg_raw}", "SyncAPI")
                             if isinstance(cg_raw, str):
                                 try:
                                     cg_raw = json.loads(cg_raw)
@@ -366,7 +391,6 @@ async def sync_api(request):
                                             clean_cg_id = clean_id(cg_id)
                                             chuc_vu = cg_item.get('chucVu') or cg_item.get('chuc_vu') or 'Tổ viên'
                                             cong_viec = cg_item.get('congViec') or cg_item.get('cong_viec') or ''
-                                            log_info(f"Inserting expert relation: {c_gt_id} - {clean_cg_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
                                             cursor.execute("""
                                                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, 'chuyen_gia', ?, ?)
@@ -376,7 +400,6 @@ async def sync_api(request):
                         if any(k in item for k in ['toThamDinh', 'thamDinhList', 'tham_dinh_list']):
                             cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'tham_dinh'", (c_gt_id,))
                             td_raw = item.get('toThamDinh') or item.get('thamDinhList') or item.get('tham_dinh_list') or []
-                            log_info(f"Syncing Package {c_gt_id}: td_raw = {td_raw}", "SyncAPI")
                             if isinstance(td_raw, str):
                                 try:
                                     td_raw = json.loads(td_raw)
@@ -390,13 +413,11 @@ async def sync_api(request):
                                             clean_td_id = clean_id(td_id)
                                             chuc_vu = td_item.get('chucVu') or td_item.get('chuc_vu') or 'Tổ viên'
                                             cong_viec = td_item.get('congViec') or td_item.get('cong_viec') or ''
-                                            log_info(f"Inserting appraiser relation: {c_gt_id} - {clean_td_id} - {chuc_vu} - {cong_viec}", "SyncAPI")
                                             cursor.execute("""
                                                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, 'tham_dinh', ?, ?)
                                             """, (c_gt_id, clean_td_id, chuc_vu, cong_viec))
                 except Exception as item_err:
-                    import traceback
                     log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
                     
         # 3. Xử lý xóa bản ghi tường minh được gửi từ Client (Explicit Deletions)
@@ -448,7 +469,6 @@ async def sync_api(request):
         
         return JSONResponse({"status": "success", "timestamp": current_time})
     except Exception as e:
-        import traceback
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
         return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)
     finally:
@@ -556,19 +576,15 @@ async def get_all_data_api(request):
                     item[list_key] = []
             goithau.append(item)
             
-        # 6. Hopdong
+        # 6. Hopdong — dùng batch query để tránh N+1
         hopdong = []
-        for row in query_table("hop_dong"):
+        hopdong_rows = query_table("hop_dong")
+        hd_ids = [row["id"] for row in hopdong_rows]
+        contract_packages_map = _get_contract_package_ids(cursor, hd_ids)
+        for row in hopdong_rows:
             row_dict = dict(row)
             item = map_db_to_json("hop_dong", row_dict)
-            # Lấy danh sách gói thầu thuộc hợp đồng này (junction table)
-            goithau_ids = []
-            cursor.execute("SELECT goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id = ?", (row_dict["id"],))
-            for subrow in cursor.fetchall():
-                val = subrow[0]
-                if val:
-                    goithau_ids.append(val)
-            item["goiThauIds"] = goithau_ids
+            item["goiThauIds"] = contract_packages_map.get(row_dict["id"], [])
             hopdong.append(item)
             
         # 7. Assignments

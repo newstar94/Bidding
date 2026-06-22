@@ -16,8 +16,6 @@ if hasattr(sys.stderr, 'reconfigure'):
 import json
 import uvicorn
 import shutil
-from datetime import datetime
-import pandas as pd
 
 # Import các thành phần của framework Starlette để dựng Web API Server
 from starlette.applications import Starlette
@@ -25,7 +23,6 @@ from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse
 from starlette.middleware import Middleware
-# ... (các imports khác giữ nguyên)
 
 import re
 
@@ -134,11 +131,7 @@ from helpers import (
     SessionRole
 )
 
-# exporter = load_and_register('exporter', os.path.join(controllers_dir, 'exporter.cpython-314.pyc'))
 import custom_exporter
-import uuid
-import hashlib
-import secrets
 
 
 from auth_routes import (
@@ -286,7 +279,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
             "img-src 'self' data: blob:; "
-            "connect-src 'self' ws: wss: http: https:; "
+            f"connect-src 'self' ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT}; "
             "font-src 'self' https://fonts.gstatic.com https://unpkg.com https://cdn.jsdelivr.net;"
         )
         # Chỉ cache tài nguyên tĩnh, không cache API
@@ -310,6 +303,18 @@ import contextlib
 async def lifespan(app):
     import threading
     threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()
+    
+    # Dọn dẹp session cache hết hạn mỗi 5 phút để tránh RAM tích tụ
+    from auth_helper import _session_cache_cleanup
+    def _run_cache_cleanup():
+        import time as _time
+        while True:
+            _time.sleep(300)  # 5 phút
+            try:
+                _session_cache_cleanup()
+            except Exception:
+                pass
+    threading.Thread(target=_run_cache_cleanup, daemon=True).start()
     yield
 
 app = Starlette(debug=APP_DEBUG, routes=routes, middleware=middleware, lifespan=lifespan)

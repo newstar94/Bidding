@@ -553,7 +553,7 @@ export async function phatHanhHsmtGoiThau(id) {
     }
 
     // Dynamically show/hide & set required status for single guarantee input based on package fields
-    const isTuVan = gt.linhVuc === 'Tư văn' || gt.linhVuc === 'Tư vấn';
+    const isTuVan = gt.linhVuc === 'Tư vấn';
     const isPhanLo = gt.phanLo === 'Có';
     const baodamContainer = document.getElementById('phathanh-baodam-container');
     const baodamInput = document.getElementById('phathanh-giatribaomothau');
@@ -579,7 +579,7 @@ export async function handlePhatHanhHsmtSubmit(e) {
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
 
-    const isTuVan = gt.linhVuc === 'Tư văn' || gt.linhVuc === 'Tư vấn';
+    const isTuVan = gt.linhVuc === 'Tư vấn';
     const isPhanLo = gt.phanLo === 'Có';
 
     // Validate inputs

@@ -238,15 +238,28 @@ export class BiddingModel {
             thongtinmothau: []
         };
 
+        // Khôi phục trang hiện tại từ sessionStorage (persist qua F5 nhưng xóa khi đóng tab)
+        const savedPages = (() => {
+            try { return JSON.parse(sessionStorage.getItem('bf_current_pages') || '{}'); } catch { return {}; }
+        })();
         this.currentPage = {
-            kehoach: 1,
-            goithau: 1,
-            chudautu: 1,
-            nhathau: 1,
-            chuyengia: 1,
-            hopdong: 1
+            kehoach:   savedPages.kehoach   || 1,
+            goithau:   savedPages.goithau   || 1,
+            chudautu:  savedPages.chudautu  || 1,
+            nhathau:   savedPages.nhathau   || 1,
+            chuyengia: savedPages.chuyengia || 1,
+            hopdong:   savedPages.hopdong   || 1
         };
         this.pageSize = 10;
+    }
+
+    /** Lưu trang hiện tại vào sessionStorage để F5 không mất trang */
+    savePage(table) {
+        try {
+            const pages = JSON.parse(sessionStorage.getItem('bf_current_pages') || '{}');
+            pages[table] = this.currentPage[table] || 1;
+            sessionStorage.setItem('bf_current_pages', JSON.stringify(pages));
+        } catch (e) {}
     }
 
     async init() {
@@ -362,9 +375,6 @@ export class BiddingModel {
         } catch (e) {}
     }
 
-    initState() {
-        // Kept as a backward compatibility stub, logic moved to async init()
-    }
 
     persistData(type) {
         const key = type.toUpperCase();

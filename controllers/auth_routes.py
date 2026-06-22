@@ -151,7 +151,6 @@ async def register_api(request):
             conn.close()
             return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
             
-        import uuid
         user_uuid = "user-" + str(uuid.uuid4())
         
         # Generate verification code (cryptographically secure OTP)

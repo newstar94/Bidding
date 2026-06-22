@@ -60,6 +60,14 @@ def _session_cache_invalidate(token: str):
     with _session_cache_lock:
         _session_cache.pop(token, None)
 
+def _session_cache_cleanup():
+    """Dọn dẹp các session hết hạn khỏi cache. Gọi định kỳ mỗi 5 phút."""
+    now = time.time()
+    with _session_cache_lock:
+        expired_keys = [k for k, (_, exp) in _session_cache.items() if now > exp]
+        for k in expired_keys:
+            del _session_cache[k]
+
 class SessionRole(str):
     def __new__(cls, role, user_id):
         instance = super().__new__(cls, role)
@@ -67,8 +75,9 @@ class SessionRole(str):
         return instance
 
 def verify_session(request, required_role=None):
-    token = request.headers.get('X-Session-Token') or request.query_params.get('token')
-    username = request.headers.get('X-Username') or request.query_params.get('username')
+    # Token và username chỉ được đọc từ header — không dùng query_params để tránh token lưu trong URL/logs
+    token = request.headers.get('X-Session-Token')
+    username = request.headers.get('X-Username')
     
     if not token or not username:
         return False, "Thiếu thông tin xác thực phiên làm việc!"

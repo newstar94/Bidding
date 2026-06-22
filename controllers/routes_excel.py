@@ -3,7 +3,7 @@ import json
 import secrets
 from datetime import datetime
 from io import BytesIO
-import pandas as pd
+import pandas as pd  # lazy: chỉ load khi routes_excel được import (khi cần xuất/nhập Excel)
 from starlette.responses import StreamingResponse, JSONResponse
 
 from helpers import (

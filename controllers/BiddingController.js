@@ -173,15 +173,13 @@ export class BiddingController {
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
 
-        // Always force a FULL sync on every page load/refresh to ensure data freshness.
-        // We reset bf_last_sync_timestamp to '0' so the server returns ALL records,
-        // not just delta changes — this catches deletions & edits made directly in the DB.
-        const shouldFetch = true;
+        // Luôn thực hiện full sync khi tải lại trang (F5/refresh) để đảm bảo dữ liệu mới nhất.
+        // Điều này cho phép bắt các thay đổi được thực hiện trực tiếp trong DB bằng công cụ bên ngoài,
+        // cũng như các bản ghi bị xoá thủ công (không qua ứng dụng).
+        // Tab focus vẫn dùng delta sync (nhẹ hơn) — xem setupAutoSyncBackground().
+        localStorage.setItem('bf_last_sync_timestamp', '0');
+        this.forceSyncData();
 
-        if (shouldFetch) {
-            localStorage.setItem('bf_last_sync_timestamp', '0');
-            this.forceSyncData();
-        }
 
         // Always load real users from DB into model.state.employees for assignment dropdowns
         try {
@@ -344,14 +342,14 @@ export class BiddingController {
                 lucide.createIcons({ root: btn });
             }
 
+            // Sử dụng fetch thông thường — fetch interceptor tự động gắn headers X-Session-Token & X-Username
             fetch('/api/sync', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
-                },
-                body: JSON.stringify(this.model.state)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    goithau: this.model.state.goithau,
+                    hopdong: this.model.state.hopdong
+                })
             })
             .then(s => {
                 if (!s.ok) throw new Error('Không thể đồng bộ dữ liệu');
@@ -460,6 +458,7 @@ export class BiddingController {
         window.handlePageChange = (containerId, pageNum) => {
             const tabKey = containerId.split('-')[0];
             this.model.currentPage[tabKey] = pageNum;
+            this.model.savePage(tabKey);  // Lưu vào sessionStorage để F5 không mất trang
             
             // Re-render
             if (tabKey === 'kehoach') this.view.renderKeHoachTable();
@@ -965,31 +964,37 @@ export class BiddingController {
     }
 
     setupActionListeners() {
-        document.getElementById('search-kehoach').addEventListener('input', () => {
+        // Debounce helper — tránh re-render bảng mỗi lần gõ phím, chỉ render sau 300ms dừng gõ
+        const debounce = (fn, ms = 300) => {
+            let timer;
+            return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+        };
+
+        document.getElementById('search-kehoach').addEventListener('input', debounce(() => {
             this.model.currentPage.kehoach = 1;
             this.view.renderKeHoachTable();
-        });
-        document.getElementById('search-goithau').addEventListener('input', () => {
+        }));
+        document.getElementById('search-goithau').addEventListener('input', debounce(() => {
             this.model.currentPage.goithau = 1;
             this.view.renderGoiThauTable();
-        });
-        document.getElementById('search-chudautu').addEventListener('input', () => {
+        }));
+        document.getElementById('search-chudautu').addEventListener('input', debounce(() => {
             this.model.currentPage.chudautu = 1;
             this.view.renderChuDauTuTable();
-        });
-        document.getElementById('search-nhathau').addEventListener('input', () => {
+        }));
+        document.getElementById('search-nhathau').addEventListener('input', debounce(() => {
             this.model.currentPage.nhathau = 1;
             this.view.renderNhaThauTable();
-        });
-        document.getElementById('search-chuyengia').addEventListener('input', () => {
+        }));
+        document.getElementById('search-chuyengia').addEventListener('input', debounce(() => {
             this.model.currentPage.chuyengia = 1;
             this.view.renderChuyenGiaTable();
-        });
+        }));
         const searchHopdong = document.getElementById('search-hopdong');
-        if (searchHopdong) searchHopdong.addEventListener('input', () => {
+        if (searchHopdong) searchHopdong.addEventListener('input', debounce(() => {
             this.model.currentPage.hopdong = 1;
             this.view.renderHopDongTable();
-        });
+        }));
 
         document.getElementById('filter-goithau-trangthai').addEventListener('change', () => {
             this.model.currentPage.goithau = 1;
