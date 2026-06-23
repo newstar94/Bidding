@@ -670,9 +670,6 @@ export function setupRBACEvents() {
 
                     // Save to local storage & DB
                     localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
-                    if (this.model.db) {
-                        await this.model.db.set(this.model.STORAGE_KEYS.ACTIVEUSER, this.model.state.activeuser).catch(() => { });
-                    }
 
                     this.view.updateActiveUserProfileDisplay();
                     await this.view.customAlert('Thành công', 'Thông tin cá nhân đã được cập nhật thành công!', 'check-circle');

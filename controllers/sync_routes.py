@@ -17,7 +17,8 @@ from helpers import (
     save_base64_image,
     load_base64_image,
     log_error,
-    get_active_org
+    get_active_org,
+    recalculate_is_latest
 )
 
 # Global dictionary to store active WebSocket connections
@@ -40,22 +41,18 @@ TABLE_KEYS = {
 # CÁC HÀM TRỢ GIÚP CHO ĐỒNG BỘ DỮ LIỆU
 # ==========================================
 
-def safe_int_id(val, prefix=""):
-    if not val:
-        return None
-    val_str = str(val).strip()
-    if prefix:
-        val_str = val_str.replace(prefix, "")
-    digits = re.findall(r'\d+', val_str)
-    if digits:
-        return int(digits[0])
-    return None
-
 def safe_float(val):
-    if not val:
-        return 0.0
+    """
+    Parse giá trị sang float.
+    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB
+    (phân biệt 'chưa nhập' vs 'nhập 0' cho các trường tài chính Optional).
+    """
+    if val is None or val == '':
+        return None
     try:
         s = str(val).strip()
+        if not s:
+            return None
         if ',' in s and '.' in s:
             if s.find('.') < s.find(','):
                 s = s.replace('.', '').replace(',', '.')
@@ -68,28 +65,41 @@ def safe_float(val):
                 s = s.replace(',', '')
         return float(s)
     except Exception:
-        return 0.0
+        return None
 
 def safe_int(val):
-    if not val:
-        return 0
+    """
+    Parse giá trị sang int.
+    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB.
+    """
+    if val is None or val == '':
+        return None
     try:
         return int(float(val))
     except Exception:
-        return 0
+        return None
 
 def map_db_to_json(table_name, row_dict):
     item = {}
     table_spec = SCHEMA_DINH_NGHIA[table_name]
+    # Priority 6 (C7): Lấy json_fields tường minh từ schema (thiếu convention _list/cv_)
+    explicit_json_fields = set(table_spec.get("json_fields", []))
+    field_map = table_spec.get("field_map", {})
     for col in table_spec["columns"].keys():
-        json_key = SPECIAL_FIELD_MAPS.get(table_name, {}).get(col)
+        # Priority 6: field_map > SPECIAL_FIELD_MAPS > id_goc > to_camel_case
+        json_key = field_map.get(col) or SPECIAL_FIELD_MAPS.get(table_name, {}).get(col)
         if not json_key:
             if col == "id_goc":
                 json_key = "rootId"
             else:
                 json_key = to_camel_case(col)
         val = row_dict.get(col)
-        is_json_field = col.endswith("_list") or col.startswith("cv_") or col == "thanh_vien_lien_danh"
+        # Priority 4: JSON field detection: explicit (schema) + convention suffix/prefix
+        is_json_field = (
+            col in explicit_json_fields        # Khai báo tường minh trong schema json_fields
+            or col.endswith("_list")           # Convention: danh sách
+            or col.startswith("cv_")           # Convention: CV fields
+        )
         if is_json_field:
             if val:
                 try:
@@ -189,15 +199,34 @@ async def sync_websocket_endpoint(websocket):
         if owner_id not in active_connections:
             active_connections[owner_id] = set()
         active_connections[owner_id].add(websocket)
-        
+        import time as _time
+        _last_auth_check = _time.time()
+        _AUTH_CHECK_INTERVAL = 30 * 60  # Kiểm tra lại token mỗi 30 phút
+
         while True:
             try:
                 # Chờ tối đa 60 giây — nếu timeout thì gửi ping để kiểm tra kết nối còn sống
                 await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
             except asyncio.TimeoutError:
+                # Re-verify token định kỳ mỗi 30 phút — phát hiện revoke/logout
+                _now = _time.time()
+                if _now - _last_auth_check >= _AUTH_CHECK_INTERVAL:
+                    _last_auth_check = _now
+                    try:
+                        _conn = database.get_connection()
+                        _cur = _conn.cursor()
+                        _cur.execute("SELECT token_phien FROM tai_khoan WHERE id = ?", (user_id,))
+                        _row = _cur.fetchone()
+                        _conn.close()
+                        if not _row or _row['token_phien'] != token:
+                            # Token bị revoke — đóng WebSocket ngay
+                            await websocket.close(code=4001)
+                            return
+                    except Exception:
+                        pass  # Không disconnect nếu DB tạm thời lỗi
                 # Gửi ping — nếu connection đã chết sẽ raise exception và thoát loop
                 await websocket.send_text('{"type":"ping"}')
-            
+
     except Exception:
         pass
     finally:
@@ -278,18 +307,18 @@ async def sync_api(request):
             columns = list(table_spec["columns"].keys())
             
             # Lưu vết các bảng thay đổi dữ liệu có cơ chế phiên bản
-            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"] and items:
+            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau", "chuyen_gia", "hop_dong"] and items:
                 updated_versioned_tables.add(table_name)
             
             # 2. Thêm hoặc cập nhật (INSERT OR REPLACE) các bản ghi
             for item in items:
                 try:
-                    row_data = {}
+                    db_row_data = {}
                     for col in columns:
                         if col == "owner_id":
-                            val = org_name
+                            db_row_data[col] = org_name
                         elif col == "updated_at":
-                            val = current_time
+                            db_row_data[col] = current_time
                         else:
                             # Rút trích key JSON tương ứng từ trường DB
                             json_key = SPECIAL_FIELD_MAPS.get(table_name, {}).get(col)
@@ -299,52 +328,58 @@ async def sync_api(request):
                                 else:
                                     json_key = to_camel_case(col)
                                     
-                            val = item.get(json_key)
-                            
-                            # Fallback nếu client gửi key ở dạng raw/snake_case
-                            if val is None:
-                                val = item.get(col)
+                            # Chỉ xử lý/cập nhật nếu trường được truyền lên từ client
+                            if (json_key in item) or (col in item):
+                                val = item.get(json_key)
                                 
-                            # Làm sạch tiền tố ID
-                            if col == "id" or col.endswith("_id") or col == "id_goc":
-                                val = get_clean_id(table_name, val)
-                                    
-                            # Xử lý các trường kiểu List/Dict sang JSON string
-                            if isinstance(val, (list, dict)):
-                                val = json.dumps(val)
-                            elif col.endswith("_list") or col.startswith("cv_") or col == "thanh_vien_lien_danh":
+                                # Fallback nếu client gửi key ở dạng raw/snake_case
                                 if val is None:
-                                    val = "[]"
-                                elif not isinstance(val, str):
+                                    val = item.get(col)
+                                    
+                                # Làm sạch tiền tố ID
+                                if col == "id" or col.endswith("_id") or col == "id_goc":
+                                    val = get_clean_id(table_name, val)
+                                        
+                                # Xử lý các trường kiểu List/Dict sang JSON string (Priority 4: dùng schema json_fields)
+                                _explicit_json = set(SCHEMA_DINH_NGHIA.get(table_name, {}).get("json_fields", []))
+                                if isinstance(val, (list, dict)):
                                     val = json.dumps(val)
+                                elif col in _explicit_json or col.endswith("_list") or col.startswith("cv_"):
+                                    if val is None:
+                                        val = "[]"
+                                    elif not isinstance(val, str):
+                                        val = json.dumps(val)
+                                        
+                                # Chuẩn hóa kiểu dữ liệu số
+                                col_type_upper = table_spec["columns"][col].upper()
+                                if "REAL" in col_type_upper:
+                                    val = safe_float(val)
+                                elif "INTEGER" in col_type_upper:
+                                    if val is not None:
+                                        val = safe_int(val)
+                                        
+                                # Gán giá trị mặc định của schema nếu val là None
+                                if val is None and "DEFAULT" in col_type_upper:
+                                    default_match = re.search(r"DEFAULT\s+'([^']+)'", col_type_upper)
+                                    if default_match:
+                                        val = default_match.group(1)
+                                        
+                                # Tối ưu hóa lưu trữ ảnh chuyên gia ra file vật lý
+                                if table_name == "chuyen_gia" and col in ["anh_chung_chi", "anh_chu_ky"] and val:
+                                    ext_suffix = "cert" if col == "anh_chung_chi" else "sig"
+                                    expert_id = clean_id(item.get('id'))
+                                    val = save_base64_image(val, "chuyen_gia", f"{expert_id}_{ext_suffix}")
                                     
-                            # Chuẩn hóa kiểu dữ liệu số
-                            col_type_upper = table_spec["columns"][col].upper()
-                            if "REAL" in col_type_upper:
-                                val = safe_float(val)
-                            elif "INTEGER" in col_type_upper:
-                                if val is not None:
-                                    val = safe_int(val)
+                                # Bỏ qua cột nếu giá trị là None và cột là NOT NULL (để dùng mặc định / báo lỗi đúng)
+                                if val is None and "NOT NULL" in col_type_upper:
+                                    continue
                                     
-                            # Gán giá trị mặc định của schema nếu val là None
-                            if val is None and "DEFAULT" in col_type_upper:
-                                default_match = re.search(r"DEFAULT\s+'([^']+)'", col_type_upper)
-                                if default_match:
-                                    val = default_match.group(1)
-                                    
-                            # Tối ưu hóa lưu trữ ảnh chuyên gia ra file vật lý
-                            if table_name == "chuyen_gia" and col in ["anh_chung_chi", "anh_chu_ky"] and val:
-                                ext_suffix = "cert" if col == "anh_chung_chi" else "sig"
-                                expert_id = clean_id(item.get('id'))
-                                val = save_base64_image(val, "chuyen_gia", f"{expert_id}_{ext_suffix}")
-                                    
-                        row_data[col] = val
+                                db_row_data[col] = val
                         
                     # Thực thi UPSERT thay cho INSERT OR REPLACE để bảo toàn created_at
-                    non_null_row_data = {k: v for k, v in row_data.items() if v is not None}
-                    cols_str = ", ".join(non_null_row_data.keys())
-                    placeholders = ", ".join(["?"] * len(non_null_row_data))
-                    update_assignments = ", ".join([f"{k}=excluded.{k}" for k in non_null_row_data.keys() if k not in ["id", "created_at"]])
+                    cols_str = ", ".join(db_row_data.keys())
+                    placeholders = ", ".join(["?"] * len(db_row_data))
+                    update_assignments = ", ".join([f"{k}=excluded.{k}" for k in db_row_data.keys() if k not in ["id", "created_at"]])
                     if update_assignments:
                         sql = f"""
                             INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})
@@ -352,7 +387,7 @@ async def sync_api(request):
                         """
                     else:
                         sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) ON CONFLICT(id) DO NOTHING"
-                    cursor.execute(sql, tuple(non_null_row_data.values()))
+                    cursor.execute(sql, tuple(db_row_data.values()))
                     
                     # Ràng buộc thêm: Gắn các gói thầu với hợp đồng (junction table)
                     if table_name == "hop_dong":
@@ -453,29 +488,11 @@ async def sync_api(request):
                             # Cần cập nhật lại is_latest nếu bảng bị xóa là bảng versioning
                             if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
                                 updated_versioned_tables.add(table_name)
-
-        # Cập nhật cờ is_latest cho các bảng versioning (chỉ khi có thay đổi)
-        # [TỐI ƯU] Dùng CASE WHEN thay COALESCE để SQLite có thể tận dụng index (id_goc, phien_ban)
+                                
+        # Tính lại is_latest bằng hàm chung (tránh duplicate logic với migration)
         for tbl in updated_versioned_tables:
-            cursor.execute(f"UPDATE {tbl} SET is_latest = 0 WHERE owner_id = ?", (org_name,))
-            cursor.execute(f"""
-                UPDATE {tbl} SET is_latest = 1 WHERE owner_id = ? AND id IN (
-                    SELECT t1.id FROM {tbl} t1
-                    INNER JOIN (
-                        SELECT
-                            CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END as id_goc_group,
-                            MAX(CAST(phien_ban AS INTEGER)) as max_ver
-                        FROM {tbl}
-                        WHERE owner_id = ?
-                        GROUP BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
-                    ) t2 ON (
-                        CASE WHEN t1.id_goc IS NOT NULL AND t1.id_goc != '' THEN t1.id_goc ELSE t1.id END
-                    ) = t2.id_goc_group
-                    AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
-                    WHERE t1.owner_id = ?
-                )
-            """, (org_name, org_name, org_name))
-                    
+            recalculate_is_latest(cursor, tbl, owner_id=org_name)
+                                 
         conn.commit()
         
         # Broadcast WebSocket update
@@ -642,7 +659,13 @@ async def get_all_data_api(request):
         # 11. Deletions
         deletions = []
         if since > 0:
-            cursor.execute("SELECT table_name, record_id FROM deleted_records WHERE owner_id = ? AND deleted_at > ?", (org_name, since))
+            # LIMIT 1000 phòng trường hợp có quá nhiều deletion log — tránh trả payload khổng
+            cursor.execute(
+                "SELECT table_name, record_id FROM deleted_records "
+                "WHERE owner_id = ? AND deleted_at > ? "
+                "ORDER BY deleted_at DESC LIMIT 1000",
+                (org_name, since)
+            )
             TABLE_KEYS_INV = {v: k for k, v in TABLE_KEYS.items()}
             for row in cursor.fetchall():
                 tbl_key = TABLE_KEYS_INV.get(row[0])
@@ -696,7 +719,7 @@ async def paginate_api(request):
         query_params = [org_name]
         
         # Apply versioning filter for tables that support it
-        versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau"]
+        versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "hop_dong", "chuyen_gia"]
         if table_name in versioned_tables:
             query_parts.append("is_latest = 1")
             
@@ -760,6 +783,25 @@ async def paginate_api(request):
             hd_ids = [r["id"] for r in rows]
             contract_packages_map = _get_contract_package_ids(cursor, hd_ids)
             
+        # [TỐI Ư U] Batch query allVersions trước vòng lặp — tránh N+1 (1 query/row → 1 query tổng)
+        versions_by_root = {}
+        if table_name in versioned_tables and rows:
+            all_root_vals = list({(r["id_goc"] or r["id"]) for r in rows})
+            v_placeholders = ", ".join(["?"] * len(all_root_vals))
+            cursor.execute(f"""
+                SELECT id, id_goc, phien_ban FROM {table_name}
+                WHERE owner_id = ? AND (
+                    (id_goc IS NOT NULL AND id_goc != '' AND id_goc IN ({v_placeholders})) OR
+                    ((id_goc IS NULL OR id_goc = '') AND id IN ({v_placeholders}))
+                )
+                ORDER BY CAST(phien_ban AS INTEGER) DESC
+            """, [org_name] + all_root_vals + all_root_vals)
+            for v_row in cursor.fetchall():
+                v_root = v_row[1] or v_row[0]  # id_goc nếu có, fallback về id
+                if v_root not in versions_by_root:
+                    versions_by_root[v_root] = []
+                versions_by_root[v_root].append({"id": v_row[0], "phienBan": v_row[2]})
+
         items = []
         for row in rows:
             row_dict = dict(row)
@@ -785,18 +827,10 @@ async def paginate_api(request):
             elif table_name == "hop_dong":
                 item["goiThauIds"] = contract_packages_map.get(row_dict["id"], [])
                 
-            # If versioned table, query all versions for the dropdown
+            # Lấy allVersions từ batch query (không N+1)
             if table_name in versioned_tables:
-                root_col = "id_goc" if "id_goc" in row_dict and row_dict["id_goc"] else "id"
                 root_val = row_dict.get("id_goc") or row_dict.get("id")
-                cursor.execute(f"SELECT id, phien_ban FROM {table_name} WHERE owner_id = ? AND (id_goc = ? OR id = ?) ORDER BY CAST(phien_ban AS INTEGER) DESC", (org_name, root_val, root_val))
-                versions = []
-                for v_row in cursor.fetchall():
-                    versions.append({
-                        "id": v_row[0],
-                        "phienBan": v_row[1]
-                    })
-                item["allVersions"] = versions
+                item["allVersions"] = versions_by_root.get(root_val, [])
                 
             items.append(item)
             

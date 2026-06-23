@@ -20,21 +20,21 @@ function authFetchDownload(url, filename) {
             'X-Username': localStorage.getItem('bf_username') || ''
         }
     })
-    .then(res => {
-        if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Lỗi tải file'); });
-        return res.blob();
-    })
-    .then(blob => {
-        const a = document.createElement('a');
-        const objectUrl = URL.createObjectURL(blob);
-        a.href = objectUrl;
-        a.download = filename || 'download';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(objectUrl);
-    })
-    .catch(err => alert('Lỗi tải file: ' + err.message));
+        .then(res => {
+            if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Lỗi tải file'); });
+            return res.blob();
+        })
+        .then(blob => {
+            const a = document.createElement('a');
+            const objectUrl = URL.createObjectURL(blob);
+            a.href = objectUrl;
+            a.download = filename || 'download';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(objectUrl);
+        });
+    // Lỗi được re-throw cho caller xử lý (không dùng alert() vì đây là standalone utility)
 }
 
 export async function deleteKeHoach(id) {
@@ -97,10 +97,27 @@ export function editKeHoach(id) {
     const pheDuyetSelect = document.getElementById('kh-pheduyet');
     const pheDuyetFields = document.getElementById('kh-pheduyet-kehoach-fields');
     const togglePheDuyetFields = () => {
+        const container = document.getElementById('kh-ngaytrinhkehoach-container');
+        const label = document.getElementById('lbl-ngaytrinhkehoach');
+        const labelPheDuyet = document.getElementById('lbl-ngaypheduyet');
+        const labelQuyetDinh = document.getElementById('lbl-quyetdinh');
         if (pheDuyetSelect.value === 'Kế hoạch') {
             pheDuyetFields.style.display = 'block';
+            if (container) container.style.display = 'block';
+            if (label) label.textContent = 'Ngày trình kế hoạch';
+            if (labelPheDuyet) labelPheDuyet.textContent = 'Ngày phê duyệt kế hoạch';
+            if (labelQuyetDinh) labelQuyetDinh.textContent = 'Số QĐ phê duyệt kế hoạch';
+        } else if (pheDuyetSelect.value === 'Dự toán và kế hoạch') {
+            pheDuyetFields.style.display = 'none';
+            if (container) container.style.display = 'block';
+            if (label) label.textContent = 'Ngày trình dự toán và kế hoạch';
+            if (labelPheDuyet) labelPheDuyet.textContent = 'Ngày phê duyệt dự toán và kế hoạch';
+            if (labelQuyetDinh) labelQuyetDinh.textContent = 'Số QĐ phê duyệt dự toán và kế hoạch';
         } else {
             pheDuyetFields.style.display = 'none';
+            if (container) container.style.display = 'none';
+            if (labelPheDuyet) labelPheDuyet.textContent = 'Ngày phê duyệt';
+            if (labelQuyetDinh) labelQuyetDinh.textContent = 'Số QĐ phê duyệt';
         }
     };
     pheDuyetSelect.onchange = togglePheDuyetFields;
@@ -129,6 +146,12 @@ export function editKeHoach(id) {
 
         document.getElementById('kh-pheduyet').value = kh.pheDuyet || '';
         togglePheDuyetFields();
+
+        if (this.view.fpNgayTrinhKeHoach) {
+            this.view.fpNgayTrinhKeHoach.setDate(kh.ngayTrinhKeHoach ? new Date(kh.ngayTrinhKeHoach) : '');
+        } else {
+            document.getElementById('kh-ngaytrinhkehoach').value = this.model.formatDate(kh.ngayTrinhKeHoach);
+        }
 
         if (this.view.fpNgayTrinhDuToan) {
             this.view.fpNgayTrinhDuToan.setDate(kh.ngayTrinhDuToan ? new Date(kh.ngayTrinhDuToan) : '');
@@ -181,6 +204,7 @@ export function editKeHoach(id) {
 
         document.getElementById('kh-pheduyet').value = '';
         togglePheDuyetFields();
+        if (this.view.fpNgayTrinhKeHoach) this.view.fpNgayTrinhKeHoach.clear();
         if (this.view.fpNgayTrinhDuToan) this.view.fpNgayTrinhDuToan.clear();
         if (this.view.fpNgayPheDuyetDuToan) this.view.fpNgayPheDuyetDuToan.clear();
         document.getElementById('kh-quyetdinhpheduyetdutoan').value = '';
@@ -198,9 +222,9 @@ export function editKeHoach(id) {
 
         if (this.view.fpNgayPheDuyet) this.view.fpNgayPheDuyet.clear();
         if (this.view.fpThoiGianDang) {
-            this.view.fpThoiGianDang.setDate(new Date());
+            this.view.fpThoiGianDang.clear();
         } else {
-            document.getElementById('kh-thoigiandang').value = this.model.formatDateWithTime(new Date());
+            document.getElementById('kh-thoigiandang').value = '';
         }
         const khMaInput = document.getElementById('kh-ma');
         if (khMaInput) {
@@ -264,12 +288,14 @@ export async function handleKeHoachSubmit(e) {
     }
 
     const publishTimeVal = document.getElementById('kh-thoigiandang').value;
-    const finalPublishTime = publishTimeVal ? this.model.convertDMYHMSToYMDHMS(publishTimeVal) : formattedTime;
+    const finalPublishTime = publishTimeVal ? this.model.convertDMYHMSToYMDHMS(publishTimeVal) : null;
 
     const ngayPheDuyetRaw = document.getElementById('kh-ngaypheduyet').value;
     const ngayPheDuyetYMD = this.model.convertDMYToYMD(ngayPheDuyetRaw);
 
     const pheDuyet = document.getElementById('kh-pheduyet').value;
+    const ngayTrinhKeHoachRaw = document.getElementById('kh-ngaytrinhkehoach').value;
+    const ngayTrinhKeHoachYMD = this.model.convertDMYToYMD(ngayTrinhKeHoachRaw);
     const ngayTrinhDuToanRaw = document.getElementById('kh-ngaytrinhdutoan').value;
     const ngayTrinhDuToanYMD = this.model.convertDMYToYMD(ngayTrinhDuToanRaw);
     const ngayPheDuyetDuToanRaw = document.getElementById('kh-ngaypheduyetdutoan').value;
@@ -345,6 +371,7 @@ export async function handleKeHoachSubmit(e) {
                 diadiemQuymo: diadiemQuymo,
                 thongtinKhac: thongtinKhac,
                 pheDuyet: pheDuyet,
+                ngayTrinhKeHoach: ngayTrinhKeHoachYMD,
                 ngayTrinhDuToan: pheDuyet === 'Kế hoạch' ? ngayTrinhDuToanYMD : '',
                 ngayPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? ngayPheDuyetDuToanYMD : '',
                 soQdPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : ''
@@ -378,6 +405,7 @@ export async function handleKeHoachSubmit(e) {
             oldKh.diadiemQuymo = diadiemQuymo;
             oldKh.thongtinKhac = thongtinKhac;
             oldKh.pheDuyet = pheDuyet;
+            oldKh.ngayTrinhKeHoach = ngayTrinhKeHoachYMD;
             oldKh.ngayTrinhDuToan = pheDuyet === 'Kế hoạch' ? ngayTrinhDuToanYMD : '';
             oldKh.ngayPheDuyetDuToan = pheDuyet === 'Kế hoạch' ? ngayPheDuyetDuToanYMD : '';
             oldKh.soQdPheDuyetDuToan = pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : '';
@@ -415,6 +443,7 @@ export async function handleKeHoachSubmit(e) {
             diadiemQuymo: diadiemQuymo,
             thongtinKhac: thongtinKhac,
             pheDuyet: pheDuyet,
+            ngayTrinhKeHoach: ngayTrinhKeHoachYMD,
             ngayTrinhDuToan: pheDuyet === 'Kế hoạch' ? ngayTrinhDuToanYMD : '',
             ngayPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? ngayPheDuyetDuToanYMD : '',
             soQdPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : ''
@@ -1426,11 +1455,11 @@ export async function handleGoiThauSubmit(e) {
         } else {
             gtData.awardedPhanLoList = this._collectAwardedPhanLoRows();
             gtData.nhaThauTrungThauId = '';
-            gtData.giaTrungThau = 0;
+            gtData.giaTrungThau = null;
         }
     } else {
         gtData.nhaThauTrungThauId = '';
-        gtData.giaTrungThau = 0;
+        gtData.giaTrungThau = null;
         gtData.thoiGianGoiThau = '';
         gtData.thoiGianHopDong = '';
         gtData.awardedPhanLoList = [];
@@ -2094,7 +2123,7 @@ export async function saveExcelImport() {
                 rootId: gtId,
                 keHoachId: matchedPlan ? matchedPlan.id : '',
                 tenGoiThau: row.tenGoiThau || '',
-                giaGoiThau: parseFloat(row.giaGoiThau) || 0,
+                giaGoiThau: isNaN(parseFloat(row.giaGoiThau)) ? null : parseFloat(row.giaGoiThau),
                 thoiGianThucHien: parseInt(row.thoiGianThucHien) || 0,
                 hinhThucLuaChon: row.hinhThucLuaChon || 'Đấu thầu rộng rãi',
                 phuongThucLuaChon: row.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ',
@@ -2125,8 +2154,14 @@ export async function saveExcelImport() {
         count = mappedData.length;
     } else if (type === 'chudautu') {
         const mappedData = this._excelImportData.map(row => {
+            const newId = window.generateUUID();
             return {
-                id: window.generateUUID(),
+                id: newId,
+                rootId: newId,
+                phienBan: '00',
+                phien_ban: '00',
+                isLatest: 1,
+                is_latest: 1,
                 maChuDauTu: row.maChuDauTu || '',
                 maSoThue: row.maSoThue || '',
                 tenChuDauTu: row.tenChuDauTu || '',
@@ -2148,8 +2183,14 @@ export async function saveExcelImport() {
         count = mappedData.length;
     } else if (type === 'nhathau') {
         const mappedData = this._excelImportData.map(row => {
+            const newId = window.generateUUID();
             return {
-                id: window.generateUUID(),
+                id: newId,
+                rootId: newId,
+                phienBan: '00',
+                phien_ban: '00',
+                isLatest: 1,
+                is_latest: 1,
                 maNhaThau: row.maNhaThau || '',
                 tenNhaThau: row.tenNhaThau || '',
                 loaiNhaThau: row.loaiNhaThau || 'Độc lập',
@@ -2171,8 +2212,14 @@ export async function saveExcelImport() {
         count = mappedData.length;
     } else if (type === 'chuyengia') {
         const mappedData = this._excelImportData.map(row => {
+            const newId = window.generateUUID();
             return {
-                id: window.generateUUID(),
+                id: newId,
+                rootId: newId,
+                phienBan: '00',
+                phien_ban: '00',
+                isLatest: 1,
+                is_latest: 1,
                 hoTen: row.hoTen || '',
                 soCCCD: row.soCCCD || '',
                 ngayCapCCCD: row.ngayCapCCCD ? this.model.convertDMYToYMD(row.ngayCapCCCD) : '',
@@ -2198,6 +2245,11 @@ export async function saveExcelImport() {
             const newId = window.generateUUID();
             return {
                 id: newId,
+                rootId: newId,
+                phienBan: '00',
+                phien_ban: '00',
+                isLatest: 1,
+                is_latest: 1,
                 tenHopDong: row.tenHopDong || '',
                 soHopDong: row.soHopDong || '',
                 ngayKy: row.ngayKy ? this.model.convertDMYToYMD(row.ngayKy) : '',
@@ -2232,6 +2284,11 @@ export async function saveExcelImport() {
                     const newId = window.generateUUID();
                     foundNt = {
                         id: newId,
+                        rootId: newId,
+                        phienBan: '00',
+                        phien_ban: '00',
+                        isLatest: 1,
+                        is_latest: 1,
                         maNhaThau: row.maNhaThau || 'NT-' + window.generateUUID().toString().substr(8),
                         tenNhaThau: row.tenNhaThau,
                         loaiNhaThau: row.loaiNhaThau || 'Độc lập',
@@ -2363,13 +2420,13 @@ export async function saveExcelImport() {
                         }
                     }
                     gt.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
-                    gt.giaTrungThau = winnerRow.giaTrungThau || 0;
+                    gt.giaTrungThau = (winnerRow.giaTrungThau !== undefined && winnerRow.giaTrungThau !== null) ? winnerRow.giaTrungThau : null;
                     gt.thoiGianGoiThau = winnerRow.thoiGianGoiThau || '';
                     gt.thoiGianHopDong = winnerRow.thoiGianHopDong || '';
                     gt.trangThai = 'Đã có kết quả';
                 } else {
                     gt.nhaThauTrungThauId = '';
-                    gt.giaTrungThau = 0;
+                    gt.giaTrungThau = null;
                     gt.thoiGianGoiThau = '';
                     gt.thoiGianHopDong = '';
                     gt.trangThai = 'Hủy thầu';
@@ -2912,7 +2969,7 @@ export function setupWordTemplatesEvents() {
             { value: 'ten_chu_dau_tu', label: 'Tên chủ đầu tư' },
             { value: 'ma_so_thue', label: 'Mã số thuế' },
             { value: 'chuc_vu_nguoi_dung_dau', label: 'Chức vụ người đứng đầu' },
-            { value: 'nguoi_ky_quyet_dinh', label: 'Người ký quyết định' },
+            { value: 'nguoi_ky_quyet_dinh', label: 'Người ký QĐ' },
             { value: 'chuc_vu_nguoi_ky', label: 'Chức vụ người ký' },
             { value: 'danh_xung', label: 'Danh xưng' },
             { value: 'dia_chi', label: 'Địa chỉ đầy đủ' },
@@ -2933,7 +2990,7 @@ export function setupWordTemplatesEvents() {
             { value: 'tong_muc_dau_tu', label: 'Tổng mức đầu tư' },
             { value: 'is_tong_muc_tu_dong', label: 'Tự động tính tổng mức (0/1)' },
             { value: 'ngay_phe_duyet', label: 'Ngày phê duyệt' },
-            { value: 'quyet_dinh_phe_duyet', label: 'Quyết định phê duyệt' },
+            { value: 'quyet_dinh_phe_duyet', label: 'QĐ phê duyệt' },
             { value: 'thoi_gian_dang_tai', label: 'Thời gian đăng tải' },
             { value: 'nguon_von', label: 'Nguồn vốn' },
             { value: 'thoi_gian_du_an', label: 'Thời gian dự án' },
@@ -2962,10 +3019,10 @@ export function setupWordTemplatesEvents() {
             { value: 'thoi_gian_dang_tai', label: 'Thời gian đăng tải' },
             { value: 'thoi_gian_dong_thau', label: 'Thời gian đóng thầu' },
             { value: 'thoi_gian_mo_thau', label: 'Thời gian mở thầu' },
-            { value: 'so_quyet_dinh', label: 'Số quyết định phê duyệt' },
-            { value: 'ngay_quyet_dinh', label: 'Ngày quyết định phê duyệt' },
-            { value: 'so_quyet_dinh_ket_qua', label: 'Số quyết định kết quả' },
-            { value: 'ngay_quyet_dinh_ket_qua', label: 'Ngày quyết định kết quả' },
+            { value: 'so_quyet_dinh', label: 'Số QĐ phê duyệt' },
+            { value: 'ngay_quyet_dinh', label: 'Ngày QĐ phê duyệt' },
+            { value: 'so_quyet_dinh_ket_qua', label: 'Số QĐ kết quả' },
+            { value: 'ngay_quyet_dinh_ket_qua', label: 'Ngày QĐ kết quả' },
             { value: 'thoi_gian_goi_thau', label: 'Thời gian gói thầu' },
             { value: 'thoi_gian_hop_dong', label: 'Thời gian hợp đồng' },
             { value: 'gia_tri_dam_bao_du_thau', label: 'Giá trị bảo đảm dự thầu' },
@@ -3121,11 +3178,11 @@ export function setupWordTemplatesEvents() {
                     resetWmForm();
                     await this.loadWordMappings();
                 } else {
-                    alert(data.error || 'Lỗi khi lưu biến ánh xạ.');
+                    await this.view.customAlert('Lỗi lưu biến', data.error || 'Lỗi khi lưu biến ánh xạ.', 'x-circle');
                 }
             } catch (err) {
                 console.error(err);
-                alert('Không thể kết nối máy chủ.');
+                await this.view.customAlert('Lỗi kết nối', 'Không thể kết nối máy chủ.', 'x-circle');
             }
         });
     }
@@ -3162,7 +3219,7 @@ export function setupWordTemplatesEvents() {
                 await this.loadWordMappings();
             } else {
                 const data = await res.json();
-                alert(data.error || 'Có lỗi xảy ra khi xóa biến ánh xạ.');
+                await this.view.customAlert('Lỗi xóa', data.error || 'Có lỗi xảy ra khi xóa biến ánh xạ.', 'x-circle');
             }
         } catch (err) {
             console.error(err);
@@ -3273,7 +3330,7 @@ export async function handleWordTemplateUpload(file) {
         });
         const data = await res.json();
         if (res.ok) {
-            await this.view.customAlert('Thành công', 'Đã tải lên biểu mẫu Quyết định phê duyệt thành công!', 'check-circle');
+            await this.view.customAlert('Thành công', 'Đã tải lên biểu mẫu QĐ phê duyệt thành công!', 'check-circle');
             await this.loadWordTemplates();
         } else {
             await this.view.customAlert('Thất bại', data.error || 'Không thể tải lên biểu mẫu này.', 'alert-triangle');

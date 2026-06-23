@@ -1,122 +1,117 @@
-    <!-- Modal 3: Chủ đầu tư -->
-    <div class="modal-overlay" id="modal-chudautu">
-        <div class="modal-card" style="max-width: 680px; width: 90%;">
-            <div class="modal-header"
-                style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <div style="display: flex; align-items: center; gap: 16px;">
-                    <h3 id="modal-chudautu-title" style="margin: 0;">Thêm Chủ đầu tư</h3>
-                    <div id="cdt-version-select-container" style="display: none; align-items: center; gap: 8px;">
-                        <label for="cdt-version-select"
-                            style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0;">Phiên bản:</label>
-                        <select id="cdt-version-select"
-                            style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-main); font-weight: 700; font-size: 0.85rem;"></select>
-                    </div>
+<!-- Modal 3: Chủ đầu tư -->
+<div class="modal-overlay" id="modal-chudautu">
+    <div class="modal-card" style="max-width: 680px; width: 90%;">
+        <div class="modal-header"
+            style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <h3 id="modal-chudautu-title" style="margin: 0;">Thêm Chủ đầu tư</h3>
+                <div id="cdt-version-select-container" style="display: none; align-items: center; gap: 8px;">
+                    <label for="cdt-version-select"
+                        style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0;">Phiên bản:</label>
+                    <select id="cdt-version-select"
+                        style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-main); font-weight: 700; font-size: 0.85rem;"></select>
                 </div>
-                <button type="button" class="modal-close" data-close="modal-chudautu">&times;</button>
             </div>
-            <form id="form-chudautu" novalidate>
-                <input type="hidden" id="form-chudautu-id">
-                <div class="modal-body">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="cdt-ma">Mã chủ đầu tư <span class="required">*</span></label>
-                            <input type="text" id="cdt-ma" required placeholder="Ví dụ: CDT-KHCN">
-                            <span class="error-text">Vui lòng nhập mã chủ đầu tư</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="cdt-mst">Mã số thuế</label>
-                            <input type="text" id="cdt-mst" placeholder="Mã số thuế 10 hoặc 13 số">
-                            <span class="error-text">Mã số thuế phải là 10 hoặc 13 chữ số</span>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label for="cdt-ten">Tên chủ đầu tư <span class="required">*</span></label>
-                            <input type="text" id="cdt-ten" required
-                                placeholder="Ví dụ: Ban Quản lý Dự án Công nghệ Thông tin">
-                            <span class="error-text">Vui lòng nhập tên chủ đầu tư</span>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label for="cdt-coquanchuquan">Cơ quan chủ quản</label>
-                            <input type="text" id="cdt-coquanchuquan" placeholder="Ví dụ: Bộ Giáo dục và Đào tạo">
-                        </div>
-                        <div class="form-group">
-                            <label for="cdt-chucvunguoidungdau">Chức vụ người đứng đầu <span
-                                    class="required">*</span></label>
-                            <input type="text" id="cdt-chucvunguoidungdau" required
-                                placeholder="Ví dụ: Giám đốc, Tổng giám đốc">
-                            <span class="error-text">Vui lòng nhập chức vụ người đứng đầu</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="cdt-nguoikyquyetdinh">Người ký quyết định <span
-                                    class="required">*</span></label>
-                            <input type="text" id="cdt-nguoikyquyetdinh" required placeholder="Ví dụ: Nguyễn Văn A">
-                            <span class="error-text">Vui lòng nhập họ tên người ký quyết định</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="cdt-chucvunguoiky">Chức vụ người ký <span class="required">*</span></label>
-                            <input type="text" id="cdt-chucvunguoiky" required
-                                placeholder="Ví dụ: Phó Chủ tịch, Giám đốc">
-                            <span class="error-text">Vui lòng nhập chức vụ người ký</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="cdt-danhxung">Danh xưng người ký <span class="required">*</span></label>
-                            <select id="cdt-danhxung" required>
-                                <option value="Ông">Ông</option>
-                                <option value="Bà">Bà</option>
-                            </select>
-                            <span class="error-text">Vui lòng chọn danh xưng</span>
-                        </div>
-                        <div class="form-group">
-                            <label>Tỉnh/Thành phố <span class="required">*</span></label>
-                            <select id="cdt-tinh" class="select-province" required>
-                                <option value="">-- Chọn Tỉnh/Thành phố --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Xã/Phường <span class="required">*</span></label>
-                            <select id="cdt-xa" class="select-ward" required disabled>
-                                <option value="">-- Chọn Xã/Phường --</option>
-                            </select>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label for="cdt-diachichitiet">Địa chỉ chi tiết <span class="required">*</span></label>
-                            <input type="text" id="cdt-diachichitiet" required
-                                placeholder="Số nhà, tên đường, thôn/xóm...">
-                            <span class="error-text">Vui lòng nhập địa chỉ chi tiết</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="cdt-sdt">Số điện thoại</label>
-                            <input type="tel" id="cdt-sdt" placeholder="Ví dụ: 0243xxxxxx">
-                            <span class="error-text">Số điện thoại không đúng định dạng</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="cdt-email">Địa chỉ Email</label>
-                            <input type="email" id="cdt-email" placeholder="contact@domain.gov.vn">
-                            <span class="error-text">Địa chỉ email không hợp lệ</span>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <div class="form-grid"
-                                style="grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 0;">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="cdt-sotaikhoan">Số tài khoản</label>
-                                    <input type="text" id="cdt-sotaikhoan" placeholder="Số tài khoản ngân hàng">
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="cdt-noimotaikhoan">Nơi mở tài khoản</label>
-                                    <input type="text" id="cdt-noimotaikhoan"
-                                        placeholder="Kho bạc Nhà nước hoặc Ngân hàng">
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="cdt-maqhns">Mã QHNS (nếu có)</label>
-                                    <input type="text" id="cdt-maqhns" placeholder="Mã quan hệ ngân sách">
-                                </div>
+            <button type="button" class="modal-close" data-close="modal-chudautu">&times;</button>
+        </div>
+        <form id="form-chudautu" novalidate>
+            <input type="hidden" id="form-chudautu-id">
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="cdt-ma">Mã chủ đầu tư <span class="required">*</span></label>
+                        <input type="text" id="cdt-ma" required placeholder="Ví dụ: CDT-KHCN">
+                        <span class="error-text">Vui lòng nhập mã chủ đầu tư</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cdt-mst">Mã số thuế</label>
+                        <input type="text" id="cdt-mst" placeholder="Mã số thuế 10 hoặc 13 số">
+                        <span class="error-text">Mã số thuế phải là 10 hoặc 13 chữ số</span>
+                    </div>
+                    <div class="form-group col-span-2">
+                        <label for="cdt-ten">Tên chủ đầu tư <span class="required">*</span></label>
+                        <input type="text" id="cdt-ten" required
+                            placeholder="Ví dụ: Ban Quản lý Dự án Công nghệ Thông tin">
+                        <span class="error-text">Vui lòng nhập tên chủ đầu tư</span>
+                    </div>
+                    <div class="form-group col-span-2">
+                        <label for="cdt-coquanchuquan">Cơ quan chủ quản</label>
+                        <input type="text" id="cdt-coquanchuquan" placeholder="Ví dụ: Bộ Giáo dục và Đào tạo">
+                    </div>
+                    <div class="form-group">
+                        <label for="cdt-chucvunguoidungdau">Chức vụ người đứng đầu <span
+                                class="required">*</span></label>
+                        <input type="text" id="cdt-chucvunguoidungdau" required
+                            placeholder="Ví dụ: Giám đốc, Tổng giám đốc">
+                        <span class="error-text">Vui lòng nhập chức vụ người đứng đầu</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cdt-nguoikyquyetdinh">Người ký QĐ <span class="required">*</span></label>
+                        <input type="text" id="cdt-nguoikyquyetdinh" required placeholder="Ví dụ: Nguyễn Văn A">
+                        <span class="error-text">Vui lòng nhập họ tên người ký QĐ</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cdt-chucvunguoiky">Chức vụ người ký <span class="required">*</span></label>
+                        <input type="text" id="cdt-chucvunguoiky" required placeholder="Ví dụ: Phó Chủ tịch, Giám đốc">
+                        <span class="error-text">Vui lòng nhập chức vụ người ký</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cdt-danhxung">Danh xưng người ký <span class="required">*</span></label>
+                        <select id="cdt-danhxung" required>
+                            <option value="Ông">Ông</option>
+                            <option value="Bà">Bà</option>
+                        </select>
+                        <span class="error-text">Vui lòng chọn danh xưng</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Tỉnh/Thành phố <span class="required">*</span></label>
+                        <select id="cdt-tinh" class="select-province" required>
+                            <option value="">-- Chọn Tỉnh/Thành phố --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Xã/Phường <span class="required">*</span></label>
+                        <select id="cdt-xa" class="select-ward" required disabled>
+                            <option value="">-- Chọn Xã/Phường --</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-span-2">
+                        <label for="cdt-diachichitiet">Địa chỉ chi tiết <span class="required">*</span></label>
+                        <input type="text" id="cdt-diachichitiet" required placeholder="Số nhà, tên đường, thôn/xóm...">
+                        <span class="error-text">Vui lòng nhập địa chỉ chi tiết</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cdt-sdt">Số điện thoại</label>
+                        <input type="tel" id="cdt-sdt" placeholder="Ví dụ: 0243xxxxxx">
+                        <span class="error-text">Số điện thoại không đúng định dạng</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="cdt-email">Địa chỉ Email</label>
+                        <input type="email" id="cdt-email" placeholder="contact@domain.gov.vn">
+                        <span class="error-text">Địa chỉ email không hợp lệ</span>
+                    </div>
+                    <div class="form-group col-span-2">
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 0;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="cdt-sotaikhoan">Số tài khoản</label>
+                                <input type="text" id="cdt-sotaikhoan" placeholder="Số tài khoản ngân hàng">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="cdt-noimotaikhoan">Nơi mở tài khoản</label>
+                                <input type="text" id="cdt-noimotaikhoan" placeholder="Kho bạc Nhà nước hoặc Ngân hàng">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="cdt-maqhns">Mã QHNS (nếu có)</label>
+                                <input type="text" id="cdt-maqhns" placeholder="Mã quan hệ ngân sách">
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline" data-close="modal-chudautu">Hủy</button>
-                    <button type="submit" class="btn btn-primary">Lưu thông tin</button>
-                </div>
-            </form>
-        </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" data-close="modal-chudautu">Hủy</button>
+                <button type="submit" class="btn btn-primary">Lưu thông tin</button>
+            </div>
+        </form>
     </div>
+</div>

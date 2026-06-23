@@ -225,10 +225,11 @@ routes = [
     Route("/api/auth/update-profile", update_profile_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
-    Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
+    # Static sub-routes PHẢI đứng trước dynamic {user_id} để tránh Starlette match nhầm
     Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
     Route("/api/auth/users/update-package", update_user_package_api, methods=["POST"]),
     Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),
+    Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
     
     # SPA Clean Paths Fallback to serve index.html for browser routes (Kebab-Case Standardized)
     Route("/tong-quan", index, methods=["GET"]),
@@ -290,9 +291,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             f"connect-src 'self' https://unpkg.com https://cdn.jsdelivr.net ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT}; "
             "font-src 'self' https://fonts.gstatic.com https://unpkg.com https://cdn.jsdelivr.net;"
         )
-        # Chỉ cache tài nguyên tĩnh, không cache API
-        if request.url.path.startswith("/api/") or request.url.path.startswith("/ws/"):
+        path = request.url.path
+        # Priority 11: HSTS khi chạy sau reverse proxy HTTPS
+        if request.headers.get("X-Forwarded-Proto") == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Priority 3: Cache-Control cho static assets
+        if path.startswith("/api/") or path.startswith("/ws/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        elif request.query_params.get("v") and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
+            # File có version string (?v=5.8) → cache vĩnh viễn (nội dung không đổi)
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path.endswith(('.js', '.css')):
+            # JS/CSS không có version → revalidate mỗi request
+            response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
         return response
 
 middleware = [
@@ -312,16 +323,32 @@ async def lifespan(app):
     import threading
     threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()
     
-    # Dọn dẹp session cache hết hạn mỗi 5 phút để tránh RAM tích tụ
+    # Dọn dẹp session cache và org cache hết hạn mỗi 5 phút để tránh RAM tích tụ
     from auth_helper import _session_cache_cleanup
+    from helpers import _org_cache_cleanup
     def _run_cache_cleanup():
         import time as _time
+        _cleanup_cycle = 0
         while True:
             _time.sleep(300)  # 5 phút
+            _cleanup_cycle += 1
             try:
                 _session_cache_cleanup()
+                _org_cache_cleanup()
             except Exception:
                 pass
+            # Mỗi 6 chu kỳ (30 phút): xoá deleted_records cũ hơn 90 ngày
+            if _cleanup_cycle % 6 == 0:
+                try:
+                    from helpers import database as _db
+                    _conn = _db.get_connection()
+                    _conn.execute(
+                        "DELETE FROM deleted_records WHERE deleted_at < strftime('%s','now') - 7776000"
+                    )  # 7776000 = 90 ngày * 86400 giây
+                    _conn.commit()
+                    _conn.close()
+                except Exception:
+                    pass
     threading.Thread(target=_run_cache_cleanup, daemon=True).start()
     yield
 

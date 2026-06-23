@@ -50,7 +50,8 @@ from auth_helper import (
     verify_password,
     SessionRole,
     verify_session,
-    _session_cache_invalidate
+    _session_cache_invalidate,
+    _session_cache_invalidate_by_user_id
 )
 
 SCHEMA_DINH_NGHIA = {
@@ -78,7 +79,7 @@ SCHEMA_DINH_NGHIA = {
             "goi_dich_vu_id": "TEXT DEFAULT 'silver'",
             "ngay_bat_dau_goi": "TEXT",
             "ngay_het_han_goi": "TEXT",
-            "han_su_dung_token": "TEXT",
+            "han_su_dung_token": "INTEGER",  # Unix timestamp — nhất quán với created_at (ISO string cũ sẽ expire ngay khi migrate)
             "thong_tin_thiet_bi_cuoi": "TEXT",
             "da_xac_minh": "INTEGER DEFAULT 0",
             "ma_xac_minh": "TEXT",
@@ -86,7 +87,13 @@ SCHEMA_DINH_NGHIA = {
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
-        "foreign_keys": ["FOREIGN KEY (goi_dich_vu_id) REFERENCES goi_dich_vu(id) ON DELETE SET NULL"]
+        "foreign_keys": ["FOREIGN KEY (goi_dich_vu_id) REFERENCES goi_dich_vu(id) ON DELETE SET NULL"],
+        "field_map": {
+            "ma_so_thue": "maSoThue",
+            "so_cccd": "soCCCD",
+            "ma_qhns": "maQHNS",
+            "id_goc": "rootId"
+        }
     },
     "chu_dau_tu": {
         "columns": {
@@ -111,6 +118,9 @@ SCHEMA_DINH_NGHIA = {
             "co_quan_chu_quan": "TEXT",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+        },
+        "field_map": {
+            "ma_qhns": "maQHNS"
         }
     },
     "ke_hoach_lcnt": {
@@ -141,12 +151,29 @@ SCHEMA_DINH_NGHIA = {
             "so_qd_phe_duyet_du_an": "TEXT",
             "ngay_qd_phe_duyet_du_an": "TEXT",
             "co_quan_phe_duyet_du_an": "TEXT",
+            "phe_duyet": "TEXT",
+            "ngay_trinh_du_toan": "TEXT",
+            "ngay_phe_duyet_du_toan": "TEXT",
+            "so_qd_phe_duyet_du_toan": "TEXT",
+            "ngay_trinh_ke_hoach": "TEXT",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
-        "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL"]
+        "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL"],
+        "field_map": {
+            "thoi_gian_dang_tai": "thoiGianDangMa",
+            "cv_da_thuc_hien": "cvDaThucHienList",
+            "cv_khong_ap_dung": "cvKhongApDungList",
+            "cv_chua_du_dieu_kien": "cvChuaDuDieuKienList",
+            "phe_duyet": "pheDuyet",
+            "ngay_trinh_du_toan": "ngayTrinhDuToan",
+            "ngay_phe_duyet_du_toan": "ngayPheDuyetDuToan",
+            "so_qd_phe_duyet_du_toan": "soQdPheDuyetDuToan",
+            "ngay_trinh_ke_hoach": "ngayTrinhKeHoach"
+        }
     },
     "nha_thau": {
+        "json_fields": ["thanh_vien_lien_danh"],  # Trường JSON không theo convention _list/cv_
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
@@ -219,12 +246,34 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE CASCADE",
             "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
-        ]
+        ],
+        "field_map": {
+            "nha_thau_trung_thau_id": "nhaThauTrungThauId",
+            "thoi_gian_dang_tai": "thoiGianDangTai",
+            "thoi_gian_dong_thau": "thoiGianDongThau",
+            "thoi_gian_mo_thau": "thoiGianMoThau",
+            "gia_han_list": "giaHanList",
+            "yeu_cau_lam_ro_list": "yeuCauLamRoList",
+            "tra_loi_lam_ro_list": "traLoiLamRoList",
+            "so_quyet_dinh": "soQuyetDinh",
+            "ngay_quyet_dinh": "ngayQuyetDinh",
+            "so_quyet_dinh_ket_qua": "soQuyetDinhKetQua",
+            "ngay_quyet_dinh_ket_qua": "ngayQuyetDinhKetQua",
+            "gia_tri_dam_bao_du_thau": "giaTriDamBaoDuThau",
+            "hieu_luc_hsdt": "hieuLucHsdt",
+            "hieu_luc_dam_bao_du_thau": "hieuLucDamBaoDuThau",
+            "danh_gia_hsdt_metadata": "danhGiaHsdtMetadata",
+            "awarded_phan_lo_list": "awardedPhanLoList"
+        }
     },
     "chuyen_gia": {
+        "json_fields": [],  # cv_* fields được detect bằng prefix convention
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "id_goc": "TEXT",
+            "phien_ban": "TEXT NOT NULL DEFAULT '00'",
+            "is_latest": "INTEGER NOT NULL DEFAULT 1",
             "ho_ten": "TEXT NOT NULL",
             "so_chung_chi": "TEXT",
             "ngay_cap_chung_chi": "TEXT",
@@ -238,12 +287,20 @@ SCHEMA_DINH_NGHIA = {
             "ten_anh_chu_ky": "TEXT",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+        },
+        "field_map": {
+            "so_cccd": "soCCCD",
+            "ngay_cap_cccd": "ngayCapCCCD",
+            "noi_cap_cccd": "noiCapCCCD"
         }
     },
     "hop_dong": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "id_goc": "TEXT",
+            "phien_ban": "TEXT NOT NULL DEFAULT '00'",
+            "is_latest": "INTEGER NOT NULL DEFAULT 1",
             "ten_hop_dong": "TEXT",
             "so_hop_dong": "TEXT",
             "ngay_ky": "TEXT",
@@ -259,7 +316,10 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
             "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
-        ]
+        ],
+        "field_map": {
+            "thoi_gian_thuc_hien": "soNgayThucHien"
+        }
     },
     "hop_dong_goi_thau": {
         "columns": {
@@ -286,11 +346,16 @@ SCHEMA_DINH_NGHIA = {
         },
         "unique_constraints": [
             "UNIQUE(id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
-        ]
+        ],
+        "field_map": {
+            "id_nhan_vien": "empId",
+            "id_muc_tieu": "targetId",
+            "loai_doi_tuong": "type"
+        }
+    },
         # Note: id_nhan_vien references tai_khoan.id but FK constraint omitted intentionally
         # because tai_khoan uses ON DELETE CASCADE would auto-delete assignments,
         # which may not always be desired (employee re-assignment scenarios).
-    },
     "trang_thai_ho_so_giay": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
@@ -302,7 +367,14 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         }
     },
+    # =============================================================================
+    # Bảng Snapshot: Lưu thông tin mở thầu TẠI THỜI ĐIỂM tổ chức đấu thầu.
+    # Các trường ten_nha_thau, loai_nha_thau, thanh_vien_lien_danh được denormalize
+    # có chủ đích (Snapshot Pattern) — đảm bảo hồ sơ pháp lý không thay đổi theo
+    # dữ liệu cập nhật sau này của bảng nha_thau. Đây là yêu cầu nghiệp vụ bắt buộc.
+    # =============================================================================
     "thong_tin_mo_thau": {
+        "json_fields": ["thanh_vien_lien_danh"],  # Trường JSON không theo convention suffix/prefix
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
@@ -340,7 +412,37 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
             "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
-        ]
+        ],
+        "field_map": {
+            "goi_thau_id": "goiThauId",
+            "nha_thau_id": "nhaThauId",
+            "ma_phan_lo": "maPhanLo",
+            "ten_phan_lo": "tenPhanLo",
+            "ma_dinh_danh": "maDinhDanh",
+            "gia_du_thau": "giaDuThau",
+            "dam_bao_du_thau": "damBaoDuThau",
+            "hieu_luc_dam_bao": "hieuLucBaoDamNgay",
+            "hieu_luc_hsdxt": "hieuLucHsdxt",
+            "ty_le_giam_gia": "tyLeGiamGia",
+            "gia_sau_giam_gia": "giaSauGiamGia",
+            "hieu_luc_hsdt": "hieuLucHsdt",
+            "gia_tri_dam_bao": "giaTriDamBao",
+            "hieu_luc_bao_dam_ngay": "hieuLucBaoDamNgay",
+            "thoi_gian_thuc_hien": "thoiGianThucHien",
+            "ten_nha_thau": "tenNhaThau",
+            "loai_nha_thau": "loaiNhaThau",
+            "thanh_vien_lien_danh": "thanhVienLienDanh",
+            "danh_gia_hop_le": "danhGiaHopLe",
+            "danh_gia_nang_luc": "danhGiaNangLuc",
+            "danh_gia_ky_thuat": "danhGiaKyThuat",
+            "danh_gia_tai_chinh": "danhGiaTaiChinh",
+            "danh_gia_ket_luan": "danhGiaKetLuan",
+            "ly_do_truot": "lyDoTruot",
+            "lam_ro_hop_le": "lamRoHopLe",
+            "lam_ro_nang_luc": "lamRoNangLuc",
+            "lam_ro_ky_thuat": "lamRoKyThuat",
+            "lam_ro_tai_chinh": "lamRoTaiChinh"
+        }
     },
     "to_chuc": {
         "columns": {
@@ -433,7 +535,12 @@ SPECIAL_FIELD_MAPS = {
         "thoi_gian_dang_tai": "thoiGianDangMa",
         "cv_da_thuc_hien": "cvDaThucHienList",
         "cv_khong_ap_dung": "cvKhongApDungList",
-        "cv_chua_du_dieu_kien": "cvChuaDuDieuKienList"
+        "cv_chua_du_dieu_kien": "cvChuaDuDieuKienList",
+        "phe_duyet": "pheDuyet",
+        "ngay_trinh_du_toan": "ngayTrinhDuToan",
+        "ngay_phe_duyet_du_toan": "ngayPheDuyetDuToan",
+        "so_qd_phe_duyet_du_toan": "soQdPheDuyetDuToan",
+        "ngay_trinh_ke_hoach": "ngayTrinhKeHoach"
     },
     "chu_dau_tu": {
         "ma_qhns": "maQHNS"
@@ -499,10 +606,9 @@ SPECIAL_FIELD_MAPS = {
         "id_muc_tieu": "targetId",
         "loai_doi_tuong": "type"
     },
-    "ma_tran_phan_quyen": {
-        "emp_id": "empId"
-        # Các trường còn lại (kehoach, goithau...) to_camel_case() đã map đúng
-    }
+    # Để thêm field_map mới: bổ sung vào bảng tương ứng, hoặc đưa vào đây nếu các bảng có cùng field
+    # Quy tắc ưu tiên: SPECIAL_FIELD_MAPS[table] > to_camel_case()
+    # id_goc → rootId được xử lý riêng trong map_db_to_json để áp dụng cho tất cả bảng versioned
 }
 
 def to_snake_case(name):
@@ -517,6 +623,54 @@ def clean_id(val):
     if val is None or val == "":
         return None
     return str(val).strip()
+
+def recalculate_is_latest(cursor, table_name, owner_id=None):
+    """
+    Tính lại cờ is_latest cho bảng versioned (chu_dau_tu, ke_hoach_lcnt, goi_thau, nha_thau).
+    Hàm dùng chung — tránh duplicate logic giữa sync_api và migration.
+
+    Args:
+        cursor: DB cursor đang mở
+        table_name: Tên bảng cần cập nhật
+        owner_id: Nếu cung cấp, chỉ cập nhật bản ghi của owner đó (dùng khi sync).
+                  Nếu None, cập nhật toàn bộ (dùng khi migration lúc khởi động).
+    """
+    if owner_id:
+        cursor.execute(f"UPDATE {table_name} SET is_latest = 0 WHERE owner_id = ?", (owner_id,))
+        cursor.execute(f"""
+            UPDATE {table_name} SET is_latest = 1 WHERE owner_id = ? AND id IN (
+                SELECT t1.id FROM {table_name} t1
+                INNER JOIN (
+                    SELECT
+                        CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END as grp,
+                        MAX(CAST(phien_ban AS INTEGER)) as max_ver
+                    FROM {table_name}
+                    WHERE owner_id = ?
+                    GROUP BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
+                ) t2 ON (
+                    CASE WHEN t1.id_goc IS NOT NULL AND t1.id_goc != '' THEN t1.id_goc ELSE t1.id END
+                ) = t2.grp
+                AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
+                WHERE t1.owner_id = ?
+            )
+        """, (owner_id, owner_id, owner_id))
+    else:
+        cursor.execute(f"UPDATE {table_name} SET is_latest = 0")
+        cursor.execute(f"""
+            UPDATE {table_name} SET is_latest = 1 WHERE id IN (
+                SELECT t1.id FROM {table_name} t1
+                INNER JOIN (
+                    SELECT
+                        CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END as grp,
+                        MAX(CAST(phien_ban AS INTEGER)) as max_ver
+                    FROM {table_name}
+                    GROUP BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
+                ) t2 ON (
+                    CASE WHEN t1.id_goc IS NOT NULL AND t1.id_goc != '' THEN t1.id_goc ELSE t1.id END
+                ) = t2.grp
+                AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
+            )
+        """)
 
 def khoi_tao_va_di_tru_he_thong():
     try:
@@ -535,7 +689,7 @@ def khoi_tao_va_di_tru_he_thong():
                 cursor.execute(f"DROP TABLE IF EXISTS '{tbl}'")
         conn.commit()
 
-        cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v3'")
+        cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v6'")
         config_row = cursor.fetchone()
         if config_row and config_row[0] == '1':
             conn.close()
@@ -899,18 +1053,9 @@ def khoi_tao_va_di_tru_he_thong():
             cursor.execute(f"UPDATE {tbl} SET owner_id = ? WHERE owner_id IS NULL OR owner_id = ''", (admin_id,))
         # Các chỉ mục (indexes) đã được chuyển toàn bộ sang db_helper.py để tập trung quản lý.
 
-        for tbl in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
-            cursor.execute(f"UPDATE {tbl} SET is_latest = 0")
-            cursor.execute(f"""
-                UPDATE {tbl} SET is_latest = 1 WHERE id IN (
-                    SELECT t1.id FROM {tbl} t1
-                    INNER JOIN (
-                        SELECT COALESCE(id_goc, id) as id_goc_group, MAX(CAST(phien_ban AS INTEGER)) as max_ver
-                        FROM {tbl}
-                        GROUP BY COALESCE(id_goc, id)
-                    ) t2 ON COALESCE(t1.id_goc, t1.id) = t2.id_goc_group AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
-                )
-            """)
+        # Tính lại is_latest bằng hàm chung recalculate_is_latest() (tránh duplicate logic)
+        for tbl in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau", "hop_dong", "chuyen_gia"]:
+            recalculate_is_latest(cursor, tbl)
 
         try:
             cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id NOT IN (SELECT id FROM tai_khoan)")
@@ -955,15 +1100,26 @@ def khoi_tao_va_di_tru_he_thong():
         except Exception as migration_owner_ex:
             print("Lỗi khi di trú owner_id sang ID tổ chức:", migration_owner_ex)
 
-        cursor.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('migration_done_v3', '1')")
+        cursor.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('migration_done_v6', '1')")
         conn.commit()
         conn.close()
         print("Khởi tạo và di trú cơ sở dữ liệu Tiếng Việt thành công!")
     except Exception as e:
         print("Lỗi khởi tạo/di trú database Tiếng Việt:", e)
 
-# Trigger migration once at helper module import
-khoi_tao_va_di_tru_he_thong()
+# Trigger migration khi import helper module, chạy trong thread riêng để không block startup
+import threading as _mg_thread
+_mg_evt = _mg_thread.Event()
+def _run_migration():
+    try:
+        khoi_tao_va_di_tru_he_thong()
+    except Exception as _mg_ex:
+        print(f"[Lỗi khởi tạo DB] {_mg_ex}")
+    finally:
+        _mg_evt.set()
+_mg_thread.Thread(target=_run_migration, daemon=True, name="db-migration").start()
+if not _mg_evt.wait(timeout=30):
+    print("[WARNING] Migration chưa hoàn thành sau 30s — server tiếp tục khởi động")
 
 def log_error(e_or_msg, context="System", level="ERROR"):
     log_file = os.path.join(project_root, "sync_error.log")
@@ -995,8 +1151,9 @@ def log_error(e_or_msg, context="System", level="ERROR"):
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
         print(f"[{context}] [{level}] {e_or_msg}")
 
-def log_info(msg, context="System"):
-    log_error(msg, context, level="INFO")
+# Quy ước: Trường JSON trong DB được nhận biết bằng suffix `_list`, prefix `cv_`,
+# hoặc khai báo tường minh trong `json_fields` của SCHEMA_DINH_NGHIA.
+# (log_info đã được xóa vì không được gọi ở đâu — dùng log_error(msg, level="INFO") trực tiếp nếu cần)
 
 class ErrorLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -1118,3 +1275,11 @@ def get_active_org(request, user_id):
         _org_cache[cache_key] = (result, now + ORG_CACHE_TTL)
         
     return result
+
+def _org_cache_cleanup():
+    """Dọn dẹp các org cache hết hạn. Gọi định kỳ mỗi 5 phút từ lifespan."""
+    now = time.time()
+    with _org_cache_lock:
+        expired = [k for k, (_, exp) in _org_cache.items() if now > exp]
+        for k in expired:
+            del _org_cache[k]

@@ -1,9 +1,18 @@
     <!-- Modal 5: Chuyen gia -->
     <div class="modal-overlay" id="modal-chuyengia">
         <div class="modal-card modal-xl">
-            <div class="modal-header">
-                <h3 id="modal-chuyengia-title">Them Chuyen gia</h3>
-                <button class="modal-close" data-close="modal-chuyengia">&times;</button>
+            <div class="modal-header"
+                style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <h3 id="modal-chuyengia-title" style="margin: 0;">Cập nhật Chuyên gia</h3>
+                    <div id="cg-version-select-container" style="display: none; align-items: center; gap: 8px;">
+                        <label for="cg-version-select"
+                            style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0;">Phiên bản:</label>
+                        <select id="cg-version-select"
+                            style="padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-main); font-weight: 700; font-size: 0.85rem;"></select>
+                    </div>
+                </div>
+                <button type="button" class="modal-close" data-close="modal-chuyengia">&times;</button>
             </div>
             <form id="form-chuyengia" novalidate>
                 <input type="hidden" id="form-chuyengia-id">

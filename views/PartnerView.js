@@ -289,7 +289,7 @@ export async function renderNhaThauTable() {
 export async function renderChuyenGiaTable() {
     const tableBody = document.getElementById('chuyengia-table').querySelector('tbody');
     const searchVal = document.getElementById('search-chuyengia').value.toLowerCase();
-    
+
     const isEmployee = this.model.state.activerole === 'employee';
     const btnAdd = document.getElementById('btn-add-chuyengia');
     if (btnAdd) {
@@ -303,7 +303,7 @@ export async function renderChuyenGiaTable() {
 
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
             const res = await fetch(`/api/paginate?table=chuyengia&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
@@ -321,7 +321,8 @@ export async function renderChuyenGiaTable() {
             console.error("Failed to fetch paginated experts", e);
         }
     } else {
-        const filtered = this.model.state.chuyengia.filter(cg =>
+        const latestChuyenGia = this.model.getLatestChuyenGia();
+        const filtered = latestChuyenGia.filter(cg =>
             (cg.hoTen || '').toLowerCase().includes(searchVal) ||
             (cg.soCCCD || '').includes(searchVal) ||
             (cg.soChungChi || '').toLowerCase().includes(searchVal)
@@ -334,7 +335,7 @@ export async function renderChuyenGiaTable() {
     if (totalItems === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="6">
+                <td colspan="7">
                     <div class="empty-state">
                         <i data-lucide="user-x"></i>
                         <p>Không tìm thấy Chuyên gia nào phù hợp</p>
@@ -345,27 +346,52 @@ export async function renderChuyenGiaTable() {
         const pag = document.getElementById('chuyengia-pagination');
         if (pag) pag.innerHTML = '';
     } else {
-        tableBody.innerHTML = slicedData.map(cg => `
+        tableBody.innerHTML = slicedData.map(cg => {
+            const root = cg.rootId || cg.id;
+            const allVersions = cg.allVersions || this.model.state.chuyengia.filter(x => (x.rootId || x.id) === root)
+                .sort((a, b) => parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0));
+
+            if (!this.model.state.selectedChuyenGiaVersion) {
+                this.model.state.selectedChuyenGiaVersion = {};
+            }
+            const selectedId = this.model.state.selectedChuyenGiaVersion[root] || cg.id;
+            const displayedCg = this.model.state.chuyengia.find(x => x.id === selectedId) || cg;
+
+            const optionsHtml = allVersions.map(v => {
+                const label = `V${parseInt(v.phienBan || v.phien_ban || 0)}`;
+                const isSel = v.id === displayedCg.id ? 'selected' : '';
+                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+            }).join('');
+
+            const dropdownHtml = `
+                <select class="form-control version-droplist" onchange="window.changeChuyenGiaRowVersion('${root}', this.value)" style="width: 70px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                    ${optionsHtml}
+                </select>
+            `;
+
+            return `
             <tr>
-                <td class="fw-bold"><a href="#" onclick="event.preventDefault(); window.showChuyenGiaDetails('${cg.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch">${cg.hoTen || ''}</a></td>
-                <td><code>${cg.soCCCD || ''}</code></td>
-                <td><span class="badge badge-info">${cg.soChungChi || ''}</span></td>
-                <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${cg.donViCapChungChi || '--'}</td>
-                <td>${cg.ngayCapChungChi ? this.model.formatDate(cg.ngayCapChungChi) : '--'}</td>
+                <td class="fw-bold"><a href="#" onclick="event.preventDefault(); window.showChuyenGiaDetails('${displayedCg.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch">${displayedCg.hoTen || ''}</a></td>
+                <td>${dropdownHtml}</td>
+                <td><code>${displayedCg.soCCCD || ''}</code></td>
+                <td><span class="badge badge-info">${displayedCg.soChungChi || ''}</span></td>
+                <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${displayedCg.donViCapChungChi || '--'}</td>
+                <td>${displayedCg.ngayCapChungChi ? this.model.formatDate(displayedCg.ngayCapChungChi) : '--'}</td>
                 <td class="text-right">
                     ${isEmployee ? '' : `
                     <div class="action-btn-group">
-                        <button class="action-btn btn-edit" onclick="window.editChuyenGia('${cg.id}')" title="Sửa">
+                        <button class="action-btn btn-edit" onclick="window.editChuyenGia('${displayedCg.id}')" title="Sửa">
                             <i data-lucide="edit-2"></i>
                         </button>
-                        <button class="action-btn btn-delete" onclick="window.deleteChuyenGia('${cg.id}')" title="Xóa">
+                        <button class="action-btn btn-delete" onclick="window.deleteChuyenGia('${displayedCg.id}')" title="Xóa">
                             <i data-lucide="trash-2"></i>
                         </button>
                     </div>
                     `}
                 </td>
             </tr>
-        `).join('');
+            `;
+        }).join('');
 
         if (window.renderTablePagination) {
             window.renderTablePagination('chuyengia-pagination', totalItems, currentPage, pageSize);
@@ -385,7 +411,7 @@ export async function renderHopDongTable() {
 
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
             const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
@@ -403,7 +429,7 @@ export async function renderHopDongTable() {
             console.error("Failed to fetch paginated contracts", e);
         }
     } else {
-        const latestHopDong = this.model.getFilteredHopDong();
+        const latestHopDong = this.model.getLatestHopDong();
         const filtered = latestHopDong.filter(h =>
             (h.soHopDong || '').toLowerCase().includes(searchVal) ||
             (h.tenHopDong || '').toLowerCase().includes(searchVal)
@@ -416,7 +442,7 @@ export async function renderHopDongTable() {
     if (totalItems === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="10">
+                <td colspan="12">
                     <div class="empty-state">
                         <i data-lucide="file-check-2"></i>
                         <p>Không tìm thấy Hợp đồng nào phù hợp</p>
@@ -428,51 +454,74 @@ export async function renderHopDongTable() {
         if (pag) pag.innerHTML = '';
     } else {
         tableBody.innerHTML = slicedData.map(h => {
+            const root = h.rootId || h.id;
+            const allVersions = h.allVersions || this.model.state.hopdong.filter(x => (x.rootId || x.id) === root)
+                .sort((a, b) => parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0));
+
+            if (!this.model.state.selectedHopDongVersion) {
+                this.model.state.selectedHopDongVersion = {};
+            }
+            const selectedId = this.model.state.selectedHopDongVersion[root] || h.id;
+            const displayedHd = this.model.state.hopdong.find(x => x.id === selectedId) || h;
+
+            const optionsHtml = allVersions.map(v => {
+                const label = `V${parseInt(v.phienBan || v.phien_ban || 0)}`;
+                const isSel = v.id === displayedHd.id ? 'selected' : '';
+                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+            }).join('');
+
+            const dropdownHtml = `
+                <select class="form-control version-droplist" onchange="window.changeHopDongRowVersion('${root}', this.value)" style="width: 70px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                    ${optionsHtml}
+                </select>
+            `;
+
             const chudautuList = Array.isArray(this.model.state.chudautu) ? this.model.state.chudautu : [];
-            const cdt = chudautuList.find(c => c.id === h.chuDauTuId);
+            const cdt = chudautuList.find(c => c.id === displayedHd.chuDauTuId);
             const cdtName = cdt ? cdt.tenChuDauTu : '--';
 
             const nhathauList = Array.isArray(this.model.state.nhathau) ? this.model.state.nhathau : [];
-            const nt = nhathauList.find(n => n.id === h.nhaThauId);
+            const nt = nhathauList.find(n => n.id === displayedHd.nhaThauId);
             const ntName = nt ? nt.tenNhaThau : '--';
 
             const goithauList = typeof this.model.getLatestPackages === 'function' ? this.model.getLatestPackages() : (Array.isArray(this.model.state.goithau) ? this.model.state.goithau : []);
-            const linkedPkgs = (h.goiThauIds || []).map(gtId => {
+            const linkedPkgs = (displayedHd.goiThauIds || []).map(gtId => {
                 const gt = goithauList.find(g => g.id === gtId);
                 if (!gt) return '';
                 return `<a href="#" onclick="event.preventDefault(); window.showPackageDetails('${gt.id}')" style="margin:2px; display:inline-block;" title="${gt.tenGoiThau || ''}"><span class="detail-code link-hover">${gt.maGoiThau || 'Gói'}</span></a>`;
             }).filter(Boolean).join(' ');
 
             const custompaperstatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses : [];
-            const statusObj = custompaperstatuses.find(s => s.name === h.trangThaiHoSo);
+            const statusObj = custompaperstatuses.find(s => s.name === displayedHd.trangThaiHoSo);
             const statusColor = statusObj ? statusObj.color : '#6b7280';
-            const statusBadge = h.trangThaiHoSo
-                ? `<span class="status-pill" style="background-color: ${statusColor}; color: white; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.78rem;">${h.trangThaiHoSo}</span>`
+            const statusBadge = displayedHd.trangThaiHoSo
+                ? `<span class="status-pill" style="background-color: ${statusColor}; color: white; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.78rem;">${displayedHd.trangThaiHoSo}</span>`
                 : '<span class="text-muted" style="font-size:0.8rem;">Chưa cập nhật</span>';
 
             return `
                 <tr>
-                    <td><a href="#" onclick="event.preventDefault(); window.editHopDong('${h.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Hợp đồng"><span class="detail-code link-hover">${h.soHopDong}</span></a></td>
-                    <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${h.tenHopDong}</td>
-                    <td>${h.ngayKy ? this.model.formatDate(h.ngayKy) : '--'}</td>
+                    <td><a href="#" onclick="event.preventDefault(); window.editHopDong('${displayedHd.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Hợp đồng"><span class="detail-code link-hover">${displayedHd.soHopDong}</span></a></td>
+                    <td>${dropdownHtml}</td>
+                    <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${displayedHd.tenHopDong}</td>
+                    <td>${displayedHd.ngayKy ? this.model.formatDate(displayedHd.ngayKy) : '--'}</td>
                     <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${cdtName}</td>
                     <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${ntName}</td>
-                    <td class="fw-bold text-blue">${this.model.formatCurrency(h.giaTri)}</td>
-                    <td><span class="badge badge-info">${h.loaiHopDong || 'Trọn gói'}</span></td>
-                    <td>${h.soNgayThucHien ? (isNaN(h.soNgayThucHien) ? h.soNgayThucHien : h.soNgayThucHien + ' ngày') : '--'}</td>
+                    <td class="fw-bold text-blue">${this.model.formatCurrency(displayedHd.giaTri)}</td>
+                    <td><span class="badge badge-info">${displayedHd.loaiHopDong || 'Trọn gói'}</span></td>
+                    <td>${displayedHd.soNgayThucHien ? (isNaN(displayedHd.soNgayThucHien) ? displayedHd.soNgayThucHien : displayedHd.soNgayThucHien + ' ngày') : '--'}</td>
                     <td>${linkedPkgs || '<span class="text-danger" style="font-weight: 500;">Chưa liên kết</span>'}</td>
                     <td>${statusBadge}</td>
                     <td class="text-right">
                         <div class="action-btn-group">
-                            ${(h.goiThauIds && h.goiThauIds.length > 0) ? `
-                            <button class="action-btn btn-export" onclick="window.exportContractFromHopDong('${h.goiThauIds[0]}', '${h.soHopDong}')" title="Xuất hợp đồng" style="color: var(--emerald);">
+                            ${(displayedHd.goiThauIds && displayedHd.goiThauIds.length > 0) ? `
+                            <button class="action-btn btn-export" onclick="window.exportContractFromHopDong('${displayedHd.goiThauIds[0]}', '${displayedHd.soHopDong}')" title="Xuất hợp đồng" style="color: var(--emerald);">
                                 <i data-lucide="file-text"></i>
                             </button>
                             ` : ''}
-                            <button class="action-btn btn-edit" onclick="window.editHopDong('${h.id}')" title="Sửa">
+                            <button class="action-btn btn-edit" onclick="window.editHopDong('${displayedHd.id}')" title="Sửa">
                                 <i data-lucide="edit-2"></i>
                             </button>
-                            <button class="action-btn btn-delete" onclick="window.deleteHopDong('${h.id}')" title="Xóa">
+                            <button class="action-btn btn-delete" onclick="window.deleteHopDong('${displayedHd.id}')" title="Xóa">
                                 <i data-lucide="trash-2"></i>
                             </button>
                         </div>
@@ -677,7 +726,7 @@ export function renderDictionary(group) {
                 'ma_chu_dau_tu': 'Mã chủ đầu tư',
                 'ma_so_thue': 'Mã số thuế',
                 'chuc_vu_nguoi_dung_dau': 'Chức vụ người đứng đầu',
-                'nguoi_ky_quyet_dinh': 'Người ký quyết định',
+                'nguoi_ky_quyet_dinh': 'Người ký QĐ',
                 'chuc_vu_nguoi_ky': 'Chức vụ người ký',
                 'danh_xung': 'Danh xưng',
                 'dia_chi': 'Địa chỉ',
@@ -696,7 +745,7 @@ export function renderDictionary(group) {
                 'ten_du_an_du_toan': 'Tên dự án / Dự toán',
                 'loai_hinh_mua_sam': 'Loại hình mua sắm',
                 'tong_muc_dau_tu': 'Tổng mức đầu tư',
-                'quyet_dinh_phe_duyet': 'Quyết định phê duyệt',
+                'quyet_dinh_phe_duyet': 'QĐ phê duyệt',
                 'ngay_phe_duyet': 'Ngày phê duyệt',
                 'thoi_gian_dang_tai': 'Thời gian đăng tải',
                 'nguon_von': 'Nguồn vốn',
@@ -726,10 +775,10 @@ export function renderDictionary(group) {
                 'thoi_gian_dang_tai': 'Thời gian đăng tải',
                 'thoi_gian_dong_thau': 'Thời gian đóng thầu',
                 'thoi_gian_mo_thau': 'Thời gian mở thầu',
-                'so_quyet_dinh': 'Số quyết định phê duyệt',
-                'ngay_quyet_dinh': 'Ngày quyết định phê duyệt',
-                'so_quyet_dinh_ket_qua': 'Số quyết định kết quả',
-                'ngay_quyet_dinh_ket_qua': 'Ngày quyết định kết quả',
+                'so_quyet_dinh': 'Số QĐ phê duyệt',
+                'ngay_quyet_dinh': 'Ngày QĐ phê duyệt',
+                'so_quyet_dinh_ket_qua': 'Số QĐ kết quả',
+                'ngay_quyet_dinh_ket_qua': 'Ngày QĐ kết quả',
                 'thoi_gian_goi_thau': 'Thời gian gói thầu',
                 'thoi_gian_hop_dong': 'Thời gian hợp đồng',
                 'gia_tri_dam_bao_du_thau': 'Giá trị bảo đảm dự thầu',

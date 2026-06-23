@@ -16,21 +16,21 @@ function authFetchDownload(url, filename) {
             'X-Username': localStorage.getItem('bf_username') || ''
         }
     })
-    .then(res => {
-        if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Lỗi tải file'); });
-        return res.blob();
-    })
-    .then(blob => {
-        const a = document.createElement('a');
-        const objectUrl = URL.createObjectURL(blob);
-        a.href = objectUrl;
-        a.download = filename || 'download';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(objectUrl);
-    })
-    .catch(err => alert('Lỗi tải file: ' + err.message));
+        .then(res => {
+            if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Lỗi tải file'); });
+            return res.blob();
+        })
+        .then(blob => {
+            const a = document.createElement('a');
+            const objectUrl = URL.createObjectURL(blob);
+            a.href = objectUrl;
+            a.download = filename || 'download';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(objectUrl);
+        })
+        .catch(err => alert('Lỗi tải file: ' + err.message));
 }
 
 
@@ -692,7 +692,7 @@ export function showPackageDetails(id) {
 
                 contentWrapper.innerHTML = `
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
-                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Quyết định phê duyệt danh sách nhà thầu đạt kỹ thuật</div>
+                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật <span class="text-danger">*</span></label>
@@ -707,7 +707,7 @@ export function showPackageDetails(id) {
                         </div>
                         ${!isReadOnly ? `
                         <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-                            <button class="btn btn-primary" id="btn-save-qualified-decision" style="padding: 8px 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu quyết định phê duyệt</button>
+                            <button class="btn btn-primary" id="btn-save-qualified-decision" style="padding: 8px 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
                         </div>` : ''}
                     </div>
 
@@ -778,7 +778,7 @@ export function showPackageDetails(id) {
                             this.model.persistData('goithau');
                             window.appController.autoSync();
 
-                            await this.customAlert('Thành công', 'Đã lưu Quyết định phê duyệt danh sách nhà thầu đạt kỹ thuật thành công!', 'check-circle');
+                            await this.customAlert('Thành công', 'Đã lưu QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật thành công!', 'check-circle');
                             this._currentWorkflowTab = 'opening_fin';
                             this.showPackageDetails(gt.id);
                         };
@@ -1105,11 +1105,11 @@ export function showPackageDetails(id) {
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--success);">${this.model.formatCurrency(savings)} (${savingsPct}%)</h5>
                             </div>
                             <div>
-                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Quyết định phê duyệt số</span>
+                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">QĐ phê duyệt số</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.soQuyetDinhKetQua || '--'}</h5>
                             </div>
                             <div>
-                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày ký quyết định</span>
+                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày ký QĐ</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.ngayQuyetDinhKetQua ? this.model.formatDate(gt.ngayQuyetDinhKetQua) : '--'}</h5>
                             </div>
                         </div>
@@ -1244,7 +1244,7 @@ export function showPackageDetails(id) {
                                 Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)
                             </h4>
                             <p class="text-muted" style="font-size:0.82rem; margin: 4px 0 0 0;">
-                                Vui lòng nhập quyết định phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.
+                                Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px;">
@@ -1260,14 +1260,14 @@ export function showPackageDetails(id) {
                     <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-card); display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
                         <div class="form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
                             <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
-                                <label style="font-weight:700; font-size:0.85rem;">Quyết định phê duyệt số <span class="required">*</span></label>
-                                <input type="text" id="award-decision-no" class="form-control" required value="${gt.soQuyetDinhKetQua || ''}" placeholder="Số quyết định...">
-                                <span class="error-text">Vui lòng nhập số quyết định</span>
+                                <label style="font-weight:700; font-size:0.85rem;">QĐ phê duyệt số <span class="required">*</span></label>
+                                <input type="text" id="award-decision-no" class="form-control" required value="${gt.soQuyetDinhKetQua || ''}" placeholder="Số QĐ...">
+                                <span class="error-text">Vui lòng nhập số QĐ</span>
                             </div>
                             <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
-                                <label style="font-weight:700; font-size:0.85rem;">Ngày ký quyết định <span class="required">*</span></label>
+                                <label style="font-weight:700; font-size:0.85rem;">Ngày ký QĐ <span class="required">*</span></label>
                                 <input type="text" id="award-decision-date" class="form-control flatpickr-dmy" required value="${gt.ngayQuyetDinhKetQua ? this.model.formatDate(gt.ngayQuyetDinhKetQua) : ''}" placeholder="Chọn ngày...">
-                                <span class="error-text">Vui lòng chọn ngày ký quyết định</span>
+                                <span class="error-text">Vui lòng chọn ngày ký QĐ</span>
                             </div>
                         </div>
                     </div>
@@ -1743,11 +1743,11 @@ export function renderPlanVersionDetails(versionId) {
                     <div class="detail-value">${kh.thoiGianDangMa ? this.model.formatDateWithTime(kh.thoiGianDangMa) : '--'}</div>
                 </div>
                 <div class="detail-item">
-                    <div class="detail-label">Số quyết định phê duyệt</div>
+                    <div class="detail-label">Số QĐ phê duyệt</div>
                     <div class="detail-value"><code>${kh.quyetDinhPheDuyet}</code></div>
                 </div>
                 <div class="detail-item">
-                    <div class="detail-label">Ngày quyết định phê duyệt</div>
+                    <div class="detail-label">Ngày QĐ phê duyệt</div>
                     <div class="detail-value">${this.model.formatDate(kh.ngayPheDuyet)}</div>
                 </div>
                 ${pheDuyetDetailHtml}
@@ -1814,7 +1814,7 @@ export function renderExcelPreview(rows, importType) {
         tenDuAnDuToan: 'Dự án / Dự toán',
         tongMucDauTu: 'Tổng mức đầu tư',
         ngayPheDuyet: 'Ngày phê duyệt',
-        quyetDinhPheDuyet: 'Quyết định phê duyệt',
+        quyetDinhPheDuyet: 'QĐ phê duyệt',
         thoiGianDangMa: 'Thời gian đăng mã',
 
         // goithau
@@ -1837,7 +1837,7 @@ export function renderExcelPreview(rows, importType) {
         soDienThoai: 'Điện thoại',
         email: 'Email',
         chucVuNguoiDungDau: 'Chức vụ người đứng đầu',
-        nguoiKyQuyetDinh: 'Người ký quyết định',
+        nguoiKyQuyetDinh: 'Người ký QĐ',
         chucVuNguoiKy: 'Chức vụ người ký',
         danhXung: 'Danh xưng',
         soTaiKhoan: 'Số tài khoản',

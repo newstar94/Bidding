@@ -16,6 +16,7 @@ export class BiddingView {
         this.fpThoiGianDang = null;
         this.fpNgayTrinhDuToan = null;
         this.fpNgayPheDuyetDuToan = null;
+        this.fpNgayTrinhKeHoach = null;
         this.fpNgayQdPheDuyetDuAn = null;
         this.fpNgayCapChungChi = null;
         this.fpNgayCapCCCD = null;
@@ -82,6 +83,9 @@ export class BiddingView {
                 locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
             });
             this.fpNgayPheDuyetDuToan = flatpickr("#kh-ngaypheduyetdutoan", {
+                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
+            });
+            this.fpNgayTrinhKeHoach = flatpickr("#kh-ngaytrinhkehoach", {
                 locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
             });
             this.fpNgayQdPheDuyetDuAn = flatpickr("#kh-ngayqdpheduyetduan", {
@@ -175,17 +179,17 @@ export class BiddingView {
             // Set icon and colors based on iconName
             iconEl.setAttribute('data-lucide', iconName);
             if (iconName === 'trash-2' || iconName === 'user-x' || iconName === 'log-out') {
-                iconContainer.style.background = 'rgba(239, 68, 68, 0.1)';
+                iconContainer.style.background = 'var(--danger-soft)';
                 iconContainer.style.color = 'var(--danger)';
                 okBtn.className = 'btn btn-primary bg-danger';
                 okBtn.style.background = 'var(--danger)';
                 okBtn.style.borderColor = 'var(--danger)';
-            } else if (iconName === 'alert-triangle' || iconName === 'alert-circle' || iconName === 'info' || iconName === 'help-circle') {
-                iconContainer.style.background = 'rgba(245, 158, 11, 0.1)';
-                iconContainer.style.color = '#f59e0b';
-                okBtn.className = 'btn btn-primary';
-                okBtn.style.background = '#f59e0b';
-                okBtn.style.borderColor = '#f59e0b';
+            } else if (iconName === 'alert-triangle' || iconName === 'alert-circle' || iconName === 'info' || iconName === 'help-circle' || iconName === 'save') {
+                iconContainer.style.background = 'var(--warning-soft)';
+                iconContainer.style.color = 'var(--warning)';
+                okBtn.className = 'btn btn-primary bg-warning';
+                okBtn.style.background = 'var(--warning)';
+                okBtn.style.borderColor = 'var(--warning)';
             } else {
                 iconContainer.style.background = 'rgba(59, 130, 246, 0.1)';
                 iconContainer.style.color = 'var(--primary)';
@@ -288,14 +292,14 @@ export class BiddingView {
                 okBtn.className = 'btn btn-primary';
                 okBtn.style.background = '';
                 okBtn.style.borderColor = '';
-            } else if (iconName === 'alert-triangle' || iconName === 'alert-circle' || iconName === 'info') {
-                iconContainer.style.background = 'rgba(245, 158, 11, 0.1)';
-                iconContainer.style.color = '#f59e0b';
-                okBtn.className = 'btn btn-primary';
-                okBtn.style.background = '#f59e0b';
-                okBtn.style.borderColor = '#f59e0b';
-            } else if (iconName === 'x-circle') {
-                iconContainer.style.background = 'rgba(239, 68, 68, 0.1)';
+            } else if (iconName === 'alert-triangle' || iconName === 'alert-circle' || iconName === 'info' || iconName === 'save') {
+                iconContainer.style.background = 'var(--warning-soft)';
+                iconContainer.style.color = 'var(--warning)';
+                okBtn.className = 'btn btn-primary bg-warning';
+                okBtn.style.background = 'var(--warning)';
+                okBtn.style.borderColor = 'var(--warning)';
+            } else if (iconName === 'x-circle' || iconName === 'trash-2' || iconName === 'user-x' || iconName === 'log-out') {
+                iconContainer.style.background = 'var(--danger-soft)';
                 iconContainer.style.color = 'var(--danger)';
                 okBtn.className = 'btn btn-primary bg-danger';
                 okBtn.style.background = 'var(--danger)';

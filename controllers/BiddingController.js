@@ -2,7 +2,7 @@
    BiddingFlow - Controller (Events, Interaction & Business logic dispatching)
    ========================================================================== */
 
-import { BiddingModel } from '/models/BiddingModel.js?v=5.8';
+// BiddingModel được inject qua constructor(model, view) — không import trực tiếp
 import * as Auth from '/controllers/AuthController.js?v=5.8';
 import * as Admin from '/controllers/AdminUserController.js?v=5.8';
 import * as Bidding from '/controllers/BiddingWorkflowController.js?v=5.8';
@@ -66,7 +66,7 @@ export class BiddingController {
                     ...(activeOrg && { 'X-Active-Org': encodeURIComponent(activeOrg) })
                 };
             }
-            
+
             if (typeof url === 'string' && url.includes('/api/sync') && options.method === 'POST') {
                 try {
                     let bodyObj = {};
@@ -80,13 +80,13 @@ export class BiddingController {
                     console.error("Failed to inject local deletions to sync request", e);
                 }
             }
-            
+
             const response = await originalFetch(url, options);
-            
+
             if (response.ok && typeof url === 'string' && url.includes('/api/sync') && options.method === 'POST') {
                 localStorage.setItem('bf_local_deletions', '[]');
             }
-            
+
             // Nếu phản hồi là 403 hoặc 401 và không phải là yêu cầu đăng nhập/kiểm tra phiên
             if ((response.status === 403 || response.status === 401) && typeof url === 'string' && url.startsWith('/api/') && !url.includes('/api/auth/login') && !url.includes('/api/auth/check-session')) {
                 // Phiên làm việc hết hạn hoặc không hợp lệ -> Chuyển về màn hình đăng nhập ngay lập tức
@@ -103,7 +103,7 @@ export class BiddingController {
                     if (formForgot) formForgot.style.display = 'none';
                 }
             }
-            
+
             return response;
         };
 
@@ -139,7 +139,7 @@ export class BiddingController {
             localStorage.setItem('bf_last_sync_timestamp', '0');
             if (this.model.db && this.model.db.stores) {
                 this.model.db.stores.forEach(storeName => {
-                    this.model.db.putTableData(storeName, []).catch(() => {});
+                    this.model.db.putTableData(storeName, []).catch(() => { });
                 });
             }
             localStorage.setItem('bf_id_prefix_cleaned_v2', 'true');
@@ -276,6 +276,22 @@ export class BiddingController {
             this.view.renderNhaThauTable();
         };
 
+        window.changeChuyenGiaRowVersion = (root, selectedId) => {
+            if (!this.model.state.selectedChuyenGiaVersion) {
+                this.model.state.selectedChuyenGiaVersion = {};
+            }
+            this.model.state.selectedChuyenGiaVersion[root] = selectedId;
+            this.view.renderChuyenGiaTable();
+        };
+
+        window.changeHopDongRowVersion = (root, selectedId) => {
+            if (!this.model.state.selectedHopDongVersion) {
+                this.model.state.selectedHopDongVersion = {};
+            }
+            this.model.state.selectedHopDongVersion[root] = selectedId;
+            this.view.renderHopDongTable();
+        };
+
         window.showPackageDetails = (id) => this.view.showPackageDetails(id);
         window.showKeHoachDetails = (id) => this.view.showKeHoachDetails(id);
         window.showChuyenGiaDetails = (id) => this.view.showChuyenGiaDetails(id);
@@ -326,10 +342,10 @@ export class BiddingController {
 
         window.editHopDong = (id) => this.editHopDong(id);
         window.deleteHopDong = (id) => this.deleteHopDong(id);
-        
+
         window.exportContractFromHopDong = (pkgId, soHopDong) => {
             const dbId = pkgId;
-            
+
             // Show dynamic loading indicator if available
             const btn = document.querySelector(`button[onclick*="${pkgId}"][onclick*="${soHopDong}"]`);
             const origHTML = btn ? btn.innerHTML : '';
@@ -348,34 +364,35 @@ export class BiddingController {
                     hopdong: this.model.state.hopdong
                 })
             })
-            .then(s => {
-                if (!s.ok) throw new Error('Không thể đồng bộ dữ liệu');
-                return fetch(`/api/export-report/${dbId}?type=contract`);
-            })
-            .then(r => {
-                if (!r.ok) throw new Error('Không thể xuất hợp đồng');
-                return r.blob();
-            })
-            .then(b => {
-                const url = window.URL.createObjectURL(b);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Hop_dong_${soHopDong || 'LCNT'}.docx`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-            })
-            .catch(err => {
-                alert('Lỗi xuất hợp đồng: ' + err.message);
-            })
-            .finally(() => {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = origHTML;
-                    lucide.createIcons({ root: btn });
-                }
-            });
+                .then(s => {
+                    if (!s.ok) throw new Error('Không thể đồng bộ dữ liệu');
+                    return fetch(`/api/export-report/${dbId}?type=contract`);
+                })
+                .then(r => {
+                    if (!r.ok) throw new Error('Không thể xuất hợp đồng');
+                    return r.blob();
+                })
+                .then(b => {
+                    const url = window.URL.createObjectURL(b);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Hop_dong_${soHopDong || 'LCNT'}.docx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(err => {
+                    // Dùng customAlert thay vì alert() — styled, non-blocking
+                    this.view.customAlert('Lỗi xuất hợp đồng', err.message, 'x-circle');
+                })
+                .finally(() => {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = origHTML;
+                        lucide.createIcons({ root: btn });
+                    }
+                });
         };
 
         window.addJointVentureMemberCard = (data) => this.addJointVentureMemberCard(data);
@@ -456,7 +473,7 @@ export class BiddingController {
             const tabKey = containerId.split('-')[0];
             this.model.currentPage[tabKey] = pageNum;
             this.model.savePage(tabKey);  // Lưu vào sessionStorage để F5 không mất trang
-            
+
             // Re-render
             if (tabKey === 'kehoach') this.view.renderKeHoachTable();
             else if (tabKey === 'goithau') this.view.renderGoiThauTable();
@@ -565,7 +582,7 @@ export class BiddingController {
     handlePathRouting(pathname, updateState = true, isInit = false) {
         const cleanPath = pathname.startsWith('/') ? pathname.substring(1) : pathname;
         const parts = cleanPath.split('/').filter(Boolean);
-        
+
         // Dịch URL Kebab-Case sang TabName nội bộ
         const urlTab = parts[0] || '';
         let tabName = '';
@@ -578,7 +595,7 @@ export class BiddingController {
         if (!tabName) {
             tabName = this.model.state.activerole === 'super_admin' ? 'superadmin-dashboard' : 'dashboard';
         }
-        
+
         let action = parts[1] || null;
         let urlAction = parts[1] || null;
         if (!action && urlAction) {
@@ -587,7 +604,7 @@ export class BiddingController {
 
         // Map package code back to internal ID if we are on package detail page
         if (tabName === 'goithau-detail' && action) {
-            const gt = this.model.state.goithau.find(g => 
+            const gt = this.model.state.goithau.find(g =>
                 (g.maGoiThau && g.maGoiThau.toLowerCase() === action.toLowerCase()) ||
                 (g.id && g.id.toLowerCase() === action.toLowerCase())
             );
@@ -1362,7 +1379,7 @@ export class BiddingController {
             if (planSelect) planSelect.disabled = false;
         }
         this.view.closeModal(modalId);
-        
+
         // Sync URL when modal closes
         if (modalId === 'modal-kehoach') {
             this.switchTab('kehoach', null, true);
@@ -1382,50 +1399,50 @@ export class BiddingController {
     autoSync() {
         return fetch('/api/sync', {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'X-Session-Token': localStorage.getItem('bf_session_token') || '',
                 'X-Username': localStorage.getItem('bf_username') || ''
             },
             body: JSON.stringify(this.model.state)
         })
-        .then(res => {
-            if (res.ok) {
-                return res.json();
-            }
-            throw new Error("Sync failed");
-        })
-        .then(data => {
-            if (data.timestamp) {
-                localStorage.setItem('bf_last_sync_timestamp', data.timestamp);
-            }
-            // Xóa các record mồ côi (parent đã bị xóa trên server) khỏi local state
-            if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
-                let stateChanged = false;
-                for (const orphan of data.orphanedIds) {
-                    const { table, id } = orphan;
-                    // Map table_name -> state key
-                    const tableToStateKey = {
-                        'thong_tin_mo_thau': 'thongtinmothau',
-                        'phan_cong_nhan_su': 'assignments',
-                        'hop_dong_goi_thau': null, // junction table, no direct state key
-                    };
-                    const stateKey = tableToStateKey.hasOwnProperty(table) ? tableToStateKey[table] : table;
-                    if (stateKey && Array.isArray(this.model.state[stateKey])) {
-                        const before = this.model.state[stateKey].length;
-                        this.model.state[stateKey] = this.model.state[stateKey].filter(item => String(item.id) !== String(id));
-                        if (this.model.state[stateKey].length < before) {
-                            this.model.persistData(stateKey);
-                            stateChanged = true;
+            .then(res => {
+                if (res.ok) {
+                    return res.json();
+                }
+                throw new Error("Sync failed");
+            })
+            .then(data => {
+                if (data.timestamp) {
+                    localStorage.setItem('bf_last_sync_timestamp', data.timestamp);
+                }
+                // Xóa các record mồ côi (parent đã bị xóa trên server) khỏi local state
+                if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
+                    let stateChanged = false;
+                    for (const orphan of data.orphanedIds) {
+                        const { table, id } = orphan;
+                        // Map table_name -> state key
+                        const tableToStateKey = {
+                            'thong_tin_mo_thau': 'thongtinmothau',
+                            'phan_cong_nhan_su': 'assignments',
+                            'hop_dong_goi_thau': null, // junction table, no direct state key
+                        };
+                        const stateKey = tableToStateKey.hasOwnProperty(table) ? tableToStateKey[table] : table;
+                        if (stateKey && Array.isArray(this.model.state[stateKey])) {
+                            const before = this.model.state[stateKey].length;
+                            this.model.state[stateKey] = this.model.state[stateKey].filter(item => String(item.id) !== String(id));
+                            if (this.model.state[stateKey].length < before) {
+                                this.model.persistData(stateKey);
+                                stateChanged = true;
+                            }
                         }
                     }
+                    if (stateChanged) {
+                        console.info(`[Sync] Đã xóa ${data.orphanedIds.length} record mồ côi khỏi IndexedDB:`, data.orphanedIds);
+                    }
                 }
-                if (stateChanged) {
-                    console.info(`[Sync] Đã xóa ${data.orphanedIds.length} record mồ côi khỏi IndexedDB:`, data.orphanedIds);
-                }
-            }
-        })
-        .catch(err => console.error("Error auto sync:", err));
+            })
+            .catch(err => console.error("Error auto sync:", err));
     }
 
 
@@ -1561,8 +1578,8 @@ export class BiddingController {
         }
 
         const fields = [
-            { id: 'gt-soquyetdinh', required: true, label: 'Số quyết định phê duyệt' },
-            { id: 'gt-ngayquyetdinh', required: true, label: 'Ngày quyết định phê duyệt' },
+            { id: 'gt-soquyetdinh', required: true, label: 'Số QĐ phê duyệt' },
+            { id: 'gt-ngayquyetdinh', required: true, label: 'Ngày QĐ phê duyệt' },
             { id: 'gt-thoigiandangtai', required: true, label: 'Thời gian đăng tải thông báo' },
             { id: 'gt-thoigiandongthau', required: true, label: 'Thời gian đóng thầu' },
             { id: 'gt-thoigianmothau', required: (trangThai === 'Đã mở thầu' || trangThai === 'Đang chấm thầu' || trangThai === 'Đã có kết quả' || trangThai === 'Hủy thầu'), label: 'Thời gian mở thầu' }
@@ -1771,7 +1788,7 @@ export class BiddingController {
                     if (ten) {
                         currentInputsMap[ten] = {
                             nhaThauTrungThauId: tr.querySelector('.awarded-pl-nhathau')?.value || '',
-                            giaTrungThau: this.model.parseVND(tr.querySelector('.awarded-pl-gia')?.value || '0'),
+                            giaTrungThau: this.model.parseVND(tr.querySelector('.awarded-pl-gia')?.value || ''),
                             thoiGianGoiThau: tr.querySelector('.awarded-pl-tggoithau')?.value || '',
                             thoiGianHopDong: tr.querySelector('.awarded-pl-tghopdong')?.value || ''
                         };
@@ -1864,7 +1881,7 @@ export class BiddingController {
 
             const tenPhanLo = cells[0].textContent;
             const nhaThauTrungThauId = tr.querySelector('.awarded-pl-nhathau')?.value || '';
-            const giaTrungThau = this.model.parseVND(tr.querySelector('.awarded-pl-gia')?.value || '0');
+            const giaTrungThau = this.model.parseVND(tr.querySelector('.awarded-pl-gia')?.value || '');
             const thoiGianGoiThau = tr.querySelector('.awarded-pl-tggoithau')?.value.trim() || '';
             const thoiGianHopDong = tr.querySelector('.awarded-pl-tghopdong')?.value.trim() || '';
 
@@ -1899,7 +1916,7 @@ export class BiddingController {
             });
             if (response.ok) {
                 const dbData = await response.json();
-                
+
                 this.model.useServerSidePagination = !!dbData.useServerSidePagination;
 
                 if (since === '0' || dbData.useServerSidePagination) {
@@ -1951,7 +1968,7 @@ export class BiddingController {
                     localStorage.setItem('bf_last_sync_timestamp', dbData.timestamp.toString());
                 }
                 localStorage.setItem('bf_last_fetch_time', Date.now().toString());
-                
+
                 if (!isBackground) {
                     // Trigger immediate UI updates
                     this.view.renderDashboard();
@@ -1978,7 +1995,7 @@ export class BiddingController {
         } catch (err) {
             console.error("Failed to sync data from SQLite:", err);
             if (syncStatusText) syncStatusText.textContent = 'Lỗi đồng bộ';
-            
+
             const banner = document.getElementById('offline-indicator-banner');
             if (banner) {
                 banner.innerHTML = `<i data-lucide="alert-triangle"></i> Lỗi đồng bộ. Máy chủ không phản hồi.`;
@@ -2020,7 +2037,7 @@ export class BiddingController {
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/sync`;
-        
+
         console.log("Connecting to WebSocket sync server:", wsUrl);
         const ws = new WebSocket(wsUrl);
         this.ws = ws;

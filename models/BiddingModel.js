@@ -368,11 +368,8 @@ export class BiddingModel {
             this.state.activeuser = { name: 'Admin', title: 'Hệ thống', id: 'sa-1' };
         }
 
-        // Save active states safely
-        try {
-            await this.db.set(this.STORAGE_KEYS.ACTIVEROLE, this.state.activerole);
-            await this.db.set(this.STORAGE_KEYS.ACTIVEUSER, this.state.activeuser);
-        } catch (e) {}
+        // Session state (ACTIVEROLE, ACTIVEUSER) chỉ lưu trong localStorage (nhanh hơn và không cần offline persistence)
+        // IDB fallback vẫn được giữ phía trên để tương thích ngược với user cũ
     }
 
 
@@ -494,10 +491,7 @@ export class BiddingModel {
 
         localStorage.setItem(this.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.state.activerole));
         localStorage.setItem(this.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.state.activeuser));
-        if (this.db) {
-            this.db.set(this.STORAGE_KEYS.ACTIVEROLE, this.state.activerole).catch(() => {});
-            this.db.set(this.STORAGE_KEYS.ACTIVEUSER, this.state.activeuser).catch(() => {});
-        }
+        // Không ghi vào IndexedDB cho session data — localStorage đủ và nhanh hơn
     }
 
     clearSessionData() {
@@ -643,7 +637,7 @@ export class BiddingModel {
 
     // --- Format Utilities ---
     formatCurrency(value) {
-        if (value === null || value === undefined || isNaN(value)) return '0 VND';
+        if (value === null || value === undefined || value === '' || isNaN(value)) return '--';
         const hasFraction = value % 1 !== 0;
         const fixedValue = hasFraction ? value.toFixed(2) : value.toFixed(0);
         const parts = fixedValue.split('.');
@@ -685,15 +679,15 @@ export class BiddingModel {
     }
 
     parseVND(value) {
-        if (value === null || value === undefined) return 0;
+        if (value === null || value === undefined) return null;
         let str = value.toString().trim();
-        if (!str) return 0;
+        if (!str) return null;
         // Strip dots (thousands separator in vi-VN)
         str = str.replace(/\./g, '');
         // Replace comma with dot (decimal separator in vi-VN)
         str = str.replace(/,/g, '.');
         const parsed = parseFloat(str);
-        return isNaN(parsed) ? 0 : parsed;
+        return isNaN(parsed) ? null : parsed;
     }
 
     formatDate(dateStr) {
@@ -828,6 +822,16 @@ export class BiddingModel {
         return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
     }
 
+    getChuyenGiaVersionLabel(phienBan) {
+        const verNum = parseInt(phienBan) || 0;
+        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
+    }
+
+    getHopDongVersionLabel(phienBan) {
+        const verNum = parseInt(phienBan) || 0;
+        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
+    }
+
     getLatestChuDauTu() {
         const chudautuList = Array.isArray(this.state.chudautu) ? this.state.chudautu : [];
         const latest = chudautuList.filter(c => c.isLatest == 1);
@@ -859,6 +863,44 @@ export class BiddingModel {
             if (!latestMap[root] || verNum > latestMap[root].version) {
                 latestMap[root] = {
                     item: n,
+                    version: verNum
+                };
+            }
+        });
+        return Object.values(latestMap).map(item => item.item);
+    }
+
+    getLatestChuyenGia() {
+        const chuyengiaList = Array.isArray(this.state.chuyengia) ? this.state.chuyengia : [];
+        const latest = chuyengiaList.filter(c => c.isLatest == 1 || c.is_latest == 1);
+        if (latest.length > 0) return latest;
+        const latestMap = {};
+        chuyengiaList.forEach(c => {
+            const root = c.rootId || c.id;
+            const verNum = parseInt(c.phienBan || c.phien_ban) || 0;
+
+            if (!latestMap[root] || verNum > latestMap[root].version) {
+                latestMap[root] = {
+                    item: c,
+                    version: verNum
+                };
+            }
+        });
+        return Object.values(latestMap).map(item => item.item);
+    }
+
+    getLatestHopDong() {
+        const allContracts = this.getFilteredHopDong();
+        const latest = allContracts.filter(h => h.isLatest == 1 || h.is_latest == 1);
+        if (latest.length > 0) return latest;
+        const latestMap = {};
+        allContracts.forEach(h => {
+            const root = h.rootId || h.id;
+            const verNum = parseInt(h.phienBan || h.phien_ban) || 0;
+
+            if (!latestMap[root] || verNum > latestMap[root].version) {
+                latestMap[root] = {
+                    item: h,
                     version: verNum
                 };
             }

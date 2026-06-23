@@ -19,7 +19,8 @@ from helpers import (
     get_effective_roles,
     gui_email,
     log_error,
-    _session_cache_invalidate
+    _session_cache_invalidate,
+    _session_cache_invalidate_by_user_id
 )
 
 # ==========================================
@@ -336,7 +337,7 @@ async def login_api(request):
             
         # Generate new active session token (uuid) to log out other devices
         session_token = str(uuid.uuid4())
-        token_expiry = (datetime.utcnow() + timedelta(hours=24)).isoformat()
+        token_expiry = int((datetime.utcnow() + timedelta(hours=24)).timestamp())  # Unix timestamp
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
             "ip": request.client.host,
@@ -395,8 +396,9 @@ async def check_session_api(request):
             
         if user.get('han_su_dung_token'):
             try:
-                expiry = datetime.fromisoformat(user['han_su_dung_token'])
-                if datetime.utcnow() > expiry:
+                # So sánh Unix timestamp (số nguyên) thay vì ISO string
+                import time as _time
+                if _time.time() > float(user['han_su_dung_token']):
                     return JSONResponse({"valid": False, "reason": "token_expired"})
             except Exception:
                 pass
@@ -697,6 +699,8 @@ async def update_user_role_api(request):
         cursor.execute("UPDATE tai_khoan SET vai_tro = ? WHERE id = ?", (normalized_role, user_id))
         conn.commit()
         conn.close()
+        # Invalidate session cache ngay lập tức để quyền hạn có hiệu lực tức thời
+        _session_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật vai trò người dùng thành công!"})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -714,16 +718,21 @@ async def update_user_package_api(request):
         if not user_id or new_package is None:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
             
-        pkgs = new_package.split(',')
-        for p in pkgs:
-            if p not in ['silver', 'gold', 'diamond', 'none', '']:
-                return JSONResponse({"error": "Gói đăng ký không hợp lệ!"}, status_code=400)
-            
+        pkgs = [p.strip() for p in new_package.split(',')]
         conn = database.get_connection()
         cursor = conn.cursor()
+        # Lấy danh sách gói hợp lệ từ DB thay vì hardcode
+        cursor.execute("SELECT id FROM goi_dich_vu")
+        valid_pkg_ids = {row['id'] for row in cursor.fetchall()} | {'none', ''}
+        for p in pkgs:
+            if p and p not in valid_pkg_ids:
+                conn.close()
+                return JSONResponse({"error": "Gói đăng ký không hợp lệ!"}, status_code=400)
         cursor.execute("UPDATE tai_khoan SET goi_dich_vu_id = ? WHERE id = ?", (new_package, user_id))
         conn.commit()
         conn.close()
+        # Invalidate session cache ngay lập tức để thay đổi gói có hiệu lực tức thời
+        _session_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật gói đăng ký thành công!"})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

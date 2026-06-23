@@ -60,6 +60,20 @@ def _session_cache_invalidate(token: str):
     with _session_cache_lock:
         _session_cache.pop(token, None)
 
+def _session_cache_invalidate_by_user_id(user_id: str):
+    """
+    Xoá cache của tất cả session thuộc về user_id.
+    Gọi khi vai trò hoặc gói dịch vụ của user bị thay đổi,
+    để hiệu lực ngay lập tức thay vì chờ TTL 60 giây hết hạn.
+    """
+    with _session_cache_lock:
+        to_delete = [
+            token for token, (user_dict, _) in _session_cache.items()
+            if user_dict.get('id') == user_id
+        ]
+        for token in to_delete:
+            del _session_cache[token]
+
 def _session_cache_cleanup():
     """Dọn dẹp các session hết hạn khỏi cache. Gọi định kỳ mỗi 5 phút."""
     now = time.time()
@@ -106,8 +120,8 @@ def verify_session(request, required_role=None):
 
     if user.get('han_su_dung_token'):
         try:
-            expiry = datetime.fromisoformat(user['han_su_dung_token'])
-            if datetime.utcnow() > expiry:
+            import time as _time
+            if _time.time() > float(user['han_su_dung_token']):
                 _session_cache_invalidate(token)
                 return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
         except Exception:

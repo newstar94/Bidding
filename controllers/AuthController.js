@@ -124,9 +124,6 @@ export function startBackgroundSessionChecker() {
                     if (activeuser.organization_name !== (data.user.organization_name || '')) { activeuser.organization_name = data.user.organization_name || ''; hasChanges = true; }
                     if (hasChanges) {
                         localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(activeuser));
-                        if (this.model.db) {
-                            this.model.db.set(this.model.STORAGE_KEYS.ACTIVEUSER, activeuser).catch(() => {});
-                        }
                         this.view.updateActiveUserProfileDisplay();
                         if (typeof this.renderWorkspaceSwitcher === 'function') {
                             this.renderWorkspaceSwitcher();
@@ -196,9 +193,6 @@ export function setupAuth() {
                     this.model.state.activeuser.title = title;
 
                     localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
-                    if (this.model.db) {
-                        this.model.db.set(this.model.STORAGE_KEYS.ACTIVEUSER, this.model.state.activeuser).catch(() => {});
-                    }
                 }
 
                 // Hide Auth overlay
@@ -369,9 +363,6 @@ export function setupAuth() {
             this.model.state.activeuser.package_id = data.package_id || 'none';
             this.model.state.activeuser.organization_name = data.organization_name || '';
             localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
-            if (this.model.db) {
-                this.model.db.set(this.model.STORAGE_KEYS.ACTIVEUSER, this.model.state.activeuser).catch(() => {});
-            }
 
             // Hide Auth overlay
             overlay.style.display = 'none';

@@ -634,6 +634,22 @@ export function editChuyenGia(id) {
             previewContainerChuky.style.display = 'none';
             uploadZoneChuky.style.display = 'flex';
         }
+        // Setup version history dropdown
+        const verSelect = document.getElementById('cg-version-select');
+        const verContainer = document.getElementById('cg-version-select-container');
+        if (verSelect && verContainer) {
+            verContainer.style.display = 'flex';
+            const rootId = cg.rootId || cg.id;
+            const versions = this.model.state.chuyengia.filter(c => c.rootId === rootId || c.id === rootId);
+            versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
+            verSelect.innerHTML = versions.map(v => {
+                const label = this.model.getChuyenGiaVersionLabel(v.phienBan || v.phien_ban || '00');
+                return `<option value="${v.id}" ${v.id === cg.id ? 'selected' : ''}>${label}</option>`;
+            }).join('');
+            verSelect.onchange = (e) => {
+                this.editChuyenGia(e.target.value);
+            };
+        }
     } else {
         this.switchTab('chuyengia', 'taomoi', true);
         document.getElementById('modal-chuyengia-title').textContent = 'Thêm Chuyên gia mới';
@@ -652,11 +668,16 @@ export function editChuyenGia(id) {
         previewImgChuky.src = '';
         previewContainerChuky.style.display = 'none';
         uploadZoneChuky.style.display = 'flex';
+
+        const verContainer = document.getElementById('cg-version-select-container');
+        if (verContainer) {
+            verContainer.style.display = 'none';
+        }
     }
     this.view.openModal('modal-chuyengia');
 }
 
-export function handleChuyenGiaSubmit(e) {
+export async function handleChuyenGiaSubmit(e) {
     e.preventDefault();
     const form = document.getElementById('form-chuyengia');
     const cccdVal = document.getElementById('cg-socccd').value.trim();
@@ -746,8 +767,7 @@ export function handleChuyenGiaSubmit(e) {
     const certExt = this.model.getFileExtensionFromBase64(this.tempChuyenGiaImageBase64);
     const sigExt = this.model.getFileExtensionFromBase64(this.tempChuyenGiaSignatureBase64);
 
-    const data = {
-        id: id || window.generateUUID(),
+    let data = {
         hoTen: document.getElementById('cg-hoten').value.trim(),
 
         soCCCD: cccdVal,
@@ -765,9 +785,57 @@ export function handleChuyenGiaSubmit(e) {
     };
 
     if (id) {
-        const idx = this.model.state.chuyengia.findIndex(c => c.id === id);
-        this.model.state.chuyengia[idx] = data;
+        const currentCg = this.model.state.chuyengia.find(c => c.id === id);
+        const rootId = currentCg.rootId || currentCg.id;
+        const versions = this.model.state.chuyengia.filter(c => c.rootId === rootId || c.id === rootId);
+        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || v.phien_ban || 0)));
+        const nextVerStr = String(maxVerNum + 1).padStart(2, '0');
+
+        const isNewVersion = await this.view.customConfirm(
+            'Lưu Chuyên gia',
+            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCg.phienBan || currentCg.phien_ban || 0)})`,
+            'save'
+        );
+
+        if (isNewVersion) {
+            versions.forEach(c => { c.isLatest = 0; c.is_latest = 0; });
+            data.id = window.generateUUID();
+            data.rootId = rootId;
+            data.phienBan = nextVerStr;
+            data.phien_ban = nextVerStr;
+            data.isLatest = 1;
+            data.is_latest = 1;
+            data.createdAt = currentCg.createdAt || Math.floor(Date.now() / 1000);
+            data.created_at = data.createdAt;
+            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updated_at = data.updatedAt;
+            this.model.state.chuyengia.push(data);
+        } else {
+            data.id = id;
+            data.rootId = currentCg.rootId || currentCg.id;
+            data.phienBan = currentCg.phienBan || currentCg.phien_ban || '00';
+            data.phien_ban = currentCg.phienBan || currentCg.phien_ban || '00';
+            data.isLatest = currentCg.isLatest !== undefined ? currentCg.isLatest : 1;
+            data.is_latest = currentCg.is_latest !== undefined ? currentCg.is_latest : 1;
+            data.createdAt = currentCg.createdAt || Math.floor(Date.now() / 1000);
+            data.created_at = data.createdAt;
+            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updated_at = data.updatedAt;
+            const idx = this.model.state.chuyengia.findIndex(c => c.id === id);
+            this.model.state.chuyengia[idx] = data;
+        }
     } else {
+        const newId = window.generateUUID();
+        data.id = newId;
+        data.rootId = newId;
+        data.phienBan = '00';
+        data.phien_ban = '00';
+        data.isLatest = 1;
+        data.is_latest = 1;
+        data.createdAt = Math.floor(Date.now() / 1000);
+        data.created_at = data.createdAt;
+        data.updatedAt = Math.floor(Date.now() / 1000);
+        data.updated_at = data.updatedAt;
         this.model.state.chuyengia.push(data);
     }
 
@@ -1045,8 +1113,6 @@ export function editHopDong(id) {
             document.getElementById('hd-loai').value = hd.loaiHopDong || 'Trọn gói';
             document.getElementById('hd-songay').value = hd.soNgayThucHien || '';
 
-
-
             // Set Trạng thái hồ sơ giấy value
             if (statusSelect) {
                 statusSelect.value = hd.trangThaiHoSo || '';
@@ -1056,6 +1122,23 @@ export function editHopDong(id) {
             checkboxes.forEach(cb => {
                 cb.checked = (hd.goiThauIds || []).includes(cb.value);
             });
+
+            // Setup version history dropdown
+            const verSelect = document.getElementById('hd-version-select');
+            const verContainer = document.getElementById('hd-version-select-container');
+            if (verSelect && verContainer) {
+                verContainer.style.display = 'flex';
+                const rootId = hd.rootId || hd.id;
+                const versions = this.model.state.hopdong.filter(h => h.rootId === rootId || h.id === rootId);
+                versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
+                verSelect.innerHTML = versions.map(v => {
+                    const label = this.model.getHopDongVersionLabel(v.phienBan || v.phien_ban || '00');
+                    return `<option value="${v.id}" ${v.id === hd.id ? 'selected' : ''}>${label}</option>`;
+                }).join('');
+                verSelect.onchange = (e) => {
+                    this.editHopDong(e.target.value);
+                };
+            }
         } else {
             this.switchTab('hopdong', 'taomoi', true);
             document.getElementById('modal-hopdong-title').textContent = 'Thêm Hợp đồng mới';
@@ -1071,6 +1154,11 @@ export function editHopDong(id) {
             ntSelect.value = '';
             ntSelect.dispatchEvent(new Event('change'));
             handleNtChange('');
+
+            const verContainer = document.getElementById('hd-version-select-container');
+            if (verContainer) {
+                verContainer.style.display = 'none';
+            }
         }
 
         if (this.model.state.activerole === 'employee') {
@@ -1094,7 +1182,7 @@ export function editHopDong(id) {
     }
 }
 
-export function handleHopDongSubmit(e) {
+export async function handleHopDongSubmit(e) {
     e.preventDefault();
     const form = document.getElementById('form-hopdong');
     if (!this.view.validateForm(form)) return;
@@ -1147,14 +1235,73 @@ export function handleHopDongSubmit(e) {
     let finalHdId = id;
     const assignedEmpId = document.getElementById('hd-nhanvienphutrach').value;
 
+    let data = {
+        tenHopDong,
+        soHopDong,
+        ngayKy,
+        chuDauTuId,
+        nhaThauId,
+        giaTri,
+        loaiHopDong,
+        soNgayThucHien,
+        goiThauIds,
+        trangThaiHoSo
+    };
+
     if (id) {
-        const idx = this.model.state.hopdong.findIndex(h => h.id === id);
-        if (idx !== -1) {
-            this.model.state.hopdong[idx] = { id, tenHopDong, soHopDong, ngayKy, chuDauTuId, nhaThauId, giaTri, loaiHopDong, soNgayThucHien, goiThauIds, trangThaiHoSo };
+        const currentHd = this.model.state.hopdong.find(h => h.id === id);
+        const rootId = currentHd.rootId || currentHd.id;
+        const versions = this.model.state.hopdong.filter(h => h.rootId === rootId || h.id === rootId);
+        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || v.phien_ban || 0)));
+        const nextVerStr = String(maxVerNum + 1).padStart(2, '0');
+
+        const isNewVersion = await this.view.customConfirm(
+            'Lưu Hợp đồng',
+            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentHd.phienBan || currentHd.phien_ban || 0)})`,
+            'save'
+        );
+
+        if (isNewVersion) {
+            versions.forEach(h => { h.isLatest = 0; h.is_latest = 0; });
+            data.id = window.generateUUID();
+            data.rootId = rootId;
+            data.phienBan = nextVerStr;
+            data.phien_ban = nextVerStr;
+            data.isLatest = 1;
+            data.is_latest = 1;
+            data.createdAt = currentHd.createdAt || Math.floor(Date.now() / 1000);
+            data.created_at = data.createdAt;
+            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updated_at = data.updatedAt;
+            this.model.state.hopdong.push(data);
+            finalHdId = data.id;
+        } else {
+            data.id = id;
+            data.rootId = currentHd.rootId || currentHd.id;
+            data.phienBan = currentHd.phienBan || currentHd.phien_ban || '00';
+            data.phien_ban = currentHd.phienBan || currentHd.phien_ban || '00';
+            data.isLatest = currentHd.isLatest !== undefined ? currentHd.isLatest : 1;
+            data.is_latest = currentHd.is_latest !== undefined ? currentHd.is_latest : 1;
+            data.createdAt = currentHd.createdAt || Math.floor(Date.now() / 1000);
+            data.created_at = data.createdAt;
+            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updated_at = data.updatedAt;
+            const idx = this.model.state.hopdong.findIndex(h => h.id === id);
+            this.model.state.hopdong[idx] = data;
         }
     } else {
         const newId = window.generateUUID();
-        this.model.state.hopdong.push({ id: newId, tenHopDong, soHopDong, ngayKy, chuDauTuId, nhaThauId, giaTri, loaiHopDong, soNgayThucHien, goiThauIds, trangThaiHoSo });
+        data.id = newId;
+        data.rootId = newId;
+        data.phienBan = '00';
+        data.phien_ban = '00';
+        data.isLatest = 1;
+        data.is_latest = 1;
+        data.createdAt = Math.floor(Date.now() / 1000);
+        data.created_at = data.createdAt;
+        data.updatedAt = Math.floor(Date.now() / 1000);
+        data.updated_at = data.updatedAt;
+        this.model.state.hopdong.push(data);
         finalHdId = newId;
     }
 
