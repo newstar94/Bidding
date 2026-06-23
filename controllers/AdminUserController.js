@@ -15,7 +15,7 @@ export async function loadSystemUsers() {
         const res = await fetch('/api/auth/users');
         if (res.ok) {
             const users = await res.json();
-            const currentUsername = localStorage.getItem('bf_username');
+            const currentUsername = sessionStorage.getItem('bf_username');
             this.view.renderSystemUsersTable(users, currentUsername);
         }
     } catch (err) {
@@ -109,7 +109,7 @@ export async function toggleUserPackage(userId, packageId, isChecked) {
             await this.reloadEmployeesFromDatabase();
 
             // If SA dashboard is active, reload SA table
-            const currentUsername = localStorage.getItem('bf_username');
+            const currentUsername = sessionStorage.getItem('bf_username');
             fetch('/api/auth/users')
                 .then(r => r.ok ? r.json() : [])
                 .then(users => {
@@ -189,7 +189,6 @@ export function setupRBACEvents() {
 
     const profileTrigger = document.querySelector('.header-profile-trigger');
     const profileDropdown = document.getElementById('profile-dropdown-menu');
-    const orgPill = document.getElementById('header-active-org-pill');
 
     if (profileTrigger && profileDropdown) {
         const toggleDropdown = (e) => {
@@ -197,13 +196,10 @@ export function setupRBACEvents() {
             profileDropdown.classList.toggle('active');
         };
         profileTrigger.addEventListener('click', toggleDropdown);
-        if (orgPill) {
-            orgPill.addEventListener('click', toggleDropdown);
-        }
 
         // Click outside to close profile dropdown
         document.addEventListener('click', (e) => {
-            if (!profileTrigger.contains(e.target) && !profileDropdown.contains(e.target) && (!orgPill || !orgPill.contains(e.target))) {
+            if (!profileTrigger.contains(e.target) && !profileDropdown.contains(e.target)) {
                 profileDropdown.classList.remove('active');
             }
         });
@@ -230,8 +226,12 @@ export function setupRBACEvents() {
             } else if (val === 'manager') {
                 this.model.switchActiveRole('manager', userName, 'mgr-1');
             } else {
-                // employee role
-                this.model.switchActiveRole('employee', userName, 'emp-1');
+                // employee role - sử dụng ID thực tế của user để khớp với bảng phân công
+                let realUserId = sessionStorage.getItem('bf_user_id') || '1';
+                if (!realUserId.startsWith('user-') && !realUserId.startsWith('emp-')) {
+                    realUserId = 'user-' + realUserId;
+                }
+                this.model.switchActiveRole('employee', userName, realUserId);
             }
 
             // Persist state & update profile visual card
@@ -269,7 +269,7 @@ export function setupRBACEvents() {
             e.preventDefault();
             if (!this.view.validateForm(formEmp)) return;
 
-            const currentUsername = localStorage.getItem('bf_username');
+            const currentUsername = sessionStorage.getItem('bf_username');
             const currentUser = this.model.state.employees.find(e => e.username === currentUsername);
             const managerPkgs = currentUser && currentUser.package_id ? currentUser.package_id.split(',').filter(p => p && p !== 'none') : ['silver'];
 
@@ -280,10 +280,12 @@ export function setupRBACEvents() {
             const pkg = this.model.state.systempackages.find(p => p.id === activePkgId);
             const quotaLimit = pkg ? pkg.quota : 5;
 
+            const activeOrg = localStorage.getItem('bf_active_org');
             const orgEmployees = this.model.state.employees.filter(em => {
-                if (!this.model.hasEffectiveRole(em, 'employee') || !em.package_id) return false;
-                const empPkgs = em.package_id.split(',').filter(p => p && p !== 'none');
-                return empPkgs.some(p => managerPkgs.includes(p));
+                if (!this.model.hasEffectiveRole(em, 'employee')) return false;
+                if (!activeOrg) return true;
+                const orgs = em.organization_name ? em.organization_name.split(',').map(o => o.trim()).filter(Boolean) : [];
+                return orgs.includes(activeOrg);
             });
 
             const id = document.getElementById('form-employee-id').value;
@@ -294,19 +296,18 @@ export function setupRBACEvents() {
                 return;
             }
 
-            // Fetch latest system users to verify existence
-            let systemUsers = [];
+            // Fetch system user by email to verify existence
+            let foundUser = null;
+            const emailInput = document.getElementById('emp-email').value.trim().toLowerCase();
             try {
-                const res = await fetch('/api/auth/users');
+                const res = await fetch(`/api/auth/users?email=${encodeURIComponent(emailInput)}`);
                 if (res.ok) {
-                    systemUsers = await res.json();
+                    const matchedUsers = await res.json();
+                    foundUser = matchedUsers.find(u => u.email && u.email.trim().toLowerCase() === emailInput);
                 }
             } catch (err) {
-                console.error("Lỗi khi tải danh sách người dùng:", err);
+                console.error("Lỗi khi tải thông tin tài khoản:", err);
             }
-
-            const emailInput = document.getElementById('emp-email').value.trim().toLowerCase();
-            const foundUser = systemUsers.find(u => u.email && u.email.trim().toLowerCase() === emailInput);
 
             if (!foundUser) {
                 await this.view.customAlert('Thông báo', 'Nhân sự chưa có tài khoản trên hệ thống!', 'alert-triangle');
@@ -319,18 +320,13 @@ export function setupRBACEvents() {
                 if (existingEmp && existingEmp.email.trim().toLowerCase() !== emailInput) {
                     try {
                         const oldUserId = id;
-                        const oldUser = systemUsers.find(u => String(u.id) === oldUserId);
-                        if (oldUser) {
-                            let oldPkgs = oldUser.package_id ? oldUser.package_id.split(',').filter(p => p && p !== 'none') : [];
-                            oldPkgs = oldPkgs.filter(p => !managerPkgs.includes(p));
-                            await fetch('/api/auth/users/update-package', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ user_id: oldUserId, package_id: oldPkgs.join(',') || 'none' })
-                            });
-                        }
+                        await fetch('/api/auth/users/remove-from-org', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ user_id: oldUserId })
+                        });
                     } catch (err) {
-                        console.error("Lỗi khi gỡ gói cước của nhân sự cũ:", err);
+                        console.error("Lỗi khi gỡ nhân sự cũ khỏi tổ chức:", err);
                     }
 
                     // Remove old user locally
@@ -351,38 +347,17 @@ export function setupRBACEvents() {
                 }
             }
 
-            // Perform assignment (add manager's packages to the user)
-            let empPkgs = foundUser.package_id ? foundUser.package_id.split(',').filter(p => p && p !== 'none') : [];
-            managerPkgs.forEach(pkgId => {
-                if (!empPkgs.includes(pkgId)) {
-                    empPkgs.push(pkgId);
-                }
-            });
-            const newPackageIds = empPkgs.join(',');
-
-            // Call backend to update user's package and role to 'employee'
+            // Call backend to add user to organization
             try {
-                const resPkg = await fetch('/api/auth/users/update-package', {
+                const resAdd = await fetch('/api/auth/users/add-to-org', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: foundUser.id, package_id: newPackageIds || 'none' })
+                    body: JSON.stringify({ user_id: foundUser.id })
                 });
 
-                if (!resPkg.ok) {
-                    const errData = await resPkg.json();
+                if (!resAdd.ok) {
+                    const errData = await resAdd.json();
                     await this.view.customAlert('Thất bại', errData.error || 'Không thể phân công nhân sự này.', 'alert-triangle');
-                    return;
-                }
-
-                const resRole = await fetch('/api/auth/users/update-role', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: foundUser.id, role: 'employee' })
-                });
-
-                if (!resRole.ok) {
-                    const errData = await resRole.json();
-                    await this.view.customAlert('Thất bại', errData.error || 'Không thể cập nhật vai trò nhân sự.', 'alert-triangle');
                     return;
                 }
             } catch (err) {
@@ -399,7 +374,7 @@ export function setupRBACEvents() {
                 email: document.getElementById('emp-email').value.trim(),
                 phone: document.getElementById('emp-phone').value.trim(),
                 role: 'employee',
-                package_id: newPackageIds
+                package_id: foundUser.package_id
             };
             const existingIdx = localEmployees.findIndex(le => le.id === empIdInState);
             if (existingIdx !== -1) {
@@ -415,6 +390,7 @@ export function setupRBACEvents() {
             // Now, make sure they have a permission matrix row
             if (!this.model.state.permissionmatrix.some(m => m.empId === empIdInState)) {
                 this.model.state.permissionmatrix.push({
+                    id: window.generateUUID(),
                     empId: empIdInState,
                     kehoach: 'view',
                     goithau: 'view',
@@ -770,21 +746,10 @@ export async function deleteEmployee(id) {
     const confirmed = await this.view.customConfirm('Xác nhận gỡ nhân sự', warningText, 'trash-2');
     if (confirmed) {
         try {
-            // Find current manager's packages
-            const currentUsername = localStorage.getItem('bf_username');
-            const currentUser = this.model.state.employees.find(e => e.username === currentUsername);
-            const managerPkgs = currentUser && currentUser.package_id ? currentUser.package_id.split(',').filter(p => p && p !== 'none') : ['silver'];
-
-            // Remove all manager packages from employee's packages list
-            let empPkgs = emp.package_id ? emp.package_id.split(',').filter(p => p && p !== 'none') : [];
-            empPkgs = empPkgs.filter(p => !managerPkgs.includes(p));
-
-            const newPackageIds = empPkgs.join(',');
-            const userIdStr = id;
-            const res = await fetch('/api/auth/users/update-package', {
+            const res = await fetch('/api/auth/users/remove-from-org', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userIdStr, package_id: newPackageIds || 'none' })
+                body: JSON.stringify({ user_id: id })
             });
 
             if (res.ok) {
@@ -828,7 +793,8 @@ export async function reloadEmployeesFromDatabase() {
                     email: u.email || '',
                     phone: localEmp ? localEmp.phone : '',
                     role: u.role,
-                    package_id: u.package_id
+                    package_id: u.package_id,
+                    organization_name: u.organization_name
                 };
             });
             this.model.persistData('employees');
@@ -925,21 +891,20 @@ export async function togglePackageLock(pkgId) {
 export function renderWorkspaceSwitcher() {
     const orgSwitchSection = document.getElementById('org-switch-section');
     const orgSwitchList = document.getElementById('org-switch-list');
-    if (!orgSwitchSection || !orgSwitchList) return;
 
     const currentUser = this.model.state.activeuser;
     if (!currentUser || !currentUser.organization_name) {
-        orgSwitchSection.style.display = 'none';
+        if (orgSwitchSection) orgSwitchSection.style.display = 'none';
         return;
     }
 
     const orgs = currentUser.organization_name.split(',').map(o => o.trim()).filter(Boolean);
     if (orgs.length <= 1) {
-        orgSwitchSection.style.display = 'none';
+        if (orgSwitchSection) orgSwitchSection.style.display = 'none';
         return;
     }
 
-    orgSwitchSection.style.display = 'block';
+    if (orgSwitchSection) orgSwitchSection.style.display = 'block';
 
     let activeOrg = localStorage.getItem('bf_active_org');
     if (!activeOrg || !orgs.includes(activeOrg)) {
@@ -947,7 +912,7 @@ export function renderWorkspaceSwitcher() {
         localStorage.setItem('bf_active_org', activeOrg);
     }
 
-    orgSwitchList.innerHTML = orgs.map(org => {
+    const htmlContent = orgs.map(org => {
         const isActive = org === activeOrg;
         const initials = org.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
         const activeBg = isActive ? 'var(--primary-soft)' : 'transparent';
@@ -966,53 +931,71 @@ export function renderWorkspaceSwitcher() {
         `;
     }).join('');
 
+    if (orgSwitchList) orgSwitchList.innerHTML = htmlContent;
+
     lucide.createIcons();
 
     // Đăng ký sự kiện click chọn tổ chức làm việc
-    orgSwitchList.querySelectorAll('.dropdown-org-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const selectedOrg = btn.getAttribute('data-org');
-            const currentActive = localStorage.getItem('bf_active_org');
-            if (selectedOrg === currentActive) return;
-
-            localStorage.setItem('bf_active_org', selectedOrg);
-
-            // Render lại danh sách
-            this.renderWorkspaceSwitcher();
-
-            // Gọi tải lại toàn bộ dữ liệu của tổ chức này từ máy chủ
-            try {
-                const response = await fetch('/api/get-all-data');
-                if (response.ok) {
-                    const dbData = await response.json();
-                    Object.keys(dbData).forEach(key => {
-                        this.model.state[key] = dbData[key];
-                        this.model.persistData(key);
-                    });
-
-                    // Cập nhật lại giao diện người dùng
-                    this.view.renderDashboard();
-                    this.view.renderKeHoachTable();
-                    this.view.renderGoiThauTable();
-                    this.view.renderChuDauTuTable();
-                    this.view.renderNhaThauTable();
-                    this.view.renderChuyenGiaTable();
-                    this.view.renderHopDongTable();
-
-                    // Cập nhật hiển thị vai trò/tổ chức trên thanh tiêu đề
-                    this.view.updateActiveUserProfileDisplay();
-
-                    await this.view.customAlert('Chuyển đổi thành công', `Đã chuyển sang không gian làm việc của "${selectedOrg}"!`, 'check-circle');
-
+    const registerClick = (listEl) => {
+        if (!listEl) return;
+        listEl.querySelectorAll('.dropdown-org-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const selectedOrg = btn.getAttribute('data-org');
+                const currentActive = localStorage.getItem('bf_active_org');
+                if (selectedOrg === currentActive) {
                     const profileDropdown = document.getElementById('profile-dropdown-menu');
                     if (profileDropdown) profileDropdown.classList.remove('active');
-                } else {
-                    await this.view.customAlert('Thất bại', 'Không thể tải dữ liệu của tổ chức này.', 'alert-triangle');
+                    return;
                 }
-            } catch (err) {
-                await this.view.customAlert('Lỗi hệ thống', 'Lỗi kết nối máy chủ: ' + err.message, 'alert-triangle');
-            }
+
+                localStorage.setItem('bf_active_org', selectedOrg);
+
+                // Render lại danh sách
+                this.renderWorkspaceSwitcher();
+
+                // Gọi tải lại toàn bộ dữ liệu của tổ chức này từ máy chủ
+                try {
+                    const response = await fetch('/api/get-all-data');
+                    if (response.ok) {
+                        const dbData = await response.json();
+                        Object.keys(dbData).forEach(key => {
+                            this.model.state[key] = dbData[key];
+                            this.model.persistData(key);
+                        });
+
+                        // Cập nhật lại giao diện người dùng
+                        this.view.renderDashboard();
+                        this.view.renderKeHoachTable();
+                        this.view.renderGoiThauTable();
+                        this.view.renderChuDauTuTable();
+                        this.view.renderNhaThauTable();
+                        this.view.renderChuyenGiaTable();
+                        this.view.renderHopDongTable();
+
+                        if (typeof this.switchTab === 'function') {
+                            this.switchTab(this.model.state.activetab || 'dashboard', null, false);
+                        }
+
+                        // Cập nhật hiển thị vai trò/tổ chức trên thanh tiêu đề
+                        this.view.updateActiveUserProfileDisplay();
+
+                        // Tải lại danh sách nhân sự của tổ chức mới để cập nhật các dropdown phân công
+                        await this.reloadEmployeesFromDatabase();
+
+                        await this.view.customAlert('Chuyển đổi thành công', `Đã chuyển sang không gian làm việc của "${selectedOrg}"!`, 'check-circle');
+
+                        const profileDropdown = document.getElementById('profile-dropdown-menu');
+                        if (profileDropdown) profileDropdown.classList.remove('active');
+                    } else {
+                        await this.view.customAlert('Thất bại', 'Không thể tải dữ liệu của tổ chức này.', 'alert-triangle');
+                    }
+                } catch (err) {
+                    await this.view.customAlert('Lỗi hệ thống', 'Lỗi kết nối máy chủ: ' + err.message, 'alert-triangle');
+                }
+            });
         });
-    });
+    };
+
+    registerClick(orgSwitchList);
 }

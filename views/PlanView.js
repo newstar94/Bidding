@@ -3,8 +3,8 @@
    ========================================================================== */
 
 function getAuthDownloadUrl(url) {
-    const token = localStorage.getItem('bf_session_token') || '';
-    const username = localStorage.getItem('bf_username') || '';
+    const token = sessionStorage.getItem('bf_session_token') || '';
+    const username = sessionStorage.getItem('bf_username') || '';
     const separator = url.includes('?') ? '&' : '?';
     return `${url}${separator}token=${encodeURIComponent(token)}&username=${encodeURIComponent(username)}`;
 }
@@ -12,8 +12,8 @@ function getAuthDownloadUrl(url) {
 function authFetchDownload(url, filename) {
     return fetch(url, {
         headers: {
-            'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-            'X-Username': localStorage.getItem('bf_username') || ''
+            'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+            'X-Username': sessionStorage.getItem('bf_username') || ''
         }
     })
         .then(res => {
@@ -50,8 +50,8 @@ export async function renderKeHoachTable() {
         try {
             const res = await fetch(`/api/paginate?table=kehoach&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 }
             });
             if (res.ok) {
@@ -170,8 +170,8 @@ export async function renderGoiThauTable() {
         try {
             const res = await fetch(`/api/paginate?table=goithau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&trangThai=${encodeURIComponent(filterTrangThai)}&hinhThuc=${encodeURIComponent(filterHinhThuc)}`, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 }
             });
             if (res.ok) {
@@ -1148,8 +1148,8 @@ export function showPackageDetails(id) {
                         // Dữ liệu đã được đồng bộ tự động khi người dùng lưu
                         const dbId = id;
                         const headers = {
-                            'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                            'X-Username': localStorage.getItem('bf_username') || ''
+                            'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                            'X-Username': sessionStorage.getItem('bf_username') || ''
                         };
                         fetch(`/api/export-report/${dbId}`, { headers })
                             .then(r => {
@@ -1535,7 +1535,7 @@ export function showKeHoachDetails(id) {
 
     const selectEl = document.getElementById('detail-kh-version-select');
     selectEl.innerHTML = allVersions.map(k => {
-        const label = this.model.getPlanVersionLabel(k.phienBan);
+        const label = this.model.getVersionLabel(k.phienBan);
         const timeLabel = k.thoiGianDangMa ? this.model.formatDateWithTime(k.thoiGianDangMa) : '--';
         return `<option value="${k.id}" ${k.id === id ? 'selected' : ''}>${label} (Đăng lúc: ${timeLabel})</option>`;
     }).join('');
@@ -1717,7 +1717,7 @@ export function renderPlanVersionDetails(versionId) {
                 <span class="detail-code">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
                 <h4 class="detail-title">${kh.tenKeHoach}</h4>
                 <div style="margin-top: 8px;">
-                    <span class="badge badge-info"><i data-lucide="info"></i> ${this.model.getPlanVersionLabel(kh.phienBan)}</span>
+                    <span class="badge badge-info"><i data-lucide="info"></i> ${this.model.getVersionLabel(kh.phienBan)}</span>
                 </div>
             </div>
             

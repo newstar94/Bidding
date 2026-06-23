@@ -2,11 +2,10 @@
    BiddingFlow - Controller (Events, Interaction & Business logic dispatching)
    ========================================================================== */
 
-// BiddingModel được inject qua constructor(model, view) — không import trực tiếp
-import * as Auth from '/controllers/AuthController.js?v=5.8';
-import * as Admin from '/controllers/AdminUserController.js?v=5.8';
-import * as Bidding from '/controllers/BiddingWorkflowController.js?v=5.8';
-import * as Partner from '/controllers/PartnerWorkflowController.js?v=5.8';
+import * as Auth from '/controllers/AuthController.js?v=6.7';
+import * as Admin from '/controllers/AdminUserController.js?v=6.7';
+import * as Bidding from '/controllers/BiddingWorkflowController.js?v=6.7';
+import * as Partner from '/controllers/PartnerWorkflowController.js?v=6.7';
 
 export class BiddingController {
     constructor(model, view) {
@@ -54,8 +53,8 @@ export class BiddingController {
         // Intercept native fetch to automatically append security headers & handle auth errors globally
         const originalFetch = window.fetch;
         window.fetch = async (url, options = {}) => {
-            const token = localStorage.getItem('bf_session_token');
-            const username = localStorage.getItem('bf_username');
+            const token = sessionStorage.getItem('bf_session_token');
+            const username = sessionStorage.getItem('bf_username');
             const activeOrg = localStorage.getItem('bf_active_org');
 
             if (typeof url === 'string' && url.startsWith('/api/') && token && username) {
@@ -87,8 +86,67 @@ export class BiddingController {
                 localStorage.setItem('bf_local_deletions', '[]');
             }
 
-            // Nếu phản hồi là 403 hoặc 401 và không phải là yêu cầu đăng nhập/kiểm tra phiên
-            if ((response.status === 403 || response.status === 401) && typeof url === 'string' && url.startsWith('/api/') && !url.includes('/api/auth/login') && !url.includes('/api/auth/check-session')) {
+            // Xử lý các lỗi quyền hạn (403 Forbidden)
+            if (response.status === 403 && typeof url === 'string' && url.startsWith('/api/') && !url.includes('/api/auth/login') && !url.includes('/api/auth/check-session')) {
+                let errorMsg = "Yêu cầu bị từ chối do không đủ quyền hạn hoặc vi phạm cấu hình hệ thống.";
+                let isSessionError = false;
+                try {
+                    const clone = response.clone();
+                    const data = await clone.json();
+                    if (data && data.error) {
+                        errorMsg = data.error;
+                    }
+                    if (errorMsg === "Không có quyền truy cập tổ chức này!") {
+                        localStorage.removeItem('bf_active_org');
+                        localStorage.setItem('bf_last_sync_timestamp', '0');
+                        if (this.model.db && this.model.db.stores) {
+                            this.model.db.stores.forEach(storeName => {
+                                this.model.db.putTableData(storeName, []).catch(() => { });
+                                if (this.model.state[storeName]) {
+                                    this.model.state[storeName] = [];
+                                }
+                            });
+                        }
+                    }
+                    if (
+                        errorMsg === "Thiếu thông tin xác thực phiên làm việc!" ||
+                        errorMsg === "Tài khoản không tồn tại!" ||
+                        errorMsg === "Phiên làm việc đã hết hạn hoặc không hợp lệ!" ||
+                        errorMsg === "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
+                    ) {
+                        isSessionError = true;
+                    }
+                } catch (e) {
+                    console.error("Lỗi phân tích phản hồi 403:", e);
+                }
+
+                if (isSessionError) {
+                    const overlay = document.getElementById('auth-overlay');
+                    if (overlay && overlay.style.display !== 'flex') {
+                        this.model.clearSessionData();
+                        overlay.style.display = 'flex';
+                        document.querySelector('.app-container').style.filter = 'blur(10px)';
+                        const formLogin = document.getElementById('form-auth-login');
+                        const formRegister = document.getElementById('form-auth-register');
+                        const formForgot = document.getElementById('form-auth-forgot');
+                        if (formLogin) formLogin.style.display = 'block';
+                        if (formRegister) formRegister.style.display = 'none';
+                        if (formForgot) formForgot.style.display = 'none';
+                    }
+                    return response;
+                }
+
+                if (errorMsg === "Không có quyền truy cập tổ chức này!") {
+                    await this.view.customAlert('⚠️ LỖI QUYỀN HẠN', 'Không có quyền truy cập tổ chức này!', 'log-out');
+                } else {
+                    await this.view.customAlert('⚠️ LỖI QUYỀN HẠN (403)', `${errorMsg}\n\nNhấn Xác nhận để tải lại hệ thống.`, 'log-out');
+                }
+                window.location.reload();
+                return response;
+            }
+
+            // Xử lý các lỗi phiên đăng nhập hết hạn (401 Unauthorized)
+            if (response.status === 401 && typeof url === 'string' && url.startsWith('/api/') && !url.includes('/api/auth/login') && !url.includes('/api/auth/check-session')) {
                 // Phiên làm việc hết hạn hoặc không hợp lệ -> Chuyển về màn hình đăng nhập ngay lập tức
                 const overlay = document.getElementById('auth-overlay');
                 if (overlay && overlay.style.display !== 'flex') {
@@ -225,8 +283,8 @@ export class BiddingController {
 
     setupAutoSyncBackground() {
         const checkAndSync = () => {
-            const token = localStorage.getItem('bf_session_token');
-            const username = localStorage.getItem('bf_username');
+            const token = sessionStorage.getItem('bf_session_token');
+            const username = sessionStorage.getItem('bf_username');
             if (!token || !username) return; // Only sync if logged in
 
             console.log("Triggering automatic background delta sync...");
@@ -750,7 +808,9 @@ export class BiddingController {
                 this.loadSystemUsers();
                 break;
             case 'managernhanvien':
-                this.view.renderManagerNhanVienPanel();
+                this.reloadEmployeesFromDatabase().then(() => {
+                    this.view.renderManagerNhanVienPanel();
+                });
                 break;
             case 'managerhosogiay':
                 this.view.renderManagerHoSoGiayPanel();
@@ -1276,8 +1336,8 @@ export class BiddingController {
 
             fetch(`/api/export-excel-template/${type}`, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 }
             })
                 .then(res => {
@@ -1378,6 +1438,28 @@ export class BiddingController {
             const planSelect = document.getElementById('gt-kehoachid');
             if (planSelect) planSelect.disabled = false;
         }
+
+        if (modalId === 'modal-plan-breakdown') {
+            // Rollback changes because they closed/cancelled the breakdown modal without saving
+            if (this.backupKeHoachState) {
+                this.model.state.kehoach = this.backupKeHoachState;
+                this.backupKeHoachState = null;
+            }
+            if (this.backupGoiThauState) {
+                this.model.state.goithau = this.backupGoiThauState;
+                this.backupGoiThauState = null;
+            }
+            this.tempPlanData = null;
+            this.tempPlanAction = null;
+
+            this.model.persistData('kehoach');
+            this.model.persistData('goithau');
+
+            this.view.renderKeHoachTable();
+            this.view.renderGoiThauTable();
+            this.autoSync();
+        }
+
         this.view.closeModal(modalId);
 
         // Sync URL when modal closes
@@ -1401,8 +1483,9 @@ export class BiddingController {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                'X-Username': localStorage.getItem('bf_username') || ''
+                'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                'X-Username': sessionStorage.getItem('bf_username') || '',
+                'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
             },
             body: JSON.stringify(this.model.state)
         })
@@ -1910,8 +1993,9 @@ export class BiddingController {
             const since = localStorage.getItem('bf_last_sync_timestamp') || '0';
             const response = await fetch('/api/get-all-data?since=' + since, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || '',
+                    'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
                 }
             });
             if (response.ok) {
@@ -2027,8 +2111,8 @@ export class BiddingController {
     }
 
     setupWebSocketConnection() {
-        const token = localStorage.getItem('bf_session_token');
-        const username = localStorage.getItem('bf_username');
+        const token = sessionStorage.getItem('bf_session_token');
+        const username = sessionStorage.getItem('bf_username');
         if (!token || !username) return;
 
         if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {

@@ -11,10 +11,10 @@ from helpers import (
     clean_id,
     VietnameseFloat,
     SCHEMA_DINH_NGHIA,
-    SPECIAL_FIELD_MAPS,
     to_camel_case,
     get_active_org,
-    load_base64_image
+    load_base64_image,
+    OrgPermissionError
 )
 
 ENTITY_SCHEMA = {
@@ -692,6 +692,8 @@ async def export_danhgiahsdt_template_api(request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -813,5 +815,7 @@ async def export_ketquaqd_template_api(request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

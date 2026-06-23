@@ -69,7 +69,7 @@ export function editChuDauTu(id) {
             versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
             
             verSelect.innerHTML = versions.map(v => {
-                const label = this.model.getChuDauTuVersionLabel(v.phienBan || v.phien_ban || '00');
+                const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                 return `<option value="${v.id}" ${v.id === cdt.id ? 'selected' : ''}>${label}</option>`;
             }).join('');
 
@@ -335,7 +335,7 @@ export function editNhaThau(id) {
                 versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
                 
                 verSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getNhaThauVersionLabel(v.phienBan || v.phien_ban || '00');
+                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                     return `<option value="${v.id}" ${v.id === nt.id ? 'selected' : ''}>${label}</option>`;
                 }).join('');
 
@@ -643,7 +643,7 @@ export function editChuyenGia(id) {
             const versions = this.model.state.chuyengia.filter(c => c.rootId === rootId || c.id === rootId);
             versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
             verSelect.innerHTML = versions.map(v => {
-                const label = this.model.getChuyenGiaVersionLabel(v.phienBan || v.phien_ban || '00');
+                const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                 return `<option value="${v.id}" ${v.id === cg.id ? 'selected' : ''}>${label}</option>`;
             }).join('');
             verSelect.onchange = (e) => {
@@ -876,18 +876,46 @@ export function editHopDong(id) {
             nhathauList.map(n => `<option value="${n.id}" data-search="${n.maNhaThau || ''} ${n.tenNhaThau || ''}">${n.tenNhaThau || ''}</option>`).join('');
         makeSearchableSelect(ntSelect, 'Tìm kiếm Nhà thầu...');
 
-        const gtContainer = document.getElementById('hd-goithau-list');
-        const goithauList = typeof this.model.getLatestPackages === 'function' ? this.model.getLatestPackages() : (Array.isArray(this.model.state.goithau) ? this.model.state.goithau : []);
-        if (goithauList.length === 0) {
-            gtContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding: 8px 0;">Chưa có gói thầu nào trong hệ thống</p>';
-        } else {
-            gtContainer.innerHTML = goithauList.map(g => `
-                <label class="checkbox-item" style="display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer; font-size:0.85rem;">
-                     <input type="checkbox" name="hd-goithau-checkbox" value="${g.id}">
-                     <span><strong>${g.maGoiThau || ''}</strong> - ${g.tenGoiThau || ''}</span>
-                </label>
-            `).join('');
-        }
+        const khSelect = document.getElementById('hd-kehoachid');
+        const planList = typeof this.model.getLatestPlans === 'function' ? this.model.getLatestPlans() : (Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : []);
+        khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' +
+            planList.map(kh => `<option value="${kh.id}" data-search="${kh.maKeHoach || ''} ${kh.tenKeHoach || ''}">${kh.tenKeHoach || ''}</option>`).join('');
+        makeSearchableSelect(khSelect, 'Tìm kiếm Kế hoạch...');
+
+        const getPlanVersionIds = (selectedPlanId) => {
+            if (!selectedPlanId) return [];
+            const plan = this.model.state.kehoach.find(kh => kh.id === selectedPlanId);
+            if (!plan) return [];
+            const rootId = plan.rootId || plan.id;
+            return this.model.state.kehoach
+                .filter(kh => kh.rootId === rootId || kh.id === rootId)
+                .map(kh => kh.id);
+        };
+
+        const renderPackagesForPlan = (selectedPlanId, checkedIds = []) => {
+            const planVersionIds = getPlanVersionIds(selectedPlanId);
+            const gtContainer = document.getElementById('hd-goithau-list');
+            if (!selectedPlanId) {
+                gtContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding: 8px 0;">Vui lòng chọn Kế hoạch LCNT để hiển thị gói thầu</p>';
+                return;
+            }
+            const goithauList = typeof this.model.getLatestPackages === 'function' ? this.model.getLatestPackages() : (Array.isArray(this.model.state.goithau) ? this.model.state.goithau : []);
+            const filteredGoithau = goithauList.filter(g => planVersionIds.includes(g.keHoachId));
+            if (filteredGoithau.length === 0) {
+                gtContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding: 8px 0;">Kế hoạch được chọn không có gói thầu nào</p>';
+            } else {
+                gtContainer.innerHTML = filteredGoithau.map(g => `
+                    <label class="checkbox-item" style="display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer; font-size:0.85rem;">
+                         <input type="checkbox" name="hd-goithau-checkbox" value="${g.id}" ${checkedIds.includes(g.id) ? 'checked' : ''}>
+                         <span><strong>${g.maGoiThau || ''}</strong> - ${g.tenGoiThau || ''}</span>
+                    </label>
+                `).join('');
+            }
+        };
+
+        khSelect.onchange = (e) => {
+            renderPackagesForPlan(e.target.value, []);
+        };
 
         // Setup changes handlers for versions & confirmations
         const handleCdtChange = (selectedCdtId, selectVersionId = null) => {
@@ -911,7 +939,7 @@ export function editHopDong(id) {
 
             if (versionSelect && versionGroup) {
                 versionSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getChuDauTuVersionLabel(v.phienBan || v.phien_ban || '00');
+                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                     return `<option value="${v.id}">${label}</option>`;
                 }).join('');
                 versionGroup.style.display = 'block';
@@ -961,7 +989,7 @@ export function editHopDong(id) {
 
             if (versionSelect && versionGroup) {
                 versionSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getNhaThauVersionLabel(v.phienBan || v.phien_ban || '00');
+                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                     return `<option value="${v.id}">${label}</option>`;
                 }).join('');
                 versionGroup.style.display = 'block';
@@ -1012,7 +1040,7 @@ export function editHopDong(id) {
                     empSelect.value = assignment ? assignment.empId : '';
                 } else {
                     if (this.model.state.activerole === 'employee') {
-                        const currentUserId = localStorage.getItem('bf_user_id');
+                        const currentUserId = sessionStorage.getItem('bf_user_id');
                         empSelect.value = currentUserId ? 'user-' + currentUserId : '';
                     } else {
                         empSelect.value = '';
@@ -1118,10 +1146,15 @@ export function editHopDong(id) {
                 statusSelect.value = hd.trangThaiHoSo || '';
             }
 
-            const checkboxes = document.querySelectorAll('input[name="hd-goithau-checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.checked = (hd.goiThauIds || []).includes(cb.value);
-            });
+            if (hd.keHoachId) {
+                khSelect.value = hd.keHoachId;
+                khSelect.dispatchEvent(new Event('change'));
+                renderPackagesForPlan(hd.keHoachId, hd.goiThauIds || []);
+            } else {
+                khSelect.value = '';
+                khSelect.dispatchEvent(new Event('change'));
+                renderPackagesForPlan('', []);
+            }
 
             // Setup version history dropdown
             const verSelect = document.getElementById('hd-version-select');
@@ -1132,7 +1165,7 @@ export function editHopDong(id) {
                 const versions = this.model.state.hopdong.filter(h => h.rootId === rootId || h.id === rootId);
                 versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
                 verSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getHopDongVersionLabel(v.phienBan || v.phien_ban || '00');
+                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                     return `<option value="${v.id}" ${v.id === hd.id ? 'selected' : ''}>${label}</option>`;
                 }).join('');
                 verSelect.onchange = (e) => {
@@ -1154,6 +1187,10 @@ export function editHopDong(id) {
             ntSelect.value = '';
             ntSelect.dispatchEvent(new Event('change'));
             handleNtChange('');
+
+            khSelect.value = '';
+            khSelect.dispatchEvent(new Event('change'));
+            renderPackagesForPlan('', []);
 
             const verContainer = document.getElementById('hd-version-select-container');
             if (verContainer) {
@@ -1193,6 +1230,7 @@ export async function handleHopDongSubmit(e) {
     const ngayKy = document.getElementById('hd-ngayky').value;
     const chuDauTuId = document.getElementById('hd-chudautu-version-select').value || document.getElementById('hd-chudautuid').value;
     const nhaThauId = document.getElementById('hd-nhathau-version-select').value || document.getElementById('hd-nhathauid').value;
+    const keHoachId = document.getElementById('hd-kehoachid').value;
     const giaTri = this.model.parseVND(document.getElementById('hd-giatri').value);
     const loaiHopDong = document.getElementById('hd-loai').value;
     const soNgayThucHien = document.getElementById('hd-songay').value.trim();
@@ -1241,6 +1279,7 @@ export async function handleHopDongSubmit(e) {
         ngayKy,
         chuDauTuId,
         nhaThauId,
+        keHoachId,
         giaTri,
         loaiHopDong,
         soNgayThucHien,
@@ -1306,11 +1345,13 @@ export async function handleHopDongSubmit(e) {
     }
 
     if (finalHdId) {
-        this.model.state.assignments = this.model.state.assignments.filter(a => a.targetId !== finalHdId || a.type !== 'hopdong');
-        if (assignedEmpId) {
-            this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: finalHdId, type: 'hopdong' });
+        const oldAssignments = this.model.state.assignments.filter(a => a.targetId === finalHdId && a.type === 'hopdong');
+        for (const oldA of oldAssignments) {
+            await this.model.deleteRecord('assignments', oldA.id);
         }
-        this.model.persistData('assignments');
+        if (assignedEmpId) {
+            await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: finalHdId, type: 'hopdong' });
+        }
     }
 
     this.model.persistData('hopdong');

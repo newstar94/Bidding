@@ -3,8 +3,8 @@
    ========================================================================== */
 
 function getAuthDownloadUrl(url) {
-    const token = localStorage.getItem('bf_session_token') || '';
-    const username = localStorage.getItem('bf_username') || '';
+    const token = sessionStorage.getItem('bf_session_token') || '';
+    const username = sessionStorage.getItem('bf_username') || '';
     const separator = url.includes('?') ? '&' : '?';
     return `${url}${separator}token=${encodeURIComponent(token)}&username=${encodeURIComponent(username)}`;
 }
@@ -16,8 +16,8 @@ function getAuthDownloadUrl(url) {
 function authFetchDownload(url, filename) {
     return fetch(url, {
         headers: {
-            'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-            'X-Username': localStorage.getItem('bf_username') || ''
+            'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+            'X-Username': sessionStorage.getItem('bf_username') || ''
         }
     })
         .then(res => {
@@ -83,6 +83,7 @@ export function editKeHoach(id) {
     const loaiHinhSelect = document.getElementById('kh-loaihinh');
     const projectFields = document.getElementById('kh-project-fields');
 
+
     const toggleProjectFields = () => {
         if (loaiHinhSelect.value === 'Dự án') {
             projectFields.style.display = 'block';
@@ -142,7 +143,12 @@ export function editKeHoach(id) {
         document.getElementById('kh-loaihinh').value = kh.loaiHinhMuaSam || '';
         document.getElementById('kh-duan').value = kh.tenDuAnDuToan || '';
         document.getElementById('kh-chudautuid').value = kh.chuDauTuId;
-        document.getElementById('kh-tongmuc').value = this.model.formatVND(kh.tongMucDauTu);
+        const tmInput = document.getElementById('kh-tongmuc');
+        tmInput.value = kh.tongMucDauTu ? this.model.formatVND(kh.tongMucDauTu) : "";
+        tmInput.placeholder = (kh.isTongMucTuDong === true || kh.isTongMucTuDong === 1 || !kh.tongMucDauTu) ? "Tự động tính toán..." : "Nhập số tiền";
+        tmInput.setAttribute('data-initial-val', tmInput.value);
+        tmInput.setAttribute('data-was-auto', (kh.isTongMucTuDong === true || kh.isTongMucTuDong === 1 || !kh.tongMucDauTu) ? 'true' : 'false');
+        tmInput.disabled = false;
 
         document.getElementById('kh-pheduyet').value = kh.pheDuyet || '';
         togglePheDuyetFields();
@@ -201,6 +207,13 @@ export function editKeHoach(id) {
         document.getElementById('modal-kehoach-title').textContent = 'Thêm Kế hoạch LCNT mới';
         form.reset();
         document.getElementById('form-kehoach-id').value = '';
+
+        const tmInput = document.getElementById('kh-tongmuc');
+        tmInput.value = "";
+        tmInput.placeholder = "Tự động tính toán...";
+        tmInput.removeAttribute('data-initial-val');
+        tmInput.removeAttribute('data-was-auto');
+        tmInput.disabled = false;
 
         document.getElementById('kh-pheduyet').value = '';
         togglePheDuyetFields();
@@ -312,111 +325,69 @@ export async function handleKeHoachSubmit(e) {
     const diadiemQuymo = document.getElementById('kh-diadiem-quymo').value.trim();
     const thongtinKhac = document.getElementById('kh-thongtinkhac').value.trim();
 
+    const tmInput = document.getElementById('kh-tongmuc');
+    const currentVal = tmInput.value.trim();
+    const initialVal = tmInput.getAttribute('data-initial-val') || "";
+    const wasAuto = tmInput.getAttribute('data-was-auto') === 'true';
+
+    let isTongMucTuDong = false;
+    if (!currentVal) {
+        isTongMucTuDong = true;
+    } else if (wasAuto && currentVal === initialVal) {
+        isTongMucTuDong = true;
+    }
+
+    // Capture state backups for potential rollback on close/cancel
+    this.backupKeHoachState = JSON.parse(JSON.stringify(this.model.state.kehoach));
+    this.backupGoiThauState = JSON.parse(JSON.stringify(this.model.state.goithau));
+
+    const loaiHinhVal = document.getElementById('kh-loaihinh').value;
+    this.tempPlanData = {
+        maKeHoach: inputCode,
+        tenKeHoach: document.getElementById('kh-ten').value.trim(),
+        loaiHinhMuaSam: loaiHinhVal,
+        tenDuAnDuToan: document.getElementById('kh-duan').value.trim(),
+        chuDauTuId: document.getElementById('kh-chudautuid').value,
+        tongMucDauTu: isTongMucTuDong ? 0 : this.model.parseVND(currentVal),
+        isTongMucTuDong: isTongMucTuDong,
+        ngayPheDuyet: ngayPheDuyetYMD,
+        quyetDinhPheDuyet: document.getElementById('kh-quyetdinh').value.trim(),
+        thoiGianDangMa: finalPublishTime,
+        nguonVon: nguonVon,
+        thoigianDuan: thoigianDuan,
+        maDuan: loaiHinhVal === 'Dự án' ? maDuan : '',
+        soQdPheDuyetDuAn: loaiHinhVal === 'Dự án' ? soQdPheDuyetDuAn : '',
+        ngayQdPheDuyetDuAn: loaiHinhVal === 'Dự án' ? ngayQdPheDuyetDuAnYMD : '',
+        coQuanPheDuyetDuAn: loaiHinhVal === 'Dự án' ? coQuanPheDuyetDuAn : '',
+        diadiemQuymo: diadiemQuymo,
+        thongtinKhac: thongtinKhac,
+        pheDuyet: pheDuyet,
+        ngayTrinhKeHoach: ngayTrinhKeHoachYMD,
+        ngayTrinhDuToan: pheDuyet === 'Kế hoạch' ? ngayTrinhDuToanYMD : '',
+        ngayPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? ngayPheDuyetDuToanYMD : '',
+        soQdPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : ''
+    };
+
     if (id) {
+        this.tempPlanAction = 'edit';
+        this.tempPlanData.id = id;
+
+        // Apply changes in memory temporarily so they are visible in breakdown/package wizard
         const oldKh = this.model.state.kehoach.find(k => k.id === id);
-        const newTen = document.getElementById('kh-ten').value.trim();
-        const newLoaiHinh = document.getElementById('kh-loaihinh').value;
-        const newDuAn = document.getElementById('kh-duan').value.trim();
-        const newChuDauTuId = document.getElementById('kh-chudautuid').value;
-        const newTongMuc = this.model.parseVND(document.getElementById('kh-tongmuc').value);
-        const newNgayPheDuyet = ngayPheDuyetYMD;
-        const newQuyetDinh = document.getElementById('kh-quyetdinh').value.trim();
-        const newThoiGianDang = finalPublishTime;
-
-        const saveAsNewVersion = await this.view.customConfirm(
-            "Lưu phiên bản mới?",
-            "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
-            "help-circle"
-        );
-
-        if (saveAsNewVersion === null) {
-            return;
-        }
-
-        if (saveAsNewVersion) {
-            const rootId = oldKh.rootId || oldKh.id;
-            const relatedPlans = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
-            const maxVersion = Math.max(...relatedPlans.map(k => parseInt(k.phienBan) || 0));
-            const nextVersion = String(maxVersion + 1).padStart(2, '0');
-            const newId = window.generateUUID();
-
-            relatedPlans.forEach(k => { k.isLatest = 0; k.is_latest = 0; });
-
-            this.model.state.kehoach.push({
-                id: newId,
-                maKeHoach: inputCode,
-                phienBan: nextVersion,
-                isLatest: 1,
-                is_latest: 1,
-                rootId: rootId,
-                createdAt: oldKh.createdAt || Math.floor(Date.now() / 1000),
-                created_at: oldKh.created_at || Math.floor(Date.now() / 1000),
-                updatedAt: Math.floor(Date.now() / 1000),
-                updated_at: Math.floor(Date.now() / 1000),
-                tenKeHoach: newTen,
-                loaiHinhMuaSam: newLoaiHinh,
-                tenDuAnDuToan: newDuAn,
-                chuDauTuId: newChuDauTuId,
-                tongMucDauTu: newTongMuc,
-                isTongMucTuDong: !document.getElementById('kh-tongmuc').value.trim(),
-                ngayPheDuyet: newNgayPheDuyet,
-                quyetDinhPheDuyet: newQuyetDinh,
-                thoiGianDangMa: newThoiGianDang,
-                nguonVon: nguonVon,
-                thoigianDuan: thoigianDuan,
-                maDuan: newLoaiHinh === 'Dự án' ? maDuan : '',
-                soQdPheDuyetDuAn: newLoaiHinh === 'Dự án' ? soQdPheDuyetDuAn : '',
-                ngayQdPheDuyetDuAn: newLoaiHinh === 'Dự án' ? ngayQdPheDuyetDuAnYMD : '',
-                coQuanPheDuyetDuAn: newLoaiHinh === 'Dự án' ? coQuanPheDuyetDuAn : '',
-                diadiemQuymo: diadiemQuymo,
-                thongtinKhac: thongtinKhac,
-                pheDuyet: pheDuyet,
-                ngayTrinhKeHoach: ngayTrinhKeHoachYMD,
-                ngayTrinhDuToan: pheDuyet === 'Kế hoạch' ? ngayTrinhDuToanYMD : '',
-                ngayPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? ngayPheDuyetDuToanYMD : '',
-                soQdPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : ''
-            });
-
-            this.model.state.goithau.forEach(gt => {
-                if (gt.keHoachId === id) {
-                    gt.keHoachId = newId;
-                }
-            });
-            this.model.persistData('goithau');
-        } else {
-            oldKh.maKeHoach = inputCode;
-            oldKh.tenKeHoach = newTen;
+        if (oldKh) {
+            Object.assign(oldKh, this.tempPlanData);
             oldKh.updatedAt = Math.floor(Date.now() / 1000);
             oldKh.updated_at = oldKh.updatedAt;
-            oldKh.loaiHinhMuaSam = newLoaiHinh;
-            oldKh.tenDuAnDuToan = newDuAn;
-            oldKh.chuDauTuId = newChuDauTuId;
-            oldKh.tongMucDauTu = newTongMuc;
-            oldKh.isTongMucTuDong = !document.getElementById('kh-tongmuc').value.trim();
-            oldKh.ngayPheDuyet = newNgayPheDuyet;
-            oldKh.quyetDinhPheDuyet = newQuyetDinh;
-            oldKh.thoiGianDangMa = newThoiGianDang;
-            oldKh.nguonVon = nguonVon;
-            oldKh.thoigianDuan = thoigianDuan;
-            oldKh.maDuan = newLoaiHinh === 'Dự án' ? maDuan : '';
-            oldKh.soQdPheDuyetDuAn = newLoaiHinh === 'Dự án' ? soQdPheDuyetDuAn : '';
-            oldKh.ngayQdPheDuyetDuAn = newLoaiHinh === 'Dự án' ? ngayQdPheDuyetDuAnYMD : '';
-            oldKh.coQuanPheDuyetDuAn = newLoaiHinh === 'Dự án' ? coQuanPheDuyetDuAn : '';
-            oldKh.diadiemQuymo = diadiemQuymo;
-            oldKh.thongtinKhac = thongtinKhac;
-            oldKh.pheDuyet = pheDuyet;
-            oldKh.ngayTrinhKeHoach = ngayTrinhKeHoachYMD;
-            oldKh.ngayTrinhDuToan = pheDuyet === 'Kế hoạch' ? ngayTrinhDuToanYMD : '';
-            oldKh.ngayPheDuyetDuToan = pheDuyet === 'Kế hoạch' ? ngayPheDuyetDuToanYMD : '';
-            oldKh.soQdPheDuyetDuToan = pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : '';
         }
     } else {
+        this.tempPlanAction = 'create';
         const planId = window.generateUUID();
         targetPlanId = planId;
-        const loaiHinhVal = document.getElementById('kh-loaihinh').value;
+        this.tempPlanData.id = planId;
+
+        // Push new plan to in-memory state temporarily
         this.model.state.kehoach.push({
             id: planId,
-            maKeHoach: inputCode,
             phienBan: '00',
             isLatest: 1,
             is_latest: 1,
@@ -425,36 +396,15 @@ export async function handleKeHoachSubmit(e) {
             created_at: Math.floor(Date.now() / 1000),
             updatedAt: Math.floor(Date.now() / 1000),
             updated_at: Math.floor(Date.now() / 1000),
-            tenKeHoach: document.getElementById('kh-ten').value.trim(),
-            loaiHinhMuaSam: loaiHinhVal,
-            tenDuAnDuToan: document.getElementById('kh-duan').value.trim(),
-            chuDauTuId: document.getElementById('kh-chudautuid').value,
-            tongMucDauTu: this.model.parseVND(document.getElementById('kh-tongmuc').value),
-            isTongMucTuDong: !document.getElementById('kh-tongmuc').value.trim(),
-            ngayPheDuyet: ngayPheDuyetYMD,
-            quyetDinhPheDuyet: document.getElementById('kh-quyetdinh').value.trim(),
-            thoiGianDangMa: finalPublishTime,
-            nguonVon: nguonVon,
-            thoigianDuan: thoigianDuan,
-            maDuan: loaiHinhVal === 'Dự án' ? maDuan : '',
-            soQdPheDuyetDuAn: loaiHinhVal === 'Dự án' ? soQdPheDuyetDuAn : '',
-            ngayQdPheDuyetDuAn: loaiHinhVal === 'Dự án' ? ngayQdPheDuyetDuAnYMD : '',
-            coQuanPheDuyetDuAn: loaiHinhVal === 'Dự án' ? coQuanPheDuyetDuAn : '',
-            diadiemQuymo: diadiemQuymo,
-            thongtinKhac: thongtinKhac,
-            pheDuyet: pheDuyet,
-            ngayTrinhKeHoach: ngayTrinhKeHoachYMD,
-            ngayTrinhDuToan: pheDuyet === 'Kế hoạch' ? ngayTrinhDuToanYMD : '',
-            ngayPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? ngayPheDuyetDuToanYMD : '',
-            soQdPheDuyetDuToan: pheDuyet === 'Kế hoạch' ? soQdPheDuyetDuToan : ''
+            ...this.tempPlanData
         });
     }
 
-    this.model.persistData('kehoach');
-    this.view.closeModal('modal-kehoach');
-    this.view.renderKeHoachTable();
-    this.autoSync();
+    if (isTongMucTuDong) {
+        this.recalculatePlanTotal(targetPlanId);
+    }
 
+    this.view.closeModal('modal-kehoach');
     this.openPlanBreakdownModal(targetPlanId);
 }
 
@@ -496,6 +446,20 @@ export async function deleteGoiThau(id) {
         this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(id));
         await this.model.persistData('goithau');
         await this.model.persistData('thongtinmothau');
+
+        const planId = targetPackage.keHoachId;
+        if (planId) {
+            this.recalculatePlanTotal(planId);
+        }
+
+        // Recalculate and update Breakdown modal if open
+        const breakdownPlanId = document.getElementById('breakdown-plan-id')?.value;
+        const modalBreakdown = document.getElementById('modal-plan-breakdown');
+        if (modalBreakdown && modalBreakdown.classList.contains('active') && breakdownPlanId) {
+            this.renderBreakdownPackagesList(breakdownPlanId);
+            this.updateBreakdownTotal(breakdownPlanId);
+        }
+
         this.view.renderGoiThauTable();
 
         // Await sync to ensure DB is updated; alert on failure
@@ -504,8 +468,8 @@ export async function deleteGoiThau(id) {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 },
                 body: JSON.stringify(this.model.state)
             });
@@ -743,7 +707,7 @@ export function editGoiThau(id) {
                 empSelect.value = assignment ? assignment.empId : '';
             } else {
                 if (this.model.state.activerole === 'employee') {
-                    const currentUserId = localStorage.getItem('bf_user_id');
+                    const currentUserId = sessionStorage.getItem('bf_user_id');
                     empSelect.value = currentUserId ? 'user-' + currentUserId : '';
                 } else {
                     empSelect.value = '';
@@ -1225,6 +1189,13 @@ export async function handleGoiThauSubmit(e) {
     }
 
     const id = document.getElementById('form-goithau-id').value;
+    let oldPlanId = null;
+    if (id) {
+        const oldGt = this.model.state.goithau.find(g => g.id === id);
+        if (oldGt) {
+            oldPlanId = oldGt.keHoachId;
+        }
+    }
     const now = new Date();
     const formattedTime = now.getFullYear() + '-' +
         String(now.getMonth() + 1).padStart(2, '0') + '-' +
@@ -1528,8 +1499,7 @@ export async function handleGoiThauSubmit(e) {
 
             const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
             if (assignedEmpId) {
-                this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
-                this.model.persistData('assignments');
+                await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
             }
         } else {
             oldGt.maGoiThau = inputCode;
@@ -1539,11 +1509,13 @@ export async function handleGoiThauSubmit(e) {
 
             // Cập nhật/Xóa phân công chuyên viên cho gói thầu hiện tại khi ghi đè
             const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
-            this.model.state.assignments = this.model.state.assignments.filter(a => a.targetId !== id || a.type !== 'goithau');
-            if (assignedEmpId) {
-                this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: id, type: 'goithau' });
+            const oldAssignments = this.model.state.assignments.filter(a => a.targetId === id && a.type === 'goithau');
+            for (const oldA of oldAssignments) {
+                await this.model.deleteRecord('assignments', oldA.id);
             }
-            this.model.persistData('assignments');
+            if (assignedEmpId) {
+                await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: id, type: 'goithau' });
+            }
         }
     } else {
         const newGtId = window.generateUUID();
@@ -1563,12 +1535,27 @@ export async function handleGoiThauSubmit(e) {
 
         const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
         if (assignedEmpId) {
-            this.model.state.assignments.push({ id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
-            this.model.persistData('assignments');
+            await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
         }
     }
 
     this.model.persistData('goithau');
+
+    if (oldPlanId) {
+        this.recalculatePlanTotal(oldPlanId);
+    }
+    if (gtData.keHoachId && gtData.keHoachId !== oldPlanId) {
+        this.recalculatePlanTotal(gtData.keHoachId);
+    }
+
+    // Recalculate and update Breakdown modal if open
+    const breakdownPlanId = document.getElementById('breakdown-plan-id')?.value;
+    const modalBreakdown = document.getElementById('modal-plan-breakdown');
+    if (modalBreakdown && modalBreakdown.classList.contains('active') && breakdownPlanId) {
+        this.renderBreakdownPackagesList(breakdownPlanId);
+        this.updateBreakdownTotal(breakdownPlanId);
+    }
+
     this.view.closeModal('modal-goithau');
     this.view.renderGoiThauTable();
     this.autoSync();
@@ -2150,6 +2137,11 @@ export async function saveExcelImport() {
         });
         this.model.state.goithau.push(...mappedData);
         this.model.persistData('goithau');
+
+        // Recalculate plan totals for imported packages
+        const importedPlanIds = [...new Set(mappedData.map(gt => gt.keHoachId).filter(Boolean))];
+        importedPlanIds.forEach(pid => this.recalculatePlanTotal(pid));
+
         this.view.renderGoiThauTable();
         count = mappedData.length;
     } else if (type === 'chudautu') {
@@ -3346,7 +3338,7 @@ export function openPlanBreakdownModal(planId) {
 
     document.getElementById('breakdown-plan-id').value = planId;
     document.getElementById('breakdown-modal-subtitle').innerHTML = `
-        <strong>Kế hoạch:</strong> ${kh.tenKeHoach} <span class="badge badge-info" style="margin-left:8px;">${this.model.getPlanVersionLabel(kh.phienBan)}</span><br>
+        <strong>Kế hoạch:</strong> ${kh.tenKeHoach} <span class="badge badge-info" style="margin-left:8px;">${this.model.getVersionLabel(kh.phienBan)}</span><br>
         <span style="display:inline-block; margin-top:4px;"><strong>Mã:</strong> ${this.model.getPlanBaseCode(kh.maKeHoach) || '(Chưa có)'} | <span id="breakdown-total-display"></span></span>
     `;
 
@@ -3400,16 +3392,6 @@ export function openPlanBreakdownModal(planId) {
                     planSelect.dispatchEvent(new Event('change'));
                 }
             }, 100);
-
-            // Hook into form-goithau submit to reload breakdown packages when completed
-            const formGt = document.getElementById('form-goithau');
-            if (formGt) {
-                const breakdownPkgReload = () => {
-                    this.renderBreakdownPackagesList(planId);
-                    formGt.removeEventListener('submit', breakdownPkgReload);
-                };
-                formGt.addEventListener('submit', breakdownPkgReload);
-            }
         };
     }
 
@@ -3476,15 +3458,6 @@ export function renderBreakdownPackagesList(planId) {
             </tr>
         `;
     }).join('');
-
-    // Re-bind package form edit hooks to update breakdown packages table
-    const formGt = document.getElementById('form-goithau');
-    if (formGt) {
-        const reloadOnSubmit = () => {
-            this.renderBreakdownPackagesList(planId);
-        };
-        formGt.addEventListener('submit', reloadOnSubmit);
-    }
 }
 
 export function addBreakdownRow(type, data = null) {
@@ -3592,6 +3565,35 @@ export function updateBreakdownTotal(planId) {
     }
 }
 
+export function recalculatePlanTotal(planId) {
+    const kh = this.model.state.kehoach.find(k => k.id === planId);
+    if (!kh) return;
+
+    if (kh.tongMucDauTu && kh.tongMucDauTu > 1 && kh.isTongMucTuDong !== true) {
+        return;
+    }
+
+    const sumI = (kh.cvDaThucHienList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
+    const sumII = (kh.cvKhongApDungList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
+    const sumIII = (kh.cvChuaDuDieuKienList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
+
+    const latestPackages = this.model.getLatestPackages();
+    const rootId = kh.rootId || kh.id;
+    const planVersionIds = this.model.state.kehoach
+        .filter(k => k.rootId === rootId || k.id === rootId)
+        .map(k => k.id);
+
+    const pkgs = latestPackages.filter(g => planVersionIds.includes(g.keHoachId));
+    const sumIV = pkgs.reduce((acc, curr) => acc + (curr.giaGoiThau || 0), 0);
+
+    const isProject = kh.loaiHinhMuaSam === 'Dự án';
+    kh.tongMucDauTu = isProject ? (sumI + sumII + sumIII + sumIV) : (sumII + sumIII + sumIV);
+    kh.isTongMucTuDong = true;
+
+    this.model.persistData('kehoach');
+    this.view.renderKeHoachTable();
+}
+
 export async function savePlanBreakdown() {
     const planId = document.getElementById('breakdown-plan-id').value;
     const kh = this.model.state.kehoach.find(k => k.id === planId);
@@ -3623,17 +3625,99 @@ export async function savePlanBreakdown() {
         return rows;
     };
 
-    kh.cvDaThucHienList = parseRows('dathuchien');
-    kh.cvKhongApDungList = parseRows('khongapdung');
-    kh.cvChuaDuDieuKienList = parseRows('chuadudieuKien');
+    const cvDaThucHien = parseRows('dathuchien');
+    const cvKhongApDung = parseRows('khongapdung');
+    const cvChuaDuDieuKien = parseRows('chuadudieuKien');
 
-    // Trigger one final recalculation to be safe
-    this.updateBreakdownTotal(planId);
+    let finalPlanId = planId;
 
+    if (this.tempPlanAction === 'edit') {
+        const saveAsNewVersion = await this.view.customConfirm(
+            "Lưu phiên bản mới?",
+            "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
+            "help-circle"
+        );
+
+        if (saveAsNewVersion === null) {
+            return; // Cancel the save, stay on modal
+        }
+
+        if (saveAsNewVersion) {
+            // Restore kehoach state from backup so the original version isn't overwritten
+            this.model.state.kehoach = JSON.parse(JSON.stringify(this.backupKeHoachState));
+            
+            const oldKh = this.model.state.kehoach.find(k => k.id === this.tempPlanData.id);
+            const rootId = oldKh.rootId || oldKh.id;
+            const relatedPlans = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
+            const maxVersion = Math.max(...relatedPlans.map(k => parseInt(k.phienBan) || 0));
+            const nextVersion = String(maxVersion + 1).padStart(2, '0');
+            const newId = window.generateUUID();
+            finalPlanId = newId;
+
+            relatedPlans.forEach(k => { k.isLatest = 0; k.is_latest = 0; });
+
+            this.model.state.kehoach.push({
+                ...this.tempPlanData,
+                id: newId,
+                phienBan: nextVersion,
+                isLatest: 1,
+                is_latest: 1,
+                rootId: rootId,
+                createdAt: oldKh.createdAt || Math.floor(Date.now() / 1000),
+                created_at: oldKh.created_at || Math.floor(Date.now() / 1000),
+                updatedAt: Math.floor(Date.now() / 1000),
+                updated_at: Math.floor(Date.now() / 1000),
+                cvDaThucHienList: cvDaThucHien,
+                cvKhongApDungList: cvKhongApDung,
+                cvChuaDuDieuKienList: cvChuaDuDieuKien
+            });
+
+            // Update packages created/edited during this session to point to the new version ID
+            this.model.state.goithau.forEach(gt => {
+                if (gt.keHoachId === this.tempPlanData.id) {
+                    gt.keHoachId = newId;
+                }
+            });
+        } else {
+            // Overwrite current version
+            const currentKh = this.model.state.kehoach.find(k => k.id === planId);
+            if (currentKh) {
+                currentKh.cvDaThucHienList = cvDaThucHien;
+                currentKh.cvKhongApDungList = cvKhongApDung;
+                currentKh.cvChuaDuDieuKienList = cvChuaDuDieuKien;
+            }
+        }
+    } else {
+        // Creating a new plan
+        const currentKh = this.model.state.kehoach.find(k => k.id === planId);
+        if (currentKh) {
+            currentKh.cvDaThucHienList = cvDaThucHien;
+            currentKh.cvKhongApDungList = cvKhongApDung;
+            currentKh.cvChuaDuDieuKienList = cvChuaDuDieuKien;
+        }
+    }
+
+    // Recalculate totals
+    const targetKh = this.model.state.kehoach.find(k => k.id === finalPlanId);
+    if (targetKh && targetKh.isTongMucTuDong) {
+        this.recalculatePlanTotal(finalPlanId);
+    }
+    this.updateBreakdownTotal(finalPlanId);
+
+    // Save states to local storage
     this.model.persistData('kehoach');
+    this.model.persistData('goithau');
+
+    // Reset backups and temporary transaction states
+    this.backupKeHoachState = null;
+    this.backupGoiThauState = null;
+    this.tempPlanData = null;
+    this.tempPlanAction = null;
+
     this.view.closeModal('modal-plan-breakdown');
     this.view.renderKeHoachTable();
-    await this.view.customAlert('Thành công', 'Đã lưu cấu trúc phân chia chi tiết phần công việc và cập nhật tổng giá trị kế hoạch!', 'check-circle');
+    this.view.renderGoiThauTable();
+    await this.view.customAlert('Thành công', 'Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!', 'check-circle');
     this.autoSync();
 }
 

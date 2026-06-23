@@ -18,8 +18,8 @@ export async function renderChuDauTuTable() {
         try {
             const res = await fetch(`/api/paginate?table=chudautu&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 }
             });
             if (res.ok) {
@@ -140,8 +140,8 @@ export async function renderNhaThauTable() {
         try {
             const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 }
             });
             if (res.ok) {
@@ -308,8 +308,8 @@ export async function renderChuyenGiaTable() {
         try {
             const res = await fetch(`/api/paginate?table=chuyengia&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 }
             });
             if (res.ok) {
@@ -416,8 +416,8 @@ export async function renderHopDongTable() {
         try {
             const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
                 headers: {
-                    'X-Session-Token': localStorage.getItem('bf_session_token') || '',
-                    'X-Username': localStorage.getItem('bf_username') || ''
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
                 }
             });
             if (res.ok) {

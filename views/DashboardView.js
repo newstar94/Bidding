@@ -124,14 +124,29 @@ export function renderSuperAdminDashboard() {
     fetch('/api/auth/users')
         .then(r => r.ok ? r.json() : [])
         .then(users => {
-            const orgCount = new Set(users.map(u => u.organization_name).filter(Boolean)).size;
+            const allOrgs = [];
+            users.forEach(u => {
+                if (u.organization_name) {
+                    u.organization_name.split(',').map(o => o.trim()).filter(Boolean).forEach(org => {
+                        allOrgs.push(org);
+                    });
+                }
+            });
+            const orgCount = new Set(allOrgs).size;
             const saStatOrgs = document.getElementById('sad-stat-orgs');
             if (saStatOrgs) saStatOrgs.textContent = `${orgCount} Đơn vị`;
             
             const saStatUsers = document.getElementById('sad-stat-users');
             if (saStatUsers) saStatUsers.textContent = `${users.length} Người dùng`;
 
-            const activeOrgs = users.filter(u => u.package_id && u.package_id !== 'none').map(u => u.organization_name).filter(Boolean);
+            const activeOrgs = [];
+            users.forEach(u => {
+                if (u.package_id && u.package_id !== 'none' && u.organization_name) {
+                    u.organization_name.split(',').map(o => o.trim()).filter(Boolean).forEach(org => {
+                        activeOrgs.push(org);
+                    });
+                }
+            });
             const activeOrgsCount = new Set(activeOrgs).size;
             const saStatActiveOrgs = document.getElementById('sad-stat-active-orgs');
             if (saStatActiveOrgs) saStatActiveOrgs.textContent = `Đang hoạt động: ${activeOrgsCount}`;
@@ -141,10 +156,11 @@ export function renderSuperAdminDashboard() {
             if (orgListContainer) {
                 const orgMap = {};
                 users.forEach(u => {
-                    if (u.organization_name) {
-                        if (!orgMap[u.organization_name]) {
-                            orgMap[u.organization_name] = {
-                                name: u.organization_name,
+                    const orgs = u.organization_name ? u.organization_name.split(',').map(o => o.trim()).filter(Boolean) : [];
+                    orgs.forEach(orgName => {
+                        if (!orgMap[orgName]) {
+                            orgMap[orgName] = {
+                                name: orgName,
                                 manager: '',
                                 email: '',
                                 package_id: 'none',
@@ -153,15 +169,15 @@ export function renderSuperAdminDashboard() {
                                 userCount: 0
                             };
                         }
-                        orgMap[u.organization_name].userCount++;
-                        if (u.role === 'manager') {
-                            orgMap[u.organization_name].manager = u.name;
-                            orgMap[u.organization_name].email = u.email;
-                            orgMap[u.organization_name].package_id = u.package_id || 'none';
-                            orgMap[u.organization_name].start = u.package_start_date ? this.model.formatDate(u.package_start_date) : '';
-                            orgMap[u.organization_name].end = u.package_end_date ? this.model.formatDate(u.package_end_date) : '';
+                        orgMap[orgName].userCount++;
+                        if (u.role === 'manager' || !orgMap[orgName].manager) {
+                            orgMap[orgName].manager = u.name;
+                            orgMap[orgName].email = u.email;
+                            orgMap[orgName].package_id = u.package_id || 'none';
+                            orgMap[orgName].start = u.package_start_date ? this.model.formatDate(u.package_start_date) : '';
+                            orgMap[orgName].end = u.package_end_date ? this.model.formatDate(u.package_end_date) : '';
                         }
-                    }
+                    });
                 });
 
                 const list = Object.values(orgMap);

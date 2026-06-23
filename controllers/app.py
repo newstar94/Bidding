@@ -13,6 +13,20 @@ if hasattr(sys.stderr, 'reconfigure'):
     except Exception:
         pass
 
+# Fix for Windows asyncio ProactorEventLoop WinError 10054 / ConnectionResetError
+if sys.platform == 'win32':
+    try:
+        import socket
+        _orig_shutdown = socket.socket.shutdown
+        def _patched_shutdown(self, how):
+            try:
+                _orig_shutdown(self, how)
+            except OSError:
+                pass
+        socket.socket.shutdown = _patched_shutdown
+    except Exception:
+        pass
+
 import json
 import uvicorn
 import shutil
@@ -25,9 +39,11 @@ from starlette.responses import StreamingResponse, JSONResponse, FileResponse, H
 from starlette.middleware import Middleware
 
 import re
+import threading
 
-# Cache cho HTML đã biên dịch/ghép nối
+# Cache cho HTML đã biên dịch/ghép nối (được bảo vệ bởi lock để thread-safe)
 _compiled_html_cache = None
+_compiled_html_lock = threading.Lock()
 
 def compile_html(file_path):
     global _compiled_html_cache
@@ -64,7 +80,10 @@ def compile_html(file_path):
             raw_content = f.read()
         compiled = compile_content(raw_content)
         if not APP_DEBUG:
-            _compiled_html_cache = compiled
+            with _compiled_html_lock:
+                # Double-checked locking: kiểm tra lại sau khi lấy lock
+                if not _compiled_html_cache:
+                    _compiled_html_cache = compiled
         return compiled
     return "<h1>Error: Main template index.html not found</h1>"
 
@@ -73,9 +92,17 @@ async def index(request):
     """
     [GET] /
     Biên dịch và trả về tệp index.html đã được ghép nối từ các partials.
+    Tối ưu hóa Etag browser caching (P5).
     """
     html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
-    return HTMLResponse(content=html_content, status_code=200)
+    import hashlib
+    etag = f'"{hashlib.md5(html_content.encode("utf-8")).hexdigest()}"'
+    
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match == etag:
+        return HTMLResponse(content="", status_code=304, headers={"ETag": etag})
+        
+    return HTMLResponse(content=html_content, status_code=200, headers={"ETag": etag})
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.background import BackgroundTasks
@@ -109,16 +136,13 @@ if os.path.exists(env_path):
                 v = v.strip().strip("'").strip('"')
                 os.environ[k] = v
 
-# Nạp helpers.py và dùng các module/hàm từ helpers
-import helpers
+# Loại bỏ import không dùng: format_date_str, VietnameseFloat, clean_admin_prefix, ROLE_HIERARCHY, SessionRole
+# đã có trong helpers.py nhưng không dùng trực tiếp trong app.py
 from helpers import (
     models,
     database,
     log_error,
     ErrorLoggingMiddleware,
-    format_date_str,
-    VietnameseFloat,
-    clean_admin_prefix,
     gui_email,
     verify_session,
     SCHEMA_DINH_NGHIA,
@@ -127,8 +151,7 @@ from helpers import (
     get_effective_roles,
     save_base64_image,
     load_base64_image,
-    ROLE_HIERARCHY,
-    SessionRole
+    OrgPermissionError
 )
 
 import custom_exporter
@@ -149,7 +172,9 @@ from auth_routes import (
     update_user_package_api,
     update_user_metadata_api,
     list_system_packages_api,
-    update_system_package_api
+    update_system_package_api,
+    add_user_to_org_api,
+    remove_user_from_org_api
 )
 from sync_routes import (
     sync_websocket_endpoint,
@@ -229,6 +254,8 @@ routes = [
     Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
     Route("/api/auth/users/update-package", update_user_package_api, methods=["POST"]),
     Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),
+    Route("/api/auth/users/add-to-org", add_user_to_org_api, methods=["POST"]),
+    Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
     Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
     
     # SPA Clean Paths Fallback to serve index.html for browser routes (Kebab-Case Standardized)
@@ -299,12 +326,38 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if path.startswith("/api/") or path.startswith("/ws/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         elif request.query_params.get("v") and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
-            # File có version string (?v=5.8) → cache vĩnh viễn (nội dung không đổi)
+            # File có version string (?v=6.7) → cache vĩnh viễn (nội dung không đổi)
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         elif path.endswith(('.js', '.css')):
             # JS/CSS không có version → revalidate mỗi request
             response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
         return response
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """Giới hạn kích thước request body tối đa 10MB để phòng chống DoS."""
+    async def dispatch(self, request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > 10 * 1024 * 1024:  # 10MB
+                    return JSONResponse({"error": "Payload quá lớn (Giới hạn 10MB)"}, status_code=413)
+            except ValueError:
+                return JSONResponse({"error": "Content-Length không hợp lệ"}, status_code=400)
+        return await call_next(request)
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """Bảo vệ ứng dụng khỏi tấn công CSRF bằng cách so khớp tiêu đề Origin/Referer."""
+    async def dispatch(self, request, call_next):
+        if request.method in ["POST", "PUT", "DELETE"]:
+            origin = request.headers.get("origin")
+            referer = request.headers.get("referer")
+            host = request.headers.get("host")
+            if origin and host not in origin:
+                return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Origin không khớp)"}, status_code=403)
+            if referer and host not in referer:
+                return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Referer không khớp)"}, status_code=403)
+        return await call_next(request)
+
 
 middleware = [
     Middleware(CORSMiddleware,
@@ -312,6 +365,8 @@ middleware = [
                allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
                allow_headers=['Content-Type', 'X-Session-Token', 'X-Username', 'X-Active-Org'],
                allow_credentials=False),
+    Middleware(BodySizeLimitMiddleware),
+    Middleware(CSRFMiddleware),
     Middleware(SecurityHeadersMiddleware),
     Middleware(ErrorLoggingMiddleware)
 ]
@@ -352,7 +407,16 @@ async def lifespan(app):
     threading.Thread(target=_run_cache_cleanup, daemon=True).start()
     yield
 
-app = Starlette(debug=APP_DEBUG, routes=routes, middleware=middleware, lifespan=lifespan)
+async def org_permission_handler(request, exc):
+    return JSONResponse({"error": "Không có quyền truy cập tổ chức này!"}, status_code=403)
+
+app = Starlette(
+    debug=APP_DEBUG,
+    routes=routes,
+    middleware=middleware,
+    lifespan=lifespan,
+    exception_handlers={OrgPermissionError: org_permission_handler}
+)
 
 # ==========================================
 # 5. KHỞI CHẠY MÁY CHỦ UVICORN

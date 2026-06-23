@@ -1,5 +1,6 @@
 import json
 import re
+import uuid
 import asyncio
 import traceback
 from datetime import datetime
@@ -11,14 +12,15 @@ from helpers import (
     database,
     verify_session,
     SCHEMA_DINH_NGHIA,
-    SPECIAL_FIELD_MAPS,
     to_camel_case,
     clean_id,
     save_base64_image,
     load_base64_image,
     log_error,
     get_active_org,
-    recalculate_is_latest
+    recalculate_is_latest,
+    recalculate_tong_muc_dau_tu,
+    OrgPermissionError
 )
 
 # Global dictionary to store active WebSocket connections
@@ -86,8 +88,8 @@ def map_db_to_json(table_name, row_dict):
     explicit_json_fields = set(table_spec.get("json_fields", []))
     field_map = table_spec.get("field_map", {})
     for col in table_spec["columns"].keys():
-        # Priority 6: field_map > SPECIAL_FIELD_MAPS > id_goc > to_camel_case
-        json_key = field_map.get(col) or SPECIAL_FIELD_MAPS.get(table_name, {}).get(col)
+        # Priority 6: field_map > id_goc > to_camel_case
+        json_key = field_map.get(col)
         if not json_key:
             if col == "id_goc":
                 json_key = "rootId"
@@ -172,12 +174,22 @@ async def sync_websocket_endpoint(websocket):
             
             conn = database.get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT id, vai_tro, token_phien FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
+            cursor.execute("SELECT id, vai_tro, token_phien, han_su_dung_token FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
             row = cursor.fetchone()
             conn.close()
             
             if row and row['token_phien'] == token:
+                # BE-5: Kiểm tra token expiry trước khi cho phép kết nối WebSocket
+                if row['han_su_dung_token']:
+                    try:
+                        import time as _time
+                        if _time.time() > float(row['han_su_dung_token']):
+                            await websocket.close(code=4001)  # 4001 = Unauthorized (expired)
+                            return
+                    except Exception:
+                        pass
                 user_id = row['id']
+                websocket.user_id = user_id
                 conn = database.get_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -260,6 +272,27 @@ def broadcast_websocket_event(owner_id, message):
     except RuntimeError:
         pass  # Không có event loop đang chạy – bỏ qua
 
+def disconnect_user_websockets(user_id):
+    """Tìm và ngắt toàn bộ kết nối WebSocket thuộc về user_id."""
+    for owner_id, sockets in list(active_connections.items()):
+        for ws in list(sockets):
+            if getattr(ws, 'user_id', None) == user_id:
+                try:
+                    async def close_ws(w):
+                        try:
+                            await w.close(code=4001)
+                        except Exception:
+                            pass
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(close_ws(ws))
+                except Exception:
+                    pass
+                # Loại bỏ khỏi danh sách active_connections
+                sockets.discard(ws)
+        if not active_connections.get(owner_id):
+            active_connections.pop(owner_id, None)
+
+
 async def sync_api(request):
     """
     [POST] /api/sync
@@ -283,6 +316,14 @@ async def sync_api(request):
         
         org_name = get_active_org(request, role_or_err.user_id)
         current_time = int(datetime.utcnow().timestamp())
+        
+        # LG-5: Validate org_name (owner_id) to ensure it exists in to_chuc or tai_khoan
+        cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (org_name,))
+        if not cursor.fetchone():
+            cursor.execute("SELECT 1 FROM tai_khoan WHERE id = ?", (org_name,))
+            if not cursor.fetchone():
+                log_sync_error(f"owner_id không hợp lệ: {org_name}")
+                return JSONResponse({"error": "Không thể xác định tổ chức hoặc tài khoản sở hữu dữ liệu."}, status_code=400)
         
         # Sử dụng hằng số TABLE_KEYS toàn cục
         
@@ -321,7 +362,8 @@ async def sync_api(request):
                             db_row_data[col] = current_time
                         else:
                             # Rút trích key JSON tương ứng từ trường DB
-                            json_key = SPECIAL_FIELD_MAPS.get(table_name, {}).get(col)
+                            field_map = SCHEMA_DINH_NGHIA.get(table_name, {}).get("field_map", {})
+                            json_key = field_map.get(col)
                             if not json_key:
                                 if col == "id_goc":
                                     json_key = "rootId"
@@ -376,6 +418,22 @@ async def sync_api(request):
                                     
                                 db_row_data[col] = val
                         
+                    # Để tránh lỗi UNIQUE constraint failed khi chèn/cập nhật phan_cong_nhan_su hoặc ma_tran_phan_quyen
+                    # và xóa phân công cũ của mục tiêu này để tránh trùng lặp khi đổi chuyên viên phụ trách
+                    if not db_row_data.get("id"):
+                        db_row_data["id"] = str(uuid.uuid4())
+
+                    if table_name == "phan_cong_nhan_su":
+                        cursor.execute("""
+                            DELETE FROM phan_cong_nhan_su 
+                            WHERE id_muc_tieu = ? AND loai_doi_tuong = ? AND id != ?
+                        """, (db_row_data.get("id_muc_tieu"), db_row_data.get("loai_doi_tuong"), db_row_data.get("id")))
+                    elif table_name == "ma_tran_phan_quyen":
+                        cursor.execute("""
+                            DELETE FROM ma_tran_phan_quyen 
+                            WHERE owner_id = ? AND emp_id = ? AND id != ?
+                        """, (db_row_data.get("owner_id"), db_row_data.get("emp_id"), db_row_data.get("id")))
+
                     # Thực thi UPSERT thay cho INSERT OR REPLACE để bảo toàn created_at
                     cols_str = ", ".join(db_row_data.keys())
                     placeholders = ", ".join(["?"] * len(db_row_data))
@@ -388,6 +446,9 @@ async def sync_api(request):
                     else:
                         sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) ON CONFLICT(id) DO NOTHING"
                     cursor.execute(sql, tuple(db_row_data.values()))
+                    
+                    # Ghi Audit Log cho UPSERT
+                    item_id = get_clean_id(table_name, item.get('id'))
                     
                     # Ràng buộc thêm: Gắn các gói thầu với hợp đồng (junction table)
                     if table_name == "hop_dong":
@@ -485,6 +546,7 @@ async def sync_api(request):
                                 "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
                                 (table_name, c_id, org_name, current_time)
                             )
+                            # Ghi Audit Log cho DELETE
                             # Cần cập nhật lại is_latest nếu bảng bị xóa là bảng versioning
                             if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
                                 updated_versioned_tables.add(table_name)
@@ -492,6 +554,10 @@ async def sync_api(request):
         # Tính lại is_latest bằng hàm chung (tránh duplicate logic với migration)
         for tbl in updated_versioned_tables:
             recalculate_is_latest(cursor, tbl, owner_id=org_name)
+            
+        # LG-3: Tính lại tổng mức đầu tư tự động nếu kế hoạch hoặc gói thầu thay đổi
+        if "ke_hoach_lcnt" in updated_versioned_tables or "goi_thau" in updated_versioned_tables:
+            recalculate_tong_muc_dau_tu(cursor, owner_id=org_name)
                                  
         conn.commit()
         
@@ -502,6 +568,8 @@ async def sync_api(request):
         if orphaned_ids:
             response_data["orphanedIds"] = orphaned_ids  # Client sẽ xóa các record này khỏi IndexedDB
         return JSONResponse(response_data)
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
         return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)
@@ -689,10 +757,11 @@ async def get_all_data_api(request):
             "useServerSidePagination": use_server_pagination,
             "timestamp": current_time
         })
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
-        import traceback
         traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Da xay ra loi he thong khi lay du lieu."}, status_code=500)
 
 async def paginate_api(request):
     try:
@@ -702,8 +771,12 @@ async def paginate_api(request):
             
         params = request.query_params
         table_key = params.get("table")
-        page = int(params.get("page", 1))
-        page_size = int(params.get("pageSize", 10))
+        page_size_raw = params.get("pageSize", "10")
+        try:
+            page = max(1, int(params.get("page", 1)))
+            page_size = max(1, min(200, int(page_size_raw)))  # Giới hạn pageSize 1-200
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "Tham số phân trang không hợp lệ"}, status_code=400)
         search = params.get("search", "").strip().lower()
         
         # Sử dụng TABLE_KEYS toàn cục
@@ -839,7 +912,8 @@ async def paginate_api(request):
             "items": items,
             "totalItems": total_items
         })
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
-        import traceback
         traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Da xay ra loi he thong khi phan trang."}, status_code=500)

@@ -96,6 +96,21 @@ def verify_session(request, required_role=None):
     if not token or not username:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
+    if required_role == 'super_admin':
+        # Kiểm tra IP allowlist cho quyền super_admin (Mục 12)
+        import os
+        allowlist_str = os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", "127.0.0.1,::1,localhost")
+        allowlist = [ip.strip() for ip in allowlist_str.split(",") if ip.strip()]
+        
+        if "*" not in allowlist:
+            forwarded = request.headers.get('X-Forwarded-For')
+            if forwarded:
+                client_ip = forwarded.split(',')[0].strip()
+            else:
+                client_ip = getattr(request.client, 'host', 'unknown')
+            if client_ip not in allowlist:
+                return False, "Truy cập bị từ chối: IP không được phép truy cập quyền quản trị tối cao!"
+
     cached_user = _session_cache_get(token)
     if cached_user:
         if cached_user.get('token_phien') != token:
@@ -107,7 +122,7 @@ def verify_session(request, required_role=None):
     
     conn = database.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, vai_tro, token_phien, han_su_dung_token FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
+    cursor.execute("SELECT * FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
     row = cursor.fetchone()
     conn.close()
     
@@ -129,6 +144,8 @@ def verify_session(request, required_role=None):
         
     if required_role and required_role not in get_effective_roles(user['vai_tro']):
         return False, "Bạn không có quyền thực hiện thao tác này!"
+
+
 
     _session_cache_set(token, user)
     return True, SessionRole(user['vai_tro'], user['id'])

@@ -20,12 +20,15 @@ from helpers import (
     gui_email,
     log_error,
     _session_cache_invalidate,
-    _session_cache_invalidate_by_user_id
+    _session_cache_invalidate_by_user_id,
+    OrgPermissionError
 )
+from auth_helper import _session_cache_get, _session_cache_set
 
 # ==========================================
 # RATE LIMITER (In-memory, per IP)
 # Bảo vệ chống brute force / spam OTP
+# BE-3: Kết hợp in-memory + DB persist để survive server restart
 # ==========================================
 _rate_limit_store = defaultdict(list)   # ip -> [timestamps]
 RATE_LIMIT_MAX = 5         # Tối đa 5 lần
@@ -39,14 +42,57 @@ def _get_client_ip(request) -> str:
     return getattr(request.client, 'host', 'unknown')
 
 def _check_rate_limit(ip: str) -> bool:
-    """Trả về True nếu chưa vượt giới hạn, False nếu bị throttle."""
+    """Trả về True nếu chưa vượt giới hạn, False nếu bị throttle.
+    Ghi lần thử vào DB để survive server restart (BE-3).
+    """
     now = time.time()
     window_start = now - RATE_LIMIT_WINDOW
-    # Xóa các timestamp cũ hơn cửa sổ thời gian
+    
+    # 1) In-memory check (nhanh)
     _rate_limit_store[ip] = [t for t in _rate_limit_store[ip] if t > window_start]
-    if len(_rate_limit_store[ip]) >= RATE_LIMIT_MAX:
-        return False
-    _rate_limit_store[ip].append(now)
+    
+    # 2) DB-backed count để persist qua restart
+    try:
+        from helpers import database as _db
+        conn = _db.get_connection()
+        cur = conn.cursor()
+        key = f"rate_limit:{ip}"
+        cur.execute("SELECT config_value FROM sys_config WHERE config_key = ?", (key,))
+        row = cur.fetchone()
+        if row:
+            import json as _json
+            try:
+                db_timestamps = [t for t in _json.loads(row[0]) if t > window_start]
+            except Exception:
+                db_timestamps = []
+        else:
+            db_timestamps = list(_rate_limit_store[ip])
+        
+        # Merge in-memory + DB entries
+        all_timestamps = sorted(set(list(_rate_limit_store[ip]) + db_timestamps))
+        all_timestamps = [t for t in all_timestamps if t > window_start]
+        
+        if len(all_timestamps) >= RATE_LIMIT_MAX:
+            conn.close()
+            return False
+        
+        # Ghi lại vào DB
+        all_timestamps.append(now)
+        import json as _json
+        cur.execute(
+            "INSERT INTO sys_config (config_key, config_value) VALUES (?, ?) "
+            "ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value",
+            (key, _json.dumps(all_timestamps[-RATE_LIMIT_MAX:]))
+        )
+        conn.commit()
+        conn.close()
+        _rate_limit_store[ip] = all_timestamps
+    except Exception:
+        # Fallback: chỉ dùng in-memory nếu DB lỗi
+        if len(_rate_limit_store[ip]) >= RATE_LIMIT_MAX:
+            return False
+        _rate_limit_store[ip].append(now)
+    
     return True
 
 def _generate_otp() -> str:
@@ -109,12 +155,21 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
             )
             
     # 2. Remove associations for organizations no longer specified
+    removed_any = False
     for org_name, org_id in current_assoc.items():
         if org_name not in new_orgs:
             cursor.execute(
                 "DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
                 (user_id, org_id)
             )
+            removed_any = True
+
+    if removed_any:
+        # Xóa cache tổ chức hoạt động và ngắt kết nối WebSocket
+        from helpers import _org_cache_invalidate_by_user_id
+        _org_cache_invalidate_by_user_id(user_id)
+        from sync_routes import disconnect_user_websockets
+        disconnect_user_websockets(user_id)
 
 # ==========================================
 # CÁC ENDPOINT ĐĂNG KÝ, ĐĂNG NHẬP, QUÊN MẬT KHẨU
@@ -337,7 +392,7 @@ async def login_api(request):
             
         # Generate new active session token (uuid) to log out other devices
         session_token = str(uuid.uuid4())
-        token_expiry = int((datetime.utcnow() + timedelta(hours=24)).timestamp())  # Unix timestamp
+        token_expiry = int((datetime.utcnow() + timedelta(hours=12)).timestamp())  # Unix timestamp (Giảm xuống 12 giờ theo Mục 11)
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
             "ip": request.client.host,
@@ -376,7 +431,40 @@ async def check_session_api(request):
         session_token = data.get('session_token', '').strip()
         
         if not username or not session_token:
-            return JSONResponse({"valid": False, "error": "Thiếu thông tin xác thực"}, status_code=400)
+            return JSONResponse({"valid": False, "error": "Thi\u1ebfu th\u00f4ng tin x\u00e1c th\u1ef1c"}, status_code=400)
+        
+        # BE-4: Th\u1eed l\u1ea5y t\u1eeb session cache tr\u01b0\u1edbc \u0111\u1ec3 tr\u00e1nh query DB kh\u00f4ng c\u1ea7n thi\u1ebft
+        cached = _session_cache_get(session_token)
+        if cached and cached.get('token_phien') == session_token and 'ten_dang_nhap' in cached:
+            # Kiểm tra token expiry trong cache
+            if cached.get('han_su_dung_token'):
+                try:
+                    if time.time() > float(cached['han_su_dung_token']):
+                        _session_cache_invalidate(session_token)
+                        return JSONResponse({"valid": False, "reason": "token_expired"})
+                except Exception:
+                    pass
+            effective_roles = list(get_effective_roles(cached['vai_tro']))
+            # Lấy org_names từ DB khi cần (không có trong cache những thông tin đó)
+            conn = database.get_connection()
+            cursor = conn.cursor()
+            org_names = get_user_org_names(cursor, cached['id'])
+            conn.close()
+            return JSONResponse({
+                "valid": True,
+                "device_info": cached.get('thong_tin_thiet_bi_cuoi'),
+                "user": {
+                    "id": cached['id'],
+                    "username": cached['ten_dang_nhap'],
+                    "name": cached['ho_ten'],
+                    "role": cached['vai_tro'],
+                    "effective_roles": effective_roles,
+                    "email": cached['email'],
+                    "avatar": cached.get('anh_dai_dien'),
+                    "package_id": cached.get('goi_dich_vu_id'),
+                    "organization_name": org_names
+                }
+            })
             
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -396,12 +484,14 @@ async def check_session_api(request):
             
         if user.get('han_su_dung_token'):
             try:
-                # So sánh Unix timestamp (số nguyên) thay vì ISO string
-                import time as _time
-                if _time.time() > float(user['han_su_dung_token']):
+                # So s\u00e1nh Unix timestamp (s\u1ed1 nguy\u00ean) thay v\u00ec ISO string
+                if time.time() > float(user['han_su_dung_token']):
                     return JSONResponse({"valid": False, "reason": "token_expired"})
             except Exception:
                 pass
+        
+        # L\u01b0u v\u00e0o session cache sau khi verify th\u00e0nh c\u00f4ng
+        _session_cache_set(session_token, user)
                 
         effective_roles = list(get_effective_roles(user['vai_tro']))
         return JSONResponse({
@@ -421,7 +511,7 @@ async def check_session_api(request):
         })
     except Exception as e:
         log_error(e, "check_session_api")
-        return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
+        return JSONResponse({"valid": False, "error": "L\u1ed7i ki\u1ec3m tra phi\u00ean l\u00e0m vi\u1ec7c."}, status_code=500)
 
 async def forgot_password_api(request):
     try:
@@ -602,7 +692,12 @@ async def list_users_api(request):
         
         sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, email, anh_dai_dien AS avatar, goi_dich_vu_id AS package_id, ngay_bat_dau_goi AS package_start_date, ngay_het_han_goi AS package_end_date FROM tai_khoan"
         
-        if 'super_admin' in get_effective_roles(req_role):
+        # Hỗ trợ tìm kiếm theo email chính xác cho cả vai trò quản lý
+        email_query = request.query_params.get('email')
+        if email_query:
+            cursor.execute(sql_base + " WHERE email = ?", (email_query.strip().lower(),))
+            users_raw = cursor.fetchall()
+        elif 'super_admin' in get_effective_roles(req_role):
             cursor.execute(sql_base)
             users_raw = cursor.fetchall()
         else:
@@ -611,17 +706,31 @@ async def list_users_api(request):
                 cursor.execute(sql_base + " WHERE id = ?", (role_or_err.user_id,))
                 users_raw = cursor.fetchall()
             else:
-                # Lọc những tài khoản có chung tổ chức
-                placeholders = ",".join("?" for _ in req_org_ids)
-                cursor.execute(f"""
-                    SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role, 
-                                    tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id, 
-                                    tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date 
-                    FROM tai_khoan tk
-                    JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                    WHERE tvtc.to_chuc_id IN ({placeholders})
-                """, req_org_ids)
-                users_raw = cursor.fetchall()
+                # Lọc những tài khoản thuộc tổ chức hoạt động hiện tại (active_org) thay vì tất cả tổ chức của requester
+                from helpers import get_active_org
+                active_org_id = get_active_org(request, role_or_err.user_id)
+                if active_org_id and active_org_id in req_org_ids:
+                    cursor.execute(f"""
+                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role, 
+                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id, 
+                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date 
+                        FROM tai_khoan tk
+                        JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
+                        WHERE tvtc.to_chuc_id = ?
+                    """, (active_org_id,))
+                    users_raw = cursor.fetchall()
+                else:
+                    # Fallback nếu không có active_org hợp lệ
+                    placeholders = ",".join("?" for _ in req_org_ids)
+                    cursor.execute(f"""
+                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role, 
+                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id, 
+                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date 
+                        FROM tai_khoan tk
+                        JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
+                        WHERE tvtc.to_chuc_id IN ({placeholders})
+                    """, req_org_ids)
+                    users_raw = cursor.fetchall()
                 
         user_ids = [r['id'] for r in users_raw]
         orgs_by_user = defaultdict(list)
@@ -643,6 +752,8 @@ async def list_users_api(request):
             users.append(u)
         conn.close()
         return JSONResponse(users)
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         log_error(e, "list_users_api")
         return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
@@ -659,6 +770,14 @@ async def delete_user_api(request):
         cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
         conn.commit()
         conn.close()
+        
+        # Xóa cache session, cache tổ chức hoạt động và ngắt kết nối WebSocket
+        _session_cache_invalidate_by_user_id(user_id)
+        from helpers import _org_cache_invalidate_by_user_id
+        _org_cache_invalidate_by_user_id(user_id)
+        from sync_routes import disconnect_user_websockets
+        disconnect_user_websockets(user_id)
+        
         return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
     except Exception as e:
         log_error(e, "delete_user_api")
@@ -691,6 +810,25 @@ async def update_user_role_api(request):
         if 'super_admin' not in effective_roles and 'super_admin' in requested_roles:
             return JSONResponse({"error": "Bạn không có quyền gán vai trò Quản trị viên tối cao!"}, status_code=403)
         
+        # BE-7: Kiểm tra target user có trong cùng tổ chức với requester không (trừ super_admin)
+        if 'super_admin' not in effective_roles:
+            requester_id = role_or_err.user_id
+            conn_check = database.get_connection()
+            cur_check = conn_check.cursor()
+            cur_check.execute(
+                "SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?",
+                (requester_id,)
+            )
+            requester_orgs = {row[0] for row in cur_check.fetchall()}
+            cur_check.execute(
+                "SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?",
+                (user_id,)
+            )
+            target_orgs = {row[0] for row in cur_check.fetchall()}
+            conn_check.close()
+            if not requester_orgs.intersection(target_orgs):
+                return JSONResponse({"error": "Bạn không có quyền thay đổi vai trò của người dùng này!"}, status_code=403)
+        
         # Chuẩn hóa: nếu có super_admin thì không cần liệt kê lại manager/employee
         normalized_role = ','.join(requested_roles)
             
@@ -703,7 +841,8 @@ async def update_user_role_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật vai trò người dùng thành công!"})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "update_user_role_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật vai trò."}, status_code=500)
 
 async def update_user_package_api(request):
     try:
@@ -818,4 +957,134 @@ async def update_system_package_api(request):
         conn.close()
         return JSONResponse({"success": True, "message": "Cập nhật gói dịch vụ thành công!"})
     except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+async def add_user_to_org_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+            
+        effective_roles = get_effective_roles(role_or_err)
+        if 'manager' not in effective_roles:
+            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
+            
+        data = await request.json()
+        user_id = data.get('user_id')
+        if not user_id:
+            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
+            
+        from helpers import get_active_org
+        org_id = get_active_org(request, role_or_err.user_id)
+        
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        
+        # Kiểm tra xem tổ chức đã tồn tại chưa, nếu chưa thì tự động tạo
+        cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (org_id,))
+        if not cursor.fetchone():
+            cursor.execute("SELECT ho_ten, email FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
+            mgr_row = cursor.fetchone()
+            if mgr_row:
+                mgr_name = mgr_row['ho_ten'] or mgr_row['email'] or f"Quản lý {role_or_err.user_id}"
+            else:
+                mgr_name = f"Quản lý {role_or_err.user_id}"
+            
+            org_name = f"Tổ chức của {mgr_name}"
+            cursor.execute("SELECT 1 FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
+            if cursor.fetchone():
+                org_name = f"Tổ chức của {mgr_name} ({org_id})"
+                
+            cursor.execute(
+                "INSERT INTO to_chuc (id, ten_to_chuc, quan_ly_id) VALUES (?, ?, ?)",
+                (org_id, org_name, role_or_err.user_id)
+            )
+            cursor.execute(
+                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
+                (role_or_err.user_id, org_id, 'manager')
+            )
+        
+        # Kiểm tra xem nhân sự đã thuộc tổ chức này chưa
+        cursor.execute("SELECT user_id FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
+        if cursor.fetchone():
+            conn.close()
+            return JSONResponse({"success": True, "message": "Nhân sự đã thuộc tổ chức này!"})
+            
+        # Thêm vào tổ chức
+        cursor.execute(
+            "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
+            (user_id, org_id, 'employee')
+        )
+        
+        # Cập nhật vai trò hệ thống của tài khoản thành employee nếu vai trò trống hoặc là none
+        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
+        u_row = cursor.fetchone()
+        if u_row:
+            current_role = u_row['vai_tro'] or ''
+            if not current_role or current_role == 'none':
+                cursor.execute("UPDATE tai_khoan SET vai_tro = 'employee' WHERE id = ?", (user_id,))
+                
+        conn.commit()
+        conn.close()
+        _session_cache_invalidate_by_user_id(user_id)
+        
+        return JSONResponse({"success": True, "message": "Thêm nhân sự vào tổ chức thành công!"})
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+    except Exception as e:
+        log_error(e, "add_user_to_org_api")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+async def remove_user_from_org_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+            
+        effective_roles = get_effective_roles(role_or_err)
+        if 'manager' not in effective_roles:
+            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
+            
+        data = await request.json()
+        user_id = data.get('user_id')
+        if not user_id:
+            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
+            
+        from helpers import get_active_org
+        org_id = get_active_org(request, role_or_err.user_id)
+        
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
+        
+        # Gỡ các bản ghi ma_tran_phan_quyen của nhân sự trong tổ chức này và ghi nhận deletion log
+        cursor.execute("SELECT id FROM ma_tran_phan_quyen WHERE emp_id = ? AND owner_id = ?", (user_id, org_id))
+        pq_rows = cursor.fetchall()
+        for row in pq_rows:
+            pq_id = row['id']
+            cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE id = ?", (pq_id,))
+            cursor.execute(
+                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
+                ("ma_tran_phan_quyen", pq_id, org_id, int(time.time()))
+            )
+            
+        # Gỡ các bản ghi phan_cong_nhan_su (tự động ghi nhận deletion log qua DB trigger)
+        cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id_nhan_vien = ? AND owner_id = ?", (user_id, org_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # Xóa cache session, cache tổ chức hoạt động và ngắt kết nối WebSocket
+        _session_cache_invalidate_by_user_id(user_id)
+        from helpers import _org_cache_invalidate_by_user_id
+        _org_cache_invalidate_by_user_id(user_id)
+        from sync_routes import disconnect_user_websockets
+        disconnect_user_websockets(user_id)
+        
+        return JSONResponse({"success": True, "message": "Gỡ nhân sự khỏi tổ chức thành công!"})
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+    except Exception as e:
+        log_error(e, "remove_user_from_org_api")
         return JSONResponse({"error": str(e)}, status_code=500)

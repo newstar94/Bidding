@@ -117,10 +117,23 @@ class BrowserDB {
             try {
                 const transaction = this.db.transaction(tableName, "readwrite");
                 const store = transaction.objectStore(tableName);
-                store.clear();
-                (dataArray || []).forEach(item => {
-                    store.put(item);
-                });
+                
+                const getKeysRequest = store.getAllKeys();
+                getKeysRequest.onsuccess = () => {
+                    const existingKeys = new Set(getKeysRequest.result || []);
+                    const incomingKeys = new Set((dataArray || []).map(item => item.id));
+                    
+                    existingKeys.forEach(key => {
+                        if (!incomingKeys.has(key)) {
+                            store.delete(key);
+                        }
+                    });
+                    
+                    (dataArray || []).forEach(item => {
+                        store.put(item);
+                    });
+                };
+                
                 transaction.oncomplete = () => resolve();
                 transaction.onerror = (e) => reject(e.target.error);
             } catch (e) {
@@ -263,7 +276,7 @@ export class BiddingModel {
     }
 
     async init() {
-        const userId = localStorage.getItem('bf_user_id');
+        const userId = sessionStorage.getItem('bf_user_id');
         if (userId) {
             const cleanUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '');
             this.db = new BrowserDB(`BiddingFlowDB_${cleanUserId}`);
@@ -341,8 +354,8 @@ export class BiddingModel {
         let storedRole = null;
         let storedUser = null;
         try {
-            const localRole = localStorage.getItem(this.STORAGE_KEYS.ACTIVEROLE);
-            const localUser = localStorage.getItem(this.STORAGE_KEYS.ACTIVEUSER);
+            const localRole = sessionStorage.getItem(this.STORAGE_KEYS.ACTIVEROLE);
+            const localUser = sessionStorage.getItem(this.STORAGE_KEYS.ACTIVEUSER);
             if (localRole) storedRole = JSON.parse(localRole);
             if (localUser) storedUser = JSON.parse(localUser);
         } catch (e) {
@@ -373,33 +386,37 @@ export class BiddingModel {
     }
 
 
+    async trackDeletions(type) {
+        try {
+            const oldData = await this.db.getTableData(type);
+            if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
+                const newIds = new Set(this.state[type].map(x => x.id).filter(Boolean));
+                const deletedIds = oldData.map(x => x.id).filter(id => id && !newIds.has(id));
+                if (deletedIds.length > 0) {
+                    let localDeletions = [];
+                    try {
+                        localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
+                    } catch (e) {
+                        localDeletions = [];
+                    }
+                    deletedIds.forEach(id => {
+                        if (!localDeletions.some(d => d.id === id && d.table === type)) {
+                            localDeletions.push({ table: type, id: id });
+                        }
+                    });
+                    localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
+                }
+            }
+        } catch (e) {
+            console.error("Error checking deletions in trackDeletions:", e);
+        }
+    }
+
     async persistData(type) {
         const key = type.toUpperCase();
         if (this.STORAGE_KEYS[key]) {
             if (this.db.stores.includes(type)) {
-                try {
-                    const oldData = await this.db.getTableData(type);
-                    if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
-                        const newIds = new Set(this.state[type].map(x => x.id).filter(Boolean));
-                        const deletedIds = oldData.map(x => x.id).filter(id => id && !newIds.has(id));
-                        if (deletedIds.length > 0) {
-                            let localDeletions = [];
-                            try {
-                                localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
-                            } catch (e) {
-                                localDeletions = [];
-                            }
-                            deletedIds.forEach(id => {
-                                if (!localDeletions.some(d => d.id === id && d.table === type)) {
-                                    localDeletions.push({ table: type, id: id });
-                                }
-                            });
-                            localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
-                        }
-                    }
-                } catch (e) {
-                    console.error("Error checking deletions in persistData:", e);
-                }
+                await this.trackDeletions(type);
                 
                 try {
                     await this.db.putTableData(type, this.state[type]);
@@ -474,23 +491,15 @@ export class BiddingModel {
         if (role === 'super_admin') title = 'Super Admin';
         else if (role === 'manager') title = 'Quản lý';
 
-        const dbRole = this.state.activeuser ? this.state.activeuser.dbRole : undefined;
-        const dbRoles = this.state.activeuser ? this.state.activeuser.dbRoles : undefined;
-        const avatar = this.state.activeuser ? this.state.activeuser.avatar : undefined;
-        const email = this.state.activeuser ? this.state.activeuser.email : undefined;
-
         this.state.activeuser = {
+            ...(this.state.activeuser || {}),
             name: userName,
             title: title,
-            id: userId,
-            ...(dbRole && { dbRole }),
-            ...(dbRoles && { dbRoles }),
-            ...(avatar && { avatar }),
-            ...(email && { email })
+            id: userId
         };
 
-        localStorage.setItem(this.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.state.activerole));
-        localStorage.setItem(this.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.state.activeuser));
+        sessionStorage.setItem(this.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.state.activerole));
+        sessionStorage.setItem(this.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.state.activeuser));
         // Không ghi vào IndexedDB cho session data — localStorage đủ và nhanh hơn
     }
 
@@ -500,8 +509,8 @@ export class BiddingModel {
                 localStorage.removeItem(this.STORAGE_KEYS[key]);
             }
         });
-        localStorage.removeItem('bf_session_token');
-        localStorage.removeItem('bf_username');
+        sessionStorage.removeItem('bf_session_token');
+        sessionStorage.removeItem('bf_username');
         // Reset model state
         Object.keys(this.state).forEach(key => {
             if (Array.isArray(this.state[key])) {
@@ -584,12 +593,12 @@ export class BiddingModel {
             return true;
         }
 
-        // Strip string prefixes for matching (e.g. gt-1 vs 1, emp-1 vs user-1)
-        const cleanEmpId = String(empId).replace(/^(emp-|user-)+/, '');
+        // Strip string prefixes for matching (e.g. gt-1 vs 1, emp-1 vs user-1, sa-1, mgr-1)
+        const cleanEmpId = String(empId).replace(/^(emp-|user-|sa-|mgr-)+/, '');
         const cleanTargetId = String(targetId).replace(/^(gt-|hd-)+/, '');
 
         return this.state.assignments.some(a =>
-            String(a.empId).replace(/^(emp-|user-)+/, '') === cleanEmpId &&
+            String(a.empId).replace(/^(emp-|user-|sa-|mgr-)+/, '') === cleanEmpId &&
             String(a.targetId).replace(/^(gt-|hd-)+/, '') === cleanTargetId &&
             a.type === type
         );
@@ -603,10 +612,10 @@ export class BiddingModel {
         }
 
         const empId = this.state.activeuser.id;
-        const cleanEmpId = String(empId).replace(/^(emp-|user-)+/, '');
+        const cleanEmpId = String(empId).replace(/^(emp-|user-|sa-|mgr-)+/, '');
         // A plan is visible to an employee if any package in it is assigned to them
         const assignedPackages = this.state.assignments
-            .filter(a => String(a.empId).replace(/^(emp-|user-)+/, '') === cleanEmpId && a.type === 'goithau')
+            .filter(a => String(a.empId).replace(/^(emp-|user-|sa-|mgr-)+/, '') === cleanEmpId && a.type === 'goithau')
             .map(a => String(a.targetId).replace(/^(gt-|hd-)+/, ''));
 
         return allPlans.filter(kh => {
@@ -762,7 +771,7 @@ export class BiddingModel {
         return code || '';
     }
 
-    getPlanVersionLabel(phienBan) {
+    getVersionLabel(phienBan) {
         const verNum = parseInt(phienBan) || 0;
         return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
     }
@@ -771,17 +780,12 @@ export class BiddingModel {
         return code || '';
     }
 
-    getPackageVersionLabel(phienBan) {
-        const verNum = parseInt(phienBan) || 0;
-        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
-    }
-
     getLatestPlans() {
         const latest = (this.state.kehoach || []).filter(kh => kh.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
         this.state.kehoach.forEach(kh => {
-            const root = kh.rootId || kh.maKeHoach || kh.tenKeHoach || kh.id;
+            const root = kh.rootId || kh.id;
             const verNum = parseInt(kh.phienBan) || 0;
 
             if (!latestMap[root] || verNum > latestMap[root].version) {
@@ -799,7 +803,7 @@ export class BiddingModel {
         if (latest.length > 0) return latest;
         const latestMap = {};
         this.state.goithau.forEach(gt => {
-            const root = gt.rootId || gt.maGoiThau || gt.tenGoiThau || gt.id;
+            const root = gt.rootId || gt.id;
             const verNum = parseInt(gt.phienBan) || 0;
 
             if (!latestMap[root] || verNum > latestMap[root].version) {
@@ -812,25 +816,7 @@ export class BiddingModel {
         return Object.values(latestMap).map(item => item.package);
     }
 
-    getChuDauTuVersionLabel(phienBan) {
-        const verNum = parseInt(phienBan) || 0;
-        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
-    }
-
-    getNhaThauVersionLabel(phienBan) {
-        const verNum = parseInt(phienBan) || 0;
-        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
-    }
-
-    getChuyenGiaVersionLabel(phienBan) {
-        const verNum = parseInt(phienBan) || 0;
-        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
-    }
-
-    getHopDongVersionLabel(phienBan) {
-        const verNum = parseInt(phienBan) || 0;
-        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
-    }
+    // Duplicate version label functions have been removed. Use getVersionLabel instead.
 
     getLatestChuDauTu() {
         const chudautuList = Array.isArray(this.state.chudautu) ? this.state.chudautu : [];
@@ -872,12 +858,12 @@ export class BiddingModel {
 
     getLatestChuyenGia() {
         const chuyengiaList = Array.isArray(this.state.chuyengia) ? this.state.chuyengia : [];
-        const latest = chuyengiaList.filter(c => c.isLatest == 1 || c.is_latest == 1);
+        const latest = chuyengiaList.filter(c => c.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
         chuyengiaList.forEach(c => {
             const root = c.rootId || c.id;
-            const verNum = parseInt(c.phienBan || c.phien_ban) || 0;
+            const verNum = parseInt(c.phienBan) || 0;
 
             if (!latestMap[root] || verNum > latestMap[root].version) {
                 latestMap[root] = {
@@ -891,12 +877,12 @@ export class BiddingModel {
 
     getLatestHopDong() {
         const allContracts = this.getFilteredHopDong();
-        const latest = allContracts.filter(h => h.isLatest == 1 || h.is_latest == 1);
+        const latest = allContracts.filter(h => h.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
         allContracts.forEach(h => {
             const root = h.rootId || h.id;
-            const verNum = parseInt(h.phienBan || h.phien_ban) || 0;
+            const verNum = parseInt(h.phienBan) || 0;
 
             if (!latestMap[root] || verNum > latestMap[root].version) {
                 latestMap[root] = {

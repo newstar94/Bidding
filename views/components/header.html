@@ -22,10 +22,13 @@
                         <span id="sync-status-text">Đồng bộ</span>
                     </button>
 
-                    <!-- Workspace Pill Indicator -->
-                    <div class="workspace-pill" id="header-active-org-pill" style="display: none; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary); font-size: 0.78rem; font-weight: 700; height: 38px; margin-right: 8px; border: 1px solid rgba(37, 99, 235, 0.15); cursor: pointer; transition: all 0.2s;">
-                        <i data-lucide="building-2" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
-                        <span id="header-active-org-name" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">HTD</span>
+                    <!-- Workspace Pill Container -->
+                    <div class="workspace-pill-container" id="workspace-pill-container" style="position: relative; display: inline-block;">
+                        <!-- Workspace Pill Indicator -->
+                        <div class="workspace-pill" id="header-active-org-pill" style="display: none; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary); font-size: 0.78rem; font-weight: 700; height: 38px; margin-right: 8px; border: 1px solid rgba(37, 99, 235, 0.15); cursor: default; transition: all 0.2s;">
+                            <i data-lucide="building-2" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                            <span id="header-active-org-name" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">HTD</span>
+                        </div>
                     </div>
 
                     <!-- Header Profile Dropdown Container -->

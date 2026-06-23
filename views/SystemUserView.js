@@ -28,9 +28,14 @@ export function updateActiveUserProfileDisplay() {
             if (activeOrg) {
                 orgPillName.textContent = activeOrg;
                 orgPill.style.display = 'flex';
+                orgPill.style.cursor = 'default';
             } else {
                 orgPill.style.display = 'none';
             }
+        }
+
+        if (window.appController && typeof window.appController.renderWorkspaceSwitcher === 'function') {
+            window.appController.renderWorkspaceSwitcher();
         }
 
         if (user.avatar) {
@@ -120,7 +125,19 @@ export function populateNhanVienPhuTrachDropdowns() {
     const hdDropdown = document.getElementById('hd-nhanvienphutrach');
     
     // All users can be assigned (role inheritance: super_admin ⊇ manager ⊇ employee)
-    const employees = Array.isArray(this.model.state.employees) ? this.model.state.employees : [];
+    let employees = Array.isArray(this.model.state.employees) ? this.model.state.employees : [];
+    
+    // Nếu không phải super_admin, chỉ hiển thị nhân viên thuộc tổ chức hiện tại
+    if (this.model.state.activerole !== 'super_admin') {
+        const activeOrg = localStorage.getItem('bf_active_org');
+        if (activeOrg) {
+            employees = employees.filter(e => {
+                const orgs = e.organization_name ? e.organization_name.split(',').map(o => o.trim()).filter(Boolean) : [];
+                return orgs.includes(activeOrg);
+            });
+        }
+    }
+
     const roleLabelMap = {
         super_admin: 'Super Admin / Quản lý / Chuyên viên',
         manager: 'Quản lý / Chuyên viên',
@@ -184,11 +201,12 @@ export function renderSuperAdminPanel() {
             // Build organizations list from users
             const orgMap = {};
             users.forEach(u => {
-                if (u.organization_name) {
-                    if (!orgMap[u.organization_name]) {
-                        orgMap[u.organization_name] = {
+                const orgs = u.organization_name ? u.organization_name.split(',').map(o => o.trim()).filter(Boolean) : [];
+                orgs.forEach(orgName => {
+                    if (!orgMap[orgName]) {
+                        orgMap[orgName] = {
                             id: u.id,
-                            name: u.organization_name,
+                            name: orgName,
                             contact: '',
                             phone: '',
                             packageId: 'none',
@@ -197,13 +215,13 @@ export function renderSuperAdminPanel() {
                             status: 'Hoạt động'
                         };
                     }
-                    if (u.role === 'manager' || !orgMap[u.organization_name].contact) {
-                        orgMap[u.organization_name].contact = u.name;
-                        orgMap[u.organization_name].packageId = u.package_id || 'none';
-                        orgMap[u.organization_name].regDate = u.package_start_date || '';
-                        orgMap[u.organization_name].expDate = u.package_end_date || '';
+                    if (u.role === 'manager' || !orgMap[orgName].contact) {
+                        orgMap[orgName].contact = u.name;
+                        orgMap[orgName].packageId = u.package_id || 'none';
+                        orgMap[orgName].regDate = u.package_start_date || '';
+                        orgMap[orgName].expDate = u.package_end_date || '';
                     }
-                }
+                });
             });
             this.model.state.organizations = Object.values(orgMap);
 
@@ -290,7 +308,7 @@ export function renderSuperAdminPanel() {
 }
 
 export function renderManagerNhanVienPanel() {
-    const currentUsername = localStorage.getItem('bf_username');
+    const currentUsername = sessionStorage.getItem('bf_username');
     const currentUser = this.model.state.employees.find(e => e.username === currentUsername);
     
     // Manager's list of packages
@@ -304,11 +322,13 @@ export function renderManagerNhanVienPanel() {
     const pkg = this.model.state.systempackages.find(p => p.id === activePkgId);
     const quotaLimit = pkg ? pkg.quota : 5;
     
-    // Filter specialists who share at least one package with the manager
+    // Filter specialists belonging to the organization
+    const activeOrg = localStorage.getItem('bf_active_org');
     const orgEmployees = this.model.state.employees.filter(e => {
-        if (e.role !== 'employee' || !e.package_id) return false;
-        const empPkgs = e.package_id.split(',').filter(p => p && p !== 'none');
-        return empPkgs.some(p => managerPkgs.includes(p));
+        if (e.role !== 'employee') return false;
+        if (!activeOrg) return true;
+        const orgs = e.organization_name ? e.organization_name.split(',').map(o => o.trim()).filter(Boolean) : [];
+        return orgs.includes(activeOrg);
     });
     
     // Render Quota progress
@@ -433,7 +453,7 @@ export function renderProfileTab(user) {
     const fullnameInput = document.getElementById('profile-fullname');
     const emailInput = document.getElementById('profile-email');
     
-    if (usernameInput) usernameInput.value = user.username || localStorage.getItem('bf_username') || '';
+    if (usernameInput) usernameInput.value = user.username || sessionStorage.getItem('bf_username') || '';
     if (fullnameInput) fullnameInput.value = user.name || '';
     if (emailInput) emailInput.value = user.email || '';
     

@@ -239,7 +239,7 @@ SCHEMA_DINH_NGHIA = {
             "hieu_luc_hsdt": "INTEGER",
             "hieu_luc_dam_bao_du_thau": "INTEGER",
             "danh_gia_hsdt_metadata": "TEXT",
-            "trang_thai": "TEXT",
+            "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu') OR trang_thai IS NULL)",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
@@ -306,6 +306,7 @@ SCHEMA_DINH_NGHIA = {
             "ngay_ky": "TEXT",
             "chu_dau_tu_id": "TEXT",
             "nha_thau_id": "TEXT",
+            "ke_hoach_id": "TEXT",
             "gia_tri": "REAL",
             "loai_hop_dong": "TEXT",
             "thoi_gian_thuc_hien": "TEXT",
@@ -315,10 +316,13 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
-            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL",
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE SET NULL",
+            "FOREIGN KEY (owner_id) REFERENCES to_chuc(id) ON DELETE CASCADE"
         ],
         "field_map": {
-            "thoi_gian_thuc_hien": "soNgayThucHien"
+            "thoi_gian_thuc_hien": "soNgayThucHien",
+            "ke_hoach_id": "keHoachId"
         }
     },
     "hop_dong_goi_thau": {
@@ -346,6 +350,9 @@ SCHEMA_DINH_NGHIA = {
         },
         "unique_constraints": [
             "UNIQUE(id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
+        ],
+        "foreign_keys": [
+            "FOREIGN KEY (id_nhan_vien) REFERENCES tai_khoan(id) ON DELETE CASCADE"
         ],
         "field_map": {
             "id_nhan_vien": "empId",
@@ -421,7 +428,7 @@ SCHEMA_DINH_NGHIA = {
             "ma_dinh_danh": "maDinhDanh",
             "gia_du_thau": "giaDuThau",
             "dam_bao_du_thau": "damBaoDuThau",
-            "hieu_luc_dam_bao": "hieuLucBaoDamNgay",
+            "hieu_luc_dam_bao": "hieuLucDamBao",
             "hieu_luc_hsdxt": "hieuLucHsdxt",
             "ty_le_giam_gia": "tyLeGiamGia",
             "gia_sau_giam_gia": "giaSauGiamGia",
@@ -530,86 +537,9 @@ SCHEMA_DINH_NGHIA = {
     }
 }
 
-SPECIAL_FIELD_MAPS = {
-    "ke_hoach_lcnt": {
-        "thoi_gian_dang_tai": "thoiGianDangMa",
-        "cv_da_thuc_hien": "cvDaThucHienList",
-        "cv_khong_ap_dung": "cvKhongApDungList",
-        "cv_chua_du_dieu_kien": "cvChuaDuDieuKienList",
-        "phe_duyet": "pheDuyet",
-        "ngay_trinh_du_toan": "ngayTrinhDuToan",
-        "ngay_phe_duyet_du_toan": "ngayPheDuyetDuToan",
-        "so_qd_phe_duyet_du_toan": "soQdPheDuyetDuToan",
-        "ngay_trinh_ke_hoach": "ngayTrinhKeHoach"
-    },
-    "chu_dau_tu": {
-        "ma_qhns": "maQHNS"
-    },
-    "goi_thau": {
-        "nha_thau_trung_thau_id": "nhaThauTrungThauId",
-        "thoi_gian_dang_tai": "thoiGianDangTai",
-        "thoi_gian_dong_thau": "thoiGianDongThau",
-        "thoi_gian_mo_thau": "thoiGianMoThau",
-        "gia_han_list": "giaHanList",
-        "yeu_cau_lam_ro_list": "yeuCauLamRoList",
-        "tra_loi_lam_ro_list": "traLoiLamRoList",
-        "so_quyet_dinh": "soQuyetDinh",
-        "ngay_quyet_dinh": "ngayQuyetDinh",
-        "so_quyet_dinh_ket_qua": "soQuyetDinhKetQua",
-        "ngay_quyet_dinh_ket_qua": "ngayQuyetDinhKetQua",
-        "gia_tri_dam_bao_du_thau": "giaTriDamBaoDuThau",
-        "hieu_luc_hsdt": "hieuLucHsdt",
-        "hieu_luc_dam_bao_du_thau": "hieuLucDamBaoDuThau",
-        "danh_gia_hsdt_metadata": "danhGiaHsdtMetadata",
-        "awarded_phan_lo_list": "awardedPhanLoList"
-    },
-    "thong_tin_mo_thau": {
-        "goi_thau_id": "goiThauId",
-        "nha_thau_id": "nhaThauId",
-        "ma_phan_lo": "maPhanLo",
-        "ten_phan_lo": "tenPhanLo",
-        "ma_dinh_danh": "maDinhDanh",
-        "gia_du_thau": "giaDuThau",
-        "dam_bao_du_thau": "damBaoDuThau",
-        "hieu_luc_dam_bao": "hieuLucDamBao",
-        "hieu_luc_hsdxt": "hieuLucHsdxt",
-        "ty_le_giam_gia": "tyLeGiamGia",
-        "gia_sau_giam_gia": "giaSauGiamGia",
-        "hieu_luc_hsdt": "hieuLucHsdt",
-        "gia_tri_dam_bao": "giaTriDamBao",
-        "hieu_luc_bao_dam_ngay": "hieuLucBaoDamNgay",
-        "thoi_gian_thuc_hien": "thoiGianThucHien",
-        "ten_nha_thau": "tenNhaThau",
-        "loai_nha_thau": "loaiNhaThau",
-        "thanh_vien_lien_danh": "thanhVienLienDanh",
-        "danh_gia_hop_le": "danhGiaHopLe",
-        "danh_gia_nang_luc": "danhGiaNangLuc",
-        "danh_gia_ky_thuat": "danhGiaKyThuat",
-        "danh_gia_tai_chinh": "danhGiaTaiChinh",
-        "danh_gia_ket_luan": "danhGiaKetLuan",
-        "ly_do_truot": "lyDoTruot",
-        "lam_ro_hop_le": "lamRoHopLe",
-        "lam_ro_nang_luc": "lamRoNangLuc",
-        "lam_ro_ky_thuat": "lamRoKyThuat",
-        "lam_ro_tai_chinh": "lamRoTaiChinh"
-    },
-    "chuyen_gia": {
-        "so_cccd": "soCCCD",
-        "ngay_cap_cccd": "ngayCapCCCD",
-        "noi_cap_cccd": "noiCapCCCD"
-    },
-    "hop_dong": {
-        "thoi_gian_thuc_hien": "soNgayThucHien"
-    },
-    "phan_cong_nhan_su": {
-        "id_nhan_vien": "empId",
-        "id_muc_tieu": "targetId",
-        "loai_doi_tuong": "type"
-    },
-    # Để thêm field_map mới: bổ sung vào bảng tương ứng, hoặc đưa vào đây nếu các bảng có cùng field
-    # Quy tắc ưu tiên: SPECIAL_FIELD_MAPS[table] > to_camel_case()
-    # id_goc → rootId được xử lý riêng trong map_db_to_json để áp dụng cho tất cả bảng versioned
-}
+# Cấu hình field_map chuyển đổi snake_case sang camelCase khi gửi dữ liệu lên client
+# Tất cả định nghĩa ánh xạ trường đặc biệt đã được hợp nhất trực tiếp vào SCHEMA_DINH_NGHIA
+
 
 def to_snake_case(name):
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
@@ -672,6 +602,79 @@ def recalculate_is_latest(cursor, table_name, owner_id=None):
             )
         """)
 
+def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
+    """
+    Tính lại tong_muc_dau_tu cho cac ke_hoach_lcnt co is_tong_muc_tu_dong = 1
+    dua tren logic tong gia_goi_thau, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien.
+    """
+    if owner_id:
+        cursor.execute("""
+            SELECT id, id_goc, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
+            FROM ke_hoach_lcnt
+            WHERE owner_id = ? AND is_tong_muc_tu_dong = 1
+        """, (owner_id,))
+    else:
+        cursor.execute("""
+            SELECT id, id_goc, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
+            FROM ke_hoach_lcnt
+            WHERE is_tong_muc_tu_dong = 1
+        """)
+    plans = cursor.fetchall()
+    
+    import json
+    for row in plans:
+        plan_id = row[0]
+        id_goc = row[1]
+        loai_hinh = row[2]
+        cv_da_thuc_hien_str = row[3]
+        cv_khong_ap_dung_str = row[4]
+        cv_chua_du_dieu_kien_str = row[5]
+        
+        root_id = id_goc if (id_goc and id_goc.strip()) else plan_id
+        cursor.execute("""
+            SELECT id FROM ke_hoach_lcnt
+            WHERE (id_goc = ? OR id = ?)
+        """, (root_id, root_id))
+        version_ids = [r[0] for r in cursor.fetchall()]
+        
+        sum_iv = 0
+        if version_ids:
+            placeholders = ",".join(["?"] * len(version_ids))
+            cursor.execute(f"""
+                SELECT COALESCE(SUM(gia_goi_thau), 0)
+                FROM goi_thau
+                WHERE ke_hoach_id IN ({placeholders}) AND is_latest = 1
+            """, tuple(version_ids))
+            sum_iv = cursor.fetchone()[0] or 0
+            
+        def sum_cv_list(cv_str):
+            if not cv_str:
+                return 0
+            try:
+                items = json.loads(cv_str)
+                if isinstance(items, list):
+                    return sum(float(item.get('giaTri') or 0) for item in items if isinstance(item, dict))
+            except Exception:
+                pass
+            return 0
+
+        sum_i = sum_cv_list(cv_da_thuc_hien_str)
+        sum_ii = sum_cv_list(cv_khong_ap_dung_str)
+        sum_iii = sum_cv_list(cv_chua_du_dieu_kien_str)
+
+        is_project = (loai_hinh == 'Dự án')
+        if is_project:
+            total = sum_i + sum_ii + sum_iii + sum_iv
+        else:
+            total = sum_ii + sum_iii + sum_iv
+
+        cursor.execute("""
+            UPDATE ke_hoach_lcnt
+            SET tong_muc_dau_tu = ?
+            WHERE id = ?
+        """, (total, plan_id))
+
+
 def khoi_tao_va_di_tru_he_thong():
     try:
         conn = database.get_connection()
@@ -685,11 +688,14 @@ def khoi_tao_va_di_tru_he_thong():
         db_tables = [row[0] for row in cursor.fetchall()]
         for tbl in db_tables:
             if tbl not in SCHEMA_DINH_NGHIA and tbl not in ['sys_config', 'sqlite_sequence']:
+                # Skip dropping tables that look like backups/temp tables
+                if "old" in tbl or "temp" in tbl or tbl.startswith("_"):
+                    continue
                 print(f"Đồng bộ: Loại bỏ bảng vô nghĩa/không sử dụng khỏi DB: '{tbl}'")
                 cursor.execute(f"DROP TABLE IF EXISTS '{tbl}'")
         conn.commit()
 
-        cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v6'")
+        cursor.execute("SELECT val FROM sys_config WHERE key = 'migration_done_v9'")
         config_row = cursor.fetchone()
         if config_row and config_row[0] == '1':
             conn.close()
@@ -835,12 +841,41 @@ def khoi_tao_va_di_tru_he_thong():
                         print(f"Đồng bộ: Phát hiện thiếu cột phức tạp '{col_name}' trong '{table_name}', cần xây dựng lại bảng.")
                         rebuild_needed = True
                         break
-            
+
+            # Check for CHECK constraints updates
+            cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+            db_sql_row = cursor.fetchone()
+            if db_sql_row:
+                table_sql = db_sql_row[0] or ""
+                has_check_in_code = any("CHECK" in str(c_def).upper() for c_def in expected_cols.values())
+                has_check_in_db = "CHECK" in table_sql.upper()
+                if has_check_in_code and not has_check_in_db:
+                    print(f"Đồng bộ: Thiếu ràng buộc CHECK trong bảng '{table_name}'. Cần xây dựng lại.")
+                    rebuild_needed = True
+
+            # Check foreign key counts to detect changes
+            cursor.execute(f"PRAGMA foreign_key_list({table_name})")
+            db_fks = cursor.fetchall()
+            expected_fks = table_spec.get("foreign_keys", [])
+            if len(db_fks) != len(expected_fks):
+                print(f"Đồng bộ: Số lượng khóa ngoại của bảng '{table_name}' khác biệt (DB: {len(db_fks)}, Code: {len(expected_fks)}). Cần xây dựng lại.")
+                rebuild_needed = True
+            else:
+                # Check if any foreign key references a temp or non-existent table
+                for fk in db_fks:
+                    target_table = fk[2]
+                    if target_table not in SCHEMA_DINH_NGHIA or target_table.startswith("_temp_mig_") or "_old_" in target_table:
+                        print(f"Đồng bộ: Bảng '{table_name}' có khóa ngoại trỏ tới bảng tạm/không tồn tại '{target_table}'. Cần xây dựng lại.")
+                        rebuild_needed = True
+                        break
+
             if rebuild_needed:
                 print(f"Đồng bộ: Tiến hành xây dựng lại bảng '{table_name}' để đồng bộ cấu trúc...")
+                temp_table = f"_temp_mig_{table_name}"
+                original_restored = False
                 try:
                     cursor.execute("PRAGMA foreign_keys = OFF")
-                    temp_table = f"{table_name}_old_{int(datetime.now().timestamp())}"
+                    cursor.execute(f"DROP TABLE IF EXISTS {temp_table}")
                     cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table}")
                     
                     cols_def = []
@@ -874,8 +909,19 @@ def khoi_tao_va_di_tru_he_thong():
                     print(f"Đồng bộ: Xây dựng lại bảng '{table_name}' thành công và bảo toàn dữ liệu!")
                     continue
                 except Exception as ex:
-                    cursor.execute("PRAGMA foreign_keys = ON")
                     print(f"Lỗi nghiêm trọng khi xây dựng lại bảng '{table_name}': {ex}")
+                    try:
+                        cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+                        new_tbl_exists = cursor.fetchone()
+                        if not new_tbl_exists:
+                            cursor.execute(f"ALTER TABLE {temp_table} RENAME TO {table_name}")
+                            original_restored = True
+                            print(f"Đồng bộ: Đã khôi phục lại bảng gốc '{table_name}' từ bảng tạm.")
+                    except Exception as restore_ex:
+                        print(f"Không thể khôi phục bảng gốc '{table_name}': {restore_ex}")
+                    cursor.execute("PRAGMA foreign_keys = ON")
+                    if not original_restored:
+                        raise ex
 
             for col_name, col_def in expected_cols.items():
                 if col_name not in current_cols:
@@ -1100,7 +1146,31 @@ def khoi_tao_va_di_tru_he_thong():
         except Exception as migration_owner_ex:
             print("Lỗi khi di trú owner_id sang ID tổ chức:", migration_owner_ex)
 
-        cursor.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('migration_done_v6', '1')")
+        # Di trú ke_hoach_id cho các hop_dong hiện có dựa trên goi_thau liên kết
+        try:
+            cursor.execute("""
+                UPDATE hop_dong 
+                SET ke_hoach_id = (
+                    SELECT ke_hoach_id 
+                    FROM goi_thau 
+                    INNER JOIN hop_dong_goi_thau ON goi_thau.id = hop_dong_goi_thau.goi_thau_id 
+                    WHERE hop_dong_goi_thau.hop_dong_id = hop_dong.id 
+                    LIMIT 1
+                ) 
+                WHERE ke_hoach_id IS NULL
+            """)
+            print("Đồng bộ: Di trú ke_hoach_id cho hop_dong thành công!")
+        except Exception as migration_kh_ex:
+            print("Lỗi khi di trú ke_hoach_id cho hop_dong:", migration_kh_ex)
+
+        # Tính lại tổng mức tự động cho các kế hoạch hiện có
+        try:
+            recalculate_tong_muc_dau_tu(cursor)
+            print("Đồng bộ: Tính toán lại tổng mức đầu tư tự động thành công!")
+        except Exception as recalc_ex:
+            print("Lỗi khi tự động tính lại tổng mức đầu tư:", recalc_ex)
+
+        cursor.execute("INSERT OR REPLACE INTO sys_config (key, val) VALUES ('migration_done_v9', '1')")
         conn.commit()
         conn.close()
         print("Khởi tạo và di trú cơ sở dữ liệu Tiếng Việt thành công!")
@@ -1230,6 +1300,10 @@ def gui_email(email_nhan, tieu_de, noi_dung_html):
         log_error(f"Lỗi gửi email tới {email_nhan}: {str(e)}", context="EmailSender")
         return False
 
+class OrgPermissionError(Exception):
+    """Lỗi khi người dùng không có quyền truy cập vào tổ chức được yêu cầu."""
+    pass
+
 import threading
 _org_cache = {}
 _org_cache_lock = threading.Lock()
@@ -1247,6 +1321,8 @@ def get_active_org(request, user_id):
         if cache_key in _org_cache:
             val, expire = _org_cache[cache_key]
             if now < expire:
+                if isinstance(val, Exception):
+                    raise val
                 return val
             else:
                 del _org_cache[cache_key]
@@ -1262,15 +1338,29 @@ def get_active_org(request, user_id):
     rows = cursor.fetchall()
     conn.close()
     
-    if not rows:
-        result = str(user_id)
-    else:
-        result = rows[0]['id']
+    # Nếu client chỉ định tổ chức cụ thể nhưng user không thuộc tổ chức đó
+    if active_org:
+        matched = False
         for row in rows:
-            if active_org and (active_org == row['id'] or active_org == row['ten_to_chuc']):
+            if active_org == row['id'] or active_org == row['ten_to_chuc']:
+                matched = True
                 result = row['id']
                 break
-                
+        if not matched:
+            # Cho phép nếu là không gian cá nhân của chính user
+            if active_org == str(user_id):
+                result = str(user_id)
+            else:
+                exc = OrgPermissionError("Không có quyền truy cập tổ chức này!")
+                with _org_cache_lock:
+                    _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+                raise exc
+    else:
+        if not rows:
+            result = str(user_id)
+        else:
+            result = rows[0]['id']
+            
     with _org_cache_lock:
         _org_cache[cache_key] = (result, now + ORG_CACHE_TTL)
         
@@ -1283,3 +1373,11 @@ def _org_cache_cleanup():
         expired = [k for k, (_, exp) in _org_cache.items() if now > exp]
         for k in expired:
             del _org_cache[k]
+
+def _org_cache_invalidate_by_user_id(user_id):
+    """Xóa cache tổ chức của user để hiệu lực tức thì."""
+    with _org_cache_lock:
+        to_delete = [k for k in _org_cache.keys() if k[0] == user_id]
+        for k in to_delete:
+            _org_cache.pop(k, None)
+

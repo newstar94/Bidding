@@ -10,10 +10,10 @@ from helpers import (
     clean_id,
     VietnameseFloat,
     SCHEMA_DINH_NGHIA,
-    SPECIAL_FIELD_MAPS,
     to_camel_case,
     get_active_org,
-    load_base64_image
+    load_base64_image,
+    OrgPermissionError
 )
 
 import custom_exporter
@@ -466,6 +466,8 @@ async def export_report_api(request):
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f"attachment; filename=Bao_cao_danh_gia_goi_thau_{pkg['ma_goi_thau']}.docx"}
         )
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -555,6 +557,8 @@ async def list_word_mappings_api(request):
                 "sourceColumn": r[3]
             })
         return JSONResponse(mappings)
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -599,6 +603,8 @@ async def save_word_mapping_api(request):
         conn.close()
         
         return JSONResponse({"success": True, "id": m_id})
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -618,5 +624,7 @@ async def delete_word_mapping_api(request):
         conn.close()
         
         return JSONResponse({"success": True})
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

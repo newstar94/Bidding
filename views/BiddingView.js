@@ -2,10 +2,10 @@
    BiddingFlow - View Orchestrator (DOM, Caching & Sub-view Dispatcher)
    ========================================================================== */
 
-import * as Dashboard from '/views/DashboardView.js?v=5.8';
-import * as Plan from '/views/PlanView.js?v=5.8';
-import * as Partner from '/views/PartnerView.js?v=5.8';
-import * as SystemUser from '/views/SystemUserView.js?v=5.8';
+import * as Dashboard from '/views/DashboardView.js?v=6.7';
+import * as Plan from '/views/PlanView.js?v=6.7';
+import * as Partner from '/views/PartnerView.js?v=6.7';
+import * as SystemUser from '/views/SystemUserView.js?v=6.7';
 
 export class BiddingView {
     constructor(model) {

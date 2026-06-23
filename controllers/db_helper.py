@@ -24,9 +24,9 @@ db_indexes_created = False
 orig_get_connection = database.get_connection
 
 def optimized_get_connection(*args, **kwargs):
-    conn = orig_get_connection(*args, **kwargs)
+    raw_conn = orig_get_connection(*args, **kwargs)
     try:
-        cursor = conn.cursor()
+        cursor = raw_conn.cursor()
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA foreign_keys = ON")
         cursor.execute("PRAGMA cache_size = -65536")
@@ -137,9 +137,9 @@ def optimized_get_connection(*args, **kwargs):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_tochuc_quanly ON to_chuc(quan_ly_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_taikhoan_tendangnhap ON tai_khoan(ten_dang_nhap)")
             
-            db_indexes_created = True
+        db_indexes_created = True
     except Exception as e:
         print(f"Error applying SQLite PRAGMAs or indexes: {e}")
-    return conn
+    return raw_conn
 
 database.get_connection = optimized_get_connection

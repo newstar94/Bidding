@@ -12,15 +12,15 @@ export function setupActivityTracker() {
     });
     
     // Initial set if user is already logged in
-    const token = localStorage.getItem('bf_session_token');
+    const token = sessionStorage.getItem('bf_session_token');
     if (token && !localStorage.getItem('bf_last_activity')) {
         updateActivity();
     }
 }
 
 export function checkInactivity() {
-    const token = localStorage.getItem('bf_session_token');
-    const username = localStorage.getItem('bf_username');
+    const token = sessionStorage.getItem('bf_session_token');
+    const username = sessionStorage.getItem('bf_username');
     if (!token || !username) return false;
 
     const lastActivity = localStorage.getItem('bf_last_activity');
@@ -69,8 +69,8 @@ export function startBackgroundSessionChecker() {
     
     // Check every 30 seconds
     this._sessionInterval = setInterval(() => {
-        const token = localStorage.getItem('bf_session_token');
-        const username = localStorage.getItem('bf_username');
+        const token = sessionStorage.getItem('bf_session_token');
+        const username = sessionStorage.getItem('bf_username');
         if (!token || !username) {
             clearInterval(this._sessionInterval);
             return;
@@ -125,6 +125,28 @@ export function startBackgroundSessionChecker() {
                     if (hasChanges) {
                         localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(activeuser));
                         this.view.updateActiveUserProfileDisplay();
+                        
+                        let activeOrg = localStorage.getItem('bf_active_org');
+                        const orgs = (activeuser.organization_name || '').split(',').map(o => o.trim()).filter(Boolean);
+                        if (activeOrg && !orgs.includes(activeOrg)) {
+                            if (orgs.length > 0) {
+                                localStorage.setItem('bf_active_org', orgs[0]);
+                            } else {
+                                localStorage.removeItem('bf_active_org');
+                            }
+                            localStorage.setItem('bf_last_sync_timestamp', '0');
+                            if (this.model.db && this.model.db.stores) {
+                                this.model.db.stores.forEach(storeName => {
+                                    this.model.db.putTableData(storeName, []).catch(() => {});
+                                    if (this.model.state[storeName]) {
+                                        this.model.state[storeName] = [];
+                                    }
+                                });
+                            }
+                            // Tải lại dữ liệu cho không gian làm việc mới ngay lập tức
+                            this.forceSyncData().catch(err => console.error("Lỗi tự động tải lại dữ liệu:", err));
+                        }
+                        
                         if (typeof this.renderWorkspaceSwitcher === 'function') {
                             this.renderWorkspaceSwitcher();
                         }
@@ -147,8 +169,8 @@ export function setupAuth() {
     const formForgot = document.getElementById('form-auth-forgot');
     const formVerify = document.getElementById('form-auth-verify');
 
-    const token = localStorage.getItem('bf_session_token');
-    const username = localStorage.getItem('bf_username');
+    const token = sessionStorage.getItem('bf_session_token');
+    const username = sessionStorage.getItem('bf_username');
 
     if (!token || !username) {
         overlay.style.display = 'flex';
@@ -337,9 +359,9 @@ export function setupAuth() {
             }
 
             // Save to localStorage
-            localStorage.setItem('bf_session_token', data.session_token);
-            localStorage.setItem('bf_username', data.username);
-            localStorage.setItem('bf_user_id', data.id);
+            sessionStorage.setItem('bf_session_token', data.session_token);
+            sessionStorage.setItem('bf_username', data.username);
+            sessionStorage.setItem('bf_user_id', data.id);
 
             // Re-initialize database connection name and data keys for this specific user
             await this.model.init();
