@@ -5539,6 +5539,60 @@ export function renderDanhGiaHsdtPanel() {
         emptyState.style.display = 'none';
         evaluationContainer.style.display = 'block';
 
+        // Setup Quy trình selector for Goods/Non-consulting 1G1T packages
+        const quyTrinhContainer = this.view.getActiveElement('danhgiahsdt-quytrinh-container');
+        const isGoodsOrNonConsulting = gt.linhVuc === 'Hàng hóa' || gt.linhVuc === 'Phi tư vấn';
+        const is1G1T = gt.phuongThucLuaChon === 'Một giai đoạn một túi hồ sơ';
+        const showQuyTrinh = isGoodsOrNonConsulting && is1G1T;
+
+        if (quyTrinhContainer) {
+            if (showQuyTrinh) {
+                quyTrinhContainer.style.display = 'flex';
+                // Load existing value
+                const currentQuyTrinh = gt.quyTrinhDanhGia || 'quytrinh1';
+                const radio1 = quyTrinhContainer.querySelector('input[value="quytrinh1"]');
+                const radio2 = quyTrinhContainer.querySelector('input[value="quytrinh2"]');
+                if (radio1 && radio2) {
+                    radio1.checked = currentQuyTrinh === 'quytrinh1';
+                    radio2.checked = currentQuyTrinh === 'quytrinh2';
+
+                    if (isReadOnly) {
+                        radio1.disabled = true;
+                        radio2.disabled = true;
+                    } else {
+                        radio1.removeAttribute('disabled');
+                        radio2.removeAttribute('disabled');
+                    }
+
+                    // On change event
+                    radio1.onchange = () => {
+                        gt.quyTrinhDanhGia = 'quytrinh1';
+                        let meta = {};
+                        try {
+                            meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                        } catch (e) {}
+                        meta.quyTrinhDanhGia = 'quytrinh1';
+                        gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+                        this.model.persistData('goithau');
+                        handlePackageSelection();
+                    };
+                    radio2.onchange = () => {
+                        gt.quyTrinhDanhGia = 'quytrinh2';
+                        let meta = {};
+                        try {
+                            meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                        } catch (e) {}
+                        meta.quyTrinhDanhGia = 'quytrinh2';
+                        gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+                        this.model.persistData('goithau');
+                        handlePackageSelection();
+                    };
+                }
+            } else {
+                quyTrinhContainer.style.display = 'none';
+            }
+        }
+
         // 3. Setup dynamic tab structures for 1G2T packages
         const tabsHeader = this.view.getActiveElement('danhgiahsdt-tabs-header');
         const tabBtnKt = this.view.getActiveElement('tab-btn-hsdxt-kt');
@@ -5549,6 +5603,9 @@ export function renderDanhGiaHsdtPanel() {
         if (gt.danhGiaHsdtMetadata) {
             try {
                 metadata = JSON.parse(gt.danhGiaHsdtMetadata);
+                if (metadata && metadata.quyTrinhDanhGia) {
+                    gt.quyTrinhDanhGia = metadata.quyTrinhDanhGia;
+                }
             } catch (e) {
                 console.error("Failed to parse evaluation metadata:", e);
             }
@@ -5704,7 +5761,6 @@ export function renderDanhGiaHsdtPanel() {
 
         // 4. Identify dynamic table fields
         const isTuVan = gt.linhVuc === 'Tư vấn';
-        const is1G1T = gt.phuongThucLuaChon === 'Một giai đoạn một túi hồ sơ';
         const hasPhanLo = gt.phanLo === 'Có';
 
         let caseType = '1G1T_NO_LOT';
@@ -5872,6 +5928,9 @@ export function renderDanhGiaHsdtPanel() {
         const updateAllRankings = () => {
             const rows = tbody.querySelectorAll('tr[data-bid-id]');
             const currentBids = [];
+            let foundPassedBidder = false;
+            let previousAllFailed = true;
+
             rows.forEach(tr => {
                 const bidId = tr.getAttribute('data-bid-id');
                 const bid = this.model.state.thongtinmothau.find(b => b.id === bidId);
@@ -5881,16 +5940,64 @@ export function renderDanhGiaHsdtPanel() {
                     const inpKyThuat = tr.querySelector('.mt-dg-ky-thuat');
                     const selectKetLuan = tr.querySelector('.mt-dg-ketluan');
 
+                    // If Quy trình 2, determine if this row should be forced disabled
+                    let forceRowDisabled = false;
+                    if (!is1G2T && gt.quyTrinhDanhGia === 'quytrinh2') {
+                        forceRowDisabled = !previousAllFailed || foundPassedBidder;
+                    }
+
+                    if (!isReadOnly && forceRowDisabled) {
+                        tr.querySelectorAll('.mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat, .mt-lam-ro-hop-le, .mt-lam-ro-nang-luc, .mt-lam-ro-ky-thuat, .mt-lam-ro-tai-chinh').forEach(el => {
+                            el.setAttribute('disabled', 'true');
+                            el.style.background = 'var(--neutral-soft)';
+                            el.style.cursor = 'not-allowed';
+                        });
+                    } else if (!isReadOnly) {
+                        // Re-enable top-level inputs for the active row
+                        const inpHopLe = tr.querySelector('.mt-dg-hop-le');
+                        const inpLamRoHopLe = tr.querySelector('.mt-lam-ro-hop-le');
+                        if (inpHopLe) {
+                            inpHopLe.removeAttribute('disabled');
+                            inpHopLe.style.background = '';
+                            inpHopLe.style.cursor = '';
+                        }
+                        if (inpLamRoHopLe) {
+                            inpLamRoHopLe.removeAttribute('disabled');
+                            inpLamRoHopLe.style.background = '';
+                            inpLamRoHopLe.style.cursor = '';
+                        }
+                    }
+
+                    // Update conclusion cell
+                    if (!is1G2T && gt.quyTrinhDanhGia === 'quytrinh2' && foundPassedBidder) {
+                        this.updateRowConclusion(tr, "Không đánh giá", true);
+                    } else {
+                        // Pass normal isReadOnly state
+                        const savedConclusion = (!isReadOnly && forceRowDisabled) ? "Chờ đánh giá" : null;
+                        this.updateRowConclusion(tr, savedConclusion, isReadOnly || forceRowDisabled);
+                    }
+
                     const valHopLe = inpHopLe ? inpHopLe.value.trim() : (bid.danhGiaHopLe || '');
                     const valNangLuc = inpNangLuc ? inpNangLuc.value.trim() : (bid.danhGiaNangLuc || '');
                     const valKyThuat = inpKyThuat ? inpKyThuat.value.trim() : (bid.danhGiaKyThuat || '');
 
                     let valKetLuan = '';
+                    const conclusionCell = tr.querySelector('.mt-ketluan-cell');
+                    const conclusionText = conclusionCell ? conclusionCell.textContent.trim() : '';
                     if (selectKetLuan) {
                         valKetLuan = selectKetLuan.value;
                     } else {
-                        const badge = tr.querySelector('.mt-ketluan-cell .badge');
-                        valKetLuan = badge ? badge.textContent.trim() : (bid.danhGiaKetLuan || '');
+                        valKetLuan = conclusionText;
+                    }
+
+                    if (!is1G2T && gt.quyTrinhDanhGia === 'quytrinh2') {
+                        if (valKetLuan === 'Đạt' || valKetLuan.startsWith('Đạt')) {
+                            foundPassedBidder = true;
+                        }
+                        const isThisFailed = valKetLuan.startsWith('Không đạt');
+                        if (!isThisFailed) {
+                            previousAllFailed = false;
+                        }
                     }
 
                     const inpGiaDuThau = tr.querySelector('.mt-gia-du-thau');
@@ -5958,16 +6065,25 @@ export function renderDanhGiaHsdtPanel() {
             );
         }
 
-        // Sort bids alphabetically by Lot Code (maPhanLo) A-Z
-        bids.sort((a, b) => {
-            const codeA = String(a.maPhanLo || '').toLowerCase();
-            const codeB = String(b.maPhanLo || '').toLowerCase();
-            return codeA.localeCompare(codeB, 'vi', { numeric: true });
-        });
+        // Sort bids: if Quy trình 2 for 1G1T, sort by evaluated price ascending. Otherwise sort alphabetically by Lot Code
+        if (!is1G2T && gt.quyTrinhDanhGia === 'quytrinh2') {
+            bids.sort((a, b) => {
+                const priceA = parseFloat(a.giaSauGiamGia || a.giaDuThau || 0);
+                const priceB = parseFloat(b.giaSauGiamGia || b.giaDuThau || 0);
+                return priceA - priceB;
+            });
+        } else {
+            bids.sort((a, b) => {
+                const codeA = String(a.maPhanLo || '').toLowerCase();
+                const codeB = String(b.maPhanLo || '').toLowerCase();
+                return codeA.localeCompare(codeB, 'vi', { numeric: true });
+            });
+        }
 
         if (bids.length === 0) {
             tbody.innerHTML = `<tr><td colspan="15" style="text-align:center; padding: 24px; color: var(--text-muted);"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>`;
         } else {
+            let previousAllFailed = true;
             bids.forEach(bid => {
                 const tr = document.createElement('tr');
                 tr.setAttribute('data-bid-id', bid.id);
@@ -6144,24 +6260,25 @@ export function renderDanhGiaHsdtPanel() {
                             <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
                         `;
                     } else {
+                        const forceRowDisabled = !is1G2T && gt.quyTrinhDanhGia === 'quytrinh2' && !previousAllFailed;
                         cellHtml += `
                             <td>
-                                <select class="form-control mt-dg-hop-le" style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+                                <select class="form-control mt-dg-hop-le" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
                                     <option value="Đạt" ${valHopLe === 'Đạt' || valHopLe === '' ? 'selected' : ''}>Đạt</option>
                                     <option value="Không đạt" ${valHopLe === 'Không đạt' ? 'selected' : ''}>Không đạt</option>
                                 </select>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-hop-le" value="${valLamRoHopLe}" placeholder="Nhập làm rõ hợp lệ..."></td>
+                            <td><input type="text" class="form-control mt-lam-ro-hop-le" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoHopLe}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ hợp lệ...'}"></td>
                             <td>
-                                <select class="form-control mt-dg-nang-luc" style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+                                <select class="form-control mt-dg-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
                                     <option value="Đạt" ${valNangLuc === 'Đạt' || valNangLuc === '' ? 'selected' : ''}>Đạt</option>
                                     <option value="Không đạt" ${valNangLuc === 'Không đạt' ? 'selected' : ''}>Không đạt</option>
                                 </select>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-nang-luc" value="${valLamRoNangLuc}" placeholder="Nhập làm rõ năng lực..."></td>
-                            <td><input type="text" class="form-control mt-dg-ky-thuat" value="${valKyThuat}" placeholder="Điểm hoặc Đạt..."></td>
-                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat" value="${valLamRoKyThuat}" placeholder="Nhập làm rõ kỹ thuật..."></td>
-                            ${isTechnical ? '' : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${valLamRoTaiChinh}" placeholder="Nhập làm rõ tài chính..."></td>`}
+                            <td><input type="text" class="form-control mt-lam-ro-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoNangLuc}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ năng lực...'}"></td>
+                            <td><input type="text" class="form-control mt-dg-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valKyThuat}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Điểm hoặc Đạt...'}"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoKyThuat}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ kỹ thuật...'}"></td>
+                            ${isTechnical ? '' : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoTaiChinh}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ tài chính...'}"></td>`}
                             ${isCombinedMethod ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ''}
                             <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
                         `;
@@ -6170,6 +6287,16 @@ export function renderDanhGiaHsdtPanel() {
 
                 tr.innerHTML = cellHtml;
                 this.updateRowConclusion(tr, bid.danhGiaKetLuan, isReadOnly);
+
+                // For Quy trình 2: Check if this row failed. If not failed (either pending or Đạt), the next rows must be disabled.
+                if (!isReadOnly && !is1G2T && gt.quyTrinhDanhGia === 'quytrinh2') {
+                    const conclusionCell = tr.querySelector('.mt-ketluan-cell');
+                    const conclusionText = conclusionCell ? conclusionCell.textContent.trim() : '';
+                    const isThisFailed = conclusionText.startsWith('Không đạt');
+                    if (!isThisFailed) {
+                        previousAllFailed = false;
+                    }
+                }
 
                 // Add real-time event listeners to input elements in the row
                 if (!isReadOnly) {
@@ -6467,12 +6594,21 @@ export async function saveDanhGiaHsdt() {
     const cvTraLoi = collectLetters('list-cv-traloi');
     const cvGuiCdt = collectLetters('list-cv-guicdt');
 
+    const quyTrinhContainer = this.view.getActiveElement('danhgiahsdt-quytrinh-container');
+    if (quyTrinhContainer && quyTrinhContainer.style.display !== 'none') {
+        const radio2 = quyTrinhContainer.querySelector('input[value="quytrinh2"]');
+        if (radio2) {
+            gt.quyTrinhDanhGia = radio2.checked ? 'quytrinh2' : 'quytrinh1';
+        }
+    }
+
     const activeBlock = {
         soBaoCao,
         ngayBaoCao,
         cvLamRo,
         cvTraLoi,
         cvGuiCdt,
+        quyTrinhDanhGia: gt.quyTrinhDanhGia || 'quytrinh1',
         saved: true
     };
 
@@ -6533,8 +6669,8 @@ export async function saveDanhGiaHsdt() {
                 if (selectKetLuan) {
                     danhGiaKetLuan = selectKetLuan.value;
                 } else {
-                    const badge = tr.querySelector('.mt-ketluan-cell .badge');
-                    danhGiaKetLuan = badge ? badge.textContent.trim() : '';
+                    const cell = tr.querySelector('.mt-ketluan-cell');
+                    danhGiaKetLuan = cell ? cell.textContent.trim() : '';
                 }
             }
 

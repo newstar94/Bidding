@@ -724,6 +724,17 @@ export function showPackageDetails(id) {
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
+                    <div id="danhgiahsdt-quytrinh-container" style="display:none; margin-bottom: 20px; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); align-items: center; gap: 24px;">
+                        <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Quy trình đánh giá:</span>
+                        <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main);">
+                            <input type="radio" name="danhgiahsdt-quytrinh" value="quytrinh1" checked style="accent-color: var(--primary); cursor: pointer;">
+                            Quy trình 1
+                        </label>
+                        <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main);">
+                            <input type="radio" name="danhgiahsdt-quytrinh" value="quytrinh2" style="accent-color: var(--primary); cursor: pointer;">
+                            Quy trình 2
+                        </label>
+                    </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                         <h4 style="font-weight:700; font-size:0.95rem;">Đánh giá chi tiết các HSDT nộp</h4>
@@ -1288,21 +1299,25 @@ export function showPackageDetails(id) {
                     } else {
                         lyDo = b.lyDoTruot || '';
                         if (!lyDo) {
-                            const ketLuan = b.danhGiaKetLuan;
-                            if (ketLuan === 'Không đạt') {
-                                const failedSteps = [];
-                                if (b.danhGiaHopLe === 'Không đạt') failedSteps.push("Đánh giá hợp lệ");
-                                if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
-                                if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
-                                if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
-
-                                if (failedSteps.length > 0) {
-                                    lyDo = `Không đạt ở bước: ${failedSteps.join(', ')}`;
-                                } else {
-                                    lyDo = "Không đạt đánh giá chi tiết";
-                                }
+                            if (gt.quyTrinhDanhGia === 'quytrinh2' && b.danhGiaKetLuan === 'Không đánh giá') {
+                                lyDo = "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu";
                             } else {
-                                lyDo = "Nhà thầu xếp hạng 1 trúng thầu";
+                                const ketLuan = b.danhGiaKetLuan;
+                                if (ketLuan === 'Không đạt' || (ketLuan && ketLuan.startsWith('Không đạt'))) {
+                                    const failedSteps = [];
+                                    if (b.danhGiaHopLe === 'Không đạt') failedSteps.push("Đánh giá hợp lệ");
+                                    if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
+                                    if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
+                                    if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
+
+                                    if (failedSteps.length > 0) {
+                                        lyDo = `Không đạt ở bước: ${failedSteps.join(', ')}`;
+                                    } else {
+                                        lyDo = "Không đạt đánh giá chi tiết";
+                                    }
+                                } else {
+                                    lyDo = "Nhà thầu xếp hạng 1 trúng thầu";
+                                }
                             }
                         }
                     }
@@ -1504,7 +1519,9 @@ export function showPackageDetails(id) {
                     const isQualified = getIsQualified(b);
 
                     let defaultReason = '';
-                    if (!isQualified) {
+                    if (gt.quyTrinhDanhGia === 'quytrinh2' && b.danhGiaKetLuan === 'Không đánh giá') {
+                        defaultReason = "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu";
+                    } else if (!isQualified) {
                         if (!b.danhGiaHopLe || b.danhGiaHopLe !== 'Đạt') {
                             defaultReason = "Không đạt yêu cầu về tính hợp lệ";
                         } else if (!b.danhGiaNangLuc || b.danhGiaNangLuc !== 'Đạt') {
