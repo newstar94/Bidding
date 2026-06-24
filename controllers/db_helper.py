@@ -35,6 +35,10 @@ def optimized_get_connection(*args, **kwargs):
         
         global db_indexes_created
         if not db_indexes_created:
+            cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='goi_thau'")
+            if not cursor.fetchone():
+                return raw_conn
+            
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_kehoach ON goi_thau(ke_hoach_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_chudautu ON ke_hoach_lcnt(chu_dau_tu_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_thongtinmothau_goithau ON thong_tin_mo_thau(goi_thau_id)")
@@ -52,7 +56,7 @@ def optimized_get_connection(*args, **kwargs):
             
             # Reverse lookup indexes for relationship tables
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithauchuyengia_chuyengia ON goi_thau_chuyen_gia(chuyen_gia_id)")
-            
+
             # Indexes từ helpers.py di chuyển sang
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_taikhoan_token ON tai_khoan(token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_taikhoan_email ON tai_khoan(email) WHERE email != ''")

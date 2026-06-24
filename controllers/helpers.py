@@ -1062,12 +1062,7 @@ def khoi_tao_va_di_tru_he_thong():
         cursor.execute("SELECT COUNT(*) FROM tai_khoan")
         if cursor.fetchone()[0] == 0:
             admin_uuid = "user-" + str(uuid.uuid4())
-            admin_pass = os.environ.get("ADMIN_PASSWORD")
-            if not admin_pass:
-                admin_pass = secrets.token_urlsafe(12)
-                print("*" * 60)
-                print(f"Mật khẩu admin khởi tạo ngẫu nhiên: {admin_pass}")
-                print("*" * 60)
+            admin_pass = os.environ.get("ADMIN_PASSWORD", "123456")
             admin_name = os.environ.get("ADMIN_NAME", "Administrator")
             admin_email = os.environ.get("ADMIN_EMAIL", "admin@localhost")
             cursor.execute("INSERT INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, goi_dich_vu_id) VALUES (?, ?, ?, ?, ?, ?, ?)",

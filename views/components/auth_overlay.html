@@ -1,197 +1,199 @@
-    <!-- ================= AUTHENTICATION OVERLAY ================= -->
-    <div class="auth-overlay" id="auth-overlay" style="display: none;">
-        <div class="auth-card">
-            <!-- Brand -->
-            <div class="auth-brand">
-                <div class="brand-icon">
-                    <i data-lucide="layers"></i>
+<!-- ================= AUTHENTICATION OVERLAY ================= -->
+<div class="auth-overlay" id="auth-overlay" style="display: none;">
+    <div class="auth-card">
+        <!-- Brand -->
+        <div class="auth-brand">
+            <div class="brand-icon">
+                <i data-lucide="layers"></i>
+            </div>
+            <h2>BiddingFlow</h2>
+            <span>Hệ Thống Đấu Thầu v1.0</span>
+        </div>
+
+        <!-- Login Form -->
+        <form id="form-auth-login" class="auth-form-pane active">
+            <h3 class="auth-title">Đăng nhập hệ thống</h3>
+            <p class="auth-subtitle">Nhập tài khoản để truy cập hệ thống đấu thầu</p>
+            <div id="login-error" class="auth-error-msg" style="display: none;"></div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
+                    / Email
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="user"></i>
+                    <input type="text" id="login-username" required placeholder="Tên đăng nhập hoặc email">
                 </div>
-                <h2>BiddingFlow</h2>
-                <span>Hệ Thống Đấu Thầu v1.0</span>
             </div>
 
-            <!-- Login Form -->
-            <form id="form-auth-login" class="auth-form-pane active">
-                <h3 class="auth-title">Đăng nhập hệ thống</h3>
-                <p class="auth-subtitle">Nhập tài khoản để truy cập hệ thống đấu thầu</p>
-                <div id="login-error" class="auth-error-msg" style="display: none;"></div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
-                        / Email
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="user"></i>
-                        <input type="text" id="login-username" required placeholder="Tên đăng nhập hoặc email">
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Mật khẩu
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="lock"></i>
-                        <input type="password" id="login-password" required placeholder="Nhập mật khẩu">
-                        <button type="button" class="toggle-password" data-target="login-password">
-                            <i data-lucide="eye"
-                                style="position:static; pointer-events:none; width:16px; height:16px;"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
-                    <span>Đăng nhập</span>
-                    <i data-lucide="arrow-right"></i>
-                </button>
-
-                <div class="auth-footer-links">
-                    <a href="#" id="link-show-register">Đăng ký tài khoản</a>
-                    <span class="bullet">•</span>
-                    <a href="#" id="link-show-forgot">Quên mật khẩu?</a>
-                </div>
-            </form>
-
-            <!-- Register Form -->
-            <form id="form-auth-register" class="auth-form-pane" style="display: none;">
-                <h3 class="auth-title">Đăng ký thành viên</h3>
-                <p class="auth-subtitle">Tạo tài khoản mới để tham gia</p>
-                <div id="register-error" class="auth-error-msg" style="display: none;"></div>
-                <div id="register-success" class="auth-success-msg" style="display: none;"></div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="user"></i>
-                        <input type="text" id="register-username" required
-                            placeholder="Tên đăng nhập viết liền không dấu">
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Họ và tên
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="file-signature"></i>
-                        <input type="text" id="register-fullname" required placeholder="Nhập họ và tên đầy đủ">
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Địa chỉ Email
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="mail"></i>
-                        <input type="email" id="register-email" required placeholder="Ví dụ: duong.vt@vinacorp.vn">
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Mật khẩu
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="lock"></i>
-                        <input type="password" id="register-password" required placeholder="Mật khẩu tối thiểu 6 ký tự">
-                        <button type="button" class="toggle-password" data-target="register-password">
-                            <i data-lucide="eye"
-                                style="position:static; pointer-events:none; width:16px; height:16px;"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Nhập lại mật
-                        khẩu
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="lock"></i>
-                        <input type="password" id="register-confirm-password" required
-                            placeholder="Xác nhận lại mật khẩu">
-                        <button type="button" class="toggle-password" data-target="register-confirm-password">
-                            <i data-lucide="eye"
-                                style="position:static; pointer-events:none; width:16px; height:16px;"></i>
-                        </button>
-                    </div>
-                </div>
-
-
-                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
-                    <span>Đăng ký</span>
-                    <i data-lucide="user-plus"></i>
-                </button>
-
-                <div class="auth-footer-links">
-                    <a href="#" id="link-show-login-from-reg">Quay lại Đăng nhập</a>
-                </div>
-            </form>
-
-            <!-- Forgot Password Form -->
-            <form id="form-auth-forgot" class="auth-form-pane" style="display: none;">
-                <h3 class="auth-title">Khôi phục mật khẩu</h3>
-                <p class="auth-subtitle">Nhập thông tin đã đăng ký để tìm lại mật khẩu</p>
-                <div id="forgot-error" class="auth-error-msg" style="display: none;"></div>
-                <div id="forgot-success" class="auth-success-msg" style="display: none;"></div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
-                        <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="user"></i>
-                        <input type="text" id="forgot-username" required placeholder="Nhập tài khoản của bạn">
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Địa chỉ Email
-                        đã đăng ký <span class="required">*</span></label>
-                    <div class="auth-input-wrapper">
-                        <i data-lucide="mail"></i>
-                        <input type="email" id="forgot-email" required placeholder="Nhập email liên kết với tài khoản">
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
-                    <span>Tìm mật khẩu</span>
-                    <i data-lucide="help-circle"></i>
-                </button>
-
-                <div class="auth-footer-links">
-                    <a href="#" id="link-show-login-from-forgot">Quay lại Đăng nhập</a>
-                </div>
-            </form>
-
-            <!-- Email Verification Form -->
-            <form id="form-auth-verify" class="auth-form-pane" style="display: none;">
-                <h3 class="auth-title">Xác thực Email</h3>
-                <p class="auth-subtitle">Một mã OTP 6 chữ số đã được gửi đến email của bạn. Vui lòng nhập mã để kích hoạt tài khoản.</p>
-                <div id="verify-error" class="auth-error-msg" style="display: none;"></div>
-                <div id="verify-success" class="auth-success-msg" style="display: none;"></div>
-
-                <input type="hidden" id="verify-username-hidden">
-
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block; text-align: center;">Mã xác thực OTP</label>
-                    <div class="auth-input-wrapper" style="justify-content: center; position: relative; border: none; background: transparent; padding: 0;">
-                        <input type="text" id="verify-code" required placeholder="******" maxlength="6" 
-                               style="text-align: center; font-size: 1.8rem; letter-spacing: 0.8rem; padding-left: 0.8rem; font-weight: 800; border-radius: var(--radius-md); border: 2px solid var(--border-color); height: 56px; width: 100%; box-shadow: var(--shadow-sm); background: var(--bg-card); color: var(--text-main);">
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%; margin-bottom: 12px; display: flex; justify-content: center; align-items: center; gap: 8px;">
-                    <span>Xác nhận tài khoản</span>
-                    <i data-lucide="check-circle"></i>
-                </button>
-
-                <div style="text-align: center; margin-bottom: 16px;">
-                    <button type="button" id="btn-resend-otp" style="border: none; background: none; color: var(--primary); font-weight: 700; font-size: 0.85rem; cursor: pointer; text-decoration: underline;">
-                        Gửi lại mã OTP
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Mật khẩu
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="lock"></i>
+                    <input type="password" id="login-password" required placeholder="Nhập mật khẩu">
+                    <button type="button" class="toggle-password" data-target="login-password">
+                        <i data-lucide="eye" style="position:static; pointer-events:none; width:16px; height:16px;"></i>
                     </button>
-                    <span id="otp-timer" style="font-size: 0.85rem; color: var(--text-muted); display: none;">(Gửi lại sau <span id="otp-countdown">60</span>s)</span>
                 </div>
+            </div>
 
-                <div class="auth-footer-links" style="justify-content: center;">
-                    <a href="#" id="link-show-login-from-verify">Quay lại Đăng nhập</a>
+            <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
+                <span>Đăng nhập</span>
+                <i data-lucide="arrow-right"></i>
+            </button>
+
+            <div class="auth-footer-links">
+                <a href="#" id="link-show-register">Đăng ký tài khoản</a>
+                <span class="bullet">•</span>
+                <a href="#" id="link-show-forgot">Quên mật khẩu?</a>
+            </div>
+        </form>
+
+        <!-- Register Form -->
+        <form id="form-auth-register" class="auth-form-pane" style="display: none;">
+            <h3 class="auth-title">Đăng ký thành viên</h3>
+            <p class="auth-subtitle">Tạo tài khoản mới để tham gia</p>
+            <div id="register-error" class="auth-error-msg" style="display: none;"></div>
+            <div id="register-success" class="auth-success-msg" style="display: none;"></div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="user"></i>
+                    <input type="text" id="register-username" required placeholder="Tên đăng nhập viết liền không dấu">
                 </div>
-            </form>
-        </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Họ và tên
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="file-signature"></i>
+                    <input type="text" id="register-fullname" required placeholder="Nhập họ và tên đầy đủ">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Địa chỉ Email
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="mail"></i>
+                    <input type="email" id="register-email" required placeholder="Ví dụ: duong.vt@vinacorp.vn">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Mật khẩu
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="lock"></i>
+                    <input type="password" id="register-password" required placeholder="Mật khẩu tối thiểu 6 ký tự">
+                    <button type="button" class="toggle-password" data-target="register-password">
+                        <i data-lucide="eye" style="position:static; pointer-events:none; width:16px; height:16px;"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Nhập lại mật
+                    khẩu
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="lock"></i>
+                    <input type="password" id="register-confirm-password" required placeholder="Xác nhận lại mật khẩu">
+                    <button type="button" class="toggle-password" data-target="register-confirm-password">
+                        <i data-lucide="eye" style="position:static; pointer-events:none; width:16px; height:16px;"></i>
+                    </button>
+                </div>
+            </div>
+
+
+            <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
+                <span>Đăng ký</span>
+                <i data-lucide="user-plus"></i>
+            </button>
+
+            <div class="auth-footer-links">
+                <a href="#" id="link-show-login-from-reg">Quay lại Đăng nhập</a>
+            </div>
+        </form>
+
+        <!-- Forgot Password Form -->
+        <form id="form-auth-forgot" class="auth-form-pane" style="display: none;">
+            <h3 class="auth-title">Khôi phục mật khẩu</h3>
+            <p class="auth-subtitle">Nhập thông tin đã đăng ký để tìm lại mật khẩu</p>
+            <div id="forgot-error" class="auth-error-msg" style="display: none;"></div>
+            <div id="forgot-success" class="auth-success-msg" style="display: none;"></div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Tên đăng nhập
+                    <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="user"></i>
+                    <input type="text" id="forgot-username" required placeholder="Nhập tài khoản của bạn">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block;">Địa chỉ Email
+                    đã đăng ký <span class="required">*</span></label>
+                <div class="auth-input-wrapper">
+                    <i data-lucide="mail"></i>
+                    <input type="email" id="forgot-email" required placeholder="Nhập email liên kết với tài khoản">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit" style="width:100%;">
+                <span>Tìm mật khẩu</span>
+                <i data-lucide="help-circle"></i>
+            </button>
+
+            <div class="auth-footer-links">
+                <a href="#" id="link-show-login-from-forgot">Quay lại Đăng nhập</a>
+            </div>
+        </form>
+
+        <!-- Email Verification Form -->
+        <form id="form-auth-verify" class="auth-form-pane" style="display: none;">
+            <h3 class="auth-title">Xác thực Email</h3>
+            <p class="auth-subtitle">Một mã OTP 6 chữ số đã được gửi đến email của bạn. Vui lòng nhập mã để kích hoạt
+                tài khoản.</p>
+            <div id="verify-error" class="auth-error-msg" style="display: none;"></div>
+            <div id="verify-success" class="auth-success-msg" style="display: none;"></div>
+
+            <input type="hidden" id="verify-username-hidden">
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label
+                    style="font-size: 0.85rem; font-weight:700; margin-bottom: 6px; display:block; text-align: center;">Mã
+                    xác thực OTP</label>
+                <div class="auth-input-wrapper"
+                    style="justify-content: center; position: relative; border: none; background: transparent; padding: 0;">
+                    <input type="text" id="verify-code" required placeholder="******" maxlength="6"
+                        style="text-align: center; font-size: 1.8rem; letter-spacing: 0.8rem; padding-left: 0.8rem; font-weight: 800; border-radius: var(--radius-md); border: 2px solid var(--border-color); height: 56px; width: 100%; box-shadow: var(--shadow-sm); background: var(--bg-card); color: var(--text-main);">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full-width btn-auth-submit"
+                style="width:100%; margin-bottom: 12px; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                <span>Xác nhận tài khoản</span>
+                <i data-lucide="check-circle"></i>
+            </button>
+
+            <div style="text-align: center; margin-bottom: 16px;">
+                <button type="button" id="btn-resend-otp"
+                    style="border: none; background: none; color: var(--primary); font-weight: 700; font-size: 0.85rem; cursor: pointer; text-decoration: underline;">
+                    Gửi lại mã OTP
+                </button>
+                <span id="otp-timer" style="font-size: 0.85rem; color: var(--text-muted); display: none;">(Gửi lại sau
+                    <span id="otp-countdown">60</span>s)</span>
+            </div>
+
+            <div class="auth-footer-links" style="justify-content: center;">
+                <a href="#" id="link-show-login-from-verify">Quay lại Đăng nhập</a>
+            </div>
+        </form>
     </div>
+</div>
