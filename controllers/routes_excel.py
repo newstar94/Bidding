@@ -823,3 +823,220 @@ async def export_ketquaqd_template_api(request):
         return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def export_phanlo_excel_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
+        body = await request.json()
+        package_name = body.get('package_name', 'GoiThau')
+        rows_data = body.get('rows', [])
+
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "DanhSachPhanLo"
+
+        headers = ["Mã phần lô", "Tên phần lô", "Giá trị phần lô (VNĐ)", "Bảo đảm dự thầu (VNĐ)", "Thời gian thực hiện"]
+
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center")
+        right_align = Alignment(horizontal="right", vertical="center")
+        left_align = Alignment(horizontal="left", vertical="center")
+        
+        border_side = Side(border_style="thin", color="D9D9D9")
+        thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+
+        ws.append(headers)
+        ws.row_dimensions[1].height = 28
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+
+        for row_idx, item in enumerate(rows_data, start=2):
+            ws.row_dimensions[row_idx].height = 24
+            
+            ma = item.get('maPhanLo') or item.get('ma') or ''
+            ten = item.get('tenPhanLo') or item.get('ten') or ''
+            
+            try:
+                gia_tri = float(item.get('giaTriPhanLo') or item.get('gia') or 0)
+            except:
+                gia_tri = 0
+            try:
+                bao_dam = float(item.get('baoDamDuThau') or item.get('baodam') or 0)
+            except:
+                bao_dam = 0
+                
+            duration = item.get('thoiGianThucHien') or item.get('duration') or ''
+
+            row_values = [ma, ten, gia_tri, bao_dam, duration]
+            for col_idx, val in enumerate(row_values, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.border = thin_border
+                
+                if col_idx in [1, 5]:
+                    cell.alignment = center_align
+                elif col_idx in [3, 4]:
+                    cell.number_format = '#,##0'
+                    cell.alignment = right_align
+                else:
+                    cell.alignment = left_align
+
+        for col in ws.columns:
+            max_len = 0
+            for cell in col:
+                val_str = ""
+                if cell.row == 1:
+                    val_str = str(cell.value or '')
+                else:
+                    if cell.column in [3, 4] and isinstance(cell.value, (int, float)):
+                        val_str = f"{cell.value:,.0f}"
+                    else:
+                        val_str = str(cell.value or '')
+                if len(val_str) > max_len:
+                    max_len = len(val_str)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 5, 15)
+
+        out_stream = BytesIO()
+        wb.save(out_stream)
+        out_stream.seek(0)
+        
+        safe_pkg_name = "".join(c for c in package_name if c.isalnum() or c in (' ', '_', '-')).strip()
+        safe_pkg_name = safe_pkg_name.replace(' ', '_')
+        filename = f"Mau_nhap_lieu_phan_lo_{safe_pkg_name}.xlsx"
+
+        import urllib.parse
+        quoted_filename = urllib.parse.quote(filename)
+        return StreamingResponse(
+            out_stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quoted_filename}"}
+        )
+    except Exception as e:
+        from helpers import log_error
+        log_error(e, "export_phanlo_excel_api")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def export_tuychonmuathem_excel_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
+        body = await request.json()
+        package_name = body.get('package_name', 'GoiThau')
+        rows_data = body.get('rows', [])
+
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "TuyChonMuaThem"
+
+        headers = ["Hạng mục", "Đơn vị", "Khối lượng / Số lượng", "Tỷ lệ phần trăm (%)", "Giá trị ước tính"]
+
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center")
+        right_align = Alignment(horizontal="right", vertical="center")
+        left_align = Alignment(horizontal="left", vertical="center")
+        
+        border_side = Side(border_style="thin", color="D9D9D9")
+        thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+
+        ws.append(headers)
+        ws.row_dimensions[1].height = 28
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+
+        for row_idx, item in enumerate(rows_data, start=2):
+            ws.row_dimensions[row_idx].height = 24
+            
+            hang_muc = item.get('hangMuc') or ''
+            don_vi = item.get('donVi') or ''
+            
+            try:
+                so_luong = float(item.get('soLuong') or 0)
+            except:
+                so_luong = 0
+            try:
+                ty_le = float(item.get('tyLe') or 0)
+            except:
+                ty_le = 0
+            try:
+                gia_tri = float(item.get('giaTriUocTinh') or 0)
+            except:
+                gia_tri = 0
+
+            row_values = [hang_muc, don_vi, so_luong, ty_le, gia_tri]
+            for col_idx, val in enumerate(row_values, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.border = thin_border
+                
+                if col_idx == 2:
+                    cell.alignment = center_align
+                elif col_idx in [3, 4, 5]:
+                    if col_idx == 5:
+                        cell.number_format = '#,##0'
+                    else:
+                        cell.number_format = '#,##0.00'
+                    cell.alignment = right_align
+                else:
+                    cell.alignment = left_align
+
+        for col in ws.columns:
+            max_len = 0
+            for cell in col:
+                val_str = ""
+                if cell.row == 1:
+                    val_str = str(cell.value or '')
+                else:
+                    if cell.column in [3, 4, 5] and isinstance(cell.value, (int, float)):
+                        val_str = f"{cell.value:,.0f}"
+                    else:
+                        val_str = str(cell.value or '')
+                if len(val_str) > max_len:
+                    max_len = len(val_str)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 5, 15)
+
+        out_stream = BytesIO()
+        wb.save(out_stream)
+        out_stream.seek(0)
+        
+        safe_pkg_name = "".join(c for c in package_name if c.isalnum() or c in (' ', '_', '-')).strip()
+        safe_pkg_name = safe_pkg_name.replace(' ', '_')
+        filename = f"Mau_nhap_lieu_tuy_chon_mua_them_{safe_pkg_name}.xlsx"
+
+        import urllib.parse
+        quoted_filename = urllib.parse.quote(filename)
+        return StreamingResponse(
+            out_stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quoted_filename}"}
+        )
+    except Exception as e:
+        from helpers import log_error
+        log_error(e, "export_tuychonmuathem_excel_api")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+

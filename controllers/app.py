@@ -48,9 +48,8 @@ _compiled_html_lock = threading.Lock()
 def compile_html(file_path):
     global _compiled_html_cache
     
-    # Nếu không phải chế độ debug và đã có cache, trả về cache luôn
-    if not APP_DEBUG and _compiled_html_cache:
-        return _compiled_html_cache
+    # Luôn biên dịch lại template HTML để cập nhật thay đổi tức thì mà không cần restart server
+    pass
         
     def replace_include(match):
         include_path = match.group(1).strip()
@@ -194,7 +193,9 @@ from export_routes import (
     export_excel_template_api,
     export_mothau_template_api,
     export_danhgiahsdt_template_api,
-    export_ketquaqd_template_api
+    export_ketquaqd_template_api,
+    export_phanlo_excel_api,
+    export_tuychonmuathem_excel_api
 )
 from address_routes import (
     get_provinces_api,
@@ -233,6 +234,8 @@ routes = [
     Route("/api/export-mothau-template", export_mothau_template_api, methods=["GET"]),
     Route("/api/export-danhgiahsdt-template", export_danhgiahsdt_template_api, methods=["GET"]),
     Route("/api/export-ketquaqd-template", export_ketquaqd_template_api, methods=["GET"]),
+    Route("/api/export-phanlo-excel", export_phanlo_excel_api, methods=["POST"]),
+    Route("/api/export-tuychonmuathem-excel", export_tuychonmuathem_excel_api, methods=["POST"]),
     Route("/api/system-packages", list_system_packages_api, methods=["GET"]),
     Route("/api/system-packages/update", update_system_package_api, methods=["POST"]),
 

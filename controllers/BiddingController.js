@@ -1404,7 +1404,7 @@ export class BiddingController {
         };
 
         if (btnTemplatePhanLo) {
-            btnTemplatePhanLo.addEventListener('click', () => downloadInlineTemplate('phanlo', btnTemplatePhanLo));
+            btnTemplatePhanLo.addEventListener('click', () => this.exportEditPhanLoExcel());
         }
 
         if (btnImportPhanLo && inputImportPhanLo) {
@@ -1422,7 +1422,7 @@ export class BiddingController {
         const inputImportTuyChon = document.getElementById('excel-file-input-tuychonmuathem');
 
         if (btnTemplateTuyChon) {
-            btnTemplateTuyChon.addEventListener('click', () => downloadInlineTemplate('tuychonmuathem', btnTemplateTuyChon));
+            btnTemplateTuyChon.addEventListener('click', () => this.exportEditTuyChonMuaThemExcel());
         }
 
         if (btnImportTuyChon && inputImportTuyChon) {

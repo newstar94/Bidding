@@ -14,5 +14,7 @@ from routes_excel import (
     export_excel_template_api,
     export_mothau_template_api,
     export_danhgiahsdt_template_api,
-    export_ketquaqd_template_api
+    export_ketquaqd_template_api,
+    export_phanlo_excel_api,
+    export_tuychonmuathem_excel_api
 )

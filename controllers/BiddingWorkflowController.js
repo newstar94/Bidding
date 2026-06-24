@@ -602,17 +602,26 @@ export async function phatHanhHsmtGoiThau(id) {
                     const baoDamVal = item.baoDamDuThau || '';
                     const giaTriVal = item.giaTriPhanLo || 0;
                     tr.innerHTML = `
-                        <td style="padding: 8px;">${item.maPhanLo || ''}</td>
-                        <td style="padding: 8px;">${item.tenPhanLo || ''}</td>
-                        <td style="padding: 8px;">${giaTriVal ? this.model.formatVND(giaTriVal) : ''}</td>
-                        <td style="padding: 8px;">
-                            <input type="text" class="phathanh-pl-baodam-input mt-format-vnd" required value="${baoDamVal ? this.model.formatVND(baoDamVal) : ''}" placeholder="Bảo đảm dự thầu..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);">
+                        <td style="padding: 6px 8px;">
+                            <input type="text" class="phathanh-pl-code-input" value="${item.maPhanLo || ''}" placeholder="Mã..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        </td>
+                        <td style="padding: 6px 8px;">
+                            <input type="text" class="phathanh-pl-name-input" value="${item.tenPhanLo || ''}" placeholder="Tên..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        </td>
+                        <td style="padding: 6px 8px;">
+                            <input type="text" class="phathanh-pl-price-input mt-format-vnd" value="${giaTriVal ? this.model.formatVND(giaTriVal) : ''}" placeholder="Giá trị..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        </td>
+                        <td style="padding: 6px 8px;">
+                            <input type="text" class="phathanh-pl-baodam-input mt-format-vnd" required value="${baoDamVal ? this.model.formatVND(baoDamVal) : ''}" placeholder="Bảo đảm..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        </td>
+                        <td style="padding: 6px 8px;">
+                            <input type="text" class="phathanh-pl-duration-input" value="${item.thoiGianThucHien || ''}" placeholder="Thời gian..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
                         </td>
                     `;
                     phanloBaodamTbody.appendChild(tr);
 
-                    const inp = tr.querySelector('.phathanh-pl-baodam-input');
-                    if (inp) {
+                    const setupInputFormat = (inp) => {
+                        if (!inp) return;
                         inp.addEventListener('input', (e) => {
                             const cursorPosition = e.target.selectionStart;
                             const originalLength = e.target.value.length;
@@ -621,13 +630,13 @@ export async function phatHanhHsmtGoiThau(id) {
                             const newLength = e.target.value.length;
                             e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
                         });
-                    }
+                    };
+                    setupInputFormat(tr.querySelector('.phathanh-pl-price-input'));
+                    setupInputFormat(tr.querySelector('.phathanh-pl-baodam-input'));
                 });
             } else {
                 baodamContainer.style.display = 'block';
-                baodamInput.removeAttribute('readonly');
-                baodamInput.style.background = '';
-                baodamInput.style.cursor = 'auto';
+                baodamInput.setAttribute('required', '');
                 baodamInput.setAttribute('required', 'true');
                 baodamInput.value = gt.giaTriDamBaoDuThau ? this.model.formatVND(gt.giaTriDamBaoDuThau) : '';
 
@@ -679,12 +688,23 @@ export async function handlePhatHanhHsmtSubmit(e) {
     // Check if lot guarantees are satisfied for multi-lot bidding
     if (isPhanLo && !isTuVan) {
         let invalidInput = null;
+        let exceedsInput = null;
+        let exceedsMsg = '';
+        
         document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
             const id = tr.getAttribute('data-id');
             const inp = tr.querySelector('.phathanh-pl-baodam-input');
             const val = inp ? this.model.parseVND(inp.value) : 0;
+            
+            const priceInp = tr.querySelector('.phathanh-pl-price-input');
+            const priceVal = priceInp ? this.model.parseVND(priceInp.value) : 0;
+            
             if (val <= 0 && !invalidInput) {
                 invalidInput = inp;
+            }
+            if (priceVal > 0 && val > priceVal && !exceedsInput) {
+                exceedsInput = inp;
+                exceedsMsg = `Giá trị bảo đảm dự thầu (${this.model.formatVND(val)}) không được lớn hơn giá trị phần lô (${this.model.formatVND(priceVal)})!`;
             }
             if (id) {
                 lotBaoDamMap[id] = val;
@@ -693,6 +713,11 @@ export async function handlePhatHanhHsmtSubmit(e) {
 
         if (invalidInput || !gt.phanLoList || gt.phanLoList.length === 0) {
             await this.view.customAlert('Thiếu thông tin', 'Gói thầu bắt buộc phải có Giá trị bảo đảm dự thầu lớn hơn 0 cho tất cả các phần lô (trừ gói tư vấn)!', 'alert-triangle', invalidInput);
+            return;
+        }
+        
+        if (exceedsInput) {
+            await this.view.customAlert('Dữ liệu không hợp lệ', exceedsMsg, 'alert-triangle', exceedsInput);
             return;
         }
     }
@@ -721,9 +746,20 @@ export async function handlePhatHanhHsmtSubmit(e) {
         gt.hieuLucDamBaoDuThau = hieuLucHsdtVal + 30; // Tự động tính toán = Thời gian hiệu lực HSDT + 30 ngày
         
         if (isPhanLo && !isTuVan && gt.phanLoList) {
-            gt.phanLoList.forEach(pl => {
-                if (lotBaoDamMap[pl.id] !== undefined) {
-                    pl.baoDamDuThau = lotBaoDamMap[pl.id];
+            document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
+                const trId = tr.getAttribute('data-id');
+                const pl = gt.phanLoList.find(p => p.id === trId);
+                if (pl) {
+                    const codeInp = tr.querySelector('.phathanh-pl-code-input');
+                    const nameInp = tr.querySelector('.phathanh-pl-name-input');
+                    const priceInp = tr.querySelector('.phathanh-pl-price-input');
+                    const baodamInp = tr.querySelector('.phathanh-pl-baodam-input');
+                    const durationInp = tr.querySelector('.phathanh-pl-duration-input');
+                    pl.maPhanLo = codeInp ? codeInp.value.trim() : '';
+                    pl.tenPhanLo = nameInp ? nameInp.value.trim() : '';
+                    pl.giaTriPhanLo = priceInp ? this.model.parseVND(priceInp.value) : 0;
+                    pl.baoDamDuThau = baodamInp ? this.model.parseVND(baodamInp.value) : 0;
+                    pl.thoiGianThucHien = durationInp ? durationInp.value.trim() : '';
                 }
             });
             gt.giaTriDamBaoDuThau = gt.phanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0);
@@ -5868,21 +5904,124 @@ export async function saveDanhGiaHsdt() {
 
 export function exportPhatHanhPhanLoExcel(gt) {
     const rows = [];
-    // Add header row
-    rows.push(["Mã phần lô", "Tên phần lô", "Giá trị phần lô (VNĐ)", "Bảo đảm dự thầu (VNĐ)"]);
-    
     document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
-        const ma = tr.cells[0]?.textContent || '';
-        const ten = tr.cells[1]?.textContent || '';
-        const gia = tr.cells[2]?.textContent || '';
+        const ma = tr.querySelector('.phathanh-pl-code-input')?.value || '';
+        const ten = tr.querySelector('.phathanh-pl-name-input')?.value || '';
+        const gia = tr.querySelector('.phathanh-pl-price-input')?.value || '';
         const baodam = tr.querySelector('.phathanh-pl-baodam-input')?.value || '';
-        rows.push([ma, ten, gia, baodam]);
+        const duration = tr.querySelector('.phathanh-pl-duration-input')?.value || '';
+        rows.push({
+            maPhanLo: ma,
+            tenPhanLo: ten,
+            giaTriPhanLo: this.model.parseVND(gia),
+            baoDamDuThau: this.model.parseVND(baodam),
+            thoiGianThucHien: duration
+        });
     });
-    
-    const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "BaoDamPhanLo");
-    XLSX.writeFile(workbook, `Bao_dam_phan_lo_${gt.maGoiThau || 'GoiThau'}.xlsx`);
+
+    const headers = {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+        'X-Username': sessionStorage.getItem('bf_username') || ''
+    };
+
+    fetch('/api/export-phanlo-excel', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+            package_name: gt.maGoiThau || 'GoiThau',
+            rows: rows
+        })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Không thể xuất Excel');
+        return res.blob();
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Mau_nhap_lieu_phan_lo_${gt.maGoiThau || 'GoiThau'}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(err => this.view.customAlert('Lỗi xuất Excel', 'Không thể xuất Excel: ' + err.message, 'x-circle'));
+}
+
+export function exportEditPhanLoExcel() {
+    const list = this._collectPhanLoRows();
+    const pkgCodeInput = document.getElementById('gt-ma');
+    const packageCode = pkgCodeInput ? pkgCodeInput.value.trim() : '';
+    const finalName = packageCode || 'GoiThau';
+
+    const headers = {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+        'X-Username': sessionStorage.getItem('bf_username') || ''
+    };
+
+    fetch('/api/export-phanlo-excel', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+            package_name: finalName,
+            rows: list
+        })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Không thể tải Excel mẫu');
+        return res.blob();
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Mau_nhap_lieu_phan_lo_${finalName}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(err => this.view.customAlert('Lỗi tải mẫu', 'Không thể tải Excel mẫu: ' + err.message, 'x-circle'));
+}
+
+export function exportEditTuyChonMuaThemExcel() {
+    const list = this._collectTuyChonMuaThemRows();
+    const pkgCodeInput = document.getElementById('gt-ma');
+    const packageCode = pkgCodeInput ? pkgCodeInput.value.trim() : '';
+    const finalName = packageCode || 'GoiThau';
+
+    const headers = {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+        'X-Username': sessionStorage.getItem('bf_username') || ''
+    };
+
+    fetch('/api/export-tuychonmuathem-excel', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+            package_name: finalName,
+            rows: list
+        })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Không thể tải Excel mẫu');
+        return res.blob();
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Mau_nhap_lieu_tuy_chon_mua_them_${finalName}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(err => this.view.customAlert('Lỗi tải mẫu', 'Không thể tải Excel mẫu: ' + err.message, 'x-circle'));
 }
 
 export function importPhatHanhPhanLoExcel(file) {
@@ -5896,39 +6035,63 @@ export function importPhatHanhPhanLoExcel(file) {
             const json = XLSX.utils.sheet_to_json(sheet);
             
             let count = 0;
-            json.forEach(row => {
-                const maPhanLoExcel = String(row['Mã phần lô'] || row['Mã lô'] || '').trim().toLowerCase();
-                const tenPhanLoExcel = String(row['Tên phần lô'] || row['Tên lô'] || '').trim().toLowerCase();
+            const trList = document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr');
+            json.forEach((row, rowIndex) => {
+                const maPhanLoExcel = String(row['Mã phần lô'] || row['Mã lô'] || '').trim();
+                const tenPhanLoExcel = String(row['Tên phần lô'] || row['Tên lô'] || '').trim();
+                const giaTriPhanLoExcelRaw = row['Giá trị phần lô (VNĐ)'] || row['Giá trị phần lô'] || '';
                 const baoDamExcelRaw = row['Bảo đảm dự thầu (VNĐ)'] || row['Bảo đảm dự thầu'] || row['Giá trị bảo đảm'] || '';
+                const thoiGianThucHienExcel = String(row['Thời gian thực hiện'] || row['Thời gian'] || '').trim();
                 
-                if (!maPhanLoExcel && !tenPhanLoExcel) return;
+                let matchedTr = null;
                 
-                document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
-                    const maTr = (tr.cells[0]?.textContent || '').trim().toLowerCase();
-                    const tenTr = (tr.cells[1]?.textContent || '').trim().toLowerCase();
+                // 1. Tìm theo Mã hoặc Tên phần lô trước
+                for (let tr of trList) {
+                    const maInp = tr.querySelector('.phathanh-pl-code-input');
+                    const tenInp = tr.querySelector('.phathanh-pl-name-input');
+                    const maTr = maInp ? maInp.value.trim().toLowerCase() : '';
+                    const tenTr = tenInp ? tenInp.value.trim().toLowerCase() : '';
+                    if ((maPhanLoExcel && maPhanLoExcel.toLowerCase() === maTr) || (tenPhanLoExcel && tenPhanLoExcel.toLowerCase() === tenTr)) {
+                        matchedTr = tr;
+                        break;
+                    }
+                }
+                
+                // 2. Nếu không tìm thấy, ghi đè theo thứ tự dòng (Index)
+                if (!matchedTr && rowIndex < trList.length) {
+                    matchedTr = trList[rowIndex];
+                }
+                
+                if (matchedTr) {
+                    // Ghi đè trực tiếp các ô input trên giao diện modal
+                    const codeInp = matchedTr.querySelector('.phathanh-pl-code-input');
+                    if (codeInp && maPhanLoExcel) codeInp.value = maPhanLoExcel;
                     
-                    let match = false;
-                    if (maPhanLoExcel && maPhanLoExcel === maTr) {
-                        match = true;
-                    } else if (tenPhanLoExcel && tenPhanLoExcel === tenTr) {
-                        match = true;
+                    const nameInp = matchedTr.querySelector('.phathanh-pl-name-input');
+                    if (nameInp && tenPhanLoExcel) nameInp.value = tenPhanLoExcel;
+                    
+                    const parsedGiaTri = this.model.parseVND(String(giaTriPhanLoExcelRaw));
+                    const priceInp = matchedTr.querySelector('.phathanh-pl-price-input');
+                    if (priceInp && parsedGiaTri !== undefined) {
+                        priceInp.value = this.model.formatVND(parsedGiaTri);
                     }
                     
-                    if (match) {
-                        const inp = tr.querySelector('.phathanh-pl-baodam-input');
-                        if (inp) {
-                            const parsedVal = this.model.parseVND(String(baoDamExcelRaw));
-                            inp.value = this.model.formatVND(parsedVal);
-                            count++;
-                        }
+                    const inp = matchedTr.querySelector('.phathanh-pl-baodam-input');
+                    if (inp) {
+                        const parsedVal = this.model.parseVND(String(baoDamExcelRaw));
+                        inp.value = this.model.formatVND(parsedVal);
                     }
-                });
+                    
+                    const durationInp = matchedTr.querySelector('.phathanh-pl-duration-input');
+                    if (durationInp && thoiGianThucHienExcel) durationInp.value = thoiGianThucHienExcel;
+                    count++;
+                }
             });
             
             if (count > 0) {
-                this.view.customAlert('Nhập thành công', `Đã cập nhật giá trị bảo đảm cho ${count} phần lô từ file Excel!`, 'check-circle');
+                this.view.customAlert('Nhập thành công', `Đã cập nhật/ghi đè giá trị bảo đảm cho ${count} phần lô từ file Excel!`, 'check-circle');
             } else {
-                this.view.customAlert('Không tìm thấy dòng khớp', 'Không tìm thấy phần lô nào khớp trong file Excel hoặc giá trị không hợp lệ!', 'alert-triangle');
+                this.view.customAlert('Không nhập được dữ liệu', 'Không thể đồng bộ dữ liệu phần lô nào từ file Excel!', 'alert-triangle');
             }
         } catch (err) {
             this.view.customAlert('Lỗi đọc file', 'Không thể đọc file Excel: ' + err.message, 'x-circle');
