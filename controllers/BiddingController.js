@@ -2,10 +2,10 @@
    BiddingFlow - Controller (Events, Interaction & Business logic dispatching)
    ========================================================================== */
 
-import * as Auth from '/controllers/AuthController.js?v=6.10';
-import * as Admin from '/controllers/AdminUserController.js?v=6.10';
-import * as Bidding from '/controllers/BiddingWorkflowController.js?v=6.10';
-import * as Partner from '/controllers/PartnerWorkflowController.js?v=6.10';
+import * as Auth from '/controllers/AuthController.js?v=6.12';
+import * as Admin from '/controllers/AdminUserController.js?v=6.12';
+import * as Bidding from '/controllers/BiddingWorkflowController.js?v=6.12';
+import * as Partner from '/controllers/PartnerWorkflowController.js?v=6.12';
 
 export class BiddingController {
     constructor(model, view) {
@@ -57,7 +57,7 @@ export class BiddingController {
                 current.order = 'asc';
             }
             this.model.sortState[tableKey] = current;
-            
+
             if (tableKey === 'kehoach') this.view.renderKeHoachTable();
             else if (tableKey === 'goithau') this.view.renderGoiThauTable();
             else if (tableKey === 'chudautu') this.view.renderChuDauTuTable();
@@ -1212,11 +1212,11 @@ export class BiddingController {
 
         const validateTrongSoKyThuat = (showEmptyError = false) => {
             if (!gtTrongSoKyThuatInput || !gtTrongSoKyThuatContainer) return true;
-            
+
             const valRaw = gtTrongSoKyThuatInput.value;
             const fg = gtTrongSoKyThuatInput.closest('.form-group');
             const errorEl = document.getElementById('gt-trongsokythuat-error');
-            
+
             if (gtPhuongPhapDanhGiaSelect.value !== 'Kết hợp giữa kỹ thuật và giá') {
                 if (fg) fg.classList.remove('invalid', 'warning');
                 return true;
@@ -1317,7 +1317,7 @@ export class BiddingController {
 
         const updatePhuongPhapDanhGiaOptions = (forceDefault = false) => {
             if (!gtPhuongPhapDanhGiaSelect || !gtPhuongPhapDanhGiaContainer) return;
-            
+
             const linhVucVal = gtLinhVucSelect ? gtLinhVucSelect.value : '';
             const phuongThucVal = gtPhuongThucSelect ? gtPhuongThucSelect.value : '';
             const hinhThucVal = gtHinhThucSelect ? gtHinhThucSelect.value : '';
@@ -1359,7 +1359,7 @@ export class BiddingController {
             }
 
             gtPhuongPhapDanhGiaSelect.innerHTML = optionsHtml;
-            
+
             const validOptions = Array.from(gtPhuongPhapDanhGiaSelect.options).map(o => o.value);
             if (!forceDefault && currentVal && validOptions.includes(currentVal)) {
                 gtPhuongPhapDanhGiaSelect.value = currentVal;

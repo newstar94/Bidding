@@ -2,10 +2,10 @@
    BiddingFlow - View Orchestrator (DOM, Caching & Sub-view Dispatcher)
    ========================================================================== */
 
-import * as Dashboard from '/views/DashboardView.js?v=6.10';
-import * as Plan from '/views/PlanView.js?v=6.10';
-import * as Partner from '/views/PartnerView.js?v=6.10';
-import * as SystemUser from '/views/SystemUserView.js?v=6.10';
+import * as Dashboard from '/views/DashboardView.js?v=6.12';
+import * as Plan from '/views/PlanView.js?v=6.12';
+import * as Partner from '/views/PartnerView.js?v=6.12';
+import * as SystemUser from '/views/SystemUserView.js?v=6.12';
 
 export class BiddingView {
     constructor(model) {
@@ -975,7 +975,7 @@ export class BiddingView {
 
     debounce(func, wait) {
         let timeout;
-        return function(...args) {
+        return function (...args) {
             const context = this;
             clearTimeout(timeout);
             timeout = setTimeout(() => func.apply(context, args), wait);

@@ -5,7 +5,7 @@
 /* Design Tokens & Theme Setup */
 :root {
     --font-primary: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    
+
     /* LIGHT THEME VARIABLES */
     --bg-app: #f8fafc;
     --bg-sidebar: #ffffff;
@@ -15,28 +15,28 @@
     --text-main: #0f172a;
     --text-muted: #64748b;
     --text-light: #94a3b8;
-    
+
     --primary: #2563eb;
     --primary-hover: #1d4ed8;
     --primary-soft: #eff6ff;
-    
+
     --success: #0d9488;
     --success-hover: #0f766e;
     --success-soft: #f0fdfa;
-    
+
     --warning: #d97706;
     --warning-soft: #fef3c7;
-    
+
     --danger: #dc2626;
     --danger-soft: #fef2f2;
-    
+
     --neutral-soft: #f1f5f9;
     --neutral-hover: #e2e8f0;
-    
+
     --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
     --shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
     --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    
+
     --sidebar-width: 280px;
     --header-height: 80px;
     --radius-sm: 8px;
@@ -56,23 +56,23 @@ body.dark-mode {
     --text-main: #f9fafb;
     --text-muted: #9ca3af;
     --text-light: #6b7280;
-    
+
     --primary: #3b82f6;
     --primary-hover: #60a5fa;
     --primary-soft: rgba(59, 130, 246, 0.12);
-    
+
     --success: #14b8a6;
     --success-soft: rgba(20, 184, 166, 0.12);
-    
+
     --warning: #f59e0b;
     --warning-soft: rgba(245, 158, 11, 0.12);
-    
+
     --danger: #ef4444;
     --danger-soft: rgba(239, 68, 68, 0.12);
-    
+
     --neutral-soft: #374151;
     --neutral-hover: #4b5563;
-    
+
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
     --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
     --shadow-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
@@ -120,13 +120,16 @@ a:hover {
     width: 6px;
     height: 6px;
 }
+
 ::-webkit-scrollbar-track {
     background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
     background: var(--border-color);
     border-radius: 10px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-light);
 }
@@ -291,14 +294,17 @@ a:hover {
     padding: 0 12px;
     gap: 0;
 }
+
 .app-container.sidebar-collapsed .sidebar-menu {
     padding: 16px 8px;
 }
+
 .app-container.sidebar-collapsed .nav-btn {
     justify-content: center;
     padding: 12px;
     gap: 0;
 }
+
 .app-container.sidebar-collapsed .nav-btn i {
     width: 20px;
     height: 20px;
@@ -310,6 +316,7 @@ a:hover {
     position: relative;
     overflow: visible;
 }
+
 .app-container.sidebar-collapsed .nav-btn[data-tooltip]:hover::before {
     content: attr(data-tooltip);
     position: absolute;
@@ -327,6 +334,7 @@ a:hover {
     box-shadow: var(--shadow-lg);
     pointer-events: none;
 }
+
 /* Hide the active dot (::after) when collapsed — tooltip covers that info */
 .app-container.sidebar-collapsed .nav-btn.active::after {
     display: none;
@@ -349,15 +357,18 @@ a:hover {
     flex-shrink: 0;
     position: relative;
 }
+
 #btn-sidebar-collapse:hover {
     background: var(--primary-soft);
     color: var(--primary);
     border-color: var(--primary);
 }
+
 #btn-sidebar-collapse i {
     width: 16px;
     height: 16px;
 }
+
 /* Tooltip 'Đóng thanh bên' on hover */
 #btn-sidebar-collapse:hover::after {
     content: 'Đóng thanh bên';
@@ -388,10 +399,12 @@ a:hover {
     position: relative;
     transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
+
 .app-container.sidebar-collapsed .brand-icon:hover {
     transform: scale(1.1);
     box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
 }
+
 /* Tooltip 'Mở thanh bên' on hover */
 .app-container.sidebar-collapsed .brand-icon:hover::after {
     content: 'Mở thanh bên';
@@ -487,7 +500,8 @@ a:hover {
 }
 
 .menu-toggle-btn {
-    display: none; /* Visible on responsive mobile screen */
+    display: none;
+    /* Visible on responsive mobile screen */
     background: none;
     border: 1px solid var(--border-color);
     color: var(--text-main);
@@ -569,8 +583,15 @@ a:hover {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* ==========================================================================
@@ -655,17 +676,37 @@ a:hover {
 }
 
 /* Background Soft Classes for Stat Icons */
-.bg-blue-soft { background-color: rgba(37, 99, 235, 0.1); }
-.text-blue { color: var(--primary) !important; }
+.bg-blue-soft {
+    background-color: rgba(37, 99, 235, 0.1);
+}
 
-.bg-emerald-soft { background-color: rgba(13, 148, 136, 0.1); }
-.text-emerald { color: var(--success) !important; }
+.text-blue {
+    color: var(--primary) !important;
+}
 
-.bg-purple-soft { background-color: rgba(147, 51, 234, 0.1); }
-.text-purple { color: #9333ea !important; }
+.bg-emerald-soft {
+    background-color: rgba(37, 99, 235, 0.1);
+}
 
-.bg-amber-soft { background-color: rgba(217, 119, 6, 0.1); }
-.text-amber { color: var(--warning) !important; }
+.text-emerald {
+    color: var(--primary) !important;
+}
+
+.bg-purple-soft {
+    background-color: rgba(147, 51, 234, 0.1);
+}
+
+.text-purple {
+    color: #9333ea !important;
+}
+
+.bg-amber-soft {
+    background-color: rgba(217, 119, 6, 0.1);
+}
+
+.text-amber {
+    color: var(--warning) !important;
+}
 
 /* Dashboard Cards */
 .dashboard-grid {
@@ -721,18 +762,16 @@ a:hover {
     height: 140px;
     border-radius: 50%;
     /* Gradient color border computed dynamically or styled statically */
-    background: conic-gradient(
-        var(--primary) 0% 35%, 
-        var(--success) 35% 65%, 
-        var(--warning) 65% 85%,
-        #9333ea 85% 95%,
-        #f43f5e 95% 100%
-    );
+    background: conic-gradient(var(--primary) 0% 35%,
+            var(--success) 35% 65%,
+            var(--warning) 65% 85%,
+            #9333ea 85% 95%,
+            #f43f5e 95% 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    box-shadow: inset 0 2px 10px rgba(0,0,0,0.05);
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
 .donut-inner {
@@ -867,7 +906,9 @@ a:hover {
     position: relative;
     width: 280px;
 }
-.search-box i, .search-box svg {
+
+.search-box i,
+.search-box svg {
     position: absolute;
     left: 12px;
     top: 50%;
@@ -937,12 +978,15 @@ a:hover {
 .data-table {
     width: 100%;
     border-collapse: collapse;
-    text-align: left;
+    text-align: center;
 }
+
 .data-table th,
 .data-table td {
     white-space: nowrap;
+    text-align: center;
 }
+
 .data-table .text-wrap {
     white-space: normal !important;
 }
@@ -956,6 +1000,7 @@ a:hover {
     letter-spacing: 0.8px;
     color: var(--text-muted);
     border-bottom: 1px solid var(--border-color);
+    text-align: center !important;
 }
 
 .data-table td {
@@ -1087,14 +1132,24 @@ a:hover {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 10px 20px;
+    padding: 10px 24px;
     border-radius: var(--radius-md);
     font-family: var(--font-primary);
-    font-size: 0.85rem;
+    font-size: 0.88rem;
     font-weight: 700;
+    line-height: normal;
     cursor: pointer;
     transition: all var(--transition-fast);
     border: 1px solid transparent;
+}
+
+.btn svg, .btn i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
 }
 
 .btn-primary {
@@ -1137,13 +1192,13 @@ a:hover {
 }
 
 .btn-emerald {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #1d4ed8 100%);
     color: white;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
 
 .btn-emerald:hover {
-    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
     transform: translateY(-1px);
 }
 
@@ -1198,13 +1253,13 @@ a:hover {
 
 /* Allow overflow for HSMT release modal so flatpickr is not clipped */
 #modal-phathanh-hsmt .modal-card,
-#modal-phathanh-hsmt .modal-card > form,
+#modal-phathanh-hsmt .modal-card>form,
 #modal-phathanh-hsmt .modal-body {
     overflow: visible !important;
 }
 
 
-.modal-card > form {
+.modal-card>form {
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -1344,8 +1399,8 @@ a:hover {
     margin-left: 2px;
 }
 
-.form-group input, 
-.form-group select, 
+.form-group input,
+.form-group select,
 .form-group textarea {
     width: 100%;
     max-width: 100%;
@@ -1362,8 +1417,8 @@ a:hover {
     outline: none;
 }
 
-.form-group input:focus, 
-.form-group select:focus, 
+.form-group input:focus,
+.form-group select:focus,
 .form-group textarea:focus {
     border-color: var(--primary);
     background-color: var(--bg-card);
@@ -1581,23 +1636,23 @@ a:hover {
         bottom: 0;
         transform: translateX(-100%);
     }
-    
+
     .sidebar.active {
         transform: translateX(0);
     }
-    
+
     .menu-toggle-btn {
         display: block;
     }
-    
+
     .form-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .col-span-2 {
         grid-column: span 1;
     }
-    
+
     .detail-grid {
         grid-template-columns: 1fr;
     }
@@ -1619,7 +1674,7 @@ a:hover {
 .flatpickr-calendar {
     border: none !important;
     border-radius: 16px !important;
-    box-shadow: 0 8px 40px -4px rgba(0,0,0,0.18), 0 2px 12px rgba(0,0,0,0.08) !important;
+    box-shadow: 0 8px 40px -4px rgba(0, 0, 0, 0.18), 0 2px 12px rgba(0, 0, 0, 0.08) !important;
     font-family: var(--font-primary) !important;
     color: var(--text-main) !important;
     padding: 0 !important;
@@ -1659,7 +1714,7 @@ a:hover {
     display: block;
     font-size: 0.7rem;
     font-weight: 700;
-    color: rgba(255,255,255,0.7);
+    color: rgba(255, 255, 255, 0.7);
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-bottom: 6px;
@@ -1788,12 +1843,13 @@ a:hover {
     left: 50% !important;
     transform: translateX(-50%) !important;
     width: 80px !important;
-    max-height: 180px !important; /* ~6-7 items */
+    max-height: 180px !important;
+    /* ~6-7 items */
     overflow-y: auto !important;
     background: var(--bg-card) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: var(--radius-md) !important;
-    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05) !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
     z-index: 99999 !important;
     margin-top: 4px !important;
 }
@@ -2003,7 +2059,7 @@ span.flatpickr-weekday {
 .flatpickr-time input:focus {
     background: var(--primary-soft) !important;
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 3px rgba(37,99,235,0.15) !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
     outline: none !important;
 }
 
@@ -2015,7 +2071,9 @@ span.flatpickr-weekday {
     line-height: 1 !important;
 }
 
-.flatpickr-time .numInputWrapper { flex: 1 !important; }
+.flatpickr-time .numInputWrapper {
+    flex: 1 !important;
+}
 
 .flatpickr-time .numInputWrapper span.arrowUp,
 .flatpickr-time .numInputWrapper span.arrowDown {
@@ -2149,7 +2207,7 @@ body.dark-mode .fp-year-select option {
     font-size: 0.73rem !important;
 }
 
-.file-upload-zone:hover, 
+.file-upload-zone:hover,
 .file-upload-zone.dragover {
     border-color: var(--primary);
     background-color: var(--primary-soft);
@@ -2674,7 +2732,8 @@ body.dark-mode .fp-year-select option {
 }
 
 body.dark-mode .signature-display-frame {
-    filter: invert(0.9) hue-rotate(180deg); /* keep signature dark ink on white backing visually gorgeous in dark mode! */
+    filter: invert(0.9) hue-rotate(180deg);
+    /* keep signature dark ink on white backing visually gorgeous in dark mode! */
 }
 
 
@@ -2688,7 +2747,8 @@ body.dark-mode .signature-display-frame {
     flex-direction: column !important;
     box-sizing: border-box !important;
     padding: 0 !important;
-    width: 320px !important; /* Slightly wider to guarantee no clipping */
+    width: 320px !important;
+    /* Slightly wider to guarantee no clipping */
 }
 
 .flatpickr-calendar.hasTime {
@@ -2829,17 +2889,20 @@ table th {
     cursor: pointer !important;
     transition: border-color var(--transition-fast), background-color var(--transition-fast) !important;
 }
+
 .excel-drag-drop-zone:hover,
 .excel-drag-drop-zone.dragover {
     border-color: var(--primary) !important;
     background-color: var(--primary-soft) !important;
 }
+
 .excel-drag-drop-zone p {
     font-size: 1rem !important;
     font-weight: 600 !important;
     color: var(--text-main) !important;
     margin-top: 12px !important;
 }
+
 .excel-drag-drop-zone span {
     font-size: 0.8rem !important;
     color: var(--text-muted) !important;
@@ -2851,9 +2914,11 @@ table th {
 .excel-preview-row-valid {
     background-color: rgba(13, 148, 136, 0.08) !important;
 }
+
 .excel-preview-row-invalid {
     background-color: rgba(220, 38, 38, 0.08) !important;
 }
+
 .excel-preview-row-invalid td {
     color: var(--danger) !important;
 }
@@ -3391,8 +3456,8 @@ body.dark-mode .security-lock-overlay {
     align-items: center;
 }
 
-.auth-input-wrapper > i,
-.auth-input-wrapper > svg {
+.auth-input-wrapper>i,
+.auth-input-wrapper>svg {
     position: absolute;
     left: 16px;
     color: var(--text-light);
@@ -3631,6 +3696,7 @@ body.dark-mode .security-lock-overlay {
         opacity: 0;
         transform: translateY(-8px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -3750,6 +3816,7 @@ select.form-control:focus {
 #mothau-table-tbody tr.invalid td {
     background-color: var(--danger-soft);
 }
+
 #mothau-table-tbody tr.invalid .form-control {
     border-color: var(--danger);
 }
@@ -3758,12 +3825,14 @@ select.form-control:focus {
 #mothau-table-tbody tr:nth-child(even) {
     background-color: var(--neutral-soft);
 }
+
 #mothau-table-tbody tr:hover {
     background-color: var(--primary-soft);
 }
 
 /* Mothau summary card (thông số gói thầu) */
-#mothau-goithau-summary {
+#mothau-goithau-summary,
+#danhgiahsdt-goithau-summary {
     font-size: 0.85rem;
     line-height: 1.7;
     background: rgba(59, 130, 246, 0.05);
@@ -3771,9 +3840,11 @@ select.form-control:focus {
     border-radius: var(--radius-md);
     padding: 14px 18px;
     color: var(--text-main);
+    margin-bottom: 24px;
 }
 
-#mothau-goithau-summary strong {
+#mothau-goithau-summary strong,
+#danhgiahsdt-goithau-summary strong {
     color: var(--primary);
     font-weight: 700;
 }
@@ -3821,23 +3892,24 @@ select.form-control:focus {
     cursor: pointer;
     transition: all var(--transition-fast);
 }
+
 #btn-mothau-add-bid:hover {
     background: var(--primary-soft);
     box-shadow: 0 3px 8px rgba(37, 99, 235, 0.15);
     transform: translateY(-1px);
 }
+
 #btn-mothau-add-bid i {
     width: 15px;
     height: 15px;
 }
 
-/* Save button */
 #btn-mothau-save {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 10px 24px;
-    background: linear-gradient(135deg, var(--success) 0%, var(--success-hover) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
     border: none;
     border-radius: var(--radius-md);
     color: white;
@@ -3846,15 +3918,17 @@ select.form-control:focus {
     font-weight: 700;
     cursor: pointer;
     transition: all var(--transition-fast);
-    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
 }
+
 #btn-mothau-save:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(13, 148, 136, 0.35);
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
 }
-#btn-mothau-save i {
-    width: 16px;
-    height: 16px;
+
+#btn-mothau-save svg, #btn-mothau-save i {
+    width: 20px;
+    height: 20px;
 }
 
 /* Back button */
@@ -3864,6 +3938,7 @@ select.form-control:focus {
     color: var(--text-muted);
     border-color: var(--border-color);
 }
+
 #tab-mothau .btn-outline:hover {
     color: var(--text-main);
     border-color: var(--border-hover);
@@ -3876,6 +3951,7 @@ select.form-control:focus {
     padding: 56px 24px;
     color: var(--text-muted);
 }
+
 #mothau-empty-state i {
     width: 52px;
     height: 52px;
@@ -3883,12 +3959,14 @@ select.form-control:focus {
     margin: 0 auto 16px;
     display: block;
 }
+
 #mothau-empty-state h4 {
     font-size: 1rem;
     font-weight: 700;
     color: var(--text-main);
     margin-bottom: 6px;
 }
+
 #mothau-empty-state p {
     font-size: 0.83rem;
     color: var(--text-muted);
@@ -3966,6 +4044,7 @@ select.form-control:focus {
         opacity: 0;
         transform: translateY(-4px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -4025,13 +4104,16 @@ select.form-control:focus {
     color: var(--text-muted);
     margin-bottom: 24px;
 }
+
 .pagination-info {
     font-weight: 500;
 }
+
 .pagination-buttons {
     display: flex;
     gap: 4px;
 }
+
 .pagination-btn {
     padding: 6px 12px;
     border: 1px solid var(--border-color);
@@ -4046,16 +4128,19 @@ select.form-control:focus {
     align-items: center;
     justify-content: center;
 }
+
 .pagination-btn:hover:not(:disabled) {
     background: var(--primary-soft);
     color: var(--primary);
     border-color: var(--primary);
 }
+
 .pagination-btn.active {
     background: var(--primary);
     color: white;
     border-color: var(--primary);
 }
+
 .pagination-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -4063,9 +4148,15 @@ select.form-control:focus {
 
 /* Spin animation for sync button */
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
+
 .anim-spin {
     animation: spin 1s linear infinite;
 }
@@ -4079,6 +4170,7 @@ select.form-control:focus {
     0% {
         background-position: 200% 0;
     }
+
     100% {
         background-position: -200% 0;
     }
@@ -4220,7 +4312,3 @@ body.dark-mode .btn-excel-action:hover {
     background-color: #334155;
     border-color: #64748b;
 }
-
-
-
-

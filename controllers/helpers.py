@@ -239,6 +239,8 @@ SCHEMA_DINH_NGHIA = {
             "hieu_luc_hsdt": "INTEGER",
             "hieu_luc_dam_bao_du_thau": "INTEGER",
             "danh_gia_hsdt_metadata": "TEXT",
+            "phuong_phap_danh_gia": "TEXT",
+            "trong_so_ky_thuat": "INTEGER",
             "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu') OR trang_thai IS NULL)",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
@@ -263,6 +265,8 @@ SCHEMA_DINH_NGHIA = {
             "hieu_luc_hsdt": "hieuLucHsdt",
             "hieu_luc_dam_bao_du_thau": "hieuLucDamBaoDuThau",
             "danh_gia_hsdt_metadata": "danhGiaHsdtMetadata",
+            "phuong_phap_danh_gia": "phuongPhapDanhGia",
+            "trong_so_ky_thuat": "trongSoKyThuat",
             "awarded_phan_lo_list": "awardedPhanLoList"
         }
     },

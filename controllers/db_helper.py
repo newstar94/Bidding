@@ -38,6 +38,14 @@ def optimized_get_connection(*args, **kwargs):
             cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='goi_thau'")
             if not cursor.fetchone():
                 return raw_conn
+
+            # Add missing columns if they don't exist
+            cursor.execute("PRAGMA table_info(goi_thau)")
+            existing_cols = [row[1] for row in cursor.fetchall()]
+            if "phuong_phap_danh_gia" not in existing_cols:
+                cursor.execute("ALTER TABLE goi_thau ADD COLUMN phuong_phap_danh_gia TEXT")
+            if "trong_so_ky_thuat" not in existing_cols:
+                cursor.execute("ALTER TABLE goi_thau ADD COLUMN trong_so_ky_thuat INTEGER")
             
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_kehoach ON goi_thau(ke_hoach_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_chudautu ON ke_hoach_lcnt(chu_dau_tu_id)")

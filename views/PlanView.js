@@ -304,7 +304,7 @@ export async function renderGoiThauTable() {
                 const plList = typeof displayedGt.phanLoList === 'string' ? JSON.parse(displayedGt.phanLoList || '[]') : (displayedGt.phanLoList || []);
                 const winningLots = plList.filter(pl => pl.nhaThauTrungThauId);
                 const uniqueWinnerIds = [...new Set(winningLots.map(pl => String(pl.nhaThauTrungThauId)).filter(Boolean))];
-                
+
                 if (uniqueWinnerIds.length > 1) {
                     window._lotWinnersMap = window._lotWinnersMap || {};
                     window._lotWinnersMap[displayedGt.id] = winningLots.map(pl => {
@@ -343,7 +343,7 @@ export async function renderGoiThauTable() {
                     const singleWinnerBid = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(singleWinnerId));
                     const name = singleWinnerBid ? singleWinnerBid.tenNhaThau : (singleWinnerNt ? singleWinnerNt.tenNhaThau : 'Nhà thầu #' + singleWinnerId);
                     const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
-                    
+
                     let link;
                     if (singleWinnerBid && singleWinnerBid.loaiNhaThau === 'Liên danh') {
                         const allJvMembers = singleWinnerBid.thanhVienLienDanh || [];
@@ -384,7 +384,7 @@ export async function renderGoiThauTable() {
 
             const isLatest = displayedGt.id === gt.id;
             const hasResultOrCanceled = displayedGt.trangThai === 'Đã có kết quả' || displayedGt.trangThai === 'Hủy thầu';
-            
+
             let actionButtonsHtml = '';
             if (isLatest) {
                 if (hasResultOrCanceled) {
@@ -694,7 +694,7 @@ export function showPackageDetails(id) {
                             </table>
                         </div>
                         <div style="display:flex; justify-content:flex-end; gap:12px;">
-                            <button class="btn btn-emerald" id="btn-mothau-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu thông tin mở thầu</button>
+                            <button class="btn btn-primary" id="btn-mothau-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu thông tin mở thầu</button>
                         </div>
                     </div>
                     <div id="mothau-empty-state" style="display:none;"></div>
@@ -739,7 +739,7 @@ export function showPackageDetails(id) {
                         </table>
                     </div>
                     <div style="display:flex; justify-content:flex-end; gap:12px;">
-                        <button class="btn btn-emerald" id="btn-danhgiahsdt-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu thông tin đánh giá</button>
+                        <button class="btn btn-primary" id="btn-danhgiahsdt-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu thông tin đánh giá</button>
                     </div>
                 </div>
                 <div id="danhgiahsdt-empty-state" style="display:none;"></div>
@@ -784,7 +784,7 @@ export function showPackageDetails(id) {
                         </table>
                     </div>
                     <div style="display:flex; justify-content:flex-end; gap:12px;">
-                        <button class="btn btn-emerald" id="btn-danhgiahsdt-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu thông tin đánh giá</button>
+                        <button class="btn btn-primary" id="btn-danhgiahsdt-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu thông tin đánh giá</button>
                     </div>
                 </div>
                 <div id="danhgiahsdt-empty-state" style="display:none;"></div>
@@ -852,31 +852,40 @@ export function showPackageDetails(id) {
                         </div>
                         <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
                             ${isReadOnly ? '' : `
-                                <button class="btn btn-emerald" id="btn-save-qualified-decision" style="padding: 8px 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
+                                <button class="btn btn-primary" id="btn-save-qualified-decision" style="padding: 8px 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
                             `}
                         </div>
                     </div>
 
-                    <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-                        <i data-lucide="shield-check" class="text-emerald" style="width: 20px; height: 20px;"></i>
-                        Danh sách Nhà thầu vượt qua bước Đánh giá Kỹ thuật (E-HSĐXKT)
-                    </h4>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                        ${qualifiedBids.map(b => `
-                            <div class="card" style="padding: 16px; border: 1px solid rgba(16, 185, 129, 0.2); border-left: 4px solid var(--success); background: var(--bg-card); display: flex; flex-direction: column; gap: 8px; border-radius: var(--radius-md);">
-                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                                    <h5 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-main);">${b.tenNhaThau}</h5>
-                                    <span class="badge badge-success" style="font-size: 0.72rem;">ĐẠT KỸ THUẬT</span>
-                                </div>
-                                <div style="font-size: 0.8rem; color: var(--text-muted); display:flex; flex-direction:column; gap:4px; margin-top: 6px;">
-                                    <div>• <strong>Mã nhà thầu:</strong> ${b.maNhaThau || b.maDinhDanh || '--'}</div>
-                                    <div>• <strong>Đánh giá hợp lệ:</strong> <span class="text-emerald" style="font-weight:700;">${b.danhGiaHopLe}</span></div>
-                                    <div>• <strong>Đánh giá năng lực:</strong> <span class="text-emerald" style="font-weight:700;">${b.danhGiaNangLuc}</span></div>
-                                    <div>• <strong>Đánh giá kỹ thuật:</strong> <span class="text-emerald" style="font-weight:700;">${b.danhGiaKyThuat}</span></div>
-                                    ${b.danhGiaKetLuan ? `<div>• <strong>Kết luận:</strong> <span class="text-emerald" style="font-weight:700;">${b.danhGiaKetLuan}</span></div>` : ''}
-                                </div>
-                            </div>
-                        `).join('')}
+                    <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
+                        <table class="data-table" style="min-width: 100%;">
+                            <thead>
+                                <tr>
+                                    ${gt.phanLo === 'Có' ? `
+                                        <th style="width: 15%;">Mã phần lô</th>
+                                        <th style="width: 25%;">Tên phần lô</th>
+                                    ` : ''}
+                                    <th style="width: 15%;">Mã nhà thầu</th>
+                                    <th style="width: 30%;">Tên nhà thầu</th>
+                                    <th style="width: 15%; text-align: center;">Kết quả</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${qualifiedBids.map(b => `
+                                    <tr>
+                                        ${gt.phanLo === 'Có' ? `
+                                            <td>${b.maPhanLo || '--'}</td>
+                                            <td>${b.tenPhanLo || '--'}</td>
+                                        ` : ''}
+                                        <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
+                                        <td class="fw-bold">${b.tenNhaThau || '--'}</td>
+                                        <td style="text-align: center;">
+                                            <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 4px;">Đạt kỹ thuật</span>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
                     </div>
                 `;
 
@@ -1024,7 +1033,7 @@ export function showPackageDetails(id) {
                     </div>
                     <div style="display:flex; justify-content:flex-end;">
                         ${isReadOnly ? '' : `
-                            <button class="btn btn-emerald" id="btn-save-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu Biên bản mở HSĐXTC</button>
+                            <button class="btn btn-primary" id="btn-save-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu Biên bản mở HSĐXTC</button>
                         `}
                     </div>
                 `;
@@ -1245,7 +1254,7 @@ export function showPackageDetails(id) {
                 const isPhanLo = gt.phanLo === 'Có';
                 const allBiddersHtml = allBids.map((b, idx) => {
                     const ntId = String(b.nhaThauId || b.id);
-                    
+
                     let bidIsWinner = false;
                     let giaTrungHtml = '—';
                     let thoiGianThucHienHtml = '—';
@@ -1306,7 +1315,7 @@ export function showPackageDetails(id) {
                         const leadName = leadMember?.tenNhaThau || b.tenNhaThau;
                         const leadCode = leadMember?.maSoThue || b.maDinhDanh || b.maNhaThau || '';
                         const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
-                        
+
                         const jvKey = `${gt.id}_result_bidder_${idx}`;
                         window._jvDataMap = window._jvDataMap || {};
                         window._jvDataMap[jvKey] = {
@@ -1482,12 +1491,13 @@ export function showPackageDetails(id) {
                 });
                 const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
                     String(b.goiThauId) === String(gt.id) &&
-                    (b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
+                    (b.danhGiaKetLuan ? (b.danhGiaKetLuan === 'Đạt' || b.danhGiaKetLuan.startsWith('Đạt')) : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
                 );
 
-                const rankings = {};
+                const { rankings, scores } = window.appController.calculateRankings(gt, allBids);
+                const isCombinedMethod = gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá';
                 const getIsQualified = (bidItem) => {
-                    return bidItem.danhGiaKetLuan ? bidItem.danhGiaKetLuan === 'Đạt' : (bidItem.danhGiaHopLe === 'Đạt' && bidItem.danhGiaNangLuc === 'Đạt' && bidItem.danhGiaKyThuat !== 'Không đạt' && bidItem.danhGiaKyThuat !== '' && bidItem.danhGiaKyThuat);
+                    return bidItem.danhGiaKetLuan ? (bidItem.danhGiaKetLuan === 'Đạt' || bidItem.danhGiaKetLuan.startsWith('Đạt')) : (bidItem.danhGiaHopLe === 'Đạt' && bidItem.danhGiaNangLuc === 'Đạt' && bidItem.danhGiaKyThuat !== 'Không đạt' && bidItem.danhGiaKyThuat !== '' && bidItem.danhGiaKyThuat);
                 };
 
                 const allBiddersHtml = allBids.map((b, idx) => {
@@ -1495,16 +1505,12 @@ export function showPackageDetails(id) {
 
                     let defaultReason = '';
                     if (!isQualified) {
-                        const failedSteps = [];
-                        if (b.danhGiaHopLe === 'Không đạt') failedSteps.push("Đánh giá hợp lệ");
-                        if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
-                        if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
-                        if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
-
-                        if (failedSteps.length > 0) {
-                            defaultReason = `Không đạt ở bước: ${failedSteps.join(', ')}`;
+                        if (!b.danhGiaHopLe || b.danhGiaHopLe !== 'Đạt') {
+                            defaultReason = "Không đạt yêu cầu về tính hợp lệ";
+                        } else if (!b.danhGiaNangLuc || b.danhGiaNangLuc !== 'Đạt') {
+                            defaultReason = "Không đạt yêu cầu về năng lực, kinh nghiệm";
                         } else {
-                            defaultReason = "Không đạt đánh giá chi tiết";
+                            defaultReason = "Không đạt yêu cầu kỹ thuật";
                         }
                     } else {
                         defaultReason = "Nhà thầu xếp hạng 1 trúng thầu";
@@ -1516,7 +1522,8 @@ export function showPackageDetails(id) {
                     const defaultDurationPkg = b.thoiGianThucHien || '';
                     const defaultDurationCtr = b.thoiGianThucHien ? (b.thoiGianThucHien + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
                     const rank = rankings[b.id];
-                    const rankDisplay = rank ? `Hạng ${rank}` : (isQualified ? '--' : 'Không xếp hạng');
+                    const score = scores[b.id];
+                    const rankDisplay = rank ? `Xếp hạng ${rank}` : (isQualified ? '--' : 'Không xếp hạng');
 
                     let isRowWinner = false;
                     if (isQualified) {
@@ -1548,6 +1555,9 @@ export function showPackageDetails(id) {
                             ` : ''}
                             <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
                             <td class="fw-bold">${b.tenNhaThau || '--'}</td>
+                            ${isCombinedMethod ? `
+                                <td style="text-align: center; font-weight: 700; color: var(--primary);">${score !== undefined && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : '--'}</td>
+                            ` : ''}
                             <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
                             <td>
                                 <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? 'disabled' : ''}>
@@ -1619,6 +1629,9 @@ export function showPackageDetails(id) {
                                     ` : ''}
                                     <th style="width: 10%;">Mã nhà thầu</th>
                                     <th style="width: 16%;">Tên nhà thầu</th>
+                                    ${isCombinedMethod ? `
+                                        <th style="width: 10%; text-align: center;">Điểm tổng hợp</th>
+                                    ` : ''}
                                     <th style="width: 10%; text-align: center;">Xếp hạng nhà thầu</th>
                                     <th style="width: 10%;">Trúng thầu/trượt thầu</th>
                                     <th style="width: 14%;">Lý do trượt</th>
@@ -1634,7 +1647,7 @@ export function showPackageDetails(id) {
                     </div>
 
                     <div style="display:flex; justify-content:flex-end; gap:12px;">
-                        <button class="btn btn-emerald" id="btn-approve-award" style="padding:12px 24px; font-weight:700; display:flex; align-items:center; gap:8px;">
+                        <button class="btn btn-primary" id="btn-approve-award" style="padding:12px 24px; font-weight:700; display:flex; align-items:center; gap:8px;">
                             <i data-lucide="check-circle2"></i> Phê duyệt & Hoàn thành LCNT
                         </button>
                     </div>
@@ -1697,21 +1710,21 @@ export function showPackageDetails(id) {
 
                                 // Enable winning inputs on this row and populate defaults
                                 const inpGia = tr.querySelector('.row-gia-trung');
-                                if (inpGia) { 
-                                    inpGia.disabled = false; 
-                                    inpGia.style.background = ''; 
+                                if (inpGia) {
+                                    inpGia.disabled = false;
+                                    inpGia.style.background = '';
                                     inpGia.value = tr.getAttribute('data-default-price') || '';
                                 }
                                 const inpDurationPkg = tr.querySelector('.row-tg-goithau');
-                                if (inpDurationPkg) { 
-                                    inpDurationPkg.disabled = false; 
-                                    inpDurationPkg.style.background = ''; 
+                                if (inpDurationPkg) {
+                                    inpDurationPkg.disabled = false;
+                                    inpDurationPkg.style.background = '';
                                     inpDurationPkg.value = tr.getAttribute('data-default-duration-pkg') || '';
                                 }
                                 const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
-                                if (inpDurationCtr) { 
-                                    inpDurationCtr.disabled = false; 
-                                    inpDurationCtr.style.background = ''; 
+                                if (inpDurationCtr) {
+                                    inpDurationCtr.disabled = false;
+                                    inpDurationCtr.style.background = '';
                                     inpDurationCtr.value = tr.getAttribute('data-default-duration-ctr') || '';
                                 }
 
