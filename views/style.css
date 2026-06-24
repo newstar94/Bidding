@@ -4142,5 +4142,50 @@ select.form-control:focus {
     flex-shrink: 0;
 }
 
+/* Sort button improvements */
+.sort-header-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: inherit;
+    width: 100%;
+}
+
+.sort-icon-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-muted);
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+body.dark-mode .sort-icon-btn {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.sort-icon-btn:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+    color: var(--text-main);
+}
+
+body.dark-mode .sort-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.sort-icon-btn.active {
+    opacity: 1;
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+
 
 

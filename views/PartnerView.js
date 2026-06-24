@@ -11,12 +11,16 @@ export async function renderChuDauTuTable() {
     const currentPage = this.model.currentPage.chudautu || 1;
     const pageSize = this.model.pageSize || 10;
 
+    const sortState = this.model.sortState.chudautu || {};
+    const sortBy = sortState.field || '';
+    const sortOrder = sortState.order || 'asc';
+
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=chudautu&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
+            const res = await fetch(`/api/paginate?table=chudautu&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
                 headers: {
                     'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
                     'X-Username': sessionStorage.getItem('bf_username') || ''
@@ -37,6 +41,19 @@ export async function renderChuDauTuTable() {
             (c.tenChuDauTu || '').toLowerCase().includes(searchVal) ||
             (c.maSoThue && c.maSoThue.includes(searchVal))
         );
+
+        if (sortBy) {
+            filtered.sort((a, b) => {
+                let valA = a[sortBy] || '';
+                let valB = b[sortBy] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
         slicedData = filtered.slice(startIndex, startIndex + pageSize);
@@ -122,6 +139,7 @@ export async function renderChuDauTuTable() {
         }
     }
     lucide.createIcons({ root: tableBody });
+    this.enhanceTableHeaders('chudautu-table', 'chudautu');
 }
 
 export async function renderNhaThauTable() {
@@ -133,12 +151,16 @@ export async function renderNhaThauTable() {
     const currentPage = this.model.currentPage.nhathau || 1;
     const pageSize = this.model.pageSize || 10;
 
+    const sortState = this.model.sortState.nhathau || {};
+    const sortBy = sortState.field || '';
+    const sortOrder = sortState.order || 'asc';
+
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
+            const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
                 headers: {
                     'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
                     'X-Username': sessionStorage.getItem('bf_username') || ''
@@ -160,6 +182,19 @@ export async function renderNhaThauTable() {
             (n.maSoThue && n.maSoThue.includes(searchVal)) ||
             (n.loaiNhaThau === 'Liên danh' && n.thanhVienLienDanh && n.thanhVienLienDanh.some(m => (m.tenNhaThau || '').toLowerCase().includes(searchVal) || (m.maSoThue || '').includes(searchVal)))
         );
+
+        if (sortBy) {
+            filtered.sort((a, b) => {
+                let valA = a[sortBy] || '';
+                let valB = b[sortBy] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
         slicedData = filtered.slice(startIndex, startIndex + pageSize);
@@ -284,6 +319,7 @@ export async function renderNhaThauTable() {
         }
     }
     lucide.createIcons({ root: tableBody });
+    this.enhanceTableHeaders('nhathau-table', 'nhathau');
 }
 
 export async function renderChuyenGiaTable() {
@@ -301,12 +337,16 @@ export async function renderChuyenGiaTable() {
     const currentPage = this.model.currentPage.chuyengia || 1;
     const pageSize = this.model.pageSize || 10;
 
+    const sortState = this.model.sortState.chuyengia || {};
+    const sortBy = sortState.field || '';
+    const sortOrder = sortState.order || 'asc';
+
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=chuyengia&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
+            const res = await fetch(`/api/paginate?table=chuyengia&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
                 headers: {
                     'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
                     'X-Username': sessionStorage.getItem('bf_username') || ''
@@ -327,6 +367,19 @@ export async function renderChuyenGiaTable() {
             (cg.soCCCD || '').includes(searchVal) ||
             (cg.soChungChi || '').toLowerCase().includes(searchVal)
         );
+
+        if (sortBy) {
+            filtered.sort((a, b) => {
+                let valA = a[sortBy] || '';
+                let valB = b[sortBy] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
         slicedData = filtered.slice(startIndex, startIndex + pageSize);
@@ -398,6 +451,7 @@ export async function renderChuyenGiaTable() {
         }
     }
     lucide.createIcons({ root: tableBody });
+    this.enhanceTableHeaders('chuyengia-table', 'chuyengia');
 }
 
 export async function renderHopDongTable() {
@@ -409,12 +463,16 @@ export async function renderHopDongTable() {
     const currentPage = this.model.currentPage.hopdong || 1;
     const pageSize = this.model.pageSize || 10;
 
+    const sortState = this.model.sortState.hopdong || {};
+    const sortBy = sortState.field || '';
+    const sortOrder = sortState.order || 'asc';
+
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
+            const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
                 headers: {
                     'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
                     'X-Username': sessionStorage.getItem('bf_username') || ''
@@ -434,6 +492,19 @@ export async function renderHopDongTable() {
             (h.soHopDong || '').toLowerCase().includes(searchVal) ||
             (h.tenHopDong || '').toLowerCase().includes(searchVal)
         );
+
+        if (sortBy) {
+            filtered.sort((a, b) => {
+                let valA = a[sortBy] || '';
+                let valB = b[sortBy] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
         slicedData = filtered.slice(startIndex, startIndex + pageSize);
@@ -535,6 +606,7 @@ export async function renderHopDongTable() {
         }
     }
     lucide.createIcons({ root: tableBody });
+    this.enhanceTableHeaders('hopdong-table', 'hopdong');
 }
 
 export function showChuyenGiaDetails(id) {

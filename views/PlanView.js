@@ -43,12 +43,16 @@ export async function renderKeHoachTable() {
     const currentPage = this.model.currentPage.kehoach || 1;
     const pageSize = this.model.pageSize || 10;
 
+    const sortState = this.model.sortState.kehoach || {};
+    const sortBy = sortState.field || '';
+    const sortOrder = sortState.order || 'asc';
+
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=kehoach&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}`, {
+            const res = await fetch(`/api/paginate?table=kehoach&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
                 headers: {
                     'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
                     'X-Username': sessionStorage.getItem('bf_username') || ''
@@ -69,6 +73,18 @@ export async function renderKeHoachTable() {
             kh.tenKeHoach.toLowerCase().includes(searchVal) ||
             (kh.tenDuAnDuToan && kh.tenDuAnDuToan.toLowerCase().includes(searchVal))
         );
+
+        if (sortBy) {
+            filtered.sort((a, b) => {
+                let valA = a[sortBy] || '';
+                let valB = b[sortBy] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -150,6 +166,7 @@ export async function renderKeHoachTable() {
         }
     }
     lucide.createIcons();
+    this.enhanceTableHeaders('kehoach-table', 'kehoach');
 }
 
 export async function renderGoiThauTable() {
@@ -163,12 +180,16 @@ export async function renderGoiThauTable() {
     const currentPage = this.model.currentPage.goithau || 1;
     const pageSize = this.model.pageSize || 10;
 
+    const sortState = this.model.sortState.goithau || {};
+    const sortBy = sortState.field || '';
+    const sortOrder = sortState.order || 'asc';
+
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=goithau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&trangThai=${encodeURIComponent(filterTrangThai)}&hinhThuc=${encodeURIComponent(filterHinhThuc)}`, {
+            const res = await fetch(`/api/paginate?table=goithau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&trangThai=${encodeURIComponent(filterTrangThai)}&hinhThuc=${encodeURIComponent(filterHinhThuc)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
                 headers: {
                     'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
                     'X-Username': sessionStorage.getItem('bf_username') || ''
@@ -191,6 +212,18 @@ export async function renderGoiThauTable() {
             const matchesHinhThuc = !filterHinhThuc || gt.hinhThucLuaChon === filterHinhThuc;
             return matchesSearch && matchesTrangThai && matchesHinhThuc;
         });
+
+        if (sortBy) {
+            filtered.sort((a, b) => {
+                let valA = a[sortBy] || '';
+                let valB = b[sortBy] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -297,6 +330,7 @@ export async function renderGoiThauTable() {
         }
     }
     lucide.createIcons();
+    this.enhanceTableHeaders('goithau-table', 'goithau');
 }
 
 export function showPackageDetails(id) {

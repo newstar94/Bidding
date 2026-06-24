@@ -838,9 +838,41 @@ async def paginate_api(request):
         cursor.execute(count_sql, tuple(query_params))
         total_items = cursor.fetchone()[0]
         
+        # Convert camelCase sortBy from client to snake_case database column name
+        sort_by = params.get("sortBy", "").strip()
+        sort_order = params.get("sortOrder", "asc").strip().upper()
+        if sort_order not in ["ASC", "DESC"]:
+            sort_order = "ASC"
+            
+        db_column = ""
+        if sort_by:
+            field_map = SCHEMA_DINH_NGHIA.get(table_name, {}).get("field_map", {})
+            inverted_map = {v: k for k, v in field_map.items()}
+            import re
+            camel_to_snake = lambda s: re.sub(r'(?<!^)(?=[A-Z])', '_', s).lower()
+            db_column = inverted_map.get(sort_by, camel_to_snake(sort_by))
+            
+        valid_columns = SCHEMA_DINH_NGHIA.get(table_name, {}).get("columns", {})
+        if db_column and db_column in valid_columns:
+            sort_sql = f" ORDER BY {db_column} {sort_order}"
+        else:
+            default_sorts = {
+                "ke_hoach_lcnt": "ma_ke_hoach",
+                "goi_thau": "ma_goi_thau",
+                "chu_dau_tu": "ten_chu_dau_tu",
+                "nha_thau": "ten_nha_thau",
+                "chuyen_gia": "ho_ten",
+                "hop_dong": "ten_hop_dong"
+            }
+            def_col = default_sorts.get(table_name)
+            if def_col and def_col in valid_columns:
+                sort_sql = f" ORDER BY {def_col} ASC"
+            else:
+                sort_sql = ""
+
         # Get paginated items
         offset = (page - 1) * page_size
-        items_sql = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT ? OFFSET ?"
+        items_sql = f"SELECT * FROM {table_name} WHERE {where_clause}{sort_sql} LIMIT ? OFFSET ?"
         cursor.execute(items_sql, tuple(query_params + [page_size, offset]))
         rows = cursor.fetchall()
         

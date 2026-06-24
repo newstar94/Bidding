@@ -2,10 +2,10 @@
    BiddingFlow - Controller (Events, Interaction & Business logic dispatching)
    ========================================================================== */
 
-import * as Auth from '/controllers/AuthController.js?v=6.7';
-import * as Admin from '/controllers/AdminUserController.js?v=6.7';
-import * as Bidding from '/controllers/BiddingWorkflowController.js?v=6.7';
-import * as Partner from '/controllers/PartnerWorkflowController.js?v=6.7';
+import * as Auth from '/controllers/AuthController.js?v=6.10';
+import * as Admin from '/controllers/AdminUserController.js?v=6.10';
+import * as Bidding from '/controllers/BiddingWorkflowController.js?v=6.10';
+import * as Partner from '/controllers/PartnerWorkflowController.js?v=6.10';
 
 export class BiddingController {
     constructor(model, view) {
@@ -46,6 +46,24 @@ export class BiddingController {
         this.actionMap = {
             'taomoi': 'tao-moi',
             'chinhsua': 'chinh-sua'
+        };
+
+        window.toggleSortTable = (tableKey, field) => {
+            const current = this.model.sortState[tableKey] || { field: '', order: 'asc' };
+            if (current.field === field) {
+                current.order = current.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                current.field = field;
+                current.order = 'asc';
+            }
+            this.model.sortState[tableKey] = current;
+            
+            if (tableKey === 'kehoach') this.view.renderKeHoachTable();
+            else if (tableKey === 'goithau') this.view.renderGoiThauTable();
+            else if (tableKey === 'chudautu') this.view.renderChuDauTuTable();
+            else if (tableKey === 'nhathau') this.view.renderNhaThauTable();
+            else if (tableKey === 'chuyengia') this.view.renderChuyenGiaTable();
+            else if (tableKey === 'hopdong') this.view.renderHopDongTable();
         };
     }
 

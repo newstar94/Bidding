@@ -248,7 +248,15 @@ export class BiddingModel {
             permissionmatrix: [],
             custompaperstatuses: [],
             assignments: [],
-            thongtinmothau: []
+        };
+
+        this.sortState = {
+            kehoach:   { field: 'maKeHoach',    order: 'asc' },
+            goithau:   { field: 'maGoiThau',    order: 'asc' },
+            chudautu:  { field: 'tenChuDauTu',  order: 'asc' },
+            nhathau:   { field: 'tenNhaThau',   order: 'asc' },
+            chuyengia: { field: 'hoTen',        order: 'asc' },
+            hopdong:   { field: 'tenHopDong',   order: 'asc' }
         };
 
         // Khôi phục trang hiện tại từ sessionStorage (persist qua F5 nhưng xóa khi đóng tab)

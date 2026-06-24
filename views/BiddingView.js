@@ -2,10 +2,10 @@
    BiddingFlow - View Orchestrator (DOM, Caching & Sub-view Dispatcher)
    ========================================================================== */
 
-import * as Dashboard from '/views/DashboardView.js?v=6.7';
-import * as Plan from '/views/PlanView.js?v=6.7';
-import * as Partner from '/views/PartnerView.js?v=6.7';
-import * as SystemUser from '/views/SystemUserView.js?v=6.7';
+import * as Dashboard from '/views/DashboardView.js?v=6.10';
+import * as Plan from '/views/PlanView.js?v=6.10';
+import * as Partner from '/views/PartnerView.js?v=6.10';
+import * as SystemUser from '/views/SystemUserView.js?v=6.10';
 
 export class BiddingView {
     constructor(model) {
@@ -42,6 +42,258 @@ export class BiddingView {
             navButtons: document.querySelectorAll('.nav-btn'),
             tabPanes: document.querySelectorAll('.tab-pane')
         };
+
+        // Automatically observe DOM changes to enhance any rendered tables with sorting
+        if (!this._tableObserver) {
+            this._tableObserver = new MutationObserver(() => {
+                this.enhanceAllTables();
+            });
+            this._tableObserver.observe(document.body, { childList: true, subtree: true });
+        }
+        // Run initial enhancement
+        setTimeout(() => this.enhanceAllTables(), 100);
+    }
+
+    enhanceAllTables() {
+        if (this._tableObserver) {
+            this._tableObserver.disconnect();
+        }
+
+        const tables = document.querySelectorAll('table');
+        tables.forEach(table => {
+            this.enhanceTableHeaders(table);
+        });
+
+        if (this._tableObserver) {
+            this._tableObserver.observe(document.body, { childList: true, subtree: true });
+        }
+    }
+
+    enhanceTableHeaders(tableOrId, tableKey) {
+        let table = typeof tableOrId === 'string' ? document.getElementById(tableOrId) : tableOrId;
+        if (!table) return;
+
+        const svgUnsorted = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-up-down" style="display: block;"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>`;
+        const svgAsc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" style="display: block;"><path d="m18 15-6-6-6 6"/></svg>`;
+        const svgDesc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" style="display: block;"><path d="m6 9 6 6 6-6"/></svg>`;
+
+        // If tableKey is not provided but the table has one of the known IDs, map it
+        if (!tableKey && table.id) {
+            const idMap = {
+                'kehoach-table': 'kehoach',
+                'goithau-table': 'goithau',
+                'chudautu-table': 'chudautu',
+                'nhathau-table': 'nhathau',
+                'chuyengia-table': 'chuyengia',
+                'hopdong-table': 'hopdong'
+            };
+            tableKey = idMap[table.id];
+        }
+
+        const normalize = (str) => {
+            if (!str) return '';
+            return str.toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9]/g, "")
+                .trim();
+        };
+
+        const sortFieldMap = {
+            'kehoach': {
+                'makehoach': 'maKeHoach',
+                'phienban': 'phienBan',
+                'tenkehoachluachonnhathau': 'tenKeHoach',
+                'phanloai': 'loaiHinhMuaSam',
+                'duandutoan': 'tenDuAnDuToan',
+                'chudautu': 'chuDauTuId',
+                'tonggiatri': 'tongMucDauTu',
+                'ngaypheduyet': 'ngayPheDuyet',
+                'soqd': 'quyetDinhPheDuyet',
+                'thoigiandangma': 'thoiGianDangMa'
+            },
+            'goithau': {
+                'magoi': 'maGoiThau',
+                'magoithau': 'maGoiThau',
+                'phienban': 'phienBan',
+                'tengoithau': 'tenGoiThau',
+                'kehoachlienket': 'keHoachId',
+                'giagoithau': 'giaGoiThau',
+                'hinhthuc': 'hinhThucLuaChon',
+                'hinhthuclcnt': 'hinhThucLuaChon',
+                'trangthai': 'trangThai',
+                'nhathautrungthau': 'nhaThauTrungThauId'
+            },
+            'chudautu': {
+                'macdt': 'maChuDauTu',
+                'machudautu': 'maChuDauTu',
+                'phienban': 'phienBan',
+                'tenchudautu': 'tenChuDauTu',
+                'masothue': 'maSoThue',
+                'daidien': 'nguoiKyQuyetDinh',
+                'diachisdt': 'diaChi',
+                'sotaikhoan': 'soTaiKhoan'
+            },
+            'nhathau': {
+                'manhathau': 'maNhaThau',
+                'phienban': 'phienBan',
+                'tennhathau': 'tenNhaThau',
+                'masothue': 'maSoThue',
+                'nguoidaidien': 'nguoiDaiDien',
+                'lienhe': 'soDienThoai',
+                'taikhoannganhang': 'soTaiKhoan'
+            },
+            'chuyengia': {
+                'hovatenchuyengia': 'hoTen',
+                'hotenchuyengia': 'hoTen',
+                'phienban': 'phienBan',
+                'socancuoccongdan': 'soCCCD',
+                'sochungchidauthau': 'soChungChi',
+                'donvicapchungchi': 'donViCapChungChi',
+                'ngaycapchungchi': 'ngayCapChungChi',
+                'ngaycapcccd': 'ngayCapCCCD'
+            },
+            'hopdong': {
+                'sohopdong': 'soHopDong',
+                'phienban': 'phienBan',
+                'tenhopdong': 'tenHopDong',
+                'ngayky': 'ngayKy',
+                'chudautu': 'chuDauTuId',
+                'nhathau': 'nhaThauId',
+                'giatrihopdong': 'giaTri',
+                'loaihopdong': 'loaiHopDong',
+                'thoigianthuchien': 'soNgayThucHien',
+                'goithaulienket': 'goiThauId',
+                'trangthaihoso': 'trangThaiHoSo'
+            }
+        };
+
+        const ths = table.querySelectorAll('thead th');
+        const mapping = tableKey ? sortFieldMap[tableKey] : null;
+
+        ths.forEach((th, colIndex) => {
+            const rawText = th.textContent.replace(/[↕▲▼]/g, '').trim();
+            const normText = normalize(rawText);
+
+            // Skip action/operation columns
+            if (!normText || ['thaotac', 'hanhdong', 'chucnang', 'chon', 'tuychon'].includes(normText)) {
+                return;
+            }
+
+            const field = mapping ? mapping[normText] : null;
+
+            let container = th.querySelector('.sort-header-container');
+            if (!container) {
+                th.style.cursor = 'pointer';
+                th.style.userSelect = 'none';
+
+                const thText = th.innerHTML;
+                th.innerHTML = `
+                    <div class="sort-header-container">
+                        <span class="th-label" style="flex-grow: 1; text-align: inherit;">${thText}</span>
+                        <span class="sort-icon-btn">
+                            ${svgUnsorted}
+                        </span>
+                    </div>
+                `;
+
+                th.addEventListener('click', (e) => {
+                    if (e.target.closest('select') || e.target.closest('input') || e.target.closest('button') || e.target.closest('a')) return;
+
+                    if (tableKey && field) {
+                        // Backend paginated sorting
+                        window.toggleSortTable(tableKey, field);
+                    } else {
+                        // Client-side sorting for other tables/columns
+                        const currentOrder = th.getAttribute('data-sort-order') === 'asc' ? 'desc' : 'asc';
+
+                        // Reset all other headers in this table
+                        ths.forEach(otherTh => {
+                            if (otherTh !== th) {
+                                otherTh.removeAttribute('data-sort-order');
+                                const otherIcon = otherTh.querySelector('.sort-icon-btn');
+                                if (otherIcon) {
+                                    otherIcon.innerHTML = svgUnsorted;
+                                    otherIcon.classList.remove('active');
+                                    otherIcon.style.opacity = '';
+                                    otherIcon.style.color = '';
+                                    otherIcon.style.fontWeight = '';
+                                }
+                            }
+                        });
+
+                        th.setAttribute('data-sort-order', currentOrder);
+                        const iconBtn = th.querySelector('.sort-icon-btn');
+                        if (iconBtn) {
+                            iconBtn.innerHTML = currentOrder === 'asc' ? svgAsc : svgDesc;
+                            iconBtn.classList.add('active');
+                            iconBtn.style.opacity = '';
+                            iconBtn.style.color = '';
+                            iconBtn.style.fontWeight = '';
+                        }
+
+                        // Do client-side sort
+                        const tbody = table.querySelector('tbody');
+                        if (tbody) {
+                            const rows = Array.from(tbody.querySelectorAll('tr'));
+                            const getCellValue = (row) => {
+                                const cell = row.children[colIndex];
+                                if (!cell) return '';
+                                const input = cell.querySelector('input, select');
+                                if (input) return input.value.trim();
+                                return cell.textContent.trim();
+                            };
+
+                            const parseValue = (val) => {
+                                const cleanNum = val.replace(/\./g, '').replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+                                if (cleanNum && !isNaN(cleanNum)) {
+                                    return parseFloat(cleanNum);
+                                }
+                                const dateParts = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+                                if (dateParts) {
+                                    return new Date(dateParts[3], dateParts[2] - 1, dateParts[1]).getTime();
+                                }
+                                return val.toLowerCase();
+                            };
+
+                            rows.sort((a, b) => {
+                                const valA = parseValue(getCellValue(a));
+                                const valB = parseValue(getCellValue(b));
+                                if (typeof valA === 'number' && typeof valB === 'number') {
+                                    return currentOrder === 'asc' ? valA - valB : valB - valA;
+                                }
+                                return currentOrder === 'asc'
+                                    ? String(valA).localeCompare(String(valB), 'vi')
+                                    : String(valB).localeCompare(String(valA), 'vi');
+                            });
+
+                            rows.forEach(row => tbody.appendChild(row));
+                        }
+                    }
+                });
+            }
+
+            // Keep the visual state in sync for backend-sorted columns
+            if (tableKey && field) {
+                const currentSort = this.model.sortState[tableKey] || {};
+                const iconBtn = th.querySelector('.sort-icon-btn');
+                if (iconBtn) {
+                    if (currentSort.field === field) {
+                        iconBtn.innerHTML = currentSort.order === 'asc' ? svgAsc : svgDesc;
+                        iconBtn.classList.add('active');
+                        iconBtn.style.opacity = '';
+                        iconBtn.style.color = '';
+                        iconBtn.style.fontWeight = '';
+                    } else {
+                        iconBtn.innerHTML = svgUnsorted;
+                        iconBtn.classList.remove('active');
+                        iconBtn.style.opacity = '';
+                        iconBtn.style.color = '';
+                        iconBtn.style.fontWeight = '';
+                    }
+                }
+            }
+        });
     }
 
     setupFlatpickr() {
