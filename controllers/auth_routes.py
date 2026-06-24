@@ -407,7 +407,7 @@ async def login_api(request):
         conn.close()
         
         effective_roles = list(get_effective_roles(user['vai_tro']))
-        return JSONResponse({
+        response = JSONResponse({
             "success": True,
             "id": user['id'],
             "session_token": session_token,
@@ -420,6 +420,9 @@ async def login_api(request):
             "package_id": user.get('goi_dich_vu_id'),
             "organization_name": org_names
         })
+        response.set_cookie("session_token", session_token, httponly=True, secure=False, samesite="lax", path="/")
+        response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=False, samesite="lax", path="/")
+        return response
     except Exception as e:
         log_error(e, "login_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đăng nhập. Vui lòng thử lại sau."}, status_code=500)

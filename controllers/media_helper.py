@@ -12,6 +12,8 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         return ""
     if not isinstance(base64_str, str):
         return base64_str
+    if len(base64_str) > 7000000:
+        raise ValueError("Dung lượng ảnh vượt quá giới hạn 5MB cho phép!")
     if not (base64_str.startswith("data:image") or len(base64_str) > 100):
         return base64_str
         

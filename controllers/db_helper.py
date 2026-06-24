@@ -128,6 +128,13 @@ def optimized_get_connection(*args, **kwargs):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_goc_ver ON goi_thau(id_goc, phien_ban)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_goc_ver ON nha_thau(id_goc, phien_ban)")
             
+            # [MỚI] Expression indexes tối ưu hóa ép kiểu cho truy vấn versioning
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chudautu_ver_cast ON chu_dau_tu(id_goc, CAST(phien_ban AS INTEGER))")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_ver_cast ON ke_hoach_lcnt(id_goc, CAST(phien_ban AS INTEGER))")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_ver_cast ON goi_thau(id_goc, CAST(phien_ban AS INTEGER))")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nhathau_ver_cast ON nha_thau(id_goc, CAST(phien_ban AS INTEGER))")
+            
+            
             # [MỚI] Indexes cho bảng phân quyền nhân viên (ma_tran_phan_quyen)
             # Tạo index cho bảng ma_tran_phan_quyen nếu bảng tồn tại
             try:

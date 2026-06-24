@@ -973,6 +973,78 @@ export class BiddingView {
         return document.getElementById(id);
     }
 
+    debounce(func, wait) {
+        let timeout;
+        return function(...args) {
+            const context = this;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), wait);
+        };
+    }
+
+    formatCurrencyInput(input) {
+        let value = input.value.replace(/[^0-9]/g, '');
+        if (value === '') {
+            input.value = '';
+            return;
+        }
+        input.value = new Intl.NumberFormat('vi-VN').format(parseInt(value, 10));
+    }
+
+    customConflictDialog(title, message) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('modal-custom-dialog');
+            const titleEl = document.getElementById('dialog-title');
+            const messageEl = document.getElementById('dialog-message');
+            const iconContainer = document.getElementById('dialog-icon-container');
+            const iconEl = document.getElementById('dialog-icon');
+            const buttonsContainer = document.getElementById('dialog-buttons');
+            const closeBtn = document.getElementById('btn-dialog-close');
+
+            if (!modal || !titleEl || !messageEl || !buttonsContainer) {
+                console.error("Conflict modal element not found!");
+                return resolve('local');
+            }
+
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            if (closeBtn) closeBtn.style.display = 'none';
+
+            if (iconContainer && iconEl) {
+                iconContainer.style.background = 'var(--warning-soft)';
+                iconContainer.style.color = 'var(--warning)';
+                iconEl.setAttribute('data-lucide', 'alert-circle');
+                if (window.lucide) window.lucide.createIcons({ root: iconContainer });
+            }
+
+            buttonsContainer.innerHTML = `
+                <button type="button" class="btn btn-outline" id="btn-conflict-server" style="flex: 1; font-size: 0.8rem; padding: 6px 8px;">Dùng bản Server</button>
+                <button type="button" class="btn btn-outline" id="btn-conflict-local" style="flex: 1; font-size: 0.8rem; padding: 6px 8px;">Dùng bản Local</button>
+                <button type="button" class="btn btn-primary" id="btn-conflict-new" style="flex: 1; font-size: 0.8rem; padding: 6px 8px;">Tạo bản mới</button>
+            `;
+
+            const cleanUp = (result) => {
+                modal.classList.remove('active');
+                buttonsContainer.innerHTML = `
+                    <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1;">Hủy</button>
+                    <button type="button" class="btn btn-primary" id="btn-dialog-ok" style="flex: 1;">Xác nhận</button>
+                `;
+                if (closeBtn) closeBtn.style.display = 'block';
+                resolve(result);
+            };
+
+            const btnServer = document.getElementById('btn-conflict-server');
+            const btnLocal = document.getElementById('btn-conflict-local');
+            const btnNew = document.getElementById('btn-conflict-new');
+
+            if (btnServer) btnServer.onclick = () => cleanUp('server');
+            if (btnLocal) btnLocal.onclick = () => cleanUp('local');
+            if (btnNew) btnNew.onclick = () => cleanUp('new');
+
+            modal.classList.add('active');
+        });
+    }
+
     getStatusBadge(status) {
         const maps = {
             'Chuẩn bị': '<span class="badge badge-neutral"><i data-lucide="circle-dot"></i> Chuẩn bị</span>',

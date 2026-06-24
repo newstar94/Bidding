@@ -312,6 +312,7 @@ async def sync_api(request):
         conn = database.get_connection()
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("BEGIN TRANSACTION")
         cursor = conn.cursor()
         
         org_name = get_active_org(request, role_or_err.user_id)
@@ -740,6 +741,7 @@ async def get_all_data_api(request):
                 if tbl_key:
                     deletions.append({"table": tbl_key, "id": row[1]})
                     
+        conn.commit()
         conn.close()
         
         return JSONResponse({
@@ -758,9 +760,21 @@ async def get_all_data_api(request):
             "timestamp": current_time
         })
     except OrgPermissionError as e:
+        if conn:
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
         return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         traceback.print_exc()
+        if conn:
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
         return JSONResponse({"error": "Da xay ra loi he thong khi lay du lieu."}, status_code=500)
 
 async def paginate_api(request):
