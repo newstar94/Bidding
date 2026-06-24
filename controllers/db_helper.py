@@ -47,6 +47,16 @@ def optimized_get_connection(*args, **kwargs):
             if "trong_so_ky_thuat" not in existing_cols:
                 cursor.execute("ALTER TABLE goi_thau ADD COLUMN trong_so_ky_thuat INTEGER")
             
+            # Check and add missing columns for thong_tin_mo_thau
+            cursor.execute("PRAGMA table_info(thong_tin_mo_thau)")
+            existing_tt_cols = [row[1] for row in cursor.fetchall()]
+            if "nguyen_nhan_khong_dat_hop_le" not in existing_tt_cols:
+                cursor.execute("ALTER TABLE thong_tin_mo_thau ADD COLUMN nguyen_nhan_khong_dat_hop_le TEXT")
+            if "nguyen_nhan_khong_dat_nang_luc" not in existing_tt_cols:
+                cursor.execute("ALTER TABLE thong_tin_mo_thau ADD COLUMN nguyen_nhan_khong_dat_nang_luc TEXT")
+            if "nguyen_nhan_khong_dat_ky_thuat" not in existing_tt_cols:
+                cursor.execute("ALTER TABLE thong_tin_mo_thau ADD COLUMN nguyen_nhan_khong_dat_ky_thuat TEXT")
+            
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_kehoach ON goi_thau(ke_hoach_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_chudautu ON ke_hoach_lcnt(chu_dau_tu_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_thongtinmothau_goithau ON thong_tin_mo_thau(goi_thau_id)")

@@ -417,6 +417,9 @@ SCHEMA_DINH_NGHIA = {
             "lam_ro_nang_luc": "TEXT",
             "lam_ro_ky_thuat": "TEXT",
             "lam_ro_tai_chinh": "TEXT",
+            "nguyen_nhan_khong_dat_hop_le": "TEXT",
+            "nguyen_nhan_khong_dat_nang_luc": "TEXT",
+            "nguyen_nhan_khong_dat_ky_thuat": "TEXT",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
@@ -452,7 +455,10 @@ SCHEMA_DINH_NGHIA = {
             "lam_ro_hop_le": "lamRoHopLe",
             "lam_ro_nang_luc": "lamRoNangLuc",
             "lam_ro_ky_thuat": "lamRoKyThuat",
-            "lam_ro_tai_chinh": "lamRoTaiChinh"
+            "lam_ro_tai_chinh": "lamRoTaiChinh",
+            "nguyen_nhan_khong_dat_hop_le": "nguyenNhanKhongDatHopLe",
+            "nguyen_nhan_khong_dat_nang_luc": "nguyenNhanKhongDatNangLuc",
+            "nguyen_nhan_khong_dat_ky_thuat": "nguyenNhanKhongDatKyThuat"
         }
     },
     "to_chuc": {
