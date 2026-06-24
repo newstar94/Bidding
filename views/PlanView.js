@@ -1260,9 +1260,9 @@ export function showPackageDetails(id) {
                     if (isPhanLo) {
                         return `
                             <tr>
-                                <td><code>${b.maPhanLo || '—'}</code></td>
+                                <td>${b.maPhanLo || '—'}</td>
                                 <td>${b.tenPhanLo || '—'}</td>
-                                <td><code>${b.maNhaThau || b.maDinhDanh || '--'}</code></td>
+                                <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${thoiGianThucHienHtml}</td>
@@ -1273,7 +1273,7 @@ export function showPackageDetails(id) {
                     } else {
                         return `
                             <tr>
-                                <td><code>${b.maNhaThau || b.maDinhDanh || '--'}</code></td>
+                                <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${thoiGianThucHienHtml}</td>
@@ -1513,9 +1513,9 @@ export function showPackageDetails(id) {
                         <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}"
                             data-default-price="${defaultPrice}" data-default-duration-pkg="${defaultDurationPkg}" data-default-duration-ctr="${defaultDurationCtr}"
                             data-default-reason="${defaultReason}">
-                            <td><code>${b.maPhanLo || '--'}</code></td>
+                            <td>${b.maPhanLo || '--'}</td>
                             <td>${b.tenPhanLo || '--'}</td>
-                            <td><code>${b.maNhaThau || b.maDinhDanh || '--'}</code></td>
+                            <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
                             <td class="fw-bold">${b.tenNhaThau || '--'}</td>
                             <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
                             <td>
