@@ -1148,6 +1148,30 @@ export class BiddingController {
             formPhathanh.addEventListener('submit', (e) => this.handlePhatHanhHsmtSubmit(e));
         }
 
+        const btnPhathanhExport = document.getElementById('btn-phathanh-export-excel');
+        const btnPhathanhImport = document.getElementById('btn-phathanh-import-excel');
+        const inputPhathanhImport = document.getElementById('phathanh-excel-file-input');
+
+        if (btnPhathanhExport) {
+            btnPhathanhExport.addEventListener('click', () => {
+                const id = document.getElementById('phathanh-gt-id').value;
+                const gt = this.model.state.goithau.find(g => g.id === id);
+                if (gt) {
+                    this.exportPhatHanhPhanLoExcel(gt);
+                }
+            });
+        }
+
+        if (btnPhathanhImport && inputPhathanhImport) {
+            btnPhathanhImport.addEventListener('click', () => inputPhathanhImport.click());
+            inputPhathanhImport.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    this.importPhatHanhPhanLoExcel(e.target.files[0]);
+                    inputPhathanhImport.value = '';
+                }
+            });
+        }
+
         const phathanhGiatribaomothau = document.getElementById('phathanh-giatribaomothau');
         if (phathanhGiatribaomothau) {
             phathanhGiatribaomothau.addEventListener('input', (e) => {
@@ -1745,13 +1769,12 @@ export class BiddingController {
 
         const thBaoDam = document.getElementById('th-baodam-phanlo');
 
-        if (trangThai === 'Chuẩn bị') {
+        // Lĩnh vực tư vấn không yêu cầu bảo đảm dự thầu, tất cả lĩnh vực khác đều yêu cầu (hiển thị để nhập)
+        if (linhVuc === 'Tư vấn') {
             if (containerBaoDam) containerBaoDam.style.display = 'none';
-            if (containerHsdt) containerHsdt.style.display = 'none';
             if (containerHlBaoDam) containerHlBaoDam.style.display = 'none';
 
             if (mainBaoDamInput) mainBaoDamInput.removeAttribute('required');
-            if (hieulucHsdtInput) hieulucHsdtInput.removeAttribute('required');
 
             if (thBaoDam) thBaoDam.style.display = 'none';
             document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
@@ -1760,15 +1783,45 @@ export class BiddingController {
                 if (input) input.removeAttribute('required');
             });
         } else {
-            // Đang mời thầu hoặc muộn hơn
-            if (containerHsdt) containerHsdt.style.display = 'flex';
-            if (hieulucHsdtInput) hieulucHsdtInput.setAttribute('required', 'true');
+            if (containerBaoDam) containerBaoDam.style.display = 'flex';
+            if (containerHlBaoDam) containerHlBaoDam.style.display = 'flex';
 
-            if (linhVuc === 'Tư vấn') {
-                if (containerBaoDam) containerBaoDam.style.display = 'none';
-                if (containerHlBaoDam) containerHlBaoDam.style.display = 'none';
+            const isMoiThauOrLater = (trangThai !== 'Chuẩn bị');
+            if (mainBaoDamInput) {
+                if (isMoiThauOrLater) {
+                    mainBaoDamInput.setAttribute('required', 'true');
+                } else {
+                    mainBaoDamInput.removeAttribute('required');
+                }
+            }
 
-                if (mainBaoDamInput) mainBaoDamInput.removeAttribute('required');
+            if (phanLo === 'Có') {
+                if (mainBaoDamInput) {
+                    mainBaoDamInput.setAttribute('readonly', 'true');
+                    mainBaoDamInput.style.background = 'var(--neutral-soft)';
+                    mainBaoDamInput.style.cursor = 'not-allowed';
+                    mainBaoDamInput.removeAttribute('required');
+                }
+
+                if (thBaoDam) thBaoDam.style.display = '';
+                document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
+                    cell.style.display = '';
+                    const input = cell.querySelector('input');
+                    if (input) {
+                        if (isMoiThauOrLater) {
+                            input.setAttribute('required', 'true');
+                        } else {
+                            input.removeAttribute('required');
+                        }
+                    }
+                });
+                this.recalculateTotalLotSecurities();
+            } else {
+                if (mainBaoDamInput) {
+                    mainBaoDamInput.removeAttribute('readonly');
+                    mainBaoDamInput.style.background = '';
+                    mainBaoDamInput.style.cursor = 'auto';
+                }
 
                 if (thBaoDam) thBaoDam.style.display = 'none';
                 document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
@@ -1776,41 +1829,16 @@ export class BiddingController {
                     const input = cell.querySelector('input');
                     if (input) input.removeAttribute('required');
                 });
-            } else {
-                if (containerBaoDam) containerBaoDam.style.display = 'flex';
-                if (containerHlBaoDam) containerHlBaoDam.style.display = 'flex';
-
-                if (mainBaoDamInput) mainBaoDamInput.setAttribute('required', 'true');
-
-                if (phanLo === 'Có') {
-                    if (mainBaoDamInput) {
-                        mainBaoDamInput.setAttribute('readonly', 'true');
-                        mainBaoDamInput.style.background = 'var(--neutral-soft)';
-                        mainBaoDamInput.style.cursor = 'not-allowed';
-                    }
-
-                    if (thBaoDam) thBaoDam.style.display = '';
-                    document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
-                        cell.style.display = '';
-                        const input = cell.querySelector('input');
-                        if (input) input.setAttribute('required', 'true');
-                    });
-                    this.recalculateTotalLotSecurities();
-                } else {
-                    if (mainBaoDamInput) {
-                        mainBaoDamInput.removeAttribute('readonly');
-                        mainBaoDamInput.style.background = '';
-                        mainBaoDamInput.style.cursor = 'auto';
-                    }
-
-                    if (thBaoDam) thBaoDam.style.display = 'none';
-                    document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
-                        cell.style.display = 'none';
-                        const input = cell.querySelector('input');
-                        if (input) input.removeAttribute('required');
-                    });
-                }
             }
+        }
+
+        // Thời gian hiệu lực hồ sơ dự thầu chỉ hiện khi ở trạng thái Đang mời thầu hoặc muộn hơn
+        if (trangThai === 'Chuẩn bị') {
+            if (containerHsdt) containerHsdt.style.display = 'none';
+            if (hieulucHsdtInput) hieulucHsdtInput.removeAttribute('required');
+        } else {
+            if (containerHsdt) containerHsdt.style.display = 'flex';
+            if (hieulucHsdtInput) hieulucHsdtInput.setAttribute('required', 'true');
         }
     }
 

@@ -578,13 +578,62 @@ export async function phatHanhHsmtGoiThau(id) {
     const isPhanLo = gt.phanLo === 'Có';
     const baodamContainer = document.getElementById('phathanh-baodam-container');
     const baodamInput = document.getElementById('phathanh-giatribaomothau');
-    if (baodamContainer && baodamInput) {
-        if (isTuVan || isPhanLo) {
+    const phanloBaodamContainer = document.getElementById('phathanh-phanlo-baodam-container');
+    const phanloBaodamTbody = document.getElementById('phathanh-phanlo-baodam-tbody');
+
+    if (baodamContainer && baodamInput && phanloBaodamContainer && phanloBaodamTbody) {
+        if (isTuVan) {
             baodamContainer.style.display = 'none';
             baodamInput.removeAttribute('required');
+            phanloBaodamContainer.style.display = 'none';
+            phanloBaodamTbody.innerHTML = '';
         } else {
-            baodamContainer.style.display = 'block';
-            baodamInput.setAttribute('required', 'true');
+            if (isPhanLo) {
+                baodamContainer.style.display = 'none';
+                baodamInput.removeAttribute('required');
+
+                phanloBaodamContainer.style.display = 'block';
+                phanloBaodamTbody.innerHTML = '';
+
+                const list = gt.phanLoList || [];
+                list.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-id', item.id);
+                    const baoDamVal = item.baoDamDuThau || '';
+                    const giaTriVal = item.giaTriPhanLo || 0;
+                    tr.innerHTML = `
+                        <td style="padding: 8px;">${item.maPhanLo || ''}</td>
+                        <td style="padding: 8px;">${item.tenPhanLo || ''}</td>
+                        <td style="padding: 8px;">${giaTriVal ? this.model.formatVND(giaTriVal) : ''}</td>
+                        <td style="padding: 8px;">
+                            <input type="text" class="phathanh-pl-baodam-input mt-format-vnd" required value="${baoDamVal ? this.model.formatVND(baoDamVal) : ''}" placeholder="Bảo đảm dự thầu..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);">
+                        </td>
+                    `;
+                    phanloBaodamTbody.appendChild(tr);
+
+                    const inp = tr.querySelector('.phathanh-pl-baodam-input');
+                    if (inp) {
+                        inp.addEventListener('input', (e) => {
+                            const cursorPosition = e.target.selectionStart;
+                            const originalLength = e.target.value.length;
+                            const parsed = this.model.parseVND(e.target.value);
+                            e.target.value = this.model.formatVND(parsed);
+                            const newLength = e.target.value.length;
+                            e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
+                        });
+                    }
+                });
+            } else {
+                baodamContainer.style.display = 'block';
+                baodamInput.removeAttribute('readonly');
+                baodamInput.style.background = '';
+                baodamInput.style.cursor = 'auto';
+                baodamInput.setAttribute('required', 'true');
+                baodamInput.value = gt.giaTriDamBaoDuThau ? this.model.formatVND(gt.giaTriDamBaoDuThau) : '';
+
+                phanloBaodamContainer.style.display = 'none';
+                phanloBaodamTbody.innerHTML = '';
+            }
         }
     }
 
@@ -617,6 +666,8 @@ export async function handlePhatHanhHsmtSubmit(e) {
     }
 
     let giaTriDamBaoVal = 0;
+    let lotBaoDamMap = {};
+
     if (!isTuVan && !isPhanLo) {
         giaTriDamBaoVal = this.model.parseVND(document.getElementById('phathanh-giatribaomothau').value);
         if (giaTriDamBaoVal <= 0) {
@@ -627,9 +678,21 @@ export async function handlePhatHanhHsmtSubmit(e) {
 
     // Check if lot guarantees are satisfied for multi-lot bidding
     if (isPhanLo && !isTuVan) {
-        const incompleteLot = gt.phanLoList && gt.phanLoList.some(pl => !pl.baoDamDuThau || pl.baoDamDuThau <= 0);
-        if (incompleteLot || !gt.phanLoList || gt.phanLoList.length === 0) {
-            await this.view.customAlert('Thiếu thông tin', 'Gói thầu bắt buộc phải có Giá trị bảo đảm dự thầu lớn hơn 0 cho tất cả các phần lô (trừ gói tư vấn)!', 'alert-triangle');
+        let invalidInput = null;
+        document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
+            const id = tr.getAttribute('data-id');
+            const inp = tr.querySelector('.phathanh-pl-baodam-input');
+            const val = inp ? this.model.parseVND(inp.value) : 0;
+            if (val <= 0 && !invalidInput) {
+                invalidInput = inp;
+            }
+            if (id) {
+                lotBaoDamMap[id] = val;
+            }
+        });
+
+        if (invalidInput || !gt.phanLoList || gt.phanLoList.length === 0) {
+            await this.view.customAlert('Thiếu thông tin', 'Gói thầu bắt buộc phải có Giá trị bảo đảm dự thầu lớn hơn 0 cho tất cả các phần lô (trừ gói tư vấn)!', 'alert-triangle', invalidInput);
             return;
         }
     }
@@ -656,8 +719,18 @@ export async function handlePhatHanhHsmtSubmit(e) {
 
         gt.hieuLucHsdt = hieuLucHsdtVal;
         gt.hieuLucDamBaoDuThau = hieuLucHsdtVal + 30; // Tự động tính toán = Thời gian hiệu lực HSDT + 30 ngày
-        if (!isTuVan && !isPhanLo) {
+        
+        if (isPhanLo && !isTuVan && gt.phanLoList) {
+            gt.phanLoList.forEach(pl => {
+                if (lotBaoDamMap[pl.id] !== undefined) {
+                    pl.baoDamDuThau = lotBaoDamMap[pl.id];
+                }
+            });
+            gt.giaTriDamBaoDuThau = gt.phanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0);
+        } else if (!isTuVan && !isPhanLo) {
             gt.giaTriDamBaoDuThau = giaTriDamBaoVal;
+        } else {
+            gt.giaTriDamBaoDuThau = 0;
         }
 
         gt.trangThai = 'Đang mời thầu';
@@ -1358,15 +1431,18 @@ export async function handleGoiThauSubmit(e) {
     if (isPhanLo) {
         if (targetStatus !== 'Chuẩn bị') {
             let emptyInput = null;
-            let emptyBaoDamInput = null;
+            let invalidBaoDamInput = null;
             document.querySelectorAll('#phanlo-tbody tr').forEach(tr => {
                 const inp = tr.querySelector('.pl-code-input');
                 if (inp && !inp.value.trim() && !emptyInput) {
                     emptyInput = inp;
                 }
                 const bdInp = tr.querySelector('.pl-baodam-input');
-                if (bdInp && bdInp.hasAttribute('required') && !bdInp.value.trim() && !emptyBaoDamInput) {
-                    emptyBaoDamInput = bdInp;
+                if (bdInp && linhVuc !== 'Tư vấn') {
+                    const bdVal = this.model.parseVND(bdInp.value) || 0;
+                    if (bdVal <= 0 && !invalidBaoDamInput) {
+                        invalidBaoDamInput = bdInp;
+                    }
                 }
             });
 
@@ -1375,8 +1451,22 @@ export async function handleGoiThauSubmit(e) {
                 return;
             }
 
-            if (emptyBaoDamInput && linhVuc !== 'Tư vấn') {
-                this.view.customAlert('Thiếu dữ liệu', 'Vui lòng nhập đầy đủ giá trị bảo đảm dự thầu cho tất cả các phần lô!', 'alert-triangle', emptyBaoDamInput);
+            if (invalidBaoDamInput) {
+                this.view.customAlert('Thiếu dữ liệu', 'Vui lòng nhập đầy đủ giá trị bảo đảm dự thầu lớn hơn 0 cho tất cả các phần lô!', 'alert-triangle', invalidBaoDamInput);
+                return;
+            }
+        }
+
+        // Kiểm tra giá gói thầu với tổng giá trị của các phần lô
+        const giaGoiThau = this.model.parseVND(document.getElementById('gt-gia').value) || 0;
+        const totalPhanLoVal = collectedPhanLoList.reduce((sum, item) => sum + (item.giaTriPhanLo || 0), 0);
+        if (giaGoiThau !== totalPhanLoVal) {
+            const confirmed = await this.view.customConfirm(
+                'Cảnh báo chênh lệch giá',
+                `Giá gói thầu (${this.model.formatVND(giaGoiThau)} VNĐ) khác với tổng giá trị của các phần lô (${this.model.formatVND(totalPhanLoVal)} VNĐ).\n\nBạn có chắc chắn muốn tiếp tục lưu không?`,
+                'alert-triangle'
+            );
+            if (!confirmed) {
                 return;
             }
         }
@@ -1411,7 +1501,7 @@ export async function handleGoiThauSubmit(e) {
         thoiGianMoThau: formattedDate3,
         toChuyenGia: toChuyenGia,
         toThamDinh: toThamDinh,
-        giaTriDamBaoDuThau: this.model.parseVND(document.getElementById('gt-giatribaomothau')?.value || '0'),
+        giaTriDamBaoDuThau: (linhVuc === 'Tư vấn') ? 0 : (isPhanLo ? collectedPhanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0) : this.model.parseVND(document.getElementById('gt-giatribaomothau')?.value || '0')),
         hieuLucHsdt: parseInt(document.getElementById('gt-hieuluchsdt')?.value) || null,
         hieuLucDamBaoDuThau: parseInt(document.getElementById('gt-hieuluchbaomothau')?.value) || null
     };
@@ -2452,8 +2542,10 @@ export function addPhanLoRow(data = {}) {
     const baoDamVal = data.baoDamDuThau || '';
 
     const isMoiThauOrLater = (document.getElementById('gt-trangthai')?.value !== 'Chuẩn bị');
-    const displayStyle = isMoiThauOrLater ? '' : 'display: none;';
-    const requiredAttr = isMoiThauOrLater ? 'required' : '';
+    const linhVuc = document.getElementById('gt-linhvuc')?.value || '';
+    const isBaoDamRequired = isMoiThauOrLater && (linhVuc !== 'Tư vấn');
+    const displayStyle = isBaoDamRequired ? '' : 'display: none;';
+    const requiredAttr = isBaoDamRequired ? 'required' : '';
 
     tr.innerHTML = `
         <td><input type="text" class="pl-code-input" value="${code}" placeholder="Mã phần lô..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
@@ -5772,6 +5864,77 @@ export async function saveDanhGiaHsdt() {
         this.view._currentWorkflowTab = 'result';
     }
     this.view.showPackageDetails(gtId);
+}
+
+export function exportPhatHanhPhanLoExcel(gt) {
+    const rows = [];
+    // Add header row
+    rows.push(["Mã phần lô", "Tên phần lô", "Giá trị phần lô (VNĐ)", "Bảo đảm dự thầu (VNĐ)"]);
+    
+    document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
+        const ma = tr.cells[0]?.textContent || '';
+        const ten = tr.cells[1]?.textContent || '';
+        const gia = tr.cells[2]?.textContent || '';
+        const baodam = tr.querySelector('.phathanh-pl-baodam-input')?.value || '';
+        rows.push([ma, ten, gia, baodam]);
+    });
+    
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "BaoDamPhanLo");
+    XLSX.writeFile(workbook, `Bao_dam_phan_lo_${gt.maGoiThau || 'GoiThau'}.xlsx`);
+}
+
+export function importPhatHanhPhanLoExcel(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = e.target.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(sheet);
+            
+            let count = 0;
+            json.forEach(row => {
+                const maPhanLoExcel = String(row['Mã phần lô'] || row['Mã lô'] || '').trim().toLowerCase();
+                const tenPhanLoExcel = String(row['Tên phần lô'] || row['Tên lô'] || '').trim().toLowerCase();
+                const baoDamExcelRaw = row['Bảo đảm dự thầu (VNĐ)'] || row['Bảo đảm dự thầu'] || row['Giá trị bảo đảm'] || '';
+                
+                if (!maPhanLoExcel && !tenPhanLoExcel) return;
+                
+                document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
+                    const maTr = (tr.cells[0]?.textContent || '').trim().toLowerCase();
+                    const tenTr = (tr.cells[1]?.textContent || '').trim().toLowerCase();
+                    
+                    let match = false;
+                    if (maPhanLoExcel && maPhanLoExcel === maTr) {
+                        match = true;
+                    } else if (tenPhanLoExcel && tenPhanLoExcel === tenTr) {
+                        match = true;
+                    }
+                    
+                    if (match) {
+                        const inp = tr.querySelector('.phathanh-pl-baodam-input');
+                        if (inp) {
+                            const parsedVal = this.model.parseVND(String(baoDamExcelRaw));
+                            inp.value = this.model.formatVND(parsedVal);
+                            count++;
+                        }
+                    }
+                });
+            });
+            
+            if (count > 0) {
+                this.view.customAlert('Nhập thành công', `Đã cập nhật giá trị bảo đảm cho ${count} phần lô từ file Excel!`, 'check-circle');
+            } else {
+                this.view.customAlert('Không tìm thấy dòng khớp', 'Không tìm thấy phần lô nào khớp trong file Excel hoặc giá trị không hợp lệ!', 'alert-triangle');
+            }
+        } catch (err) {
+            this.view.customAlert('Lỗi đọc file', 'Không thể đọc file Excel: ' + err.message, 'x-circle');
+        }
+    };
+    reader.readAsBinaryString(file);
 }
 
 
