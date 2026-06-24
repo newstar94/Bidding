@@ -21,7 +21,7 @@
                             placeholder="Ví dụ: Kế hoạch nâng cấp cơ sở dữ liệu quốc gia">
                         <span class="error-text">Vui lòng nhập tên kế hoạch</span>
                     </div>
-                    <div class="form-group col-span-2">
+                    <div class="form-group">
                         <label for="kh-loaihinh">Loại hình <span class="required">*</span></label>
                         <select id="kh-loaihinh" required>
                             <option value="">-- Chọn loại hình --</option>
@@ -30,7 +30,7 @@
                         </select>
                         <span class="error-text">Vui lòng chọn loại hình</span>
                     </div>
-                    <div class="form-group col-span-2">
+                    <div class="form-group">
                         <label for="kh-pheduyet">Phê duyệt <span class="required">*</span></label>
                         <select id="kh-pheduyet" required>
                             <option value="">-- Chọn hình thức phê duyệt --</option>
@@ -39,38 +39,6 @@
                         </select>
                         <span class="error-text">Vui lòng chọn hình thức phê duyệt</span>
                     </div>
-                    <!-- Conditional fields for "Kế hoạch" select option -->
-                    <div id="kh-pheduyet-kehoach-fields" style="display: none; grid-column: span 2;">
-                        <div class="form-grid" style="grid-template-columns: repeat(2, 1fr); gap: 16px; width: 100%;">
-                            <div class="form-group">
-                                <label for="kh-ngaytrinhdutoan">Ngày trình dự toán</label>
-                                <input type="text" id="kh-ngaytrinhdutoan" placeholder="Chọn ngày (dd/MM/yyyy)">
-                            </div>
-                            <div class="form-group">
-                                <label for="kh-ngaypheduyetdutoan">Ngày phê duyệt dự toán</label>
-                                <input type="text" id="kh-ngaypheduyetdutoan" placeholder="Chọn ngày (dd/MM/yyyy)">
-                            </div>
-                            <div class="form-group col-span-2">
-                                <label for="kh-quyetdinhpheduyetdutoan">Số QĐ phê duyệt dự toán</label>
-                                <input type="text" id="kh-quyetdinhpheduyetdutoan" placeholder="Ví dụ: 456/QĐ-UBND">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group col-span-2">
-                        <label for="kh-duan">Tên dự án/dự toán <span class="required">*</span></label>
-                        <input type="text" id="kh-duan" required
-                            placeholder="Ví dụ: Dự án Tăng cường Năng lực CNTT ngành Y tế">
-                        <span class="error-text">Vui lòng nhập tên dự án/dự toán</span>
-                    </div>
-                    <div class="form-group col-span-2">
-                        <label for="kh-chudautuid">Chủ đầu tư liên kết <span class="required">*</span></label>
-                        <select id="kh-chudautuid" required>
-                            <option value="">-- Chọn Chủ đầu tư --</option>
-                            <!-- Rendered via JS -->
-                        </select>
-                        <span class="error-text">Vui lòng chọn chủ đầu tư</span>
-                    </div>
-
                     <!-- Additional fields for Dự án -->
                     <div id="kh-project-fields" style="display: none; grid-column: span 2; content-visibility: auto;">
                         <div class="form-grid" style="grid-template-columns: repeat(2, 1fr); gap: 16px; width: 100%;">
@@ -111,6 +79,39 @@
                                     style="width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border-color); padding: 8px; font-family: inherit; background: var(--bg-card); color: var(--text-main);"></textarea>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Conditional fields for "Kế hoạch" select option -->
+                    <div id="kh-pheduyet-kehoach-fields" style="display: none; grid-column: span 2;">
+                        <div class="form-grid" style="grid-template-columns: repeat(2, 1fr); gap: 16px; width: 100%;">
+                            <div class="form-group">
+                                <label for="kh-ngaytrinhdutoan">Ngày trình dự toán</label>
+                                <input type="text" id="kh-ngaytrinhdutoan" placeholder="Chọn ngày (dd/MM/yyyy)">
+                            </div>
+                            <div class="form-group">
+                                <label for="kh-ngaypheduyetdutoan">Ngày phê duyệt dự toán</label>
+                                <input type="text" id="kh-ngaypheduyetdutoan" placeholder="Chọn ngày (dd/MM/yyyy)">
+                            </div>
+                            <div class="form-group col-span-2">
+                                <label for="kh-quyetdinhpheduyetdutoan">Số QĐ phê duyệt dự toán</label>
+                                <input type="text" id="kh-quyetdinhpheduyetdutoan" placeholder="Ví dụ: 456/QĐ-UBND">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group col-span-2">
+                        <label for="kh-duan">Tên dự án/dự toán <span class="required">*</span></label>
+                        <input type="text" id="kh-duan" required
+                            placeholder="Ví dụ: Dự án Tăng cường Năng lực CNTT ngành Y tế">
+                        <span class="error-text">Vui lòng nhập tên dự án/dự toán</span>
+                    </div>
+                    <div class="form-group col-span-2">
+                        <label for="kh-chudautuid">Chủ đầu tư<span class="required">*</span></label>
+                        <select id="kh-chudautuid" required>
+                            <option value="">-- Chọn Chủ đầu tư --</option>
+                            <!-- Rendered via JS -->
+                        </select>
+                        <span class="error-text">Vui lòng chọn chủ đầu tư</span>
                     </div>
                     <div class="form-group">
                         <label for="kh-tongmuc">Tổng Dự toán/Tổng mức đầu tư</label>

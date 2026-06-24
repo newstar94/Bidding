@@ -284,6 +284,77 @@ export async function renderGoiThauTable() {
                 ntLink = `<span class="fw-bold text-success">${ntDisplayName}</span>`;
             }
 
+            let winnerInfoHtml = '--';
+            if (displayedGt.phanLo === 'Có') {
+                const plList = typeof displayedGt.phanLoList === 'string' ? JSON.parse(displayedGt.phanLoList || '[]') : (displayedGt.phanLoList || []);
+                const winningLots = plList.filter(pl => pl.nhaThauTrungThauId);
+                const uniqueWinnerIds = [...new Set(winningLots.map(pl => String(pl.nhaThauTrungThauId)).filter(Boolean))];
+                
+                if (uniqueWinnerIds.length > 1) {
+                    window._lotWinnersMap = window._lotWinnersMap || {};
+                    window._lotWinnersMap[displayedGt.id] = winningLots.map(pl => {
+                        const bidderInfo = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
+                        const ntInfo = this.model.state.nhathau.find(n => n.id === pl.nhaThauTrungThauId);
+                        const ntName = bidderInfo ? bidderInfo.tenNhaThau : (ntInfo ? ntInfo.tenNhaThau : 'Nhà thầu #' + pl.nhaThauTrungThauId);
+                        const isJV = bidderInfo && bidderInfo.loaiNhaThau === 'Liên danh';
+                        let jvData = null;
+                        if (isJV) {
+                            const allJvMembers = bidderInfo.thanhVienLienDanh || [];
+                            const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
+                            const leadName = leadMember?.tenNhaThau || ntName;
+                            const leadCode = leadMember?.maSoThue || ntInfo?.maSoThue || ntInfo?.maNhaThau || bidderInfo.maDinhDanh || bidderInfo.maNhaThau || '';
+                            const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
+                            jvData = {
+                                members: subMembers,
+                                leadName,
+                                leadCode
+                            };
+                        }
+                        return {
+                            maPhanLo: pl.maPhanLo,
+                            tenPhanLo: pl.tenPhanLo,
+                            nhaThauTrungThauId: pl.nhaThauTrungThauId,
+                            tenNhaThau: ntName,
+                            giaTrungThau: pl.giaTrungThau,
+                            isJV,
+                            jvData
+                        };
+                    });
+                    const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
+                    winnerInfoHtml = `<a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${displayedGt.id}')" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
+                } else if (uniqueWinnerIds.length === 1) {
+                    const singleWinnerId = uniqueWinnerIds[0];
+                    const singleWinnerNt = this.model.state.nhathau.find(n => String(n.id) === String(singleWinnerId));
+                    const singleWinnerBid = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(singleWinnerId));
+                    const name = singleWinnerBid ? singleWinnerBid.tenNhaThau : (singleWinnerNt ? singleWinnerNt.tenNhaThau : 'Nhà thầu #' + singleWinnerId);
+                    const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
+                    
+                    let link;
+                    if (singleWinnerBid && singleWinnerBid.loaiNhaThau === 'Liên danh') {
+                        const allJvMembers = singleWinnerBid.thanhVienLienDanh || [];
+                        const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
+                        const leadName = leadMember?.tenNhaThau || name;
+                        const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || '';
+                        const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
+                        window._jvDataMap[displayedGt.id] = {
+                            members: subMembers,
+                            leadName,
+                            leadCode
+                        };
+                        link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${name}</a>`;
+                    } else if (singleWinnerNt) {
+                        link = `<a href="#" onclick="event.preventDefault(); window.editNhaThau('${singleWinnerNt.id}')" class="text-blue fw-bold link-hover">${name}</a>`;
+                    } else {
+                        link = `<span class="fw-bold text-success">${name}</span>`;
+                    }
+                    winnerInfoHtml = `${link}<br><small class="text-muted">Giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
+                } else {
+                    winnerInfoHtml = '--';
+                }
+            } else {
+                winnerInfoHtml = displayedGt.nhaThauTrungThauId ? (ntLink + '<br><small class="text-muted">Giá: ' + this.model.formatCurrency(displayedGt.giaTrungThau) + '</small>') : '--';
+            }
+
             const optionsHtml = allVersions.map(v => {
                 const label = v.phienBan || '00';
                 const isSel = v.id === displayedGt.id ? 'selected' : '';
@@ -297,11 +368,30 @@ export async function renderGoiThauTable() {
             `;
 
             const isLatest = displayedGt.id === gt.id;
-            const editBtnHtml = isLatest ? `
-                            <button class="action-btn btn-edit" onclick="window.editGoiThau('${displayedGt.id}')" title="Sửa">
-                                <i data-lucide="edit-2"></i>
-                            </button>
-            ` : ``;
+            const hasResultOrCanceled = displayedGt.trangThai === 'Đã có kết quả' || displayedGt.trangThai === 'Hủy thầu';
+            
+            let actionButtonsHtml = '';
+            if (isLatest) {
+                if (hasResultOrCanceled) {
+                    actionButtonsHtml = `
+                        <button class="action-btn btn-view" onclick="window.editGoiThau('${displayedGt.id}', true)" title="Xem chi tiết Gói thầu">
+                            <i data-lucide="eye" style="color: var(--primary);"></i>
+                        </button>
+                        <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${displayedGt.id}')" title="Xóa">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                    `;
+                } else {
+                    actionButtonsHtml = `
+                        <button class="action-btn btn-edit" onclick="window.editGoiThau('${displayedGt.id}')" title="Sửa">
+                            <i data-lucide="edit-2"></i>
+                        </button>
+                        <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${displayedGt.id}')" title="Xóa">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                    `;
+                }
+            }
 
             return `
                 <tr>
@@ -312,13 +402,10 @@ export async function renderGoiThauTable() {
                     <td class="fw-bold">${this.model.formatCurrency(displayedGt.giaGoiThau)}</td>
                     <td>${displayedGt.hinhThucLuaChon}</td>
                     <td>${this.getStatusBadge(displayedGt.trangThai)}</td>
-                    <td style="min-width: 200px; max-width: 300px;" class="text-wrap">${displayedGt.nhaThauTrungThauId ? (ntLink + '<br><small class="text-muted">Giá: ' + this.model.formatCurrency(displayedGt.giaTrungThau) + '</small>') : '--'}</td>
+                    <td style="min-width: 200px; max-width: 300px;" class="text-wrap">${winnerInfoHtml}</td>
                     <td class="text-right">
                         <div class="action-btn-group">
-                            ${editBtnHtml}
-                            <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${displayedGt.id}')" title="Xóa">
-                                <i data-lucide="trash-2"></i>
-                            </button>
+                            ${actionButtonsHtml}
                         </div>
                     </td>
                 </tr>
@@ -976,55 +1063,100 @@ export function showPackageDetails(id) {
                 const savingsPct = gt.giaGoiThau > 0 ? ((savings / gt.giaGoiThau) * 100).toFixed(2) : '0,00';
 
                 let winnerDisplayHtml = '';
-                if (winnerBid) {
-                    if (winnerBid.loaiNhaThau === 'Liên danh') {
-                        const allJvMembers = winnerBid.thanhVienLienDanh || [];
-                        const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
-                        const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
-
-                        const winnerNt = this.model.state.nhathau.find(n => String(n.id) === String(winnerBid.nhaThauId));
-                        window._jvDataMap = window._jvDataMap || {};
-                        window._jvDataMap[gt.id] = {
-                            members: subMembers,
-                            leadName: leadMember?.tenNhaThau || winnerBid.tenNhaThau,
-                            leadCode: leadMember?.maSoThue || winnerNt?.maSoThue || winnerNt?.maNhaThau || winnerBid.maDinhDanh || winnerBid.maNhaThau || ''
-                        };
-
-                        const membersListHtml = allJvMembers.map(m => {
-                            const isLead = m.vaiTro === 'Đứng đầu liên danh';
-                            return `
-                                <li style="margin-top: 4px; font-size: 0.85rem; color: var(--text-main);">
-                                    <span style="font-weight: 600;">${m.tenNhaThau}</span> 
-                                    <span class="text-muted">(${m.maSoThue || 'Chưa có MST'})</span> - 
-                                    <span class="badge ${isLead ? 'badge-success' : 'badge-secondary'}" style="font-size: 0.7rem; padding: 2px 6px;">${m.vaiTro || 'Thành viên'}</span>
-                                </li>
-                            `;
-                        }).join('');
-
-                        winnerDisplayHtml = `
-                            <div style="display: flex; flex-direction: column; gap: 4px;">
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                    <a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${gt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="link-hover" title="Xem chi tiết liên danh" style="color:var(--primary);">👥 ${winnerBid.tenNhaThau}</a>
-                                </h5>
-                            </div>
-                        `;
-                    } else {
-                        const winnerNt = this.model.state.nhathau.find(n => String(n.id) === String(winnerBid.nhaThauId));
-                        const winnerMst = winnerNt ? (winnerNt.maSoThue || winnerNt.maNhaThau) : (winnerBid.maDinhDanh || winnerBid.maNhaThau);
-                        winnerDisplayHtml = `
-                            <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                <a href="#" onclick="event.preventDefault(); window.editNhaThau('${winnerBid.nhaThauId}')" class="link-hover" style="color:var(--primary);">${winnerBid.tenNhaThau}</a>
-                            </h5>
-                            <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
-                                MST: <strong>${winnerMst || 'Chưa có'}</strong>
-                            </div>
-                        `;
+                let hasMultipleWinners = false;
+                let winningLots = [];
+                let uniqueWinnerIds = [];
+                if (gt.phanLo === 'Có') {
+                    const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
+                    winningLots = plList.filter(pl => pl.nhaThauTrungThauId);
+                    uniqueWinnerIds = [...new Set(winningLots.map(pl => String(pl.nhaThauTrungThauId)).filter(Boolean))];
+                    if (uniqueWinnerIds.length > 1) {
+                        hasMultipleWinners = true;
                     }
+                }
+
+                if (hasMultipleWinners) {
+                    window._lotWinnersMap = window._lotWinnersMap || {};
+                    window._lotWinnersMap[gt.id] = winningLots.map(pl => {
+                        const bidderInfo = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(gt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
+                        const ntInfo = this.model.state.nhathau.find(n => n.id === pl.nhaThauTrungThauId);
+                        const ntName = bidderInfo ? bidderInfo.tenNhaThau : (ntInfo ? ntInfo.tenNhaThau : 'Nhà thầu #' + pl.nhaThauTrungThauId);
+                        const isJV = bidderInfo && bidderInfo.loaiNhaThau === 'Liên danh';
+                        let jvData = null;
+                        if (isJV) {
+                            const allJvMembers = bidderInfo.thanhVienLienDanh || [];
+                            const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
+                            const leadName = leadMember?.tenNhaThau || ntName;
+                            const leadCode = leadMember?.maSoThue || ntInfo?.maSoThue || ntInfo?.maNhaThau || bidderInfo.maDinhDanh || bidderInfo.maNhaThau || '';
+                            const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
+                            jvData = {
+                                members: subMembers,
+                                leadName,
+                                leadCode
+                            };
+                        }
+                        return {
+                            maPhanLo: pl.maPhanLo,
+                            tenPhanLo: pl.tenPhanLo,
+                            nhaThauTrungThauId: pl.nhaThauTrungThauId,
+                            tenNhaThau: ntName,
+                            giaTrungThau: pl.giaTrungThau,
+                            isJV,
+                            jvData
+                        };
+                    });
+                    winnerDisplayHtml = `
+                        <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
+                            <a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${gt.id}')" class="link-hover" style="color:var(--primary); text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a>
+                        </h5>
+                    `;
                 } else {
-                    winnerDisplayHtml = `<h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">Chưa xác định</h5>`;
+                    const finalWinnerId = uniqueWinnerIds.length === 1 ? uniqueWinnerIds[0] : (gt.nhaThauTrungThauId || (winnerBid ? (winnerBid.nhaThauId || winnerBid.id) : null));
+                    const currentWinnerBid = allBidsForResult.find(b => String(b.nhaThauId) === String(finalWinnerId)) || winnerBid;
+                    if (currentWinnerBid) {
+                        if (currentWinnerBid.loaiNhaThau === 'Liên danh') {
+                            const allJvMembers = currentWinnerBid.thanhVienLienDanh || [];
+                            const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
+                            const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
+
+                            const winnerNt = this.model.state.nhathau.find(n => String(n.id) === String(currentWinnerBid.nhaThauId));
+                            window._jvDataMap = window._jvDataMap || {};
+                            window._jvDataMap[gt.id] = {
+                                members: subMembers,
+                                leadName: leadMember?.tenNhaThau || currentWinnerBid.tenNhaThau,
+                                leadCode: leadMember?.maSoThue || winnerNt?.maSoThue || winnerNt?.maNhaThau || currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau || ''
+                            };
+
+                            winnerDisplayHtml = `
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
+                                        <a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${gt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="link-hover" title="Xem chi tiết liên danh" style="color:var(--primary);">👥 ${currentWinnerBid.tenNhaThau}</a>
+                                    </h5>
+                                </div>
+                            `;
+                        } else {
+                            const winnerNt = this.model.state.nhathau.find(n => String(n.id) === String(currentWinnerBid.nhaThauId));
+                            const winnerMst = winnerNt ? (winnerNt.maSoThue || winnerNt.maNhaThau) : (currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau);
+                            winnerDisplayHtml = `
+                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
+                                    <a href="#" onclick="event.preventDefault(); window.editNhaThau('${currentWinnerBid.nhaThauId}')" class="link-hover" style="color:var(--primary);">${currentWinnerBid.tenNhaThau}</a>
+                                </h5>
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+                                    MST: <strong>${winnerMst || 'Chưa có'}</strong>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        winnerDisplayHtml = `<h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">Chưa xác định</h5>`;
+                    }
                 }
 
                 const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                allBids.sort((a, b) => {
+                    const codeA = String(a.maPhanLo || '').toLowerCase();
+                    const codeB = String(b.maPhanLo || '').toLowerCase();
+                    return codeA.localeCompare(codeB, 'vi', { numeric: true });
+                });
                 const winningIds = new Set();
                 if (gt.nhaThauTrungThauId) {
                     winningIds.add(String(gt.nhaThauTrungThauId));
@@ -1048,61 +1180,136 @@ export function showPackageDetails(id) {
                     bidsByNt[ntId].push(b);
                 });
 
-                const uniqueBidders = Object.values(bidsByNt);
-                const allBiddersHtml = uniqueBidders.map((ntBids, idx) => {
-                    const firstBid = ntBids[0];
-                    const ntId = String(firstBid.nhaThauId || firstBid.id);
-                    const isWinner = winningIds.has(ntId);
+                const isPhanLo = gt.phanLo === 'Có';
+                const allBiddersHtml = allBids.map((b, idx) => {
+                    const ntId = String(b.nhaThauId || b.id);
+                    
+                    let bidIsWinner = false;
+                    let giaTrungHtml = '—';
+                    let thoiGianThucHienHtml = '—';
+                    if (isPhanLo) {
+                        const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
+                        const matchedPl = plList.find(pl => String(pl.maPhanLo) === String(b.maPhanLo) && String(pl.nhaThauTrungThauId) === String(b.nhaThauId));
+                        if (matchedPl) {
+                            bidIsWinner = true;
+                            giaTrungHtml = this.model.formatCurrency(matchedPl.giaTrungThau || 0);
+                            thoiGianThucHienHtml = matchedPl.thoiGianGoiThau || '—';
+                        } else {
+                            thoiGianThucHienHtml = b.thoiGianThucHien || b.thoiGianGoiThau || '—';
+                        }
+                    } else {
+                        if (gt.nhaThauTrungThauId && String(gt.nhaThauTrungThauId) === String(b.nhaThauId)) {
+                            bidIsWinner = true;
+                            giaTrungHtml = this.model.formatCurrency(gt.giaTrungThau || 0);
+                            thoiGianThucHienHtml = gt.thoiGianGoiThau || '—';
+                        } else {
+                            thoiGianThucHienHtml = b.thoiGianThucHien || b.thoiGianGoiThau || '—';
+                        }
+                    }
 
-                    const badge = isWinner
+                    const badge = bidIsWinner
                         ? `<span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px;">Trúng thầu</span>`
                         : `<span class="badge badge-neutral" style="font-size:0.75rem; padding: 4px 10px; background:#f1f5f9; color:#64748b;">Trượt thầu</span>`;
 
                     let lyDo = '';
-                    if (isWinner) {
+                    if (bidIsWinner) {
                         lyDo = '—';
                     } else {
-                        const lotReasons = [];
-                        ntBids.forEach(b => {
-                            let r = b.lyDoTruot || '';
-                            if (!r) {
-                                const ketLuan = b.danhGiaKetLuan;
-                                if (ketLuan === 'Không đạt') {
-                                    const failedSteps = [];
-                                    if (b.danhGiaHopLe === 'Không đạt') failedSteps.push("Đánh giá hợp lệ");
-                                    if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
-                                    if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
-                                    if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
+                        lyDo = b.lyDoTruot || '';
+                        if (!lyDo) {
+                            const ketLuan = b.danhGiaKetLuan;
+                            if (ketLuan === 'Không đạt') {
+                                const failedSteps = [];
+                                if (b.danhGiaHopLe === 'Không đạt') failedSteps.push("Đánh giá hợp lệ");
+                                if (b.danhGiaNangLuc === 'Không đạt') failedSteps.push("Đánh giá năng lực");
+                                if (b.danhGiaKyThuat === 'Không đạt' || (b.danhGiaKyThuat && String(b.danhGiaKyThuat).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá kỹ thuật");
+                                if (b.danhGiaTaiChinh === 'Không đạt' || (b.danhGiaTaiChinh && String(b.danhGiaTaiChinh).toLowerCase().includes('không đạt'))) failedSteps.push("Đánh giá tài chính");
 
-                                    if (failedSteps.length > 0) {
-                                        r = `Không đạt ở bước: ${failedSteps.join(', ')}`;
-                                    } else {
-                                        r = "Không đạt đánh giá chi tiết";
-                                    }
+                                if (failedSteps.length > 0) {
+                                    lyDo = `Không đạt ở bước: ${failedSteps.join(', ')}`;
                                 } else {
-                                    r = "Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau";
+                                    lyDo = "Không đạt đánh giá chi tiết";
                                 }
-                            }
-                            if (gt.phanLo === 'Có' && (b.tenPhanLo || b.maPhanLo)) {
-                                const tenLo = b.tenPhanLo || b.maPhanLo;
-                                lotReasons.push(`${tenLo}: ${r}`);
                             } else {
-                                lotReasons.push(r);
+                                lyDo = "Nhà thầu xếp hạng 1 trúng thầu";
                             }
-                        });
-                        lyDo = lotReasons.join('; ');
+                        }
                     }
 
-                    return `
+                    const isJV = b.loaiNhaThau === 'Liên danh';
+                    let contractorHtml = '';
+                    if (isJV) {
+                        const allJvMembers = b.thanhVienLienDanh || [];
+                        const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
+                        const leadName = leadMember?.tenNhaThau || b.tenNhaThau;
+                        const leadCode = leadMember?.maSoThue || b.maDinhDanh || b.maNhaThau || '';
+                        const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
+                        
+                        const jvKey = `${gt.id}_result_bidder_${idx}`;
+                        window._jvDataMap = window._jvDataMap || {};
+                        window._jvDataMap[jvKey] = {
+                            members: subMembers,
+                            leadName,
+                            leadCode
+                        };
+                        contractorHtml = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${jvKey}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${b.tenNhaThau || '--'}</a>`;
+                    } else {
+                        contractorHtml = `<span class="fw-bold">${b.tenNhaThau || '--'}</span>`;
+                    }
+
+                    if (isPhanLo) {
+                        return `
+                            <tr>
+                                <td><code>${b.maPhanLo || '—'}</code></td>
+                                <td>${b.tenPhanLo || '—'}</td>
+                                <td><code>${b.maNhaThau || b.maDinhDanh || '--'}</code></td>
+                                <td>${contractorHtml}</td>
+                                <td class="fw-bold text-success">${giaTrungHtml}</td>
+                                <td>${thoiGianThucHienHtml}</td>
+                                <td style="text-align: center;">${badge}</td>
+                                <td class="text-muted" style="font-size: 0.82rem;">${lyDo}</td>
+                            </tr>
+                        `;
+                    } else {
+                        return `
+                            <tr>
+                                <td><code>${b.maNhaThau || b.maDinhDanh || '--'}</code></td>
+                                <td>${contractorHtml}</td>
+                                <td class="fw-bold text-success">${giaTrungHtml}</td>
+                                <td>${thoiGianThucHienHtml}</td>
+                                <td style="text-align: center;">${badge}</td>
+                                <td class="text-muted" style="font-size: 0.82rem;">${lyDo}</td>
+                            </tr>
+                        `;
+                    }
+                }).join('');
+
+                let tableHeaderHtml = '';
+                if (isPhanLo) {
+                    tableHeaderHtml = `
                         <tr>
-                            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
-                            <td><code>${firstBid.maNhaThau || firstBid.maDinhDanh || '--'}</code></td>
-                            <td class="fw-bold">${firstBid.tenNhaThau || '--'}</td>
-                            <td style="text-align: center;">${badge}</td>
-                            <td class="text-muted" style="font-size: 0.82rem;">${lyDo}</td>
+                            <th style="width: 10%;">Mã phần lô</th>
+                            <th style="width: 12%;">Tên phần lô</th>
+                            <th style="width: 10%;">Mã nhà thầu</th>
+                            <th style="width: 20%;">Tên nhà thầu</th>
+                            <th style="width: 13%;">Giá trị trúng thầu</th>
+                            <th style="width: 15%;">Thời gian thực hiện</th>
+                            <th style="width: 10%; text-align: center;">Trạng thái</th>
+                            <th style="width: 10%;">Lý do trượt thầu</th>
                         </tr>
                     `;
-                }).join('');
+                } else {
+                    tableHeaderHtml = `
+                        <tr>
+                            <th style="width: 15%;">Mã nhà thầu</th>
+                            <th style="width: 35%;">Tên nhà thầu</th>
+                            <th style="width: 15%;">Giá trị trúng thầu</th>
+                            <th style="width: 15%;">Thời gian thực hiện</th>
+                            <th style="width: 10%; text-align: center;">Trạng thái</th>
+                            <th style="width: 10%;">Lý do trượt thầu</th>
+                        </tr>
+                    `;
+                }
 
                 contentWrapper.innerHTML = `
                     <div class="card" style="padding: 24px; border: 1px solid rgba(16, 185, 129, 0.25); background: rgba(16, 185, 129, 0.02); border-radius: var(--radius-lg); margin-bottom: 24px; display: flex; flex-direction: column; gap: 16px;">
@@ -1155,13 +1362,7 @@ export function showPackageDetails(id) {
                     <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
                         <table class="data-table" style="min-width: 100%;">
                             <thead>
-                                <tr>
-                                    <th style="width: 5%; text-align: center;">STT</th>
-                                    <th style="width: 15%;">Mã nhà thầu</th>
-                                    <th style="width: 30%;">Tên nhà thầu</th>
-                                    <th style="width: 15%; text-align: center;">Trạng thái</th>
-                                    <th style="width: 35%;">Lý do trượt thầu</th>
-                                </tr>
+                                ${tableHeaderHtml}
                             </thead>
                             <tbody>
                                 ${allBiddersHtml}
@@ -1212,13 +1413,56 @@ export function showPackageDetails(id) {
                 }
             } else {
                 const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                // Sort by maPhanLo A-Z
+                allBids.sort((x, y) => {
+                    const lotX = String(x.maPhanLo || '').trim();
+                    const lotY = String(y.maPhanLo || '').trim();
+                    return lotX.localeCompare(lotY, 'vi', { numeric: true });
+                });
                 const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
                     String(b.goiThauId) === String(gt.id) &&
                     (b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
                 );
 
+                // Calculate rankings per lot or globally
+                const rankings = {};
+                const getIsQualified = (bidItem) => {
+                    return bidItem.danhGiaKetLuan ? bidItem.danhGiaKetLuan === 'Đạt' : (bidItem.danhGiaHopLe === 'Đạt' && bidItem.danhGiaNangLuc === 'Đạt' && bidItem.danhGiaKyThuat !== 'Không đạt' && bidItem.danhGiaKyThuat !== '' && bidItem.danhGiaKyThuat);
+                };
+
+                if (gt.phanLo === 'Có') {
+                    const bidsByLot = {};
+                    allBids.forEach(b => {
+                        const lotKey = b.maPhanLo || 'unmapped';
+                        if (!bidsByLot[lotKey]) bidsByLot[lotKey] = [];
+                        bidsByLot[lotKey].push(b);
+                    });
+                    for (const lotKey in bidsByLot) {
+                        const lotBids = bidsByLot[lotKey];
+                        const qualifiedLotBids = lotBids.filter(getIsQualified);
+                        qualifiedLotBids.sort((x, y) => {
+                            const priceX = parseFloat(x.giaSauGiamGia || x.giaDuThau || 0);
+                            const priceY = parseFloat(y.giaSauGiamGia || y.giaDuThau || 0);
+                            return priceX - priceY;
+                        });
+                        qualifiedLotBids.forEach((b, rankIdx) => {
+                            rankings[b.id] = rankIdx + 1;
+                        });
+                    }
+                } else {
+                    const qualifiedBids = allBids.filter(getIsQualified);
+                    qualifiedBids.sort((x, y) => {
+                        const priceX = parseFloat(x.giaSauGiamGia || x.giaDuThau || 0);
+                        const priceY = parseFloat(y.giaSauGiamGia || y.giaDuThau || 0);
+                        return priceX - priceY;
+                    });
+                    qualifiedBids.forEach((b, rankIdx) => {
+                        rankings[b.id] = rankIdx + 1;
+                    });
+                }
+
                 const allBiddersHtml = allBids.map((b, idx) => {
-                    const isQualified = b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '');
+                    const isQualified = getIsQualified(b);
 
                     let defaultReason = '';
                     if (!isQualified) {
@@ -1234,7 +1478,7 @@ export function showPackageDetails(id) {
                             defaultReason = "Không đạt đánh giá chi tiết";
                         }
                     } else {
-                        defaultReason = "Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau";
+                        defaultReason = "Nhà thầu xếp hạng 1 trúng thầu";
                     }
 
                     const displayReason = b.lyDoTruot || defaultReason;
@@ -1242,13 +1486,38 @@ export function showPackageDetails(id) {
                     const defaultPrice = this.model.formatVND(b.giaSauGiamGia || b.giaDuThau || '') || '';
                     const defaultDurationPkg = b.thoiGianThucHien || '';
                     const defaultDurationCtr = b.thoiGianThucHien ? (b.thoiGianThucHien + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
-                    const isRowWinner = isQualified && ((gt.nhaThauTrungThauId && String(gt.nhaThauTrungThauId) === String(b.nhaThauId || b.id)) || (!gt.nhaThauTrungThauId && allBidsForResult.length === 1));
+                    const rank = rankings[b.id];
+                    const rankDisplay = rank ? `Hạng ${rank}` : (isQualified ? '--' : 'Không xếp hạng');
+
+                    let isRowWinner = false;
+                    if (isQualified) {
+                        if (gt.phanLo === 'Có') {
+                            const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
+                            const currentLotCode = b.maPhanLo;
+                            const pl = plList.find(p => p.maPhanLo === currentLotCode);
+                            if (pl && pl.nhaThauTrungThauId) {
+                                isRowWinner = String(pl.nhaThauTrungThauId) === String(b.nhaThauId || b.id);
+                            } else {
+                                isRowWinner = (rank === 1);
+                            }
+                        } else {
+                            if (gt.nhaThauTrungThauId) {
+                                isRowWinner = String(gt.nhaThauTrungThauId) === String(b.nhaThauId || b.id);
+                            } else {
+                                isRowWinner = (rank === 1);
+                            }
+                        }
+                    }
 
                     return `
-                        <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}">
-                            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+                        <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}"
+                            data-default-price="${defaultPrice}" data-default-duration-pkg="${defaultDurationPkg}" data-default-duration-ctr="${defaultDurationCtr}"
+                            data-default-reason="${defaultReason}">
+                            <td><code>${b.maPhanLo || '--'}</code></td>
+                            <td>${b.tenPhanLo || '--'}</td>
                             <td><code>${b.maNhaThau || b.maDinhDanh || '--'}</code></td>
                             <td class="fw-bold">${b.tenNhaThau || '--'}</td>
+                            <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
                             <td>
                                 <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? 'disabled' : ''}>
                                     <option value="truot" ${!isRowWinner ? 'selected' : ''}>Trượt thầu</option>
@@ -1256,16 +1525,16 @@ export function showPackageDetails(id) {
                                 </select>
                             </td>
                             <td>
-                                <input type="text" class="form-control row-ly-do-truot" value="${!isQualified ? displayReason : ''}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                <input type="text" class="form-control row-ly-do-truot" value="${!isRowWinner ? displayReason : ''}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
                             </td>
                             <td>
-                                <input type="text" class="form-control row-gia-trung" value="${defaultPrice}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                <input type="text" class="form-control row-gia-trung" value="${isRowWinner ? defaultPrice : ''}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
                             </td>
                             <td>
-                                <input type="text" class="form-control row-tg-goithau" value="${defaultDurationPkg}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                <input type="text" class="form-control row-tg-goithau" value="${isRowWinner ? defaultDurationPkg : ''}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
                             </td>
                             <td>
-                                <input type="text" class="form-control row-tg-hopdong" value="${defaultDurationCtr}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                <input type="text" class="form-control row-tg-hopdong" value="${isRowWinner ? defaultDurationCtr : ''}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
                             </td>
                         </tr>
                     `;
@@ -1313,14 +1582,16 @@ export function showPackageDetails(id) {
                         <table class="data-table" style="min-width: 100%;">
                             <thead>
                                 <tr>
-                                    <th style="width: 4%; text-align: center;">STT</th>
+                                    <th style="width: 10%;">Mã phần lô</th>
+                                    <th style="width: 10%;">Tên phần lô</th>
                                     <th style="width: 10%;">Mã nhà thầu</th>
-                                    <th style="width: 18%;">Tên nhà thầu</th>
-                                    <th style="width: 12%;">Trúng thầu/trượt thầu</th>
-                                    <th style="width: 20%;">Lý do trượt</th>
-                                    <th style="width: 12%;">Giá trúng thầu</th>
-                                    <th style="width: 12%;">Thời gian thực hiện gói thầu</th>
-                                    <th style="width: 12%;">Thời gian thực hiện hợp đồng</th>
+                                    <th style="width: 16%;">Tên nhà thầu</th>
+                                    <th style="width: 10%; text-align: center;">Xếp hạng nhà thầu</th>
+                                    <th style="width: 10%;">Trúng thầu/trượt thầu</th>
+                                    <th style="width: 14%;">Lý do trượt</th>
+                                    <th style="width: 10%;">Giá trúng thầu</th>
+                                    <th style="width: 8%;">Thời gian thực hiện gói thầu</th>
+                                    <th style="width: 8%;">Thời gian thực hiện hợp đồng</th>
                                 </tr>
                             </thead>
                             <tbody id="approve-bidders-tbody">
@@ -1359,9 +1630,15 @@ export function showPackageDetails(id) {
                             const val = e.target.value;
 
                             if (val === 'trung') {
-                                // Reset all other rows to 'truot'
+                                // Reset all other rows to 'truot' (only in same lot if package has lots)
+                                const currentLot = tr.cells[0]?.textContent.trim();
                                 tbodyApprove.querySelectorAll('tr').forEach(otherTr => {
                                     if (otherTr !== tr) {
+                                        if (gt.phanLo === 'Có') {
+                                            const otherLot = otherTr.cells[0]?.textContent.trim();
+                                            if (otherLot !== currentLot) return; // skip rows belonging to different lots
+                                        }
+
                                         const otherSelect = otherTr.querySelector('.row-status-select');
                                         if (otherSelect && !otherSelect.disabled) {
                                             otherSelect.value = 'truot';
@@ -1372,44 +1649,56 @@ export function showPackageDetails(id) {
                                             otherLyDo.disabled = false;
                                             otherLyDo.style.background = '';
                                             if (!otherLyDo.value) {
-                                                otherLyDo.value = 'Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau';
+                                                otherLyDo.value = otherTr.getAttribute('data-default-reason') || 'Nhà thầu xếp hạng 1 trúng thầu';
                                             }
                                         }
 
                                         const otherGia = otherTr.querySelector('.row-gia-trung');
-                                        if (otherGia) { otherGia.disabled = true; otherGia.style.background = '#f1f5f9'; }
+                                        if (otherGia) { otherGia.disabled = true; otherGia.style.background = '#f1f5f9'; otherGia.value = ''; }
                                         const otherDurationPkg = otherTr.querySelector('.row-tg-goithau');
-                                        if (otherDurationPkg) { otherDurationPkg.disabled = true; otherDurationPkg.style.background = '#f1f5f9'; }
+                                        if (otherDurationPkg) { otherDurationPkg.disabled = true; otherDurationPkg.style.background = '#f1f5f9'; otherDurationPkg.value = ''; }
                                         const otherDurationCtr = otherTr.querySelector('.row-tg-hopdong');
-                                        if (otherDurationCtr) { otherDurationCtr.disabled = true; otherDurationCtr.style.background = '#f1f5f9'; }
+                                        if (otherDurationCtr) { otherDurationCtr.disabled = true; otherDurationCtr.style.background = '#f1f5f9'; otherDurationCtr.value = ''; }
                                     }
                                 });
 
-                                // Enable winning inputs on this row
+                                // Enable winning inputs on this row and populate defaults
                                 const inpGia = tr.querySelector('.row-gia-trung');
-                                if (inpGia) { inpGia.disabled = false; inpGia.style.background = ''; }
+                                if (inpGia) { 
+                                    inpGia.disabled = false; 
+                                    inpGia.style.background = ''; 
+                                    inpGia.value = tr.getAttribute('data-default-price') || '';
+                                }
                                 const inpDurationPkg = tr.querySelector('.row-tg-goithau');
-                                if (inpDurationPkg) { inpDurationPkg.disabled = false; inpDurationPkg.style.background = ''; }
+                                if (inpDurationPkg) { 
+                                    inpDurationPkg.disabled = false; 
+                                    inpDurationPkg.style.background = ''; 
+                                    inpDurationPkg.value = tr.getAttribute('data-default-duration-pkg') || '';
+                                }
                                 const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
-                                if (inpDurationCtr) { inpDurationCtr.disabled = false; inpDurationCtr.style.background = ''; }
+                                if (inpDurationCtr) { 
+                                    inpDurationCtr.disabled = false; 
+                                    inpDurationCtr.style.background = ''; 
+                                    inpDurationCtr.value = tr.getAttribute('data-default-duration-ctr') || '';
+                                }
 
                                 // Disable failure reason input on this row
                                 const inpLyDo = tr.querySelector('.row-ly-do-truot');
                                 if (inpLyDo) { inpLyDo.disabled = true; inpLyDo.style.background = '#f1f5f9'; inpLyDo.value = ''; }
                             } else {
-                                // Enable failure reason, disable winning inputs on this row
+                                // Enable failure reason, disable and clear winning inputs on this row
                                 const inpGia = tr.querySelector('.row-gia-trung');
-                                if (inpGia) { inpGia.disabled = true; inpGia.style.background = '#f1f5f9'; }
+                                if (inpGia) { inpGia.disabled = true; inpGia.style.background = '#f1f5f9'; inpGia.value = ''; }
                                 const inpDurationPkg = tr.querySelector('.row-tg-goithau');
-                                if (inpDurationPkg) { inpDurationPkg.disabled = true; inpDurationPkg.style.background = '#f1f5f9'; }
+                                if (inpDurationPkg) { inpDurationPkg.disabled = true; inpDurationPkg.style.background = '#f1f5f9'; inpDurationPkg.value = ''; }
                                 const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
-                                if (inpDurationCtr) { inpDurationCtr.disabled = true; inpDurationCtr.style.background = '#f1f5f9'; }
+                                if (inpDurationCtr) { inpDurationCtr.disabled = true; inpDurationCtr.style.background = '#f1f5f9'; inpDurationCtr.value = ''; }
 
                                 const inpLyDo = tr.querySelector('.row-ly-do-truot');
                                 if (inpLyDo) {
                                     inpLyDo.disabled = false;
                                     inpLyDo.style.background = '';
-                                    inpLyDo.value = 'Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau';
+                                    inpLyDo.value = tr.getAttribute('data-default-reason') || 'Nhà thầu xếp hạng 1 trúng thầu';
                                 }
                             }
                         });
@@ -1447,32 +1736,24 @@ export function showPackageDetails(id) {
                             }
                         });
 
-                        // Identify winner row if any
-                        let winnerTr = null;
+                        // Identify winner rows
+                        const winnerRows = [];
                         tbodyApprove.querySelectorAll('tr').forEach(tr => {
                             const status = tr.querySelector('.row-status-select')?.value;
                             if (status === 'trung') {
-                                winnerTr = tr;
+                                winnerRows.push(tr);
                             }
                         });
 
-                        let winnerIdStr = 'none';
-                        let finalPrice = 0;
-                        let durPkg = '';
-                        let durCtr = '';
+                        winnerRows.forEach(wTr => {
+                            const finalPriceRaw = wTr.querySelector('.row-gia-trung')?.value || '';
+                            const durPkg = wTr.querySelector('.row-tg-goithau')?.value.trim() || '';
+                            const durCtr = wTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
 
-                        if (winnerTr) {
-                            winnerIdStr = winnerTr.getAttribute('data-nt-id');
-                            const finalPriceRaw = winnerTr.querySelector('.row-gia-trung')?.value || '';
-                            finalPrice = this.model.parseVND(finalPriceRaw);
-                            durPkg = winnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
-                            durCtr = winnerTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
-
-                            // Validate winner row inputs
                             const rowInputs = [
-                                { el: winnerTr.querySelector('.row-gia-trung'), val: finalPriceRaw },
-                                { el: winnerTr.querySelector('.row-tg-goithau'), val: durPkg },
-                                { el: winnerTr.querySelector('.row-tg-hopdong'), val: durCtr }
+                                { el: wTr.querySelector('.row-gia-trung'), val: finalPriceRaw },
+                                { el: wTr.querySelector('.row-tg-goithau'), val: durPkg },
+                                { el: wTr.querySelector('.row-tg-hopdong'), val: durCtr }
                             ];
 
                             rowInputs.forEach(f => {
@@ -1488,7 +1769,7 @@ export function showPackageDetails(id) {
                                     }
                                 }
                             });
-                        }
+                        });
 
                         if (hasError) {
                             if (errorInputs.length > 0) {
@@ -1513,13 +1794,58 @@ export function showPackageDetails(id) {
                             }
                         });
 
-                        gt.nhaThauTrungThauId = winnerIdStr === 'none' ? '' : (isNaN(winnerIdStr) ? winnerIdStr : parseInt(winnerIdStr));
-                        gt.giaTrungThau = finalPrice;
+                        let hasWinner = winnerRows.length > 0;
+                        let winnerIdStr = 'none';
+                        if (gt.phanLo === 'Có') {
+                            const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
+                            plList.forEach(pl => {
+                                const lotWinnerTr = winnerRows.find(tr => tr.cells[0]?.textContent.trim() === pl.maPhanLo);
+                                if (lotWinnerTr) {
+                                    const wId = lotWinnerTr.getAttribute('data-nt-id');
+                                    pl.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
+                                    pl.giaTrungThau = this.model.parseVND(lotWinnerTr.querySelector('.row-gia-trung')?.value || '0');
+                                    pl.thoiGianGoiThau = lotWinnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
+                                    pl.thoiGianHopDong = lotWinnerTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
+                                } else {
+                                    pl.nhaThauTrungThauId = '';
+                                    pl.giaTrungThau = 0;
+                                    pl.thoiGianGoiThau = '';
+                                    pl.thoiGianHopDong = '';
+                                }
+                            });
+                            gt.phanLoList = plList;
+
+                            const firstWinner = winnerRows[0];
+                            if (firstWinner) {
+                                const wId = firstWinner.getAttribute('data-nt-id');
+                                gt.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
+                                gt.giaTrungThau = winnerRows.reduce((sum, tr) => sum + this.model.parseVND(tr.querySelector('.row-gia-trung')?.value || '0'), 0);
+                                winnerIdStr = wId || 'none';
+                            } else {
+                                gt.nhaThauTrungThauId = '';
+                                gt.giaTrungThau = 0;
+                            }
+                            gt.thoiGianGoiThau = '';
+                            gt.thoiGianHopDong = '';
+                        } else {
+                            const winnerTr = winnerRows[0];
+                            let finalPrice = 0;
+                            let durPkg = '';
+                            let durCtr = '';
+                            if (winnerTr) {
+                                winnerIdStr = winnerTr.getAttribute('data-nt-id');
+                                finalPrice = this.model.parseVND(winnerTr.querySelector('.row-gia-trung')?.value || '0');
+                                durPkg = winnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
+                                durCtr = winnerTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
+                            }
+                            gt.nhaThauTrungThauId = winnerIdStr === 'none' ? '' : (isNaN(winnerIdStr) ? winnerIdStr : parseInt(winnerIdStr));
+                            gt.giaTrungThau = finalPrice;
+                            gt.thoiGianGoiThau = winnerIdStr === 'none' ? '' : durPkg;
+                            gt.thoiGianHopDong = winnerIdStr === 'none' ? '' : durCtr;
+                        }
                         gt.soQuyetDinhKetQua = decNo;
                         gt.ngayQuyetDinhKetQua = decDate;
-                        gt.thoiGianGoiThau = winnerIdStr === 'none' ? '' : durPkg;
-                        gt.thoiGianHopDong = winnerIdStr === 'none' ? '' : durCtr;
-                        gt.trangThai = winnerIdStr === 'none' ? 'Hủy thầu' : 'Đã có kết quả';
+                        gt.trangThai = hasWinner ? 'Đã có kết quả' : 'Hủy thầu';
 
                         this.model.persistData('goithau');
                         this.model.persistData('thongtinmothau');
@@ -1983,3 +2309,101 @@ export function renderExcelPreview(rows, importType) {
     previewContainer.style.display = 'block';
     lucide.createIcons();
 }
+
+window.showLotWinnersModal = (packageId) => {
+    const winners = window._lotWinnersMap ? window._lotWinnersMap[packageId] : null;
+    if (!winners || winners.length === 0) return;
+
+    // Sort by maPhanLo A-Z
+    const sortedWinners = [...winners].sort((a, b) => {
+        const codeA = String(a.maPhanLo || '').toLowerCase();
+        const codeB = String(b.maPhanLo || '').toLowerCase();
+        return codeA.localeCompare(codeB, 'vi', { numeric: true });
+    });
+
+    const modalId = 'modal-lot-winners-view';
+    let modal = document.getElementById(modalId);
+    if (modal) modal.remove();
+
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'modal-overlay active';
+    modal.style.zIndex = '2000';
+
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.style.maxWidth = '680px';
+    card.style.width = '95%';
+    card.style.margin = '20px auto';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    header.innerHTML = `
+        <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--primary);">Danh sách nhà thầu trúng thầu phân lô</h3>
+        <button class="modal-close" id="btn-close-lot-winners-view">&times;</button>
+    `;
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+    body.style.padding = '20px';
+
+    const tableRows = sortedWinners.map((w, index) => {
+        const displayPrice = window.appController?.model?.formatCurrency(w.giaTrungThau) || (w.giaTrungThau.toLocaleString('vi-VN') + ' VND');
+        let contractorHtml = '';
+        if (w.isJV && w.jvData) {
+            const jvKey = `${packageId}_lot_${index}`;
+            window._jvDataMap[jvKey] = w.jvData;
+            contractorHtml = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${jvKey}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${w.tenNhaThau}</a>`;
+        } else {
+            contractorHtml = `<span class="fw-bold">${w.tenNhaThau}</span>`;
+        }
+        return `
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border-color); font-weight: bold; color: var(--primary);">${w.maPhanLo}</td>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">${w.tenPhanLo || '--'}</td>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">${contractorHtml}</td>
+                <td style="padding: 10px; border-bottom: 1px solid var(--border-color); text-align: right; color: var(--success); font-weight: bold;">${displayPrice}</td>
+            </tr>
+        `;
+    }).join('');
+
+    body.innerHTML = `
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+            <table class="table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: var(--bg-app); border-bottom: 2px solid var(--border-color);">
+                        <th style="padding: 10px; text-align: left; font-weight: 700;">Mã phần lô</th>
+                        <th style="padding: 10px; text-align: left; font-weight: 700;">Tên phần lô</th>
+                        <th style="padding: 10px; text-align: left; font-weight: 700;">Nhà thầu trúng thầu</th>
+                        <th style="padding: 10px; text-align: right; font-weight: 700;">Giá trúng thầu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRows}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+    footer.style.justifyContent = 'flex-end';
+    footer.innerHTML = `
+        <button class="btn btn-primary" id="btn-close-lot-winners-ok">Đóng</button>
+    `;
+
+    card.appendChild(header);
+    card.appendChild(body);
+    card.appendChild(footer);
+    modal.appendChild(card);
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        setTimeout(() => modal.remove(), 200);
+    };
+
+    document.getElementById('btn-close-lot-winners-view').onclick = closeModal;
+    document.getElementById('btn-close-lot-winners-ok').onclick = closeModal;
+};
+

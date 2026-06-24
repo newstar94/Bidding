@@ -399,7 +399,7 @@ export class BiddingController {
         window.addBreakdownRow = (type) => this.addBreakdownRow(type);
         window.removeBreakdownRow = (btn, type) => this.removeBreakdownRow(btn, type);
 
-        window.editGoiThau = (id) => this.editGoiThau(id);
+        window.editGoiThau = (id, isReadOnly = false) => this.editGoiThau(id, isReadOnly);
         window.deleteGoiThau = (id) => this.deleteGoiThau(id);
         window.addGiaHanRow = (data) => this.addGiaHanRow(data);
         window.validateGiaHanRealtime = () => this.validateGiaHanRealtime();
@@ -1618,7 +1618,7 @@ export class BiddingController {
             });
     }
 
-    updatePackageFieldsVisibility() {
+    updatePackageFieldsVisibility(isReadOnly = false) {
         const trangThai = document.getElementById('gt-trangthai')?.value;
         const formGoiThau = document.getElementById('form-goithau');
         const originalStatus = formGoiThau?.getAttribute('data-original-status') || '';
@@ -1664,7 +1664,7 @@ export class BiddingController {
             'gt-thoigianbatdautochuc'
         ];
 
-        const isLocked = originalIdx >= 1; // Transitioned to Đang mời thầu or later
+        const isLocked = isReadOnly ? false : (originalIdx >= 1); // Transitioned to Đang mời thầu or later
         lockedFields.forEach(id => {
             const input = document.getElementById(id);
             if (!input) return;
@@ -1760,7 +1760,10 @@ export class BiddingController {
 
         const giaHanContainer = document.getElementById('gt-giahan-container');
         if (giaHanContainer) {
-            giaHanContainer.style.display = trangThai === 'Đang mời thầu' ? 'flex' : 'none';
+            const goiThauId = document.getElementById('form-goithau-id')?.value;
+            const gt = goiThauId ? this.model.state.goithau.find(g => String(g.id) === String(goiThauId)) : null;
+            const hasGiaHanData = gt && gt.giaHanList && ((typeof gt.giaHanList === 'string' ? JSON.parse(gt.giaHanList) : gt.giaHanList).length > 0);
+            giaHanContainer.style.display = (trangThai === 'Đang mời thầu' || (isReadOnly && hasGiaHanData)) ? 'flex' : 'none';
         }
 
         const yeuCauLamRoContainer = document.getElementById('gt-yeucaulamro-container');
@@ -1802,7 +1805,13 @@ export class BiddingController {
             });
         } else {
             if (containerBaoDam) containerBaoDam.style.display = 'flex';
-            if (containerHlBaoDam) containerHlBaoDam.style.display = 'flex';
+            if (containerHlBaoDam) {
+                if (trangThai === 'Chuẩn bị') {
+                    containerHlBaoDam.style.display = 'none';
+                } else {
+                    containerHlBaoDam.style.display = 'flex';
+                }
+            }
 
             const isMoiThauOrLater = (trangThai !== 'Chuẩn bị');
             if (mainBaoDamInput) {
@@ -1862,9 +1871,8 @@ export class BiddingController {
 
     recalculateTotalLotSecurities() {
         const phanLo = document.getElementById('gt-phanlo')?.value;
-        const trangThai = document.getElementById('gt-trangthai')?.value;
         const linhVuc = document.getElementById('gt-linhvuc')?.value;
-        if (phanLo === 'Có' && linhVuc !== 'Tư vấn' && trangThai !== 'Chuẩn bị') {
+        if (phanLo === 'Có' && linhVuc !== 'Tư vấn') {
             let sum = 0;
             document.querySelectorAll('#phanlo-tbody tr').forEach(tr => {
                 const baodamInput = tr.querySelector('.pl-baodam-input');
@@ -1931,7 +1939,15 @@ export class BiddingController {
                     return;
                 }
 
-                const nhathauOptions = this.model.state.nhathau.map(n => `<option value="${n.id}">${n.tenNhaThau}</option>`).join('');
+                const goiThauId = document.getElementById('form-goithau-id')?.value;
+                let filteredBids = [];
+                if (goiThauId) {
+                    filteredBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(goiThauId));
+                }
+
+                const nhathauOptions = filteredBids.length > 0
+                    ? filteredBids.map(b => `<option value="${b.nhaThauId}">${b.tenNhaThau}</option>`).join('')
+                    : this.model.state.nhathau.map(n => `<option value="${n.id}">${n.tenNhaThau}</option>`).join('');
 
                 phanLoList.forEach((pl) => {
                     const row = document.createElement('tr');

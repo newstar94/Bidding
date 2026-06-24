@@ -778,7 +778,7 @@ async def export_ketquaqd_template_api(request):
             if is_winner:
                 row_data = [ma_nt, ten_nt, 'Trúng thầu', '', gia_trung, tg_goithau, tg_hopdong]
             else:
-                row_data = [ma_nt, ten_nt, 'Trượt thầu', ly_do or 'Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau', '', '', '']
+                row_data = [ma_nt, ten_nt, 'Trượt thầu', ly_do or 'Nhà thầu xếp hạng 1 trúng thầu', '', '', '']
                 
             ws.append(row_data)
             ws.row_dimensions[row_num].height = 22

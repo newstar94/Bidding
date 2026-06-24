@@ -1177,8 +1177,8 @@ a:hover {
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    width: 100%;
-    max-width: 580px;
+    width: 68vw !important;
+    max-width: 68vw !important;
     box-shadow: var(--shadow-lg);
     transform: scale(0.92);
     transition: transform var(--transition-normal);
@@ -1192,6 +1192,8 @@ a:hover {
 #modal-custom-dialog .modal-card {
     overflow: visible !important;
     max-height: 95vh;
+    width: 480px !important;
+    max-width: 480px !important;
 }
 
 /* Allow overflow for HSMT release modal so flatpickr is not clipped */

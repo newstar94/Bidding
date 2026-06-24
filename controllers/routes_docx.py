@@ -406,7 +406,7 @@ async def export_report_api(request):
                             else:
                                 ly_do = "Không đạt đánh giá chi tiết"
                         else:
-                            ly_do = "Đạt yêu cầu kỹ thuật nhưng giá dự thầu xếp sau"
+                            ly_do = "Nhà thầu xếp hạng 1 trúng thầu"
                     
                     if pkg.get('phan_lo') == 'Có' and (bid.get('ten_phan_lo') or bid.get('ma_phan_lo')):
                         ten_lo = bid.get('ten_phan_lo') or bid.get('ma_phan_lo')

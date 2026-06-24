@@ -1053,8 +1053,8 @@ export function getJointVentureMemberHTML(cardId, memberData = null) {
                 <span class="error-text">Vui lòng nhập số điện thoại</span>
             </div>
             <div class="form-group col-span-2" style="margin-bottom: 12px;">
-                <label>Email <span class="required">*</span></label>
-                <input type="email" class="nt-member-email" required placeholder="contact@nhathau.com" value="${memberData ? memberData.email : ''}">
+                <label>Email</label>
+                <input type="email" class="nt-member-email" placeholder="contact@nhathau.com" value="${memberData ? memberData.email : ''}">
                 <span class="error-text">Vui lòng nhập email hợp lệ</span>
             </div>
             <div class="form-group col-span-2" style="margin-bottom: 12px;">
