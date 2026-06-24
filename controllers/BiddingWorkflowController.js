@@ -883,7 +883,7 @@ export function editGoiThau(id) {
                 });
             }
 
-            cb.addEventListener('click', (e) => {
+            cb.addEventListener('change', (e) => {
                 const newChecked = cb.checked;
                 const expertId = cb.value;
                 const roleSelect = row.querySelector(`select[name="${roleName}"]`);
@@ -2544,7 +2544,7 @@ export function addPhanLoRow(data = {}) {
     const isMoiThauOrLater = (document.getElementById('gt-trangthai')?.value !== 'Chuẩn bị');
     const linhVuc = document.getElementById('gt-linhvuc')?.value || '';
     const isBaoDamRequired = isMoiThauOrLater && (linhVuc !== 'Tư vấn');
-    const displayStyle = isBaoDamRequired ? '' : 'display: none;';
+    const displayStyle = (linhVuc !== 'Tư vấn') ? '' : 'display: none;';
     const requiredAttr = isBaoDamRequired ? 'required' : '';
 
     tr.innerHTML = `

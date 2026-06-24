@@ -115,6 +115,8 @@ ENTITY_SCHEMA = {
         {'field': 'diaChi',               'label': 'Địa chỉ',                    'aliases': ['Địa chỉ', 'diaChi']},
         {'field': 'soTaiKhoan',           'label': 'Số tài khoản',               'aliases': ['Số tài khoản', 'soTaiKhoan']},
         {'field': 'noiMoTaiKhoan',        'label': 'Nơi mở tài khoản',            'aliases': ['Nơi mở tài khoản', 'noiMoTaiKhoan']},
+        {'field': 'thanhVienLienDanh',    'label': 'Thành viên liên danh',        'aliases': ['Thành viên liên danh', 'thanhVienLienDanh']},
+        {'field': 'maNganHang',           'label': 'Mã ngân hàng',                'aliases': ['Mã ngân hàng', 'maNganHang']},
     ],
     'chuyengia': [
         {'field': 'hoTen',                'label': 'Họ tên',                     'aliases': ['Họ tên', 'Họ và tên', 'hoTen']},
@@ -124,6 +126,7 @@ ENTITY_SCHEMA = {
         {'field': 'soChungChi',           'label': 'Số chứng chỉ',               'aliases': ['Số chứng chỉ', 'Số chứng chỉ đấu thầu', 'soChungChi']},
         {'field': 'ngayCapChungChi',      'label': 'Ngày cấp chứng chỉ',         'aliases': ['Ngày cấp', 'Ngày cấp chứng chỉ', 'ngayCapChungChi']},
         {'field': 'donViCapChungChi',     'label': 'Đơn vị cấp chứng chỉ',       'aliases': ['Đơn vị cấp', 'Đơn vị cấp chứng chỉ', 'donViCapChungChi']},
+        {'field': 'anhChungChi',          'label': 'Ảnh chứng chỉ (Base64)',      'aliases': ['Ảnh chứng chỉ', 'anhChungChi']},
     ],
     'hopdong': [
         {'field': 'soHopDong',            'label': 'Số hợp đồng',                'aliases': ['Số hợp đồng', 'soHopDong']},
@@ -138,13 +141,15 @@ ENTITY_SCHEMA = {
         {'field': 'goiThauIds',           'label': 'Gói thầu liên kết',            'aliases': ['Gói thầu liên kết', 'Gói thầu', 'goiThauIds']},
     ],
     'phanlo': [
+        {'field': 'maPhanLo',             'label': 'Mã phần lô',                 'aliases': ['Mã phần lô', 'maPhanLo']},
         {'field': 'tenPhanLo',            'label': 'Tên phần lô',                'aliases': ['Tên phần lô', 'Tên phân lô', 'tenPhanLo', 'Tên']},
         {'field': 'giaTriPhanLo',         'label': 'Giá trị phần lô',             'aliases': ['Giá trị phần lô', 'Giá trị phân lô', 'Giá trị', 'giaTriPhanLo']},
+        {'field': 'baoDamDuThau',         'label': 'Bảo đảm dự thầu',             'aliases': ['Bảo đảm dự thầu', 'baoDamDuThau']},
         {'field': 'thoiGianThucHien',     'label': 'Thời gian thực hiện',          'aliases': ['Thời gian thực hiện', 'Thời gian', 'thoiGianThucHien']},
     ],
     'tuychonmuathem': [
         {'field': 'hangMuc',              'label': 'Hạng mục',                   'aliases': ['Hạng mục', 'Tên hạng mục', 'hangMuc']},
-        {'field': 'donVi',                'label': 'Don vị',                    'aliases': ['Đơn vị', 'Đơn vị tính', 'ĐVT', 'donVi']},
+        {'field': 'donVi',                'label': 'Đơn vị',                     'aliases': ['Đơn vị', 'Đơn vị tính', 'ĐVT', 'donVi']},
         {'field': 'soLuong',              'label': 'Khối lượng / Số lượng',       'aliases': ['Khối lượng/ Số lượng', 'Khối lượng', 'Số lượng', 'soLuong', 'khoiLuong']},
         {'field': 'tyLe',                 'label': 'Tỷ lệ phần trăm (%)',         'aliases': ['Tỷ lệ phần trăm (%)', 'Tỷ lệ phần trăm', 'Tỷ lệ (%)', 'Tỷ lệ', 'tyLe', 'phanTram']},
         {'field': 'giaTriUocTinh',        'label': 'Giá trị ước tính',           'aliases': ['Giá trị ước tính', 'Giá trị', 'giaTriUocTinh']},
@@ -208,7 +213,12 @@ async def import_excel_api(request):
         first_col = [str(x).strip().lower() for x in df_raw.iloc[:, 0].dropna()]
         vertical_matches = sum(1 for v in first_col if v in all_possible_headers)
         
-        if vertical_matches >= 3 or (df_raw.shape[1] >= 2 and vertical_matches >= 1):
+        first_row = [str(x).strip().lower() for x in df_raw.iloc[0, :].dropna()]
+        horizontal_matches = sum(1 for h in first_row if h in all_possible_headers)
+        
+        is_vertical = vertical_matches > horizontal_matches and vertical_matches >= 2
+        
+        if is_vertical:
             headers = [str(x).strip() for x in df_raw.iloc[:, 0]]
             records = []
             for col_idx in range(1, df_raw.shape[1]):
@@ -267,14 +277,14 @@ async def import_excel_api(request):
                     
                 if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau']:
                     val = clean_money(val)
-                elif key in ['thoiGianThucHien']:
-                    val = clean_int(val)
                 elif key in ['soLuong', 'tyLe']:
                     try:
                         val = float(str(val).strip()) if val != "" else 0.0
                     except ValueError:
                         val = 0.0
                 else:
+                    if isinstance(val, float) and val.is_integer():
+                        val = int(val)
                     val = str(val).strip()
                     
                 item[key] = val
@@ -365,74 +375,49 @@ async def export_excel_template_api(request):
         border_side = Side(border_style="thin", color="D9D9D9")
         thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
 
-        is_vertical = len(cols) > 5
+        # Luôn sử dụng định dạng nằm ngang (hàng đại diện cho bản ghi, cột đại diện cho trường thông tin)
+        ws.append(cols)
+        ws.row_dimensions[1].height = 28
+        for col_idx in range(1, len(cols) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
 
-        if is_vertical:
-            for idx, col_name in enumerate(cols, start=1):
-                ws.row_dimensions[idx].height = 24
-                cell_a = ws.cell(row=idx, column=1, value=col_name)
-                
-                cell_a.font = Font(name="Calibri", size=11, bold=True)
-                cell_a.alignment = left_align
-                cell_a.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-                cell_a.border = thin_border
-                
-                for col_idx in range(2, 12):
-                    cell_data = ws.cell(row=idx, column=col_idx)
-                    cell_data.border = thin_border
+        money_fields = ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'damBaoDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao', 'baoDamDuThau']
+        
+        for col_idx in range(1, len(cols) + 1):
+            col_name = cols[col_idx - 1]
+            field_name = next((entry['field'] for entry in ENTITY_SCHEMA.get(import_type, []) if entry['label'] == col_name), None)
+            is_money = field_name in money_fields
+            
+            for row_idx in range(2, 101):
+                ws.row_dimensions[row_idx].height = 24
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.border = thin_border
+                if is_money:
+                    cell.number_format = '#,##0'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
 
-                options = options_map.get(col_name)
-                if options:
-                    dv = DataValidation(type="list", formula1=options_ranges[col_name], allow_blank=True)
-                    dv.error = 'Dữ liệu chọn không hợp lệ. Vui lòng chọn giá trị từ danh sách!'
-                    dv.errorTitle = 'Lỗi nhập liệu'
-                    dv.prompt = 'Chọn một giá trị trong danh sách'
-                    dv.promptTitle = col_name
-                    dv.errorStyle = "stop"
-                    dv.showErrorMessage = True
-                    dv.showInputMessage = True
-                    ws.add_data_validation(dv)
-                    for col_idx in range(2, 12):
-                        dv.add(ws.cell(row=idx, column=col_idx))
-
-            max_len_a = max(len(str(cell.value or '')) for cell in ws['A'])
-            ws.column_dimensions['A'].width = max(max_len_a + 5, 25)
-            for col_idx in range(2, 12):
+            options = options_map.get(col_name)
+            if options:
                 col_letter = get_column_letter(col_idx)
-                ws.column_dimensions[col_letter].width = 18
-        else:
-            ws.append(cols)
-            ws.row_dimensions[1].height = 28
-            for col_idx in range(1, len(cols) + 1):
-                cell = ws.cell(row=1, column=col_idx)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = center_align
-                cell.border = thin_border
+                dv = DataValidation(type="list", formula1=options_ranges[col_name], allow_blank=True)
+                dv.error = 'Dữ liệu chọn không hợp lệ. Vui lòng chọn giá trị từ danh sách!'
+                dv.errorTitle = 'Lỗi nhập liệu'
+                dv.prompt = 'Chọn một giá trị trong danh sách'
+                dv.promptTitle = col_name
+                dv.errorStyle = "stop"
+                dv.showErrorMessage = True
+                dv.showInputMessage = True
+                ws.add_data_validation(dv)
+                dv.add(f"{col_letter}2:{col_letter}100")
 
-            ws.row_dimensions[2].height = 24
-            for col_idx in range(1, len(cols) + 1):
-                cell = ws.cell(row=2, column=col_idx)
-                cell.border = thin_border
-                col_name = cols[col_idx - 1]
-                options = options_map.get(col_name)
-                if options:
-                    col_letter = get_column_letter(col_idx)
-                    dv = DataValidation(type="list", formula1=options_ranges[col_name], allow_blank=True)
-                    dv.error = 'Dữ liệu chọn không hợp lệ. Vui lòng chọn giá trị từ danh sách!'
-                    dv.errorTitle = 'Lỗi nhập liệu'
-                    dv.prompt = 'Chọn một giá trị trong danh sách'
-                    dv.promptTitle = col_name
-                    dv.errorStyle = "stop"
-                    dv.showErrorMessage = True
-                    dv.showInputMessage = True
-                    ws.add_data_validation(dv)
-                    dv.add(f"{col_letter}2:{col_letter}100")
-
-            for col in ws.columns:
-                max_len = max(len(str(cell.value or '')) for cell in col)
-                col_letter = get_column_letter(col[0].column)
-                ws.column_dimensions[col_letter].width = max(max_len + 5, 15)
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 5, 15)
 
         out_stream = BytesIO()
         wb.save(out_stream)
@@ -514,11 +499,18 @@ async def export_mothau_template_api(request):
             cell.alignment = center_align
             cell.border = thin_border
 
-        ws.row_dimensions[2].height = 24
         for col_idx in range(1, len(headers) + 1):
-            cell = ws.cell(row=2, column=col_idx)
-            cell.border = thin_border
             col_name = headers[col_idx - 1]
+            is_money = any(x in col_name.lower() for x in ['vnd', 'vnđ', 'giá', 'đảm bảo', 'đb'])
+            
+            for row_idx in range(2, 101):
+                ws.row_dimensions[row_idx].height = 24
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.border = thin_border
+                if is_money:
+                    cell.number_format = '#,##0'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+
             options = options_map.get(col_name)
             if options:
                 col_letter = get_column_letter(col_idx)
@@ -659,7 +651,13 @@ async def export_danhgiahsdt_template_api(request):
             ws.append(row_data)
             ws.row_dimensions[row_num].height = 22
             for col_idx in range(1, len(headers) + 1):
-                ws.cell(row=row_num, column=col_idx).border = thin_border
+                col_name = headers[col_idx - 1]
+                is_money = any(x in col_name.lower() for x in ['vnd', 'vnđ', 'giá', 'đảm bảo', 'đb'])
+                cell = ws.cell(row=row_num, column=col_idx)
+                cell.border = thin_border
+                if is_money:
+                    cell.number_format = '#,##0'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
             row_num += 1
             
         for col_idx, h in enumerate(headers, start=1):
@@ -785,7 +783,13 @@ async def export_ketquaqd_template_api(request):
             ws.append(row_data)
             ws.row_dimensions[row_num].height = 22
             for col_idx in range(1, len(headers) + 1):
-                ws.cell(row=row_num, column=col_idx).border = thin_border
+                col_name = headers[col_idx - 1]
+                is_money = any(x in col_name.lower() for x in ['vnd', 'vnđ', 'giá', 'đảm bảo', 'đb'])
+                cell = ws.cell(row=row_num, column=col_idx)
+                cell.border = thin_border
+                if is_money:
+                    cell.number_format = '#,##0'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
             row_num += 1
             
         dv = DataValidation(type="list", formula1='"Trúng thầu,Trượt thầu"', allow_blank=True)
