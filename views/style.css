@@ -4188,6 +4188,39 @@ body.dark-mode .sort-icon-btn:hover {
     color: var(--primary);
 }
 
+/* Excel Import/Export Unified Action Buttons */
+.btn-excel-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #1e293b;
+    background-color: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+body.dark-mode .btn-excel-action {
+    color: #e2e8f0;
+    background-color: #1e293b;
+    border: 1px dashed #475569;
+}
+
+.btn-excel-action:hover {
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+body.dark-mode .btn-excel-action:hover {
+    background-color: #334155;
+    border-color: #64748b;
+}
+
 
 
 

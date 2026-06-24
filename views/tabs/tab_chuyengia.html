@@ -7,13 +7,17 @@
                                 <input type="text" placeholder="Tìm kiếm chuyên gia..." id="search-chuyengia">
                             </div>
                         </div>
-                        <button class="btn btn-outline btn-import-excel" data-type="chuyengia"
-                            style="margin-left: 8px;">
-                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
-                        </button>
-                        <button class="btn btn-primary" id="btn-add-chuyengia">
-                            <i data-lucide="plus"></i> Thêm Chuyên gia
-                        </button>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn-excel-action btn-download-excel-template-direct" data-type="chuyengia">
+                                <i data-lucide="download"></i> Tải Excel Mẫu
+                            </button>
+                            <button class="btn-excel-action btn-import-excel-direct" data-type="chuyengia">
+                                <i data-lucide="upload"></i> Nhập từ Excel
+                            </button>
+                            <button class="btn btn-primary" id="btn-add-chuyengia">
+                                <i data-lucide="plus"></i> Thêm Chuyên gia
+                            </button>
+                        </div>
                     </div>
 
                     <div class="table-container">

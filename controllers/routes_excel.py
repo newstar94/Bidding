@@ -143,8 +143,8 @@ ENTITY_SCHEMA = {
     'phanlo': [
         {'field': 'maPhanLo',             'label': 'Mã phần lô',                 'aliases': ['Mã phần lô', 'maPhanLo']},
         {'field': 'tenPhanLo',            'label': 'Tên phần lô',                'aliases': ['Tên phần lô', 'Tên phân lô', 'tenPhanLo', 'Tên']},
-        {'field': 'giaTriPhanLo',         'label': 'Giá trị phần lô',             'aliases': ['Giá trị phần lô', 'Giá trị phân lô', 'Giá trị', 'giaTriPhanLo']},
-        {'field': 'baoDamDuThau',         'label': 'Bảo đảm dự thầu',             'aliases': ['Bảo đảm dự thầu', 'baoDamDuThau']},
+        {'field': 'giaTriPhanLo',         'label': 'Giá trị phần lô',             'aliases': ['Giá trị phần lô (VNĐ)', 'Giá trị phân lô (VNĐ)', 'Giá trị phần lô (VND)', 'Giá trị phân lô (VND)', 'Giá trị phần lô', 'Giá trị phân lô', 'Giá trị', 'giaTriPhanLo']},
+        {'field': 'baoDamDuThau',         'label': 'Bảo đảm dự thầu',             'aliases': ['Bảo đảm dự thầu (VNĐ)', 'Bảo đảm dự thầu (VND)', 'Bảo đảm dự thầu', 'baoDamDuThau']},
         {'field': 'thoiGianThucHien',     'label': 'Thời gian thực hiện',          'aliases': ['Thời gian thực hiện', 'Thời gian', 'thoiGianThucHien']},
     ],
     'tuychonmuathem': [
@@ -275,7 +275,7 @@ async def import_excel_api(request):
                 if pd.isna(val):
                     val = ""
                     
-                if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau']:
+                if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'baoDamDuThau', 'damBaoDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao']:
                     val = clean_money(val)
                 elif key in ['soLuong', 'tyLe']:
                     try:
@@ -543,6 +543,120 @@ async def export_mothau_template_api(request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+async def export_opening_fin_template_api(request):
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        org_name = get_active_org(request, role_or_err.user_id)
+
+        package_id = request.query_params.get('package_id', '')
+        package_name = request.query_params.get('package_name', 'GoiThau')
+        
+        if not package_id:
+            return JSONResponse({"error": "Missing package_id parameter"}, status_code=400)
+
+        pkg_id_clean = clean_id(package_id)
+        if not pkg_id_clean:
+            return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
+
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT ma_dinh_danh, ten_nha_thau, gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia,
+                   hieu_luc_hsdt, thoi_gian_thuc_hien,
+                   danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat, danh_gia_ket_luan
+            FROM thong_tin_mo_thau
+            WHERE goi_thau_id = ? AND owner_id = ?
+        """, (pkg_id_clean, org_name))
+        bids = cursor.fetchall()
+        conn.close()
+        
+        qualified_bids = []
+        for b in bids:
+            danh_gia_hop_le = b[7]
+            danh_gia_nang_luc = b[8]
+            danh_gia_ky_thuat = b[9]
+            danh_gia_ket_luan = b[10]
+            
+            is_qualified = False
+            if danh_gia_ket_luan:
+                is_qualified = (danh_gia_ket_luan == 'Đạt')
+            else:
+                is_qualified = (danh_gia_hop_le == 'Đạt' and danh_gia_nang_luc == 'Đạt' and danh_gia_ky_thuat != 'Không đạt' and danh_gia_ky_thuat != '')
+                
+            if is_qualified:
+                qualified_bids.append(b)
+
+        headers = ['Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VNĐ)', 'Tỷ lệ %', 'Hiệu lực HSDT', 'Thời gian thực hiện']
+        
+        from io import BytesIO
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "MoHSĐXTC"
+        
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center")
+        border_side = Side(border_style="thin", color="D9D9D9")
+        thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+        
+        ws.append(headers)
+        ws.row_dimensions[1].height = 28
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+            
+        row_num = 2
+        for b in qualified_bids:
+            row_data = [
+                b[0] or '',
+                b[1] or '',
+                b[2] or '',
+                b[3] or 0.0,
+                f"{b[5]} ngày" if b[5] else '',
+                b[6] or ''
+            ]
+            ws.append(row_data)
+            ws.row_dimensions[row_num].height = 22
+            for col_idx in range(1, len(headers) + 1):
+                col_name = headers[col_idx - 1]
+                cell = ws.cell(row=row_num, column=col_idx)
+                cell.border = thin_border
+                if col_name == 'Giá dự thầu (VNĐ)':
+                    cell.number_format = '#,##0'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                elif col_name == 'Tỷ lệ %':
+                    cell.number_format = '0.00'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+            row_num += 1
+            
+        from openpyxl.utils import get_column_letter
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 5, 15)
+            
+        out_stream = BytesIO()
+        wb.save(out_stream)
+        out_stream.seek(0)
+        filename = f"Mo_Tai_Chinh_{package_name}.xlsx"
+        
+        return StreamingResponse(
+            out_stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 async def export_danhgiahsdt_template_api(request):
     try:
         is_valid, role_or_err = verify_session(request)
@@ -571,13 +685,16 @@ async def export_danhgiahsdt_template_api(request):
             
         linh_vuc, phuong_thuc_lua_chon, phan_lo, phan_lo_list_str = gt_row
         
+        eval_type = request.query_params.get('eval_type', 'technical')
+
         cursor.execute("""
             SELECT loai_nha_thau, ma_phan_lo, ten_phan_lo, ma_dinh_danh, ten_nha_thau,
                    gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia, hieu_luc_hsdt,
                    gia_tri_dam_bao, hieu_luc_bao_dam_ngay, thoi_gian_thuc_hien,
                    dam_bao_du_thau, hieu_luc_dam_bao, hieu_luc_hsdxt,
                    danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
-                   lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh
+                   lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh,
+                   danh_gia_tai_chinh
             FROM thong_tin_mo_thau
             WHERE goi_thau_id = ? AND owner_id = ?
         """, (pkg_id_clean, org_name))
@@ -593,7 +710,10 @@ async def export_danhgiahsdt_template_api(request):
         if is_tu_van:
             case_type = 'TU_VAN'
         elif not is_tu_van and is_1g2t:
-            case_type = '1G2T_WITH_LOT' if has_phan_lo else '1G2T_NO_LOT'
+            if eval_type == 'financial':
+                case_type = '1G2T_TC_WITH_LOT' if has_phan_lo else '1G2T_TC_NO_LOT'
+            else:
+                case_type = '1G2T_WITH_LOT' if has_phan_lo else '1G2T_NO_LOT'
         elif is_1g1t:
             case_type = '1G1T_WITH_LOT' if has_phan_lo else '1G1T_NO_LOT'
             
@@ -604,6 +724,10 @@ async def export_danhgiahsdt_template_api(request):
             headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)', 'Đánh giá hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật']
         elif case_type == '1G2T_WITH_LOT':
             headers = ['Loại nhà thầu', 'Mã phần lô', 'Tên phần lô', 'Mã nhà thầu', 'Tên nhà thầu', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)', 'Đánh giá hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật']
+        elif case_type == '1G2T_TC_NO_LOT':
+            headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ %', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSĐXTC (ngày)', 'Thời gian thực hiện (ngày)', 'Làm rõ tài chính', 'Đánh giá tài chính']
+        elif case_type == '1G2T_TC_WITH_LOT':
+            headers = ['Mã phần lô', 'Tên phần lô', 'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ %', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSĐXTC (ngày)', 'Thời gian thực hiện (ngày)', 'Làm rõ tài chính', 'Đánh giá tài chính']
         elif case_type == '1G1T_NO_LOT':
             headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSDT (ngày)', 'Giá trị ĐB DT (VND)', 'Hiệu lực ĐB (ngày)', 'Thời gian thực hiện (ngày)', 'Đánh giá hợp lệ', 'Làm rõ hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật', 'Làm rõ tài chính']
         elif case_type == '1G1T_WITH_LOT':
@@ -643,6 +767,10 @@ async def export_danhgiahsdt_template_api(request):
                 row_data = [b[0], b[3], b[4], b[12], b[13], b[14], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '']
             elif case_type == '1G2T_WITH_LOT':
                 row_data = [b[0], b[1], b[2], b[3], b[4], b[12], b[13], b[14], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '']
+            elif case_type == '1G2T_TC_NO_LOT':
+                row_data = [b[0], b[3], b[4], b[5], b[6], b[7], b[8] or '', b[11] or '', b[21] or '', b[22] or '']
+            elif case_type == '1G2T_TC_WITH_LOT':
+                row_data = [b[1] or '', b[2] or '', b[0], b[3], b[4], b[5], b[6], b[7], b[8] or '', b[11] or '', b[21] or '', b[22] or '']
             elif case_type == '1G1T_NO_LOT':
                 row_data = [b[0], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '', b[21] or '']
             elif case_type == '1G1T_WITH_LOT':

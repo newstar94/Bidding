@@ -282,7 +282,7 @@ export async function deleteNhaThau(id) {
     }
 }
 
-export function editNhaThau(id) {
+export function editNhaThau(id, isReadOnly = false) {
     try {
         const form = document.getElementById('form-nhathau');
         if (!form) throw new Error("Không tìm thấy form nhập nhà thầu (form-nhathau)");
@@ -292,10 +292,37 @@ export function editNhaThau(id) {
         const verSelect = document.getElementById('nt-version-select');
         const verContainer = document.getElementById('nt-version-select-container');
 
+        // Set form editability based on isReadOnly
+        const inputs = form.querySelectorAll('input, select, textarea');
+        inputs.forEach(inp => {
+            if (inp.id === 'nt-version-select') {
+                inp.disabled = false;
+            } else {
+                inp.disabled = isReadOnly;
+                if (inp.tagName === 'INPUT') {
+                    inp.readOnly = isReadOnly;
+                }
+            }
+        });
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.style.display = isReadOnly ? 'none' : '';
+        }
+        const cancelBtn = form.querySelector('button[data-close="modal-nhathau"]');
+        if (cancelBtn) {
+            cancelBtn.textContent = isReadOnly ? 'Đóng' : 'Hủy';
+        }
+
         if (id) {
-            this.switchTab('nhathau', 'chinhsua', true);
+            if (isReadOnly) {
+                window._nhaThauViewOnly = true;
+            } else {
+                window._nhaThauViewOnly = false;
+                this.switchTab('nhathau', 'chinhsua', true);
+            }
             const titleEl = document.getElementById('modal-nhathau-title');
-            if (titleEl) titleEl.textContent = 'Cập nhật Nhà thầu';
+            if (titleEl) titleEl.textContent = isReadOnly ? 'Thông tin Nhà thầu (Chỉ xem)' : 'Cập nhật Nhà thầu';
             
             const nt = this.model.state.nhathau.find(n => n.id === id);
             if (!nt) throw new Error("Không tìm thấy dữ liệu nhà thầu với ID " + id);
@@ -321,7 +348,14 @@ export function editNhaThau(id) {
             const huyen = parts[1] || '';
             const tinh = parts[2] || '';
             if (document.getElementById('nt-diachichitiet')) document.getElementById('nt-diachichitiet').value = details;
+            
+            // Note: initAddressDropdowns will handle disabling appropriately if isReadOnly is true, but since we already disabled inputs above,
+            // we should make sure that if it's read-only, it doesn't get re-enabled by initAddressDropdowns.
             this.initAddressDropdowns('nt-tinh', 'nt-xa', tinh, huyen);
+            if (isReadOnly) {
+                if (document.getElementById('nt-tinh')) document.getElementById('nt-tinh').disabled = true;
+                if (document.getElementById('nt-xa')) document.getElementById('nt-xa').disabled = true;
+            }
 
             if (document.getElementById('nt-sotaikhoan')) document.getElementById('nt-sotaikhoan').value = nt.soTaiKhoan || '';
             if (document.getElementById('nt-noimotaikhoan')) document.getElementById('nt-noimotaikhoan').value = nt.noiMoTaiKhoan || '';
@@ -340,10 +374,11 @@ export function editNhaThau(id) {
                 }).join('');
 
                 verSelect.onchange = (e) => {
-                    this.editNhaThau(e.target.value);
+                    this.editNhaThau(e.target.value, isReadOnly);
                 };
             }
         } else {
+            window._nhaThauViewOnly = false;
             this.switchTab('nhathau', 'taomoi', true);
             const titleEl = document.getElementById('modal-nhathau-title');
             if (titleEl) titleEl.textContent = 'Thêm Nhà thầu mới';

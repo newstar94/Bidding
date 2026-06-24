@@ -195,7 +195,8 @@ from export_routes import (
     export_danhgiahsdt_template_api,
     export_ketquaqd_template_api,
     export_phanlo_excel_api,
-    export_tuychonmuathem_excel_api
+    export_tuychonmuathem_excel_api,
+    export_opening_fin_template_api
 )
 from address_routes import (
     get_provinces_api,
@@ -234,6 +235,7 @@ routes = [
     Route("/api/export-mothau-template", export_mothau_template_api, methods=["GET"]),
     Route("/api/export-danhgiahsdt-template", export_danhgiahsdt_template_api, methods=["GET"]),
     Route("/api/export-ketquaqd-template", export_ketquaqd_template_api, methods=["GET"]),
+    Route("/api/export-opening-fin-template", export_opening_fin_template_api, methods=["GET"]),
     Route("/api/export-phanlo-excel", export_phanlo_excel_api, methods=["POST"]),
     Route("/api/export-tuychonmuathem-excel", export_tuychonmuathem_excel_api, methods=["POST"]),
     Route("/api/system-packages", list_system_packages_api, methods=["GET"]),

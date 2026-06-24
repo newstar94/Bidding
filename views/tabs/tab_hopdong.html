@@ -7,12 +7,17 @@
                                 <input type="text" placeholder="Tìm hợp đồng (số, tên)..." id="search-hopdong">
                             </div>
                         </div>
-                        <button class="btn btn-outline btn-import-excel" data-type="hopdong" style="margin-left: 8px;">
-                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
-                        </button>
-                        <button class="btn btn-primary" id="btn-add-hopdong">
-                            <i data-lucide="plus"></i> Thêm Hợp đồng mới
-                        </button>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn-excel-action btn-download-excel-template-direct" data-type="hopdong">
+                                <i data-lucide="download"></i> Tải Excel Mẫu
+                            </button>
+                            <button class="btn-excel-action btn-import-excel-direct" data-type="hopdong">
+                                <i data-lucide="upload"></i> Nhập từ Excel
+                            </button>
+                            <button class="btn btn-primary" id="btn-add-hopdong">
+                                <i data-lucide="plus"></i> Thêm Hợp đồng mới
+                            </button>
+                        </div>
                     </div>
 
                     <div class="table-container">

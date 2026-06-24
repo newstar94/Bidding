@@ -7,12 +7,17 @@
                                 <input type="text" placeholder="Tìm nhà thầu..." id="search-nhathau">
                             </div>
                         </div>
-                        <button class="btn btn-outline btn-import-excel" data-type="nhathau" style="margin-left: 8px;">
-                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
-                        </button>
-                        <button class="btn btn-primary" id="btn-add-nhathau">
-                            <i data-lucide="plus"></i> Thêm Nhà thầu mới
-                        </button>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn-excel-action btn-download-excel-template-direct" data-type="nhathau">
+                                <i data-lucide="download"></i> Tải Excel Mẫu
+                            </button>
+                            <button class="btn-excel-action btn-import-excel-direct" data-type="nhathau">
+                                <i data-lucide="upload"></i> Nhập từ Excel
+                            </button>
+                            <button class="btn btn-primary" id="btn-add-nhathau">
+                                <i data-lucide="plus"></i> Thêm Nhà thầu mới
+                            </button>
+                        </div>
                     </div>
 
                     <div class="table-container">

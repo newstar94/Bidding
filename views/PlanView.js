@@ -16,8 +16,23 @@ function authFetchDownload(url, filename) {
             'X-Username': sessionStorage.getItem('bf_username') || ''
         }
     })
-        .then(res => {
-            if (!res.ok) return res.json().then(d => { throw new Error(d.error || 'Lỗi tải file'); });
+        .then(async res => {
+            if (!res.ok) {
+                let errMsg = 'Lỗi tải file';
+                try {
+                    const contentType = res.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const d = await res.json();
+                        errMsg = d.error || errMsg;
+                    } else {
+                        const text = await res.text();
+                        errMsg = text || `${res.status} ${res.statusText}`;
+                    }
+                } catch (e) {
+                    errMsg = `${res.status} ${res.statusText}`;
+                }
+                throw new Error(errMsg);
+            }
             return res.blob();
         })
         .then(blob => {
@@ -279,7 +294,7 @@ export async function renderGoiThauTable() {
                 };
                 ntLink = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${ntDisplayName}</a>`;
             } else if (nt) {
-                ntLink = `<a href="#" onclick="event.preventDefault(); window.editNhaThau('${nt.id}')" class="text-blue fw-bold link-hover">${ntDisplayName}</a>`;
+                ntLink = `<a href="#" onclick="event.preventDefault(); window.editNhaThau('${nt.id}', true)" class="text-blue fw-bold link-hover">${ntDisplayName}</a>`;
             } else {
                 ntLink = `<span class="fw-bold text-success">${ntDisplayName}</span>`;
             }
@@ -343,7 +358,7 @@ export async function renderGoiThauTable() {
                         };
                         link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${name}</a>`;
                     } else if (singleWinnerNt) {
-                        link = `<a href="#" onclick="event.preventDefault(); window.editNhaThau('${singleWinnerNt.id}')" class="text-blue fw-bold link-hover">${name}</a>`;
+                        link = `<a href="#" onclick="event.preventDefault(); window.editNhaThau('${singleWinnerNt.id}', true)" class="text-blue fw-bold link-hover">${name}</a>`;
                     } else {
                         link = `<span class="fw-bold text-success">${name}</span>`;
                     }
@@ -667,7 +682,8 @@ export function showPackageDetails(id) {
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                             <h4 id="mothau-table-title" style="font-weight:700; font-size:0.95rem; color:var(--text-main);">Danh sách Nhà thầu tham dự & Nộp hồ sơ</h4>
                             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                                <button class="btn btn-outline btn-sm" id="btn-mothau-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 6px; background: #ffffff; color: var(--text-main); border: 1px solid var(--border-color);"><i data-lucide="file-spreadsheet"></i> Nhập từ Excel</button>
+                                <button class="btn-excel-action btn-download-excel-template-direct" data-type="mothau" id="btn-mothau-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
+                                <button class="btn-excel-action btn-import-excel-direct" data-type="mothau" id="btn-mothau-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
                                 <button class="btn btn-outline btn-sm" id="btn-mothau-add-bid" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600;"><i data-lucide="plus"></i> Thêm Nhà thầu nộp hồ sơ</button>
                             </div>
                         </div>
@@ -711,7 +727,10 @@ export function showPackageDetails(id) {
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                         <h4 style="font-weight:700; font-size:0.95rem;">Đánh giá chi tiết các HSDT nộp</h4>
-                        <button class="btn btn-outline btn-sm btn-import-excel" id="btn-danhgiahsdt-import-excel"><i data-lucide="file-spreadsheet"></i> Nhập từ Excel</button>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn-excel-action btn-download-excel-template-direct" data-type="danhgiahsdt" id="btn-danhgiahsdt-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
+                            <button class="btn-excel-action btn-import-excel-direct" data-type="danhgiahsdt" id="btn-danhgiahsdt-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
+                        </div>
                     </div>
                     <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px;">
                         <table class="data-table" id="danhgiahsdt-table">
@@ -753,7 +772,10 @@ export function showPackageDetails(id) {
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                         <h4 style="font-weight:700; font-size:0.95rem;">Đánh giá chi tiết các HSDT nộp</h4>
-                        <button class="btn btn-outline btn-sm btn-import-excel" id="btn-danhgiahsdt-import-excel"><i data-lucide="file-spreadsheet"></i> Nhập từ Excel</button>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn-excel-action btn-download-excel-template-direct" data-type="danhgiahsdt" id="btn-danhgiahsdt-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
+                            <button class="btn-excel-action btn-import-excel-direct" data-type="danhgiahsdt" id="btn-danhgiahsdt-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
+                        </div>
                     </div>
                     <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px;">
                         <table class="data-table" id="danhgiahsdt-table">
@@ -809,7 +831,9 @@ export function showPackageDetails(id) {
 
                 const soQd = metadata.technical.soQdPheDuyetKt || '';
                 const ngayQd = metadata.technical.ngayQdPheDuyetKt ? this.model.formatDate(metadata.technical.ngayQdPheDuyetKt) : '';
-                const isReadOnly = gt.trangThai === 'Đã có kết quả';
+                const isCompleted = !!metadata.technical.qualifiedSaved;
+                const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
+                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả';
 
                 contentWrapper.innerHTML = `
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
@@ -826,10 +850,11 @@ export function showPackageDetails(id) {
                                 <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày QĐ phê duyệt!</span>
                             </div>
                         </div>
-                        ${!isReadOnly ? `
                         <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-                            <button class="btn btn-primary" id="btn-save-qualified-decision" style="padding: 8px 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
-                        </div>` : ''}
+                            ${isReadOnly ? '' : `
+                                <button class="btn btn-emerald" id="btn-save-qualified-decision" style="padding: 8px 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
+                            `}
+                        </div>
                     </div>
 
                     <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
@@ -899,6 +924,10 @@ export function showPackageDetails(id) {
                             this.model.persistData('goithau');
                             window.appController.autoSync();
 
+                            if (this._editingState) {
+                                this._editingState[this._currentWorkflowTab] = false;
+                            }
+
                             await this.customAlert('Thành công', 'Đã lưu QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật thành công!', 'check-circle');
                             this._currentWorkflowTab = 'opening_fin';
                             this.showPackageDetails(gt.id);
@@ -923,11 +952,23 @@ export function showPackageDetails(id) {
                     </div>
                 `;
             } else {
-                const isReadOnly = gt.trangThai === 'Đã có kết quả';
+                const isFinOpeningSaved = qualifiedBidsForOpening.some(b => b.giaDuThau && b.giaDuThau > 0);
+                const isCompleted = isFinOpeningSaved;
+                const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
+                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả';
+
                 contentWrapper.innerHTML = `
-                    <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin-bottom: 16px;">
-                        Biên bản mở hồ sơ đề xuất tài chính (E-HSĐXTC)
-                    </h4>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin: 0;">
+                            Biên bản mở hồ sơ đề xuất tài chính (E-HSĐXTC)
+                        </h4>
+                        ${!isReadOnly ? `
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn-excel-action btn-download-excel-template-direct" data-type="opening_fin" id="btn-opening-fin-export-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
+                                <button class="btn-excel-action btn-import-excel-direct" data-type="opening_fin" id="btn-opening-fin-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
+                            </div>
+                        ` : ''}
+                    </div>
                     <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 20px;">
                         Nhập giá dự thầu, tỷ lệ giảm giá của các nhà thầu vượt qua bước đánh giá kỹ thuật.
                     </p>
@@ -981,11 +1022,11 @@ export function showPackageDetails(id) {
                             </tbody>
                         </table>
                     </div>
-                    ${!isReadOnly ? `
-                        <div style="display:flex; justify-content:flex-end;">
+                    <div style="display:flex; justify-content:flex-end;">
+                        ${isReadOnly ? '' : `
                             <button class="btn btn-emerald" id="btn-save-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu Biên bản mở HSĐXTC</button>
-                        </div>
-                    ` : ''}
+                        `}
+                    </div>
                 `;
 
                 if (!isReadOnly) {
@@ -1017,8 +1058,24 @@ export function showPackageDetails(id) {
                         };
 
                         setupAutoFormatOnInput(inpGia);
-                        inpGia.addEventListener('input', reCalc);
+                        if (inpGia) inpGia.addEventListener('input', reCalc);
+                        if (inpTyLe) inpTyLe.addEventListener('input', reCalc);
                     });
+
+                    const exportBtn = document.getElementById('btn-opening-fin-export-excel');
+                    if (exportBtn) {
+                        exportBtn.onclick = () => {
+                            const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
+                            authFetchDownload(`/api/export-opening-fin-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`, `Mau_Mo_Tai_Chinh_${safeCode}.xlsx`);
+                        };
+                    }
+
+                    const importBtn = document.getElementById('btn-opening-fin-import-excel');
+                    if (importBtn) {
+                        importBtn.onclick = () => {
+                            window.appController.openExcelImportModal('opening_fin');
+                        };
+                    }
 
                     const saveBtn = document.getElementById('btn-save-opening-fin');
                     if (saveBtn) {
@@ -1038,6 +1095,11 @@ export function showPackageDetails(id) {
                             this.model.persistData('thongtinmothau');
                             this.model.persistData('goithau');
                             window.appController.autoSync();
+
+                            if (this._editingState) {
+                                this._editingState[this._currentWorkflowTab] = false;
+                            }
+
                             await this.customAlert('Thành công', 'Đã lưu Biên bản mở thầu E-HSĐXTC thành công!', 'check-circle');
                             this._currentWorkflowTab = 'eval_fin';
                             this.showPackageDetails(id);
@@ -1139,7 +1201,7 @@ export function showPackageDetails(id) {
                             const winnerMst = winnerNt ? (winnerNt.maSoThue || winnerNt.maNhaThau) : (currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau);
                             winnerDisplayHtml = `
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                    <a href="#" onclick="event.preventDefault(); window.editNhaThau('${currentWinnerBid.nhaThauId}')" class="link-hover" style="color:var(--primary);">${currentWinnerBid.tenNhaThau}</a>
+                                    <a href="#" onclick="event.preventDefault(); window.editNhaThau('${currentWinnerBid.nhaThauId}', true)" class="link-hover" style="color:var(--primary);">${currentWinnerBid.tenNhaThau}</a>
                                 </h5>
                                 <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
                                     MST: <strong>${winnerMst || 'Chưa có'}</strong>
@@ -1321,9 +1383,8 @@ export function showPackageDetails(id) {
                                     <p class="text-muted" style="margin:0; font-size:0.8rem;">Đã phê duyệt kết quả lựa chọn nhà thầu chính thức.</p>                                </div>
                             </div>
                             <div style="display:flex; gap:8px;">
-                                <button class="btn btn-outline-primary" id="btn-result-import-excel" style="font-weight:700; display:flex; align-items:center; gap:6px;">
-                                    <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
-                                </button>
+                                <button class="btn-excel-action btn-download-excel-template-direct" data-type="ketquaqd" id="btn-result-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
+                                <button class="btn-excel-action btn-import-excel-direct" data-type="ketquaqd" id="btn-result-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
                                 <button class="btn btn-primary" id="btn-export-docx-report" style="font-weight:700;"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
                             </div>
                         </div>
@@ -1424,42 +1485,10 @@ export function showPackageDetails(id) {
                     (b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
                 );
 
-                // Calculate rankings per lot or globally
                 const rankings = {};
                 const getIsQualified = (bidItem) => {
                     return bidItem.danhGiaKetLuan ? bidItem.danhGiaKetLuan === 'Đạt' : (bidItem.danhGiaHopLe === 'Đạt' && bidItem.danhGiaNangLuc === 'Đạt' && bidItem.danhGiaKyThuat !== 'Không đạt' && bidItem.danhGiaKyThuat !== '' && bidItem.danhGiaKyThuat);
                 };
-
-                if (gt.phanLo === 'Có') {
-                    const bidsByLot = {};
-                    allBids.forEach(b => {
-                        const lotKey = b.maPhanLo || 'unmapped';
-                        if (!bidsByLot[lotKey]) bidsByLot[lotKey] = [];
-                        bidsByLot[lotKey].push(b);
-                    });
-                    for (const lotKey in bidsByLot) {
-                        const lotBids = bidsByLot[lotKey];
-                        const qualifiedLotBids = lotBids.filter(getIsQualified);
-                        qualifiedLotBids.sort((x, y) => {
-                            const priceX = parseFloat(x.giaSauGiamGia || x.giaDuThau || 0);
-                            const priceY = parseFloat(y.giaSauGiamGia || y.giaDuThau || 0);
-                            return priceX - priceY;
-                        });
-                        qualifiedLotBids.forEach((b, rankIdx) => {
-                            rankings[b.id] = rankIdx + 1;
-                        });
-                    }
-                } else {
-                    const qualifiedBids = allBids.filter(getIsQualified);
-                    qualifiedBids.sort((x, y) => {
-                        const priceX = parseFloat(x.giaSauGiamGia || x.giaDuThau || 0);
-                        const priceY = parseFloat(y.giaSauGiamGia || y.giaDuThau || 0);
-                        return priceX - priceY;
-                    });
-                    qualifiedBids.forEach((b, rankIdx) => {
-                        rankings[b.id] = rankIdx + 1;
-                    });
-                }
 
                 const allBiddersHtml = allBids.map((b, idx) => {
                     const isQualified = getIsQualified(b);
@@ -1513,8 +1542,10 @@ export function showPackageDetails(id) {
                         <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}"
                             data-default-price="${defaultPrice}" data-default-duration-pkg="${defaultDurationPkg}" data-default-duration-ctr="${defaultDurationCtr}"
                             data-default-reason="${defaultReason}">
-                            <td>${b.maPhanLo || '--'}</td>
-                            <td>${b.tenPhanLo || '--'}</td>
+                            ${gt.phanLo === 'Có' ? `
+                                <td>${b.maPhanLo || '--'}</td>
+                                <td>${b.tenPhanLo || '--'}</td>
+                            ` : ''}
                             <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
                             <td class="fw-bold">${b.tenNhaThau || '--'}</td>
                             <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
@@ -1551,11 +1582,11 @@ export function showPackageDetails(id) {
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px;">
-                            <button class="btn btn-outline" id="btn-result-export-excel-template" style="font-weight:700; display:flex; align-items:center; gap:6px;">
-                                <i data-lucide="download"></i> Tải file mẫu Excel
+                            <button class="btn-excel-action" id="btn-result-export-excel-template">
+                                <i data-lucide="download"></i> Tải Excel Mẫu
                             </button>
-                            <button class="btn btn-emerald-light" id="btn-result-import-excel" style="font-weight:700; display:flex; align-items:center; gap:6px;">
-                                <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
+                            <button class="btn-excel-action" id="btn-result-import-excel">
+                                <i data-lucide="upload"></i> Nhập từ Excel
                             </button>
                         </div>
                     </div>
@@ -1582,8 +1613,10 @@ export function showPackageDetails(id) {
                         <table class="data-table" style="min-width: 100%;">
                             <thead>
                                 <tr>
-                                    <th style="width: 10%;">Mã phần lô</th>
-                                    <th style="width: 10%;">Tên phần lô</th>
+                                    ${gt.phanLo === 'Có' ? `
+                                        <th style="width: 10%;">Mã phần lô</th>
+                                        <th style="width: 10%;">Tên phần lô</th>
+                                    ` : ''}
                                     <th style="width: 10%;">Mã nhà thầu</th>
                                     <th style="width: 16%;">Tên nhà thầu</th>
                                     <th style="width: 10%; text-align: center;">Xếp hạng nhà thầu</th>
@@ -1878,6 +1911,9 @@ export function showPackageDetails(id) {
             break;
     }
     lucide.createIcons();
+    if (window.appController && window.appController.setupExcelImportEvents) {
+        window.appController.setupExcelImportEvents();
+    }
 }
 
 export function showKeHoachDetails(id) {

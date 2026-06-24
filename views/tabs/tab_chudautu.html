@@ -7,12 +7,17 @@
                                 <input type="text" placeholder="Tìm chủ đầu tư..." id="search-chudautu">
                             </div>
                         </div>
-                        <button class="btn btn-outline btn-import-excel" data-type="chudautu" style="margin-left: 8px;">
-                            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
-                        </button>
-                        <button class="btn btn-primary" id="btn-add-chudautu">
-                            <i data-lucide="plus"></i> Thêm Chủ đầu tư
-                        </button>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn-excel-action btn-download-excel-template-direct" data-type="chudautu">
+                                <i data-lucide="download"></i> Tải Excel Mẫu
+                            </button>
+                            <button class="btn-excel-action btn-import-excel-direct" data-type="chudautu">
+                                <i data-lucide="upload"></i> Nhập từ Excel
+                            </button>
+                            <button class="btn btn-primary" id="btn-add-chudautu">
+                                <i data-lucide="plus"></i> Thêm Chủ đầu tư
+                            </button>
+                        </div>
                     </div>
 
                     <div class="table-container">

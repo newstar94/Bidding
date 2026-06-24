@@ -410,7 +410,7 @@ export class BiddingController {
         window.editChuDauTu = (id) => this.editChuDauTu(id);
         window.deleteChuDauTu = (id) => this.deleteChuDauTu(id);
 
-        window.editNhaThau = (id) => this.editNhaThau(id);
+        window.editNhaThau = (id, isReadOnly = false) => this.editNhaThau(id, isReadOnly);
         window.deleteNhaThau = (id) => this.deleteNhaThau(id);
 
         window.editChuyenGia = (id) => this.editChuyenGia(id);
@@ -1205,6 +1205,192 @@ export class BiddingController {
         const gtPhuongThucSelect = document.getElementById('gt-phuongthuc');
         const gtPhuongThucContainer = document.getElementById('gt-phuongthuc-container');
         const gtLinhVucSelect = document.getElementById('gt-linhvuc');
+        const gtPhuongPhapDanhGiaSelect = document.getElementById('gt-phuongphapdanhgia');
+        const gtPhuongPhapDanhGiaContainer = document.getElementById('gt-phuongphapdanhgia-container');
+        const gtTrongSoKyThuatContainer = document.getElementById('gt-trongsokythuat-container');
+        const gtTrongSoKyThuatInput = document.getElementById('gt-trongsokythuat');
+
+        const validateTrongSoKyThuat = (showEmptyError = false) => {
+            if (!gtTrongSoKyThuatInput || !gtTrongSoKyThuatContainer) return true;
+            
+            const valRaw = gtTrongSoKyThuatInput.value;
+            const fg = gtTrongSoKyThuatInput.closest('.form-group');
+            const errorEl = document.getElementById('gt-trongsokythuat-error');
+            
+            if (gtPhuongPhapDanhGiaSelect.value !== 'Kết hợp giữa kỹ thuật và giá') {
+                if (fg) fg.classList.remove('invalid', 'warning');
+                return true;
+            }
+
+            if (valRaw === '') {
+                if (showEmptyError) {
+                    if (fg) fg.classList.add('invalid');
+                    if (errorEl) {
+                        errorEl.textContent = 'Vui lòng nhập trọng số kỹ thuật';
+                        errorEl.style.color = 'var(--danger)';
+                        errorEl.style.display = 'block';
+                    }
+                } else {
+                    if (fg) fg.classList.remove('invalid', 'warning');
+                    if (errorEl) {
+                        errorEl.textContent = '';
+                        errorEl.style.display = '';
+                    }
+                }
+                return false;
+            }
+
+            const val = parseInt(valRaw);
+            const linhVucVal = gtLinhVucSelect ? gtLinhVucSelect.value : '';
+            const phuongThucVal = gtPhuongThucSelect ? gtPhuongThucSelect.value : '';
+
+            if (linhVucVal === 'Tư vấn') {
+                if (val < 70 || val > 80) {
+                    if (fg) fg.classList.add('invalid');
+                    if (errorEl) {
+                        errorEl.textContent = 'Đối với gói thầu tư vấn, trọng số kỹ thuật phải nằm trong khoảng 70% - 80%';
+                        errorEl.style.color = 'var(--danger)';
+                        errorEl.style.display = 'block';
+                    }
+                    return false;
+                }
+            } else {
+                if (phuongThucVal === 'Một giai đoạn hai túi hồ sơ') {
+                    if (val < 10) {
+                        if (fg) fg.classList.add('invalid');
+                        if (errorEl) {
+                            errorEl.textContent = 'Trọng số kỹ thuật tối thiểu là 10%';
+                            errorEl.style.color = 'var(--danger)';
+                            errorEl.style.display = 'block';
+                        }
+                        return false;
+                    }
+                    if (val > 50) {
+                        if (fg) fg.classList.add('invalid');
+                        if (errorEl) {
+                            errorEl.textContent = 'Không cho phép nhập trọng số kỹ thuật lớn hơn 50%';
+                            errorEl.style.color = 'var(--danger)';
+                            errorEl.style.display = 'block';
+                        }
+                        return false;
+                    }
+                    if (val > 30 && val <= 50) {
+                        if (fg) fg.classList.remove('invalid');
+                        if (errorEl) {
+                            errorEl.textContent = 'Lưu ý: Trọng số kỹ thuật lớn hơn 30% (mức khuyến nghị thông thường là 10% - 30%)';
+                            errorEl.style.color = '#d97706';
+                            errorEl.style.display = 'block';
+                        }
+                        return true;
+                    }
+                }
+            }
+
+            if (fg) fg.classList.remove('invalid');
+            if (errorEl) {
+                errorEl.textContent = '';
+                errorEl.style.display = '';
+            }
+            return true;
+        };
+
+        const updateTrongSoKyThuatVisibility = () => {
+            if (!gtTrongSoKyThuatContainer || !gtPhuongPhapDanhGiaSelect) return;
+            if (gtPhuongPhapDanhGiaSelect.value === 'Kết hợp giữa kỹ thuật và giá') {
+                gtTrongSoKyThuatContainer.style.display = 'flex';
+                if (gtTrongSoKyThuatInput) gtTrongSoKyThuatInput.setAttribute('required', 'true');
+                validateTrongSoKyThuat();
+            } else {
+                gtTrongSoKyThuatContainer.style.display = 'none';
+                if (gtTrongSoKyThuatInput) {
+                    gtTrongSoKyThuatInput.removeAttribute('required');
+                }
+                const fg = gtTrongSoKyThuatInput?.closest('.form-group');
+                if (fg) fg.classList.remove('invalid');
+                const errorEl = document.getElementById('gt-trongsokythuat-error');
+                if (errorEl) {
+                    errorEl.textContent = '';
+                    errorEl.style.display = '';
+                }
+            }
+        };
+
+        const updatePhuongPhapDanhGiaOptions = (forceDefault = false) => {
+            if (!gtPhuongPhapDanhGiaSelect || !gtPhuongPhapDanhGiaContainer) return;
+            
+            const linhVucVal = gtLinhVucSelect ? gtLinhVucSelect.value : '';
+            const phuongThucVal = gtPhuongThucSelect ? gtPhuongThucSelect.value : '';
+            const hinhThucVal = gtHinhThucSelect ? gtHinhThucSelect.value : '';
+
+            if (!hinhThucVal || hinhThucVal === 'Chỉ định thầu rút gọn') {
+                gtPhuongPhapDanhGiaContainer.style.display = 'none';
+                gtPhuongPhapDanhGiaSelect.removeAttribute('required');
+                gtPhuongPhapDanhGiaSelect.value = '';
+                gtTrongSoKyThuatContainer.style.display = 'none';
+                return;
+            }
+
+            gtPhuongPhapDanhGiaContainer.style.display = 'flex';
+            gtPhuongPhapDanhGiaSelect.setAttribute('required', 'true');
+
+            const currentVal = gtPhuongPhapDanhGiaSelect.value;
+            let optionsHtml = '';
+
+            if (linhVucVal === 'Tư vấn') {
+                optionsHtml += `
+                    <option value="Kết hợp giữa kỹ thuật và giá">Kết hợp giữa kỹ thuật và giá</option>
+                    <option value="Giá thấp nhất">Giá thấp nhất</option>
+                    <option value="Giá cố định">Giá cố định</option>
+                    <option value="Dựa trên kỹ thuật">Dựa trên kỹ thuật</option>
+                `;
+            } else {
+                if (phuongThucVal === 'Một giai đoạn hai túi hồ sơ') {
+                    optionsHtml += `
+                        <option value="Giá thấp nhất">Giá thấp nhất</option>
+                        <option value="Giá đánh giá">Giá đánh giá</option>
+                        <option value="Kết hợp giữa kỹ thuật và giá">Kết hợp giữa kỹ thuật và giá</option>
+                    `;
+                } else {
+                    optionsHtml += `
+                        <option value="Giá thấp nhất">Giá thấp nhất</option>
+                        <option value="Giá đánh giá">Giá đánh giá</option>
+                    `;
+                }
+            }
+
+            gtPhuongPhapDanhGiaSelect.innerHTML = optionsHtml;
+            
+            const validOptions = Array.from(gtPhuongPhapDanhGiaSelect.options).map(o => o.value);
+            if (!forceDefault && currentVal && validOptions.includes(currentVal)) {
+                gtPhuongPhapDanhGiaSelect.value = currentVal;
+            } else {
+                if (linhVucVal === 'Tư vấn') {
+                    gtPhuongPhapDanhGiaSelect.value = 'Kết hợp giữa kỹ thuật và giá';
+                } else {
+                    gtPhuongPhapDanhGiaSelect.value = 'Giá thấp nhất';
+                }
+            }
+
+            updateTrongSoKyThuatVisibility();
+        };
+
+        if (gtPhuongPhapDanhGiaSelect) {
+            gtPhuongPhapDanhGiaSelect.addEventListener('change', updateTrongSoKyThuatVisibility);
+            this.updateTrongSoKyThuatVisibility = updateTrongSoKyThuatVisibility;
+            this.updatePhuongPhapDanhGiaOptions = updatePhuongPhapDanhGiaOptions;
+        }
+
+        if (gtTrongSoKyThuatInput) {
+            gtTrongSoKyThuatInput.addEventListener('input', validateTrongSoKyThuat);
+            gtTrongSoKyThuatInput.addEventListener('change', validateTrongSoKyThuat);
+            this.validateTrongSoKyThuat = validateTrongSoKyThuat;
+        }
+
+        if (gtPhuongThucSelect) {
+            gtPhuongThucSelect.addEventListener('change', () => {
+                updatePhuongPhapDanhGiaOptions();
+            });
+        }
 
         if (gtHinhThucSelect && gtPhuongThucSelect && gtPhuongThucContainer) {
             const handleHinhThucChange = () => {
@@ -1238,6 +1424,9 @@ export class BiddingController {
                         }
                     }
                 }
+
+                // Cập nhật phương pháp đánh giá khi hình thức thay đổi
+                updatePhuongPhapDanhGiaOptions();
 
                 // Toggle Tổ chuyên gia và Tổ thẩm định theo Hình thức
                 const toChuyenGiaSection = document.getElementById('to-chuyengia-section');
@@ -1273,14 +1462,14 @@ export class BiddingController {
                 if (val === 'Tư vấn') {
                     options.forEach(opt => {
                         const optVal = opt.value;
-                        if (optVal === 'Đấu thầu rộng rãi' || optVal === 'Chỉ định thầu rút gọn' || optVal === '' || optVal === 'Tất cả hình thức') {
+                        if (optVal === 'Đấu thầu rộng rãi' || optVal === 'Chỉ định thầu' || optVal === 'Chỉ định thầu rút gọn' || optVal === '' || optVal === 'Tất cả hình thức') {
                             opt.style.display = '';
                         } else {
                             opt.style.display = 'none';
                         }
                     });
 
-                    if (gtHinhThucSelect.value !== 'Đấu thầu rộng rãi' && gtHinhThucSelect.value !== 'Chỉ định thầu rút gọn') {
+                    if (gtHinhThucSelect.value !== 'Đấu thầu rộng rãi' && gtHinhThucSelect.value !== 'Chỉ định thầu' && gtHinhThucSelect.value !== 'Chỉ định thầu rút gọn') {
                         gtHinhThucSelect.value = 'Đấu thầu rộng rãi';
                     }
                     gtHinhThucSelect.disabled = false;
@@ -1292,6 +1481,9 @@ export class BiddingController {
                 if (this.handleHinhThucChange) {
                     this.handleHinhThucChange();
                 }
+
+                // Cập nhật phương pháp đánh giá khi lĩnh vực thay đổi
+                updatePhuongPhapDanhGiaOptions(true);
 
                 if (gtTuyChonContainer) {
                     gtTuyChonContainer.style.display = 'flex';
@@ -1512,7 +1704,11 @@ export class BiddingController {
         } else if (modalId === 'modal-chudautu') {
             this.switchTab('chudautu', null, true);
         } else if (modalId === 'modal-nhathau') {
-            this.switchTab('nhathau', null, true);
+            if (window._nhaThauViewOnly) {
+                window._nhaThauViewOnly = false;
+            } else {
+                this.switchTab('nhathau', null, true);
+            }
         } else if (modalId === 'modal-chuyengia') {
             this.switchTab('chuyengia', null, true);
         } else if (modalId === 'modal-hopdong') {

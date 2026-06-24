@@ -70,6 +70,17 @@
                             <option value="Không có">Không có</option>
                         </select>
                     </div>
+                    <div class="form-group" id="gt-phuongphapdanhgia-container" style="display: none;">
+                        <label for="gt-phuongphapdanhgia">Phương pháp đánh giá <span class="required">*</span></label>
+                        <select id="gt-phuongphapdanhgia">
+                            <!-- Nạp động qua JS -->
+                        </select>
+                    </div>
+                    <div class="form-group" id="gt-trongsokythuat-container" style="display: none;">
+                        <label for="gt-trongsokythuat">Trọng số kỹ thuật (%) <span class="required">*</span></label>
+                        <input type="number" id="gt-trongsokythuat" min="0" max="100" placeholder="Ví dụ: 75">
+                        <span class="error-text" id="gt-trongsokythuat-error">Trọng số không hợp lệ</span>
+                    </div>
                     <div class="form-group">
                         <label for="gt-quatmang">Đấu thầu qua mạng <span class="required">*</span></label>
                         <select id="gt-quatmang" required>

@@ -7,12 +7,17 @@
                 <input type="text" placeholder="Tìm kế hoạch (mã, tên)..." id="search-kehoach">
             </div>
         </div>
-        <button class="btn btn-outline btn-import-excel" data-type="kehoach" style="margin-left: 8px;">
-            <i data-lucide="file-spreadsheet"></i> Nhập từ Excel
-        </button>
-        <button class="btn btn-primary" id="btn-add-kehoach">
-            <i data-lucide="plus"></i> Thêm Kế hoạch mới
-        </button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn-excel-action btn-download-excel-template-direct" data-type="kehoach">
+                <i data-lucide="download"></i> Tải Excel Mẫu
+            </button>
+            <button class="btn-excel-action btn-import-excel-direct" data-type="kehoach">
+                <i data-lucide="upload"></i> Nhập từ Excel
+            </button>
+            <button class="btn btn-primary" id="btn-add-kehoach">
+                <i data-lucide="plus"></i> Thêm Kế hoạch mới
+            </button>
+        </div>
     </div>
 
     <div class="table-container">
