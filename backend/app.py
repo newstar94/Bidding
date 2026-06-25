@@ -186,6 +186,7 @@ from routes.sync_routes import (
     paginate_api
 )
 from routes.export_routes import (
+    export_plan_api,
     export_report_api,
     list_templates_api,
     set_active_template_api,
@@ -228,6 +229,7 @@ routes = [
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
     WebSocketRoute("/ws/sync", sync_websocket_endpoint),
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
+    Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),
     Route("/api/templates/upload", upload_template_api, methods=["POST"]),
@@ -286,6 +288,7 @@ routes = [
     Route("/hop-dong", index, methods=["GET"]),
     Route("/hop-dong/{action}", index, methods=["GET"]),
     Route("/bieu-mau", index, methods=["GET"]),
+    Route("/xuat-word", index, methods=["GET"]),
     Route("/tong-quan-admin", index, methods=["GET"]),
     Route("/quan-ly-tai-khoan", index, methods=["GET"]),
     Route("/nhan-su", index, methods=["GET"]),
@@ -293,6 +296,10 @@ routes = [
     Route("/trang-ca-nhan", index, methods=["GET"]),
     Route("/goi-thau-chi-tiet", index, methods=["GET"]),
     Route("/goi-thau-chi-tiet/{action}", index, methods=["GET"]),
+    Route("/ke-hoach-chi-tiet", index, methods=["GET"]),
+    Route("/ke-hoach-chi-tiet/{action}", index, methods=["GET"]),
+    Route("/hop-dong-chi-tiet", index, methods=["GET"]),
+    Route("/hop-dong-chi-tiet/{action}", index, methods=["GET"]),
 
     # Mount gốc views cho tệp index.html và style.css (Dùng SafeStaticFiles cho /controllers và /models để chỉ serve file tĩnh JS/CSS)
     Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),

@@ -1,0 +1,31 @@
+                <!-- ================= TAB: HỢP ĐỒNG CHI TIẾT ================= -->
+                <section class="tab-pane" id="tab-hopdong-detail">
+                    <div class="card"
+                        style="margin-bottom: 24px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-card); overflow: hidden;">
+                        <div class="card-header"
+                            style="padding: 20px 24px; border-bottom: 1px solid var(--border-color); background: rgba(59, 130, 246, 0.02); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">
+                                    Chi tiết Hợp đồng
+                                </h3>
+                            </div>
+                            <div class="header-actions" style="display: flex; gap: 12px; align-items: center;">
+                                <button class="btn btn-primary btn-edit" id="btn-edit-hopdong-fullpage"
+                                    style="padding: 10px 20px; font-weight: 600; display: flex; align-items: center; gap: 6px; height: 38px;">
+                                    <i data-lucide="edit" style="width: 16px; height: 16px;"></i> Sửa hợp đồng
+                                </button>
+                                <button class="btn btn-outline" onclick="window.switchTab('hopdong')"
+                                    style="padding: 10px 20px; font-weight: 600; display: flex; align-items: center; gap: 6px; height: 38px;">
+                                    <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Quay lại danh sách
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card-body" style="padding: 24px;">
+                            <!-- Detailed contents injected here -->
+                            <div id="fullpage-hopdong-content">
+                                <!-- Dynamic fields rendered via JS -->
+                            </div>
+                        </div>
+                    </div>
+                </section>

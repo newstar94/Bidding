@@ -919,6 +919,10 @@ export async function saveExcelImport() {
                 nhaThauId: nt ? nt.id : '',
                 giaTri: parseFloat(row.giaTri) || 0,
                 loaiHopDong: row.loaiHopDong || 'Trọn gói',
+                phanLoai: row.phanLoai || 'Tư vấn',
+                coQdChiDinh: (row.coQdChiDinh === 'Có' || row.coQdChiDinh === 1 || row.coQdChiDinh === '1') ? 1 : 0,
+                soQdChiDinh: row.soQdChiDinh || '',
+                ngayQdChiDinh: row.ngayQdChiDinh ? this.model.convertDMYToYMD(row.ngayQdChiDinh) : '',
                 soNgayThucHien: row.soNgayThucHien ? String(row.soNgayThucHien).trim() : '',
                 goiThauIds: []
             };

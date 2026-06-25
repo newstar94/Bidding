@@ -612,6 +612,7 @@ async def update_profile_api(request):
         u_row = cursor.fetchone()
         if u_row:
             update_user_organizations(cursor, u_row['id'], organization_name, u_row['vai_tro'])
+            _session_cache_invalidate_by_user_id(u_row['id'])
             
         conn.commit()
         conn.close()

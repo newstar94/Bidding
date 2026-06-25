@@ -602,14 +602,39 @@ export function setupRBACEvents() {
             if (!file) return;
             const reader = new FileReader();
             reader.onload = (event) => {
-                this.tempProfileAvatarBase64 = event.target.result;
-                if (profileAvatarPreview) {
-                    profileAvatarPreview.src = event.target.result;
-                    profileAvatarPreview.style.display = 'block';
-                }
-                if (profileAvatarFallback) {
-                    profileAvatarFallback.style.display = 'none';
-                }
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const maxW = 150;
+                    const maxH = 150;
+                    let w = img.width;
+                    let h = img.height;
+                    if (w > h) {
+                        if (w > maxW) {
+                            h = Math.round((h * maxW) / w);
+                            w = maxW;
+                        }
+                    } else {
+                        if (h > maxH) {
+                            w = Math.round((w * maxH) / h);
+                            h = maxH;
+                        }
+                    }
+                    canvas.width = w;
+                    canvas.height = h;
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+                    this.tempProfileAvatarBase64 = compressedBase64;
+                    if (profileAvatarPreview) {
+                        profileAvatarPreview.src = compressedBase64;
+                        profileAvatarPreview.style.display = 'block';
+                    }
+                    if (profileAvatarFallback) {
+                        profileAvatarFallback.style.display = 'none';
+                    }
+                };
+                img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         });

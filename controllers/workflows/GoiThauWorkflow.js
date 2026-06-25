@@ -279,6 +279,10 @@ export function editGoiThau(id, isReadOnly = false) {
     setupCheckboxListeners('to-thamdinh-tbody', 'tothamdinh-select', 'tothamdinh-chucvu', 'tothamdinh-congviec', 'to-chuyengia-tbody');
 
     if (id) {
+        if (!window._preModalTab) {
+            window._preModalTab = this.model.state.activetab || 'goithau';
+            window._preModalAction = this.model.state.activeaction || null;
+        }
         this.switchTab('goithau', 'chinhsua', true);
         document.getElementById('modal-goithau-title').textContent = isReadOnly ? 'Chi tiết Gói thầu' : 'Cập nhật Gói thầu';
         // Using the gt variable declared at the top of the function
@@ -427,6 +431,10 @@ export function editGoiThau(id, isReadOnly = false) {
         }
         document.getElementById('gt-trongsokythuat').value = (gt.trongSoKyThuat !== undefined && gt.trongSoKyThuat !== null) ? gt.trongSoKyThuat : '';
     } else {
+        if (!window._preModalTab) {
+            window._preModalTab = this.model.state.activetab || 'goithau';
+            window._preModalAction = this.model.state.activeaction || null;
+        }
         this.switchTab('goithau', 'taomoi', true);
         if (this.view.fpNgayQuyetDinh) this.view.fpNgayQuyetDinh.clear();
         if (this.view.fpThoiGianDangTai) this.view.fpThoiGianDangTai.clear();
@@ -698,6 +706,7 @@ export async function handleGoiThauSubmit(e) {
     }
 
     const id = document.getElementById('form-goithau-id').value;
+    let finalGtId = id;
     let oldPlanId = null;
     if (id) {
         const oldGt = this.model.state.goithau.find(g => g.id === id);
@@ -1005,6 +1014,7 @@ export async function handleGoiThauSubmit(e) {
 
             relatedGts.forEach(g => { g.isLatest = 0; g.is_latest = 0; });
             const newGtId = window.generateUUID();
+            finalGtId = newGtId;
             this.model.state.goithau.push({
                 id: newGtId,
                 maGoiThau: inputCode,
@@ -1066,6 +1076,7 @@ export async function handleGoiThauSubmit(e) {
         }
     } else {
         const newGtId = window.generateUUID();
+        finalGtId = newGtId;
         this.model.state.goithau.push({
             id: newGtId,
             maGoiThau: inputCode,
@@ -1103,7 +1114,10 @@ export async function handleGoiThauSubmit(e) {
         this.updateBreakdownTotal(breakdownPlanId);
     }
 
-    this.view.closeModal('modal-goithau');
+    if (window._preModalTab === 'goithau-detail' && finalGtId) {
+        window._preModalAction = finalGtId;
+    }
+    this.closeModal('modal-goithau');
     this.view.renderGoiThauTable();
     this.autoSync();
 

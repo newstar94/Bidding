@@ -1,5 +1,6 @@
 # Re-export routes from routes_docx.py and routes_excel.py for backward compatibility
 from .routes_docx import (
+    export_plan_api,
     export_report_api,
     list_templates_api,
     set_active_template_api,

@@ -18,23 +18,44 @@ export function editHopDong(id) {
         const form = document.getElementById('form-hopdong');
         form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
 
+        const coQdSelect = document.getElementById('hd-coqdchidinh');
+        const qdFieldsContainer = document.getElementById('hd-qdchidinh-fields');
+        const soQdInput = document.getElementById('hd-soqdchidinh');
+        const ngayQdInput = document.getElementById('hd-ngayqdchidinh');
+
+        const toggleQdFields = () => {
+            if (coQdSelect.value === '1') {
+                qdFieldsContainer.style.display = 'block';
+                soQdInput.setAttribute('required', 'required');
+                ngayQdInput.setAttribute('required', 'required');
+            } else {
+                qdFieldsContainer.style.display = 'none';
+                soQdInput.removeAttribute('required');
+                ngayQdInput.removeAttribute('required');
+                soQdInput.closest('.form-group')?.classList.remove('invalid');
+                ngayQdInput.closest('.form-group')?.classList.remove('invalid');
+            }
+        };
+
+        coQdSelect.onchange = toggleQdFields;
+
         const cdtSelect = document.getElementById('hd-chudautuid');
         const chudautuList = this.model.getLatestChuDauTu();
         cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' +
             chudautuList.map(c => `<option value="${c.id}" data-search="${c.maChuDauTu || ''} ${c.tenChuDauTu || ''}">${c.tenChuDauTu || ''}</option>`).join('');
-        makeSearchableSelect(cdtSelect, 'Tìm kiếm Chủ đầu tư...');
+        this.makeSearchableSelect(cdtSelect, 'Tìm kiếm Chủ đầu tư...');
 
         const ntSelect = document.getElementById('hd-nhathauid');
         const nhathauList = this.model.getLatestNhaThau();
         ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' +
             nhathauList.map(n => `<option value="${n.id}" data-search="${n.maNhaThau || ''} ${n.tenNhaThau || ''}">${n.tenNhaThau || ''}</option>`).join('');
-        makeSearchableSelect(ntSelect, 'Tìm kiếm Nhà thầu...');
+        this.makeSearchableSelect(ntSelect, 'Tìm kiếm Nhà thầu...');
 
         const khSelect = document.getElementById('hd-kehoachid');
         const planList = typeof this.model.getLatestPlans === 'function' ? this.model.getLatestPlans() : (Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : []);
         khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' +
             planList.map(kh => `<option value="${kh.id}" data-search="${kh.maKeHoach || ''} ${kh.tenKeHoach || ''}">${kh.tenKeHoach || ''}</option>`).join('');
-        makeSearchableSelect(khSelect, 'Tìm kiếm Kế hoạch...');
+        this.makeSearchableSelect(khSelect, 'Tìm kiếm Kế hoạch...');
 
         const getPlanVersionIds = (selectedPlanId) => {
             if (!selectedPlanId) return [];
@@ -205,7 +226,7 @@ export function editHopDong(id) {
                 } else {
                     empSelect.disabled = false;
                 }
-                makeSearchableSelect(empSelect, 'Tìm kiếm Chuyên viên phụ trách...');
+                this.makeSearchableSelect(empSelect, 'Tìm kiếm Chuyên viên phụ trách...');
             }
         };
 
@@ -249,6 +270,10 @@ export function editHopDong(id) {
         }
 
         if (id) {
+            if (!window._preModalTab) {
+                window._preModalTab = this.model.state.activetab || 'hopdong';
+                window._preModalAction = this.model.state.activeaction || null;
+            }
             this.switchTab('hopdong', 'chinhsua', true);
             document.getElementById('modal-hopdong-title').textContent = 'Cập nhật Hợp đồng';
             const hd = this.model.state.hopdong.find(h => h.id === id);
@@ -293,6 +318,17 @@ export function editHopDong(id) {
 
             document.getElementById('hd-giatri').value = this.model.formatVND(hd.giaTri);
             document.getElementById('hd-loai').value = hd.loaiHopDong || 'Trọn gói';
+            document.getElementById('hd-phanloai').value = hd.phanLoai || 'Tư vấn';
+            
+            coQdSelect.value = hd.coQdChiDinh ? String(hd.coQdChiDinh) : '0';
+            soQdInput.value = hd.soQdChiDinh || '';
+            if (this.view.fpNgayQdChiDinh) {
+                this.view.fpNgayQdChiDinh.setDate(hd.ngayQdChiDinh || '');
+            } else {
+                ngayQdInput.value = hd.ngayQdChiDinh || '';
+            }
+            toggleQdFields();
+            
             document.getElementById('hd-songay').value = hd.soNgayThucHien || '';
 
             // Set Trạng thái hồ sơ giấy value
@@ -327,9 +363,24 @@ export function editHopDong(id) {
                 };
             }
         } else {
+            if (!window._preModalTab) {
+                window._preModalTab = this.model.state.activetab || 'hopdong';
+                window._preModalAction = this.model.state.activeaction || null;
+            }
             this.switchTab('hopdong', 'taomoi', true);
             document.getElementById('modal-hopdong-title').textContent = 'Thêm Hợp đồng mới';
             form.reset();
+            document.getElementById('hd-phanloai').value = 'Tư vấn';
+            
+            coQdSelect.value = '0';
+            soQdInput.value = '';
+            if (this.view.fpNgayQdChiDinh) {
+                this.view.fpNgayQdChiDinh.clear();
+            } else {
+                ngayQdInput.value = '';
+            }
+            toggleQdFields();
+            
             document.getElementById('form-hopdong-id').value = '';
             if (this.view.fpNgayKy) {
                 this.view.fpNgayKy.clear();
@@ -388,6 +439,12 @@ export async function handleHopDongSubmit(e) {
     const keHoachId = document.getElementById('hd-kehoachid').value;
     const giaTri = this.model.parseVND(document.getElementById('hd-giatri').value);
     const loaiHopDong = document.getElementById('hd-loai').value;
+    const phanLoai = document.getElementById('hd-phanloai').value;
+    
+    const coQdChiDinh = parseInt(document.getElementById('hd-coqdchidinh').value) || 0;
+    const soQdChiDinh = coQdChiDinh ? document.getElementById('hd-soqdchidinh').value.trim() : '';
+    const ngayQdChiDinh = coQdChiDinh ? document.getElementById('hd-ngayqdchidinh').value : '';
+    
     const soNgayThucHien = document.getElementById('hd-songay').value.trim();
     const trangThaiHoSo = document.getElementById('hd-trangthai').value;
 
@@ -437,6 +494,10 @@ export async function handleHopDongSubmit(e) {
         keHoachId,
         giaTri,
         loaiHopDong,
+        phanLoai,
+        coQdChiDinh,
+        soQdChiDinh,
+        ngayQdChiDinh,
         soNgayThucHien,
         goiThauIds,
         trangThaiHoSo
@@ -510,7 +571,10 @@ export async function handleHopDongSubmit(e) {
     }
 
     this.model.persistData('hopdong');
-    this.view.closeModal('modal-hopdong');
+    if (window._preModalTab === 'hopdong-detail' && finalHdId) {
+        window._preModalAction = finalHdId;
+    }
+    this.closeModal('modal-hopdong');
     this.view.renderHopDongTable();
     this.autoSync();
 }

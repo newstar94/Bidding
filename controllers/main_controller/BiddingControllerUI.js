@@ -118,7 +118,7 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
         action = urlAction;
     }
 
-    // Map package code back to internal ID if we are on package detail page
+    // Map package code/plan code/contract number back to internal ID
     if (tabName === 'goithau-detail' && action) {
         const gt = this.model.state.goithau.find(g =>
             (g.maGoiThau && g.maGoiThau.toLowerCase() === action.toLowerCase()) ||
@@ -128,6 +128,41 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
             action = gt.id;
         }
     }
+    if (tabName === 'kehoach-detail' && action) {
+        let targetId = null;
+        if (action.includes('_')) {
+            const parts = action.split('_');
+            const idSuffix = parts[parts.length - 1].toLowerCase();
+            const kh = this.model.state.kehoach.find(k => k.id.toLowerCase().startsWith(idSuffix));
+            if (kh) targetId = kh.id;
+        }
+        if (!targetId) {
+            const kh = this.model.state.kehoach.find(k =>
+                (k.maKeHoach && encodeURIComponent(k.maKeHoach).toLowerCase() === action.toLowerCase()) ||
+                (k.id && k.id.toLowerCase() === action.toLowerCase())
+            );
+            if (kh) targetId = kh.id;
+        }
+        if (targetId) action = targetId;
+    }
+    if (tabName === 'hopdong-detail' && action) {
+        let targetId = null;
+        if (action.includes('_')) {
+            const parts = action.split('_');
+            const idSuffix = parts[parts.length - 1].toLowerCase();
+            const hd = this.model.state.hopdong.find(h => h.id.toLowerCase().startsWith(idSuffix));
+            if (hd) targetId = hd.id;
+        }
+        if (!targetId) {
+            const cleanAction = decodeURIComponent(action).toLowerCase().replace(/[\/-]/g, '');
+            const hd = this.model.state.hopdong.find(h => {
+                const cleanSo = h.soHopDong ? h.soHopDong.toLowerCase().replace(/[\/-]/g, '') : '';
+                return cleanSo === cleanAction || (h.id && h.id.toLowerCase() === action.toLowerCase());
+            });
+            if (hd) targetId = hd.id;
+        }
+        if (targetId) action = targetId;
+    }
 
     if (isInit) {
         const finalUrlTab = this.routeMap[tabName] || tabName;
@@ -136,6 +171,22 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
             const gt = this.model.state.goithau.find(g => g.id === action);
             if (gt && gt.maGoiThau) {
                 finalUrlAction = gt.maGoiThau;
+            }
+        }
+        if (tabName === 'kehoach-detail' && action) {
+            const kh = this.model.state.kehoach.find(k => k.id === action);
+            if (kh && kh.maKeHoach) {
+                const duplicates = this.model.state.kehoach.filter(k => k.maKeHoach === kh.maKeHoach);
+                const isUnique = duplicates.length <= 1;
+                finalUrlAction = encodeURIComponent(kh.maKeHoach) + (isUnique ? '' : '_' + kh.id.substring(0, 8));
+            }
+        }
+        if (tabName === 'hopdong-detail' && action) {
+            const hd = this.model.state.hopdong.find(h => h.id === action);
+            if (hd && hd.soHopDong) {
+                const duplicates = this.model.state.hopdong.filter(h => h.soHopDong === hd.soHopDong);
+                const isUnique = duplicates.length <= 1;
+                finalUrlAction = encodeURIComponent(hd.soHopDong.replace(/\//g, '-')) + (isUnique ? '' : '_' + hd.id.substring(0, 8));
             }
         }
         const path = '/' + finalUrlTab + (finalUrlAction ? '/' + finalUrlAction : '');
@@ -149,6 +200,8 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
 
 
 export function switchTab(tabName, action = null, updateState = true) {
+    this.model.state.activetab = tabName;
+    this.model.state.activeaction = action;
     if (updateState) {
         const urlTab = this.routeMap[tabName] || tabName;
         let urlAction = action ? (this.actionMap[action] || action) : null;
@@ -156,6 +209,22 @@ export function switchTab(tabName, action = null, updateState = true) {
             const gt = this.model.state.goithau.find(g => g.id === action);
             if (gt && gt.maGoiThau) {
                 urlAction = gt.maGoiThau;
+            }
+        }
+        if (tabName === 'kehoach-detail' && action) {
+            const kh = this.model.state.kehoach.find(k => k.id === action);
+            if (kh && kh.maKeHoach) {
+                const duplicates = this.model.state.kehoach.filter(k => k.maKeHoach === kh.maKeHoach);
+                const isUnique = duplicates.length <= 1;
+                urlAction = encodeURIComponent(kh.maKeHoach) + (isUnique ? '' : '_' + kh.id.substring(0, 8));
+            }
+        }
+        if (tabName === 'hopdong-detail' && action) {
+            const hd = this.model.state.hopdong.find(h => h.id === action);
+            if (hd && hd.soHopDong) {
+                const duplicates = this.model.state.hopdong.filter(h => h.soHopDong === hd.soHopDong);
+                const isUnique = duplicates.length <= 1;
+                urlAction = encodeURIComponent(hd.soHopDong.replace(/\//g, '-')) + (isUnique ? '' : '_' + hd.id.substring(0, 8));
             }
         }
         const path = '/' + urlTab + (urlAction ? '/' + urlAction : '');
@@ -194,6 +263,8 @@ export function switchTab(tabName, action = null, updateState = true) {
         mothau: 'Nhập thông tin Mở thầu (E-HSDT / E-HSĐXKT)',
         danhgiahsdt: 'Đánh giá Hồ sơ dự thầu (E-HSDT)',
         'goithau-detail': 'Chi tiết Quy trình Gói thầu',
+        'kehoach-detail': 'Chi tiết Kế hoạch Lựa chọn Nhà thầu',
+        'hopdong-detail': 'Chi tiết Hợp đồng',
         profile: 'Thông tin tài khoản cá nhân'
     };
     this.view.elements.pageTitle.textContent = titleMap[tabName] || 'Hệ thống Quản lý';
@@ -260,6 +331,9 @@ export function renderTabData(tabName, action = null) {
             this.view.renderDictionary('global');
             this.setupCopyVariableEvents();
             break;
+        case 'xuatword':
+            this.initXuatWordTab();
+            break;
         case 'superadmin-dashboard':
             this.view.renderSuperAdminDashboard();
             break;
@@ -290,6 +364,22 @@ export function renderTabData(tabName, action = null) {
                 this.view.showPackageDetails(activeId);
             } else {
                 this.switchTab('goithau');
+            }
+            break;
+        case 'kehoach-detail':
+            const khId = action || (history.state ? history.state.action : null);
+            if (khId) {
+                this.view.showKeHoachDetails(khId);
+            } else {
+                this.switchTab('kehoach');
+            }
+            break;
+        case 'hopdong-detail':
+            const hdId = action || (history.state ? history.state.action : null);
+            if (hdId) {
+                this.view.showHopDongDetails(hdId);
+            } else {
+                this.switchTab('hopdong');
             }
             break;
     }
@@ -335,9 +425,17 @@ export async function closeModal(modalId) {
 
     // Sync URL when modal closes
     if (modalId === 'modal-kehoach') {
-        this.switchTab('kehoach', null, true);
+        const destTab = window._preModalTab || 'kehoach';
+        const destAction = window._preModalAction || null;
+        window._preModalTab = null;
+        window._preModalAction = null;
+        this.switchTab(destTab, destAction, true);
     } else if (modalId === 'modal-goithau') {
-        this.switchTab('goithau', null, true);
+        const destTab = window._preModalTab || 'goithau';
+        const destAction = window._preModalAction || null;
+        window._preModalTab = null;
+        window._preModalAction = null;
+        this.switchTab(destTab, destAction, true);
     } else if (modalId === 'modal-chudautu') {
         this.switchTab('chudautu', null, true);
     } else if (modalId === 'modal-nhathau') {
@@ -349,6 +447,264 @@ export async function closeModal(modalId) {
     } else if (modalId === 'modal-chuyengia') {
         this.switchTab('chuyengia', null, true);
     } else if (modalId === 'modal-hopdong') {
-        this.switchTab('hopdong', null, true);
+        const destTab = window._preModalTab || 'hopdong';
+        const destAction = window._preModalAction || null;
+        window._preModalTab = null;
+        window._preModalAction = null;
+        this.switchTab(destTab, destAction, true);
+    } else if (modalId === 'modal-plan-breakdown') {
+        const destTab = window._preModalTab || 'kehoach';
+        const destAction = window._preModalAction || null;
+        window._preModalTab = null;
+        window._preModalAction = null;
+        this.switchTab(destTab, destAction, true);
     }
+}
+
+export function initXuatWordTab() {
+    const planSelect = document.getElementById('xw-plan-select');
+    const packageSelect = document.getElementById('xw-package-select');
+    const packageGroup = document.getElementById('xw-package-group');
+    const planActionsCard = document.getElementById('xw-plan-actions-card');
+    const packageActionsCard = document.getElementById('xw-package-actions-card');
+    const packageInfoBadge = document.getElementById('xw-package-info-badge');
+    const container1G1T = document.getElementById('xw-container-1g1t');
+    const container1G2T = document.getElementById('xw-container-1g2t');
+    const btnExportPlan = document.getElementById('btn-xw-export-plan');
+
+    if (!planSelect) return;
+
+    // Populate plans
+    const plans = this.model.state.kehoach || [];
+    planSelect.innerHTML = '<option value="">-- Chọn kế hoạch LCNT --</option>' + 
+        plans.map(p => `<option value="${p.id}" data-search="${p.maKeHoach || ''} ${p.tenKeHoach || ''}">${p.tenKeHoach || p.maKeHoach}</option>`).join('');
+    this.makeSearchableSelect(planSelect, 'Tìm kiếm kế hoạch LCNT...');
+
+    planSelect.onchange = () => {
+        const planId = planSelect.value;
+        if (!planId) {
+            packageGroup.style.display = 'none';
+            planActionsCard.style.display = 'none';
+            packageActionsCard.style.display = 'none';
+            return;
+        }
+
+        // Show plan actions
+        planActionsCard.style.display = 'block';
+
+        // Populate plan details in card
+        const selectedPlan = plans.find(p => String(p.id) === String(planId));
+        if (selectedPlan) {
+            document.getElementById('xw-plan-code').textContent = selectedPlan.maKeHoach || '--';
+            
+            // Cập nhật nhãn động theo loại hình
+            const isDuToan = (selectedPlan.loaiHinhMuaSam || '').includes('Dự toán');
+            document.getElementById('xw-plan-total-label').textContent = isDuToan ? 'Tổng dự toán:' : 'Tổng mức đầu tư:';
+            
+            const rawTotal = selectedPlan.tongMucDauTu;
+            document.getElementById('xw-plan-total').textContent = rawTotal ? Number(rawTotal).toLocaleString('vi-VN') + ' VND' : '--';
+            
+            // Tìm chủ đầu tư liên kết
+            const investor = (this.model.state.chudautu || []).find(c => String(c.id) === String(selectedPlan.chuDauTuId));
+            document.getElementById('xw-plan-investor').textContent = investor ? investor.tenChuDauTu : '--';
+        }
+
+        // Filter and populate packages
+        const packages = (this.model.state.goithau || []).filter(g => String(g.keHoachId) === String(planId));
+        packageSelect.innerHTML = '<option value="">-- Chọn gói thầu --</option>' + 
+            packages.map(g => `<option value="${g.id}" data-search="${g.maGoiThau || ''} ${g.tenGoiThau || ''}">${g.tenGoiThau || g.maGoiThau}</option>`).join('');
+        this.makeSearchableSelect(packageSelect, 'Tìm kiếm gói thầu...');
+
+        packageGroup.style.display = 'block';
+        packageActionsCard.style.display = 'none';
+    };
+
+    packageSelect.onchange = () => {
+        const packageId = packageSelect.value;
+        if (!packageId) {
+            packageActionsCard.style.display = 'none';
+            return;
+        }
+
+        const pkg = (this.model.state.goithau || []).find(g => String(g.id) === String(packageId));
+        if (!pkg) return;
+
+        packageActionsCard.style.display = 'block';
+        packageInfoBadge.textContent = `${pkg.tenGoiThau} (${pkg.maGoiThau})`;
+
+        // Hiển thị thông tin cơ bản gói thầu
+        document.getElementById('xw-pkg-code').textContent = pkg.maGoiThau || '--';
+        document.getElementById('xw-pkg-hinhthuc').textContent = pkg.hinhThucLuaChon || '--';
+        document.getElementById('xw-pkg-phuongthuc').textContent = pkg.phuongThucLuaChon || '--';
+        document.getElementById('xw-pkg-price').textContent = this.model.formatCurrency(pkg.giaGoiThau);
+
+        // Kiểm tra hình thức Chào hàng cạnh tranh
+        const isCHCT = pkg.hinhThucLuaChon === 'Chào hàng cạnh tranh';
+        const configArea = document.getElementById('xw-pkg-thamdinh-config');
+        const detailsArea = document.getElementById('xw-pkg-thamdinh-details');
+        
+        if (isCHCT) {
+            configArea.style.display = 'none';
+        } else {
+            configArea.style.display = 'flex';
+            
+            // Set value radio
+            const isRequired = pkg.yeuCauThamDinhHsmt === 'Có';
+            const radios = document.getElementsByName('xw-require-thamdinh');
+            radios.forEach(r => {
+                if (r.value === 'co') r.checked = isRequired;
+                if (r.value === 'khong') r.checked = !isRequired;
+            });
+            
+            // Show/Hide details panel
+            detailsArea.style.display = isRequired ? 'flex' : 'none';
+            
+            // Set values for inputs
+            document.getElementById('xw-pkg-so-bc-td').value = pkg.soBaoCaoThamDinhHsmt || '';
+            document.getElementById('xw-pkg-ngay-bc-td').value = pkg.ngayBaoCaoThamDinhHsmt || '';
+        }
+
+        // Determine 1G1T or 1G2T
+        const is1G2T = pkg.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
+        if (is1G2T) {
+            container1G1T.style.display = 'none';
+            container1G2T.style.display = 'grid';
+        } else {
+            container1G1T.style.display = 'grid';
+            container1G2T.style.display = 'none';
+        }
+        lucide.createIcons();
+    };
+
+    // Xử lý sự kiện thay đổi radio button thẩm định HSMT
+    document.querySelectorAll('input[name="xw-require-thamdinh"]').forEach(radio => {
+        radio.onchange = async () => {
+            const packageId = packageSelect.value;
+            if (!packageId) return;
+            const pkg = (this.model.state.goithau || []).find(g => String(g.id) === String(packageId));
+            if (!pkg) return;
+            
+            const isCo = radio.value === 'co';
+            pkg.yeuCauThamDinhHsmt = isCo ? 'Có' : 'Không';
+            
+            // Show/hide details
+            document.getElementById('xw-pkg-thamdinh-details').style.display = isCo ? 'flex' : 'none';
+            
+            await this.model.persistData('goithau');
+            this.autoSync();
+        };
+    });
+
+    // Xử lý sự kiện thay đổi số báo cáo thẩm định
+    const inputSoBc = document.getElementById('xw-pkg-so-bc-td');
+    if (inputSoBc) {
+        inputSoBc.onchange = async () => {
+            const packageId = packageSelect.value;
+            if (!packageId) return;
+            const pkg = (this.model.state.goithau || []).find(g => String(g.id) === String(packageId));
+            if (!pkg) return;
+            
+            pkg.soBaoCaoThamDinhHsmt = inputSoBc.value;
+            await this.model.persistData('goithau');
+            this.autoSync();
+        };
+    }
+
+    // Xử lý sự kiện thay đổi ngày báo cáo thẩm định
+    const inputNgayBc = document.getElementById('xw-pkg-ngay-bc-td');
+    if (inputNgayBc) {
+        inputNgayBc.onchange = async () => {
+            const packageId = packageSelect.value;
+            if (!packageId) return;
+            const pkg = (this.model.state.goithau || []).find(g => String(g.id) === String(packageId));
+            if (!pkg) return;
+            
+            pkg.ngayBaoCaoThamDinhHsmt = inputNgayBc.value;
+            await this.model.persistData('goithau');
+            this.autoSync();
+        };
+    }
+
+    // Plan export click
+    if (btnExportPlan) {
+        btnExportPlan.onclick = () => {
+            const planId = planSelect.value;
+            if (!planId) return;
+
+            const selectedPlan = plans.find(p => String(p.id) === String(planId));
+            const planName = selectedPlan ? (selectedPlan.tenKeHoach || selectedPlan.maKeHoach) : 'LCNT';
+
+            btnExportPlan.disabled = true;
+            const origHTML = btnExportPlan.innerHTML;
+            btnExportPlan.innerHTML = '<i data-lucide="loader-2" class="animate-spin" style="width: 14px; height: 14px; margin-right: 6px;"></i> Đang xuất...';
+            lucide.createIcons({ root: btnExportPlan });
+
+            fetch(`/api/export-plan/${planId}`)
+                .then(res => {
+                    if (!res.ok) throw new Error('Lỗi xuất file kế hoạch');
+                    return res.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Ke_hoach_LCNT_${planName.replace(/\s+/g, '_')}.docx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(err => {
+                    this.view.customAlert('Lỗi', err.message, 'x-circle');
+                })
+                .finally(() => {
+                    btnExportPlan.disabled = false;
+                    btnExportPlan.innerHTML = origHTML;
+                    lucide.createIcons({ root: btnExportPlan });
+                });
+        };
+    }
+
+    // Package exports click
+    document.querySelectorAll('.xw-pkg-btn').forEach(btn => {
+        btn.onclick = () => {
+            const packageId = packageSelect.value;
+            const type = btn.getAttribute('data-type');
+            if (!packageId || !type) return;
+
+            const pkg = (this.model.state.goithau || []).find(g => String(g.id) === String(packageId));
+            const pkgName = pkg ? (pkg.maGoiThau || 'GoiThau') : 'GoiThau';
+
+            btn.disabled = true;
+            const origHTML = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="loader-2" class="animate-spin" style="width: 14px; height: 14px; margin-right: 6px;"></i> Đang xuất...';
+            lucide.createIcons({ root: btn });
+
+            fetch(`/api/export-report/${packageId}?type=${type}`)
+                .then(res => {
+                    if (!res.ok) throw new Error('Lỗi xuất file');
+                    return res.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${type.toUpperCase()}_${pkgName}.docx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(err => {
+                    this.view.customAlert('Lỗi', err.message, 'x-circle');
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = origHTML;
+                    lucide.createIcons({ root: btn });
+                });
+        };
+    });
+
+    lucide.createIcons();
 }

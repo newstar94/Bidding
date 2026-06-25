@@ -21,6 +21,7 @@ export class BiddingView {
         this.fpNgayCapChungChi = null;
         this.fpNgayCapCCCD = null;
         this.fpNgayKy = null;
+        this.fpNgayQdChiDinh = null;
         this.fpThoiGianBatDauToChuc = null;
         this.fpThoiGianDangTai = null;
         this.fpThoiGianDongThau = null;
@@ -359,6 +360,9 @@ export class BiddingView {
                 locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
             });
             this.fpNgayKy = flatpickr("#hd-ngayky", {
+                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
+            });
+            this.fpNgayQdChiDinh = flatpickr("#hd-ngayqdchidinh", {
                 locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
             });
             this.fpThoiGianDongThau = flatpickr("#gt-thoigiandongthau", {

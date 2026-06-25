@@ -86,6 +86,10 @@ export function editKeHoach(id) {
     pheDuyetSelect.onchange = togglePheDuyetFields;
 
     if (id) {
+        if (!window._preModalTab) {
+            window._preModalTab = this.model.state.activetab || 'kehoach';
+            window._preModalAction = this.model.state.activeaction || null;
+        }
         this.switchTab('kehoach', 'chinhsua', true);
         document.getElementById('modal-kehoach-title').textContent = 'Cập nhật Kế hoạch LCNT';
         const kh = this.model.state.kehoach.find(k => String(k.id) === String(id));
@@ -165,6 +169,10 @@ export function editKeHoach(id) {
         }
 
     } else {
+        if (!window._preModalTab) {
+            window._preModalTab = this.model.state.activetab || 'kehoach';
+            window._preModalAction = this.model.state.activeaction || null;
+        }
         this.switchTab('kehoach', 'taomoi', true);
         document.getElementById('modal-kehoach-title').textContent = 'Thêm Kế hoạch LCNT mới';
         form.reset();
@@ -763,7 +771,10 @@ export async function savePlanBreakdown() {
     this.tempPlanData = null;
     this.tempPlanAction = null;
 
-    this.view.closeModal('modal-plan-breakdown');
+    if (window._preModalTab === 'kehoach-detail' && finalPlanId) {
+        window._preModalAction = finalPlanId;
+    }
+    this.closeModal('modal-plan-breakdown');
     this.view.renderKeHoachTable();
     this.view.renderGoiThauTable();
     await this.view.customAlert('Thành công', 'Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!', 'check-circle');

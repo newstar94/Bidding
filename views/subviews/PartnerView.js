@@ -426,7 +426,7 @@ export async function renderChuyenGiaTable() {
             <tr>
                 <td class="fw-bold"><a href="#" onclick="event.preventDefault(); window.showChuyenGiaDetails('${displayedCg.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch">${displayedCg.hoTen || ''}</a></td>
                 <td>${dropdownHtml}</td>
-                <td><code>${displayedCg.soCCCD || ''}</code></td>
+                <td>${displayedCg.soCCCD || ''}</td>
                 <td><span class="badge badge-info">${displayedCg.soChungChi || ''}</span></td>
                 <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${displayedCg.donViCapChungChi || '--'}</td>
                 <td>${displayedCg.ngayCapChungChi ? this.model.formatDate(displayedCg.ngayCapChungChi) : '--'}</td>
@@ -469,7 +469,7 @@ export async function renderHopDongTable() {
 
     if (this.model.useServerSidePagination) {
         if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
             const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
@@ -513,7 +513,7 @@ export async function renderHopDongTable() {
     if (totalItems === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="12">
+                <td colspan="13">
                     <div class="empty-state">
                         <i data-lucide="file-check-2"></i>
                         <p>Không tìm thấy Hợp đồng nào phù hợp</p>
@@ -571,7 +571,7 @@ export async function renderHopDongTable() {
 
             return `
                 <tr>
-                    <td><a href="#" onclick="event.preventDefault(); window.editHopDong('${displayedHd.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Hợp đồng"><span class="detail-code link-hover">${displayedHd.soHopDong}</span></a></td>
+                    <td><a href="#" onclick="event.preventDefault(); window.showHopDongDetails('${displayedHd.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Hợp đồng"><span class="detail-code link-hover">${displayedHd.soHopDong}</span></a></td>
                     <td>${dropdownHtml}</td>
                     <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${displayedHd.tenHopDong}</td>
                     <td>${displayedHd.ngayKy ? this.model.formatDate(displayedHd.ngayKy) : '--'}</td>
@@ -579,6 +579,7 @@ export async function renderHopDongTable() {
                     <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${ntName}</td>
                     <td class="fw-bold text-blue">${this.model.formatCurrency(displayedHd.giaTri)}</td>
                     <td><span class="badge badge-info">${displayedHd.loaiHopDong || 'Trọn gói'}</span></td>
+                    <td><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${displayedHd.phanLoai || 'Tư vấn'}</span></td>
                     <td>${displayedHd.soNgayThucHien ? (isNaN(displayedHd.soNgayThucHien) ? displayedHd.soNgayThucHien : displayedHd.soNgayThucHien + ' ngày') : '--'}</td>
                     <td>${linkedPkgs || '<span class="text-danger" style="font-weight: 500;">Chưa liên kết</span>'}</td>
                     <td>${statusBadge}</td>
@@ -1078,5 +1079,189 @@ export function getJointVentureMemberHTML(cardId, memberData = null) {
             </div>
         </div>
     `;
+}
+
+export function showHopDongDetails(id) {
+    const detailPane = document.getElementById('tab-hopdong-detail');
+    if (!detailPane || !detailPane.classList.contains('active')) {
+        window.switchTab('hopdong-detail', id);
+        return;
+    }
+    const hd = this.model.state.hopdong.find(h => h.id === id);
+    if (!hd) return;
+
+    const editBtn = document.getElementById('btn-edit-hopdong-fullpage');
+    if (editBtn) {
+        editBtn.onclick = () => {
+            window.editHopDong(id);
+        };
+    }
+
+    this.renderContractVersionDetails(id);
+}
+
+export function renderContractVersionDetails(versionId) {
+    const hd = this.model.state.hopdong.find(h => h.id === versionId);
+    if (!hd) return;
+
+    const cdt = this.model.state.chudautu.find(c => c.id === hd.chuDauTuId);
+    const nt = this.model.state.nhathau.find(n => n.id === hd.nhaThauId);
+    const kh = this.model.state.kehoach.find(k => k.id === hd.keHoachId);
+
+    const goithauList = typeof this.model.getLatestPackages === 'function' ? this.model.getLatestPackages() : (this.model.state.goithau || []);
+    const linkedPkgs = (hd.goiThauIds || []).map(gtId => {
+        return goithauList.find(g => g.id === gtId);
+    }).filter(Boolean);
+
+    const custompaperstatuses = this.model.state.custompaperstatuses || [];
+    const statusObj = custompaperstatuses.find(s => s.name === hd.trangThaiHoSo);
+    const statusColor = statusObj ? statusObj.color : '#6b7280';
+    const statusBadge = hd.trangThaiHoSo
+        ? `<span class="status-pill" style="background-color: ${statusColor}; color: white; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.85rem;">${hd.trangThaiHoSo}</span>`
+        : '<span class="text-muted">Chưa cập nhật</span>';
+
+    const rootId = hd.rootId || hd.id;
+    const allVersions = this.model.state.hopdong.filter(h => (h.rootId || h.id) === rootId);
+    allVersions.sort((a, b) => {
+        const valA = parseInt(a.phienBan || a.phien_ban || 0);
+        const valB = parseInt(b.phienBan || b.phien_ban || 0);
+        return valB - valA;
+    });
+
+    const selectOptionsHtml = allVersions.map(h => {
+        const ver = h.phienBan || h.phien_ban || '00';
+        const label = `V${parseInt(ver)}`;
+        return `<option value="${h.id}" ${h.id === versionId ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    const versionSelectHtml = `
+        <div class="select-wrapper" style="max-width: 320px; min-width: 200px; display: inline-block;">
+            <select id="fullpage-hd-version-select" style="width: 100%; border-radius: var(--radius-sm); font-size: 0.85rem; padding: 4px 8px; height: 32px; font-weight: 600;">
+                ${selectOptionsHtml}
+            </select>
+        </div>
+    `;
+
+    const html = `
+        <div class="detail-section">
+            <div class="detail-header-block">
+                <span class="detail-code">${hd.soHopDong || '--'}</span>
+                <h4 class="detail-title">${hd.tenHopDong || 'Hợp đồng không có tên'}</h4>
+                <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    ${versionSelectHtml}
+                    ${statusBadge}
+                </div>
+            </div>
+            
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Số hợp đồng</div>
+                    <div class="detail-value fw-bold text-blue">${hd.soHopDong || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Ngày ký hợp đồng</div>
+                    <div class="detail-value">${hd.ngayKy ? this.model.formatDate(hd.ngayKy) : '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Giá trị hợp đồng</div>
+                    <div class="detail-value text-blue fw-bold" style="font-size: 1.15rem;">${this.model.formatCurrency(hd.giaTri)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Loại hợp đồng</div>
+                    <div class="detail-value"><span class="badge badge-info">${hd.loaiHopDong || 'Trọn gói'}</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Phân loại</div>
+                    <div class="detail-value"><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${hd.phanLoai || 'Tư vấn'}</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Thời gian thực hiện</div>
+                    <div class="detail-value">${hd.soNgayThucHien ? (isNaN(hd.soNgayThucHien) ? hd.soNgayThucHien : hd.soNgayThucHien + ' ngày') : '--'}</div>
+                </div>
+            </div>
+
+            <div class="detail-grid" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                <div class="detail-item">
+                    <div class="detail-label">Quyết định chỉ định thầu</div>
+                    <div class="detail-value">${hd.coQdChiDinh === 1 ? '<span class="badge badge-success">Có quyết định</span>' : '<span class="badge badge-secondary">Không</span>'}</div>
+                </div>
+                ${hd.coQdChiDinh === 1 ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Số quyết định chỉ định</div>
+                        <div class="detail-value fw-bold">${hd.soQdChiDinh || '--'}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Ngày quyết định chỉ định</div>
+                        <div class="detail-value">${hd.ngayKy ? this.model.formatDate(hd.ngayQdChiDinh) : '--'}</div>
+                    </div>
+                ` : ''}
+            </div>
+
+            <div class="detail-sub-section" style="margin-top: 24px;">
+                <h5 class="detail-sub-title">Thông tin Chủ đầu tư</h5>
+                ${cdt ? `
+                    <div class="associated-item">
+                        <div>
+                            <strong style="font-size: 0.9rem;">${cdt.tenChuDauTu}</strong><br>
+                            <small class="text-muted">Mã số thuế: ${cdt.maSoThue} | Địa chỉ: ${(cdt.diaChi || '').replace(/\s*\|\s*/g, ', ')}</small>
+                        </div>
+                        <span class="associated-badge">${cdt.maChuDauTu}</span>
+                    </div>
+                ` : '<div class="text-muted"><small>Không tìm thấy thông tin chủ đầu tư.</small></div>'}
+            </div>
+
+            <div class="detail-sub-section" style="margin-top: 24px;">
+                <h5 class="detail-sub-title">Thông tin Nhà thầu trúng thầu</h5>
+                ${nt ? `
+                    <div class="associated-item">
+                        <div>
+                            <strong style="font-size: 0.9rem;">${nt.tenNhaThau}</strong><br>
+                            <small class="text-muted">Mã số thuế: ${nt.maSoThue} | Đại diện: ${nt.nguoiDaiDien || '--'}</small>
+                        </div>
+                        <span class="associated-badge">${nt.maNhaThau || 'NHA_THAU'}</span>
+                    </div>
+                ` : '<div class="text-muted"><small>Không tìm thấy thông tin nhà thầu.</small></div>'}
+            </div>
+
+            ${kh ? `
+                <div class="detail-sub-section" style="margin-top: 24px;">
+                    <h5 class="detail-sub-title">Kế hoạch lựa chọn nhà thầu liên kết</h5>
+                    <div class="associated-item" style="cursor: pointer;" onclick="window.showKeHoachDetails('${kh.id}')">
+                        <div>
+                            <strong style="font-size: 0.9rem; color: var(--primary);">${kh.tenKeHoach}</strong><br>
+                            <small class="text-muted">Mã KH: ${kh.maKeHoach} | Tổng mức: ${this.model.formatCurrency(kh.tongMucDauTu)}</small>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
+            <div class="detail-sub-section" style="margin-top: 24px;">
+                <h5 class="detail-sub-title" style="color: var(--primary);">Các gói thầu thuộc hợp đồng (${linkedPkgs.length})</h5>
+                <div class="associated-list">
+                    ${linkedPkgs.length > 0 ? linkedPkgs.map(gt => `
+                        <div class="associated-item" style="cursor: pointer;" onclick="window.showPackageDetails('${gt.id}')">
+                            <div class="associated-info">
+                                <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
+                                <span><strong>${gt.maGoiThau}</strong> - ${gt.tenGoiThau}</span>
+                            </div>
+                            <span class="badge badge-success">${this.model.formatCurrency(gt.giaGoiThau)}</span>
+                        </div>
+                    `).join('') : '<div class="text-muted"><small>Hợp đồng này chưa có gói thầu trực tiếp liên kết.</small></div>'}
+                </div>
+            </div>
+        </div>
+    `;
+
+    const contentEl = document.getElementById('fullpage-hopdong-content');
+    if (contentEl) {
+        contentEl.innerHTML = html;
+        const innerSelect = document.getElementById('fullpage-hd-version-select');
+        if (innerSelect) {
+            innerSelect.onchange = (e) => {
+                this.renderContractVersionDetails(e.target.value);
+            };
+        }
+        lucide.createIcons();
+    }
 }
 

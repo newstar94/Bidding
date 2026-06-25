@@ -187,6 +187,9 @@ SCHEMA_DINH_NGHIA = {
             "trong_so_ky_thuat": "INTEGER",
             "is_thuoc": "INTEGER DEFAULT 0",
             "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu') OR trang_thai IS NULL)",
+            "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không'",
+            "so_bao_cao_tham_dinh_hsmt": "TEXT",
+            "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },
@@ -213,7 +216,10 @@ SCHEMA_DINH_NGHIA = {
             "phuong_phap_danh_gia": "phuongPhapDanhGia",
             "trong_so_ky_thuat": "trongSoKyThuat",
             "is_thuoc": "isThuoc",
-            "awarded_phan_lo_list": "awardedPhanLoList"
+            "awarded_phan_lo_list": "awardedPhanLoList",
+            "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt",
+            "so_bao_cao_tham_dinh_hsmt": "soBaoCaoThamDinhHsmt",
+            "ngay_bao_cao_tham_dinh_hsmt": "ngayBaoCaoThamDinhHsmt"
         }
     },
     "chuyen_gia": {
@@ -261,6 +267,10 @@ SCHEMA_DINH_NGHIA = {
             "loai_hop_dong": "TEXT",
             "thoi_gian_thuc_hien": "TEXT",
             "trang_thai_ho_so": "TEXT",
+            "phan_loai": "TEXT",
+            "co_qd_chi_dinh": "INTEGER DEFAULT 0",
+            "so_qd_chi_dinh": "TEXT",
+            "ngay_qd_chi_dinh": "TEXT",
             "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
             "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         },

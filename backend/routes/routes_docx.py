@@ -18,6 +18,147 @@ from helpers import (
 
 import custom_exporter
 
+async def export_plan_api(request):
+    plan_id = clean_id(request.path_params.get('plan_id'))
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        
+        org_name = get_active_org(request, user_id)
+
+        cursor.execute("SELECT * FROM ke_hoach_lcnt WHERE id = ? AND owner_id = ?", (plan_id, org_name))
+        row_plan = cursor.fetchone()
+        if not row_plan:
+            conn.close()
+            return JSONResponse({"error": f"Plan with id {plan_id} not found"}, status_code=404)
+        plan = dict(row_plan)
+        
+        investor_name = '--'
+        investor_address = ''
+        if plan.get('chu_dau_tu_id'):
+            cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ?", (plan['chu_dau_tu_id'],))
+            row_inv = cursor.fetchone()
+            if row_inv:
+                inv_data = dict(row_inv)
+                investor_name = inv_data.get('ten_chu_dau_tu', '--')
+                investor_address = inv_data.get('dia_chi', '')
+
+        chuyen_gia_list = []
+        tham_dinh_list = []
+        nha_thau_list = []
+        expert_ids = []
+        first_expert_data = {}
+        contract_data = {}
+        mt_data = {}
+
+        cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (user_id,))
+        row_user = cursor.fetchone()
+        user_data = dict(row_user) if row_user else {}
+        
+        cursor.execute("SELECT * FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
+        row_org = cursor.fetchone()
+        org_data = dict(row_org) if row_org else {}
+        
+        gdv_data = {}
+        if user_data.get('goi_dich_vu_id'):
+            cursor.execute("SELECT * FROM goi_dich_vu WHERE id = ?", (user_data['goi_dich_vu_id'],))
+            row_gdv = cursor.fetchone()
+            if row_gdv:
+                gdv_data = dict(row_gdv)
+
+        cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE owner_id = ?", (org_name,))
+        mappings_rows = cursor.fetchall()
+        
+        row_by_table = {
+            'chu_dau_tu': inv_data if 'inv_data' in locals() else {},
+            'ke_hoach_lcnt': plan,
+            'goi_thau': {},
+            'nha_thau': {},
+            'hop_dong': {},
+            'chuyen_gia': {},
+            'thong_tin_mo_thau': {},
+            'mo_thau': {},
+            'tai_khoan': user_data,
+            'to_chuc': org_data,
+            'goi_dich_vu': gdv_data
+        }
+        
+        custom_vars_list = []
+        custom_evaluated_values = {}
+        for m_row in mappings_rows:
+            ten_bien = m_row[0].lower()
+            src_table = m_row[1]
+            src_column = m_row[2]
+            
+            custom_vars_list.append(ten_bien)
+            
+            tbl_data = row_by_table.get(src_table, {})
+            val = tbl_data.get(src_column)
+
+            if val is None:
+                val = '--'
+            elif isinstance(val, (int, float)) and ('gia' in src_column or 'tong_muc' in src_column or 'gia_tri' in src_column):
+                val = f'{VietnameseFloat(val)}'
+            elif isinstance(val, (int, float)):
+                val = str(val)
+            else:
+                val = str(val)
+
+            custom_evaluated_values[ten_bien] = val
+
+        conn.close()
+
+        context = {
+            'chuyen_gia': chuyen_gia_list,
+            'tham_dinh': tham_dinh_list,
+            'nha_thau': nha_thau_list,
+            'gia_han_list': [],
+            'yeu_cau_lam_ro_list': [],
+            'tra_loi_lam_ro_list': []
+        }
+        
+        active_tpl = custom_exporter.get_active_template(user_id)
+            
+        custom_context = {}
+        custom_context['Danh_Sach_Chuyen_Gia'] = []
+        custom_context['Danh_Sach_Nha_Thau'] = []
+        custom_context['Danh_Sach_Phan_Lo'] = []
+        custom_context['Danh_Sach_Tuy_Chon_Mua_Them'] = []
+        custom_context['Danh_Sach_Nha_Thau_Truot'] = []
+        custom_context['Thanh_Vien_Lien_Danh'] = []
+        
+        unified_context = {}
+        unified_context.update(context)
+        unified_context.update(custom_context)
+        unified_context['mo_thau'] = {}
+        for k, v in custom_evaluated_values.items():
+            unified_context[k] = v
+
+        if active_tpl == 'mau_bao_cao_dau_thau.docx':
+            tpl_path = os.path.join(custom_exporter.TEMPLATE_DIR, active_tpl)
+        else:
+            user_dir = custom_exporter.get_user_template_dir(user_id)
+            tpl_path = os.path.join(user_dir, active_tpl)
+            
+        docx_stream = custom_exporter.generate_report_from_custom_template(tpl_path, unified_context, custom_vars_list)
+        
+        filename = f"Ke_hoach_LCNT_{plan['ma_ke_hoach']}.docx"
+        return StreamingResponse(
+            docx_stream,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 async def export_report_api(request):
     package_id = clean_id(request.path_params.get('package_id'))
     try:
@@ -461,10 +602,18 @@ async def export_report_api(request):
             
         docx_stream = custom_exporter.generate_report_from_custom_template(tpl_path, unified_context, custom_vars_list)
         
+        type_param = request.query_params.get('type')
+        if type_param == 'contract':
+            filename = f"Hop_dong_{contract_data.get('so_hop_dong', 'LCNT')}.docx"
+        elif type_param:
+            filename = f"{type_param.upper()}_{pkg['ma_goi_thau']}.docx"
+        else:
+            filename = f"Bao_cao_danh_gia_goi_thau_{pkg['ma_goi_thau']}.docx"
+
         return StreamingResponse(
             docx_stream,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename=Bao_cao_danh_gia_goi_thau_{pkg['ma_goi_thau']}.docx"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except OrgPermissionError as e:
         return JSONResponse({"error": str(e)}, status_code=403)

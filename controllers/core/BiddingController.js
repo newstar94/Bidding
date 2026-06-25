@@ -39,12 +39,15 @@ export class BiddingController {
             'nhathau': 'nha-thau',
             'chuyengia': 'chuyen-gia',
             'bieumau': 'bieu-mau',
+            'xuatword': 'xuat-word',
             'superadmin-dashboard': 'tong-quan-admin',
             'superadmin': 'quan-ly-tai-khoan',
             'managernhanvien': 'nhan-su',
             'managerhosogiay': 'trang-thai-ho-so',
             'profile': 'trang-ca-nhan',
-            'goithau-detail': 'goi-thau-chi-tiet'
+            'goithau-detail': 'goi-thau-chi-tiet',
+            'kehoach-detail': 'ke-hoach-chi-tiet',
+            'hopdong-detail': 'hop-dong-chi-tiet'
         };
 
         this.actionMap = {
@@ -354,6 +357,7 @@ export class BiddingController {
 
         window.showPackageDetails = (id) => this.view.showPackageDetails(id);
         window.showKeHoachDetails = (id) => this.view.showKeHoachDetails(id);
+        window.showHopDongDetails = (id) => this.view.showHopDongDetails(id);
         window.showChuyenGiaDetails = (id) => this.view.showChuyenGiaDetails(id);
 
         window.zoomCertificateImage = (id) => {

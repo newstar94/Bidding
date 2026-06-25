@@ -112,7 +112,7 @@ export async function renderKeHoachTable() {
                     <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${cdt ? cdt.tenChuDauTu : '<span class="text-danger">Không rõ</span>'}</td>
                     <td class="text-blue fw-bold">${this.model.formatCurrency(displayedKh.tongMucDauTu)}</td>
                     <td>${this.model.formatDate(displayedKh.ngayPheDuyet)}</td>
-                    <td><code>${displayedKh.quyetDinhPheDuyet}</code></td>
+                    <td>${displayedKh.quyetDinhPheDuyet}</td>
                     <td><small class="fw-bold text-muted">${displayedKh.thoiGianDangMa ? this.model.formatDateWithTime(displayedKh.thoiGianDangMa) : '--'}</small></td>
                     <td class="text-right">
                         <div class="action-btn-group">
@@ -136,37 +136,49 @@ export async function renderKeHoachTable() {
 
 
 export function showKeHoachDetails(id) {
+    const detailPane = document.getElementById('tab-kehoach-detail');
+    if (!detailPane || !detailPane.classList.contains('active')) {
+        window.switchTab('kehoach-detail', id);
+        return;
+    }
     const kh = this.model.state.kehoach.find(k => k.id === id);
     if (!kh) return;
 
-    const rootId = kh.rootId || kh.id;
-    const allVersions = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
-
-    allVersions.sort((a, b) => {
-        const valA = parseInt(a.phienBan) || 0;
-        const valB = parseInt(b.phienBan) || 0;
-        return valB - valA;
-    });
-
-    const selectEl = document.getElementById('detail-kh-version-select');
-    selectEl.innerHTML = allVersions.map(k => {
-        const label = this.model.getVersionLabel(k.phienBan);
-        const timeLabel = k.thoiGianDangMa ? this.model.formatDateWithTime(k.thoiGianDangMa) : '--';
-        return `<option value="${k.id}" ${k.id === id ? 'selected' : ''}>${label} (Đăng lúc: ${timeLabel})</option>`;
-    }).join('');
-
-    selectEl.onchange = (e) => {
-        this.renderPlanVersionDetails(e.target.value);
-    };
+    const editBtn = document.getElementById('btn-edit-kehoach-fullpage');
+    if (editBtn) {
+        editBtn.onclick = () => {
+            window.editKeHoach(id);
+        };
+    }
 
     this.renderPlanVersionDetails(id);
-    this.openModal('modal-detail-kehoach');
 }
 
 
 export function renderPlanVersionDetails(versionId) {
     const kh = this.model.state.kehoach.find(k => k.id === versionId);
     if (!kh) return;
+
+    const rootId = kh.rootId || kh.id;
+    const allVersions = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
+    allVersions.sort((a, b) => {
+        const valA = parseInt(a.phienBan) || 0;
+        const valB = parseInt(b.phienBan) || 0;
+        return valB - valA;
+    });
+
+    const selectOptionsHtml = allVersions.map(k => {
+        const label = `V${parseInt(k.phienBan || 0)}`;
+        return `<option value="${k.id}" ${k.id === versionId ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    const versionSelectHtml = `
+        <div class="select-wrapper" style="max-width: 320px; min-width: 200px; display: inline-block;">
+            <select id="fullpage-kh-version-select" style="width: 100%; border-radius: var(--radius-sm); font-size: 0.85rem; padding: 4px 8px; height: 32px; font-weight: 600;">
+                ${selectOptionsHtml}
+            </select>
+        </div>
+    `;
 
     const cdt = this.model.state.chudautu.find(c => c.id === kh.chuDauTuId);
     const latestPackages = this.model.getLatestPackages();
@@ -300,7 +312,7 @@ export function renderPlanVersionDetails(versionId) {
             </div>
             <div class="detail-item" style="grid-column: span 2;">
                 <div class="detail-label">Số QĐ phê duyệt dự toán</div>
-                <div class="detail-value"><code>${kh.soQdPheDuyetDuToan || '--'}</code></div>
+                <div class="detail-value">${kh.soQdPheDuyetDuToan || '--'}</div>
             </div>
         `;
     }
@@ -310,11 +322,11 @@ export function renderPlanVersionDetails(versionId) {
         projectDetailHtml = `
             <div class="detail-item" style="grid-column: span 2;">
                 <div class="detail-label">Mã dự án</div>
-                <div class="detail-value"><code>${kh.maDuan || '--'}</code></div>
+                <div class="detail-value">${kh.maDuan || '--'}</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Số QĐ phê duyệt dự án</div>
-                <div class="detail-value"><code>${kh.soQdPheDuyetDuAn || '--'}</code></div>
+                <div class="detail-value">${kh.soQdPheDuyetDuAn || '--'}</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Ngày QĐ phê duyệt dự án</div>
@@ -332,8 +344,8 @@ export function renderPlanVersionDetails(versionId) {
             <div class="detail-header-block">
                 <span class="detail-code">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
                 <h4 class="detail-title">${kh.tenKeHoach}</h4>
-                <div style="margin-top: 8px;">
-                    <span class="badge badge-info"><i data-lucide="info"></i> ${this.model.getVersionLabel(kh.phienBan)}</span>
+                <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    ${versionSelectHtml}
                 </div>
             </div>
             
@@ -360,7 +372,7 @@ export function renderPlanVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Số QĐ phê duyệt</div>
-                    <div class="detail-value"><code>${kh.quyetDinhPheDuyet}</code></div>
+                    <div class="detail-value">${kh.quyetDinhPheDuyet}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Ngày QĐ phê duyệt</div>
@@ -404,6 +416,12 @@ export function renderPlanVersionDetails(versionId) {
         </div>
     `;
 
-    document.getElementById('detail-kehoach-content').innerHTML = html;
+    document.getElementById('fullpage-kehoach-content').innerHTML = html;
+    const innerSelect = document.getElementById('fullpage-kh-version-select');
+    if (innerSelect) {
+        innerSelect.onchange = (e) => {
+            this.renderPlanVersionDetails(e.target.value);
+        };
+    }
     lucide.createIcons();
 }

@@ -98,6 +98,34 @@
                                 <option value="Hỗn hợp">Hỗn hợp</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label for="hd-phanloai">Phân loại hợp đồng <span class="required">*</span></label>
+                            <select id="hd-phanloai" required>
+                                <option value="Tư vấn" selected>Tư vấn</option>
+                                <option value="Thẩm định">Thẩm định</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="hd-coqdchidinh">Có QĐ chỉ định thầu không? <span class="required">*</span></label>
+                            <select id="hd-coqdchidinh" required>
+                                <option value="0" selected>Không</option>
+                                <option value="1">Có</option>
+                            </select>
+                        </div>
+                        <div id="hd-qdchidinh-fields" style="display: none; grid-column: span 2;">
+                            <div class="form-grid" style="grid-template-columns: repeat(2, 1fr); gap: 16px; width: 100%;">
+                                <div class="form-group">
+                                    <label for="hd-soqdchidinh">Số QĐ chỉ định <span class="required">*</span></label>
+                                    <input type="text" id="hd-soqdchidinh" placeholder="Ví dụ: 123/QĐ-CD">
+                                    <span class="error-text">Vui lòng nhập số QĐ chỉ định</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="hd-ngayqdchidinh">Ngày QĐ chỉ định <span class="required">*</span></label>
+                                    <input type="text" id="hd-ngayqdchidinh" placeholder="Chọn ngày (dd/MM/yyyy)">
+                                    <span class="error-text">Vui lòng chọn ngày QĐ chỉ định</span>
+                                </div>
+                            </div>
+                        </div>
                         <div class="form-group" id="hd-nhanvienphutrach-container">
                             <label for="hd-nhanvienphutrach">Chuyên viên phụ trách <span
                                     class="required">*</span></label>

@@ -261,6 +261,13 @@ export function showPackageDetails(id) {
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
 
+    const editBtn = document.getElementById('btn-edit-goithau-fullpage');
+    if (editBtn) {
+        editBtn.onclick = () => {
+            window.editGoiThau(id);
+        };
+    }
+
     const kh = this.model.state.kehoach.find(k => k.id === gt.keHoachId);
     const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
 

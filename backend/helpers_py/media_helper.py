@@ -2,7 +2,7 @@ import os
 import base64
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
+project_root = os.path.dirname(os.path.dirname(current_dir))
 
 # Dict dùng cho image cache (hoạt động như LRU thủ công)
 _load_image_cache: dict = {}
