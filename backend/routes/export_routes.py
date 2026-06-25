@@ -1,5 +1,5 @@
 # Re-export routes from routes_docx.py and routes_excel.py for backward compatibility
-from routes_docx import (
+from .routes_docx import (
     export_report_api,
     list_templates_api,
     set_active_template_api,
@@ -9,7 +9,7 @@ from routes_docx import (
     delete_word_mapping_api
 )
 
-from routes_excel import (
+from .routes_excel import (
     import_excel_api,
     export_excel_template_api,
     export_mothau_template_api,
@@ -19,3 +19,4 @@ from routes_excel import (
     export_tuychonmuathem_excel_api,
     export_opening_fin_template_api
 )
+

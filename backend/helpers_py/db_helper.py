@@ -3,8 +3,9 @@ import os
 import importlib.machinery
 import importlib.util
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
+current_dir = os.path.dirname(os.path.abspath(__file__)) # backend/helpers_py/
+backend_dir = os.path.dirname(current_dir) # backend/
+project_root = os.path.dirname(backend_dir) # root
 models_dir = os.path.join(project_root, 'models')
 
 sys.path.insert(0, project_root)
@@ -46,6 +47,8 @@ def optimized_get_connection(*args, **kwargs):
                 cursor.execute("ALTER TABLE goi_thau ADD COLUMN phuong_phap_danh_gia TEXT")
             if "trong_so_ky_thuat" not in existing_cols:
                 cursor.execute("ALTER TABLE goi_thau ADD COLUMN trong_so_ky_thuat INTEGER")
+            if "is_thuoc" not in existing_cols:
+                cursor.execute("ALTER TABLE goi_thau ADD COLUMN is_thuoc INTEGER DEFAULT 0")
             
             # Check and add missing columns for thong_tin_mo_thau
             cursor.execute("PRAGMA table_info(thong_tin_mo_thau)")

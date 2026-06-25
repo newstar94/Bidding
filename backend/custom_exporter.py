@@ -359,7 +359,7 @@ def format_context_dates(data):
             format_context_dates(item)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
-TEMPLATE_DIR = os.path.join(current_dir, 'templates')
+TEMPLATE_DIR = os.path.join(project_root, 'templates')
 CONFIG_PATH = os.path.join(TEMPLATE_DIR, 'config.json')
 
 def get_user_template_dir(user_id=None):
@@ -694,7 +694,7 @@ def prewarm_image_cache():
     Chạy song song bằng ThreadPoolExecutor để hoàn thành nhanh hơn.
     """
     try:
-        uploads_dir = os.path.join(project_root, 'uploads', 'chuyen_gia')
+        uploads_dir = os.path.join(project_root, 'templates', 'uploads', 'chuyen_gia')
         if not os.path.exists(uploads_dir):
             return
         
@@ -749,7 +749,8 @@ def _collect_image_tasks(data, project_root, tasks=None):
                 # Chuẩn hóa path: strip dấu / đầu nếu có
                 norm_v = v.lstrip('/')
                 if norm_v.startswith('uploads/'):
-                    filepath = os.path.join(project_root, norm_v)
+                    resolved_path = norm_v.replace('uploads/', 'templates/uploads/', 1)
+                    filepath = os.path.join(project_root, resolved_path)
                     if os.path.exists(filepath):
                         # Cập nhật giá trị key về dạng không có / đầu để filepath khớp
                         data[k] = norm_v

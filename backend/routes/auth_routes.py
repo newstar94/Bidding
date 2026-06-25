@@ -23,7 +23,7 @@ from helpers import (
     _session_cache_invalidate_by_user_id,
     OrgPermissionError
 )
-from auth_helper import _session_cache_get, _session_cache_set
+from helpers_py.auth_helper import _session_cache_get, _session_cache_set
 
 # ==========================================
 # RATE LIMITER (In-memory, per IP)
@@ -168,7 +168,7 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
         # Xóa cache tổ chức hoạt động và ngắt kết nối WebSocket
         from helpers import _org_cache_invalidate_by_user_id
         _org_cache_invalidate_by_user_id(user_id)
-        from sync_routes import disconnect_user_websockets
+        from .sync_routes import disconnect_user_websockets
         disconnect_user_websockets(user_id)
 
 # ==========================================
@@ -778,7 +778,7 @@ async def delete_user_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         from helpers import _org_cache_invalidate_by_user_id
         _org_cache_invalidate_by_user_id(user_id)
-        from sync_routes import disconnect_user_websockets
+        from .sync_routes import disconnect_user_websockets
         disconnect_user_websockets(user_id)
         
         return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
@@ -1082,7 +1082,7 @@ async def remove_user_from_org_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         from helpers import _org_cache_invalidate_by_user_id
         _org_cache_invalidate_by_user_id(user_id)
-        from sync_routes import disconnect_user_websockets
+        from .sync_routes import disconnect_user_websockets
         disconnect_user_websockets(user_id)
         
         return JSONResponse({"success": True, "message": "Gỡ nhân sự khỏi tổ chức thành công!"})

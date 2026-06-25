@@ -49,6 +49,19 @@
                         </select>
                         <span class="error-text">Vui lòng chọn lĩnh vực</span>
                     </div>
+                    <div class="form-group" id="gt-goithauthuoc-container" style="display: none;">
+                        <label>Gói thầu thuốc? <span class="required">*</span></label>
+                        <div class="radio-group" style="display: flex; gap: 16px; margin-top: 8px; align-items: center; height: 38px;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
+                                <input type="radio" name="gt-goithauthuoc" value="1" style="cursor: pointer;">
+                                Có
+                            </label>
+                            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
+                                <input type="radio" name="gt-goithauthuoc" value="0" checked style="cursor: pointer;">
+                                Không
+                            </label>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label for="gt-hinhthuc">Hình thức lựa chọn <span class="required">*</span></label>
                         <select id="gt-hinhthuc" required>

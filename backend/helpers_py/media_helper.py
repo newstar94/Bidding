@@ -36,7 +36,7 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         ext = "gif"
         
     try:
-        upload_dir = os.path.join(project_root, "uploads", subfolder)
+        upload_dir = os.path.join(project_root, "templates", "uploads", subfolder)
         os.makedirs(upload_dir, exist_ok=True)
         
         file_data = base64.b64decode(data_str)
@@ -84,14 +84,16 @@ def load_base64_image(db_value: str) -> str:
     # Cache key bao gồm mời lần file được chỉnh sửa (mà tử vựa) — tự invalidate khi upload ảnh mới
     _cache = _load_image_cache
     try:
-        filepath = os.path.join(project_root, db_value)
+        resolved_value = db_value.replace("uploads/", "templates/uploads/", 1) if db_value.startswith("uploads/") else db_value
+        filepath = os.path.join(project_root, resolved_value)
         if not os.path.exists(filepath):
             return db_value
         mtime = os.path.getmtime(filepath)
         cache_key = (db_value, mtime)
     except Exception:
         cache_key = (db_value, 0)
-        filepath = os.path.join(project_root, db_value)
+        resolved_value = db_value.replace("uploads/", "templates/uploads/", 1) if db_value.startswith("uploads/") else db_value
+        filepath = os.path.join(project_root, resolved_value)
     
     if cache_key in _cache:
         return _cache[cache_key]

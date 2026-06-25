@@ -110,16 +110,20 @@ from starlette.background import BackgroundTasks
 # 1. CẤU HÌNH ĐƯỜNG DẪN & TẢI MODULE BIÊN DỊCH
 # ==========================================
 
-# Lấy đường dẫn của thư mục controllers/ và thư mục gốc của dự án
-current_dir = os.path.dirname(os.path.abspath(__file__)) # controllers/
+# Lấy đường dẫn của thư mục backend/ và thư mục gốc của dự án
+current_dir = os.path.dirname(os.path.abspath(__file__)) # backend/
 project_root = os.path.dirname(current_dir) # root
 models_dir = os.path.join(project_root, 'models')
-controllers_dir = os.path.join(project_root, 'controllers')
+backend_dir = os.path.join(project_root, 'backend')
+helpers_py_dir = os.path.join(backend_dir, 'helpers_py')
+routes_dir = os.path.join(backend_dir, 'routes')
 
 # Thêm các thư mục MVC vào sys.path để Python có thể nạp chéo giữa các mô-đun
 sys.path.insert(0, project_root)
 sys.path.append(models_dir)
-sys.path.append(controllers_dir)
+sys.path.append(backend_dir)
+sys.path.append(helpers_py_dir)
+sys.path.append(routes_dir)
 
 # Tự động tải các cấu hình từ file .env nếu có
 env_path = os.path.join(project_root, '.env')
@@ -156,7 +160,7 @@ from helpers import (
 import custom_exporter
 
 
-from auth_routes import (
+from routes.auth_routes import (
     register_api,
     verify_email_api,
     resend_code_api,
@@ -175,13 +179,13 @@ from auth_routes import (
     add_user_to_org_api,
     remove_user_from_org_api
 )
-from sync_routes import (
+from routes.sync_routes import (
     sync_websocket_endpoint,
     sync_api,
     get_all_data_api,
     paginate_api
 )
-from export_routes import (
+from routes.export_routes import (
     export_report_api,
     list_templates_api,
     set_active_template_api,
@@ -198,7 +202,7 @@ from export_routes import (
     export_tuychonmuathem_excel_api,
     export_opening_fin_template_api
 )
-from address_routes import (
+from routes.address_routes import (
     get_provinces_api,
     get_wards_api
 )
@@ -293,7 +297,7 @@ routes = [
     # Mount gốc views cho tệp index.html và style.css (Dùng SafeStaticFiles cho /controllers và /models để chỉ serve file tĩnh JS/CSS)
     Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
     Mount("/models", app=SafeStaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
-    Mount("/uploads", app=StaticFiles(directory=os.path.join(project_root, 'uploads')), name="uploads"),
+    Mount("/uploads", app=StaticFiles(directory=os.path.join(project_root, 'templates', 'uploads')), name="uploads"),
     Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
     Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
 ]
@@ -380,11 +384,18 @@ import contextlib
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
+    # Khởi tạo và di trú cơ sở dữ liệu nếu chưa tồn tại
+    try:
+        from helpers import khoi_tao_va_di_tru_he_thong
+        khoi_tao_va_di_tru_he_thong()
+    except Exception as db_err:
+        print("Lỗi khởi tạo cơ sở dữ liệu tại startup:", db_err)
+
     import threading
     threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()
     
     # Dọn dẹp session cache và org cache hết hạn mỗi 5 phút để tránh RAM tích tụ
-    from auth_helper import _session_cache_cleanup
+    from helpers_py.auth_helper import _session_cache_cleanup
     from helpers import _org_cache_cleanup
     def _run_cache_cleanup():
         import time as _time
@@ -427,5 +438,5 @@ app = Starlette(
 # 5. KHỞI CHẠY MÁY CHỦ UVICORN
 # ==========================================
 if __name__ == "__main__":
-    # Khởi chạy server sử dụng đường dẫn import dạng module chính xác 'controllers.app:app'
-    uvicorn.run("controllers.app:app", host=APP_HOST, port=APP_PORT, reload=APP_DEBUG)
+    # Khởi chạy server sử dụng đường dẫn import dạng module chính xác 'backend.app:app'
+    uvicorn.run("backend.app:app", host=APP_HOST, port=APP_PORT, reload=APP_DEBUG)
