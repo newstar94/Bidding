@@ -99,7 +99,7 @@ export function editKeHoach(id) {
         document.getElementById('kh-ma').value = existingCode;
         const khMaInput = document.getElementById('kh-ma');
         if (khMaInput) {
-            if (existingCode && existingCode.trim() !== '') {
+            if (existingCode && existingCode.trim() !== '' && kh.thoiGianDangMa) {
                 khMaInput.setAttribute('readonly', 'true');
             } else {
                 khMaInput.removeAttribute('readonly');
@@ -689,14 +689,18 @@ export async function savePlanBreakdown() {
     let finalPlanId = planId;
 
     if (this.tempPlanAction === 'edit') {
-        const saveAsNewVersion = await this.view.customConfirm(
-            "Lưu phiên bản mới?",
-            "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
-            "help-circle"
-        );
+        const oldKh = this.model.state.kehoach.find(k => k.id === this.tempPlanData.id);
+        let saveAsNewVersion = false;
+        if (oldKh && oldKh.thoiGianDangMa) {
+            saveAsNewVersion = await this.view.customConfirm(
+                "Lưu phiên bản mới?",
+                "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
+                "help-circle"
+            );
 
-        if (saveAsNewVersion === null) {
-            return; // Cancel the save, stay on modal
+            if (saveAsNewVersion === null) {
+                return; // Cancel the save, stay on modal
+            }
         }
 
         if (saveAsNewVersion) {

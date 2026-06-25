@@ -369,7 +369,21 @@ export function renderDanhGiaHsdtPanel() {
             caseType = hasPhanLo ? '1G1T_WITH_LOT' : '1G1T_NO_LOT';
         }
 
+        const tableTitle = this.view.getActiveElement('danhgiahsdt-table-title');
+        if (tableTitle) {
+            if (is1G2T || isTuVan) {
+                if (this.currentDanhGiaTab === 'technical') {
+                    tableTitle.textContent = 'Đánh giá chi tiết các E-HSĐXKT đã nộp';
+                } else {
+                    tableTitle.textContent = 'Đánh giá chi tiết các E-HSĐXTC đã nộp';
+                }
+            } else {
+                tableTitle.textContent = 'Đánh giá chi tiết các HSDT nộp';
+            }
+        }
+
         const isCombinedMethod = gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá';
+        const showCombinedScore = isCombinedMethod && !(is1G2T && this.currentDanhGiaTab === 'technical');
 
         // Render table headers (opening fields + evaluation fields)
         let theadHtml = '';
@@ -387,7 +401,7 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 8%;">Làm rõ năng lực kinh nghiệm</th>
                     <th style="width: 8%;">Đánh giá kỹ thuật</th>
                     <th style="width: 8%;">Làm rõ kỹ thuật</th>
-                    ${isCombinedMethod ? '<th style="width: 6%;">Điểm tổng hợp</th>' : ''}
+                    ${showCombinedScore ? '<th style="width: 6%;">Điểm tổng hợp</th>' : ''}
                     <th style="width: 8%;">Kết luận</th>
                 </tr>
             `;
@@ -438,12 +452,9 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 10%;">Giá dự thầu</th>
                     <th style="width: 6%;">Tỷ lệ %</th>
                     <th style="width: 10%;">Giá sau giảm</th>
-                    <th style="width: 10%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 8%;">Giá trị ĐB</th>
-                    <th style="width: 8%;">Hiệu lực ĐB</th>
-                    <th style="width: 8%;">Thời gian TH</th>
+                    <th style="width: 10%;">Hiệu lực E-HSĐXTC</th>
                     <th style="width: 8%;">Làm rõ tài chính</th>
-                    ${isCombinedMethod ? `
+                    ${showCombinedScore ? `
                         <th style="width: 6%;">Đánh giá KT</th>
                         <th style="width: 6%;">Điểm tổng hợp</th>
                     ` : ''}
@@ -461,12 +472,9 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 9%;">Giá dự thầu</th>
                     <th style="width: 5%;">Tỷ lệ %</th>
                     <th style="width: 9%;">Giá sau giảm</th>
-                    <th style="width: 8%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 8%;">Giá trị ĐB</th>
-                    <th style="width: 8%;">Hiệu lực ĐB</th>
-                    <th style="width: 8%;">Thời gian TH</th>
+                    <th style="width: 8%;">Hiệu lực E-HSĐXTC</th>
                     <th style="width: 8%;">Làm rõ tài chính</th>
-                    ${isCombinedMethod ? `
+                    ${showCombinedScore ? `
                         <th style="width: 6%;">Đánh giá KT</th>
                         <th style="width: 6%;">Điểm tổng hợp</th>
                     ` : ''}
@@ -495,6 +503,7 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 6%;">Làm rõ tài chính</th>
                     ${isCombinedMethod ? '<th style="width: 6%;">Điểm tổng hợp</th>' : ''}
                     <th style="width: 8%;">Kết luận</th>
+                    <th style="width: 6%;">Xếp hạng</th>
                 </tr>
             `;
         } else if (caseType === '1G1T_WITH_LOT') {
@@ -521,6 +530,7 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 5%;">Làm rõ tài chính</th>
                     ${isCombinedMethod ? '<th style="width: 6%;">Điểm tổng hợp</th>' : ''}
                     <th style="width: 8%;">Kết luận</th>
+                    <th style="width: 6%;">Xếp hạng</th>
                 </tr>
             `;
         }
@@ -543,9 +553,9 @@ export function renderDanhGiaHsdtPanel() {
                 const inpNangLuc = tr.querySelector('.mt-dg-nang-luc');
                 const inpKyThuat = tr.querySelector('.mt-dg-ky-thuat');
                 
-                const valHopLe = inpHopLe ? inpHopLe.value.trim() : '';
-                const valNangLuc = inpNangLuc ? inpNangLuc.value.trim() : '';
-                const valKyThuat = inpKyThuat ? inpKyThuat.value.trim() : '';
+                const valHopLe = inpHopLe ? (inpHopLe.value || inpHopLe.textContent || '').trim() : '';
+                const valNangLuc = inpNangLuc ? (inpNangLuc.value || inpNangLuc.textContent || '').trim() : '';
+                const valKyThuat = inpKyThuat ? (inpKyThuat.value || inpKyThuat.textContent || '').trim() : '';
                 
                 const reasonHopLe = tr.querySelector('.mt-reason-fail-hople');
                 if (reasonHopLe) {
@@ -614,13 +624,15 @@ export function renderDanhGiaHsdtPanel() {
                         this.updateRowConclusion(tr, "Không đánh giá", true);
                     } else {
                         // Pass normal isReadOnly state
-                        const savedConclusion = (!isReadOnly && forceRowDisabled) ? "Chờ đánh giá" : null;
+                        const selectKetLuan = tr.querySelector('.mt-dg-ketluan');
+                        const currentSelectVal = selectKetLuan ? selectKetLuan.value : null;
+                        const savedConclusion = isReadOnly ? bid.danhGiaKetLuan : ((!isReadOnly && forceRowDisabled) ? "Chờ đánh giá" : (currentSelectVal || bid.danhGiaKetLuan || null));
                         this.updateRowConclusion(tr, savedConclusion, isReadOnly || forceRowDisabled);
                     }
 
-                    const valHopLe = inpHopLe ? inpHopLe.value.trim() : (bid.danhGiaHopLe || '');
-                    const valNangLuc = inpNangLuc ? inpNangLuc.value.trim() : (bid.danhGiaNangLuc || '');
-                    const valKyThuat = inpKyThuat ? inpKyThuat.value.trim() : (bid.danhGiaKyThuat || '');
+                     const valHopLe = (inpHopLe?.value || inpHopLe?.textContent || bid.danhGiaHopLe || '').trim();
+                     const valNangLuc = (inpNangLuc?.value || inpNangLuc?.textContent || bid.danhGiaNangLuc || '').trim();
+                     const valKyThuat = (inpKyThuat?.value || inpKyThuat?.textContent || bid.danhGiaKyThuat || '').trim();
 
                     let valKetLuan = '';
                     const conclusionCell = tr.querySelector('.mt-ketluan-cell');
@@ -667,6 +679,7 @@ export function renderDanhGiaHsdtPanel() {
 
             rows.forEach(tr => {
                 const bidId = tr.getAttribute('data-bid-id');
+                const bid = this.model.state.thongtinmothau.find(b => b.id === bidId);
                 const rank = rankings[bidId];
                 const score = scores[bidId];
                 const rankText = rank ? `Xếp hạng ${rank}` : '';
@@ -674,6 +687,14 @@ export function renderDanhGiaHsdtPanel() {
                 const inpDgTaiChinh = tr.querySelector('.mt-dg-tai-chinh');
                 if (inpDgTaiChinh) {
                     inpDgTaiChinh.value = rankText;
+                }
+
+                const elXepHang = tr.querySelector('.mt-dg-xep-hang');
+                if (elXepHang) {
+                    const conclusionCell = tr.querySelector('.mt-ketluan-cell');
+                    const conclusionText = conclusionCell ? conclusionCell.textContent.trim() : '';
+                    const isFailed = conclusionText.includes('Không đạt') || (bid.danhGiaKetLuan && bid.danhGiaKetLuan.includes('Không đạt'));
+                    elXepHang.textContent = rank ? `Xếp hạng ${rank}` : (isFailed ? 'Không xếp hạng' : '--');
                 }
 
                 const elCombinedScore = tr.querySelector('.mt-combined-score');
@@ -687,12 +708,8 @@ export function renderDanhGiaHsdtPanel() {
                     if (badge) {
                         const baseText = badge.textContent.trim();
                         if (baseText.startsWith('Đạt')) {
-                            if (rank) {
-                                badge.textContent = `Đạt (Xếp hạng ${rank})`;
-                                badge.className = 'badge badge-success';
-                            } else {
-                                badge.textContent = 'Đạt';
-                            }
+                            badge.textContent = 'Đạt';
+                            badge.className = 'badge badge-success';
                         }
                     }
                 }
@@ -783,12 +800,9 @@ export function renderDanhGiaHsdtPanel() {
                 // If Financial evaluation stage of 1G2T, show prices and ratings
                 if (is1G2T && this.currentDanhGiaTab === 'financial') {
                     const valGiaDuThau = bid.giaDuThau ? this.model.formatVND(bid.giaDuThau) : '';
-                    const valTyLeGiam = bid.tyLeGiamGia !== undefined ? this.model.formatNumber(bid.tyLeGiamGia) : '0';
+                    const valTyLeGiam = bid.tyLeGiamGia !== undefined ? this.model.formatVND(bid.tyLeGiamGia) : '0';
                     const valGiaSauGiam = bid.giaSauGiamGia ? this.model.formatVND(bid.giaSauGiamGia) : '';
                     const valHieuLucHsdt = bid.hieuLucHsdt || '';
-                    const valGiaTriDb = bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : '';
-                    const valHieuLucDb = bid.hieuLucBaoDamNgay || '';
-                    const valThoiGianTh = bid.thoiGianThucHien || '';
                     const valLamRoTaiChinh = bid.lamRoTaiChinh || '';
                     const valTaiChinh = bid.danhGiaTaiChinh || '';
 
@@ -798,9 +812,8 @@ export function renderDanhGiaHsdtPanel() {
                             <td style="text-align:right;"><span>${valTyLeGiam}</span></td>
                             <td><span>${valGiaSauGiam || '--'}</span></td>
                             <td><span>${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : '--'}</span></td>
-                            <td><span>${valThoiGianTh || '--'}</span></td>
                             <td><span>${valLamRoTaiChinh || '--'}</span></td>
-                            ${isCombinedMethod ? `
+                            ${showCombinedScore ? `
                                 <td><span>${bid.danhGiaKyThuat || '--'}</span></td>
                                 <td><span class="mt-combined-score" style="font-weight:700;">--</span></td>
                             ` : ''}
@@ -812,9 +825,8 @@ export function renderDanhGiaHsdtPanel() {
                             <td><input type="text" class="form-control mt-ty-le-giam-gia" value="${valTyLeGiam}" readonly placeholder="0" style="background:#f1f5f9; text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-gia-sau-giam-gia" value="${valGiaSauGiam}" readonly placeholder="Tự tính..." style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : ''}" readonly placeholder="Ví dụ: 90 ngày" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${valThoiGianTh}" readonly placeholder="Ví dụ: 60 ngày" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${valLamRoTaiChinh}" placeholder="Nhập làm rõ tài chính..." style="padding: 4px 6px; font-size:0.8rem;"></td>
-                            ${isCombinedMethod ? `
+                            ${showCombinedScore ? `
                                 <td><span>${bid.danhGiaKyThuat || '--'}</span></td>
                                 <td><span class="mt-combined-score" style="font-weight:700;">--</span></td>
                             ` : ''}
@@ -833,7 +845,35 @@ export function renderDanhGiaHsdtPanel() {
                     const valKetLuan = bid.danhGiaKetLuan || '';
                     const isTechnical = caseType === 'TU_VAN' || caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT';
 
+                    const valHieuLucHsdtRaw = bid.hieuLucHsdxt || bid.hieuLucHsdt || '';
+                    const valHieuLucHsdtDisplay = valHieuLucHsdtRaw ? (String(valHieuLucHsdtRaw).includes('ngày') ? valHieuLucHsdtRaw : valHieuLucHsdtRaw + ' ngày') : '--';
+                    const valHieuLucHsdtInput = valHieuLucHsdtRaw ? (String(valHieuLucHsdtRaw).includes('ngày') ? valHieuLucHsdtRaw : valHieuLucHsdtRaw + ' ngày') : '';
+
                     if (isReadOnly) {
+                        if (!isTechnical) {
+                            cellHtml += `
+                                <td><span>${bid.giaDuThau ? this.model.formatVND(bid.giaDuThau) : '--'}</span></td>
+                                <td style="text-align:right;"><span>${bid.tyLeGiamGia !== undefined ? this.model.formatVND(bid.tyLeGiamGia) : '0'}</span></td>
+                                <td><span>${bid.giaSauGiamGia ? this.model.formatVND(bid.giaSauGiamGia) : '--'}</span></td>
+                                <td><span>${valHieuLucHsdtDisplay}</span></td>
+                                <td><span>${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : '--'}</span></td>
+                                <td><span>${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : '--'}</span></td>
+                                <td><span>${bid.thoiGianThucHien || '--'}</span></td>
+                            `;
+                        } else {
+                            if (caseType === 'TU_VAN') {
+                                cellHtml += `
+                                    <td><span>${valHieuLucHsdtDisplay}</span></td>
+                                    <td><span>${bid.thoiGianThucHien || '--'}</span></td>
+                                `;
+                            } else if (caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT') {
+                                cellHtml += `
+                                    <td><span>${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : '--'}</span></td>
+                                    <td><span>${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : '--'}</span></td>
+                                    <td><span>${valHieuLucHsdtDisplay}</span></td>
+                                `;
+                            }
+                        }
                         cellHtml += `
                             <td>
                                 <span class="mt-dg-hop-le" style="font-weight:600;">${valHopLe || '--'}</span>
@@ -851,11 +891,36 @@ export function renderDanhGiaHsdtPanel() {
                             </td>
                             <td><span>${valLamRoKyThuat || '--'}</span></td>
                             ${isTechnical ? '' : `<td><span>${valLamRoTaiChinh || '--'}</span></td>`}
-                            ${isCombinedMethod ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ''}
+                            ${showCombinedScore ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ''}
                             <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
+                            ${isTechnical ? '' : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${bid.danhGiaTaiChinh || '--'}</span></td>`}
                         `;
                     } else {
                         const forceRowDisabled = !is1G2T && gt.quyTrinhDanhGia === 'quytrinh2' && !previousAllFailed;
+                        if (!isTechnical) {
+                            cellHtml += `
+                                <td><input type="text" class="form-control" value="${bid.giaDuThau ? this.model.formatVND(bid.giaDuThau) : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${bid.tyLeGiamGia !== undefined ? this.model.formatVND(bid.tyLeGiamGia) : '0'}" readonly style="background:#f1f5f9; text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${bid.giaSauGiamGia ? this.model.formatVND(bid.giaSauGiamGia) : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${bid.hieuLucHsdt ? bid.hieuLucHsdt + ' ngày' : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                            `;
+                        } else {
+                            if (caseType === 'TU_VAN') {
+                                cellHtml += `
+                                    <td><input type="text" class="form-control" value="${valHieuLucHsdtInput}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                `;
+                            } else if (caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT') {
+                                cellHtml += `
+                                    <td><input type="text" class="form-control" value="${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control" value="${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control" value="${valHieuLucHsdtInput}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                `;
+                            }
+                        }
                         cellHtml += `
                             <td>
                                 <select class="form-control mt-dg-hop-le" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
@@ -879,8 +944,9 @@ export function renderDanhGiaHsdtPanel() {
                             </td>
                             <td><input type="text" class="form-control mt-lam-ro-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoKyThuat}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ kỹ thuật...'}"></td>
                             ${isTechnical ? '' : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoTaiChinh}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ tài chính...'}"></td>`}
-                            ${isCombinedMethod ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ''}
+                            ${showCombinedScore ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ''}
                             <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
+                            ${isTechnical ? '' : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${bid.danhGiaTaiChinh || '--'}</span></td>`}
                         `;
                     }
                 }
@@ -903,7 +969,6 @@ export function renderDanhGiaHsdtPanel() {
                     const inputs = tr.querySelectorAll('.mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat');
                     inputs.forEach(input => {
                         const triggerUpdate = () => {
-                            this.updateRowConclusion(tr, null, false);
                             updateAllRankings();
                         };
                         input.addEventListener('input', triggerUpdate);
@@ -1317,8 +1382,12 @@ export async function saveDanhGiaHsdt() {
                 if (hieuLucBaoDamNgayEl) {
                     bid.hieuLucBaoDamNgay = parseInt(hieuLucBaoDamNgayEl.value || '0', 10);
                 }
-                bid.thoiGianThucHien = tr.querySelector('.mt-thoi-gian-thuc-hien')?.value.trim() || '';
-                bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : '';
+                const thoiGianThucHienEl = tr.querySelector('.mt-thoi-gian-thuc-hien');
+                if (thoiGianThucHienEl) {
+                    bid.thoiGianThucHien = thoiGianThucHienEl.value.trim();
+                }
+                const isFailedFinancial = bid.danhGiaKetLuan && bid.danhGiaKetLuan.startsWith('Không đạt');
+                bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : (isFailedFinancial ? 'Không xếp hạng' : '--');
                 bid.lamRoTaiChinh = tr.querySelector('.mt-lam-ro-tai-chinh')?.value.trim() || '';
             } else {
                 // Save Technical / Unified ratings
@@ -1333,7 +1402,8 @@ export async function saveDanhGiaHsdt() {
                     bid.danhGiaKetLuan = cell ? cell.textContent.trim() : '';
                 }
 
-                bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : '';
+                const isFailedTechnical = bid.danhGiaKetLuan && bid.danhGiaKetLuan.startsWith('Không đạt');
+                bid.danhGiaTaiChinh = finalRank ? `Xếp hạng ${finalRank}` : (isFailedTechnical ? 'Không xếp hạng' : '--');
 
                 const inpLamRoHopLe = tr.querySelector('.mt-lam-ro-hop-le');
                 if (inpLamRoHopLe) bid.lamRoHopLe = inpLamRoHopLe.value.trim();
@@ -1357,6 +1427,21 @@ export async function saveDanhGiaHsdt() {
     this.model.persistData('thongtinmothau');
     this.view.renderGoiThauTable();
     this.autoSync();
+
+    // Tự động chuyển tab kết quả hoặc danh sách đạt kỹ thuật sau khi lưu
+    const detailPane = document.getElementById('tab-goithau-detail');
+    if (detailPane && detailPane.classList.contains('active')) {
+        if (!is1G2T) {
+            this.view._currentWorkflowTab = 'result';
+        } else {
+            if (this.currentDanhGiaTab === 'technical') {
+                this.view._currentWorkflowTab = 'qualified';
+            } else {
+                this.view._currentWorkflowTab = 'result';
+            }
+        }
+        this.view.showPackageDetails(gtId);
+    }
 
     await this.view.customAlert('Lưu thành công', `Đã lưu toàn bộ thông tin báo cáo đánh giá của gói thầu "${gt.tenGoiThau}" thành công!`, 'check-circle');
 }

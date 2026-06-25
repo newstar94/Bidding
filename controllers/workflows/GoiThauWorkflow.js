@@ -293,7 +293,7 @@ export function editGoiThau(id, isReadOnly = false) {
         document.getElementById('gt-ma').value = existingGtCode;
         const gtMaInput = document.getElementById('gt-ma');
         if (gtMaInput) {
-            if (existingGtCode && existingGtCode.trim() !== '') {
+            if (existingGtCode && existingGtCode.trim() !== '' && gt.trangThai !== 'Chuẩn bị') {
                 gtMaInput.setAttribute('readonly', 'true');
             } else {
                 gtMaInput.removeAttribute('readonly');
@@ -996,14 +996,17 @@ export async function handleGoiThauSubmit(e) {
         const oldGt = this.model.state.goithau.find(g => g.id === id);
         const newTen = gtData.tenGoiThau;
 
-        const saveAsNewVersion = await this.view.customConfirm(
-            "Lưu phiên bản mới?",
-            "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
-            "help-circle"
-        );
+        let saveAsNewVersion = false;
+        if (oldGt && oldGt.trangThai === 'Đang mời thầu') {
+            saveAsNewVersion = await this.view.customConfirm(
+                "Lưu phiên bản mới?",
+                "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
+                "help-circle"
+            );
 
-        if (saveAsNewVersion === null) {
-            return;
+            if (saveAsNewVersion === null) {
+                return;
+            }
         }
 
         if (saveAsNewVersion) {

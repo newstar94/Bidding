@@ -288,7 +288,7 @@ routes = [
     Route("/hop-dong", index, methods=["GET"]),
     Route("/hop-dong/{action}", index, methods=["GET"]),
     Route("/bieu-mau", index, methods=["GET"]),
-    Route("/xuat-word", index, methods=["GET"]),
+
     Route("/tong-quan-admin", index, methods=["GET"]),
     Route("/quan-ly-tai-khoan", index, methods=["GET"]),
     Route("/nhan-su", index, methods=["GET"]),

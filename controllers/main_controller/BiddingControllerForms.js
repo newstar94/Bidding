@@ -1009,10 +1009,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
 
     const giaHanContainer = document.getElementById('gt-giahan-container');
     if (giaHanContainer) {
-        const goiThauId = document.getElementById('form-goithau-id')?.value;
-        const gt = goiThauId ? this.model.state.goithau.find(g => String(g.id) === String(goiThauId)) : null;
-        const hasGiaHanData = gt && gt.giaHanList && ((typeof gt.giaHanList === 'string' ? JSON.parse(gt.giaHanList) : gt.giaHanList).length > 0);
-        giaHanContainer.style.display = (trangThai === 'Đang mời thầu' || (isReadOnly && hasGiaHanData)) ? 'flex' : 'none';
+        giaHanContainer.style.display = (trangThai !== 'Chuẩn bị') ? 'flex' : 'none';
     }
 
     const yeuCauLamRoContainer = document.getElementById('gt-yeucaulamro-container');

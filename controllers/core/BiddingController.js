@@ -39,7 +39,7 @@ export class BiddingController {
             'nhathau': 'nha-thau',
             'chuyengia': 'chuyen-gia',
             'bieumau': 'bieu-mau',
-            'xuatword': 'xuat-word',
+
             'superadmin-dashboard': 'tong-quan-admin',
             'superadmin': 'quan-ly-tai-khoan',
             'managernhanvien': 'nhan-su',
