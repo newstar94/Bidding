@@ -26,3 +26,8 @@ Desktop.ini
 
 # Scratch files
 scratch/
+
+# Test files and caches
+backend/tests/
+**/tests/
+.pytest_cache/

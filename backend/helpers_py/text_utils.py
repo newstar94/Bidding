@@ -26,7 +26,7 @@ def format_date_str(date_str):
     date_str = str(date_str).strip().split(' ')[0]
     for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
         try:
-            return datetime.strptime(date_str, fmt).strftime('%d/%m/%Y')
+            return datetime.datetime.strptime(date_str, fmt).strftime('%d/%m/%Y')
         except ValueError:
             pass
     return date_str
