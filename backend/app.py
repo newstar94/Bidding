@@ -79,6 +79,11 @@ def compile_html(file_path):
             raw_content = f.read()
         compiled = compile_content(raw_content)
         if not APP_DEBUG:
+            compiled = re.sub(
+                r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
+                '<script src="/dist/controllers/app.bundle.js"></script>',
+                compiled
+            )
             with _compiled_html_lock:
                 # Double-checked locking: kiểm tra lại sau khi lấy lock
                 if not _compiled_html_cache:
@@ -219,9 +224,10 @@ class SafeStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
-# ==========================================
-# 4. KHAI BÁO PATH ROUTING & STATIC FILES
-# ==========================================
+# Đảm bảo thư mục dist tồn tại để tránh StaticFiles báo lỗi khi chưa chạy build lần đầu
+dist_dir = os.path.join(project_root, 'dist')
+os.makedirs(dist_dir, exist_ok=True)
+
 routes = [
     Route("/", index, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),
@@ -302,6 +308,7 @@ routes = [
     Route("/hop-dong-chi-tiet/{action}", index, methods=["GET"]),
 
     # Mount gốc views cho tệp index.html và style.css (Dùng SafeStaticFiles cho /controllers và /models để chỉ serve file tĩnh JS/CSS)
+    Mount("/dist", app=SafeStaticFiles(directory=dist_dir), name="dist"),
     Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
     Mount("/models", app=SafeStaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
     Mount("/uploads", app=StaticFiles(directory=os.path.join(project_root, 'templates', 'uploads')), name="uploads"),
