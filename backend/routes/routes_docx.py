@@ -138,7 +138,7 @@ async def export_plan_api(request):
         for k, v in custom_evaluated_values.items():
             unified_context[k] = v
 
-        if active_tpl == 'mau_bao_cao_dau_thau.docx':
+        if active_tpl in ['mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx']:
             tpl_path = os.path.join(custom_exporter.TEMPLATE_DIR, active_tpl)
         else:
             user_dir = custom_exporter.get_user_template_dir(user_id)
@@ -592,9 +592,7 @@ async def export_report_api(request):
         for k, v in custom_evaluated_values.items():
             unified_context[k] = v
 
-        if active_tpl == 'mau_bao_cao_dau_thau.docx':
-            tpl_path = os.path.join(custom_exporter.TEMPLATE_DIR, active_tpl)
-        elif active_tpl == 'mau_hop_dong_lcnt.docx':
+        if active_tpl in ['mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx']:
             tpl_path = os.path.join(custom_exporter.TEMPLATE_DIR, active_tpl)
         else:
             user_dir = custom_exporter.get_user_template_dir(user_id)
