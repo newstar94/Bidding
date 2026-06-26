@@ -726,9 +726,16 @@ export function renderDanhGiaHsdtPanel() {
         tbody.innerHTML = '';
         let bids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gtId));
         if (is1G2T && this.currentDanhGiaTab === 'financial') {
-            bids = bids.filter(b =>
-                b.danhGiaKetLuan ? (b.danhGiaKetLuan === 'Đạt' || b.danhGiaKetLuan.startsWith('Đạt')) : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '')
-            );
+            bids = bids.filter(b => {
+                const kl = String(b.danhGiaKetLuan || '').trim().toLowerCase();
+                if (kl) {
+                    return kl === 'đạt' || kl.startsWith('đạt');
+                }
+                const hl = String(b.danhGiaHopLe || '').trim().toLowerCase();
+                const nl = String(b.danhGiaNangLuc || '').trim().toLowerCase();
+                const kt = String(b.danhGiaKyThuat || '').trim().toLowerCase();
+                return hl === 'đạt' && nl === 'đạt' && kt !== 'không đạt' && kt !== '';
+            });
         }
 
         // Sort bids: if Quy trình 2 for 1G1T, sort by evaluated price ascending. Otherwise sort alphabetically by Lot Code

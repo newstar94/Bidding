@@ -2,6 +2,8 @@ import { getAuthDownloadUrl, authFetchDownload } from '../utils/workflow_helpers
 export function setupExcelImportEvents() {
     // Bind all direct download buttons
     document.querySelectorAll('.btn-download-excel-template-direct').forEach(btn => {
+        if (btn._hasExcelListener) return;
+        btn._hasExcelListener = true;
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const type = btn.getAttribute('data-type');
@@ -11,6 +13,8 @@ export function setupExcelImportEvents() {
 
     // Bind all direct import buttons
     document.querySelectorAll('.btn-import-excel-direct').forEach(btn => {
+        if (btn._hasExcelListener) return;
+        btn._hasExcelListener = true;
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const type = btn.getAttribute('data-type');
@@ -20,6 +24,8 @@ export function setupExcelImportEvents() {
 
     // Bind all main tab import buttons
     document.querySelectorAll('.btn-import-excel').forEach(btn => {
+        if (btn._hasExcelListener) return;
+        btn._hasExcelListener = true;
         btn.addEventListener('click', () => {
             const type = btn.getAttribute('data-type');
             this.openExcelImportModal(type);
@@ -27,7 +33,8 @@ export function setupExcelImportEvents() {
     });
 
     const fileInput = document.getElementById('excel-file-input');
-    if (fileInput) {
+    if (fileInput && !fileInput._hasExcelListener) {
+        fileInput._hasExcelListener = true;
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) this.handleExcelUpload(file);
@@ -35,7 +42,8 @@ export function setupExcelImportEvents() {
     }
 
     const dragDropZone = document.getElementById('excel-drag-drop-zone');
-    if (dragDropZone && fileInput) {
+    if (dragDropZone && !dragDropZone._hasExcelListener && fileInput) {
+        dragDropZone._hasExcelListener = true;
         dragDropZone.addEventListener('click', () => fileInput.click());
         dragDropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -56,16 +64,17 @@ export function setupExcelImportEvents() {
     }
 
     const saveImportBtn = document.getElementById('btn-save-excel-import');
-    if (saveImportBtn) {
+    if (saveImportBtn && !saveImportBtn._hasExcelListener) {
+        saveImportBtn._hasExcelListener = true;
         saveImportBtn.addEventListener('click', () => this.saveExcelImport());
     }
 
     const downloadTemplateBtn = document.getElementById('btn-download-excel-template');
-    if (downloadTemplateBtn) {
+    if (downloadTemplateBtn && !downloadTemplateBtn._hasExcelListener) {
+        downloadTemplateBtn._hasExcelListener = true;
         downloadTemplateBtn.addEventListener('click', () => {
             const type = this._excelImportType || 'kehoach';
             authFetchDownload(`/api/export-excel-template/${type}`, `Mau_nhap_lieu_${type}.xlsx`);
-
         });
     }
 }
@@ -209,6 +218,7 @@ export function openExcelImportModal(type) {
         // Clear all previous listeners
         const clone = downloadTemplateBtn.cloneNode(true);
         downloadTemplateBtn.parentNode.replaceChild(clone, downloadTemplateBtn);
+        clone._hasExcelListener = true;
 
         clone.onclick = (e) => {
             e.preventDefault();
@@ -457,6 +467,10 @@ export async function handleExcelUpload(file) {
                         const lamRoNangLuc = String(row['Làm rõ năng lực'] || row['Làm rõ năng lực kinh nghiệm'] || '').trim();
                         const lamRoKyThuat = String(row['Làm rõ kỹ thuật'] || '').trim();
                         const lamRoTaiChinh = String(row['Làm rõ tài chính'] || '').trim();
+                        
+                        const nguyenNhanKhongDatHopLe = String(row['Lý do không đạt hợp lệ'] || '').trim();
+                        const nguyenNhanKhongDatNangLuc = String(row['Lý do không đạt năng lực'] || '').trim();
+                        const nguyenNhanKhongDatKyThuat = String(row['Lý do không đạt kỹ thuật'] || '').trim();
 
                         const rec = {
                             _valid: isValid,
@@ -471,7 +485,10 @@ export async function handleExcelUpload(file) {
                             lamRoHopLe,
                             lamRoNangLuc,
                             lamRoKyThuat,
-                            lamRoTaiChinh
+                            lamRoTaiChinh,
+                            nguyenNhanKhongDatHopLe,
+                            nguyenNhanKhongDatNangLuc,
+                            nguyenNhanKhongDatKyThuat
                         };
                         if (hasPhanLo) {
                             rec.maPhanLo = foundBid ? foundBid.maPhanLo : maPhanLo;
@@ -1057,6 +1074,10 @@ export async function saveExcelImport() {
                         bid.lamRoNangLuc = row.lamRoNangLuc || '';
                         bid.lamRoKyThuat = row.lamRoKyThuat || '';
                         bid.lamRoTaiChinh = row.lamRoTaiChinh || '';
+                        
+                        bid.nguyenNhanKhongDatHopLe = bid.danhGiaHopLe === 'Không đạt' ? (row.nguyenNhanKhongDatHopLe || '') : '';
+                        bid.nguyenNhanKhongDatNangLuc = bid.danhGiaNangLuc === 'Không đạt' ? (row.nguyenNhanKhongDatNangLuc || '') : '';
+                        bid.nguyenNhanKhongDatKyThuat = bid.danhGiaKyThuat === 'Không đạt' ? (row.nguyenNhanKhongDatKyThuat || '') : '';
                     }
                 }
             });

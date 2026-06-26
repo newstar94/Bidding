@@ -1,4 +1,17 @@
 import { getAuthDownloadUrl, authFetchDownload } from './view_helpers.js';
+
+export function checkBidQualified(b) {
+    if (!b) return false;
+    const kl = String(b.danhGiaKetLuan || '').trim().toLowerCase();
+    if (kl) {
+        return kl === 'đạt' || kl.startsWith('đạt') || kl.includes('trúng thầu');
+    }
+    const hl = String(b.danhGiaHopLe || '').trim().toLowerCase();
+    const nl = String(b.danhGiaNangLuc || '').trim().toLowerCase();
+    const kt = String(b.danhGiaKyThuat || '').trim().toLowerCase();
+    return hl === 'đạt' && nl === 'đạt' && kt !== 'không đạt' && kt !== '';
+}
+
 export async function renderGoiThauTable() {
     const tableBody = document.getElementById('goithau-table').querySelector('tbody');
     const searchVal = document.getElementById('search-goithau').value.toLowerCase();
@@ -293,6 +306,24 @@ export function showPackageDetails(id) {
             editAwardBtn.style.display = 'flex';
             editAwardBtn.onclick = async () => {
                 gt.trangThai = 'Đang chấm thầu';
+                
+                // Clear any stored standard reasons in database to let them recalculate fresh
+                const standardReasons = [
+                    "Không đạt yêu cầu về tính hợp lệ",
+                    "Không đạt yêu cầu về năng lực, kinh nghiệm",
+                    "Không đạt yêu cầu kỹ thuật",
+                    "Nhà thầu xếp hạng 1 trúng thầu",
+                    "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu",
+                    ""
+                ];
+                const pkgBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(id));
+                pkgBids.forEach(b => {
+                    if (b.lyDoTruot && standardReasons.includes(b.lyDoTruot.trim())) {
+                        b.lyDoTruot = '';
+                    }
+                });
+
+                this.model.persistData('thongtinmothau');
                 this.model.persistData('goithau');
                 window.appController.autoSync();
                 this.showPackageDetails(id);
@@ -335,9 +366,7 @@ export function showPackageDetails(id) {
     }
 
     const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
-    const qualifiedBidsForOpening = allBidsForOpening.filter(b =>
-        b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '')
-    );
+    const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
     const isFinOpeningSaved = qualifiedBidsForOpening.some(b => b.giaDuThau && b.giaDuThau > 0);
 
     const tabs = [{ id: 'preparation', label: 'Thông tin gói thầu' }];
@@ -973,9 +1002,7 @@ export function showPackageDetails(id) {
 
         case 'qualified':
             const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
-            const qualifiedBids = allBids.filter(b =>
-                b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '')
-            );
+            const qualifiedBids = allBids.filter(checkBidQualified);
 
             if (qualifiedBids.length === 0) {
                 contentWrapper.innerHTML = `
@@ -1126,9 +1153,7 @@ export function showPackageDetails(id) {
 
         case 'opening_fin':
             const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
-            const qualifiedBidsForOpening = allBidsForOpening.filter(b =>
-                b.danhGiaKetLuan ? b.danhGiaKetLuan === 'Đạt' : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== '')
-            );
+            const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
 
             if (qualifiedBidsForOpening.length === 0) {
                 contentWrapper.innerHTML = `
@@ -1299,8 +1324,7 @@ export function showPackageDetails(id) {
 
         case 'result':
             const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
-                String(b.goiThauId) === String(gt.id) &&
-                (b.danhGiaKetLuan ? (b.danhGiaKetLuan === 'Đạt' || b.danhGiaKetLuan.startsWith('Đạt') || b.danhGiaKetLuan.includes('Trúng thầu')) : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
+                String(b.goiThauId) === String(gt.id) && checkBidQualified(b)
             );
             const isAwarded = gt.trangThai === 'Đã có kết quả';
 
@@ -1674,13 +1698,13 @@ export function showPackageDetails(id) {
                 });
                 const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
                     String(b.goiThauId) === String(gt.id) &&
-                    (b.danhGiaKetLuan ? (b.danhGiaKetLuan === 'Đạt' || b.danhGiaKetLuan.startsWith('Đạt')) : (b.danhGiaHopLe === 'Đạt' && b.danhGiaNangLuc === 'Đạt' && b.danhGiaKyThuat !== 'Không đạt' && b.danhGiaKyThuat !== ''))
+                    checkBidQualified(b)
                 );
 
                 const { rankings, scores } = window.appController.calculateRankings(gt, allBids);
                 const isCombinedMethod = gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá';
                 const getIsQualified = (bidItem) => {
-                    return bidItem.danhGiaKetLuan ? (bidItem.danhGiaKetLuan === 'Đạt' || bidItem.danhGiaKetLuan.startsWith('Đạt')) : (bidItem.danhGiaHopLe === 'Đạt' && bidItem.danhGiaNangLuc === 'Đạt' && bidItem.danhGiaKyThuat !== 'Không đạt' && bidItem.danhGiaKyThuat !== '' && bidItem.danhGiaKyThuat);
+                    return checkBidQualified(bidItem);
                 };
 
                 const allBiddersHtml = allBids.map((b, idx) => {
@@ -1690,9 +1714,11 @@ export function showPackageDetails(id) {
                     if (gt.quyTrinhDanhGia === 'quytrinh2' && b.danhGiaKetLuan === 'Không đánh giá') {
                         defaultReason = "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu";
                     } else if (!isQualified) {
-                        if (!b.danhGiaHopLe || b.danhGiaHopLe !== 'Đạt') {
+                        const hl = String(b.danhGiaHopLe || '').trim().toLowerCase();
+                        const nl = String(b.danhGiaNangLuc || '').trim().toLowerCase();
+                        if (hl !== 'đạt') {
                             defaultReason = "Không đạt yêu cầu về tính hợp lệ";
-                        } else if (!b.danhGiaNangLuc || b.danhGiaNangLuc !== 'Đạt') {
+                        } else if (nl !== 'đạt') {
                             defaultReason = "Không đạt yêu cầu về năng lực, kinh nghiệm";
                         } else {
                             defaultReason = "Không đạt yêu cầu kỹ thuật";
@@ -1701,7 +1727,16 @@ export function showPackageDetails(id) {
                         defaultReason = "Nhà thầu xếp hạng 1 trúng thầu";
                     }
 
-                    const displayReason = b.lyDoTruot || defaultReason;
+                    const standardReasons = [
+                        "Không đạt yêu cầu về tính hợp lệ",
+                        "Không đạt yêu cầu về năng lực, kinh nghiệm",
+                        "Không đạt yêu cầu kỹ thuật",
+                        "Nhà thầu xếp hạng 1 trúng thầu",
+                        "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu",
+                        ""
+                    ];
+                    const isStaleOrEmpty = !b.lyDoTruot || standardReasons.includes(b.lyDoTruot.trim());
+                    const displayReason = isStaleOrEmpty ? defaultReason : b.lyDoTruot;
 
                     const defaultPrice = this.model.formatVND(b.giaSauGiamGia || b.giaDuThau || '') || '';
                     const defaultDurationPkg = b.thoiGianThucHien || gt.thoiGianThucHien || '';

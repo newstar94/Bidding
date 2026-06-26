@@ -700,7 +700,8 @@ async def export_danhgiahsdt_template_api(request):
                    dam_bao_du_thau, hieu_luc_dam_bao, hieu_luc_hsdxt,
                    danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
                    lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh,
-                   danh_gia_tai_chinh
+                   danh_gia_tai_chinh,
+                   nguyen_nhan_khong_dat_hop_le, nguyen_nhan_khong_dat_nang_luc, nguyen_nhan_khong_dat_ky_thuat
             FROM thong_tin_mo_thau
             WHERE goi_thau_id = ? AND owner_id = ?
         """, (pkg_id_clean, org_name))
@@ -725,19 +726,19 @@ async def export_danhgiahsdt_template_api(request):
             
         headers = []
         if case_type == 'TU_VAN':
-            headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Hiệu lực E-HSĐXKT (ngày)', 'Thời gian thực hiện (ngày)', 'Đánh giá hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật']
+            headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Hiệu lực E-HSĐXKT (ngày)', 'Thời gian thực hiện (ngày)', 'Đánh giá hợp lệ', 'Lý do không đạt hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Lý do không đạt năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Lý do không đạt kỹ thuật', 'Làm rõ kỹ thuật']
         elif case_type == '1G2T_NO_LOT':
-            headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)', 'Đánh giá hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật']
+            headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)', 'Đánh giá hợp lệ', 'Lý do không đạt hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Lý do không đạt năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Lý do không đạt kỹ thuật', 'Làm rõ kỹ thuật']
         elif case_type == '1G2T_WITH_LOT':
-            headers = ['Loại nhà thầu', 'Mã phần lô', 'Tên phần lô', 'Mã nhà thầu', 'Tên nhà thầu', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)', 'Đánh giá hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật']
+            headers = ['Loại nhà thầu', 'Mã phần lô', 'Tên phần lô', 'Mã nhà thầu', 'Tên nhà thầu', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)', 'Đánh giá hợp lệ', 'Lý do không đạt hợp lệ', 'Làm rõ tính hợp lệ', 'Đánh giá năng lực', 'Lý do không đạt năng lực', 'Làm rõ năng lực kinh nghiệm', 'Đánh giá kỹ thuật', 'Lý do không đạt kỹ thuật', 'Làm rõ kỹ thuật']
         elif case_type == '1G2T_TC_NO_LOT':
             headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ %', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSĐXTC (ngày)', 'Thời gian thực hiện (ngày)', 'Làm rõ tài chính', 'Đánh giá tài chính']
         elif case_type == '1G2T_TC_WITH_LOT':
             headers = ['Mã phần lô', 'Tên phần lô', 'Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ %', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSĐXTC (ngày)', 'Thời gian thực hiện (ngày)', 'Làm rõ tài chính', 'Đánh giá tài chính']
         elif case_type == '1G1T_NO_LOT':
-            headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSDT (ngày)', 'Giá trị ĐB DT (VND)', 'Hiệu lực ĐB (ngày)', 'Thời gian thực hiện (ngày)', 'Đánh giá hợp lệ', 'Làm rõ hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật', 'Làm rõ tài chính']
+            headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSDT (ngày)', 'Giá trị ĐB DT (VND)', 'Hiệu lực ĐB (ngày)', 'Thời gian thực hiện (ngày)', 'Đánh giá hợp lệ', 'Lý do không đạt hợp lệ', 'Làm rõ hợp lệ', 'Đánh giá năng lực', 'Lý do không đạt năng lực', 'Làm rõ năng lực', 'Đánh giá kỹ thuật', 'Lý do không đạt kỹ thuật', 'Làm rõ kỹ thuật', 'Làm rõ tài chính']
         elif case_type == '1G1T_WITH_LOT':
-            headers = ['Loại nhà thầu', 'Mã phần lô', 'Tên phần lô', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ giảm (%)', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSDT (ngày)', 'Giá trị ĐB (VND)', 'Hiệu lực ĐB', 'Thời gian thực hiện (ngày)', 'Đánh giá hợp lệ', 'Làm rõ hợp lệ', 'Đánh giá năng lực', 'Làm rõ năng lực', 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật', 'Làm rõ tài chính']
+            headers = ['Loại nhà thầu', 'Mã phần lô', 'Tên phần lô', 'Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ giảm (%)', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSDT (ngày)', 'Giá trị ĐB (VND)', 'Hiệu lực ĐB', 'Thời gian thực hiện (ngày)', 'Đánh giá hợp lệ', 'Lý do không đạt hợp lệ', 'Làm rõ hợp lệ', 'Đánh giá năng lực', 'Lý do không đạt năng lực', 'Làm rõ năng lực', 'Đánh giá kỹ thuật', 'Lý do không đạt kỹ thuật', 'Làm rõ kỹ thuật', 'Làm rõ tài chính']
 
         from io import BytesIO
         from openpyxl import Workbook
@@ -768,19 +769,19 @@ async def export_danhgiahsdt_template_api(request):
         for b in bids:
             row_data = []
             if case_type == 'TU_VAN':
-                row_data = [b[0], b[3], b[4], b[14], b[11], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '']
+                row_data = [b[0], b[3], b[4], b[14], b[11], b[15] or '', b[23] or '', b[18] or '', b[16] or '', b[24] or '', b[19] or '', b[17] or '', b[25] or '', b[20] or '']
             elif case_type == '1G2T_NO_LOT':
-                row_data = [b[0], b[3], b[4], b[12], b[13], b[14], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '']
+                row_data = [b[0], b[3], b[4], b[12], b[13], b[14], b[15] or '', b[23] or '', b[18] or '', b[16] or '', b[24] or '', b[19] or '', b[17] or '', b[25] or '', b[20] or '']
             elif case_type == '1G2T_WITH_LOT':
-                row_data = [b[0], b[1], b[2], b[3], b[4], b[12], b[13], b[14], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '']
+                row_data = [b[0], b[1], b[2], b[3], b[4], b[12], b[13], b[14], b[15] or '', b[23] or '', b[18] or '', b[16] or '', b[24] or '', b[19] or '', b[17] or '', b[25] or '', b[20] or '']
             elif case_type == '1G2T_TC_NO_LOT':
                 row_data = [b[0], b[3], b[4], b[5], b[6], b[7], b[8] or '', b[11] or '', b[21] or '', b[22] or '']
             elif case_type == '1G2T_TC_WITH_LOT':
                 row_data = [b[1] or '', b[2] or '', b[0], b[3], b[4], b[5], b[6], b[7], b[8] or '', b[11] or '', b[21] or '', b[22] or '']
             elif case_type == '1G1T_NO_LOT':
-                row_data = [b[0], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '', b[21] or '']
+                row_data = [b[0], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[15] or '', b[23] or '', b[18] or '', b[16] or '', b[24] or '', b[19] or '', b[17] or '', b[25] or '', b[20] or '', b[21] or '']
             elif case_type == '1G1T_WITH_LOT':
-                row_data = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[15] or '', b[18] or '', b[16] or '', b[19] or '', b[17] or '', b[20] or '', b[21] or '']
+                row_data = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[15] or '', b[23] or '', b[18] or '', b[16] or '', b[24] or '', b[19] or '', b[17] or '', b[25] or '', b[20] or '', b[21] or '']
                 
             ws.append(row_data)
             ws.row_dimensions[row_num].height = 22
