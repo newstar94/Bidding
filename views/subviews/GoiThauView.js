@@ -276,15 +276,29 @@ export function showPackageDetails(id) {
     if (!gt) return;
 
     const editBtn = document.getElementById('btn-edit-goithau-fullpage');
+    const editAwardBtn = document.getElementById('btn-edit-award-result');
     if (editBtn) {
-        if (gt.trangThai === 'Đã có kết quả' || this._inPlaceEditMode) {
-            editBtn.style.display = 'none';
-        } else {
+        if (this._currentWorkflowTab === 'preparation' && gt.trangThai !== 'Đang chấm thầu' && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu' && !this._inPlaceEditMode) {
             editBtn.style.display = 'flex';
             editBtn.onclick = () => {
                 this._inPlaceEditMode = true;
                 this.showPackageDetails(id);
             };
+        } else {
+            editBtn.style.display = 'none';
+        }
+    }
+    if (editAwardBtn) {
+        if (this._currentWorkflowTab === 'result' && (gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu')) {
+            editAwardBtn.style.display = 'flex';
+            editAwardBtn.onclick = async () => {
+                gt.trangThai = 'Đang chấm thầu';
+                this.model.persistData('goithau');
+                window.appController.autoSync();
+                this.showPackageDetails(id);
+            };
+        } else {
+            editAwardBtn.style.display = 'none';
         }
     }
 
@@ -1164,7 +1178,7 @@ export function showPackageDetails(id) {
                     const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
                     const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
                     const valHieuLucHsdt = b.hieuLucHsdt || '';
-                    const valThoiGianTh = b.thoiGianThucHien || '';
+                    const valThoiGianTh = b.thoiGianThucHien || gt.thoiGianThucHien || '';
 
                     if (isReadOnly) {
                         return `
@@ -1262,7 +1276,8 @@ export function showPackageDetails(id) {
                                     bid.tyLeGiamGia = parseFloat(tyLeValRaw.replace(/,/g, '.')) || 0;
                                     bid.giaSauGiamGia = this.model.parseVND(tr.querySelector('.op-gia-sau-giam')?.value || '');
                                     bid.hieuLucHsdt = parseInt(tr.querySelector('.op-hieu-luc-hsdt')?.value || '0', 10);
-                                    bid.thoiGianThucHien = tr.querySelector('.op-thoi-gian-th')?.value.trim() || '';
+                                    const opThoiGianVal = tr.querySelector('.op-thoi-gian-th')?.value.trim() || '';
+                                    bid.thoiGianThucHien = opThoiGianVal || bid.thoiGianThucHien || gt.thoiGianThucHien || '';
                                 }
                             });
                             this.model.persistData('thongtinmothau');

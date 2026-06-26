@@ -533,9 +533,9 @@ export function renderSystemUsersTable(usersList, currentUsername) {
 
     const getPackageBadge = (pkgId) => {
         const map = {
-            silver: '<span class="badge badge-neutral" style="font-size:0.8rem; font-weight:600; background:rgba(156,163,175,0.1); color:#4b5563; border:1px solid rgba(156,163,175,0.2);">Gói Bạc (Silver)</span>',
-            gold: '<span class="badge badge-info" style="font-size:0.8rem; font-weight:600; background:rgba(59,130,246,0.1); color:#1d4ed8; border:1px solid rgba(59,130,246,0.2);">Gói Vàng (Gold)</span>',
-            diamond: '<span class="badge badge-warning" style="font-size:0.8rem; font-weight:600; background:rgba(245,158,11,0.1); color:#f59e0b; border:1px solid rgba(245,158,11,0.2);">Gói Kim Cương (Diamond)</span>',
+            silver: '<span class="badge badge-neutral" style="font-size:0.8rem; font-weight:600; background:rgba(148,163,184,0.1); color:#475569; border:1px solid rgba(148,163,184,0.2);">Gói Bạc (Silver)</span>',
+            gold: '<span class="badge badge-warning" style="font-size:0.8rem; font-weight:600; background:rgba(245,158,11,0.1); color:#b45309; border:1px solid rgba(245,158,11,0.2);">Gói Vàng (Gold)</span>',
+            diamond: '<span class="badge badge-info" style="font-size:0.8rem; font-weight:600; background:rgba(14,165,233,0.1); color:#0284c7; border:1px solid rgba(14,165,233,0.2);">Gói Kim Cương (Diamond)</span>',
             none: '<span class="text-muted" style="font-size:0.8rem;">Chưa chọn gói</span>'
         };
         return map[pkgId] || '<span class="text-muted" style="font-size:0.8rem;">Chưa chọn gói</span>';

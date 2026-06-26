@@ -1043,7 +1043,7 @@ export async function saveExcelImport() {
                         bid.tyLeGiamGia = row.tyLeGiamGia || 0;
                         bid.giaSauGiamGia = row.giaSauGiamGia || 0;
                         bid.hieuLucHsdt = row.hieuLucHsdt || 0;
-                        bid.thoiGianThucHien = row.thoiGianThucHien || '';
+                        bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || '';
                         bid.lamRoTaiChinh = row.lamRoTaiChinh || '';
                         bid.danhGiaTaiChinh = row.danhGiaTaiChinh || '';
                     } else {
@@ -1126,7 +1126,9 @@ export async function saveExcelImport() {
                     bid.tyLeGiamGia = row.tyLeGiamGia || 0;
                     bid.giaSauGiamGia = row.giaSauGiamGia || 0;
                     bid.hieuLucHsdt = row.hieuLucHsdt || 0;
-                    bid.thoiGianThucHien = row.thoiGianThucHien || '';
+                    const gt = this.model.state.goithau.find(g => g.id === gtId);
+                    const defaultDuration = gt ? (gt.thoiGianThucHien || '') : '';
+                    bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || defaultDuration || '';
                 }
             });
             this.model.persistData('thongtinmothau');

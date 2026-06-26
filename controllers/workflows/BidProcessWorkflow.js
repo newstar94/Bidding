@@ -351,7 +351,22 @@ export function renderMoThauPanel() {
         const hasPhanLo = gt.phanLo === 'Có';
 
         const stepKey = is1G2T ? 'opening_tech' : 'opening';
-        const isCompleted = gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu';
+
+        // Calculate if Step 2 (Evaluation HSĐXKT / HSDT) is already completed
+        let isNextStepSaved = false;
+        if (gt.danhGiaHsdtMetadata) {
+            try {
+                const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+                if (is1G2T) {
+                    isNextStepSaved = !!(parsed.is1G2T && parsed.technical && parsed.technical.saved);
+                } else {
+                    isNextStepSaved = !!parsed.saved;
+                }
+            } catch(e) {}
+        }
+
+        // Step 1 (Mo thau) is completed only if it is not in mời/mở thầu status AND the next step is saved
+        const isCompleted = (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') && isNextStepSaved;
         const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
         const isReadOnly = isCompleted && !isEditingThisStep;
         const isEditable = !isReadOnly;
@@ -1192,11 +1207,26 @@ export async function saveThongTinMoThau() {
     const gt = this.model.state.goithau.find(g => g.id === gtId);
     if (!gt) return;
 
-    // Bảo vệ: chỉ cho lưu khi gói đang ở trạng thái đang mời thầu hoặc đã mở thầu
-    if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
+    // Calculate if Step 2 (Evaluation HSĐXKT / HSDT) is already completed
+    const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
+    let isNextStepSaved = false;
+    if (gt.danhGiaHsdtMetadata) {
+        try {
+            const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+            if (is1G2T) {
+                isNextStepSaved = !!(parsed.is1G2T && parsed.technical && parsed.technical.saved);
+            } else {
+                isNextStepSaved = !!parsed.saved;
+            }
+        } catch(e) {}
+    }
+
+    const isAllowedToSave = gt.trangThai === 'Đang mời thầu' || gt.trangThai === 'Đã mở thầu' || (gt.trangThai === 'Đang chấm thầu' && !isNextStepSaved);
+
+    if (!isAllowedToSave) {
         await this.view.customAlert(
             'Không thể lưu',
-            `Không thể chỉnh sửa biên bản mở thầu của gói thầu này vì trạng thái hiện tại là "${gt.trangThai}". Biên bản mở thầu chỉ có thể lưu khi gói thầu đang ở trạng thái Đang mời thầu hoặc Đã mở thầu.`,
+            `Không thể chỉnh sửa biên bản mở thầu của gói thầu này vì trạng thái hiện tại là "${gt.trangThai}" và giai đoạn tiếp theo đã hoàn tất.`,
             'x-circle'
         );
         return;
@@ -1431,7 +1461,6 @@ export async function saveThongTinMoThau() {
     // Tự động chuyển trạng thái gói thầu sang "Đang chấm thầu" sau khi lưu mở thầu
     gt.trangThai = 'Đang chấm thầu';
     this.model.persistData('goithau');
-    const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
     const stepKey = is1G2T ? 'opening_tech' : 'opening';
     if (this.view._editingState) {
         this.view._editingState[stepKey] = false;

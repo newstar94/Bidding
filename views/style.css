@@ -3233,6 +3233,84 @@ table th {
     margin-top: auto;
 }
 
+/* ==========================================================================
+   Subscription Packages Tiered Styling (Simple & Elegant)
+   ========================================================================== */
+
+/* 1. SILVER PACKAGE */
+.pricing-card.silver-card {
+    border: 1px solid var(--border-color);
+}
+.pricing-card.silver-card .pricing-badge {
+    background: rgba(100, 116, 139, 0.08);
+    color: #64748b;
+    border: 1px solid rgba(100, 116, 139, 0.15);
+}
+body.dark-mode .pricing-card.silver-card .pricing-badge {
+    background: rgba(148, 163, 184, 0.15);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, 0.2);
+}
+.pricing-card.silver-card .package-features li i {
+    color: #64748b; /* Cool grey check icon */
+}
+
+/* 2. GOLD PACKAGE */
+.pricing-card.gold-card {
+    border: 1.5px solid #fbbf24;
+    box-shadow: 0 4px 20px rgba(251, 191, 36, 0.06);
+}
+.pricing-card.gold-card.popular {
+    border: 1.5px solid #fbbf24;
+    box-shadow: 0 4px 20px rgba(251, 191, 36, 0.12);
+}
+body.dark-mode .pricing-card.gold-card {
+    border-color: #d97706;
+    box-shadow: 0 4px 20px rgba(217, 119, 6, 0.12);
+}
+body.dark-mode .pricing-card.gold-card.popular {
+    border-color: #d97706;
+    box-shadow: 0 4px 20px rgba(217, 119, 6, 0.2);
+}
+.pricing-card.gold-card .pricing-badge.badge-popular {
+    background: rgba(245, 158, 11, 0.08) !important;
+    color: #b45309 !important;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    font-weight: 700;
+}
+body.dark-mode .pricing-card.gold-card .pricing-badge.badge-popular {
+    background: rgba(245, 158, 11, 0.18) !important;
+    color: #facc15 !important;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+.pricing-card.gold-card .package-features li i {
+    color: #d97706; /* gold check icon */
+}
+
+/* 3. DIAMOND PACKAGE */
+.pricing-card.diamond-card {
+    border: 1.5px solid #0ea5e9;
+    box-shadow: 0 4px 20px rgba(14, 165, 233, 0.06);
+}
+body.dark-mode .pricing-card.diamond-card {
+    border-color: #0284c7;
+    box-shadow: 0 4px 20px rgba(2, 132, 199, 0.12);
+}
+.pricing-card.diamond-card .pricing-badge {
+    background: rgba(14, 165, 233, 0.08);
+    color: #0284c7;
+    border: 1px solid rgba(14, 165, 233, 0.2);
+    font-weight: 700;
+}
+body.dark-mode .pricing-card.diamond-card .pricing-badge {
+    background: rgba(14, 165, 233, 0.18);
+    color: #38bdf8;
+    border-color: rgba(14, 165, 233, 0.3);
+}
+.pricing-card.diamond-card .package-features li i {
+    color: #0ea5e9; /* diamond blue check icon */
+}
+
 /* Quota Progress Bar for Manager */
 .quota-progress-container {
     display: flex;

@@ -80,6 +80,7 @@ export function renderDanhGiaHsdtPanel() {
         let isTechEvalSaved = false;
         let isFinEvalSaved = false;
         let isEvalSaved1G1T = false;
+        let isQualifiedSaved = false;
         if (gt.danhGiaHsdtMetadata) {
             try {
                 const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
@@ -87,6 +88,7 @@ export function renderDanhGiaHsdtPanel() {
                     if (parsed.is1G2T) {
                         isTechEvalSaved = !!(parsed.technical && parsed.technical.saved);
                         isFinEvalSaved = !!(parsed.financial && parsed.financial.saved);
+                        isQualifiedSaved = !!(parsed.technical && parsed.technical.qualifiedSaved);
                     }
                 } else {
                     isEvalSaved1G1T = !!parsed.saved;
@@ -102,7 +104,11 @@ export function renderDanhGiaHsdtPanel() {
 
         const stepKey = this.currentDanhGiaTab === 'financial' ? 'eval_fin' : 'eval_tech';
         const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
-        const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả';
+        const isReadOnly = is1G2T
+            ? (this.currentDanhGiaTab === 'technical'
+                ? (isQualifiedSaved || gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu')
+                : (gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu'))
+            : (gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu');
         const isEditable = !isReadOnly;
 
         // 2. Render Summary Card
@@ -858,13 +864,13 @@ export function renderDanhGiaHsdtPanel() {
                                 <td><span>${valHieuLucHsdtDisplay}</span></td>
                                 <td><span>${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : '--'}</span></td>
                                 <td><span>${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : '--'}</span></td>
-                                <td><span>${bid.thoiGianThucHien || '--'}</span></td>
+                                <td><span>${bid.thoiGianThucHien || gt.thoiGianThucHien || '--'}</span></td>
                             `;
                         } else {
                             if (caseType === 'TU_VAN') {
                                 cellHtml += `
                                     <td><span>${valHieuLucHsdtDisplay}</span></td>
-                                    <td><span>${bid.thoiGianThucHien || '--'}</span></td>
+                                    <td><span>${bid.thoiGianThucHien || gt.thoiGianThucHien || '--'}</span></td>
                                 `;
                             } else if (caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT') {
                                 cellHtml += `
@@ -905,13 +911,13 @@ export function renderDanhGiaHsdtPanel() {
                                 <td><input type="text" class="form-control" value="${bid.hieuLucHsdt ? bid.hieuLucHsdt + ' ngày' : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                 <td><input type="text" class="form-control" value="${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                 <td><input type="text" class="form-control" value="${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || gt.thoiGianThucHien || ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             `;
                         } else {
                             if (caseType === 'TU_VAN') {
                                 cellHtml += `
                                     <td><input type="text" class="form-control" value="${valHieuLucHsdtInput}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                    <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || gt.thoiGianThucHien || ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                 `;
                             } else if (caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT') {
                                 cellHtml += `
@@ -1292,9 +1298,15 @@ export async function saveDanhGiaHsdt() {
         }
 
         if (this.currentDanhGiaTab === 'technical') {
-            currentMetadata.technical = activeBlock;
+            currentMetadata.technical = {
+                ...currentMetadata.technical,
+                ...activeBlock
+            };
         } else {
-            currentMetadata.financial = activeBlock;
+            currentMetadata.financial = {
+                ...currentMetadata.financial,
+                ...activeBlock
+            };
         }
         gt.danhGiaHsdtMetadata = JSON.stringify(currentMetadata);
     } else {
