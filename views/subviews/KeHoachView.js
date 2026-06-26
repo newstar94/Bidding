@@ -164,21 +164,8 @@ export function renderPlanVersionDetails(versionId) {
     allVersions.sort((a, b) => {
         const valA = parseInt(a.phienBan) || 0;
         const valB = parseInt(b.phienBan) || 0;
-        return valB - valA;
+        return valA - valB;
     });
-
-    const selectOptionsHtml = allVersions.map(k => {
-        const label = `V${parseInt(k.phienBan || 0)}`;
-        return `<option value="${k.id}" ${k.id === versionId ? 'selected' : ''}>${label}</option>`;
-    }).join('');
-
-    const versionSelectHtml = `
-        <div class="select-wrapper" style="max-width: 320px; min-width: 200px; display: inline-block;">
-            <select id="fullpage-kh-version-select" style="width: 100%; border-radius: var(--radius-sm); font-size: 0.85rem; padding: 4px 8px; height: 32px; font-weight: 600;">
-                ${selectOptionsHtml}
-            </select>
-        </div>
-    `;
 
     const cdt = this.model.state.chudautu.find(c => c.id === kh.chuDauTuId);
     const latestPackages = this.model.getLatestPackages();
@@ -341,12 +328,16 @@ export function renderPlanVersionDetails(versionId) {
 
     const html = `
         <div class="detail-section">
-            <div class="detail-header-block">
-                <span class="detail-code">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
-                <h4 class="detail-title">${kh.tenKeHoach}</h4>
-                <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    ${versionSelectHtml}
+            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
+                    ${allVersions.length >= 2 ? `
+                        <select id="fullpage-kh-version-select" style="font-size: 0.85rem; padding: 0 24px 0 10px; height: 28px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-weight: 700; cursor: pointer; margin: 0; box-sizing: border-box; line-height: 26px; outline: none; vertical-align: middle;">
+                            ${allVersions.map(k => `<option value="${k.id}" ${k.id === versionId ? 'selected' : ''}>${k.phienBan || '00'}</option>`).join('')}
+                        </select>
+                    ` : ''}
                 </div>
+                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${kh.tenKeHoach}</h4>
             </div>
             
             <div class="detail-grid">

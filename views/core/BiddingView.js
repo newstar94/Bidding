@@ -486,6 +486,78 @@ export class BiddingView {
         });
     }
 
+    customVersionDeleteChoice(title, message, option1Text = 'Xóa phiên bản gần nhất', option2Text = 'Xóa toàn bộ các phiên bản') {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('modal-custom-dialog');
+            const titleEl = document.getElementById('dialog-title');
+            const messageEl = document.getElementById('dialog-message');
+            const iconContainer = document.getElementById('dialog-icon-container');
+            const iconEl = document.getElementById('dialog-icon');
+            const buttonContainer = document.getElementById('dialog-buttons');
+            const closeBtn = document.getElementById('btn-dialog-close');
+
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            if (closeBtn) closeBtn.style.display = 'block';
+
+            iconEl.setAttribute('data-lucide', 'trash-2');
+            iconContainer.style.background = 'var(--danger-soft)';
+            iconContainer.style.color = 'var(--danger)';
+
+            // Save original button container HTML
+            const originalButtonsHtml = buttonContainer.innerHTML;
+
+            // Render three buttons: Option 1, Option 2, Cancel
+            buttonContainer.innerHTML = `
+                <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1; min-width: 80px;">Hủy</button>
+                <button type="button" class="btn btn-primary" id="btn-dialog-opt1" style="flex: 1.5; background: var(--warning); border-color: var(--warning); font-size: 0.82rem; padding: 8px 12px; white-space: nowrap; color: #fff;">${option1Text}</button>
+                <button type="button" class="btn btn-primary" id="btn-dialog-opt2" style="flex: 1.5; background: var(--danger); border-color: var(--danger); font-size: 0.82rem; padding: 8px 12px; white-space: nowrap; color: #fff;">${option2Text}</button>
+            `;
+
+            lucide.createIcons();
+
+            const opt1Btn = document.getElementById('btn-dialog-opt1');
+            const opt2Btn = document.getElementById('btn-dialog-opt2');
+            const cancelBtn = document.getElementById('btn-dialog-cancel');
+
+            const onOpt1 = () => {
+                cleanup();
+                resolve(1);
+            };
+
+            const onOpt2 = () => {
+                cleanup();
+                resolve(2);
+            };
+
+            const onCancel = () => {
+                cleanup();
+                resolve(null);
+            };
+
+            const onClose = () => {
+                cleanup();
+                resolve(null);
+            };
+
+            const cleanup = () => {
+                opt1Btn.removeEventListener('click', onOpt1);
+                opt2Btn.removeEventListener('click', onOpt2);
+                cancelBtn.removeEventListener('click', onCancel);
+                if (closeBtn) closeBtn.removeEventListener('click', onClose);
+                buttonContainer.innerHTML = originalButtonsHtml;
+                modal.classList.remove('active');
+            };
+
+            opt1Btn.addEventListener('click', onOpt1);
+            opt2Btn.addEventListener('click', onOpt2);
+            cancelBtn.addEventListener('click', onCancel);
+            if (closeBtn) closeBtn.addEventListener('click', onClose);
+
+            modal.classList.add('active');
+        });
+    }
+
     customAlert(title, message, iconName = 'info', focusTarget = null) {
         return new Promise((resolve) => {
             const modal = document.getElementById('modal-custom-dialog');

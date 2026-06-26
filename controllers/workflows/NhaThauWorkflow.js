@@ -61,7 +61,7 @@ export async function deleteNhaThau(id) {
 }
 
 
-export function editNhaThau(id, isReadOnly = false) {
+export async function editNhaThau(id, isReadOnly = false) {
     try {
         const form = document.getElementById('form-nhathau');
         if (!form) throw new Error("Không tìm thấy form nhập nhà thầu (form-nhathau)");
@@ -130,7 +130,7 @@ export function editNhaThau(id, isReadOnly = false) {
             
             // Note: initAddressDropdowns will handle disabling appropriately if isReadOnly is true, but since we already disabled inputs above,
             // we should make sure that if it's read-only, it doesn't get re-enabled by initAddressDropdowns.
-            this.initAddressDropdowns('nt-tinh', 'nt-xa', tinh, huyen);
+            await this.initAddressDropdowns('nt-tinh', 'nt-xa', tinh, huyen, isReadOnly);
             if (isReadOnly) {
                 if (document.getElementById('nt-tinh')) document.getElementById('nt-tinh').disabled = true;
                 if (document.getElementById('nt-xa')) document.getElementById('nt-xa').disabled = true;
@@ -164,7 +164,7 @@ export function editNhaThau(id, isReadOnly = false) {
             
             form.reset();
             if (document.getElementById('nt-diachichitiet')) document.getElementById('nt-diachichitiet').value = '';
-            this.initAddressDropdowns('nt-tinh', 'nt-xa', '', '');
+            await this.initAddressDropdowns('nt-tinh', 'nt-xa', '', '', false);
             
             const idInput = document.getElementById('form-nhathau-id');
             if (idInput) idInput.value = '';

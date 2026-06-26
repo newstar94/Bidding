@@ -22,28 +22,60 @@ export async function deleteGoiThau(id) {
     if (!targetPackage) return;
     const baseCode = this.model.getPackageBaseCode(targetPackage.maGoiThau);
 
-    const confirmed = await this.view.customConfirm(
-        'Xác nhận xóa',
-        'Bạn có chắc muốn xóa gói thầu này? Mọi phiên bản lịch sử liên quan sẽ bị xóa bỏ.',
-        'trash-2'
-    );
-    if (confirmed) {
-        if (baseCode) {
-            this.model.state.goithau = this.model.state.goithau.filter(gt => this.model.getPackageBaseCode(gt.maGoiThau) !== baseCode);
-        } else {
-            this.model.state.goithau = this.model.state.goithau.filter(gt => gt.id !== id);
+    const relatedGts = baseCode ? this.model.state.goithau.filter(gt => this.model.getPackageBaseCode(gt.maGoiThau) === baseCode) : [targetPackage];
+    const relatedIds = relatedGts.map(gt => gt.id);
+
+    let deleteConfirmed = false;
+    let deleteChoice = null;
+
+    if (relatedGts.length >= 2) {
+        deleteChoice = await this.view.customVersionDeleteChoice(
+            'Xác nhận xóa',
+            `Gói thầu "${targetPackage.tenGoiThau}" có ${relatedGts.length} phiên bản. Vui lòng chọn cách thức xóa:`,
+            'Xóa phiên bản gần nhất',
+            'Xóa toàn bộ các phiên bản'
+        );
+        if (deleteChoice === null) return;
+    } else {
+        const confirmed = await this.view.customConfirm(
+            'Xác nhận xóa',
+            'Bạn có chắc muốn xóa gói thầu này? Mọi phiên bản lịch sử liên quan sẽ bị xóa bỏ.',
+            'trash-2'
+        );
+        if (!confirmed) return;
+        deleteConfirmed = true;
+    }
+
+    if (deleteChoice === 1) {
+        const maxVer = Math.max(...relatedGts.map(g => parseInt(g.phienBan) || 0));
+        const latestGt = relatedGts.find(g => (parseInt(g.phienBan) || 0) === maxVer);
+        if (!latestGt) return;
+
+        this.model.state.goithau = this.model.state.goithau.filter(gt => gt.id !== latestGt.id);
+        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(latestGt.id));
+
+        const remainingRelated = relatedGts.filter(gt => gt.id !== latestGt.id);
+        if (remainingRelated.length > 0) {
+            const nextMaxVer = Math.max(...remainingRelated.map(g => parseInt(g.phienBan) || 0));
+            remainingRelated.forEach(gt => {
+                if ((parseInt(gt.phienBan) || 0) === nextMaxVer) {
+                    gt.isLatest = 1;
+                    gt.is_latest = 1;
+                } else {
+                    gt.isLatest = 0;
+                    gt.is_latest = 0;
+                }
+            });
         }
-        // Also remove related thongtinmothau entries
-        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(id));
+
         await this.model.persistData('goithau');
         await this.model.persistData('thongtinmothau');
 
-        const planId = targetPackage.keHoachId;
+        const planId = latestGt.keHoachId;
         if (planId) {
             this.recalculatePlanTotal(planId);
         }
 
-        // Recalculate and update Breakdown modal if open
         const breakdownPlanId = document.getElementById('breakdown-plan-id')?.value;
         const modalBreakdown = document.getElementById('modal-plan-breakdown');
         if (modalBreakdown && modalBreakdown.classList.contains('active') && breakdownPlanId) {
@@ -53,23 +85,47 @@ export async function deleteGoiThau(id) {
 
         this.view.renderGoiThauTable();
 
-        // Await sync to ensure DB is updated; alert on failure
         try {
-            const syncRes = await fetch('/api/sync', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                    'X-Username': sessionStorage.getItem('bf_username') || ''
-                },
-                body: JSON.stringify(this.model.state)
-            });
-            if (!syncRes.ok) {
-                const err = await syncRes.json().catch(() => ({}));
-                await this.view.customAlert('Lỗi đồng bộ', `Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi lưu vào cơ sở dữ liệu: ${err.error || syncRes.status}. Vui lòng tải lại trang.`, 'x-circle');
-            }
+            await this.autoSync();
         } catch (e) {
-            await this.view.customAlert('Lỗi kết nối', 'Gói thầu đã xóa khỏi giao diện nhưng không thể đồng bộ với cơ sở dữ liệu do lỗi kết nối. Vui lòng tải lại trang để kiểm tra.', 'x-circle');
+            await this.view.customAlert('Lỗi đồng bộ', 'Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.', 'x-circle');
+        }
+
+        await this.view.customAlert('Thành công', 'Đã xóa phiên bản gói thầu gần nhất!', 'check-circle');
+    } else if (deleteChoice === 2 || deleteConfirmed) {
+        if (baseCode) {
+            this.model.state.goithau = this.model.state.goithau.filter(gt => this.model.getPackageBaseCode(gt.maGoiThau) !== baseCode);
+            this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !relatedIds.includes(String(b.goiThauId)));
+        } else {
+            this.model.state.goithau = this.model.state.goithau.filter(gt => gt.id !== id);
+            this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(id));
+        }
+
+        await this.model.persistData('goithau');
+        await this.model.persistData('thongtinmothau');
+
+        const planId = targetPackage.keHoachId;
+        if (planId) {
+            this.recalculatePlanTotal(planId);
+        }
+
+        const breakdownPlanId = document.getElementById('breakdown-plan-id')?.value;
+        const modalBreakdown = document.getElementById('modal-plan-breakdown');
+        if (modalBreakdown && modalBreakdown.classList.contains('active') && breakdownPlanId) {
+            this.renderBreakdownPackagesList(breakdownPlanId);
+            this.updateBreakdownTotal(breakdownPlanId);
+        }
+
+        this.view.renderGoiThauTable();
+
+        try {
+            await this.autoSync();
+        } catch (e) {
+            await this.view.customAlert('Lỗi đồng bộ', 'Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.', 'x-circle');
+        }
+
+        if (deleteChoice === 2) {
+            await this.view.customAlert('Thành công', 'Đã xóa toàn bộ các phiên bản của gói thầu!', 'check-circle');
         }
     }
 }
@@ -996,18 +1052,7 @@ export async function handleGoiThauSubmit(e) {
         const oldGt = this.model.state.goithau.find(g => g.id === id);
         const newTen = gtData.tenGoiThau;
 
-        let saveAsNewVersion = false;
-        if (oldGt && oldGt.trangThai === 'Đang mời thầu') {
-            saveAsNewVersion = await this.view.customConfirm(
-                "Lưu phiên bản mới?",
-                "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
-                "help-circle"
-            );
-
-            if (saveAsNewVersion === null) {
-                return;
-            }
-        }
+        let saveAsNewVersion = !!(oldGt && oldGt.thoiGianDangTai && String(gtData.thoiGianDangTai || '') !== String(oldGt.thoiGianDangTai || ''));
 
         if (saveAsNewVersion) {
             const rootId = oldGt.rootId || oldGt.id;
@@ -1032,13 +1077,17 @@ export async function handleGoiThauSubmit(e) {
                 ...gtData
             });
 
-            // Chuyển giao liên kết hợp đồng từ phiên bản cũ sang phiên bản mới
+            // Thêm liên kết hợp đồng mới bên cạnh liên kết cũ thay vì thay thế
             if (Array.isArray(this.model.state.hopdong)) {
                 this.model.state.hopdong = this.model.state.hopdong.map(h => {
                     if (h.goiThauIds && h.goiThauIds.includes(id)) {
+                        const updatedGoiThauIds = [...h.goiThauIds];
+                        if (!updatedGoiThauIds.includes(newGtId)) {
+                            updatedGoiThauIds.push(newGtId);
+                        }
                         return {
                             ...h,
-                            goiThauIds: h.goiThauIds.map(gid => gid === id ? newGtId : gid)
+                            goiThauIds: updatedGoiThauIds
                         };
                     }
                     return h;
@@ -1046,14 +1095,15 @@ export async function handleGoiThauSubmit(e) {
                 this.model.persistData('hopdong');
             }
 
-            // Chuyển giao thông tin mở thầu (thongtinmothau) từ phiên bản cũ sang phiên bản mới
+            // Sao chép thông tin mở thầu (thongtinmothau) từ phiên bản cũ sang phiên bản mới thay vì di chuyển
             if (Array.isArray(this.model.state.thongtinmothau)) {
-                this.model.state.thongtinmothau = this.model.state.thongtinmothau.map(b => {
-                    if (String(b.goiThauId) === String(id)) {
-                        return { ...b, goiThauId: newGtId };
-                    }
-                    return b;
-                });
+                const oldBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(id));
+                const newBids = oldBids.map(b => ({
+                    ...b,
+                    id: window.generateUUID(),
+                    goiThauId: newGtId
+                }));
+                this.model.state.thongtinmothau = [...this.model.state.thongtinmothau, ...newBids];
                 this.model.persistData('thongtinmothau');
             }
 

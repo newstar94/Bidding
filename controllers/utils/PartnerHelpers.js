@@ -1,4 +1,4 @@
-export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinhName = '', currentXaName = '') {
+export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinhName = '', currentXaName = '', isDisabled = false) {
     const tinhSelect = document.getElementById(tinhSelectId);
     const xaSelect = document.getElementById(xaSelectId);
     if (!tinhSelect || !xaSelect) return;
@@ -6,6 +6,7 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
     // Reset xa select and disable it
     xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
     xaSelect.disabled = true;
+    tinhSelect.disabled = isDisabled;
 
     // Fetch provinces if not already cached (qua proxy nội bộ, tránh bị chặn CSP)
     if (!window._vietnamProvinces || !Array.isArray(window._vietnamProvinces) || window._vietnamProvinces.length === 0) {
@@ -75,7 +76,7 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
         const wards = window._vietnamWards[provinceCode];
         xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>' +
             wards.map(w => `<option value="${w.code}" data-name="${w.name}">${w.name}</option>`).join('');
-        xaSelect.disabled = false;
+        xaSelect.disabled = isDisabled;
 
         if (selectWardName) {
             const foundWard = wards.find(w => w.name === selectWardName);

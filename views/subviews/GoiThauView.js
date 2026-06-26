@@ -283,11 +283,86 @@ export function showPackageDetails(id) {
 
     if (this._currentWorkflowPackageId !== id) {
         this._inPlaceEditMode = false;
+        this._biddingInfoEditMode = false;
     }
 
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
 
+    // Calculate tabs & select current active tab first to ensure correct button visibility checks
+    const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
+    let isTechEvalSaved = false;
+    let isFinEvalSaved = false;
+    let isEvalSaved1G1T = false;
+    if (gt.danhGiaHsdtMetadata) {
+        try {
+            const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+            if (is1G2T) {
+                if (parsed.is1G2T) {
+                    isTechEvalSaved = !!(parsed.technical && parsed.technical.saved);
+                    isFinEvalSaved = !!(parsed.financial && parsed.financial.saved);
+                }
+            } else {
+                isEvalSaved1G1T = !!parsed.saved;
+            }
+        } catch (e) {
+            console.error("Error parsing evaluation metadata:", e);
+        }
+    }
+
+    const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+    const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
+    const isFinOpeningSaved = qualifiedBidsForOpening.some(b => b.giaDuThau && b.giaDuThau > 0);
+
+    const tabs = [{ id: 'preparation', label: 'Thông tin gói thầu' }];
+    if (gt.trangThai === 'Chuẩn bị') {
+        tabs.push({ id: 'preparation_action', label: 'Chuẩn bị' });
+    } else {
+        if (is1G2T) {
+            tabs.push({ id: 'opening_tech', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở HSĐXKT' });
+            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
+                tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSĐXKT' });
+            }
+
+            let isQualifiedSaved = false;
+            if (gt.danhGiaHsdtMetadata) {
+                try {
+                    const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+                    if (parsed.is1G2T && parsed.technical) {
+                        isQualifiedSaved = !!parsed.technical.qualifiedSaved;
+                    }
+                } catch (e) { }
+            }
+
+            if (isTechEvalSaved) {
+                tabs.push({ id: 'qualified', label: 'Danh sách nhà thầu đạt kỹ thuật' });
+            }
+            if (isTechEvalSaved && isQualifiedSaved) {
+                tabs.push({ id: 'opening_fin', label: 'Biên bản mở E-HSĐXTC' });
+            }
+            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved) {
+                tabs.push({ id: 'eval_fin', label: 'Báo cáo đánh giá E-HSĐXTC' });
+            }
+            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả')) {
+                tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
+            }
+        } else {
+            tabs.push({ id: 'opening', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở thầu' });
+            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
+                tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSDT' });
+            }
+            if (isEvalSaved1G1T || gt.trangThai === 'Đã có kết quả') {
+                tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
+            }
+        }
+    }
+
+    if (!tabs.some(t => t.id === this._currentWorkflowTab) || this._currentWorkflowPackageId !== id) {
+        this._currentWorkflowTab = tabs[0] ? tabs[0].id : 'preparation';
+        this._currentWorkflowPackageId = id;
+    }
+
+    // Check and setup edit buttons
     const editBtn = document.getElementById('btn-edit-goithau-fullpage');
     const editAwardBtn = document.getElementById('btn-edit-award-result');
     if (editBtn) {
@@ -334,7 +409,6 @@ export function showPackageDetails(id) {
     }
 
     const kh = this.model.state.kehoach.find(k => k.id === gt.keHoachId);
-    const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
 
     // 1. Update header elements
     const codeEl = document.getElementById('detail-workflow-code');
@@ -345,78 +419,26 @@ export function showPackageDetails(id) {
     if (badgeEl) badgeEl.innerHTML = this.getStatusBadge(gt.trangThai);
     if (titleEl) titleEl.innerText = gt.tenGoiThau || 'Chưa nhập tên';
 
-    // 2. Setup dynamic workflow sub-tab
-    let isTechEvalSaved = false;
-    let isFinEvalSaved = false;
-    let isEvalSaved1G1T = false;
-    if (gt.danhGiaHsdtMetadata) {
-        try {
-            const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-            if (is1G2T) {
-                if (parsed.is1G2T) {
-                    isTechEvalSaved = !!(parsed.technical && parsed.technical.saved);
-                    isFinEvalSaved = !!(parsed.financial && parsed.financial.saved);
-                }
-            } else {
-                isEvalSaved1G1T = !!parsed.saved;
-            }
-        } catch (e) {
-            console.error("Error parsing evaluation metadata:", e);
-        }
-    }
-
-    const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
-    const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
-    const isFinOpeningSaved = qualifiedBidsForOpening.some(b => b.giaDuThau && b.giaDuThau > 0);
-
-    const tabs = [{ id: 'preparation', label: 'Thông tin gói thầu' }];
-    if (gt.trangThai === 'Chuẩn bị') {
-        tabs.push({ id: 'preparation_action', label: 'Chuẩn bị' });
-    } else {
-        if (is1G2T) {
-            tabs.push({ id: 'opening_tech', label: 'Biên bản mở HSĐXKT' });
-            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
-                tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSĐXKT' });
-            }
-
-            let isQualifiedSaved = false;
-            if (gt.danhGiaHsdtMetadata) {
-                try {
-                    const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-                    if (parsed.is1G2T && parsed.technical) {
-                        isQualifiedSaved = !!parsed.technical.qualifiedSaved;
-                    }
-                } catch (e) { }
-            }
-
-            if (isTechEvalSaved) {
-                tabs.push({ id: 'qualified', label: 'Danh sách nhà thầu đạt kỹ thuật' });
-            }
-            if (isTechEvalSaved && isQualifiedSaved) {
-                tabs.push({ id: 'opening_fin', label: 'Biên bản mở E-HSĐXTC' });
-            }
-            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved) {
-                tabs.push({ id: 'eval_fin', label: 'Báo cáo đánh giá E-HSĐXTC' });
-            }
-            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả')) {
-                tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
-            }
+    const verSelect = document.getElementById('detail-workflow-version-select');
+    if (verSelect) {
+        const rootId = gt.rootId || gt.id;
+        const relatedGts = this.model.state.goithau.filter(g => (g.rootId || g.id) === rootId);
+        if (relatedGts.length >= 2) {
+            relatedGts.sort((a, b) => (parseInt(a.phienBan || 0) - parseInt(b.phienBan || 0)));
+            verSelect.style.display = 'inline-block';
+            verSelect.innerHTML = relatedGts.map(g => {
+                const label = g.phienBan || '00';
+                return `<option value="${g.id}" ${g.id === gt.id ? 'selected' : ''}>${label}</option>`;
+            }).join('');
+            verSelect.onchange = (e) => {
+                this.showPackageDetails(e.target.value);
+            };
         } else {
-            tabs.push({ id: 'opening', label: 'Biên bản mở thầu' });
-            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
-                tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSDT' });
-            }
-            if (isEvalSaved1G1T || gt.trangThai === 'Đã có kết quả') {
-                tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
-            }
+            verSelect.style.display = 'none';
         }
     }
 
-    if (!tabs.some(t => t.id === this._currentWorkflowTab) || this._currentWorkflowPackageId !== id) {
-        this._currentWorkflowTab = tabs[0] ? tabs[0].id : 'preparation';
-        this._currentWorkflowPackageId = id;
-    }
-
+    // 2. Setup dynamic workflow sub-tab
     const tabHeadersEl = document.getElementById('detail-workflow-tabs-header');
     if (tabHeadersEl) {
         tabHeadersEl.style.display = 'flex';
@@ -431,6 +453,7 @@ export function showPackageDetails(id) {
         tabHeadersEl.querySelectorAll('[data-workflow-tab]').forEach(btn => {
             btn.addEventListener('click', () => {
                 this._inPlaceEditMode = false;
+                this._biddingInfoEditMode = false;
                 this._currentWorkflowTab = btn.getAttribute('data-workflow-tab');
                 this.showPackageDetails(id);
             });
@@ -602,9 +625,10 @@ export function showPackageDetails(id) {
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Cột 4: Quyết định & Thẩm định HSMT (Trải ngang full chiều rộng) -->
-                        <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); grid-column: 1 / -1;">
+                    <!-- Cột 4: Quyết định & Thẩm định HSMT (Trải ngang full chiều rộng) -->
+                    <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 24px;">
                             <h4 style="font-weight: 700; color: var(--primary); border-bottom: 2px solid rgba(59, 130, 246, 0.1); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
                                 <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> Quyết định & Thẩm định HSMT
                             </h4>
@@ -658,7 +682,6 @@ export function showPackageDetails(id) {
                                 </div>
                             </div>
                         </div>
-                    </div>
                     ${this._inPlaceEditMode ? `
                         <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
                             <button id="btn-cancel-inplace" class="btn btn-outline" style="padding: 8px 20px; font-weight: 700; border-radius: var(--radius-md);">Hủy</button>
@@ -854,20 +877,162 @@ export function showPackageDetails(id) {
                         </div>
                     </div>
 
-                    <div class="card" style="padding: 24px; border: 1px dashed var(--border-color); text-align: center; background: rgba(59, 130, 246, 0.02); border-radius: var(--radius-lg); margin-top: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
-                        <div style="width: 54px; height: 54px; border-radius: 50%; background: rgba(59, 130, 246, 0.08); display: flex; align-items: center; justify-content: center;">
-                            <i data-lucide="folder-open" style="width: 26px; height: 26px; color: var(--primary);"></i>
+                    <!-- Gia hạn thời điểm đóng thầu -->
+                    <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h4 style="font-weight: 700; color: var(--primary); margin: 0; font-size: 0.95rem;">Gia hạn thời điểm đóng thầu</h4>
+                            <button type="button" id="btn-them-giahan" class="btn btn-outline btn-sm" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: ${this._biddingInfoEditMode ? 'flex' : 'none'}; align-items: center; gap: 4px;">
+                                <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm gia hạn
+                            </button>
                         </div>
-                        <h4 style="font-weight: 700; color: var(--text-main); margin: 0; font-size: 1.05rem;">Mở thầu Gói thầu</h4>
-                        <p style="font-size: 0.82rem; color: var(--text-muted); max-width: 440px; margin: 0; line-height: 1.5;">
-                            Nếu thời gian đóng thầu đã hết và không có gia hạn hay làm rõ HSMT nào, vui lòng tiến hành mở thầu để bắt đầu ghi nhận hồ sơ thầu.<br>
-                            <em style="font-size:0.78rem; opacity:0.75;">Để ghi nhận gia hạn hoặc làm rõ HSMT, vui lòng chỉnh sửa gói thầu.</em>
-                        </p>
-                        <button class="btn btn-primary" onclick="window.moThauGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; margin-top:8px;">
+                        <div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto;">
+                            <table class="data-table" id="giahan-table" style="min-width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 120px; text-align: center;">Lần gia hạn</th>
+                                        <th>Thời gian đóng thầu <span style="color:var(--danger)">*</span></th>
+                                        <th>Lý do gia hạn <span style="color:var(--danger)">*</span></th>
+                                        <th style="width: 50px; display: ${this._biddingInfoEditMode ? '' : 'none'};"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gt-giahan-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Yêu cầu làm rõ HSMT -->
+                    <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h4 style="font-weight: 700; color: var(--primary); margin: 0; font-size: 0.95rem;">Yêu cầu làm rõ HSMT</h4>
+                            <button type="button" id="btn-them-yeucaulamro" class="btn btn-outline btn-sm" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: ${this._biddingInfoEditMode ? 'flex' : 'none'}; align-items: center; gap: 4px;">
+                                <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm yêu cầu
+                            </button>
+                        </div>
+                        <div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto;">
+                            <table class="data-table" id="yeucaulamro-table" style="min-width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 80px; text-align: center;">STT</th>
+                                        <th style="width: 250px;">Thời gian yêu cầu làm rõ <span style="color:var(--danger)">*</span></th>
+                                        <th>Nội dung yêu cầu <span style="color:var(--danger)">*</span></th>
+                                        <th style="width: 50px; display: ${this._biddingInfoEditMode ? '' : 'none'};"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gt-yeucaulamro-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Trả lời làm rõ -->
+                    <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h4 style="font-weight: 700; color: var(--primary); margin: 0; font-size: 0.95rem;">Trả lời làm rõ</h4>
+                            <button type="button" id="btn-them-traloilamro" class="btn btn-outline btn-sm" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: ${this._biddingInfoEditMode ? 'flex' : 'none'}; align-items: center; gap: 4px;">
+                                <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm trả lời
+                            </button>
+                        </div>
+                        <div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto;">
+                            <table class="data-table" id="traloilamro-table" style="min-width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 80px; text-align: center;">STT</th>
+                                        <th style="width: 250px;">Thời gian trả lời làm rõ <span style="color:var(--danger)">*</span></th>
+                                        <th>Nội dung trả lời <span style="color:var(--danger)">*</span></th>
+                                        <th style="width: 50px; display: ${this._biddingInfoEditMode ? '' : 'none'};"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gt-traloilamro-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                        <button class="btn btn-primary" onclick="window.moThauGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
                             <i data-lucide="unlock"></i> Tiến hành Mở thầu
+                        </button>
+                        <button class="btn btn-primary" id="btn-luu-thongtinmoithau" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; background: ${this._biddingInfoEditMode ? '#10b981' : 'var(--primary)'}; border-color: ${this._biddingInfoEditMode ? '#10b981' : 'var(--primary)'};">
+                            <i data-lucide="${this._biddingInfoEditMode ? 'save' : 'edit-3'}"></i> ${this._biddingInfoEditMode ? 'Lưu thông tin mời thầu' : 'Chỉnh sửa'}
                         </button>
                     </div>
                 `;
+
+                // Load existing sub-table rows
+                if (window.appController) {
+                    window.appController._loadGiaHanRows(gt.giaHanList || []);
+                    window.appController._loadYeuCauLamRoRows(gt.yeuCauLamRoList || []);
+                    window.appController._loadTraLoiLamRoRows(gt.traLoiLamRoList || []);
+                }
+
+                // If in read-only mode, disable inputs and hide last column (delete action column)
+                if (!this._biddingInfoEditMode) {
+                    document.querySelectorAll('#gt-giahan-tbody input, #gt-yeucaulamro-tbody input, #gt-traloilamro-tbody input').forEach(input => {
+                        input.disabled = true;
+                        input.style.background = 'var(--neutral-soft)';
+                        input.style.cursor = 'not-allowed';
+                    });
+                    document.querySelectorAll('#gt-giahan-tbody td:last-child, #gt-yeucaulamro-tbody td:last-child, #gt-traloilamro-tbody td:last-child').forEach(td => {
+                        td.style.display = 'none';
+                    });
+                }
+
+                // Bind events to buttons
+                const btnThemGiaHan = document.getElementById('btn-them-giahan');
+                if (btnThemGiaHan) {
+                    btnThemGiaHan.onclick = () => window.appController.addGiaHanRow();
+                }
+                const btnThemYeuCau = document.getElementById('btn-them-yeucaulamro');
+                if (btnThemYeuCau) {
+                    btnThemYeuCau.onclick = () => window.appController.addYeuCauLamRoRow();
+                }
+                const btnThemTraLoi = document.getElementById('btn-them-traloilamro');
+                if (btnThemTraLoi) {
+                    btnThemTraLoi.onclick = () => window.appController.addTraLoiLamRoRow();
+                }
+
+                // Bind Save/Edit button event
+                const btnLuuThongTinMoiThau = document.getElementById('btn-luu-thongtinmoithau');
+                if (btnLuuThongTinMoiThau) {
+                    btnLuuThongTinMoiThau.onclick = async () => {
+                        if (!this._biddingInfoEditMode) {
+                            // Switch to edit mode
+                            this._biddingInfoEditMode = true;
+                            this.showPackageDetails(id);
+                            return;
+                        }
+
+                        const giaHanList = window.appController._collectGiaHanRows();
+                        const yeuCauLamRoList = window.appController._collectYeuCauLamRoRows();
+                        const traLoiLamRoList = window.appController._collectTraLoiLamRoRows();
+
+                        gt.giaHanList = giaHanList;
+                        gt.yeuCauLamRoList = yeuCauLamRoList;
+                        gt.traLoiLamRoList = traLoiLamRoList;
+
+                        // Auto update thoiGianDongThau / thoiGianMoThau if extended
+                        if (giaHanList.length > 0) {
+                            const lastGiaHan = giaHanList[giaHanList.length - 1];
+                            if (lastGiaHan.thoiGianDongThau) {
+                                const convertedTime = this.model.convertDMYHMSToYMDHMS(lastGiaHan.thoiGianDongThau);
+                                gt.thoiGianDongThau = convertedTime;
+                                gt.thoiGianMoThau = convertedTime;
+                            }
+                        }
+
+                        await this.model.persistData('goithau');
+                        if (window.appController && typeof window.appController.autoSync === 'function') {
+                            try {
+                                await window.appController.autoSync();
+                            } catch (e) {
+                                console.error("Sync failed:", e);
+                            }
+                        }
+
+                        this._biddingInfoEditMode = false;
+                        this.showPackageDetails(id);
+                        await this.customAlert('Thành công', 'Lưu thông tin mời thầu thành công!', 'check-circle');
+                    };
+                }
 
                 lucide.createIcons();
             } else {

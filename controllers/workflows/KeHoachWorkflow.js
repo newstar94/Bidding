@@ -6,26 +6,91 @@ export async function deleteKeHoach(id) {
     const relatedPlans = this.model.state.kehoach.filter(kh => this.model.getPlanBaseCode(kh.maKeHoach) === baseCode);
     const relatedIds = relatedPlans.map(kh => kh.id);
 
-    const hasPackage = this.model.state.goithau.some(gt => relatedIds.includes(gt.keHoachId));
-    if (hasPackage) {
-        await this.view.customAlert(
-            'Không thể xóa',
-            'Không thể xóa kế hoạch này vì có các Gói thầu đang liên kết trực tiếp với các phiên bản của kế hoạch này. Vui lòng chuyển hướng hoặc xóa các gói thầu trước.',
-            'x-circle'
+    if (relatedPlans.length >= 2) {
+        const choice = await this.view.customVersionDeleteChoice(
+            'Xác nhận xóa',
+            `Kế hoạch "${targetPlan.tenKeHoach}" có ${relatedPlans.length} phiên bản. Vui lòng chọn cách thức xóa:`,
+            'Xóa phiên bản gần nhất',
+            'Xóa toàn bộ các phiên bản'
         );
-        return;
-    }
+        if (choice === null) return;
 
-    const confirmed = await this.view.customConfirm(
-        'Xác nhận xóa',
-        `Bạn có chắc chắn muốn xóa toàn bộ kế hoạch "${targetPlan.tenKeHoach}" (bao gồm tất cả ${relatedPlans.length} phiên bản điều chỉnh của kế hoạch này)? Dữ liệu sẽ mất vĩnh viễn.`,
-        'trash-2'
-    );
-    if (confirmed) {
-        this.model.state.kehoach = this.model.state.kehoach.filter(kh => this.model.getPlanBaseCode(kh.maKeHoach) !== baseCode);
-        await this.model.persistData('kehoach');
-        this.view.renderKeHoachTable();
-        await this.autoSync();
+        if (choice === 1) {
+            const maxVer = Math.max(...relatedPlans.map(k => parseInt(k.phienBan) || 0));
+            const latestKh = relatedPlans.find(k => (parseInt(k.phienBan) || 0) === maxVer);
+            if (!latestKh) return;
+
+            const hasPkgLatest = this.model.state.goithau.some(gt => gt.keHoachId === latestKh.id);
+            if (hasPkgLatest) {
+                await this.view.customAlert(
+                    'Không thể xóa',
+                    'Không thể xóa phiên bản gần nhất này vì có các Gói thầu đang liên kết trực tiếp với phiên bản này. Vui lòng chuyển hướng hoặc xóa các gói thầu trước.',
+                    'x-circle'
+                );
+                return;
+            }
+
+            this.model.state.kehoach = this.model.state.kehoach.filter(kh => kh.id !== latestKh.id);
+
+            const remainingRelated = relatedPlans.filter(kh => kh.id !== latestKh.id);
+            if (remainingRelated.length > 0) {
+                const nextMaxVer = Math.max(...remainingRelated.map(k => parseInt(k.phienBan) || 0));
+                remainingRelated.forEach(kh => {
+                    if ((parseInt(kh.phienBan) || 0) === nextMaxVer) {
+                        kh.isLatest = 1;
+                        kh.is_latest = 1;
+                    } else {
+                        kh.isLatest = 0;
+                        kh.is_latest = 0;
+                    }
+                });
+            }
+
+            await this.model.persistData('kehoach');
+            this.view.renderKeHoachTable();
+            await this.autoSync();
+            await this.view.customAlert('Thành công', 'Đã xóa phiên bản kế hoạch gần nhất!', 'check-circle');
+            return;
+        } else if (choice === 2) {
+            const hasPkgAny = this.model.state.goithau.some(gt => relatedIds.includes(gt.keHoachId));
+            if (hasPkgAny) {
+                await this.view.customAlert(
+                    'Không thể xóa',
+                    'Không thể xóa kế hoạch này vì có các Gói thầu đang liên kết trực tiếp với các phiên bản của kế hoạch này. Vui lòng chuyển hướng hoặc xóa các gói thầu trước.',
+                    'x-circle'
+                );
+                return;
+            }
+
+            this.model.state.kehoach = this.model.state.kehoach.filter(kh => this.model.getPlanBaseCode(kh.maKeHoach) !== baseCode);
+            await this.model.persistData('kehoach');
+            this.view.renderKeHoachTable();
+            await this.autoSync();
+            await this.view.customAlert('Thành công', 'Đã xóa toàn bộ các phiên bản của kế hoạch!', 'check-circle');
+            return;
+        }
+    } else {
+        const hasPackage = this.model.state.goithau.some(gt => relatedIds.includes(gt.keHoachId));
+        if (hasPackage) {
+            await this.view.customAlert(
+                'Không thể xóa',
+                'Không thể xóa kế hoạch này vì có các Gói thầu đang liên kết trực tiếp với kế hoạch này. Vui lòng chuyển hướng hoặc xóa các gói thầu trước.',
+                'x-circle'
+            );
+            return;
+        }
+
+        const confirmed = await this.view.customConfirm(
+            'Xác nhận xóa',
+            `Bạn có chắc chắn muốn xóa kế hoạch "${targetPlan.tenKeHoach}"? Dữ liệu sẽ mất vĩnh viễn.`,
+            'trash-2'
+        );
+        if (confirmed) {
+            this.model.state.kehoach = this.model.state.kehoach.filter(kh => kh.id !== id);
+            await this.model.persistData('kehoach');
+            this.view.renderKeHoachTable();
+            await this.autoSync();
+        }
     }
 }
 
@@ -690,18 +755,7 @@ export async function savePlanBreakdown() {
 
     if (this.tempPlanAction === 'edit') {
         const oldKh = this.model.state.kehoach.find(k => k.id === this.tempPlanData.id);
-        let saveAsNewVersion = false;
-        if (oldKh && oldKh.thoiGianDangMa) {
-            saveAsNewVersion = await this.view.customConfirm(
-                "Lưu phiên bản mới?",
-                "Bạn có muốn lưu các thay đổi này thành một phiên bản mới không?\n\n• Chọn Xác nhận để lưu thành phiên bản mới.\n• Chọn Hủy để ghi đè lên phiên bản hiện tại.",
-                "help-circle"
-            );
-
-            if (saveAsNewVersion === null) {
-                return; // Cancel the save, stay on modal
-            }
-        }
+        const saveAsNewVersion = !!(oldKh && oldKh.thoiGianDangMa && String(this.tempPlanData.thoiGianDangMa || '') !== String(oldKh.thoiGianDangMa || ''));
 
         if (saveAsNewVersion) {
             // Restore kehoach state from backup so the original version isn't overwritten
@@ -733,12 +787,30 @@ export async function savePlanBreakdown() {
                 cvChuaDuDieuKienList: cvChuaDuDieuKien
             });
 
-            // Update packages created/edited during this session to point to the new version ID
-            this.model.state.goithau.forEach(gt => {
-                if (gt.keHoachId === this.tempPlanData.id) {
-                    gt.keHoachId = newId;
+            // Duplicate packages and bids from the old plan version to the new plan version
+            const oldPackages = this.model.state.goithau.filter(gt => gt.keHoachId === oldKh.id);
+            oldPackages.forEach(gt => {
+                const newGtId = window.generateUUID();
+                this.model.state.goithau.push({
+                    ...gt,
+                    id: newGtId,
+                    keHoachId: newId
+                });
+
+                // Duplicate related bids (thongtinmothau)
+                if (Array.isArray(this.model.state.thongtinmothau)) {
+                    const relatedBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                    relatedBids.forEach(b => {
+                        this.model.state.thongtinmothau.push({
+                            ...b,
+                            id: window.generateUUID(),
+                            goiThauId: newGtId
+                        });
+                    });
                 }
             });
+            this.model.persistData('goithau');
+            this.model.persistData('thongtinmothau');
         } else {
             // Overwrite current version
             const currentKh = this.model.state.kehoach.find(k => k.id === planId);
