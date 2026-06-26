@@ -1052,7 +1052,9 @@ export async function handleGoiThauSubmit(e) {
         const oldGt = this.model.state.goithau.find(g => g.id === id);
         const newTen = gtData.tenGoiThau;
 
-        let saveAsNewVersion = !!(oldGt && oldGt.thoiGianDangTai && String(gtData.thoiGianDangTai || '') !== String(oldGt.thoiGianDangTai || ''));
+        const oldTime = (oldGt && oldGt.thoiGianDangTai) ? String(oldGt.thoiGianDangTai).trim() : '';
+        const newTime = String(gtData.thoiGianDangTai || '').trim();
+        const saveAsNewVersion = !!(oldGt && oldTime !== '' && newTime !== oldTime);
 
         if (saveAsNewVersion) {
             const rootId = oldGt.rootId || oldGt.id;

@@ -755,7 +755,9 @@ export async function savePlanBreakdown() {
 
     if (this.tempPlanAction === 'edit') {
         const oldKh = this.model.state.kehoach.find(k => k.id === this.tempPlanData.id);
-        const saveAsNewVersion = !!(oldKh && oldKh.thoiGianDangMa && String(this.tempPlanData.thoiGianDangMa || '') !== String(oldKh.thoiGianDangMa || ''));
+        const oldTime = (oldKh && oldKh.thoiGianDangMa) ? String(oldKh.thoiGianDangMa).trim() : '';
+        const newTime = String(this.tempPlanData.thoiGianDangMa || '').trim();
+        const saveAsNewVersion = !!(oldKh && oldTime !== '' && newTime !== oldTime);
 
         if (saveAsNewVersion) {
             // Restore kehoach state from backup so the original version isn't overwritten
