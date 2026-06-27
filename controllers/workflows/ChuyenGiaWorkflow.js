@@ -125,6 +125,7 @@ export function editChuyenGia(id) {
             verSelect.onchange = (e) => {
                 this.editChuyenGia(e.target.value);
             };
+            if (window.initCustomSelect) window.initCustomSelect('cg-version-select');
         }
     } else {
         this.switchTab('chuyengia', 'taomoi', true);

@@ -4527,13 +4527,15 @@ body.dark-mode .btn-excel-action:hover {
     box-shadow: none !important; /* Remove thick focus box-shadow for table cells */
 }
 
-.version-select-container .custom-select-dropdown {
+.version-select-dropdown {
     border-radius: 8px !important;
     padding: 4px !important;
     max-height: 150px !important;
+    width: 52px !important;
+    min-width: 52px !important;
 }
 
-.version-select-container .custom-select-option {
+.version-select-dropdown .custom-select-option {
     padding: 4px 8px !important;
     font-size: 0.75rem !important;
     border-radius: 4px !important;
@@ -4603,4 +4605,57 @@ select.page-version-select:hover {
 select.page-version-select:focus {
     border-color: var(--primary, #3b82f6);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-}
+}
+
+/* ── Compact custom select container for version dropdowns in headers/detail pages ── */
+.compact-version-select-container {
+    width: 52px !important;
+}
+
+.compact-version-select-container .custom-select-trigger {
+    height: 28px !important;
+    padding: 0 18px 0 6px !important;
+    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+    border-radius: 5px !important;
+    border: 1.5px solid rgba(59, 130, 246, 0.3) !important;
+    background-color: rgba(59, 130, 246, 0.06) !important;
+    color: var(--primary, #3b82f6) !important;
+    min-width: 52px !important;
+    width: 52px !important;
+    justify-content: space-between !important;
+}
+
+.compact-version-select-container.open .custom-select-trigger {
+    border-color: var(--primary, #3b82f6) !important;
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
+}
+
+.compact-version-select-container .custom-select-trigger-arrow {
+    color: var(--primary, #3b82f6) !important;
+    margin-left: 2px !important;
+}
+
+.compact-version-select-dropdown {
+    border-radius: 8px !important;
+    padding: 4px !important;
+    max-height: 180px !important;
+    width: 52px !important;
+    min-width: 52px !important;
+}
+
+.compact-version-select-dropdown .custom-select-option {
+    padding: 6px 4px !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    justify-content: center !important;
+}
+
+/* Compact variant for modal headers (slightly taller) */
+.modal-compact-trigger .compact-version-select-container .custom-select-trigger {
+    height: 30px !important;
+    font-size: 0.85rem !important;
+}
+

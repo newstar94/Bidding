@@ -155,6 +155,7 @@ export async function editNhaThau(id, isReadOnly = false) {
                 verSelect.onchange = (e) => {
                     this.editNhaThau(e.target.value, isReadOnly);
                 };
+                if (window.initCustomSelect) window.initCustomSelect('nt-version-select');
             }
         } else {
             window._nhaThauViewOnly = false;

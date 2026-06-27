@@ -494,6 +494,7 @@ export function renderPlanVersionDetails(versionId) {
         innerSelect.onchange = (e) => {
             this.renderPlanVersionDetails(e.target.value);
         };
+        if (window.initCustomSelect) window.initCustomSelect('fullpage-kh-version-select');
     }
     lucide.createIcons();
 }

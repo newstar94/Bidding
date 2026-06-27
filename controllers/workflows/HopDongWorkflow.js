@@ -361,6 +361,7 @@ export function editHopDong(id) {
                 verSelect.onchange = (e) => {
                     this.editHopDong(e.target.value);
                 };
+                if (window.initCustomSelect) window.initCustomSelect('hd-version-select');
             }
         } else {
             if (!window._preModalTab) {

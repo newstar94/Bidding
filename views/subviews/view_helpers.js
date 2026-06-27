@@ -111,13 +111,15 @@ export function initCustomSelect(selectId) {
     if (!select) return;
 
     const isVersion = select.classList.contains('version-droplist');
+    // Compact mode: version selects in modal headers or detail pages
+    const isCompact = select.classList.contains('page-version-select') || select.classList.contains('modal-version-select');
     const hasArrow = !isVersion;
 
     let wrapper = select.parentElement.querySelector(`.custom-select-container[data-target="${selectId}"]`);
     if (!wrapper) {
         select.style.display = 'none';
         wrapper = document.createElement('div');
-        wrapper.className = 'custom-select-container' + (isVersion ? ' version-select-container' : '');
+        wrapper.className = 'custom-select-container' + (isVersion ? ' version-select-container' : '') + (isCompact ? ' compact-version-select-container' : '');
         wrapper.setAttribute('data-target', selectId);
         select.parentNode.insertBefore(wrapper, select.nextSibling);
 
@@ -128,6 +130,12 @@ export function initCustomSelect(selectId) {
             wrapper.style.width = '52px';
             wrapper.style.height = '22px';
             wrapper.style.margin = '0';
+        } else if (isCompact) {
+            wrapper.style.display = 'inline-block';
+            wrapper.style.verticalAlign = 'middle';
+            wrapper.style.margin = '0';
+            wrapper.style.width = '52px';
+            wrapper.style.minWidth = '52px';
         } else if (select.style.width) {
             wrapper.style.width = select.style.width;
         }
@@ -198,7 +206,7 @@ export function initCustomSelect(selectId) {
                 </div>
                 ` : ''}
             </div>
-            <div class="custom-select-dropdown" data-target="${selectId}">
+            <div class="custom-select-dropdown${isVersion ? ' version-select-dropdown' : ''}${isCompact ? ' compact-version-select-dropdown' : ''}" data-target="${selectId}">
                 ${options.map(opt => `
                     <div class="custom-select-option ${opt.selected ? 'selected' : ''}" data-value="${opt.value}">
                         <span>${opt.text}</span>
@@ -240,6 +248,10 @@ export function initCustomSelect(selectId) {
                 if (isVersion) {
                     dropdown.style.width = '52px';
                     dropdown.style.minWidth = '52px';
+                } else if (isCompact) {
+                    dropdown.style.width = '52px';
+                    dropdown.style.minWidth = '52px';
+                    dropdown.style.maxWidth = '200px';
                 } else {
                     dropdown.style.minWidth = rect.width + 'px';
                     dropdown.style.width = 'max-content';
@@ -275,3 +287,4 @@ export function initCustomSelect(selectId) {
         }
     }
 }
+

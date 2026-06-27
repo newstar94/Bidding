@@ -526,6 +526,7 @@ export function showPackageDetails(id) {
             verSelect.onchange = (e) => {
                 this.showPackageDetails(e.target.value);
             };
+            if (window.initCustomSelect) window.initCustomSelect('detail-workflow-version-select');
         } else {
             verSelect.style.display = 'none';
         }

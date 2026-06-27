@@ -73,6 +73,7 @@ export async function editChuDauTu(id) {
             verSelect.onchange = (e) => {
                 this.editChuDauTu(e.target.value);
             };
+            if (window.initCustomSelect) window.initCustomSelect('cdt-version-select');
         }
     } else {
         this.switchTab('chudautu', 'taomoi', true);

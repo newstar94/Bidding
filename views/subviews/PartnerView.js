@@ -1342,6 +1342,7 @@ export function renderContractVersionDetails(versionId) {
             innerSelect.onchange = (e) => {
                 this.renderContractVersionDetails(e.target.value);
             };
+            if (window.initCustomSelect) window.initCustomSelect('fullpage-hd-version-select');
         }
         lucide.createIcons();
     }
