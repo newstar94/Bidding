@@ -33,7 +33,7 @@ export async function deleteGoiThau(id) {
             'Xác nhận xóa',
             `Gói thầu "${targetPackage.tenGoiThau}" có ${relatedGts.length} phiên bản. Vui lòng chọn cách thức xóa:`,
             'Xóa phiên bản gần nhất',
-            'Xóa toàn bộ các phiên bản'
+            'Xóa toàn bộ'
         );
         if (deleteChoice === null) return;
     } else {

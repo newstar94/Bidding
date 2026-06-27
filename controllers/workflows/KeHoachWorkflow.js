@@ -11,7 +11,7 @@ export async function deleteKeHoach(id) {
             'Xác nhận xóa',
             `Kế hoạch "${targetPlan.tenKeHoach}" có ${relatedPlans.length} phiên bản. Vui lòng chọn cách thức xóa:`,
             'Xóa phiên bản gần nhất',
-            'Xóa toàn bộ các phiên bản'
+            'Xóa toàn bộ'
         );
         if (choice === null) return;
 

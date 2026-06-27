@@ -544,14 +544,25 @@ export class BiddingView {
             iconContainer.style.background = 'var(--danger-soft)';
             iconContainer.style.color = 'var(--danger)';
 
-            // Save original button container HTML
+            // Save original button container HTML and styles, and card styles
             const originalButtonsHtml = buttonContainer.innerHTML;
+            const originalFlexDirection = buttonContainer.style.flexDirection;
+            const originalGap = buttonContainer.style.gap;
+            const cardEl = modal.querySelector('.modal-card');
+            const originalCardWidth = cardEl.style.width;
+            const originalCardMaxWidth = cardEl.style.maxWidth;
 
-            // Render three buttons: Option 1, Option 2, Cancel
+            // Maintain standard modal width (480px)
+            cardEl.style.setProperty('width', '480px', 'important');
+            cardEl.style.setProperty('max-width', '480px', 'important');
+
+            // Render three buttons horizontally with smaller font and padding
+            buttonContainer.style.flexDirection = 'row';
+            buttonContainer.style.gap = '10px';
             buttonContainer.innerHTML = `
-                <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1; min-width: 80px;">Hủy</button>
-                <button type="button" class="btn btn-primary" id="btn-dialog-opt1" style="flex: 1.5; background: var(--warning); border-color: var(--warning); font-size: 0.82rem; padding: 8px 12px; white-space: nowrap; color: #fff;">${option1Text}</button>
-                <button type="button" class="btn btn-primary" id="btn-dialog-opt2" style="flex: 1.5; background: var(--danger); border-color: var(--danger); font-size: 0.82rem; padding: 8px 12px; white-space: nowrap; color: #fff;">${option2Text}</button>
+                <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; height: 38px;">Hủy</button>
+                <button type="button" class="btn btn-primary" id="btn-dialog-opt1" style="flex: 1.6; background: var(--warning); border-color: var(--warning); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;">${option1Text}</button>
+                <button type="button" class="btn btn-primary" id="btn-dialog-opt2" style="flex: 1.6; background: var(--danger); border-color: var(--danger); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;">${option2Text}</button>
             `;
 
             lucide.createIcons();
@@ -585,6 +596,12 @@ export class BiddingView {
                 opt2Btn.removeEventListener('click', onOpt2);
                 cancelBtn.removeEventListener('click', onCancel);
                 if (closeBtn) closeBtn.removeEventListener('click', onClose);
+                
+                // Restore card styles and button container
+                cardEl.style.width = originalCardWidth;
+                cardEl.style.maxWidth = originalCardMaxWidth;
+                buttonContainer.style.flexDirection = originalFlexDirection;
+                buttonContainer.style.gap = originalGap;
                 buttonContainer.innerHTML = originalButtonsHtml;
                 modal.classList.remove('active');
             };

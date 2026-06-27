@@ -950,7 +950,7 @@ export function showPackageDetails(id) {
                             }
 
                             this._inPlaceEditMode = false;
-                            this.showPackageDetails(id);
+                            this.showPackageDetails(finalId);
                             await this.customAlert('Thành công', 'Cập nhật thông tin gói thầu thành công!', 'check-circle');
                         };
                     }
