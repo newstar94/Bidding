@@ -872,48 +872,53 @@ export class BiddingModel {
     }
 
     getLatestPlans() {
-        const latest = (this.state.kehoach || []).filter(kh => kh.isLatest == 1);
-        if (latest.length > 0) return latest;
         const latestMap = {};
-        this.state.kehoach.forEach(kh => {
+        (this.state.kehoach || []).forEach(kh => {
             const root = kh.rootId || kh.id;
             const verNum = parseInt(kh.phienBan) || 0;
+            const isLatest = kh.isLatest == 1 || kh.is_latest == 1;
 
-            if (!latestMap[root] || verNum > latestMap[root].version) {
-                latestMap[root] = {
-                    plan: kh,
-                    version: verNum
-                };
+            if (!latestMap[root]) {
+                latestMap[root] = kh;
+            } else {
+                const existingVer = parseInt(latestMap[root].phienBan) || 0;
+                const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
+                if (isLatest && !existingLatest) {
+                    latestMap[root] = kh;
+                } else if (verNum > existingVer) {
+                    latestMap[root] = kh;
+                }
             }
         });
-        return Object.values(latestMap).map(item => item.plan);
+        return Object.values(latestMap);
     }
 
     getLatestPackages() {
         const validPackages = (this.state.goithau || []).filter(gt => {
             if (!gt.keHoachId) return true;
-            const plan = (this.state.kehoach || []).find(k => k.id === gt.keHoachId);
-            if (plan && (plan.isLatest === 0 || plan.is_latest === 0)) {
-                return false;
-            }
-            return true;
+            const plan = this.getLatestPlan(gt.keHoachId);
+            return plan && plan.id === gt.keHoachId;
         });
 
-        const latest = validPackages.filter(gt => gt.isLatest == 1);
-        if (latest.length > 0) return latest;
         const latestMap = {};
         validPackages.forEach(gt => {
             const root = gt.rootId || gt.id;
             const verNum = parseInt(gt.phienBan) || 0;
+            const isLatest = gt.isLatest == 1 || gt.is_latest == 1;
 
-            if (!latestMap[root] || verNum > latestMap[root].version) {
-                latestMap[root] = {
-                    package: gt,
-                    version: verNum
-                };
+            if (!latestMap[root]) {
+                latestMap[root] = gt;
+            } else {
+                const existingVer = parseInt(latestMap[root].phienBan) || 0;
+                const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
+                if (isLatest && !existingLatest) {
+                    latestMap[root] = gt;
+                } else if (verNum > existingVer) {
+                    latestMap[root] = gt;
+                }
             }
         });
-        return Object.values(latestMap).map(item => item.package);
+        return Object.values(latestMap);
     }
 
     // Duplicate version label functions have been removed. Use getVersionLabel instead.
@@ -981,24 +986,55 @@ export class BiddingModel {
 
         const allContracts = this.getFilteredHopDong();
         const validContracts = allContracts.filter(hd => {
-            if (!hd.goiThauId) return true;
-            return latestPkgIds.includes(hd.goiThauId);
+            if (!hd.goiThauIds || hd.goiThauIds.length === 0) return true;
+            return hd.goiThauIds.some(id => latestPkgIds.includes(id));
         });
 
-        const latest = validContracts.filter(h => h.isLatest == 1);
-        if (latest.length > 0) return latest;
         const latestMap = {};
         validContracts.forEach(h => {
             const root = h.rootId || h.id;
             const verNum = parseInt(h.phienBan) || 0;
+            const isLatest = h.isLatest == 1 || h.is_latest == 1;
 
-            if (!latestMap[root] || verNum > latestMap[root].version) {
-                latestMap[root] = {
-                    item: h,
-                    version: verNum
-                };
+            if (!latestMap[root]) {
+                latestMap[root] = h;
+            } else {
+                const existingVer = parseInt(latestMap[root].phienBan) || 0;
+                const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
+                if (isLatest && !existingLatest) {
+                    latestMap[root] = h;
+                } else if (verNum > existingVer) {
+                    latestMap[root] = h;
+                }
             }
         });
-        return Object.values(latestMap).map(item => item.item);
+        return Object.values(latestMap);
+    }
+
+    getLatestPlan(planId) {
+        if (!planId) return null;
+        const plan = (this.state.kehoach || []).find(k => k.id === planId);
+        if (!plan) return null;
+        const root = plan.rootId || plan.id;
+        const latest = (this.state.kehoach || []).find(k => (k.rootId === root || k.id === root) && (k.isLatest == 1 || k.is_latest == 1));
+        return latest || plan;
+    }
+
+    getLatestPackage(packageId) {
+        if (!packageId) return null;
+        const pkg = (this.state.goithau || []).find(g => g.id === packageId);
+        if (!pkg) return null;
+        const root = pkg.rootId || pkg.id;
+        const latest = (this.state.goithau || []).find(g => (g.rootId === root || g.id === root) && (g.isLatest == 1 || g.is_latest == 1));
+        return latest || pkg;
+    }
+
+    getLatestContract(contractId) {
+        if (!contractId) return null;
+        const hd = (this.state.hopdong || []).find(h => h.id === contractId);
+        if (!hd) return null;
+        const root = hd.rootId || hd.id;
+        const latest = (this.state.hopdong || []).find(h => (h.rootId === root || h.id === root) && (h.isLatest == 1 || h.is_latest == 1));
+        return latest || hd;
     }
 }

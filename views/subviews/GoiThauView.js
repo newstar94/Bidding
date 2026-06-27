@@ -189,7 +189,7 @@ export async function renderGoiThauTable() {
             const selectedId = this.model.state.selectedPackageVersion[root] || gt.id;
             const displayedGt = this.model.state.goithau.find(g => g.id === selectedId) || gt;
 
-            const kh = this.model.state.kehoach.find(k => k.id === displayedGt.keHoachId);
+            const kh = this.model.getLatestPlan(displayedGt.keHoachId);
             const nt = displayedGt.nhaThauTrungThauId ? this.model.state.nhathau.find(n => n.id === displayedGt.nhaThauTrungThauId) : null;
             const matchBid = displayedGt.nhaThauTrungThauId ? this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(displayedGt.nhaThauTrungThauId)) : null;
             const ntDisplayName = matchBid ? matchBid.tenNhaThau : (nt ? nt.tenNhaThau : '--');
@@ -501,7 +501,7 @@ export function showPackageDetails(id) {
         }
     }
 
-    const kh = this.model.state.kehoach.find(k => k.id === gt.keHoachId);
+    const kh = this.model.getLatestPlan(gt.keHoachId);
 
     // 1. Update header elements
     const codeEl = document.getElementById('detail-workflow-code');
@@ -561,7 +561,7 @@ export function showPackageDetails(id) {
     switch (this._currentWorkflowTab) {
         case 'preparation':
             if (true) {
-                const khObj = this.model.state.kehoach.find(k => k.id === gt.keHoachId);
+                const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
                 const tenKhStr = khObj ? khObj.tenKeHoach : 'Không rõ';
@@ -1007,7 +1007,7 @@ export function showPackageDetails(id) {
         case 'opening_tech':
             if (gt.trangThai === 'Chuẩn bị') {
                 // Keep fallback just in case
-                const khObj = this.model.state.kehoach.find(k => k.id === gt.keHoachId);
+                const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
 
@@ -1044,7 +1044,7 @@ export function showPackageDetails(id) {
                 `;
                 lucide.createIcons();
             } else if (gt.trangThai === 'Đang mời thầu') {
-                const khObj = this.model.state.kehoach.find(k => k.id === gt.keHoachId);
+                const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
 

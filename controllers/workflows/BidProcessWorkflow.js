@@ -341,7 +341,7 @@ export function renderMoThauPanel() {
         const gt = this.model.state.goithau.find(g => g.id === gtId);
         if (!gt) return;
 
-        const kh = this.model.state.kehoach.find(k => k.id === gt.keHoachId);
+        const kh = this.model.getLatestPlan(gt.keHoachId);
         const cdt = kh ? this.model.state.chudautu.find(c => c.id === kh.chuDauTuId) : null;
         const tenCdt = cdt ? cdt.tenChuDauTu : 'Không rõ';
 

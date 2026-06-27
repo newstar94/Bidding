@@ -125,7 +125,8 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
             (g.id && g.id.toLowerCase() === action.toLowerCase())
         );
         if (gt) {
-            action = gt.id;
+            const latestGt = this.model.getLatestPackage(gt.id);
+            action = latestGt ? latestGt.id : gt.id;
         }
     }
     if (tabName === 'kehoach-detail' && action) {
@@ -143,7 +144,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
             );
             if (kh) targetId = kh.id;
         }
-        if (targetId) action = targetId;
+        if (targetId) {
+            const latestKh = this.model.getLatestPlan(targetId);
+            action = latestKh ? latestKh.id : targetId;
+        }
     }
     if (tabName === 'hopdong-detail' && action) {
         let targetId = null;
@@ -161,7 +165,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
             });
             if (hd) targetId = hd.id;
         }
-        if (targetId) action = targetId;
+        if (targetId) {
+            const latestHd = this.model.getLatestContract(targetId);
+            action = latestHd ? latestHd.id : targetId;
+        }
     }
 
     if (isInit) {

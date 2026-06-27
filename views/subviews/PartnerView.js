@@ -1190,7 +1190,7 @@ export function renderContractVersionDetails(versionId) {
 
     const cdt = this.model.state.chudautu.find(c => c.id === hd.chuDauTuId);
     const nt = this.model.state.nhathau.find(n => n.id === hd.nhaThauId);
-    const kh = this.model.state.kehoach.find(k => k.id === hd.keHoachId);
+    const kh = this.model.getLatestPlan(hd.keHoachId);
 
     const goithauList = typeof this.model.getLatestPackages === 'function' ? this.model.getLatestPackages() : (this.model.state.goithau || []);
     const linkedPkgs = (hd.goiThauIds || []).map(gtId => {

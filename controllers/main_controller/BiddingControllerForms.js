@@ -3,7 +3,7 @@ export function updateNguonVonFieldState(planId) {
     if (!gtNguonVon) return;
 
     if (planId) {
-        const kh = this.model.state.kehoach.find(k => k.id === planId);
+        const kh = this.model.getLatestPlan(planId);
         if (kh && kh.loaiHinhMuaSam === 'Dự án') {
             if (kh.nguonVon) {
                 gtNguonVon.value = kh.nguonVon;
