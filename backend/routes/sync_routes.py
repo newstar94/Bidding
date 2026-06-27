@@ -844,7 +844,27 @@ async def paginate_api(request):
             if hinh_thuc:
                 query_parts.append("hinh_thuc_lua_chon = ?")
                 query_params.append(hinh_thuc)
-                
+
+        # Apply Year and Month filters
+        nam = params.get("nam", "")
+        thang = params.get("thang", "")
+        date_column = None
+        if table_name == "ke_hoach_lcnt":
+            date_column = "ngay_phe_duyet"
+        elif table_name == "goi_thau":
+            date_column = "ngay_quyet_dinh"
+        elif table_name == "hop_dong":
+            date_column = "ngay_ky"
+
+        if date_column:
+            if nam:
+                query_parts.append(f"(substr({date_column}, 1, 4) = ? OR substr({date_column}, 7, 4) = ?)")
+                query_params.extend([nam, nam])
+            if thang:
+                thang_formatted = str(thang).zfill(2)
+                query_parts.append(f"(substr({date_column}, 6, 2) = ? OR substr({date_column}, 4, 2) = ?)")
+                query_params.extend([thang_formatted, thang_formatted])
+
         # Get count
         where_clause = " AND ".join(query_parts)
         conn = database.get_connection()

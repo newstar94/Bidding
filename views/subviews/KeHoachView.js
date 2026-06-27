@@ -3,6 +3,61 @@ export async function renderKeHoachTable() {
     const tableBody = document.getElementById('kehoach-table').querySelector('tbody');
     const searchVal = document.getElementById('search-kehoach').value.toLowerCase();
 
+    // Helper function to extract year and month safely from various date formats
+    const parseYearMonth = (dateStr) => {
+        if (!dateStr) return { year: null, month: null };
+        let cleaned = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+        if (cleaned.match(/^\d{4}-\d{2}-\d{2}/)) {
+            const y = cleaned.substring(0, 4);
+            const m = parseInt(cleaned.substring(5, 7), 10).toString();
+            return { year: y, month: m };
+        } else if (cleaned.match(/^\d{2}\/\d{2}\/\d{4}/)) {
+            const parts = cleaned.split(' ')[0].split('/');
+            const y = parts[2];
+            const m = parseInt(parts[1], 10).toString();
+            return { year: y, month: m };
+        }
+        const d = new Date(cleaned);
+        if (!isNaN(d.getTime())) {
+            return {
+                year: d.getFullYear().toString(),
+                month: (d.getMonth() + 1).toString()
+            };
+        }
+        return { year: null, month: null };
+    };
+
+    // Populate Year and Month dropdowns dynamically
+    const yearSelect = document.getElementById('filter-kehoach-nam');
+    const monthSelect = document.getElementById('filter-kehoach-thang');
+    const allPlans = this.model.state.kehoach || [];
+    if (yearSelect && monthSelect) {
+        const prevYear = yearSelect.value;
+        const prevMonth = monthSelect.value;
+
+        const years = new Set();
+        const months = new Set();
+        allPlans.forEach(kh => {
+            if (kh.ngayPheDuyet) {
+                const parsed = parseYearMonth(kh.ngayPheDuyet);
+                if (parsed.year) years.add(parsed.year);
+                if (parsed.month) months.add(parsed.month);
+            }
+        });
+
+        const sortedYears = Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
+        const sortedMonths = Array.from(months).sort((a, b) => parseInt(b) - parseInt(a));
+
+        yearSelect.innerHTML = '<option value="">Năm</option>' + sortedYears.map(y => `<option value="${y}">${y}</option>`).join('');
+        monthSelect.innerHTML = '<option value="">Tháng</option>' + sortedMonths.map(m => `<option value="${m}">Tháng ${m}</option>`).join('');
+
+        if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
+        if (sortedMonths.includes(prevMonth)) monthSelect.value = prevMonth;
+    }
+
+    const filterNam = yearSelect ? yearSelect.value : '';
+    const filterThang = monthSelect ? monthSelect.value : '';
+
     let slicedData = [];
     let totalItems = 0;
     const currentPage = this.model.currentPage.kehoach || 1;
@@ -17,7 +72,7 @@ export async function renderKeHoachTable() {
             tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=kehoach&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
+            const res = await fetch(`/api/paginate?table=kehoach&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`, {
                 headers: {
                     'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
                     'X-Username': sessionStorage.getItem('bf_username') || ''
@@ -33,11 +88,29 @@ export async function renderKeHoachTable() {
         }
     } else {
         const latestPlans = this.model.getFilteredKeHoach();
-        const filtered = latestPlans.filter(kh =>
-            kh.maKeHoach.toLowerCase().includes(searchVal) ||
-            kh.tenKeHoach.toLowerCase().includes(searchVal) ||
-            (kh.tenDuAnDuToan && kh.tenDuAnDuToan.toLowerCase().includes(searchVal))
-        );
+        const filtered = latestPlans.filter(kh => {
+            const matchesSearch = kh.maKeHoach.toLowerCase().includes(searchVal) ||
+                kh.tenKeHoach.toLowerCase().includes(searchVal) ||
+                (kh.tenDuAnDuToan && kh.tenDuAnDuToan.toLowerCase().includes(searchVal));
+            
+            let matchesYear = true;
+            let matchesMonth = true;
+            if (kh.ngayPheDuyet) {
+                const parsed = parseYearMonth(kh.ngayPheDuyet);
+                if (filterNam) {
+                    matchesYear = parsed.year === filterNam;
+                }
+                if (filterThang) {
+                    matchesMonth = parsed.month === filterThang;
+                }
+            } else {
+                if (filterNam || filterThang) {
+                    matchesYear = false;
+                    matchesMonth = false;
+                }
+            }
+            return matchesSearch && matchesYear && matchesMonth;
+        });
 
         if (sortBy) {
             filtered.sort((a, b) => {

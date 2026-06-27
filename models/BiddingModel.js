@@ -709,25 +709,104 @@ export class BiddingModel {
 
     formatDate(dateStr) {
         if (!dateStr) return '--';
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return dateStr;
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
+        
+        let year = null, month = null, day = null, hours = '00', minutes = '00';
+        let hasTime = false;
+
+        if (dateStr instanceof Date) {
+            const d = dateStr;
+            day = String(d.getDate()).padStart(2, '0');
+            month = String(d.getMonth() + 1).padStart(2, '0');
+            year = d.getFullYear();
+            hours = String(d.getHours()).padStart(2, '0');
+            minutes = String(d.getMinutes()).padStart(2, '0');
+            hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+        } else {
+            const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+            const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
+            const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+
+            if (ymdMatch) {
+                year = ymdMatch[1];
+                month = ymdMatch[2];
+                day = ymdMatch[3];
+                if (ymdMatch[4] !== undefined) {
+                    hours = ymdMatch[4];
+                    minutes = ymdMatch[5];
+                    hasTime = true;
+                }
+            } else if (dmyMatch) {
+                day = dmyMatch[1];
+                month = dmyMatch[2];
+                year = dmyMatch[3];
+                if (dmyMatch[4] !== undefined) {
+                    hours = dmyMatch[4];
+                    minutes = dmyMatch[5];
+                    hasTime = true;
+                }
+            } else {
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return dateStr;
+                day = String(d.getDate()).padStart(2, '0');
+                month = String(d.getMonth() + 1).padStart(2, '0');
+                year = d.getFullYear();
+                hours = String(d.getHours()).padStart(2, '0');
+                minutes = String(d.getMinutes()).padStart(2, '0');
+                hasTime = /[T\s]\d{1,2}:\d{2}/.test(dateStr);
+            }
+        }
+
+        if (hasTime) {
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
         return `${day}/${month}/${year}`;
     }
 
     formatDateWithTime(dateStr) {
         if (!dateStr) return '--';
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return dateStr;
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+        
+        let year = null, month = null, day = null, hours = '00', minutes = '00';
+
+        if (dateStr instanceof Date) {
+            const d = dateStr;
+            day = String(d.getDate()).padStart(2, '0');
+            month = String(d.getMonth() + 1).padStart(2, '0');
+            year = d.getFullYear();
+            hours = String(d.getHours()).padStart(2, '0');
+            minutes = String(d.getMinutes()).padStart(2, '0');
+        } else {
+            const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+            const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
+            const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+
+            if (ymdMatch) {
+                year = ymdMatch[1];
+                month = ymdMatch[2];
+                day = ymdMatch[3];
+                if (ymdMatch[4] !== undefined) {
+                    hours = ymdMatch[4];
+                    minutes = ymdMatch[5];
+                }
+            } else if (dmyMatch) {
+                day = dmyMatch[1];
+                month = dmyMatch[2];
+                year = dmyMatch[3];
+                if (dmyMatch[4] !== undefined) {
+                    hours = dmyMatch[4];
+                    minutes = dmyMatch[5];
+                }
+            } else {
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return dateStr;
+                day = String(d.getDate()).padStart(2, '0');
+                month = String(d.getMonth() + 1).padStart(2, '0');
+                year = d.getFullYear();
+                hours = String(d.getHours()).padStart(2, '0');
+                minutes = String(d.getMinutes()).padStart(2, '0');
+            }
+        }
+
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
     }
 
     formatForDatetimeLocal(dateStr) {
@@ -744,7 +823,10 @@ export class BiddingModel {
 
     convertDMYToYMD(dmyStr) {
         if (!dmyStr) return '';
-        const parts = dmyStr.trim().split('/');
+        let cleaned = String(dmyStr).replace(/\s*-\s*/, ' ').trim();
+        const partsSpace = cleaned.split(' ');
+        const datePart = partsSpace[0];
+        const parts = datePart.split('/');
         if (parts.length !== 3) return dmyStr;
         const day = parts[0].padStart(2, '0');
         const month = parts[1].padStart(2, '0');
@@ -754,7 +836,8 @@ export class BiddingModel {
 
     convertDMYHMSToYMDHMS(dmyHMSStr) {
         if (!dmyHMSStr) return '';
-        const parts = dmyHMSStr.trim().split(' ');
+        let cleaned = String(dmyHMSStr).replace(/\s*-\s*/, ' ').trim();
+        const parts = cleaned.split(' ');
         const datePart = parts[0];
         let timePart = parts[1] || '00:00:00';
         if (timePart.split(':').length === 2) {

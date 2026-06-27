@@ -488,7 +488,7 @@ export async function handleHopDongSubmit(e) {
     let data = {
         tenHopDong,
         soHopDong,
-        ngayKy,
+        ngayKy: ngayKy ? this.model.convertDMYToYMD(ngayKy) : '',
         chuDauTuId,
         nhaThauId,
         keHoachId,
@@ -497,7 +497,7 @@ export async function handleHopDongSubmit(e) {
         phanLoai,
         coQdChiDinh,
         soQdChiDinh,
-        ngayQdChiDinh,
+        ngayQdChiDinh: ngayQdChiDinh ? this.model.convertDMYToYMD(ngayQdChiDinh) : '',
         soNgayThucHien,
         goiThauIds,
         trangThaiHoSo

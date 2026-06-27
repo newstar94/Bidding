@@ -813,11 +813,11 @@ export async function saveExcelImport() {
                 phanLo: 'Không',
                 phanLoList: [],
                 tuyChonMuaThemList: [],
-                soQuyetDinh: '',
-                ngayQuyetDinh: '',
-                thoiGianDangTai: '',
-                thoiGianDongThau: '',
-                thoiGianMoThau: '',
+                soQuyetDinh: row.soQuyetDinh || '',
+                ngayQuyetDinh: row.ngayQuyetDinh ? this.model.convertDMYToYMD(row.ngayQuyetDinh) : '',
+                thoiGianDangTai: row.thoiGianDangTai ? this.model.convertDMYHMSToYMDHMS(row.thoiGianDangTai) : '',
+                thoiGianDongThau: row.thoiGianDongThau ? this.model.convertDMYHMSToYMDHMS(row.thoiGianDongThau) : '',
+                thoiGianMoThau: row.thoiGianMoThau ? this.model.convertDMYHMSToYMDHMS(row.thoiGianMoThau) : '',
                 toChuyenGia: [],
                 toThamDinh: []
             };

@@ -244,6 +244,36 @@ export function setupActionListeners() {
         this.model.currentPage.goithau = 1;
         this.view.renderGoiThauTable();
     });
+    document.getElementById('filter-goithau-nam').addEventListener('change', () => {
+        this.model.currentPage.goithau = 1;
+        this.view.renderGoiThauTable();
+    });
+    document.getElementById('filter-goithau-thang').addEventListener('change', () => {
+        this.model.currentPage.goithau = 1;
+        this.view.renderGoiThauTable();
+    });
+
+    const filterKehoachNam = document.getElementById('filter-kehoach-nam');
+    if (filterKehoachNam) filterKehoachNam.addEventListener('change', () => {
+        this.model.currentPage.kehoach = 1;
+        this.view.renderKeHoachTable();
+    });
+    const filterKehoachThang = document.getElementById('filter-kehoach-thang');
+    if (filterKehoachThang) filterKehoachThang.addEventListener('change', () => {
+        this.model.currentPage.kehoach = 1;
+        this.view.renderKeHoachTable();
+    });
+
+    const filterHopdongNam = document.getElementById('filter-hopdong-nam');
+    if (filterHopdongNam) filterHopdongNam.addEventListener('change', () => {
+        this.model.currentPage.hopdong = 1;
+        this.view.renderHopDongTable();
+    });
+    const filterHopdongThang = document.getElementById('filter-hopdong-thang');
+    if (filterHopdongThang) filterHopdongThang.addEventListener('change', () => {
+        this.model.currentPage.hopdong = 1;
+        this.view.renderHopDongTable();
+    });
 
     const syncBtn = document.getElementById('btn-force-sync');
     if (syncBtn) {
