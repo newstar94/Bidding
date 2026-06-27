@@ -1219,11 +1219,9 @@ export function renderContractVersionDetails(versionId) {
     }).join('');
 
     const versionSelectHtml = `
-        <div class="select-wrapper" style="max-width: 320px; min-width: 200px; display: inline-block;">
-            <select id="fullpage-hd-version-select" style="width: 100%; border-radius: var(--radius-sm); font-size: 0.85rem; padding: 4px 8px; height: 32px; font-weight: 600;">
-                ${selectOptionsHtml}
-            </select>
-        </div>
+        <select id="fullpage-hd-version-select" class="page-version-select" style="min-width: 100px; max-width: 320px; width: auto;">
+            ${selectOptionsHtml}
+        </select>
     `;
 
     const html = `

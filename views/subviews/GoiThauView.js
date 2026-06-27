@@ -830,18 +830,113 @@ export function showPackageDetails(id) {
                             const valSoBaoCao = document.getElementById('ip-sobaocaothamdinh').value;
                             const valNgayBaoCao = document.getElementById('ip-ngaybaocaothamdinh').value;
 
-                            gt.thoiGianDangTai = valDangTai ? this.model.convertDMYHMSToYMDHMS(valDangTai) : '';
-                            gt.thoiGianDongThau = valDongThau ? this.model.convertDMYHMSToYMDHMS(valDongThau) : '';
-                            gt.thoiGianMoThau = valMoThau ? this.model.convertDMYHMSToYMDHMS(valMoThau) : '';
-                            gt.soQuyetDinh = valSoQuyetDinh;
-                            gt.ngayQuyetDinh = valNgayQuyetDinh ? this.model.convertDMYToYMD(valNgayQuyetDinh) : '';
-                            gt.yeuCauThamDinhHsmt = valYeuCauThamDinh;
-                            if (valYeuCauThamDinh === 'Không') {
-                                gt.soBaoCaoThamDinhHsmt = '';
-                                gt.ngayBaoCaoThamDinhHsmt = '';
+                            const gtData = {
+                                thoiGianDangTai: valDangTai ? this.model.convertDMYHMSToYMDHMS(valDangTai) : '',
+                                thoiGianDongThau: valDongThau ? this.model.convertDMYHMSToYMDHMS(valDongThau) : '',
+                                thoiGianMoThau: valMoThau ? this.model.convertDMYHMSToYMDHMS(valMoThau) : '',
+                                soQuyetDinh: valSoQuyetDinh,
+                                ngayQuyetDinh: valNgayQuyetDinh ? this.model.convertDMYToYMD(valNgayQuyetDinh) : '',
+                                yeuCauThamDinhHsmt: valYeuCauThamDinh,
+                                soBaoCaoThamDinhHsmt: valYeuCauThamDinh === 'Không' ? '' : valSoBaoCao,
+                                ngayBaoCaoThamDinhHsmt: (valYeuCauThamDinh === 'Không' || !valNgayBaoCao) ? '' : this.model.convertDMYToYMD(valNgayBaoCao)
+                            };
+
+                            const oldTimeDang = gt.thoiGianDangTai ? String(gt.thoiGianDangTai).trim() : '';
+                            const newTimeDang = String(gtData.thoiGianDangTai || '').trim();
+
+                            const oldTimeDong = gt.thoiGianDongThau ? String(gt.thoiGianDongThau).trim() : '';
+                            const newTimeDong = String(gtData.thoiGianDongThau || '').trim();
+
+                            const oldTimeMo = gt.thoiGianMoThau ? String(gt.thoiGianMoThau).trim() : '';
+                            const newTimeMo = String(gtData.thoiGianMoThau || '').trim();
+
+                            let saveAsNewVersion = false;
+                            if (oldTimeDang !== '') {
+                                const compareDate = (oldStr, newStr) => {
+                                    if (!oldStr && !newStr) return false;
+                                    if (!oldStr || !newStr) return true;
+                                    const d1 = new Date(oldStr);
+                                    const d2 = new Date(newStr);
+                                    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+                                        return oldStr !== newStr;
+                                    }
+                                    return d1.getTime() !== d2.getTime();
+                                };
+
+                                const dangChanged = compareDate(oldTimeDang, newTimeDang);
+                                const dongChanged = compareDate(oldTimeDong, newTimeDong);
+                                const moChanged = compareDate(oldTimeMo, newTimeMo);
+
+                                if (dangChanged || dongChanged || moChanged) {
+                                    saveAsNewVersion = true;
+                                }
+                            }
+
+                            let finalId = id;
+                            if (saveAsNewVersion) {
+                                const rootId = gt.rootId || gt.id;
+                                const relatedGts = this.model.state.goithau.filter(g => (g.rootId || g.id) === rootId);
+                                const maxVersion = Math.max(...relatedGts.map(g => parseInt(g.phienBan) || 0));
+                                const nextVersion = String(maxVersion + 1).padStart(2, '0');
+
+                                relatedGts.forEach(g => { g.isLatest = 0; g.is_latest = 0; });
+                                const newGtId = window.generateUUID();
+                                finalId = newGtId;
+
+                                if (!this.model.state.selectedPackageVersion) {
+                                    this.model.state.selectedPackageVersion = {};
+                                }
+                                this.model.state.selectedPackageVersion[rootId] = newGtId;
+
+                                // Clone and push new package version
+                                this.model.state.goithau.push({
+                                    ...gt,
+                                    ...gtData,
+                                    id: newGtId,
+                                    phienBan: nextVersion,
+                                    isLatest: 1,
+                                    is_latest: 1,
+                                    rootId: rootId,
+                                    createdAt: gt.createdAt || Math.floor(Date.now() / 1000),
+                                    created_at: gt.created_at || Math.floor(Date.now() / 1000),
+                                    updatedAt: Math.floor(Date.now() / 1000),
+                                    updated_at: Math.floor(Date.now() / 1000)
+                                });
+
+                                // Duplicate related contracts (hopdong)
+                                if (Array.isArray(this.model.state.hopdong)) {
+                                    this.model.state.hopdong = this.model.state.hopdong.map(h => {
+                                        if (h.goiThauIds && h.goiThauIds.includes(id)) {
+                                            const updatedGoiThauIds = [...h.goiThauIds];
+                                            if (!updatedGoiThauIds.includes(newGtId)) {
+                                                updatedGoiThauIds.push(newGtId);
+                                            }
+                                            return {
+                                                ...h,
+                                                goiThauIds: updatedGoiThauIds
+                                            };
+                                        }
+                                        return h;
+                                    });
+                                    this.model.persistData('hopdong');
+                                }
+
+                                // Duplicate related bids (thongtinmothau)
+                                if (Array.isArray(this.model.state.thongtinmothau)) {
+                                    const oldBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(id));
+                                    const newBids = oldBids.map(b => ({
+                                        ...b,
+                                        id: window.generateUUID(),
+                                        goiThauId: newGtId
+                                    }));
+                                    this.model.state.thongtinmothau = [...this.model.state.thongtinmothau, ...newBids];
+                                    this.model.persistData('thongtinmothau');
+                                }
                             } else {
-                                gt.soBaoCaoThamDinhHsmt = valSoBaoCao;
-                                gt.ngayBaoCaoThamDinhHsmt = valNgayBaoCao ? this.model.convertDMYToYMD(valNgayBaoCao) : '';
+                                // Overwrite current version
+                                Object.assign(gt, gtData);
+                                gt.updatedAt = Math.floor(Date.now() / 1000);
+                                gt.updated_at = gt.updatedAt;
                             }
 
                             await this.model.persistData('goithau');

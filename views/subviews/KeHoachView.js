@@ -413,7 +413,7 @@ export function renderPlanVersionDetails(versionId) {
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
                     <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
                     ${allVersions.length >= 2 ? `
-                        <select id="fullpage-kh-version-select" style="font-size: 0.85rem; padding: 0 24px 0 10px; height: 28px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-weight: 700; cursor: pointer; margin: 0; box-sizing: border-box; line-height: 26px; outline: none; vertical-align: middle;">
+                        <select id="fullpage-kh-version-select" class="page-version-select">
                             ${allVersions.map(k => `<option value="${k.id}" ${k.id === versionId ? 'selected' : ''}>${k.phienBan || '00'}</option>`).join('')}
                         </select>
                     ` : ''}

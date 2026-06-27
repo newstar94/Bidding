@@ -1052,9 +1052,36 @@ export async function handleGoiThauSubmit(e) {
         const oldGt = this.model.state.goithau.find(g => g.id === id);
         const newTen = gtData.tenGoiThau;
 
-        const oldTime = (oldGt && oldGt.thoiGianDangTai) ? String(oldGt.thoiGianDangTai).trim() : '';
-        const newTime = String(gtData.thoiGianDangTai || '').trim();
-        const saveAsNewVersion = !!(oldGt && oldTime !== '' && newTime !== oldTime);
+        const oldTimeDang = (oldGt && oldGt.thoiGianDangTai) ? String(oldGt.thoiGianDangTai).trim() : '';
+        const newTimeDang = String(gtData.thoiGianDangTai || '').trim();
+
+        const oldTimeDong = (oldGt && oldGt.thoiGianDongThau) ? String(oldGt.thoiGianDongThau).trim() : '';
+        const newTimeDong = String(gtData.thoiGianDongThau || '').trim();
+
+        const oldTimeMo = (oldGt && oldGt.thoiGianMoThau) ? String(oldGt.thoiGianMoThau).trim() : '';
+        const newTimeMo = String(gtData.thoiGianMoThau || '').trim();
+
+        let saveAsNewVersion = false;
+        if (oldGt && oldTimeDang !== '') {
+            const compareDate = (oldStr, newStr) => {
+                if (!oldStr && !newStr) return false;
+                if (!oldStr || !newStr) return true;
+                const d1 = new Date(oldStr);
+                const d2 = new Date(newStr);
+                if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+                    return oldStr !== newStr;
+                }
+                return d1.getTime() !== d2.getTime();
+            };
+
+            const dangChanged = compareDate(oldTimeDang, newTimeDang);
+            const dongChanged = compareDate(oldTimeDong, newTimeDong);
+            const moChanged = compareDate(oldTimeMo, newTimeMo);
+
+            if (dangChanged || dongChanged || moChanged) {
+                saveAsNewVersion = true;
+            }
+        }
 
         if (saveAsNewVersion) {
             const rootId = oldGt.rootId || oldGt.id;
@@ -1065,6 +1092,12 @@ export async function handleGoiThauSubmit(e) {
             relatedGts.forEach(g => { g.isLatest = 0; g.is_latest = 0; });
             const newGtId = window.generateUUID();
             finalGtId = newGtId;
+
+            if (!this.model.state.selectedPackageVersion) {
+                this.model.state.selectedPackageVersion = {};
+            }
+            this.model.state.selectedPackageVersion[rootId] = newGtId;
+
             this.model.state.goithau.push({
                 id: newGtId,
                 maGoiThau: inputCode,

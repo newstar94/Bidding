@@ -784,6 +784,11 @@ export async function savePlanBreakdown() {
 
             relatedPlans.forEach(k => { k.isLatest = 0; k.is_latest = 0; });
 
+            if (!this.model.state.selectedPlanVersion) {
+                this.model.state.selectedPlanVersion = {};
+            }
+            this.model.state.selectedPlanVersion[rootId] = newId;
+
             this.model.state.kehoach.push({
                 ...this.tempPlanData,
                 id: newId,
