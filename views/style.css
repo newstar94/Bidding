@@ -4465,19 +4465,23 @@ body.dark-mode .btn-excel-action:hover {
 }
 
 .custom-select-dropdown {
-    /* Đổi thành absolute và ép z-index lên mức tối đa */
-    position: absolute !important;
+    position: fixed !important;
+    /* Bắt buộc dùng fixed để đè lên mọi bảng */
+    margin: 0 !important;
+    /* Bắt buộc xóa margin để không gây lệch tọa độ */
+    transform: none !important;
+    /* Bắt buộc xóa ma trận dịch chuyển gây nhảy trang */
+
     background-color: var(--bg-card, #ffffff);
     border: 1px solid var(--border-color, rgba(226, 232, 240, 0.8));
     border-radius: var(--radius-lg, 12px);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
     z-index: 999999 !important;
+    /* Lớp hiển thị cao nhất */
 
-    /* Trạng thái ẩn mượt mà mặc định */
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-8px);
-    transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+    transition: opacity 0.15s ease, visibility 0.15s;
 
     max-height: 250px;
     overflow-y: auto;

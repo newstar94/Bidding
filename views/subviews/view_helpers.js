@@ -219,9 +219,24 @@ export function initCustomSelect(selectId) {
     const options = Array.from(select.options);
     const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
 
-    let triggerText = selectedOption.text;
+    let triggerText = selectedOption.text.trim();
+
+    // Chuẩn hóa hiển thị viết tắt cho bộ lọc Tháng để giao diện gọn gàng
     if (triggerText.startsWith('Tháng ')) {
-        triggerText = 'T' + triggerText.substring(6);
+        // Loại bỏ chữ "Tháng " để lấy phần lõi dữ liệu phía sau
+        let coreText = triggerText.substring(6).trim();
+
+        // Bản đồ chuẩn hóa chữ thành số nếu dữ liệu trả về dạng chữ tiếng Việt
+        const monthMap = {
+            'một': '1', 'hai': '2', 'ba': '3', 'bốn': '4', 'năm': '5', 'sáu': '6',
+            'bảy': '7', 'tám': '8', 'chín': '9', 'mười': '10', 'mười một': '11', 'mười hai': '12'
+        };
+
+        if (monthMap[coreText.toLowerCase()]) {
+            coreText = monthMap[coreText.toLowerCase()];
+        }
+
+        triggerText = 'T' + coreText;
     }
 
     // Check if the current custom markup is already up-to-date
@@ -294,46 +309,46 @@ export function initCustomSelect(selectId) {
 
             const isOpen = wrapper.classList.toggle('open');
             if (isOpen) {
-                // 1. Tính toán tọa độ thực tế của nút bấm so với khung nhìn (Viewport)
+                // 1. Lấy tọa độ tuyệt đối trên màn hình
                 const rect = trigger.getBoundingClientRect();
 
-                // 2. Bốc dropdown thả trực tiếp vào body để thoát khỏi overflow của bảng dữ liệu
+                // 2. Đưa Dropdown ra hẳn thẻ body để không bao giờ bị bảng che khuất
                 document.body.appendChild(dropdown);
 
-                // 3. Tính toán vị trí tuyệt đối dựa trên khoảng cách cuộn của trang
-                dropdown.style.position = 'absolute';
-                dropdown.style.top = (rect.bottom + window.scrollY + 4) + 'px'; // Hạ xuống dưới nút 4px
-                dropdown.style.left = (rect.left + window.scrollX) + 'px';     // Căn thẳng lề trái nút bấm
+                // 3. Neo tọa độ chính xác từng pixel (KHÔNG cộng thêm window.scroll)
+                dropdown.style.position = 'fixed';
+                dropdown.style.top = (rect.bottom + 4) + 'px';
+                dropdown.style.left = rect.left + 'px';
                 dropdown.style.right = 'auto';
+                dropdown.style.bottom = 'auto';
 
-                // Cấu hình chiều rộng linh hoạt theo từng loại dropdown
+                // Xóa bỏ các thuộc tính gây lệch
+                dropdown.style.margin = '0';
+                dropdown.style.transform = 'none';
+
+                // 4. Định hình kích thước
                 if (isVersion) {
                     dropdown.style.width = '52px';
                     dropdown.style.minWidth = '52px';
                 } else if (isCompact) {
                     dropdown.style.width = '70px';
                     dropdown.style.minWidth = '70px';
-                    dropdown.style.maxWidth = '200px';
                 } else {
                     dropdown.style.minWidth = rect.width + 'px';
                     dropdown.style.width = 'max-content';
-                    dropdown.style.maxWidth = '400px';
                 }
-                dropdown.style.overflowX = 'hidden';
+
                 dropdown.style.zIndex = '999999';
 
-                // 4. Kích hoạt hiệu ứng trượt đổ xuống mượt mà
+                // 5. Hiển thị Dropdown
                 dropdown.style.opacity = '1';
                 dropdown.style.visibility = 'visible';
-                dropdown.style.transform = 'translateY(0)';
+
             } else {
-                // Khi đóng, trả dropdown về lại vị trí cũ bên trong wrapper để tránh mất cấu trúc dữ liệu
+                // Khi đóng lại, ẩn Dropdown và đưa nó về lại vị trí nằm trong bảng
+                dropdown.style.opacity = '0';
+                dropdown.style.visibility = 'hidden';
                 wrapper.appendChild(dropdown);
-                dropdown.style.opacity = '';
-                dropdown.style.visibility = '';
-                dropdown.style.transform = '';
-                dropdown.style.top = '';
-                dropdown.style.left = '';
             }
         });
 
