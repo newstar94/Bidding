@@ -92,7 +92,7 @@ export async function renderChuDauTuTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changeChuDauTuRowVersion('${root}', this.value)" style="width: 70px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                <select class="form-control version-droplist" onchange="window.changeChuDauTuRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
@@ -100,12 +100,11 @@ export async function renderChuDauTuTable() {
             return `
             <tr>
                 <td>
-                    <a href="#" onclick="event.preventDefault(); window.editChuDauTu('${displayedCdt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Chủ đầu tư">
-                        <span class="detail-code">${displayedCdt.maChuDauTu || ''}</span>
-                    </a>
-                </td>
-                <td>
-                    ${dropdownHtml}
+                    <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
+                        <a href="#" onclick="event.preventDefault(); window.editChuDauTu('${displayedCdt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedCdt.maChuDauTu || ''}</span></a>
+                        <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                        ${dropdownHtml}
+                    </div>
                 </td>
                 <td style="min-width: 220px; max-width: 320px;" class="fw-bold text-wrap">
                     ${displayedCdt.tenChuDauTu || ''}
@@ -233,7 +232,7 @@ export async function renderNhaThauTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changeNhaThauRowVersion('${root}', this.value)" style="width: 70px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                <select class="form-control version-droplist" onchange="window.changeNhaThauRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
@@ -249,12 +248,11 @@ export async function renderNhaThauTable() {
                 return `
                     <tr>
                         <td>
-                            <a href="#" onclick="event.preventDefault(); window.editNhaThau('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Nhà thầu">
-                                <span class="detail-code">${displayedNt.maNhaThau || ''}</span>
-                            </a>
-                        </td>
-                        <td>
-                            ${dropdownHtml}
+                            <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
+                                <a href="#" onclick="event.preventDefault(); window.editNhaThau('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                                ${dropdownHtml}
+                            </div>
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
                             ${displayedNt.tenNhaThau || ''}
@@ -286,12 +284,11 @@ export async function renderNhaThauTable() {
                 return `
                     <tr>
                         <td>
-                            <a href="#" onclick="event.preventDefault(); window.editNhaThau('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Nhà thầu">
-                                <span class="detail-code">${displayedNt.maNhaThau || ''}</span>
-                            </a>
-                        </td>
-                        <td>
-                            ${dropdownHtml}
+                            <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
+                                <a href="#" onclick="event.preventDefault(); window.editNhaThau('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                                ${dropdownHtml}
+                            </div>
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
                             ${displayedNt.tenNhaThau || ''}
@@ -418,15 +415,20 @@ export async function renderChuyenGiaTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changeChuyenGiaRowVersion('${root}', this.value)" style="width: 70px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                <select class="form-control version-droplist" onchange="window.changeChuyenGiaRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
 
             return `
             <tr>
-                <td class="fw-bold"><a href="#" onclick="event.preventDefault(); window.showChuyenGiaDetails('${displayedCg.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch">${displayedCg.hoTen || ''}</a></td>
-                <td>${dropdownHtml}</td>
+                <td class="fw-bold">
+                    <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
+                        <a href="#" onclick="event.preventDefault(); window.showChuyenGiaDetails('${displayedCg.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch" style="display: inline-flex; align-items: center; line-height: 1;"><span style="margin: 0; line-height: 1;">${displayedCg.hoTen || ''}</span></a>
+                        <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                        ${dropdownHtml}
+                    </div>
+                </td>
                 <td>${displayedCg.soCCCD || ''}</td>
                 <td><span class="badge badge-info">${displayedCg.soChungChi || ''}</span></td>
                 <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${displayedCg.donViCapChungChi || '--'}</td>
@@ -543,7 +545,7 @@ export async function renderHopDongTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changeHopDongRowVersion('${root}', this.value)" style="width: 70px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.85rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                <select class="form-control version-droplist" onchange="window.changeHopDongRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
@@ -572,8 +574,13 @@ export async function renderHopDongTable() {
 
             return `
                 <tr>
-                    <td><a href="#" onclick="event.preventDefault(); window.showHopDongDetails('${displayedHd.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Hợp đồng"><span class="detail-code link-hover">${displayedHd.soHopDong}</span></a></td>
-                    <td>${dropdownHtml}</td>
+                    <td>
+                        <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
+                            <a href="#" onclick="event.preventDefault(); window.showHopDongDetails('${displayedHd.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Hợp đồng" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code link-hover" style="margin: 0; line-height: 1;">${displayedHd.soHopDong}</span></a>
+                            <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                            ${dropdownHtml}
+                        </div>
+                    </td>
                     <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${displayedHd.tenHopDong}</td>
                     <td>${displayedHd.ngayKy ? formatDate(displayedHd.ngayKy) : '--'}</td>
                     <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${cdtName}</td>
