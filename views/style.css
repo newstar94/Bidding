@@ -4611,7 +4611,7 @@ select.page-version-select:focus {
 
 /* ── Compact custom select container for version dropdowns in headers/detail pages ── */
 .compact-version-select-container {
-    width: 52px !important;
+    width: 70px !important;
 }
 
 .compact-version-select-container .custom-select-trigger {
@@ -4623,8 +4623,8 @@ select.page-version-select:focus {
     border: 1.5px solid rgba(59, 130, 246, 0.3) !important;
     background-color: rgba(59, 130, 246, 0.06) !important;
     color: var(--primary, #3b82f6) !important;
-    min-width: 52px !important;
-    width: 52px !important;
+    min-width: 70px !important;
+    width: 70px !important;
     justify-content: space-between !important;
 }
 
@@ -4643,8 +4643,8 @@ select.page-version-select:focus {
     border-radius: 8px !important;
     padding: 4px !important;
     max-height: 180px !important;
-    width: 52px !important;
-    min-width: 52px !important;
+    width: 70px !important;
+    min-width: 70px !important;
 }
 
 .compact-version-select-dropdown .custom-select-option {

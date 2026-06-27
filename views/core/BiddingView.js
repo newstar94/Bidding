@@ -75,6 +75,16 @@ export class BiddingView {
     }
 
     upgradeAllSelects() {
+        // Garbage collection for any orphaned/hidden custom dropdowns currently on body
+        document.querySelectorAll('body > .custom-select-dropdown').forEach(dropdown => {
+            const targetId = dropdown.getAttribute('data-target');
+            const selectEl = document.getElementById(targetId);
+            const wrapperEl = document.querySelector(`.custom-select-container[data-target="${targetId}"]`);
+            if (!selectEl || !wrapperEl || (wrapperEl.offsetWidth === 0 && wrapperEl.offsetHeight === 0)) {
+                dropdown.remove();
+            }
+        });
+
         document.querySelectorAll('select').forEach(select => {
             // Exclude version selects, elements marked as no-custom, or those with a custom-select-wrapper sibling (searchable selects)
             const hasNoCustomAttr = select.getAttribute('data-no-custom') === 'true';

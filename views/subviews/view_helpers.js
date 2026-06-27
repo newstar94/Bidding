@@ -143,24 +143,44 @@ export function initCustomSelect(selectId) {
             wrapper.style.display = 'inline-block';
             wrapper.style.verticalAlign = 'middle';
             wrapper.style.margin = '0';
-            wrapper.style.width = '52px';
-            wrapper.style.minWidth = '52px';
+            wrapper.style.width = '70px';
+            wrapper.style.minWidth = '70px';
         } else if (select.style.width) {
             wrapper.style.width = select.style.width;
         }
 
-        document.addEventListener('click', (e) => {
-            const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${selectId}"]`);
-            if (!wrapper.contains(e.target) && (!dropdownEl || !dropdownEl.contains(e.target))) {
-                wrapper.classList.remove('open');
-                if (dropdownEl && dropdownEl.parentElement === document.body) {
-                    wrapper.appendChild(dropdownEl);
-                    dropdownEl.style.opacity = '';
-                    dropdownEl.style.visibility = '';
-                    dropdownEl.style.transform = '';
-                }
-            }
-        });
+        if (!window._customSelectClickListenerRegistered) {
+            document.addEventListener('click', (e) => {
+                document.querySelectorAll('.custom-select-container.open').forEach(w => {
+                    const targetId = w.getAttribute('data-target');
+                    const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
+                    
+                    const clickedInsideWrapper = w.contains(e.target);
+                    const clickedInsideDropdown = dropdownEl && dropdownEl.contains(e.target);
+                    
+                    if (!clickedInsideWrapper && !clickedInsideDropdown) {
+                        w.classList.remove('open');
+                        if (dropdownEl && dropdownEl.parentElement === document.body) {
+                            w.appendChild(dropdownEl);
+                            dropdownEl.style.opacity = '';
+                            dropdownEl.style.visibility = '';
+                            dropdownEl.style.transform = '';
+                        }
+                    }
+                });
+
+                // Periodic GC of any orphaned dropdown elements left on the body
+                document.querySelectorAll('body > .custom-select-dropdown').forEach(dropdown => {
+                    const targetId = dropdown.getAttribute('data-target');
+                    const selectEl = document.getElementById(targetId);
+                    const wrapperEl = document.querySelector(`.custom-select-container[data-target="${targetId}"]`);
+                    if (!selectEl || !wrapperEl || (wrapperEl.offsetWidth === 0 && wrapperEl.offsetHeight === 0)) {
+                        dropdown.remove();
+                    }
+                });
+            });
+            window._customSelectClickListenerRegistered = true;
+        }
 
         // Register a global scroll listener once to close dropdowns and return them when scrolling
         if (!window._customSelectScrollListenerRegistered) {
@@ -212,6 +232,12 @@ export function initCustomSelect(selectId) {
     }
 
     if (needsUpdate) {
+        // Clean up any old dropdown with the same target currently on body before replacing innerHTML
+        const oldDropdownOnBody = document.body.querySelector(`.custom-select-dropdown[data-target="${selectId}"]`);
+        if (oldDropdownOnBody) {
+            oldDropdownOnBody.remove();
+        }
+
         wrapper.innerHTML = `
             <div class="custom-select-trigger">
                 <span>${triggerText}</span>
@@ -267,8 +293,8 @@ export function initCustomSelect(selectId) {
                     dropdown.style.width = '52px';
                     dropdown.style.minWidth = '52px';
                 } else if (isCompact) {
-                    dropdown.style.width = '52px';
-                    dropdown.style.minWidth = '52px';
+                    dropdown.style.width = '70px';
+                    dropdown.style.minWidth = '70px';
                     dropdown.style.maxWidth = '200px';
                 } else {
                     dropdown.style.minWidth = rect.width + 'px';
