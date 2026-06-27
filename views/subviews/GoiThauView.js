@@ -1,4 +1,4 @@
-import { getAuthDownloadUrl, authFetchDownload } from './view_helpers.js';
+import { getAuthDownloadUrl, authFetchDownload, initCustomSelect } from './view_helpers.js';
 
 export function checkBidQualified(b) {
     if (!b) return false;
@@ -69,6 +69,11 @@ export async function renderGoiThauTable() {
 
         if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
         if (sortedMonths.includes(prevMonth)) monthSelect.value = prevMonth;
+
+        initCustomSelect('filter-goithau-trangthai');
+        initCustomSelect('filter-goithau-hinhthuc');
+        initCustomSelect('filter-goithau-nam');
+        initCustomSelect('filter-goithau-thang');
     }
 
     const filterNam = yearSelect ? yearSelect.value : '';

@@ -1,4 +1,4 @@
-import { getAuthDownloadUrl, authFetchDownload, formatCurrency, formatDate } from './view_helpers.js';
+import { getAuthDownloadUrl, authFetchDownload, formatCurrency, formatDate, initCustomSelect } from './view_helpers.js';
 export async function renderKeHoachTable() {
     const tableBody = document.getElementById('kehoach-table').querySelector('tbody');
     const searchVal = document.getElementById('search-kehoach').value.toLowerCase();
@@ -53,6 +53,9 @@ export async function renderKeHoachTable() {
 
         if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
         if (sortedMonths.includes(prevMonth)) monthSelect.value = prevMonth;
+
+        initCustomSelect('filter-kehoach-nam');
+        initCustomSelect('filter-kehoach-thang');
     }
 
     const filterNam = yearSelect ? yearSelect.value : '';

@@ -6,6 +6,7 @@ import * as Dashboard from '/views/subviews/DashboardView.js?v=6.12';
 import * as Plan from '/views/subviews/PlanView.js?v=6.12';
 import * as Partner from '/views/subviews/PartnerView.js?v=6.12';
 import * as SystemUser from '/views/subviews/SystemUserView.js?v=6.12';
+import { initCustomSelect } from '../subviews/view_helpers.js';
 
 export class BiddingView {
     constructor(model) {
@@ -65,9 +66,48 @@ export class BiddingView {
             this.enhanceTableHeaders(table);
         });
 
+        // Auto-upgrade all eligible native selects in the DOM to the custom style
+        this.upgradeAllSelects();
+
         if (this._tableObserver) {
             this._tableObserver.observe(document.body, { childList: true, subtree: true });
         }
+    }
+
+    upgradeAllSelects() {
+        document.querySelectorAll('select').forEach(select => {
+            // Exclude version selects, elements marked as no-custom, or those with a custom-select-wrapper sibling (searchable selects)
+            const hasNoCustomAttr = select.getAttribute('data-no-custom') === 'true';
+            const hasSearchableWrapper = select.id && select.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
+            
+            if (select.classList.contains('version-select') || 
+                select.classList.contains('phienban-select') || 
+                select.id.includes('version') ||
+                select.id.includes('phienban') ||
+                hasNoCustomAttr ||
+                hasSearchableWrapper) {
+                
+                // If a custom-select-container was created for it by mistake, remove it
+                if (select.id) {
+                    const existingContainer = select.parentNode.querySelector(`.custom-select-container[data-target="${select.id}"]`);
+                    if (existingContainer) {
+                        existingContainer.remove();
+                        // Restore display if it was hidden by mistake (but searchable select hides it anyway)
+                        if (!hasSearchableWrapper) {
+                            select.style.display = '';
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Ensure the select has a unique ID for targeting
+            if (!select.id) {
+                select.id = 'select-' + Math.random().toString(36).substring(2, 9);
+            }
+
+            initCustomSelect(select.id);
+        });
     }
 
     enhanceTableHeaders(tableOrId, tableKey) {

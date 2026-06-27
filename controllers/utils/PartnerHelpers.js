@@ -105,6 +105,9 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
 export function makeSearchableSelect(select, placeholder) {
     if (!select) return;
 
+    // Mark this select to prevent it from being converted to custom-select-container
+    select.setAttribute('data-no-custom', 'true');
+
     // Check if already initialized
     let wrapper = select.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
     if (wrapper) {

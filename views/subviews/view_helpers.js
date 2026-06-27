@@ -105,3 +105,130 @@ export function formatDate(dateStr) {
     }
     return `${day}/${month}/${year}`;
 }
+
+export function initCustomSelect(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    const isVersion = select.classList.contains('version-droplist');
+    const hasArrow = !isVersion;
+
+    let wrapper = select.parentElement.querySelector(`.custom-select-container[data-target="${selectId}"]`);
+    if (!wrapper) {
+        select.style.display = 'none';
+        wrapper = document.createElement('div');
+        wrapper.className = 'custom-select-container' + (isVersion ? ' version-select-container' : '');
+        wrapper.setAttribute('data-target', selectId);
+        select.parentNode.insertBefore(wrapper, select.nextSibling);
+
+        // Copy width and layout properties from select if it is inline-block (like version-droplist)
+        if (isVersion) {
+            wrapper.style.display = 'inline-block';
+            wrapper.style.verticalAlign = 'middle';
+            wrapper.style.width = '52px';
+            wrapper.style.height = '22px';
+            wrapper.style.margin = '0';
+        } else if (select.style.width) {
+            wrapper.style.width = select.style.width;
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!wrapper.contains(e.target)) {
+                wrapper.classList.remove('open');
+            }
+        });
+
+        // Register a global scroll listener once to close dropdowns when scrolling
+        if (!window._customSelectScrollListenerRegistered) {
+            window.addEventListener('scroll', () => {
+                document.querySelectorAll('.custom-select-container').forEach(w => w.classList.remove('open'));
+            }, { passive: true });
+            window._customSelectScrollListenerRegistered = true;
+        }
+    }
+
+    const options = Array.from(select.options);
+    const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
+
+    // Check if the current custom markup is already up-to-date
+    const triggerTextEl = wrapper.querySelector('.custom-select-trigger span');
+    const existingOptions = Array.from(wrapper.querySelectorAll('.custom-select-option'));
+    
+    let needsUpdate = false;
+    if (!triggerTextEl || triggerTextEl.textContent !== selectedOption.text) {
+        needsUpdate = true;
+    } else if (existingOptions.length !== options.length) {
+        needsUpdate = true;
+    } else {
+        for (let i = 0; i < options.length; i++) {
+            const optEl = existingOptions[i];
+            const opt = options[i];
+            if (optEl.getAttribute('data-value') !== opt.value ||
+                optEl.querySelector('span').textContent !== opt.text ||
+                optEl.classList.contains('selected') !== opt.selected) {
+                needsUpdate = true;
+                break;
+            }
+        }
+    }
+
+    if (needsUpdate) {
+        wrapper.innerHTML = `
+            <div class="custom-select-trigger">
+                <span>${selectedOption.text}</span>
+                ${hasArrow ? `
+                <div class="custom-select-trigger-arrow">
+                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                </div>
+                ` : ''}
+            </div>
+            <div class="custom-select-dropdown">
+                ${options.map(opt => `
+                    <div class="custom-select-option ${opt.selected ? 'selected' : ''}" data-value="${opt.value}">
+                        <span>${opt.text}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        const trigger = wrapper.querySelector('.custom-select-trigger');
+        const dropdown = wrapper.querySelector('.custom-select-dropdown');
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            // Close all other dropdowns first
+            document.querySelectorAll('.custom-select-container').forEach(w => {
+                if (w !== wrapper) w.classList.remove('open');
+            });
+
+            const isOpen = wrapper.classList.toggle('open');
+            if (isOpen) {
+                // Position fixed relative to viewport to avoid table overflow hidden clipping
+                const rect = trigger.getBoundingClientRect();
+                dropdown.style.position = 'fixed';
+                dropdown.style.top = (rect.bottom + 4) + 'px';
+                dropdown.style.left = rect.left + 'px';
+                dropdown.style.right = 'auto'; // Clear right offset to align left correctly
+                dropdown.style.width = isVersion ? '52px' : (rect.width + 'px');
+                // Ensure z-index is top-level
+                dropdown.style.zIndex = '99999';
+            }
+        });
+
+        wrapper.querySelectorAll('.custom-select-option').forEach(optEl => {
+            optEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const val = optEl.getAttribute('data-value');
+                select.value = val;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                wrapper.classList.remove('open');
+                initCustomSelect(selectId);
+            });
+        });
+
+        if (hasArrow && window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+}

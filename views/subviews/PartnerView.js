@@ -1,7 +1,7 @@
 /* ==========================================================================
    BiddingFlow - PartnerView (Part of View split)
    ========================================================================== */
-import { formatCurrency, formatDate } from './view_helpers.js';
+import { formatCurrency, formatDate, initCustomSelect } from './view_helpers.js';
 
 export async function renderChuDauTuTable() {
     const tableBody = document.getElementById('chudautu-table').querySelector('tbody');
@@ -511,6 +511,9 @@ export async function renderHopDongTable() {
 
         if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
         if (sortedMonths.includes(prevMonth)) monthSelect.value = prevMonth;
+
+        initCustomSelect('filter-hopdong-nam');
+        initCustomSelect('filter-hopdong-thang');
     }
 
     const filterNam = yearSelect ? yearSelect.value : '';
