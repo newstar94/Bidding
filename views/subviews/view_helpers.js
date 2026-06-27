@@ -45,3 +45,14 @@ export function authFetchDownload(url, filename) {
             URL.revokeObjectURL(objectUrl);
         });
 }
+
+export function formatCurrency(value) {
+    if (value === null || value === undefined) return '--';
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
+}
+
+export function formatDate(dateStr) {
+    if (!dateStr) return '--';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('vi-VN');
+}

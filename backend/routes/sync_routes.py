@@ -216,26 +216,28 @@ async def sync_websocket_endpoint(websocket):
         _AUTH_CHECK_INTERVAL = 30 * 60  # Kiểm tra lại token mỗi 30 phút
 
         while True:
+            _now = _time.time()
+            if _now - _last_auth_check >= _AUTH_CHECK_INTERVAL:
+                _last_auth_check = _now
+                try:
+                    _conn = database.get_connection()
+                    _cur = _conn.cursor()
+                    _cur.execute("SELECT token_phien, han_su_dung_token FROM tai_khoan WHERE id = ?", (user_id,))
+                    _row = _cur.fetchone()
+                    _conn.close()
+                    if not _row or _row['token_phien'] != token:
+                        await websocket.close(code=4001)
+                        return
+                    if _row['han_su_dung_token'] and _now > float(_row['han_su_dung_token']):
+                        await websocket.close(code=4001)
+                        return
+                except Exception:
+                    pass
+
             try:
                 # Chờ tối đa 60 giây — nếu timeout thì gửi ping để kiểm tra kết nối còn sống
                 await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
             except asyncio.TimeoutError:
-                # Re-verify token định kỳ mỗi 30 phút — phát hiện revoke/logout
-                _now = _time.time()
-                if _now - _last_auth_check >= _AUTH_CHECK_INTERVAL:
-                    _last_auth_check = _now
-                    try:
-                        _conn = database.get_connection()
-                        _cur = _conn.cursor()
-                        _cur.execute("SELECT token_phien FROM tai_khoan WHERE id = ?", (user_id,))
-                        _row = _cur.fetchone()
-                        _conn.close()
-                        if not _row or _row['token_phien'] != token:
-                            # Token bị revoke — đóng WebSocket ngay
-                            await websocket.close(code=4001)
-                            return
-                    except Exception:
-                        pass  # Không disconnect nếu DB tạm thời lỗi
                 # Gửi ping — nếu connection đã chết sẽ raise exception và thoát loop
                 await websocket.send_text('{"type":"ping"}')
 

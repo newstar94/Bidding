@@ -81,7 +81,7 @@ def compile_html(file_path):
         if not APP_DEBUG:
             compiled = re.sub(
                 r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
-                '<script src="/dist/controllers/app.bundle.js"></script>',
+                '<script type="module" src="/dist/controllers/app.bundle.js"></script>',
                 compiled
             )
             with _compiled_html_lock:

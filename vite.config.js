@@ -59,7 +59,12 @@ export default defineConfig({
       },
       output: {
         entryFileNames: 'controllers/app.bundle.js',
-        format: 'iife' // IIFE format wraps the bundle in an immediately-invoked function expression to protect variables
+        chunkFileNames: 'assets/[name]-[hash].js',
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        }
       }
     }
   },

@@ -1,6 +1,7 @@
 /* ==========================================================================
    BiddingFlow - PartnerView (Part of View split)
    ========================================================================== */
+import { formatCurrency, formatDate } from './view_helpers.js';
 
 export async function renderChuDauTuTable() {
     const tableBody = document.getElementById('chudautu-table').querySelector('tbody');
@@ -429,7 +430,7 @@ export async function renderChuyenGiaTable() {
                 <td>${displayedCg.soCCCD || ''}</td>
                 <td><span class="badge badge-info">${displayedCg.soChungChi || ''}</span></td>
                 <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${displayedCg.donViCapChungChi || '--'}</td>
-                <td>${displayedCg.ngayCapChungChi ? this.model.formatDate(displayedCg.ngayCapChungChi) : '--'}</td>
+                <td>${displayedCg.ngayCapChungChi ? formatDate(displayedCg.ngayCapChungChi) : '--'}</td>
                 <td class="text-right">
                     ${isEmployee ? '' : `
                     <div class="action-btn-group">
@@ -574,10 +575,10 @@ export async function renderHopDongTable() {
                     <td><a href="#" onclick="event.preventDefault(); window.showHopDongDetails('${displayedHd.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Hợp đồng"><span class="detail-code link-hover">${displayedHd.soHopDong}</span></a></td>
                     <td>${dropdownHtml}</td>
                     <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${displayedHd.tenHopDong}</td>
-                    <td>${displayedHd.ngayKy ? this.model.formatDate(displayedHd.ngayKy) : '--'}</td>
+                    <td>${displayedHd.ngayKy ? formatDate(displayedHd.ngayKy) : '--'}</td>
                     <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${cdtName}</td>
                     <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${ntName}</td>
-                    <td class="fw-bold text-blue">${this.model.formatCurrency(displayedHd.giaTri)}</td>
+                    <td class="fw-bold text-blue">${formatCurrency(displayedHd.giaTri)}</td>
                     <td><span class="badge badge-info">${displayedHd.loaiHopDong || 'Trọn gói'}</span></td>
                     <td><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${displayedHd.phanLoai || 'Tư vấn'}</span></td>
                     <td>${displayedHd.soNgayThucHien ? (isNaN(displayedHd.soNgayThucHien) ? displayedHd.soNgayThucHien : displayedHd.soNgayThucHien + ' ngày') : '--'}</td>
@@ -631,7 +632,7 @@ export function showChuyenGiaDetails(id) {
                     </div>
                     <div class="passport-detail-row">
                         <div class="passport-detail-label">Ngày cấp CCCD</div>
-                        <div class="passport-detail-val">${cg.ngayCapCCCD ? this.model.formatDate(cg.ngayCapCCCD) : '--'}</div>
+                        <div class="passport-detail-val">${cg.ngayCapCCCD ? formatDate(cg.ngayCapCCCD) : '--'}</div>
                     </div>
                     <div class="passport-detail-row">
                         <div class="passport-detail-label">Nơi cấp CCCD</div>
@@ -665,7 +666,7 @@ export function showChuyenGiaDetails(id) {
                         </div>
                         <div class="passport-detail-row">
                             <div class="passport-detail-label">Ngày cấp</div>
-                            <div class="passport-detail-val">${cg.ngayCapChungChi ? this.model.formatDate(cg.ngayCapChungChi) : '--'}</div>
+                            <div class="passport-detail-val">${cg.ngayCapChungChi ? formatDate(cg.ngayCapChungChi) : '--'}</div>
                         </div>
                         <div class="passport-detail-row" style="grid-column: span 2;">
                             <div class="passport-detail-label">Đơn vị cấp chứng chỉ</div>
@@ -1160,11 +1161,11 @@ export function renderContractVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Ngày ký hợp đồng</div>
-                    <div class="detail-value">${hd.ngayKy ? this.model.formatDate(hd.ngayKy) : '--'}</div>
+                    <div class="detail-value">${hd.ngayKy ? formatDate(hd.ngayKy) : '--'}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Giá trị hợp đồng</div>
-                    <div class="detail-value text-blue fw-bold" style="font-size: 1.15rem;">${this.model.formatCurrency(hd.giaTri)}</div>
+                    <div class="detail-value text-blue fw-bold" style="font-size: 1.15rem;">${formatCurrency(hd.giaTri)}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Loại hợp đồng</div>
@@ -1192,7 +1193,7 @@ export function renderContractVersionDetails(versionId) {
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Ngày quyết định chỉ định</div>
-                        <div class="detail-value">${hd.ngayKy ? this.model.formatDate(hd.ngayQdChiDinh) : '--'}</div>
+                        <div class="detail-value">${hd.ngayKy ? formatDate(hd.ngayQdChiDinh) : '--'}</div>
                     </div>
                 ` : ''}
             </div>
@@ -1229,7 +1230,7 @@ export function renderContractVersionDetails(versionId) {
                     <div class="associated-item" style="cursor: pointer;" onclick="window.showKeHoachDetails('${kh.id}')">
                         <div>
                             <strong style="font-size: 0.9rem; color: var(--primary);">${kh.tenKeHoach}</strong><br>
-                            <small class="text-muted">Mã KH: ${kh.maKeHoach} | Tổng mức: ${this.model.formatCurrency(kh.tongMucDauTu)}</small>
+                            <small class="text-muted">Mã KH: ${kh.maKeHoach} | Tổng mức: ${formatCurrency(kh.tongMucDauTu)}</small>
                         </div>
                     </div>
                 </div>
@@ -1244,7 +1245,7 @@ export function renderContractVersionDetails(versionId) {
                                 <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
                                 <span><strong>${gt.maGoiThau}</strong> - ${gt.tenGoiThau}</span>
                             </div>
-                            <span class="badge badge-success">${this.model.formatCurrency(gt.giaGoiThau)}</span>
+                            <span class="badge badge-success">${formatCurrency(gt.giaGoiThau)}</span>
                         </div>
                     `).join('') : '<div class="text-muted"><small>Hợp đồng này chưa có gói thầu trực tiếp liên kết.</small></div>'}
                 </div>

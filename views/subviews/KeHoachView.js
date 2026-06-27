@@ -1,4 +1,4 @@
-import { getAuthDownloadUrl, authFetchDownload } from './view_helpers.js';
+import { getAuthDownloadUrl, authFetchDownload, formatCurrency, formatDate } from './view_helpers.js';
 export async function renderKeHoachTable() {
     const tableBody = document.getElementById('kehoach-table').querySelector('tbody');
     const searchVal = document.getElementById('search-kehoach').value.toLowerCase();
@@ -110,8 +110,8 @@ export async function renderKeHoachTable() {
                     <td>${displayedKh.loaiHinhMuaSam ? `<span class="badge ${displayedKh.loaiHinhMuaSam === 'Dự án' ? 'badge-info' : 'badge-warning'}">${displayedKh.loaiHinhMuaSam}</span>` : '<span class="text-muted">--</span>'}</td>
                     <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${displayedKh.tenDuAnDuToan || '--'}</td>
                     <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${cdt ? cdt.tenChuDauTu : '<span class="text-danger">Không rõ</span>'}</td>
-                    <td class="text-blue fw-bold">${this.model.formatCurrency(displayedKh.tongMucDauTu)}</td>
-                    <td>${this.model.formatDate(displayedKh.ngayPheDuyet)}</td>
+                    <td class="text-blue fw-bold">${formatCurrency(displayedKh.tongMucDauTu)}</td>
+                    <td>${formatDate(displayedKh.ngayPheDuyet)}</td>
                     <td>${displayedKh.quyetDinhPheDuyet}</td>
                     <td><small class="fw-bold text-muted">${displayedKh.thoiGianDangMa ? this.model.formatDateWithTime(displayedKh.thoiGianDangMa) : '--'}</small></td>
                     <td class="text-right">
@@ -218,7 +218,7 @@ export function renderPlanVersionDetails(versionId) {
                             ${list1.map(item => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
                                     <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${this.model.formatCurrency(item.giaTri)}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
                                     <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || '--'}</td>
                                     <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.vanBanPheDuyet || '--'}</td>
                                 </tr>
@@ -248,7 +248,7 @@ export function renderPlanVersionDetails(versionId) {
                             ${list2.map(item => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
                                     <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${this.model.formatCurrency(item.giaTri)}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
                                     <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || '--'}</td>
                                 </tr>
                             `).join('')}
@@ -276,7 +276,7 @@ export function renderPlanVersionDetails(versionId) {
                             ${list3.map(item => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
                                     <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${this.model.formatCurrency(item.giaTri)}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -291,11 +291,11 @@ export function renderPlanVersionDetails(versionId) {
         pheDuyetDetailHtml = `
             <div class="detail-item">
                 <div class="detail-label">Ngày trình dự toán</div>
-                <div class="detail-value">${this.model.formatDate(kh.ngayTrinhDuToan) || '--'}</div>
+                <div class="detail-value">${formatDate(kh.ngayTrinhDuToan) || '--'}</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Ngày phê duyệt dự toán</div>
-                <div class="detail-value">${this.model.formatDate(kh.ngayPheDuyetDuToan) || '--'}</div>
+                <div class="detail-value">${formatDate(kh.ngayPheDuyetDuToan) || '--'}</div>
             </div>
             <div class="detail-item" style="grid-column: span 2;">
                 <div class="detail-label">Số QĐ phê duyệt dự toán</div>
@@ -317,7 +317,7 @@ export function renderPlanVersionDetails(versionId) {
             </div>
             <div class="detail-item">
                 <div class="detail-label">Ngày QĐ phê duyệt dự án</div>
-                <div class="detail-value">${this.model.formatDate(kh.ngayQdPheDuyetDuAn) || '--'}</div>
+                <div class="detail-value">${formatDate(kh.ngayQdPheDuyetDuAn) || '--'}</div>
             </div>
             <div class="detail-item" style="grid-column: span 2;">
                 <div class="detail-label">Cơ quan phê duyệt dự án</div>
@@ -355,7 +355,7 @@ export function renderPlanVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tổng Giá Trị Kế Hoạch</div>
-                    <div class="detail-value text-blue" style="font-size: 1.15rem;">${this.model.formatCurrency(kh.tongMucDauTu)}</div>
+                    <div class="detail-value text-blue" style="font-size: 1.15rem;">${formatCurrency(kh.tongMucDauTu)}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Thời gian đăng mã kế hoạch</div>
@@ -367,7 +367,7 @@ export function renderPlanVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Ngày QĐ phê duyệt</div>
-                    <div class="detail-value">${this.model.formatDate(kh.ngayPheDuyet)}</div>
+                    <div class="detail-value">${formatDate(kh.ngayPheDuyet)}</div>
                 </div>
                 ${pheDuyetDetailHtml}
                 ${projectDetailHtml}
@@ -399,7 +399,7 @@ export function renderPlanVersionDetails(versionId) {
                                 <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
                                 <span><strong>${gt.maGoiThau}</strong> - ${gt.tenGoiThau}</span>
                             </div>
-                            <span class="badge badge-success">${this.model.formatCurrency(gt.giaGoiThau)}</span>
+                            <span class="badge badge-success">${formatCurrency(gt.giaGoiThau)}</span>
                         </div>
                     `).join('') : '<div class="text-muted"><small>Phiên bản kế hoạch này hiện chưa có gói thầu trực tiếp liên kết.</small></div>'}
                 </div>

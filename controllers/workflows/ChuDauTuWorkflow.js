@@ -23,7 +23,7 @@ export async function deleteChuDauTu(id) {
 }
 
 
-export function editChuDauTu(id) {
+export async function editChuDauTu(id) {
     const form = document.getElementById('form-chudautu');
     form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
 
@@ -49,7 +49,7 @@ export function editChuDauTu(id) {
         const huyen = parts[1] || '';
         const tinh = parts[2] || '';
         document.getElementById('cdt-diachichitiet').value = details;
-        this.initAddressDropdowns('cdt-tinh', 'cdt-xa', tinh, huyen);
+        await this.initAddressDropdowns('cdt-tinh', 'cdt-xa', tinh, huyen);
 
         document.getElementById('cdt-sdt').value = cdt.soDienThoai;
         document.getElementById('cdt-sotaikhoan').value = cdt.soTaiKhoan || '';
@@ -81,7 +81,7 @@ export function editChuDauTu(id) {
         document.getElementById('form-chudautu-id').value = '';
         document.getElementById('cdt-coquanchuquan').value = '';
         document.getElementById('cdt-diachichitiet').value = '';
-        this.initAddressDropdowns('cdt-tinh', 'cdt-xa', '', '');
+        await this.initAddressDropdowns('cdt-tinh', 'cdt-xa', '', '');
 
         if (verContainer) {
             verContainer.style.display = 'none';
