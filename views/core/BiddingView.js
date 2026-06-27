@@ -82,8 +82,7 @@ export class BiddingView {
             
             if (select.classList.contains('version-select') || 
                 select.classList.contains('phienban-select') || 
-                select.id.includes('version') ||
-                select.id.includes('phienban') ||
+                select.classList.contains('modal-version-select') ||
                 hasNoCustomAttr ||
                 hasSearchableWrapper) {
                 

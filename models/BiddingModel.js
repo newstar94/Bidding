@@ -986,8 +986,35 @@ export class BiddingModel {
 
         const allContracts = this.getFilteredHopDong();
         const validContracts = allContracts.filter(hd => {
-            if (!hd.goiThauIds || hd.goiThauIds.length === 0) return true;
-            return hd.goiThauIds.some(id => latestPkgIds.includes(id));
+            let linkedIds = [];
+            if (hd.goiThauId) {
+                linkedIds.push(hd.goiThauId);
+            }
+            if (hd.goiThauIds) {
+                if (Array.isArray(hd.goiThauIds)) {
+                    linkedIds.push(...hd.goiThauIds);
+                } else if (typeof hd.goiThauIds === 'string') {
+                    try {
+                        const parsed = JSON.parse(hd.goiThauIds);
+                        if (Array.isArray(parsed)) {
+                            linkedIds.push(...parsed);
+                        } else {
+                            linkedIds.push(hd.goiThauIds);
+                        }
+                    } catch (e) {
+                        linkedIds.push(...hd.goiThauIds.split(',').map(s => s.trim()));
+                    }
+                }
+            }
+            linkedIds = linkedIds.filter(Boolean);
+            if (linkedIds.length === 0) return true;
+
+            return linkedIds.some(id => {
+                const pkg = (this.state.goithau || []).find(g => g.id === id);
+                if (!pkg) return false;
+                const root = pkg.rootId || pkg.id;
+                return latestPkgs.some(g => (g.rootId === root || g.id === root));
+            });
         });
 
         const latestMap = {};
