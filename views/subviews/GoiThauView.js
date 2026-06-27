@@ -515,13 +515,32 @@ export function showPackageDetails(id) {
     const verSelect = document.getElementById('detail-workflow-version-select');
     if (verSelect) {
         const rootId = gt.rootId || gt.id;
-        const relatedGts = this.model.state.goithau.filter(g => (g.rootId || g.id) === rootId);
+        const allRelated = this.model.state.goithau.filter(g => (g.rootId || g.id) === rootId);
+        
+        const verMap = {};
+        allRelated.forEach(g => {
+            const ver = g.phienBan || '00';
+            if (!verMap[ver]) {
+                verMap[ver] = g;
+            } else {
+                const p1 = this.model.getLatestPlan(g.keHoachId);
+                const p2 = this.model.getLatestPlan(verMap[ver].keHoachId);
+                const v1 = p1 ? (parseInt(p1.phienBan) || 0) : 0;
+                const v2 = p2 ? (parseInt(p2.phienBan) || 0) : 0;
+                if (v1 > v2) {
+                    verMap[ver] = g;
+                }
+            }
+        });
+        const relatedGts = Object.values(verMap);
+        relatedGts.sort((a, b) => (parseInt(a.phienBan || 0) - parseInt(b.phienBan || 0)));
+
         if (relatedGts.length >= 2) {
-            relatedGts.sort((a, b) => (parseInt(a.phienBan || 0) - parseInt(b.phienBan || 0)));
             verSelect.style.display = 'inline-block';
             verSelect.innerHTML = relatedGts.map(g => {
                 const label = g.phienBan || '00';
-                return `<option value="${g.id}" ${g.id === gt.id ? 'selected' : ''}>${label}</option>`;
+                const isSelected = (g.phienBan || '00') === (gt.phienBan || '00');
+                return `<option value="${g.id}" ${isSelected ? 'selected' : ''}>${label}</option>`;
             }).join('');
             verSelect.onchange = (e) => {
                 this.showPackageDetails(e.target.value);

@@ -241,7 +241,15 @@ export function renderPlanVersionDetails(versionId) {
     if (!kh) return;
 
     const rootId = kh.rootId || kh.id;
-    const allVersions = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
+    const allRelated = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
+    const verMap = {};
+    allRelated.forEach(k => {
+        const ver = k.phienBan || '00';
+        if (!verMap[ver] || k.isLatest == 1 || k.is_latest == 1) {
+            verMap[ver] = k;
+        }
+    });
+    const allVersions = Object.values(verMap);
     allVersions.sort((a, b) => {
         const valA = parseInt(a.phienBan) || 0;
         const valB = parseInt(b.phienBan) || 0;

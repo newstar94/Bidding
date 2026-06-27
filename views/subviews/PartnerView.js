@@ -1205,7 +1205,15 @@ export function renderContractVersionDetails(versionId) {
         : '<span class="text-muted">Chưa cập nhật</span>';
 
     const rootId = hd.rootId || hd.id;
-    const allVersions = this.model.state.hopdong.filter(h => (h.rootId || h.id) === rootId);
+    const allRelated = this.model.state.hopdong.filter(h => (h.rootId || h.id) === rootId);
+    const verMap = {};
+    allRelated.forEach(h => {
+        const ver = h.phienBan || h.phien_ban || '00';
+        if (!verMap[ver] || h.isLatest == 1 || h.is_latest == 1) {
+            verMap[ver] = h;
+        }
+    });
+    const allVersions = Object.values(verMap);
     allVersions.sort((a, b) => {
         const valA = parseInt(a.phienBan || a.phien_ban || 0);
         const valB = parseInt(b.phienBan || b.phien_ban || 0);
