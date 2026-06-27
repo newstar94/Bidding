@@ -38,25 +38,19 @@ export function renderDanhGiaHsdtPanel() {
         div.style.alignItems = 'center';
         div.style.marginBottom = '6px';
 
-        const ngayFormatted = letter.ngayCv ? this.model.formatDate(letter.ngayCv) : '';
+        const ngayFormattedDisplay = letter.ngayCv ? this.model.formatDate(letter.ngayCv) : '';
+        const ngayFormattedInput = letter.ngayCv ? this.model.formatForDateInput(letter.ngayCv) : '';
 
         div.innerHTML = readOnly ? `
             <div style="font-size: 0.8rem; font-weight: 600; padding: 6px; background: rgba(0,0,0,0.02); border-radius: 4px;">${letter.soCv || '--'}</div>
-            <div style="font-size: 0.8rem; padding: 6px; background: rgba(0,0,0,0.02); border-radius: 4px;">${ngayFormatted || '--'}</div>
+            <div style="font-size: 0.8rem; padding: 6px; background: rgba(0,0,0,0.02); border-radius: 4px;">${ngayFormattedDisplay || '--'}</div>
             <div></div>
         ` : `
             <input type="text" class="form-control letter-so-cv" placeholder="Số công văn" value="${letter.soCv || ''}" style="padding: 4px 8px; font-size: 0.8rem;" required>
-            <input type="text" class="form-control letter-ngay-cv flatpickr-dmy" placeholder="Chọn ngày" value="${ngayFormatted}" style="padding: 4px 8px; font-size: 0.8rem;" required>
+            <input type="date" class="form-control letter-ngay-cv" value="${ngayFormattedInput}" style="padding: 4px 8px; font-size: 0.8rem;" required>
             <button type="button" class="btn-delete-row" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;" onclick="this.closest('.letter-row').remove()">&times;</button>
         `;
         container.appendChild(div);
-        if (!readOnly) {
-            flatpickr(div.querySelector('.flatpickr-dmy'), {
-                dateFormat: "d/m/Y",
-                locale: "vn",
-                allowInput: true
-            });
-        }
     };
 
     const handlePackageSelection = () => {
@@ -309,7 +303,7 @@ export function renderDanhGiaHsdtPanel() {
             soBaocaoInput.readOnly = isReadOnly;
         }
         if (ngayBaocaoInput) {
-            ngayBaocaoInput.value = activeMeta.ngayBaoCao ? this.model.formatDate(activeMeta.ngayBaoCao) : '';
+            ngayBaocaoInput.value = activeMeta.ngayBaoCao ? this.model.formatForDateInput(activeMeta.ngayBaoCao) : '';
             ngayBaocaoInput.readOnly = isReadOnly;
         }
         if (saveBtn) {
@@ -1079,12 +1073,7 @@ export function renderDanhGiaHsdtPanel() {
     handlePackageSelection();
     this.setupExcelImportEvents();
 
-    // Initialize flatpickr on static date input
-    flatpickr(this.view.getActiveElement('danhgiahsdt-ngay-baocao'), {
-        dateFormat: "d/m/Y",
-        locale: "vn",
-        allowInput: true
-    });
+
 }
 
 export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false) {

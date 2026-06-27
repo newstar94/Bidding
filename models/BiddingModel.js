@@ -809,21 +809,86 @@ export class BiddingModel {
         return `${day}/${month}/${year} ${hours}:${minutes}`;
     }
 
+    formatForDateInput(dateStr) {
+        if (!dateStr) return '';
+        let year = null, month = null, day = null;
+        if (dateStr instanceof Date) {
+            const d = dateStr;
+            day = String(d.getDate()).padStart(2, '0');
+            month = String(d.getMonth() + 1).padStart(2, '0');
+            year = d.getFullYear();
+        } else {
+            const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+            const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+            if (ymdMatch) {
+                year = ymdMatch[1];
+                month = ymdMatch[2];
+                day = ymdMatch[3];
+            } else if (dmyMatch) {
+                day = dmyMatch[1];
+                month = dmyMatch[2];
+                year = dmyMatch[3];
+            } else {
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return '';
+                day = String(d.getDate()).padStart(2, '0');
+                month = String(d.getMonth() + 1).padStart(2, '0');
+                year = d.getFullYear();
+            }
+        }
+        return `${year}-${month}-${day}`;
+    }
+
     formatForDatetimeLocal(dateStr) {
         if (!dateStr) return '';
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return '';
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
+        let year = null, month = null, day = null, hours = '00', minutes = '00';
+        if (dateStr instanceof Date) {
+            const d = dateStr;
+            day = String(d.getDate()).padStart(2, '0');
+            month = String(d.getMonth() + 1).padStart(2, '0');
+            year = d.getFullYear();
+            hours = String(d.getHours()).padStart(2, '0');
+            minutes = String(d.getMinutes()).padStart(2, '0');
+        } else {
+            const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+            const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
+            const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+            if (ymdMatch) {
+                year = ymdMatch[1];
+                month = ymdMatch[2];
+                day = ymdMatch[3];
+                if (ymdMatch[4] !== undefined) {
+                    hours = ymdMatch[4];
+                    minutes = ymdMatch[5];
+                }
+            } else if (dmyMatch) {
+                day = dmyMatch[1];
+                month = dmyMatch[2];
+                year = dmyMatch[3];
+                if (dmyMatch[4] !== undefined) {
+                    hours = dmyMatch[4];
+                    minutes = dmyMatch[5];
+                }
+            } else {
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return '';
+                day = String(d.getDate()).padStart(2, '0');
+                month = String(d.getMonth() + 1).padStart(2, '0');
+                year = d.getFullYear();
+                hours = String(d.getHours()).padStart(2, '0');
+                minutes = String(d.getMinutes()).padStart(2, '0');
+            }
+        }
         return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
     convertDMYToYMD(dmyStr) {
         if (!dmyStr) return '';
         let cleaned = String(dmyStr).replace(/\s*-\s*/, ' ').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+            return cleaned;
+        }
         const partsSpace = cleaned.split(' ');
         const datePart = partsSpace[0];
         const parts = datePart.split('/');
@@ -836,7 +901,15 @@ export class BiddingModel {
 
     convertDMYHMSToYMDHMS(dmyHMSStr) {
         if (!dmyHMSStr) return '';
-        let cleaned = String(dmyHMSStr).replace(/\s*-\s*/, ' ').trim();
+        let cleaned = String(dmyHMSStr).replace('T', ' ').replace(/\s*-\s*/, ' ').trim();
+        if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(:\d{2})?$/.test(cleaned)) {
+            const parts = cleaned.split(' ');
+            let timePart = parts[1];
+            if (timePart.split(':').length === 2) {
+                timePart += ':00';
+            }
+            return `${parts[0]} ${timePart}`;
+        }
         const parts = cleaned.split(' ');
         const datePart = parts[0];
         let timePart = parts[1] || '00:00:00';

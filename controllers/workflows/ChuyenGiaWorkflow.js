@@ -73,19 +73,11 @@ export function editChuyenGia(id) {
 
         document.getElementById('cg-socccd').value = cg.soCCCD || '';
         document.getElementById('cg-noicapcccd').value = cg.noiCapCCCD || '';
-        if (this.view.fpNgayCapCCCD) {
-            this.view.fpNgayCapCCCD.setDate(cg.ngayCapCCCD ? new Date(cg.ngayCapCCCD) : '');
-        } else {
-            document.getElementById('cg-ngaycapcccd').value = this.model.formatDate(cg.ngayCapCCCD);
-        }
+        document.getElementById('cg-ngaycapcccd').value = this.model.formatForDateInput(cg.ngayCapCCCD);
 
         document.getElementById('cg-sochungchi').value = cg.soChungChi;
         document.getElementById('cg-donvicapchungchi').value = cg.donViCapChungChi || '';
-        if (this.view.fpNgayCapChungChi) {
-            this.view.fpNgayCapChungChi.setDate(cg.ngayCapChungChi ? new Date(cg.ngayCapChungChi) : '');
-        } else {
-            document.getElementById('cg-ngaycapchungchi').value = this.model.formatDate(cg.ngayCapChungChi);
-        }
+        document.getElementById('cg-ngaycapchungchi').value = this.model.formatForDateInput(cg.ngayCapChungChi);
 
         if (cg.anhChungChi) {
             this.tempChuyenGiaImageBase64 = cg.anhChungChi;

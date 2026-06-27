@@ -184,23 +184,9 @@ export function editKeHoach(id) {
         document.getElementById('kh-pheduyet').value = kh.pheDuyet || '';
         togglePheDuyetFields();
 
-        if (this.view.fpNgayTrinhKeHoach) {
-            this.view.fpNgayTrinhKeHoach.setDate(kh.ngayTrinhKeHoach ? new Date(kh.ngayTrinhKeHoach) : '');
-        } else {
-            document.getElementById('kh-ngaytrinhkehoach').value = this.model.formatDate(kh.ngayTrinhKeHoach);
-        }
-
-        if (this.view.fpNgayTrinhDuToan) {
-            this.view.fpNgayTrinhDuToan.setDate(kh.ngayTrinhDuToan ? new Date(kh.ngayTrinhDuToan) : '');
-        } else {
-            document.getElementById('kh-ngaytrinhdutoan').value = this.model.formatDate(kh.ngayTrinhDuToan);
-        }
-
-        if (this.view.fpNgayPheDuyetDuToan) {
-            this.view.fpNgayPheDuyetDuToan.setDate(kh.ngayPheDuyetDuToan ? new Date(kh.ngayPheDuyetDuToan) : '');
-        } else {
-            document.getElementById('kh-ngaypheduyetdutoan').value = this.model.formatDate(kh.ngayPheDuyetDuToan);
-        }
+        document.getElementById('kh-ngaytrinhkehoach').value = this.model.formatForDateInput(kh.ngayTrinhKeHoach);
+        document.getElementById('kh-ngaytrinhdutoan').value = this.model.formatForDateInput(kh.ngayTrinhDuToan);
+        document.getElementById('kh-ngaypheduyetdutoan').value = this.model.formatForDateInput(kh.ngayPheDuyetDuToan);
 
         document.getElementById('kh-quyetdinhpheduyetdutoan').value = kh.soQdPheDuyetDuToan || '';
 
@@ -209,29 +195,17 @@ export function editKeHoach(id) {
         document.getElementById('kh-nguonvon').value = kh.nguonVon || '';
         document.getElementById('kh-thoigian-duan').value = kh.thoigianDuan || '';
         document.getElementById('kh-soqdpheduyetduan').value = kh.soQdPheDuyetDuAn || '';
-        if (this.view.fpNgayQdPheDuyetDuAn) {
-            this.view.fpNgayQdPheDuyetDuAn.setDate(kh.ngayQdPheDuyetDuAn ? new Date(kh.ngayQdPheDuyetDuAn) : '');
-        } else {
-            document.getElementById('kh-ngayqdpheduyetduan').value = this.model.formatDate(kh.ngayQdPheDuyetDuAn);
-        }
+        document.getElementById('kh-ngayqdpheduyetduan').value = this.model.formatForDateInput(kh.ngayQdPheDuyetDuAn);
         document.getElementById('kh-coquanpheduyetduan').value = kh.coQuanPheDuyetDuAn || '';
         document.getElementById('kh-diadiem-quymo').value = kh.diadiemQuymo || '';
         document.getElementById('kh-thongtinkhac').value = kh.thongtinKhac || '';
         toggleProjectFields();
 
-        if (this.view.fpNgayPheDuyet) {
-            this.view.fpNgayPheDuyet.setDate(kh.ngayPheDuyet ? new Date(kh.ngayPheDuyet) : '');
-        } else {
-            document.getElementById('kh-ngaypheduyet').value = this.model.formatDate(kh.ngayPheDuyet);
-        }
+        document.getElementById('kh-ngaypheduyet').value = this.model.formatForDateInput(kh.ngayPheDuyet);
 
         document.getElementById('kh-quyetdinh').value = kh.quyetDinhPheDuyet;
 
-        if (this.view.fpThoiGianDang) {
-            this.view.fpThoiGianDang.setDate(kh.thoiGianDangMa ? new Date(kh.thoiGianDangMa) : '');
-        } else {
-            document.getElementById('kh-thoigiandang').value = kh.thoiGianDangMa ? this.model.formatDateWithTime(kh.thoiGianDangMa) : '';
-        }
+        document.getElementById('kh-thoigiandang').value = kh.thoiGianDangMa ? this.model.formatForDatetimeLocal(kh.thoiGianDangMa) : '';
 
     } else {
         if (!window._preModalTab) {

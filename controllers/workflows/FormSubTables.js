@@ -192,18 +192,35 @@ export function validateGiaHanRealtime() {
 
     const parseDMYHM = (str) => {
         if (!str) return null;
-        const parts = str.trim().split(/\s+/);
-        if (parts.length < 2) return null;
-        const dateParts = parts[0].split('/');
-        const timeParts = parts[1].split(':');
-        if (dateParts.length < 3 || timeParts.length < 2) return null;
-        return new Date(
-            parseInt(dateParts[2]),
-            parseInt(dateParts[1]) - 1,
-            parseInt(dateParts[0]),
-            parseInt(timeParts[0]),
-            parseInt(timeParts[1])
-        );
+        let cleaned = str.replace('T', ' ').trim();
+        if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(:\d{2})?$/.test(cleaned)) {
+            const parts = cleaned.split(' ');
+            const dateParts = parts[0].split('-');
+            const timeParts = parts[1].split(':');
+            return new Date(
+                parseInt(dateParts[0]),
+                parseInt(dateParts[1]) - 1,
+                parseInt(dateParts[2]),
+                parseInt(timeParts[0]),
+                parseInt(timeParts[1])
+            );
+        }
+        const parts = cleaned.split(/\s+/);
+        if (parts.length >= 2) {
+            const dateParts = parts[0].split('/');
+            const timeParts = parts[1].split(':');
+            if (dateParts.length >= 3 && timeParts.length >= 2) {
+                return new Date(
+                    parseInt(dateParts[2]),
+                    parseInt(dateParts[1]) - 1,
+                    parseInt(dateParts[0]),
+                    parseInt(timeParts[0]),
+                    parseInt(timeParts[1])
+                );
+            }
+        }
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? null : d;
     };
 
     const mainDongThauDate = parseDMYHM(mainDongThauStr);
@@ -264,25 +281,13 @@ export function addGiaHanRow(data = {}) {
 
     tr.innerHTML = `
         <td class="gh-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">Lần ...</td>
-        <td><input type="text" class="gh-time-input" value="${data.thoiGianDongThau || ''}" placeholder="Chọn ngày giờ (dd/MM/yyyy HH:mm)" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="datetime-local" class="gh-time-input" value="${data.thoiGianDongThau ? this.model.formatForDatetimeLocal(data.thoiGianDongThau) : ''}" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td><input type="text" class="gh-reason-input" value="${data.lyDoGiaHan || ''}" placeholder="Nhập lý do gia hạn..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-gh-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
 
     const timeInput = tr.querySelector('.gh-time-input');
-    if (typeof flatpickr !== 'undefined') {
-        flatpickr(timeInput, {
-            locale: "vn",
-            enableTime: true,
-            enableSeconds: false,
-            time_24hr: true,
-            dateFormat: "d/m/Y H:i",
-            allowInput: true,
-            position: "auto",
-            onChange: () => this.validateGiaHanRealtime()
-        });
-    }
-
+    timeInput.addEventListener('change', () => this.validateGiaHanRealtime());
     timeInput.addEventListener('input', () => this.validateGiaHanRealtime());
 
     tr.querySelector('.remove-gh-row-btn').addEventListener('click', () => {

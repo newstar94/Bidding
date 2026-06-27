@@ -280,10 +280,7 @@ export function editHopDong(id) {
             document.getElementById('form-hopdong-id').value = hd.id;
             document.getElementById('hd-ten').value = hd.tenHopDong;
             document.getElementById('hd-so').value = hd.soHopDong;
-            document.getElementById('hd-ngayky').value = hd.ngayKy || '';
-            if (this.view.fpNgayKy) {
-                this.view.fpNgayKy.setDate(hd.ngayKy || '');
-            }
+            document.getElementById('hd-ngayky').value = this.model.formatForDateInput(hd.ngayKy);
 
             // Set select values and dispatch events for searchable select and load versions
             const currentCdt = this.model.state.chudautu.find(c => c.id === hd.chuDauTuId);
@@ -322,11 +319,7 @@ export function editHopDong(id) {
             
             coQdSelect.value = hd.coQdChiDinh ? String(hd.coQdChiDinh) : '0';
             soQdInput.value = hd.soQdChiDinh || '';
-            if (this.view.fpNgayQdChiDinh) {
-                this.view.fpNgayQdChiDinh.setDate(hd.ngayQdChiDinh || '');
-            } else {
-                ngayQdInput.value = hd.ngayQdChiDinh || '';
-            }
+            ngayQdInput.value = this.model.formatForDateInput(hd.ngayQdChiDinh);
             toggleQdFields();
             
             document.getElementById('hd-songay').value = hd.soNgayThucHien || '';

@@ -717,7 +717,7 @@ export function showPackageDetails(id) {
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian đăng tải</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="text" id="ip-dangtai" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDangTai ? this.model.formatDateWithTime(gt.thoiGianDangTai) : ''}" placeholder="Chọn ngày giờ">
+                                            <input type="datetime-local" id="ip-dangtai" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDangTai ? this.model.formatForDatetimeLocal(gt.thoiGianDangTai) : ''}">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianDangTai ? this.model.formatDateWithTime(gt.thoiGianDangTai) : '--'}</span>
                                         `}
@@ -725,7 +725,7 @@ export function showPackageDetails(id) {
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian đóng thầu</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="text" id="ip-dongthau" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : ''}" placeholder="Chọn ngày giờ">
+                                            <input type="datetime-local" id="ip-dongthau" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDongThau ? this.model.formatForDatetimeLocal(gt.thoiGianDongThau) : ''}">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</span>
                                         `}
@@ -733,7 +733,7 @@ export function showPackageDetails(id) {
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian mở thầu</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="text" id="ip-mothau" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : ''}" placeholder="Chọn ngày giờ">
+                                            <input type="datetime-local" id="ip-mothau" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : ''}">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</span>
                                         `}
@@ -761,7 +761,7 @@ export function showPackageDetails(id) {
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Ngày quyết định phê duyệt HSMT</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="text" id="ip-ngayquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayQuyetDinh ? this.model.formatDate(gt.ngayQuyetDinh) : ''}" placeholder="Chọn ngày">
+                                            <input type="date" id="ip-ngayquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayQuyetDinh ? this.model.formatForDateInput(gt.ngayQuyetDinh) : ''}">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.ngayQuyetDinh ? this.model.formatDate(gt.ngayQuyetDinh) : '--'}</span>
                                         `}
@@ -790,7 +790,7 @@ export function showPackageDetails(id) {
                                     <div id="wrapper-ngaybaocaothamdinh" style="display: ${this._inPlaceEditMode || gt.yeuCauThamDinhHsmt === 'Có' ? 'flex' : 'none'}; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Ngày báo cáo thẩm định HSMT</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="text" id="ip-ngaybaocaothamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatDate(gt.ngayBaoCaoThamDinhHsmt) : ''}" placeholder="Chọn ngày">
+                                            <input type="date" id="ip-ngaybaocaothamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatForDateInput(gt.ngayBaoCaoThamDinhHsmt) : ''}">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatDate(gt.ngayBaoCaoThamDinhHsmt) : '--'}</span>
                                         `}
@@ -808,27 +808,7 @@ export function showPackageDetails(id) {
                 lucide.createIcons();
 
                 if (this._inPlaceEditMode) {
-                    flatpickr("#ip-dangtai", {
-                        locale: "vn", enableTime: true, enableSeconds: false,
-                        time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                        position: "auto"
-                    });
-                    flatpickr("#ip-dongthau", {
-                        locale: "vn", enableTime: true, enableSeconds: false,
-                        time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                        position: "auto"
-                    });
-                    flatpickr("#ip-mothau", {
-                        locale: "vn", enableTime: true, enableSeconds: false,
-                        time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                        position: "auto"
-                    });
-                    flatpickr("#ip-ngayquyetdinh", {
-                        locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto"
-                    });
-                    flatpickr("#ip-ngaybaocaothamdinh", {
-                        locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto"
-                    });
+
 
                     const selectYeuCau = document.getElementById('ip-yeucauthamdinh');
                     if (selectYeuCau) {
@@ -1292,7 +1272,7 @@ export function showPackageDetails(id) {
                         </div>
                         <div class="form-group">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày báo cáo đánh giá <span class="required">*</span></label>
-                            <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-dmy" required placeholder="Chọn ngày">
+                            <input type="date" id="danhgiahsdt-ngay-baocao" class="form-control" required>
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
@@ -1348,7 +1328,7 @@ export function showPackageDetails(id) {
                         </div>
                         <div class="form-group">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày báo cáo đánh giá <span class="required">*</span></label>
-                            <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-dmy" required placeholder="Chọn ngày">
+                            <input type="date" id="danhgiahsdt-ngay-baocao" class="form-control" required>
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>

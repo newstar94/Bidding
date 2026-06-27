@@ -111,11 +111,7 @@ export function initCustomSelect(selectId) {
 
     const select = document.getElementById(selectId);
     if (!select) return;
-    // THÊM CHỐT CHẶN NÀY ĐỂ BẢO VỆ FLATPICKR:
-    // Nếu select này thuộc về bộ lịch Flatpickr, thoát hàm ngay lập tức để không làm hỏng lịch
-    if (select.classList.contains('flatpickr-monthDropdown-months') || select.closest('.flatpickr-calendar')) {
-        return;
-    }
+
     const isVersion = select.classList.contains('version-droplist');
     // Compact mode: version selects in modal headers or detail pages
     const isCompact = select.classList.contains('page-version-select') || select.classList.contains('modal-version-select');
@@ -240,7 +236,7 @@ export function initCustomSelect(selectId) {
             coreText = monthMap[coreText.toLowerCase()];
         }
 
-        triggerText = 'T' + coreText;
+        triggerText = 'Th' + coreText;
     }
 
     // Check if the current custom markup is already up-to-date

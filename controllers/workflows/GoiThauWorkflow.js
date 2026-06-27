@@ -419,28 +419,10 @@ export function editGoiThau(id, isReadOnly = false) {
 
         // Load decision fields
         document.getElementById('gt-soquyetdinh').value = gt.soQuyetDinh || '';
-        if (this.view.fpNgayQuyetDinh) {
-            this.view.fpNgayQuyetDinh.setDate(gt.ngayQuyetDinh ? new Date(gt.ngayQuyetDinh) : '');
-        } else {
-            document.getElementById('gt-ngayquyetdinh').value = gt.ngayQuyetDinh ? this.model.formatDate(gt.ngayQuyetDinh) : '';
-        }
-
-        // Load 3 new date fields
-        if (this.view.fpThoiGianDangTai) {
-            this.view.fpThoiGianDangTai.setDate(gt.thoiGianDangTai ? new Date(gt.thoiGianDangTai) : '');
-        } else {
-            document.getElementById('gt-thoigiandangtai').value = gt.thoiGianDangTai ? this.model.formatDateWithTime(gt.thoiGianDangTai) : '';
-        }
-        if (this.view.fpThoiGianDongThau) {
-            this.view.fpThoiGianDongThau.setDate(gt.thoiGianDongThau ? new Date(gt.thoiGianDongThau) : '');
-        } else {
-            document.getElementById('gt-thoigiandongthau').value = gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '';
-        }
-        if (this.view.fpThoiGianMoThau) {
-            this.view.fpThoiGianMoThau.setDate(gt.thoiGianMoThau ? new Date(gt.thoiGianMoThau) : '');
-        } else {
-            document.getElementById('gt-thoigianmothau').value = gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '';
-        }
+        document.getElementById('gt-ngayquyetdinh').value = gt.ngayQuyetDinh ? this.model.formatForDateInput(gt.ngayQuyetDinh) : '';
+        document.getElementById('gt-thoigiandangtai').value = gt.thoiGianDangTai ? this.model.formatForDatetimeLocal(gt.thoiGianDangTai) : '';
+        document.getElementById('gt-thoigiandongthau').value = gt.thoiGianDongThau ? this.model.formatForDatetimeLocal(gt.thoiGianDongThau) : '';
+        document.getElementById('gt-thoigianmothau').value = gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : '';
 
         // Load saved experts for Tổ chuyên gia
         const savedToChuyenGia = gt.toChuyenGia || [];
@@ -594,12 +576,11 @@ export function editGoiThau(id, isReadOnly = false) {
         }
     });
 
-    // Khóa/mở khóa flatpickr date inputs
-    ['fpNgayQuyetDinh', 'fpThoiGianDangTai', 'fpThoiGianDongThau', 'fpThoiGianMoThau'].forEach(fpKey => {
-        const fp = this.view[fpKey];
-        if (fp) {
-            fp.input.disabled = !!isOpenedOrLater;
-            fp.set('clickOpens', !isOpenedOrLater);
+    // Khóa/mở khóa native date inputs trực tiếp
+    ['gt-ngayquyetdinh', 'gt-thoigiandangtai', 'gt-thoigiandongthau', 'gt-thoigianmothau'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.disabled = !!isOpenedOrLater;
         }
     });
 

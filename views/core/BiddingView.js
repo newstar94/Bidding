@@ -12,22 +12,6 @@ export class BiddingView {
     constructor(model) {
         this.model = model;
 
-        // Flatpickr instances
-        this.fpNgayPheDuyet = null;
-        this.fpThoiGianDang = null;
-        this.fpNgayTrinhDuToan = null;
-        this.fpNgayPheDuyetDuToan = null;
-        this.fpNgayTrinhKeHoach = null;
-        this.fpNgayQdPheDuyetDuAn = null;
-        this.fpNgayCapChungChi = null;
-        this.fpNgayCapCCCD = null;
-        this.fpNgayKy = null;
-        this.fpNgayQdChiDinh = null;
-        this.fpThoiGianBatDauToChuc = null;
-        this.fpThoiGianDangTai = null;
-        this.fpThoiGianDongThau = null;
-        this.fpThoiGianMoThau = null;
-
         // Cache elements
         this.elements = {};
     }
@@ -347,108 +331,7 @@ export class BiddingView {
     }
 
     setupFlatpickr() {
-        if (typeof flatpickr !== 'undefined') {
-            const fpCommon = {
-                onReady: (selectedDates, dateStr, fp) => {
-                    this._fpOnReady(selectedDates, dateStr, fp, false);
-                    setTimeout(() => {
-                        if (typeof fp._positionCalendar === 'function') fp._positionCalendar();
-                    }, 0);
-                },
-                onMonthChange: (selectedDates, dateStr, fp) => {
-                    this._fpOnMonthChange(selectedDates, dateStr, fp);
-                    setTimeout(() => {
-                        if (typeof fp._positionCalendar === 'function') fp._positionCalendar();
-                    }, 0);
-                },
-                onYearChange: (selectedDates, dateStr, fp) => {
-                    this._fpOnMonthChange(selectedDates, dateStr, fp);
-                    setTimeout(() => {
-                        if (typeof fp._positionCalendar === 'function') fp._positionCalendar();
-                    }, 0);
-                },
-                onChange: (selectedDates, dateStr, fp) => {
-                    this._fpOnChange(selectedDates, dateStr, fp);
-                }
-            };
-
-            this.fpNgayPheDuyet = flatpickr("#kh-ngaypheduyet", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpThoiGianDang = flatpickr("#kh-thoigiandang", {
-                locale: "vn", enableTime: true, enableSeconds: false,
-                time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                position: "auto",
-                ...fpCommon
-            });
-            this.fpNgayTrinhDuToan = flatpickr("#kh-ngaytrinhdutoan", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpNgayPheDuyetDuToan = flatpickr("#kh-ngaypheduyetdutoan", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpNgayTrinhKeHoach = flatpickr("#kh-ngaytrinhkehoach", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpNgayQdPheDuyetDuAn = flatpickr("#kh-ngayqdpheduyetduan", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpNgayQuyetDinh = flatpickr("#gt-ngayquyetdinh", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpThoiGianDangTai = flatpickr("#gt-thoigiandangtai", {
-                locale: "vn", enableTime: true, enableSeconds: false,
-                time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                position: "auto",
-                ...fpCommon
-            });
-            this.fpNgayCapChungChi = flatpickr("#cg-ngaycapchungchi", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpNgayCapCCCD = flatpickr("#cg-ngaycapcccd", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpNgayKy = flatpickr("#hd-ngayky", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpNgayQdChiDinh = flatpickr("#hd-ngayqdchidinh", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpThoiGianDongThau = flatpickr("#gt-thoigiandongthau", {
-                locale: "vn", enableTime: true, enableSeconds: false,
-                time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                position: "auto",
-                ...fpCommon
-            });
-            this.fpThoiGianMoThau = flatpickr("#gt-thoigianmothau", {
-                locale: "vn", enableTime: true, enableSeconds: false,
-                time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                position: "auto",
-                ...fpCommon
-            });
-            this.fpSuStartDate = flatpickr("#detail-su-startdate", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpSuEndDate = flatpickr("#detail-su-enddate", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-
-            this.fpPhathanhNgayQuyetDinh = flatpickr("#phathanh-ngayquyetdinh", {
-                locale: "vn", dateFormat: "d/m/Y", allowInput: true, position: "auto", ...fpCommon
-            });
-            this.fpPhathanhThoiGianDangTai = flatpickr("#phathanh-thoigiandangtai", {
-                locale: "vn", enableTime: true, enableSeconds: false,
-                time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                position: "auto",
-                ...fpCommon
-            });
-            this.fpPhathanhThoiGianDongThau = flatpickr("#phathanh-thoigiandongthau", {
-                locale: "vn", enableTime: true, enableSeconds: false,
-                time_24hr: true, dateFormat: "d/m/Y H:i", allowInput: true,
-                position: "auto",
-                ...fpCommon
-            });
-        }
+        // Removed flatpickr initialization. Native HTML5 date/datetime inputs are used directly.
     }
 
     openModal(modalId) {
@@ -784,46 +667,12 @@ export class BiddingView {
             inputContainer.appendChild(inputEl);
             messageEl.parentNode.insertBefore(inputContainer, messageEl.nextSibling);
 
-            let fpInstance = null;
-            if (isDatePicker && typeof flatpickr !== 'undefined') {
-                // Ẩn input text — chỉ dùng làm giá trị trung gian
-                inputEl.style.display = 'none';
-
-                // Tạo vùng chứa inline calendar ngay bên dưới
-                const calendarWrapper = document.createElement('div');
-                calendarWrapper.id = 'dialog-fp-inline-wrapper';
-                calendarWrapper.style.cssText = 'margin-top: 8px; display: flex; justify-content: center;';
-                inputContainer.appendChild(calendarWrapper);
-
-                // Tạo một input ẩn để flatpickr bám vào (dùng appendTo để render vào wrapper)
-                const hiddenAnchor = document.createElement('input');
-                hiddenAnchor.type = 'text';
-                hiddenAnchor.style.display = 'none';
-                calendarWrapper.appendChild(hiddenAnchor);
-
-                fpInstance = flatpickr(hiddenAnchor, {
-                    locale: "vn",
-                    enableTime: true,
-                    enableSeconds: false,
-                    time_24hr: true,
-                    dateFormat: "d/m/Y H:i",
-                    inline: true,
-                    appendTo: calendarWrapper,
-                    onReady: (selectedDates, dateStr, fp) => {
-                        this._fpOnReady(selectedDates, dateStr, fp, true);
-                    },
-                    onMonthChange: (selectedDates, dateStr, fp) => {
-                        this._fpOnMonthChange(selectedDates, dateStr, fp);
-                    },
-                    onYearChange: (selectedDates, dateStr, fp) => {
-                        this._fpOnMonthChange(selectedDates, dateStr, fp);
-                    },
-                    onChange: (selectedDates, dateStr, fp) => {
-                        this._fpOnChange(selectedDates, dateStr, fp);
-                        // Ghi giá trị vào inputEl ẩn để onOk lấy được
-                        inputEl.value = dateStr;
-                    }
-                });
+            if (isDatePicker) {
+                inputEl.type = 'datetime-local';
+                if (defaultValue) {
+                    inputEl.value = this.model.formatForDatetimeLocal(defaultValue);
+                }
+                setTimeout(() => inputEl.focus(), 100);
             } else {
                 // Tự động focus nếu không phải date picker
                 setTimeout(() => inputEl.focus(), 100);
@@ -840,7 +689,10 @@ export class BiddingView {
             lucide.createIcons();
 
             const onOk = () => {
-                const val = inputEl.value;
+                let val = inputEl.value;
+                if (isDatePicker && val) {
+                    val = this.model.formatDate(val);
+                }
                 cleanup();
                 resolve(val);
             };
@@ -859,11 +711,6 @@ export class BiddingView {
                 okBtn.removeEventListener('click', onOk);
                 cancelBtn.removeEventListener('click', onCancel);
                 if (closeBtn) closeBtn.removeEventListener('click', onClose);
-
-                if (fpInstance) {
-                    fpInstance.destroy();
-                    fpInstance = null;
-                }
 
                 const container = document.getElementById('dialog-prompt-container');
                 if (container) container.remove();
@@ -885,153 +732,7 @@ export class BiddingView {
         });
     }
 
-    // --- Flatpickr shared hooks (used by both init and customPrompt) ---
-    _fpOnReady(selectedDates, dateStr, fp, skipOkBtn = false) {
-        const cal = fp.calendarContainer;
-        if (!cal) return;
 
-        // Header
-        if (!cal.querySelector('.fp-date-header')) {
-            const hdr = document.createElement('div');
-            hdr.className = 'fp-date-header';
-            hdr.innerHTML = '<span class="fp-date-label">Chọn ngày</span><span class="fp-date-value">—</span>';
-            cal.insertBefore(hdr, cal.firstChild);
-        }
-        this._fpUpdateHeader(selectedDates, fp);
-        this._fpAddYearDropdown(fp);
-        this._fpTrimExtraWeek(fp);
-
-        if (!skipOkBtn) {
-            this._fpAddOkButton(fp);
-        }
-    }
-
-    _fpOnMonthChange(selectedDates, dateStr, fp) {
-        this._fpSyncYearDropdown(fp);
-        this._fpTrimExtraWeek(fp);
-    }
-
-    _fpOnChange(selectedDates, dateStr, fp) {
-        this._fpUpdateHeader(selectedDates, fp);
-    }
-
-    _fpUpdateHeader(selectedDates, fp) {
-        const VN_DOW = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-        const VN_MON = ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'];
-        const val = fp.calendarContainer && fp.calendarContainer.querySelector('.fp-date-value');
-        if (!val) return;
-        if (selectedDates && selectedDates.length > 0) {
-            const d = selectedDates[0];
-            val.textContent = `${VN_DOW[d.getDay()]}, ${d.getDate()} ${VN_MON[d.getMonth()]} ${d.getFullYear()}`;
-        } else {
-            val.textContent = '—';
-        }
-    }
-
-    _fpTrimExtraWeek(fp) {
-        const cal = fp.calendarContainer;
-        if (!cal) return;
-        const allDays = Array.from(cal.querySelectorAll('.flatpickr-day'));
-        for (let row = allDays.length - 7; row >= 0; row -= 7) {
-            const rowDays = allDays.slice(row, row + 7);
-            if (rowDays[0] && rowDays[0].classList.contains('nextMonthDay')) {
-                rowDays.forEach(d => {
-                    d.style.cssText = 'display:none!important;height:0!important;min-width:0!important;max-width:0!important;margin:0!important;padding:0!important;line-height:0!important;overflow:hidden!important;';
-                });
-            } else { break; }
-        }
-    }
-
-    _fpAddYearDropdown(fp) {
-        const cal = fp.calendarContainer;
-        if (!cal || cal.querySelector('.fp-year-custom-dropdown')) return;
-        const wrapper = cal.querySelector('.numInputWrapper');
-        if (!wrapper) return;
-
-        const baseYear = new Date().getFullYear();
-        const curYear = fp.currentYear;
-
-        const dropdown = document.createElement('div');
-        dropdown.className = 'fp-year-custom-dropdown';
-        dropdown.addEventListener('mousedown', e => e.stopPropagation());
-        dropdown.addEventListener('click', e => e.stopPropagation());
-
-        const trigger = document.createElement('div');
-        trigger.className = 'fp-year-trigger';
-        trigger.textContent = curYear;
-
-        const optionsContainer = document.createElement('div');
-        optionsContainer.className = 'fp-year-options';
-
-        for (let y = baseYear - 20; y <= baseYear + 30; y++) {
-            const opt = document.createElement('div');
-            opt.className = 'fp-year-option' + (y === curYear ? ' selected' : '');
-            opt.textContent = y;
-            opt.setAttribute('data-value', y);
-            opt.addEventListener('mousedown', e => e.stopPropagation());
-            opt.addEventListener('click', e => {
-                e.stopPropagation();
-                fp.changeYear(y);
-                optionsContainer.classList.remove('show');
-            });
-            optionsContainer.appendChild(opt);
-        }
-
-        trigger.addEventListener('click', e => {
-            e.stopPropagation();
-            document.querySelectorAll('.fp-year-options').forEach(el => {
-                if (el !== optionsContainer) el.classList.remove('show');
-            });
-            optionsContainer.classList.toggle('show');
-            if (optionsContainer.classList.contains('show')) {
-                const selOpt = optionsContainer.querySelector('.fp-year-option.selected');
-                if (selOpt) {
-                    optionsContainer.scrollTop = selOpt.offsetTop - (optionsContainer.clientHeight / 2) + (selOpt.clientHeight / 2);
-                }
-            }
-        });
-
-        const closeHandler = () => optionsContainer.classList.remove('show');
-        document.addEventListener('click', closeHandler);
-        if (!fp.config.onDestroy) fp.config.onDestroy = [];
-        if (Array.isArray(fp.config.onDestroy)) {
-            fp.config.onDestroy.push(() => document.removeEventListener('click', closeHandler));
-        }
-
-        dropdown.appendChild(trigger);
-        dropdown.appendChild(optionsContainer);
-        wrapper.style.display = 'none';
-        wrapper.after(dropdown);
-    }
-
-    _fpSyncYearDropdown(fp) {
-        const cal = fp.calendarContainer;
-        if (!cal) return;
-        const trigger = cal.querySelector('.fp-year-trigger');
-        if (trigger) trigger.textContent = fp.currentYear;
-        const optionsContainer = cal.querySelector('.fp-year-options');
-        if (optionsContainer) {
-            optionsContainer.querySelectorAll('.fp-year-option').forEach(opt => {
-                opt.classList.toggle('selected', parseInt(opt.getAttribute('data-value')) === fp.currentYear);
-            });
-        }
-    }
-
-    _fpAddOkButton(fp) {
-        const cal = fp.calendarContainer;
-        if (!cal) return;
-        const timeContainer = cal.querySelector('.flatpickr-time');
-        if (!timeContainer || timeContainer.querySelector('.fp-ok-btn')) return;
-        const okBtn = document.createElement('button');
-        okBtn.type = 'button';
-        okBtn.className = 'fp-ok-btn';
-        okBtn.textContent = 'OK';
-        okBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            fp.close();
-        });
-        timeContainer.appendChild(okBtn);
-    }
 
     validateForm(form) {
         let isValid = true;
