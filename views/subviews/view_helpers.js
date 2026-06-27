@@ -53,7 +53,7 @@ export function formatCurrency(value) {
 
 export function formatDate(dateStr) {
     if (!dateStr) return '--';
-    
+
     let year = null, month = null, day = null, hours = '00', minutes = '00';
     let hasTime = false;
 
@@ -108,12 +108,6 @@ export function formatDate(dateStr) {
 
 export function initCustomSelect(selectId) {
     // Clean up any orphaned dropdowns on document.body
-    document.querySelectorAll('body > .custom-select-dropdown').forEach(dropdown => {
-        const targetId = dropdown.getAttribute('data-target');
-        if (!document.getElementById(targetId)) {
-            dropdown.remove();
-        }
-    });
 
     const select = document.getElementById(selectId);
     if (!select) return;
@@ -154,17 +148,19 @@ export function initCustomSelect(selectId) {
                 document.querySelectorAll('.custom-select-container.open').forEach(w => {
                     const targetId = w.getAttribute('data-target');
                     const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
-                    
+
                     const clickedInsideWrapper = w.contains(e.target);
                     const clickedInsideDropdown = dropdownEl && dropdownEl.contains(e.target);
-                    
+
                     if (!clickedInsideWrapper && !clickedInsideDropdown) {
                         w.classList.remove('open');
                         if (dropdownEl && dropdownEl.parentElement === document.body) {
-                            w.appendChild(dropdownEl);
+                            w.appendChild(dropdownEl); // Trả lại về wrapper gốc
                             dropdownEl.style.opacity = '';
                             dropdownEl.style.visibility = '';
                             dropdownEl.style.transform = '';
+                            dropdownEl.style.top = '';
+                            dropdownEl.style.left = '';
                         }
                     }
                 });
@@ -200,7 +196,26 @@ export function initCustomSelect(selectId) {
             window._customSelectScrollListenerRegistered = true;
         }
     }
-
+    // Đăng ký thêm trình lắng nghe sự kiện cuộn cho riêng bảng dữ liệu (overflow-x: auto)
+    if (!window._customSelectTableScrollListenerRegistered) {
+        document.addEventListener('scroll', (e) => {
+            // Nếu phần tử đang cuộn chính là container chứa bảng dữ liệu của bạn
+            if (e.target && e.target.classList && e.target.classList.contains('table-container')) {
+                document.querySelectorAll('.custom-select-container.open').forEach(w => {
+                    w.classList.remove('open');
+                    const targetId = w.getAttribute('data-target');
+                    const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
+                    if (dropdownEl && dropdownEl.parentElement === document.body) {
+                        w.appendChild(dropdownEl);
+                        dropdownEl.style.opacity = '';
+                        dropdownEl.style.visibility = '';
+                        dropdownEl.style.transform = '';
+                    }
+                });
+            }
+        }, { capture: true, passive: true }); // Dùng capture: true để bắt được sự kiện cuộn từ các thẻ con bên trong
+        window._customSelectTableScrollListenerRegistered = true;
+    }
     const options = Array.from(select.options);
     const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
 
@@ -212,7 +227,7 @@ export function initCustomSelect(selectId) {
     // Check if the current custom markup is already up-to-date
     const triggerTextEl = wrapper.querySelector('.custom-select-trigger span');
     const existingOptions = Array.from(wrapper.querySelectorAll('.custom-select-option'));
-    
+
     let needsUpdate = false;
     if (!triggerTextEl || triggerTextEl.textContent !== triggerText) {
         needsUpdate = true;
@@ -261,7 +276,7 @@ export function initCustomSelect(selectId) {
 
         trigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            
+
             // Close all other dropdowns first and return them to their wrappers
             document.querySelectorAll('.custom-select-container').forEach(w => {
                 if (w !== wrapper) {
@@ -279,16 +294,19 @@ export function initCustomSelect(selectId) {
 
             const isOpen = wrapper.classList.toggle('open');
             if (isOpen) {
-                // Position fixed relative to viewport to avoid table or modal transform coordinate clashing
+                // 1. Tính toán tọa độ thực tế của nút bấm so với khung nhìn (Viewport)
                 const rect = trigger.getBoundingClientRect();
-                
-                // Move dropdown to body to escape transformed parent containers
+
+                // 2. Bốc dropdown thả trực tiếp vào body để thoát khỏi overflow của bảng dữ liệu
                 document.body.appendChild(dropdown);
-                
-                dropdown.style.position = 'fixed';
-                dropdown.style.top = (rect.bottom + 4) + 'px';
-                dropdown.style.left = rect.left + 'px';
-                dropdown.style.right = 'auto'; // Clear right offset to align left correctly
+
+                // 3. Tính toán vị trí tuyệt đối dựa trên khoảng cách cuộn của trang
+                dropdown.style.position = 'absolute';
+                dropdown.style.top = (rect.bottom + window.scrollY + 4) + 'px'; // Hạ xuống dưới nút 4px
+                dropdown.style.left = (rect.left + window.scrollX) + 'px';     // Căn thẳng lề trái nút bấm
+                dropdown.style.right = 'auto';
+
+                // Cấu hình chiều rộng linh hoạt theo từng loại dropdown
                 if (isVersion) {
                     dropdown.style.width = '52px';
                     dropdown.style.minWidth = '52px';
@@ -302,18 +320,20 @@ export function initCustomSelect(selectId) {
                     dropdown.style.maxWidth = '400px';
                 }
                 dropdown.style.overflowX = 'hidden';
-                // Ensure z-index is top-level
-                dropdown.style.zIndex = '99999';
-                
-                // Explicitly set opacity and visibility so it renders on viewport even outside container
+                dropdown.style.zIndex = '999999';
+
+                // 4. Kích hoạt hiệu ứng trượt đổ xuống mượt mà
                 dropdown.style.opacity = '1';
                 dropdown.style.visibility = 'visible';
                 dropdown.style.transform = 'translateY(0)';
             } else {
+                // Khi đóng, trả dropdown về lại vị trí cũ bên trong wrapper để tránh mất cấu trúc dữ liệu
                 wrapper.appendChild(dropdown);
                 dropdown.style.opacity = '';
                 dropdown.style.visibility = '';
                 dropdown.style.transform = '';
+                dropdown.style.top = '';
+                dropdown.style.left = '';
             }
         });
 
@@ -324,7 +344,7 @@ export function initCustomSelect(selectId) {
                 select.value = val;
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 wrapper.classList.remove('open');
-                
+
                 // Return dropdown to wrapper
                 if (dropdown.parentElement === document.body) {
                     wrapper.appendChild(dropdown);
@@ -332,7 +352,7 @@ export function initCustomSelect(selectId) {
                     dropdown.style.visibility = '';
                     dropdown.style.transform = '';
                 }
-                
+
                 initCustomSelect(selectId);
             });
         });

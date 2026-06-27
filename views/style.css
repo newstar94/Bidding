@@ -1143,7 +1143,8 @@ a:hover {
     border: 1px solid transparent;
 }
 
-.btn svg, .btn i {
+.btn svg,
+.btn i {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3243,18 +3244,22 @@ table th {
 .pricing-card.silver-card {
     border: 1px solid var(--border-color);
 }
+
 .pricing-card.silver-card .pricing-badge {
     background: rgba(100, 116, 139, 0.08);
     color: #64748b;
     border: 1px solid rgba(100, 116, 139, 0.15);
 }
+
 body.dark-mode .pricing-card.silver-card .pricing-badge {
     background: rgba(148, 163, 184, 0.15);
     color: #cbd5e1;
     border-color: rgba(148, 163, 184, 0.2);
 }
+
 .pricing-card.silver-card .package-features li i {
-    color: #64748b; /* Cool grey check icon */
+    color: #64748b;
+    /* Cool grey check icon */
 }
 
 /* 2. GOLD PACKAGE */
@@ -3262,31 +3267,38 @@ body.dark-mode .pricing-card.silver-card .pricing-badge {
     border: 1.5px solid #fbbf24;
     box-shadow: 0 4px 20px rgba(251, 191, 36, 0.06);
 }
+
 .pricing-card.gold-card.popular {
     border: 1.5px solid #fbbf24;
     box-shadow: 0 4px 20px rgba(251, 191, 36, 0.12);
 }
+
 body.dark-mode .pricing-card.gold-card {
     border-color: #d97706;
     box-shadow: 0 4px 20px rgba(217, 119, 6, 0.12);
 }
+
 body.dark-mode .pricing-card.gold-card.popular {
     border-color: #d97706;
     box-shadow: 0 4px 20px rgba(217, 119, 6, 0.2);
 }
+
 .pricing-card.gold-card .pricing-badge.badge-popular {
     background: rgba(245, 158, 11, 0.08) !important;
     color: #b45309 !important;
     border: 1px solid rgba(245, 158, 11, 0.2);
     font-weight: 700;
 }
+
 body.dark-mode .pricing-card.gold-card .pricing-badge.badge-popular {
     background: rgba(245, 158, 11, 0.18) !important;
     color: #facc15 !important;
     border-color: rgba(245, 158, 11, 0.3);
 }
+
 .pricing-card.gold-card .package-features li i {
-    color: #d97706; /* gold check icon */
+    color: #d97706;
+    /* gold check icon */
 }
 
 /* 3. DIAMOND PACKAGE */
@@ -3294,23 +3306,28 @@ body.dark-mode .pricing-card.gold-card .pricing-badge.badge-popular {
     border: 1.5px solid #0ea5e9;
     box-shadow: 0 4px 20px rgba(14, 165, 233, 0.06);
 }
+
 body.dark-mode .pricing-card.diamond-card {
     border-color: #0284c7;
     box-shadow: 0 4px 20px rgba(2, 132, 199, 0.12);
 }
+
 .pricing-card.diamond-card .pricing-badge {
     background: rgba(14, 165, 233, 0.08);
     color: #0284c7;
     border: 1px solid rgba(14, 165, 233, 0.2);
     font-weight: 700;
 }
+
 body.dark-mode .pricing-card.diamond-card .pricing-badge {
     background: rgba(14, 165, 233, 0.18);
     color: #38bdf8;
     border-color: rgba(14, 165, 233, 0.3);
 }
+
 .pricing-card.diamond-card .package-features li i {
-    color: #0ea5e9; /* diamond blue check icon */
+    color: #0ea5e9;
+    /* diamond blue check icon */
 }
 
 /* Quota Progress Bar for Manager */
@@ -4006,7 +4023,8 @@ select.form-control:focus {
     box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
 }
 
-#btn-mothau-save svg, #btn-mothau-save i {
+#btn-mothau-save svg,
+#btn-mothau-save i {
     width: 20px;
     height: 20px;
 }
@@ -4447,26 +4465,32 @@ body.dark-mode .btn-excel-action:hover {
 }
 
 .custom-select-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: 6px;
+    /* Đổi thành absolute và ép z-index lên mức tối đa */
+    position: absolute !important;
     background-color: var(--bg-card, #ffffff);
     border: 1px solid var(--border-color, rgba(226, 232, 240, 0.8));
     border-radius: var(--radius-lg, 12px);
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
-    z-index: 1000;
+    z-index: 999999 !important;
+
+    /* Trạng thái ẩn mượt mà mặc định */
     opacity: 0;
     visibility: hidden;
     transform: translateY(-8px);
     transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+
     max-height: 250px;
     overflow-y: auto;
-    overflow-x: hidden; /* Prevent horizontal scrollbar */
-    width: max-content; /* Dynamically expand width to fit content */
-    max-width: 400px;
+    overflow-x: hidden;
     padding: 6px;
     box-sizing: border-box;
+}
+
+.data-table tr:has(.custom-select-container.open),
+.data-table td:has(.custom-select-container.open) {
+    position: relative !important;
+    z-index: 9999 !important;
+    overflow: visible !important;
 }
 
 .custom-select-container.open .custom-select-dropdown {
@@ -4520,13 +4544,15 @@ body.dark-mode .btn-excel-action:hover {
     justify-content: center !important;
     font-size: 0.75rem !important;
     border-radius: 4px !important;
-    border: 1px solid var(--border-color, #cbd5e1) !important; /* Standard border color when closed */
+    border: 1px solid var(--border-color, #cbd5e1) !important;
+    /* Standard border color when closed */
     font-weight: 600 !important;
 }
 
 .version-select-container.open .custom-select-trigger {
     border: 1.5px solid var(--primary, #3b82f6) !important;
-    box-shadow: none !important; /* Remove thick focus box-shadow for table cells */
+    box-shadow: none !important;
+    /* Remove thick focus box-shadow for table cells */
 }
 
 .version-select-dropdown {
@@ -4660,4 +4686,3 @@ select.page-version-select:focus {
     height: 30px !important;
     font-size: 0.85rem !important;
 }
-
