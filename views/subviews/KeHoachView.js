@@ -419,12 +419,15 @@ export function renderPlanVersionDetails(versionId) {
         <div class="detail-section">
             <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
-                    <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
-                    ${allVersions.length >= 2 ? `
-                        <select id="fullpage-kh-version-select" class="page-version-select">
-                            ${allVersions.map(k => `<option value="${k.id}" ${k.id === versionId ? 'selected' : ''}>${k.phienBan || '00'}</option>`).join('')}
-                        </select>
-                    ` : ''}
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
+                        ${allVersions.length >= 2 ? `
+                            <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+                            <select id="fullpage-kh-version-select" class="page-version-select">
+                                ${allVersions.map(k => `<option value="${k.id}" ${k.id === versionId ? 'selected' : ''}>${k.phienBan || '00'}</option>`).join('')}
+                            </select>
+                        ` : ''}
+                    </div>
                 </div>
                 <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${kh.tenKeHoach}</h4>
             </div>

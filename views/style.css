@@ -4616,21 +4616,21 @@ select.page-version-select:focus {
 
 .compact-version-select-container .custom-select-trigger {
     height: 28px !important;
-    padding: 0 18px 0 6px !important;
+    padding: 0 6px !important;
     font-size: 0.82rem !important;
     font-weight: 700 !important;
     border-radius: 5px !important;
-    border: 1.5px solid rgba(59, 130, 246, 0.3) !important;
-    background-color: rgba(59, 130, 246, 0.06) !important;
-    color: var(--primary, #3b82f6) !important;
+    border: 1px solid var(--border-color, #cbd5e1) !important;
+    background-color: var(--bg-card, #ffffff) !important;
+    color: var(--text-main, #000000) !important;
     min-width: 70px !important;
     width: 70px !important;
-    justify-content: space-between !important;
+    justify-content: center !important;
 }
 
 .compact-version-select-container.open .custom-select-trigger {
     border-color: var(--primary, #3b82f6) !important;
-    background-color: rgba(59, 130, 246, 0.1) !important;
+    background-color: var(--bg-card, #ffffff) !important;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
 }
 

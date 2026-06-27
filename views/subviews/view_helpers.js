@@ -121,7 +121,7 @@ export function initCustomSelect(selectId) {
     const isVersion = select.classList.contains('version-droplist');
     // Compact mode: version selects in modal headers or detail pages
     const isCompact = select.classList.contains('page-version-select') || select.classList.contains('modal-version-select');
-    const hasArrow = !isVersion;
+    const hasArrow = !isVersion && !isCompact;
 
     select.style.display = 'none';
 

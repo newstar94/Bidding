@@ -1236,8 +1236,11 @@ export function renderContractVersionDetails(versionId) {
         <div class="detail-section">
             <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
-                    <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${hd.soHopDong || '--'}</span>
-                    ${versionSelectHtml}
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${hd.soHopDong || '--'}</span>
+                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+                        ${versionSelectHtml}
+                    </div>
                 </div>
                 <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${hd.tenHopDong || 'Hợp đồng không có tên'}</h4>
                 <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">

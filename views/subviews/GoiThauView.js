@@ -535,7 +535,9 @@ export function showPackageDetails(id) {
         const relatedGts = Object.values(verMap);
         relatedGts.sort((a, b) => (parseInt(a.phienBan || 0) - parseInt(b.phienBan || 0)));
 
+        const separator = document.getElementById('detail-workflow-version-separator');
         if (relatedGts.length >= 2) {
+            if (separator) separator.style.display = 'inline-block';
             verSelect.style.display = 'inline-block';
             verSelect.innerHTML = relatedGts.map(g => {
                 const label = g.phienBan || '00';
@@ -547,6 +549,7 @@ export function showPackageDetails(id) {
             };
             if (window.initCustomSelect) window.initCustomSelect('detail-workflow-version-select');
         } else {
+            if (separator) separator.style.display = 'none';
             verSelect.style.display = 'none';
         }
     }
