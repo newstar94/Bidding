@@ -149,8 +149,8 @@ ENTITY_SCHEMA = {
     'phanlo': [
         {'field': 'maPhanLo',             'label': 'Mã phần lô',                 'aliases': ['Mã phần lô', 'maPhanLo']},
         {'field': 'tenPhanLo',            'label': 'Tên phần lô',                'aliases': ['Tên phần lô', 'Tên phân lô', 'tenPhanLo', 'Tên']},
-        {'field': 'giaTriPhanLo',         'label': 'Giá trị phần lô',             'aliases': ['Giá trị phần lô (VNĐ)', 'Giá trị phân lô (VNĐ)', 'Giá trị phần lô (VND)', 'Giá trị phân lô (VND)', 'Giá trị phần lô', 'Giá trị phân lô', 'Giá trị', 'giaTriPhanLo']},
-        {'field': 'baoDamDuThau',         'label': 'Bảo đảm dự thầu',             'aliases': ['Bảo đảm dự thầu (VNĐ)', 'Bảo đảm dự thầu (VND)', 'Bảo đảm dự thầu', 'baoDamDuThau']},
+        {'field': 'giaTriPhanLo',         'label': 'Giá trị phần lô',             'aliases': ['Giá trị phần lô (VND)', 'Giá trị phân lô (VND)', 'Giá trị phần lô (VND)', 'Giá trị phân lô (VND)', 'Giá trị phần lô', 'Giá trị phân lô', 'Giá trị', 'giaTriPhanLo']},
+        {'field': 'baoDamDuThau',         'label': 'Bảo đảm dự thầu',             'aliases': ['Bảo đảm dự thầu (VND)', 'Bảo đảm dự thầu (VND)', 'Bảo đảm dự thầu', 'baoDamDuThau']},
         {'field': 'thoiGianThucHien',     'label': 'Thời gian thực hiện',          'aliases': ['Thời gian thực hiện', 'Thời gian', 'thoiGianThucHien']},
     ],
     'tuychonmuathem': [
@@ -257,7 +257,7 @@ async def import_excel_api(request):
         def clean_money(val):
             if pd.isna(val):
                 return 0
-            val_str = str(val).replace("VND", "").replace("đ", "").replace("₫", "").replace(".", "").replace(",", "").strip()
+            val_str = str(val).replace("VND", "").replace("VND", "").replace("VND", "").replace(".", "").replace(",", "").strip()
             try:
                 return float(val_str)
             except ValueError:
@@ -507,7 +507,7 @@ async def export_mothau_template_api(request):
 
         for col_idx in range(1, len(headers) + 1):
             col_name = headers[col_idx - 1]
-            is_money = any(x in col_name.lower() for x in ['vnd', 'vnđ', 'giá', 'đảm bảo', 'đb'])
+            is_money = any(x in col_name.lower() for x in ['vnd', 'VND', 'giá', 'đảm bảo', 'đb'])
             
             for row_idx in range(2, 101):
                 ws.row_dimensions[row_idx].height = 24
@@ -595,7 +595,7 @@ async def export_opening_fin_template_api(request):
             if is_qualified:
                 qualified_bids.append(b)
 
-        headers = ['Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VNĐ)', 'Tỷ lệ %', 'Hiệu lực HSDT', 'Thời gian thực hiện']
+        headers = ['Mã nhà thầu', 'Tên nhà thầu', 'Giá dự thầu (VND)', 'Tỷ lệ %', 'Hiệu lực HSDT', 'Thời gian thực hiện']
         
         from io import BytesIO
         from openpyxl import Workbook
@@ -636,7 +636,7 @@ async def export_opening_fin_template_api(request):
                 col_name = headers[col_idx - 1]
                 cell = ws.cell(row=row_num, column=col_idx)
                 cell.border = thin_border
-                if col_name == 'Giá dự thầu (VNĐ)':
+                if col_name == 'Giá dự thầu (VND)':
                     cell.number_format = '#,##0'
                     cell.alignment = Alignment(horizontal="right", vertical="center")
                 elif col_name == 'Tỷ lệ %':
@@ -787,7 +787,7 @@ async def export_danhgiahsdt_template_api(request):
             ws.row_dimensions[row_num].height = 22
             for col_idx in range(1, len(headers) + 1):
                 col_name = headers[col_idx - 1]
-                is_money = any(x in col_name.lower() for x in ['vnd', 'vnđ', 'giá', 'đảm bảo', 'đb'])
+                is_money = any(x in col_name.lower() for x in ['vnd', 'VND', 'giá', 'đảm bảo', 'đb'])
                 cell = ws.cell(row=row_num, column=col_idx)
                 cell.border = thin_border
                 if is_money:
@@ -919,7 +919,7 @@ async def export_ketquaqd_template_api(request):
             ws.row_dimensions[row_num].height = 22
             for col_idx in range(1, len(headers) + 1):
                 col_name = headers[col_idx - 1]
-                is_money = any(x in col_name.lower() for x in ['vnd', 'vnđ', 'giá', 'đảm bảo', 'đb'])
+                is_money = any(x in col_name.lower() for x in ['vnd', 'VND', 'giá', 'đảm bảo', 'đb'])
                 cell = ws.cell(row=row_num, column=col_idx)
                 cell.border = thin_border
                 if is_money:
@@ -978,7 +978,7 @@ async def export_phanlo_excel_api(request):
         ws = wb.active
         ws.title = "DanhSachPhanLo"
 
-        headers = ["Mã phần lô", "Tên phần lô", "Giá trị phần lô (VNĐ)", "Bảo đảm dự thầu (VNĐ)", "Thời gian thực hiện"]
+        headers = ["Mã phần lô", "Tên phần lô", "Giá trị phần lô (VND)", "Bảo đảm dự thầu (VND)", "Thời gian thực hiện"]
 
         header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")

@@ -324,7 +324,7 @@ export async function handleExcelUpload(file) {
                 const parsedBids = json.map(row => {
                     const maNhaThau = String(row['Mã nhà thầu'] || row['Mã định danh'] || row['Mã số thuế'] || row['Mã'] || '').trim();
                     const tenNhaThau = String(row['Tên nhà thầu'] || row['Nhà thầu'] || '').trim();
-                    const giaDuThauRaw = String(row['Giá dự thầu (VNĐ)'] || row['Giá dự thầu'] || row['Giá'] || '').trim();
+                    const giaDuThauRaw = String(row['Giá dự thầu (VND)'] || row['Giá dự thầu'] || row['Giá'] || '').trim();
                     const tyLeGiamRaw = String(row['Tỷ lệ %'] || row['Tỷ lệ giảm giá (%)'] || row['Tỷ lệ'] || '0').trim();
                     const hieuLucHsdtRaw = String(row['Hiệu lực HSDT'] || row['Hiệu lực HSDT (ngày)'] || '').trim();
                     const thoiGianThucHien = String(row['Thời gian thực hiện'] || row['Thời gian TH'] || '').trim();
@@ -428,7 +428,7 @@ export async function handleExcelUpload(file) {
                     }
 
                     if (this.currentDanhGiaTab === 'financial') {
-                        const giaDuThauRaw = String(row['Giá dự thầu (VNĐ)'] || row['Giá dự thầu (VND)'] || row['Giá dự thầu'] || row['Giá'] || '0').trim();
+                        const giaDuThauRaw = String(row['Giá dự thầu (VND)'] || row['Giá dự thầu (VND)'] || row['Giá dự thầu'] || row['Giá'] || '0').trim();
                         const tyLeGiamRaw = String(row['Tỷ lệ %'] || row['Tỷ lệ giảm giá (%)'] || row['Tỷ lệ'] || '0').trim();
                         const hieuLucHsdtRaw = String(row['Hiệu lực HSDT'] || row['Hiệu lực HSDT (ngày)'] || '').trim();
                         const thoiGianThucHien = String(row['Thời gian thực hiện'] || row['Thời gian thực hiện (ngày)'] || row['Thời gian TH'] || '').trim();
@@ -467,7 +467,7 @@ export async function handleExcelUpload(file) {
                         const lamRoNangLuc = String(row['Làm rõ năng lực'] || row['Làm rõ năng lực kinh nghiệm'] || '').trim();
                         const lamRoKyThuat = String(row['Làm rõ kỹ thuật'] || '').trim();
                         const lamRoTaiChinh = String(row['Làm rõ tài chính'] || '').trim();
-                        
+
                         const nguyenNhanKhongDatHopLe = String(row['Lý do không đạt hợp lệ'] || '').trim();
                         const nguyenNhanKhongDatNangLuc = String(row['Lý do không đạt năng lực'] || '').trim();
                         const nguyenNhanKhongDatKyThuat = String(row['Lý do không đạt kỹ thuật'] || '').trim();
@@ -1074,7 +1074,7 @@ export async function saveExcelImport() {
                         bid.lamRoNangLuc = row.lamRoNangLuc || '';
                         bid.lamRoKyThuat = row.lamRoKyThuat || '';
                         bid.lamRoTaiChinh = row.lamRoTaiChinh || '';
-                        
+
                         bid.nguyenNhanKhongDatHopLe = bid.danhGiaHopLe === 'Không đạt' ? (row.nguyenNhanKhongDatHopLe || '') : '';
                         bid.nguyenNhanKhongDatNangLuc = bid.danhGiaNangLuc === 'Không đạt' ? (row.nguyenNhanKhongDatNangLuc || '') : '';
                         bid.nguyenNhanKhongDatKyThuat = bid.danhGiaKyThuat === 'Không đạt' ? (row.nguyenNhanKhongDatKyThuat || '') : '';
@@ -1305,8 +1305,8 @@ export function importPhatHanhPhanLoExcel(file) {
             json.forEach((row, rowIndex) => {
                 const maPhanLoExcel = String(row['Mã phần lô'] || row['Mã lô'] || '').trim();
                 const tenPhanLoExcel = String(row['Tên phần lô'] || row['Tên lô'] || '').trim();
-                const giaTriPhanLoExcelRaw = row['Giá trị phần lô (VNĐ)'] || row['Giá trị phần lô'] || '';
-                const baoDamExcelRaw = row['Bảo đảm dự thầu (VNĐ)'] || row['Bảo đảm dự thầu'] || row['Giá trị bảo đảm'] || '';
+                const giaTriPhanLoExcelRaw = row['Giá trị phần lô (VND)'] || row['Giá trị phần lô'] || '';
+                const baoDamExcelRaw = row['Bảo đảm dự thầu (VND)'] || row['Bảo đảm dự thầu'] || row['Giá trị bảo đảm'] || '';
                 const thoiGianThucHienExcel = String(row['Thời gian thực hiện'] || row['Thời gian'] || '').trim();
 
                 let matchedTr = null;

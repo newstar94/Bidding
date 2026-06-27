@@ -945,7 +945,7 @@ export async function handleGoiThauSubmit(e) {
         if (giaGoiThau !== totalPhanLoVal) {
             const confirmed = await this.view.customConfirm(
                 'Cảnh báo chênh lệch giá',
-                `Giá gói thầu (${this.model.formatVND(giaGoiThau)} VNĐ) khác với tổng giá trị của các phần lô (${this.model.formatVND(totalPhanLoVal)} VNĐ).\n\nBạn có chắc chắn muốn tiếp tục lưu không?`,
+                `Giá gói thầu (${this.model.formatVND(giaGoiThau)} VND) khác với tổng giá trị của các phần lô (${this.model.formatVND(totalPhanLoVal)} VND).\n\nBạn có chắc chắn muốn tiếp tục lưu không?`,
                 'alert-triangle'
             );
             if (!confirmed) {
