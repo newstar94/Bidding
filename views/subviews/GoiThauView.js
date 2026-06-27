@@ -45,7 +45,7 @@ export async function renderGoiThauTable() {
     // Populate Year and Month dropdowns dynamically
     const yearSelect = document.getElementById('filter-goithau-nam');
     const monthSelect = document.getElementById('filter-goithau-thang');
-    const allPackages = this.model.state.goithau || [];
+    const allPackages = this.model.getLatestPackages();
     if (yearSelect && monthSelect) {
         const prevYear = yearSelect.value;
         const prevMonth = monthSelect.value;
@@ -172,8 +172,16 @@ export async function renderGoiThauTable() {
 
         tableBody.innerHTML = slicedData.map(gt => {
             const root = gt.rootId || gt.id;
-            const allVersions = gt.allVersions || this.model.state.goithau.filter(g => (g.rootId || g.id) === root)
-                .sort((a, b) => parseInt(b.phienBan) - parseInt(a.phienBan));
+            const allVersions = gt.allVersions || this.model.state.goithau.filter(g => {
+                if ((g.rootId || g.id) !== root) return false;
+                if (g.keHoachId) {
+                    const plan = (this.model.state.kehoach || []).find(k => k.id === g.keHoachId);
+                    if (plan && (plan.isLatest === 0 || plan.is_latest === 0)) {
+                        return false;
+                    }
+                }
+                return true;
+            }).sort((a, b) => parseInt(b.phienBan) - parseInt(a.phienBan));
 
             if (!this.model.state.selectedPackageVersion) {
                 this.model.state.selectedPackageVersion = {};

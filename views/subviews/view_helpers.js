@@ -133,15 +133,26 @@ export function initCustomSelect(selectId) {
         }
 
         document.addEventListener('click', (e) => {
-            if (!wrapper.contains(e.target)) {
+            const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${selectId}"]`);
+            if (!wrapper.contains(e.target) && (!dropdownEl || !dropdownEl.contains(e.target))) {
                 wrapper.classList.remove('open');
+                if (dropdownEl && dropdownEl.parentElement === document.body) {
+                    wrapper.appendChild(dropdownEl);
+                }
             }
         });
 
-        // Register a global scroll listener once to close dropdowns when scrolling
+        // Register a global scroll listener once to close dropdowns and return them when scrolling
         if (!window._customSelectScrollListenerRegistered) {
             window.addEventListener('scroll', () => {
-                document.querySelectorAll('.custom-select-container').forEach(w => w.classList.remove('open'));
+                document.querySelectorAll('.custom-select-container').forEach(w => {
+                    w.classList.remove('open');
+                    const targetId = w.getAttribute('data-target');
+                    const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
+                    if (dropdownEl && dropdownEl.parentElement === document.body) {
+                        w.appendChild(dropdownEl);
+                    }
+                });
             }, { passive: true });
             window._customSelectScrollListenerRegistered = true;
         }
@@ -150,12 +161,17 @@ export function initCustomSelect(selectId) {
     const options = Array.from(select.options);
     const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
 
+    let triggerText = selectedOption.text;
+    if (triggerText.startsWith('Tháng ')) {
+        triggerText = 'T' + triggerText.substring(6);
+    }
+
     // Check if the current custom markup is already up-to-date
     const triggerTextEl = wrapper.querySelector('.custom-select-trigger span');
     const existingOptions = Array.from(wrapper.querySelectorAll('.custom-select-option'));
     
     let needsUpdate = false;
-    if (!triggerTextEl || triggerTextEl.textContent !== selectedOption.text) {
+    if (!triggerTextEl || triggerTextEl.textContent !== triggerText) {
         needsUpdate = true;
     } else if (existingOptions.length !== options.length) {
         needsUpdate = true;
@@ -175,14 +191,14 @@ export function initCustomSelect(selectId) {
     if (needsUpdate) {
         wrapper.innerHTML = `
             <div class="custom-select-trigger">
-                <span>${selectedOption.text}</span>
+                <span>${triggerText}</span>
                 ${hasArrow ? `
                 <div class="custom-select-trigger-arrow">
                     <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
                 </div>
                 ` : ''}
             </div>
-            <div class="custom-select-dropdown">
+            <div class="custom-select-dropdown" data-target="${selectId}">
                 ${options.map(opt => `
                     <div class="custom-select-option ${opt.selected ? 'selected' : ''}" data-value="${opt.value}">
                         <span>${opt.text}</span>
@@ -197,22 +213,43 @@ export function initCustomSelect(selectId) {
         trigger.addEventListener('click', (e) => {
             e.stopPropagation();
             
-            // Close all other dropdowns first
+            // Close all other dropdowns first and return them to their wrappers
             document.querySelectorAll('.custom-select-container').forEach(w => {
-                if (w !== wrapper) w.classList.remove('open');
+                if (w !== wrapper) {
+                    w.classList.remove('open');
+                    const targetId = w.getAttribute('data-target');
+                    const otherDropdown = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
+                    if (otherDropdown && otherDropdown.parentElement === document.body) {
+                        w.appendChild(otherDropdown);
+                    }
+                }
             });
 
             const isOpen = wrapper.classList.toggle('open');
             if (isOpen) {
-                // Position fixed relative to viewport to avoid table overflow hidden clipping
+                // Position fixed relative to viewport to avoid table or modal transform coordinate clashing
                 const rect = trigger.getBoundingClientRect();
+                
+                // Move dropdown to body to escape transformed parent containers
+                document.body.appendChild(dropdown);
+                
                 dropdown.style.position = 'fixed';
                 dropdown.style.top = (rect.bottom + 4) + 'px';
                 dropdown.style.left = rect.left + 'px';
                 dropdown.style.right = 'auto'; // Clear right offset to align left correctly
-                dropdown.style.width = isVersion ? '52px' : (rect.width + 'px');
+                if (isVersion) {
+                    dropdown.style.width = '52px';
+                    dropdown.style.minWidth = '52px';
+                } else {
+                    dropdown.style.minWidth = rect.width + 'px';
+                    dropdown.style.width = 'max-content';
+                    dropdown.style.maxWidth = '400px';
+                }
+                dropdown.style.overflowX = 'hidden';
                 // Ensure z-index is top-level
                 dropdown.style.zIndex = '99999';
+            } else {
+                wrapper.appendChild(dropdown);
             }
         });
 
@@ -223,6 +260,12 @@ export function initCustomSelect(selectId) {
                 select.value = val;
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 wrapper.classList.remove('open');
+                
+                // Return dropdown to wrapper
+                if (dropdown.parentElement === document.body) {
+                    wrapper.appendChild(dropdown);
+                }
+                
                 initCustomSelect(selectId);
             });
         });

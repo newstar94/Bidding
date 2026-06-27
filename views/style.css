@@ -4448,7 +4448,6 @@ body.dark-mode .btn-excel-action:hover {
     position: absolute;
     top: 100%;
     left: 0;
-    right: 0;
     margin-top: 6px;
     background-color: var(--bg-card, #ffffff);
     border: 1px solid var(--border-color, rgba(226, 232, 240, 0.8));
@@ -4461,6 +4460,9 @@ body.dark-mode .btn-excel-action:hover {
     transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
     max-height: 250px;
     overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal scrollbar */
+    width: max-content; /* Dynamically expand width to fit content */
+    max-width: 400px;
     padding: 6px;
     box-sizing: border-box;
 }
@@ -4483,6 +4485,7 @@ body.dark-mode .btn-excel-action:hover {
     cursor: pointer;
     transition: background-color 0.15s, color 0.15s;
     margin-bottom: 2px;
+    white-space: nowrap;
 }
 
 .custom-select-option:last-child {
@@ -4515,7 +4518,7 @@ body.dark-mode .btn-excel-action:hover {
     justify-content: center !important;
     font-size: 0.75rem !important;
     border-radius: 4px !important;
-    border: 1.5px solid var(--primary, #3b82f6) !important; /* A clean, slightly thinner border */
+    border: 1px solid var(--border-color, #cbd5e1) !important; /* Standard border color when closed */
     font-weight: 600 !important;
 }
 

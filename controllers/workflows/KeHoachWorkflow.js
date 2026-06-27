@@ -754,10 +754,21 @@ export async function savePlanBreakdown() {
     let finalPlanId = planId;
 
     if (this.tempPlanAction === 'edit') {
-        const oldKh = this.model.state.kehoach.find(k => k.id === this.tempPlanData.id);
-        const oldTime = (oldKh && oldKh.thoiGianDangMa) ? String(oldKh.thoiGianDangMa).trim() : '';
-        const newTime = String(this.tempPlanData.thoiGianDangMa || '').trim();
-        const saveAsNewVersion = !!(oldKh && oldTime !== '' && newTime !== oldTime);
+        const backupKh = this.backupKeHoachState.find(k => k.id === this.tempPlanData.id);
+        let saveAsNewVersion = false;
+        if (backupKh) {
+            const oldTime = backupKh.thoiGianDangMa ? String(backupKh.thoiGianDangMa).trim() : '';
+            const newTime = this.tempPlanData.thoiGianDangMa ? String(this.tempPlanData.thoiGianDangMa).trim() : '';
+            if (oldTime !== '') {
+                const oldDate = new Date(oldTime);
+                const newDate = new Date(newTime);
+                if (isNaN(oldDate.getTime()) || isNaN(newDate.getTime())) {
+                    saveAsNewVersion = (oldTime !== newTime);
+                } else {
+                    saveAsNewVersion = (oldDate.getTime() !== newDate.getTime());
+                }
+            }
+        }
 
         if (saveAsNewVersion) {
             // Restore kehoach state from backup so the original version isn't overwritten

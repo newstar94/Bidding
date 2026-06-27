@@ -890,10 +890,19 @@ export class BiddingModel {
     }
 
     getLatestPackages() {
-        const latest = (this.state.goithau || []).filter(gt => gt.isLatest == 1);
+        const validPackages = (this.state.goithau || []).filter(gt => {
+            if (!gt.keHoachId) return true;
+            const plan = (this.state.kehoach || []).find(k => k.id === gt.keHoachId);
+            if (plan && (plan.isLatest === 0 || plan.is_latest === 0)) {
+                return false;
+            }
+            return true;
+        });
+
+        const latest = validPackages.filter(gt => gt.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
-        this.state.goithau.forEach(gt => {
+        validPackages.forEach(gt => {
             const root = gt.rootId || gt.id;
             const verNum = parseInt(gt.phienBan) || 0;
 
@@ -967,11 +976,19 @@ export class BiddingModel {
     }
 
     getLatestHopDong() {
+        const latestPkgs = this.getLatestPackages();
+        const latestPkgIds = latestPkgs.map(g => g.id);
+
         const allContracts = this.getFilteredHopDong();
-        const latest = allContracts.filter(h => h.isLatest == 1);
+        const validContracts = allContracts.filter(hd => {
+            if (!hd.goiThauId) return true;
+            return latestPkgIds.includes(hd.goiThauId);
+        });
+
+        const latest = validContracts.filter(h => h.isLatest == 1);
         if (latest.length > 0) return latest;
         const latestMap = {};
-        allContracts.forEach(h => {
+        validContracts.forEach(h => {
             const root = h.rootId || h.id;
             const verNum = parseInt(h.phienBan) || 0;
 
