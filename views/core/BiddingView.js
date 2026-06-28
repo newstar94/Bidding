@@ -2,10 +2,10 @@
    BiddingFlow - View Orchestrator (DOM, Caching & Sub-view Dispatcher)
    ========================================================================== */
 
-import * as Dashboard from '/views/subviews/DashboardView.js?v=6.12';
-import * as Plan from '/views/subviews/PlanView.js?v=6.12';
-import * as Partner from '/views/subviews/PartnerView.js?v=6.12';
-import * as SystemUser from '/views/subviews/SystemUserView.js?v=6.12';
+import * as Dashboard from '/views/subviews/DashboardView.js';
+import * as Plan from '/views/subviews/PlanView.js';
+import * as Partner from '/views/subviews/PartnerView.js';
+import * as SystemUser from '/views/subviews/SystemUserView.js';
 import { initCustomSelect } from '../subviews/view_helpers.js';
 
 export class BiddingView {
@@ -328,6 +328,7 @@ export class BiddingView {
                 }
             }
         });
+    }
 
     openModal(modalId) {
         const modal = document.getElementById(modalId);

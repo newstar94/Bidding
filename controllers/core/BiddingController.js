@@ -2,14 +2,14 @@
    BiddingFlow - Controller (Events, Interaction & Business logic dispatching)
    ========================================================================== */
 
-import * as Auth from '/controllers/auth/AuthController.js?v=6.12';
-import * as Admin from '/controllers/admin/AdminUserController.js?v=6.12';
-import * as Bidding from '/controllers/workflows/BiddingWorkflows.js?v=6.12';
-import * as Partner from '/controllers/workflows/PartnerWorkflows.js?v=6.12';
+import * as Auth from '/controllers/auth/AuthController.js';
+import * as Admin from '/controllers/admin/AdminUserController.js';
+import * as Bidding from '/controllers/workflows/BiddingWorkflows.js';
+import * as Partner from '/controllers/workflows/PartnerWorkflows.js';
 
-import * as MainUI from '/controllers/main_controller/BiddingControllerUI.js?v=6.12';
-import * as MainForms from '/controllers/main_controller/BiddingControllerForms.js?v=6.12';
-import * as MainSync from '/controllers/main_controller/BiddingControllerSync.js?v=6.12';
+import * as MainUI from '/controllers/main_controller/BiddingControllerUI.js';
+import * as MainForms from '/controllers/main_controller/BiddingControllerForms.js';
+import * as MainSync from '/controllers/main_controller/BiddingControllerSync.js';
 
 export class BiddingController {
     constructor(model, view) {
@@ -544,14 +544,3 @@ export class BiddingController {
         };
     }
 }
-
-// Blend split controllers onto BiddingController prototype
-Object.assign(BiddingController.prototype, {
-    ...Auth,
-    ...Admin,
-    ...Bidding,
-    ...Partner,
-    ...MainUI,
-    ...MainForms,
-    ...MainSync
-});

@@ -9,15 +9,15 @@ function obfuscatorPlugin() {
     enforce: 'post',
     apply: 'build',
     renderChunk(code, chunk) {
-      // Only obfuscate JS bundles
-      if (chunk.fileName.endsWith('.js')) {
+      // Chỉ obfuscate các chunk nghiệp vụ trong assets, KHÔNG làm rối app.bundle.js (core loader)
+      if (chunk.fileName.endsWith('.js') && !chunk.fileName.includes('app.bundle.js')) {
         const obfuscationResult = JavaScriptObfuscator.obfuscate(code, {
           compact: true,
-          controlFlowFlattening: true,
-          controlFlowFlatteningThreshold: 0.75,
-          deadCodeInjection: true,
-          deadCodeInjectionThreshold: 0.4,
-          debugProtection: true,
+          controlFlowFlattening: true, // Khôi phục làm rối luồng điều khiển cho nghiệp vụ
+          controlFlowFlatteningThreshold: 0.5,
+          deadCodeInjection: true,     // Khôi phục chèn code rác bảo mật
+          deadCodeInjectionThreshold: 0.2,
+          debugProtection: true,       // Bật chống debug
           debugProtectionInterval: 4000,
           disableConsoleOutput: false,
           identifierNamesGenerator: 'hexadecimal',
@@ -28,11 +28,11 @@ function obfuscatorPlugin() {
           simplify: true,
           splitStrings: true,
           splitStringsChunkLength: 5,
-          stringArray: true,
+          stringArray: true,           // Khôi phục mã hoá chuỗi
           stringArrayCallsTransform: true,
           stringArrayEncoding: ['rc4'],
-          stringArrayThreshold: 0.75,
-          transformObjectKeys: true,
+          stringArrayThreshold: 0.5,
+          transformObjectKeys: false,  // Tắt transformObjectKeys để tránh lỗi ánh xạ thuộc tính API/DB
           unicodeEscapeSequence: false
         });
         return {
@@ -53,6 +53,7 @@ export default defineConfig({
     emptyOutDir: false,
     sourcemap: false,
     minify: 'esbuild', // Nén code sử dụng esbuild cực nhanh và bảo mật
+    chunkSizeWarningLimit: 2048, // Tăng giới hạn cảnh báo lên 2MB để bỏ cảnh báo do obfuscator làm phình dung lượng
     rollupOptions: {
       input: {
         app: path.resolve(__dirname, 'controllers/app.js')
