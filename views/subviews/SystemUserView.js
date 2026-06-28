@@ -551,7 +551,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
 
         return `
             <tr style="cursor: pointer;" onclick="window.showSystemUserDetail('${user.id}')">
-                <td class="fw-bold" style="color: var(--text-main); font-size: 0.9rem;">${escapeHTML(user.username)}</td>
+                <td class="fw-bold" style="color: var(--text-main);">${escapeHTML(user.username)}</td>
                 <td style="font-weight: 600;">${escapeHTML(user.name)}</td>
                 <td>${escapeHTML(user.email) || '--'}</td>
                 <td>${getRoleBadge(user.role)}</td>

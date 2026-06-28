@@ -659,8 +659,8 @@ export async function renderHopDongTable() {
                     </td>
                     <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${displayedHd.tenHopDong}</td>
                     <td>${displayedHd.ngayKy ? formatDate(displayedHd.ngayKy) : '--'}</td>
-                    <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${cdtName}</td>
-                    <td style="font-size:0.85rem; min-width: 180px; max-width: 280px;" class="text-wrap">${ntName}</td>
+                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${cdtName}</td>
+                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${ntName}</td>
                     <td class="fw-bold text-blue">${formatCurrency(displayedHd.giaTri)}</td>
                     <td><span class="badge badge-info">${displayedHd.loaiHopDong || 'Trọn gói'}</span></td>
                     <td><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${displayedHd.phanLoai || 'Tư vấn'}</span></td>
