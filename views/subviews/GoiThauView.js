@@ -175,13 +175,23 @@ export async function renderGoiThauTable() {
             const allVersions = gt.allVersions || this.model.state.goithau.filter(g => {
                 if ((g.rootId || g.id) !== root) return false;
                 if (g.keHoachId) {
-                    const plan = (this.model.state.kehoach || []).find(k => k.id === g.keHoachId);
-                    if (plan && (plan.isLatest === 0 || plan.is_latest === 0)) {
+                    const plan = (this.model.state.kehoach || []).find(k => String(k.id) === String(g.keHoachId));
+                    if (plan && String(plan.isLatest) !== '1' && String(plan.is_latest) !== '1') {
                         return false;
                     }
                 }
                 return true;
             }).sort((a, b) => parseInt(b.phienBan) - parseInt(a.phienBan));
+
+            // Deduplicate versions by version number (phienBan) to ensure unique dropdown options
+            const uniqueVersionsMap = new Map();
+            allVersions.forEach(v => {
+                const label = v.phienBan || '00';
+                if (!uniqueVersionsMap.has(label)) {
+                    uniqueVersionsMap.set(label, v);
+                }
+            });
+            const uniqueVersions = Array.from(uniqueVersionsMap.values());
 
             if (!this.model.state.selectedPackageVersion) {
                 this.model.state.selectedPackageVersion = {};
@@ -286,7 +296,7 @@ export async function renderGoiThauTable() {
                 winnerInfoHtml = displayedGt.nhaThauTrungThauId ? (ntLink + '<br><small class="text-muted">Giá: ' + this.model.formatCurrency(displayedGt.giaTrungThau) + '</small>') : '--';
             }
 
-            const optionsHtml = allVersions.map(v => {
+            const optionsHtml = uniqueVersions.map(v => {
                 const label = v.phienBan || '00';
                 const isSel = v.id === displayedGt.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;

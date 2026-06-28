@@ -20,18 +20,20 @@ export function openPackageWizardStep() {
 export async function deleteGoiThau(id) {
     const targetPackage = this.model.state.goithau.find(g => g.id === id);
     if (!targetPackage) return;
-    const baseCode = this.model.getPackageBaseCode(targetPackage.maGoiThau);
+    const rootId = targetPackage.rootId || targetPackage.id;
 
-    const relatedGts = baseCode ? this.model.state.goithau.filter(gt => this.model.getPackageBaseCode(gt.maGoiThau) === baseCode) : [targetPackage];
-    const relatedIds = relatedGts.map(gt => gt.id);
+    // Get all related packages sharing the same rootId across ALL plan versions
+    const allRelatedGts = this.model.state.goithau.filter(gt => (gt.rootId || gt.id) === rootId);
+    const uniqueVersionsCount = new Set(allRelatedGts.map(g => g.phienBan || '00')).size;
+    const allRelatedIds = allRelatedGts.map(gt => gt.id);
 
     let deleteConfirmed = false;
     let deleteChoice = null;
 
-    if (relatedGts.length >= 2) {
+    if (uniqueVersionsCount >= 2) {
         deleteChoice = await this.view.customVersionDeleteChoice(
             'Xác nhận xóa',
-            `Gói thầu "${targetPackage.tenGoiThau}" có ${relatedGts.length} phiên bản. Vui lòng chọn cách thức xóa:`,
+            `Gói thầu "${targetPackage.tenGoiThau}" có ${uniqueVersionsCount} phiên bản. Vui lòng chọn cách thức xóa:`,
             'Xóa phiên bản gần nhất',
             'Xóa toàn bộ'
         );
@@ -47,34 +49,41 @@ export async function deleteGoiThau(id) {
     }
 
     if (deleteChoice === 1) {
-        const maxVer = Math.max(...relatedGts.map(g => parseInt(g.phienBan) || 0));
-        const latestGt = relatedGts.find(g => (parseInt(g.phienBan) || 0) === maxVer);
-        if (!latestGt) return;
+        const maxVer = Math.max(...allRelatedGts.map(g => parseInt(g.phienBan) || 0));
+        const latestGts = allRelatedGts.filter(g => (parseInt(g.phienBan) || 0) === maxVer);
+        const latestIds = latestGts.map(g => g.id);
 
-        this.model.state.goithau = this.model.state.goithau.filter(gt => gt.id !== latestGt.id);
-        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(latestGt.id));
+        this.model.state.goithau = this.model.state.goithau.filter(gt => !latestIds.includes(gt.id));
+        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !latestIds.includes(String(b.goiThauId)));
 
-        const remainingRelated = relatedGts.filter(gt => gt.id !== latestGt.id);
-        if (remainingRelated.length > 0) {
-            const nextMaxVer = Math.max(...remainingRelated.map(g => parseInt(g.phienBan) || 0));
-            remainingRelated.forEach(gt => {
-                if ((parseInt(gt.phienBan) || 0) === nextMaxVer) {
-                    gt.isLatest = 1;
-                    gt.is_latest = 1;
-                } else {
-                    gt.isLatest = 0;
-                    gt.is_latest = 0;
-                }
-            });
-        }
+        // Update isLatest for remaining versions in each plan version
+        const remainingRelated = allRelatedGts.filter(gt => !latestIds.includes(gt.id));
+        const planIds = [...new Set(allRelatedGts.map(gt => gt.keHoachId))];
+        planIds.forEach(pId => {
+            const planRemaining = remainingRelated.filter(gt => gt.keHoachId === pId);
+            if (planRemaining.length > 0) {
+                const nextMaxVer = Math.max(...planRemaining.map(g => parseInt(g.phienBan) || 0));
+                planRemaining.forEach(gt => {
+                    if ((parseInt(gt.phienBan) || 0) === nextMaxVer) {
+                        gt.isLatest = 1;
+                        gt.is_latest = 1;
+                    } else {
+                        gt.isLatest = 0;
+                        gt.is_latest = 0;
+                    }
+                });
+            }
+        });
 
         await this.model.persistData('goithau');
         await this.model.persistData('thongtinmothau');
 
-        const planId = latestGt.keHoachId;
-        if (planId) {
-            this.recalculatePlanTotal(planId);
-        }
+        // Recalculate plan totals for all affected plan versions
+        planIds.forEach(pId => {
+            if (pId) {
+                this.recalculatePlanTotal(pId);
+            }
+        });
 
         const breakdownPlanId = document.getElementById('breakdown-plan-id')?.value;
         const modalBreakdown = document.getElementById('modal-plan-breakdown');
@@ -93,21 +102,18 @@ export async function deleteGoiThau(id) {
 
         await this.view.customAlert('Thành công', 'Đã xóa phiên bản gói thầu gần nhất!', 'check-circle');
     } else if (deleteChoice === 2 || deleteConfirmed) {
-        if (baseCode) {
-            this.model.state.goithau = this.model.state.goithau.filter(gt => this.model.getPackageBaseCode(gt.maGoiThau) !== baseCode);
-            this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !relatedIds.includes(String(b.goiThauId)));
-        } else {
-            this.model.state.goithau = this.model.state.goithau.filter(gt => gt.id !== id);
-            this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(id));
-        }
+        this.model.state.goithau = this.model.state.goithau.filter(gt => (gt.rootId || gt.id) !== rootId);
+        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !allRelatedIds.includes(String(b.goiThauId)));
 
         await this.model.persistData('goithau');
         await this.model.persistData('thongtinmothau');
 
-        const planId = targetPackage.keHoachId;
-        if (planId) {
-            this.recalculatePlanTotal(planId);
-        }
+        const planIds = [...new Set(allRelatedGts.map(gt => gt.keHoachId))];
+        planIds.forEach(pId => {
+            if (pId) {
+                this.recalculatePlanTotal(pId);
+            }
+        });
 
         const breakdownPlanId = document.getElementById('breakdown-plan-id')?.value;
         const modalBreakdown = document.getElementById('modal-plan-breakdown');

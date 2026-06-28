@@ -3,11 +3,7 @@ import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from db_helper import database
-import sys
-
-def log_error(message, context="Email"):
-    # Tự ghi log để tránh circular import với helpers.py
-    print(f"[{context}] ERROR: {message}", file=sys.stderr)
+from logging_utils import log_error
 
 
 def gui_email(email_nhan, tieu_de, noi_dung_html):

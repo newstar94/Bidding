@@ -95,12 +95,10 @@ export function autoSync() {
                     }
 
                     const fullMsg = msgLines.join('\n');
-                    console.error('[Sync Validation Error]', data.errors);
-
-                    // Hiển thị dialog lỗi nếu có view
-                    if (self.view && typeof self.view.customAlert === 'function') {
-                        self.view.customAlert('Lỗi lưu dữ liệu', fullMsg, 'x-circle');
-                    }
+                    console.error('[Sync Error]\n' + fullMsg, data.errors);
+                    // if (self.view && typeof self.view.customAlert === 'function') {
+                    //     self.view.customAlert('Lỗi lưu dữ liệu', fullMsg, 'x-circle');
+                    // }
                 } else {
                     console.error('[Sync Error]', data.error || data.message || 'Đồng bộ thất bại');
                 }

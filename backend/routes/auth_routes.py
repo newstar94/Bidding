@@ -21,9 +21,18 @@ from helpers import (
     log_error,
     _session_cache_invalidate,
     _session_cache_invalidate_by_user_id,
+    get_active_org,
+    _org_cache_invalidate_by_user_id,
     OrgPermissionError
 )
 from helpers_py.auth_helper import _session_cache_get, _session_cache_set
+from .sync_routes import disconnect_user_websockets
+
+# Cấu hình cookie: bật secure=True khi chạy sau HTTPS reverse proxy
+_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
+
+# Thời gian hiệu lực phiên đăng nhập (giờ)
+SESSION_EXPIRY_HOURS = 12
 
 # ==========================================
 # RATE LIMITER (In-memory, per IP)
@@ -166,9 +175,7 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
 
     if removed_any:
         # Xóa cache tổ chức hoạt động và ngắt kết nối WebSocket
-        from helpers import _org_cache_invalidate_by_user_id
         _org_cache_invalidate_by_user_id(user_id)
-        from .sync_routes import disconnect_user_websockets
         disconnect_user_websockets(user_id)
 
 # ==========================================
@@ -271,7 +278,7 @@ async def verify_email_api(request):
         user = dict(row)
         current_time = int(time.time())
         
-        if user['ma_xac_minh'] != code:
+        if not secrets.compare_digest(str(user['ma_xac_minh']), str(code)):
             conn.close()
             return JSONResponse({"error": "Mã xác nhận không chính xác!"}, status_code=400)
             
@@ -306,11 +313,7 @@ async def resend_code_api(request):
             return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400)
             
         user = dict(row)
-        is_verified = False
-        if user['da_xac_minh']:
-            # Kiểm tra an toàn tránh ép kiểu chuỗi '0' thành True trong Python
-            if str(user['da_xac_minh']).strip() not in ('0', 'False', 'None', ''):
-                is_verified = True
+        is_verified = bool(user.get('da_xac_minh'))
                 
         if is_verified:
             conn.close()
@@ -398,7 +401,7 @@ async def login_api(request):
             
         # Generate new active session token (uuid) to log out other devices
         session_token = str(uuid.uuid4())
-        token_expiry = int((datetime.utcnow() + timedelta(hours=12)).timestamp())  # Unix timestamp (Giảm xuống 12 giờ theo Mục 11)
+        token_expiry = int((datetime.utcnow() + timedelta(hours=SESSION_EXPIRY_HOURS)).timestamp())
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
             "ip": request.client.host,
@@ -426,8 +429,8 @@ async def login_api(request):
             "package_id": user.get('goi_dich_vu_id'),
             "organization_name": org_names
         })
-        response.set_cookie("session_token", session_token, httponly=True, secure=False, samesite="lax", path="/")
-        response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=False, samesite="lax", path="/")
+        response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
+        response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
         return response
     except Exception as e:
         log_error(e, "login_api")
@@ -716,8 +719,7 @@ async def list_users_api(request):
                 cursor.execute(sql_base + " WHERE id = ?", (role_or_err.user_id,))
                 users_raw = cursor.fetchall()
             else:
-                # Lọc những tài khoản thuộc tổ chức hoạt động hiện tại (active_org) thay vì tất cả tổ chức của requester
-                from helpers import get_active_org
+                # Lọc những tài khoản thuộc tổ chức hoạt động hiện tại (active_org)
                 active_org_id = get_active_org(request, role_or_err.user_id)
                 if active_org_id and active_org_id in req_org_ids:
                     cursor.execute(f"""
@@ -783,9 +785,7 @@ async def delete_user_api(request):
         
         # Xóa cache session, cache tổ chức hoạt động và ngắt kết nối WebSocket
         _session_cache_invalidate_by_user_id(user_id)
-        from helpers import _org_cache_invalidate_by_user_id
         _org_cache_invalidate_by_user_id(user_id)
-        from .sync_routes import disconnect_user_websockets
         disconnect_user_websockets(user_id)
         
         return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
@@ -884,7 +884,8 @@ async def update_user_package_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật gói đăng ký thành công!"})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "update_user_package_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật gói dịch vụ."}, status_code=500)
 
 async def update_user_metadata_api(request):
     try:
@@ -927,7 +928,8 @@ async def update_user_metadata_api(request):
         conn.close()
         return JSONResponse({"success": True, "message": "Cập nhật thông tin thành công!"})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "update_user_metadata_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật thông tin."}, status_code=500)
 
 async def list_system_packages_api(request):
     try:
@@ -938,7 +940,8 @@ async def list_system_packages_api(request):
         conn.close()
         return JSONResponse(packages)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "list_system_packages_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi tải danh sách gói dịch vụ."}, status_code=500)
 
 async def update_system_package_api(request):
     try:
@@ -967,7 +970,8 @@ async def update_system_package_api(request):
         conn.close()
         return JSONResponse({"success": True, "message": "Cập nhật gói dịch vụ thành công!"})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        log_error(e, "update_system_package_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật gói dịch vụ."}, status_code=500)
 
 async def add_user_to_org_api(request):
     try:
@@ -984,7 +988,6 @@ async def add_user_to_org_api(request):
         if not user_id:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
             
-        from helpers import get_active_org
         org_id = get_active_org(request, role_or_err.user_id)
         
         conn = database.get_connection()
@@ -1060,7 +1063,6 @@ async def remove_user_from_org_api(request):
         if not user_id:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
             
-        from helpers import get_active_org
         org_id = get_active_org(request, role_or_err.user_id)
         
         conn = database.get_connection()
@@ -1087,9 +1089,7 @@ async def remove_user_from_org_api(request):
         
         # Xóa cache session, cache tổ chức hoạt động và ngắt kết nối WebSocket
         _session_cache_invalidate_by_user_id(user_id)
-        from helpers import _org_cache_invalidate_by_user_id
         _org_cache_invalidate_by_user_id(user_id)
-        from .sync_routes import disconnect_user_websockets
         disconnect_user_websockets(user_id)
         
         return JSONResponse({"success": True, "message": "Gỡ nhân sự khỏi tổ chức thành công!"})

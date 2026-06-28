@@ -28,83 +28,16 @@ if sys.platform == 'win32':
         pass
 
 import uvicorn
+import re
+import threading
+import hashlib
+import contextlib
 
-# Import các thành phần của framework Starlette để dựng Web API Server
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
-from starlette.responses import JSONResponse, HTMLResponse
+from starlette.responses import JSONResponse, HTMLResponse, Response
 from starlette.middleware import Middleware
-
-import re
-import threading
-
-# Cache cho HTML đã biên dịch/ghép nối (được bảo vệ bởi lock để thread-safe)
-_compiled_html_cache = None
-_compiled_html_lock = threading.Lock()
-
-def compile_html(file_path):
-    global _compiled_html_cache
-    
-    # Luôn biên dịch lại template HTML để cập nhật thay đổi tức thì mà không cần restart server
-    pass
-        
-    def replace_include(match):
-        include_path = match.group(1).strip()
-        # Đường dẫn trong placeholder ví dụ: views/components/sidebar.html
-        # Ta sẽ giải quyết đường dẫn tuyệt đối dựa trên thư mục gốc dự án (project_root)
-        full_path = os.path.join(project_root, include_path)
-        
-        # Thử lại nếu không chứa views/ hoặc tìm kiếm trực tiếp
-        if not os.path.exists(full_path) and include_path.startswith("views/"):
-            full_path = os.path.join(project_root, include_path.replace("views/", ""))
-            
-        if os.path.exists(full_path):
-            with open(full_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                # Biên dịch đệ quy phòng trường hợp file con cũng chứa placeholder INCLUDE
-                return compile_content(content)
-        else:
-            return f"<!-- INCLUDE ERROR: File not found {include_path} ({full_path}) -->"
-
-    def compile_content(content):
-        # Trận khớp dạng <!-- INCLUDE: đường_dẫn_file -->
-        pattern = r'<!--\s*INCLUDE:\s*([^\s\-]+)\s*-->'
-        return re.sub(pattern, replace_include, content)
-
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            raw_content = f.read()
-        compiled = compile_content(raw_content)
-        if not APP_DEBUG:
-            compiled = re.sub(
-                r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
-                '<script type="module" src="/dist/controllers/app.bundle.js"></script>',
-                compiled
-            )
-            with _compiled_html_lock:
-                # Double-checked locking: kiểm tra lại sau khi lấy lock
-                if not _compiled_html_cache:
-                    _compiled_html_cache = compiled
-        return compiled
-    return "<h1>Error: Main template index.html not found</h1>"
-
-
-async def index(request):
-    """
-    [GET] /
-    Biên dịch và trả về tệp index.html đã được ghép nối từ các partials.
-    Tối ưu hóa Etag browser caching (P5).
-    """
-    html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
-    import hashlib
-    etag = f'"{hashlib.md5(html_content.encode("utf-8")).hexdigest()}"'
-    
-    if_none_match = request.headers.get("if-none-match")
-    if if_none_match and if_none_match == etag:
-        return HTMLResponse(content="", status_code=304, headers={"ETag": etag})
-        
-    return HTMLResponse(content=html_content, status_code=200, headers={"ETag": etag})
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -112,9 +45,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # 1. CẤU HÌNH ĐƯỜNG DẪN & TẢI MODULE BIÊN DỊCH
 # ==========================================
 
-# Lấy đường dẫn của thư mục backend/ và thư mục gốc của dự án
-current_dir = os.path.dirname(os.path.abspath(__file__)) # backend/
-project_root = os.path.dirname(current_dir) # root
+current_dir = os.path.dirname(os.path.abspath(__file__))  # backend/
+project_root = os.path.dirname(current_dir)               # root
 models_dir = os.path.join(project_root, 'models')
 backend_dir = os.path.join(project_root, 'backend')
 helpers_py_dir = os.path.join(backend_dir, 'helpers_py')
@@ -137,25 +69,81 @@ if os.path.exists(env_path):
                 continue
             if '=' in line:
                 k, v = line.split('=', 1)
-                k = k.strip()
-                v = v.strip().strip("'").strip('"')
-                os.environ[k] = v
+                os.environ[k.strip()] = v.strip().strip("'").strip('"')
 
-# Loại bỏ import không dùng: format_date_str, VietnameseFloat, clean_admin_prefix, ROLE_HIERARCHY, SessionRole
-# đã có trong helpers.py nhưng không dùng trực tiếp trong app.py
+APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
+APP_PORT = int(os.environ.get("APP_PORT", "8000"))
+APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"  # Mặc định TẮt debug trên production
+
+# ==========================================
+# 2. HTML TEMPLATE COMPILER
+# ==========================================
+
+# Cache cho HTML đã biên dịch (chỉ được dùng khi APP_DEBUG=False)
+_compiled_html_cache = None
+_compiled_html_lock = threading.Lock()
+
+
+def compile_html(file_path):
+    """Biên dịch file HTML bằng cách giải quyết INCLUDE placeholders đệ quy.
+    Khi production: trả về cache nếu đã biên dịch. Khi debug: luôn đọc từ disk.
+    """
+    global _compiled_html_cache
+
+    # Trả cache ngay nếu production và đã có cache
+    if not APP_DEBUG and _compiled_html_cache:
+        return _compiled_html_cache
+
+    def replace_include(match):
+        include_path = match.group(1).strip()
+        full_path = os.path.join(project_root, include_path)
+        if not os.path.exists(full_path) and include_path.startswith("views/"):
+            full_path = os.path.join(project_root, include_path.replace("views/", ""))
+        if os.path.exists(full_path):
+            with open(full_path, 'r', encoding='utf-8') as f:
+                return compile_content(f.read())
+        return f"<!-- INCLUDE ERROR: File not found {include_path} ({full_path}) -->"
+
+    def compile_content(content):
+        pattern = r'<!--\s*INCLUDE:\s*([^\s\-]+)\s*-->'
+        return re.sub(pattern, replace_include, content)
+
+    if not os.path.exists(file_path):
+        return "<h1>Error: Main template index.html not found</h1>"
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        compiled = compile_content(f.read())
+
+    if not APP_DEBUG:
+        compiled = re.sub(
+            r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
+            '<script type="module" src="/dist/controllers/app.bundle.js"></script>',
+            compiled
+        )
+        with _compiled_html_lock:
+            if not _compiled_html_cache:
+                _compiled_html_cache = compiled
+    return compiled
+
+
+async def index(request):
+    """
+    [GET] /
+    Biên dịch và trả về tệp index.html đã được ghép nối từ các partials.
+    Tối ưu hóa ETag browser caching.
+    """
+    html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
+    etag = f'"{hashlib.md5(html_content.encode("utf-8")).hexdigest()}"'
+
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match == etag:
+        return HTMLResponse(content="", status_code=304, headers={"ETag": etag})
+
+    return HTMLResponse(content=html_content, status_code=200, headers={"ETag": etag})
+
 from helpers import (
-    models,
-    database,
     log_error,
     ErrorLoggingMiddleware,
-    gui_email,
-    verify_session,
-    SCHEMA_DINH_NGHIA,
-    hash_password,
-    verify_password,
-    get_effective_roles,
-    save_base64_image,
-    load_base64_image,
     OrgPermissionError
 )
 
@@ -213,10 +201,9 @@ from routes.address_routes import (
 
 class SafeStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
-        # Chỉ cho phép các file tĩnh phục vụ Frontend (như .js, .css), từ chối mã nguồn Python (.py, .pyc, .pyo) và file nhạy cảm (.db, .sqlite, .docx)
+        # Chỉ cho phép các file tĩnh phục vụ Frontend (.js, .css), từ chối mã nguồn Python và file nhạy cảm
         blocked_exts = (".py", ".pyc", ".pyo", ".db", ".sqlite", ".docx")
         if path.lower().endswith(blocked_exts) or "__pycache__" in path:
-            from starlette.responses import Response
             return Response("Access Denied", status_code=403)
         return await super().get_response(path, scope)
 
@@ -312,10 +299,6 @@ routes = [
     Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
     Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
 ]
-
-APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
-APP_PORT = int(os.environ.get("APP_PORT", "8000"))
-APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"   # Mặc định TẮT debug trên production
 
 # CORS: Mặc định chỉ cho phép localhost + 127.0.0.1.
 # Để mở rộng, set CORS_ORIGINS trong .env (VD: CORS_ORIGINS=https://yourdomain.com)

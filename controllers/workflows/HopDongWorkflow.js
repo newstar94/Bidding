@@ -1,16 +1,77 @@
 export async function deleteHopDong(id) {
-    const confirmed = await this.view.customConfirm(
-        'Xác nhận xóa',
-        'Bạn có chắc chắn muốn xóa hợp đồng này không?',
-        'trash-2'
-    );
-    if (confirmed) {
-        this.model.state.hopdong = this.model.state.hopdong.filter(h => h.id !== id);
+    const targetHd = this.model.state.hopdong.find(h => h.id === id);
+    if (!targetHd) return;
+    const rootId = targetHd.rootId || targetHd.id;
+
+    const relatedHds = this.model.state.hopdong.filter(h => (h.rootId || h.id) === rootId);
+    const relatedIds = relatedHds.map(h => h.id);
+
+    let deleteConfirmed = false;
+    let deleteChoice = null;
+
+    if (relatedHds.length >= 2) {
+        deleteChoice = await this.view.customVersionDeleteChoice(
+            'Xác nhận xóa',
+            `Hợp đồng "${targetHd.tenHopDong || targetHd.soHopDong || 'Chưa nhập tên'}" có ${relatedHds.length} phiên bản. Vui lòng chọn cách thức xóa:`,
+            'Xóa phiên bản gần nhất',
+            'Xóa toàn bộ'
+        );
+        if (deleteChoice === null) return;
+    } else {
+        const confirmed = await this.view.customConfirm(
+            'Xác nhận xóa',
+            'Bạn có chắc chắn muốn xóa hợp đồng này không? Mọi phiên bản lịch sử liên quan sẽ bị xóa bỏ.',
+            'trash-2'
+        );
+        if (!confirmed) return;
+        deleteConfirmed = true;
+    }
+
+    if (deleteChoice === 1) {
+        const maxVer = Math.max(...relatedHds.map(h => parseInt(h.phienBan || h.phien_ban) || 0));
+        const latestHd = relatedHds.find(h => (parseInt(h.phienBan || h.phien_ban) || 0) === maxVer);
+        if (!latestHd) return;
+
+        this.model.state.hopdong = this.model.state.hopdong.filter(h => h.id !== latestHd.id);
+
+        const remainingRelated = relatedHds.filter(h => h.id !== latestHd.id);
+        if (remainingRelated.length > 0) {
+            const nextMaxVer = Math.max(...remainingRelated.map(h => parseInt(h.phienBan || h.phien_ban) || 0));
+            remainingRelated.forEach(h => {
+                if ((parseInt(h.phienBan || h.phien_ban) || 0) === nextMaxVer) {
+                    h.isLatest = 1;
+                    h.is_latest = 1;
+                } else {
+                    h.isLatest = 0;
+                    h.is_latest = 0;
+                }
+            });
+        }
+
         await this.model.persistData('hopdong');
         this.view.renderHopDongTable();
-        await this.autoSync();
+        try {
+            await this.autoSync();
+        } catch (e) {
+            await this.view.customAlert('Lỗi đồng bộ', 'Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.', 'x-circle');
+        }
+        await this.view.customAlert('Thành công', 'Đã xóa phiên bản hợp đồng gần nhất!', 'check-circle');
+    } else if (deleteChoice === 2 || deleteConfirmed) {
+        this.model.state.hopdong = this.model.state.hopdong.filter(h => (h.rootId || h.id) !== rootId);
+
+        await this.model.persistData('hopdong');
+        this.view.renderHopDongTable();
+        try {
+            await this.autoSync();
+        } catch (e) {
+            await this.view.customAlert('Lỗi đồng bộ', 'Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.', 'x-circle');
+        }
+        if (deleteChoice === 2) {
+            await this.view.customAlert('Thành công', 'Đã xóa toàn bộ các phiên bản của hợp đồng!', 'check-circle');
+        }
     }
 }
+
 
 
 export function editHopDong(id) {

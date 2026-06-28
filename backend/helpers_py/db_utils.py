@@ -10,6 +10,56 @@ import hashlib
 import db_helper
 from db_helper import database, models, load_and_register
 
+# Whitelist bảo vệ DDL: chỉ cho phép tên bảng được định nghĩa trong schema
+_ALLOWED_TABLES: frozenset = frozenset()  # Sẽ được khởi tạo sau khi SCHEMA_DINH_NGHIA sẵn sàng
+
+def _get_allowed_tables() -> frozenset:
+    global _ALLOWED_TABLES
+    if not _ALLOWED_TABLES:
+        _ALLOWED_TABLES = frozenset(SCHEMA_DINH_NGHIA.keys())
+    return _ALLOWED_TABLES
+
+def _assert_safe_table(table_name: str) -> str:
+    """Kiểm tra tên bảng nằm trong whitelist schema trước khi dùng trong DDL/DML."""
+    if table_name not in _get_allowed_tables():
+        raise ValueError(f"Tên bảng không hợp lệ hoặc không được phép: '{table_name}'")
+    return table_name
+
+
+def _normalize_sqlite_type(t: str) -> str:
+    """Chuẩn hóa kiểu dữ liệu SQLite để so sánh giữa schema code và DB."""
+    t = t.strip()
+    if not t:
+        return "TEXT"
+    if "INT" in t:
+        return "INTEGER"
+    if "CHAR" in t or "CLOB" in t or "TEXT" in t:
+        return "TEXT"
+    if "BLOB" in t:
+        return "BLOB"
+    if "REAL" in t or "FLOA" in t or "DOUB" in t:
+        return "REAL"
+    return t
+
+
+def _build_create_table_sql(table_name: str, table_spec: dict) -> str:
+    """Xây dựng câu lệnh CREATE TABLE từ table_spec — dùng chung khi tạo mới và khi rebuild."""
+    cols_def = []
+    primary_keys = table_spec.get("primary_keys", [])
+    for col_name, col_def in table_spec["columns"].items():
+        if primary_keys and col_name in primary_keys:
+            clean_def = col_def.replace("PRIMARY KEY", "")
+            cols_def.append(f"{col_name} {clean_def}")
+        else:
+            cols_def.append(f"{col_name} {col_def}")
+    if primary_keys:
+        cols_def.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
+    for constraint in table_spec.get("unique_constraints", []):
+        cols_def.append(constraint)
+    for fk in table_spec.get("foreign_keys", []):
+        cols_def.append(fk)
+    return f"CREATE TABLE {table_name} ({', '.join(cols_def)})"
+
 
 def recalculate_is_latest(cursor, table_name, owner_id=None):
     """
@@ -80,7 +130,6 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
         """)
     plans = cursor.fetchall()
     
-    import json
     for row in plans:
         plan_id = row[0]
         id_goc = row[1]
@@ -110,9 +159,9 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
             if not cv_str:
                 return 0
             try:
-                items = json.loads(cv_str)
-                if isinstance(items, list):
-                    return sum(float(item.get('giaTri') or 0) for item in items if isinstance(item, dict))
+                parsed = json.loads(cv_str)
+                if isinstance(parsed, list):
+                    return sum(float(i.get('giaTri') or 0) for i in parsed if isinstance(i, dict))
             except Exception:
                 pass
             return 0
@@ -156,21 +205,7 @@ def khoi_tao_va_di_tru_he_thong():
             table_exists = cursor.fetchone()
             
             if not table_exists:
-                cols_def = []
-                primary_keys = table_spec.get("primary_keys", [])
-                for col_name, col_def in table_spec["columns"].items():
-                    if primary_keys and col_name in primary_keys:
-                        clean_def = col_def.replace("PRIMARY KEY", "")
-                        cols_def.append(f"{col_name} {clean_def}")
-                    else:
-                        cols_def.append(f"{col_name} {col_def}")
-                if primary_keys:
-                    cols_def.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
-                for constraint in table_spec.get("unique_constraints", []):
-                    cols_def.append(constraint)
-                for fk in table_spec.get("foreign_keys", []):
-                    cols_def.append(fk)
-                sql_create = f"CREATE TABLE {table_name} ({', '.join(cols_def)})"
+                sql_create = _build_create_table_sql(table_name, table_spec)
                 print(f"Đồng bộ: Tạo bảng mới '{table_name}' theo cấu trúc code định nghĩa.")
                 cursor.execute(sql_create)
                 continue
@@ -193,22 +228,7 @@ def khoi_tao_va_di_tru_he_thong():
                 if col_name in current_cols:
                     expected_type = col_def.split()[0].upper().replace(",", "")
                     current_type = current_cols[col_name][2].upper()
-                    
-                    def normalize_type(t):
-                        t = t.strip()
-                        if not t:
-                            return "TEXT"
-                        if "INT" in t:
-                            return "INTEGER"
-                        if "CHAR" in t or "CLOB" in t or "TEXT" in t:
-                            return "TEXT"
-                        if "BLOB" in t:
-                            return "BLOB"
-                        if "REAL" in t or "FLOA" in t or "DOUB" in t:
-                            return "REAL"
-                        return t
-
-                    if normalize_type(expected_type) != normalize_type(current_type):
+                    if _normalize_sqlite_type(expected_type) != _normalize_sqlite_type(current_type):
                         print(f"Đồng bộ: Phát hiện lệch kiểu dữ liệu cột '{col_name}' trong '{table_name}' (Code: {expected_type}, DB: {current_type})")
                         rebuild_needed = True
                         break
@@ -254,23 +274,7 @@ def khoi_tao_va_di_tru_he_thong():
                     cursor.execute("PRAGMA foreign_keys = OFF")
                     cursor.execute(f"DROP TABLE IF EXISTS {temp_table}")
                     cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table}")
-                    
-                    cols_def = []
-                    primary_keys = table_spec.get("primary_keys", [])
-                    for col_name, col_def in table_spec["columns"].items():
-                        if primary_keys and col_name in primary_keys:
-                            clean_def = col_def.replace("PRIMARY KEY", "")
-                            cols_def.append(f"{col_name} {clean_def}")
-                        else:
-                            cols_def.append(f"{col_name} {col_def}")
-                    if primary_keys:
-                        cols_def.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
-                    for constraint in table_spec.get("unique_constraints", []):
-                        cols_def.append(constraint)
-                    for fk in table_spec.get("foreign_keys", []):
-                        cols_def.append(fk)
-                    
-                    sql_create = f"CREATE TABLE {table_name} ({', '.join(cols_def)})"
+                    sql_create = _build_create_table_sql(table_name, table_spec)
                     cursor.execute(sql_create)
                     
                     cursor.execute(f"PRAGMA table_info({temp_table})")
@@ -379,8 +383,4 @@ def khoi_tao_va_di_tru_he_thong():
         print("Khởi tạo và đồng bộ cơ sở dữ liệu thành công!")
     except Exception as e:
         print("Lỗi khởi tạo/đồng bộ database:", e)
-def _run_migration():
-    try:
-        khoi_tao_va_di_tru_he_thong()
-    except Exception as _mg_ex:
-        print(f"[Lỗi khởi tạo DB] {_mg_ex}")
+# _run_migration đã được loại bỏ — dùng trực tiếp khoi_tao_va_di_tru_he_thong()

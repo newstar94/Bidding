@@ -485,13 +485,16 @@ export class BiddingView {
                 cancelBtn.removeEventListener('click', onCancel);
                 if (closeBtn) closeBtn.removeEventListener('click', onClose);
                 
-                // Restore card styles and button container
-                cardEl.style.width = originalCardWidth;
-                cardEl.style.maxWidth = originalCardMaxWidth;
-                buttonContainer.style.flexDirection = originalFlexDirection;
-                buttonContainer.style.gap = originalGap;
-                buttonContainer.innerHTML = originalButtonsHtml;
                 modal.classList.remove('active');
+
+                // Restore card styles and button container after transition finishes
+                setTimeout(() => {
+                    cardEl.style.width = originalCardWidth;
+                    cardEl.style.maxWidth = originalCardMaxWidth;
+                    buttonContainer.style.flexDirection = originalFlexDirection;
+                    buttonContainer.style.gap = originalGap;
+                    buttonContainer.innerHTML = originalButtonsHtml;
+                }, 300);
             };
 
             opt1Btn.addEventListener('click', onOpt1);
@@ -723,10 +726,12 @@ export class BiddingView {
                 cancelBtn.removeEventListener('click', onCancel);
                 if (closeBtn) closeBtn.removeEventListener('click', onClose);
 
-                const container = document.getElementById('dialog-prompt-container');
-                if (container) container.remove();
-
                 modal.classList.remove('active');
+
+                setTimeout(() => {
+                    const container = document.getElementById('dialog-prompt-container');
+                    if (container) container.remove();
+                }, 300);
             };
 
             if (!isDatePicker) {

@@ -82,21 +82,24 @@ def load_base64_image(db_value: str) -> str:
     if not db_value.startswith("uploads/"):
         return db_value
     # Cache key bao gồm mời lần file được chỉnh sửa (mà tử vựa) — tự invalidate khi upload ảnh mới
-    _cache = _load_image_cache
     try:
-        resolved_value = db_value.replace("uploads/", "templates/uploads/", 1) if db_value.startswith("uploads/") else db_value
-        filepath = os.path.join(project_root, resolved_value)
+        filepath = os.path.join(
+            project_root,
+            db_value.replace("uploads/", "templates/uploads/", 1)
+        )
         if not os.path.exists(filepath):
             return db_value
         mtime = os.path.getmtime(filepath)
         cache_key = (db_value, mtime)
     except Exception:
         cache_key = (db_value, 0)
-        resolved_value = db_value.replace("uploads/", "templates/uploads/", 1) if db_value.startswith("uploads/") else db_value
-        filepath = os.path.join(project_root, resolved_value)
+        filepath = os.path.join(
+            project_root,
+            db_value.replace("uploads/", "templates/uploads/", 1)
+        )
     
-    if cache_key in _cache:
-        return _cache[cache_key]
+    if cache_key in _load_image_cache:
+        return _load_image_cache[cache_key]
     try:
         if os.path.exists(filepath):
             with open(filepath, "rb") as f:
@@ -109,12 +112,11 @@ def load_base64_image(db_value: str) -> str:
                 mime = "image/webp"
             elif ext == "gif":
                 mime = "image/gif"
-            
             b64 = f"data:{mime};base64,{base64.b64encode(file_data).decode('utf-8')}"
             # Cache kết quả (giới hạn 256 entry — LRU thủ công)
-            if len(_cache) >= 256:
-                _cache.pop(next(iter(_cache)))
-            _cache[cache_key] = b64
+            if len(_load_image_cache) >= 256:
+                _load_image_cache.pop(next(iter(_load_image_cache)))
+            _load_image_cache[cache_key] = b64
             return b64
     except Exception as e:
         print(f"Error loading image path {db_value}: {e}")

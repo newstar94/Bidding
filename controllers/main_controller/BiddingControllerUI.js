@@ -302,9 +302,12 @@ export function switchTab(tabName, action = null, updateState = true) {
             }
         }, 100);
     } else if (!action) {
-        // Auto close modal if we navigate back to parent route
-        document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('active'));
-        document.body.style.overflow = '';
+        // Auto close modal if we navigate back to parent route (excluding global custom dialog)
+        document.querySelectorAll('.modal-overlay:not(#modal-custom-dialog)').forEach(el => el.classList.remove('active'));
+        const activeModals = document.querySelectorAll('.modal-overlay.active');
+        if (activeModals.length === 0) {
+            document.body.style.overflow = '';
+        }
     }
 }
 

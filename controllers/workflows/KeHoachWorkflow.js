@@ -1,9 +1,9 @@
 export async function deleteKeHoach(id) {
     const targetPlan = this.model.state.kehoach.find(k => k.id === id);
     if (!targetPlan) return;
-    const baseCode = this.model.getPlanBaseCode(targetPlan.maKeHoach);
+    const rootId = targetPlan.rootId || targetPlan.id;
 
-    const relatedPlans = this.model.state.kehoach.filter(kh => this.model.getPlanBaseCode(kh.maKeHoach) === baseCode);
+    const relatedPlans = this.model.state.kehoach.filter(kh => (kh.rootId || kh.id) === rootId);
     const relatedIds = relatedPlans.map(kh => kh.id);
 
     if (relatedPlans.length >= 2) {
@@ -62,7 +62,7 @@ export async function deleteKeHoach(id) {
                 return;
             }
 
-            this.model.state.kehoach = this.model.state.kehoach.filter(kh => this.model.getPlanBaseCode(kh.maKeHoach) !== baseCode);
+            this.model.state.kehoach = this.model.state.kehoach.filter(kh => (kh.rootId || kh.id) !== rootId);
             await this.model.persistData('kehoach');
             this.view.renderKeHoachTable();
             await this.autoSync();

@@ -237,8 +237,8 @@ export function setupRBACEvents() {
             // Persist state & update profile visual card
             this.view.updateActiveUserProfileDisplay();
 
-            // Clear any open modals
-            document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+            // Clear any open modals (excluding global custom dialog)
+            document.querySelectorAll('.modal-overlay:not(#modal-custom-dialog)').forEach(m => m.classList.remove('active'));
             if (profileDropdown) profileDropdown.classList.remove('active');
 
             // Return to dashboard to force data filtering!
