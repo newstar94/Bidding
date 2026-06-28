@@ -347,7 +347,10 @@ def khoi_tao_va_di_tru_he_thong():
                 VALUES (?, ?, ?)
             """, (admin_uuid, org_hash_id, 'super_admin'))
                            
-        cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE da_xac_minh IS NULL OR da_xac_minh = 0")
+        # Kích hoạt tự động chỉ cho tài khoản CŨ (tạo trước khi có tính năng OTP):
+        # - Tài khoản cũ: da_xac_minh = 0 VÀ ma_xac_minh IS NULL (không có OTP đang chờ)
+        # - Tài khoản mới chưa xác thực: da_xac_minh = 0 VÀ ma_xac_minh IS NOT NULL → KHÔNG được kích hoạt tự động
+        cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE (da_xac_minh IS NULL OR da_xac_minh = 0) AND (ma_xac_minh IS NULL)")
 
         cursor.execute("SELECT id FROM tai_khoan WHERE vai_tro = 'super_admin' OR ten_dang_nhap = 'admin' LIMIT 1")
         admin_row = cursor.fetchone()
