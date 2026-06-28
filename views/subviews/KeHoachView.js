@@ -297,19 +297,19 @@ export function renderPlanVersionDetails(versionId) {
                     <table class="phanlo-table" style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr style="background: var(--neutral-soft); text-align: left; border-bottom: 1px solid var(--border-color);">
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 220px;">Đơn vị thực hiện</th>
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 220px;">Văn bản phê duyệt</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 220px;">Đơn vị thực hiện</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 220px;">Văn bản phê duyệt</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${list1.map(item => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || '--'}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.vanBanPheDuyet || '--'}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || '--'}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.vanBanPheDuyet || '--'}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -328,17 +328,17 @@ export function renderPlanVersionDetails(versionId) {
                     <table class="phanlo-table" style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr style="background: var(--neutral-soft); text-align: left; border-bottom: 1px solid var(--border-color);">
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 300px;">Đơn vị thực hiện</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 300px;">Đơn vị thực hiện</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${list2.map(item => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || '--'}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || '--'}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -357,15 +357,15 @@ export function renderPlanVersionDetails(versionId) {
                     <table class="phanlo-table" style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr style="background: var(--neutral-soft); text-align: left; border-bottom: 1px solid var(--border-color);">
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
-                                <th style="padding: 10px 14px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
+                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${list3.map(item => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.84rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>

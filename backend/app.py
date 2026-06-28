@@ -27,15 +27,13 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-import json
 import uvicorn
-import shutil
 
 # Import các thành phần của framework Starlette để dựng Web API Server
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
-from starlette.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse
+from starlette.responses import JSONResponse, HTMLResponse
 from starlette.middleware import Middleware
 
 import re
@@ -109,7 +107,6 @@ async def index(request):
     return HTMLResponse(content=html_content, status_code=200, headers={"ETag": etag})
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.background import BackgroundTasks
 
 # ==========================================
 # 1. CẤU HÌNH ĐƯỜNG DẪN & TẢI MODULE BIÊN DỊCH

@@ -234,7 +234,6 @@ export class BiddingController {
         this.view.initDOM();
         this.setupAuth();
         this.setupActivityTracker();
-        this.view.setupFlatpickr();
 
         this.registerGlobals();
         this.setupTheme();

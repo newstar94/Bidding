@@ -328,11 +328,6 @@ export class BiddingView {
                 }
             }
         });
-    }
-
-    setupFlatpickr() {
-        // Removed flatpickr initialization. Native HTML5 date/datetime inputs are used directly.
-    }
 
     openModal(modalId) {
         const modal = document.getElementById(modalId);

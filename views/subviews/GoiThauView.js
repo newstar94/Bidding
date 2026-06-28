@@ -1391,7 +1391,7 @@ export function showPackageDetails(id) {
                 }
 
                 const soQd = metadata.technical.soQdPheDuyetKt || '';
-                const ngayQd = metadata.technical.ngayQdPheDuyetKt ? this.model.formatDate(metadata.technical.ngayQdPheDuyetKt) : '';
+                const ngayQd = metadata.technical.ngayQdPheDuyetKt || '';
                 const isCompleted = !!metadata.technical.qualifiedSaved;
                 const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
                 const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả';
@@ -1407,7 +1407,7 @@ export function showPackageDetails(id) {
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Ngày QĐ phê duyệt <span class="text-danger">*</span></label>
-                                <input type="text" id="qualified-ngay-qd" class="form-control flatpickr-dmy" value="${ngayQd}" placeholder="Chọn ngày" style="width: 100%;" ${isReadOnly ? 'readonly' : ''}>
+                                <input type="date" id="qualified-ngay-qd" class="form-control" value="${ngayQd ? this.model.formatForDateInput(ngayQd) : ''}" style="width: 100%;" ${isReadOnly ? 'readonly' : ''}>
                                 <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày QĐ phê duyệt!</span>
                             </div>
                         </div>
@@ -1451,12 +1451,6 @@ export function showPackageDetails(id) {
                  `;
 
                 if (!isReadOnly) {
-                    flatpickr(contentWrapper.querySelector('#qualified-ngay-qd'), {
-                        dateFormat: "d/m/Y",
-                        locale: "vn",
-                        allowInput: true
-                    });
-
                     const btnSave = contentWrapper.querySelector('#btn-save-qualified-decision');
                     if (btnSave) {
                         btnSave.onclick = async () => {
@@ -1901,7 +1895,7 @@ export function showPackageDetails(id) {
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${thoiGianThucHienHtml}</td>
                                 <td style="text-align: center;">${badge}</td>
-                                <td class="text-muted" style="font-size: 0.82rem;">${lyDo}</td>
+                                <td class="text-muted">${lyDo}</td>
                             </tr>
                         `;
                     } else {
@@ -1912,7 +1906,7 @@ export function showPackageDetails(id) {
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${thoiGianThucHienHtml}</td>
                                 <td style="text-align: center;">${badge}</td>
-                                <td class="text-muted" style="font-size: 0.82rem;">${lyDo}</td>
+                                <td class="text-muted">${lyDo}</td>
                             </tr>
                         `;
                     }
@@ -2186,7 +2180,7 @@ export function showPackageDetails(id) {
                             </div>
                             <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
                                 <label style="font-weight:700; font-size:0.85rem;">Ngày ký QĐ <span class="required">*</span></label>
-                                <input type="text" id="award-decision-date" class="form-control flatpickr-dmy" required value="${gt.ngayQuyetDinhKetQua ? this.model.formatDate(gt.ngayQuyetDinhKetQua) : ''}" placeholder="Chọn ngày...">
+                                <input type="date" id="award-decision-date" class="form-control" required value="${gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : ''}">
                                 <span class="error-text">Vui lòng chọn ngày ký QĐ</span>
                             </div>
                         </div>
@@ -2228,12 +2222,6 @@ export function showPackageDetails(id) {
                         </button>
                     </div>
                 `;
-
-                flatpickr('#award-decision-date', {
-                    dateFormat: "d/m/Y",
-                    locale: "vn",
-                    allowInput: true
-                });
 
                 const tbodyApprove = document.getElementById('approve-bidders-tbody');
                 if (tbodyApprove) {

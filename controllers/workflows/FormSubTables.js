@@ -351,17 +351,7 @@ export function addYeuCauLamRoRow(data = {}) {
     `;
 
     const timeInput = tr.querySelector('.yc-time-input');
-    if (typeof flatpickr !== 'undefined') {
-        flatpickr(timeInput, {
-            locale: "vn",
-            enableTime: true,
-            enableSeconds: false,
-            time_24hr: true,
-            dateFormat: "d/m/Y H:i",
-            allowInput: true,
-            position: "auto"
-        });
-    }
+
 
     tr.querySelector('.remove-yc-row-btn').addEventListener('click', () => {
         tr.remove();
@@ -424,17 +414,7 @@ export function addTraLoiLamRoRow(data = {}) {
     `;
 
     const timeInput = tr.querySelector('.tl-time-input');
-    if (typeof flatpickr !== 'undefined') {
-        flatpickr(timeInput, {
-            locale: "vn",
-            enableTime: true,
-            enableSeconds: false,
-            time_24hr: true,
-            dateFormat: "d/m/Y H:i",
-            allowInput: true,
-            position: "auto"
-        });
-    }
+
 
     tr.querySelector('.remove-tl-row-btn').addEventListener('click', () => {
         tr.remove();

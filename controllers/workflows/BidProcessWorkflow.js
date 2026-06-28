@@ -18,7 +18,7 @@ export async function moThauGoiThau(id) {
         return;
     }
 
-    // Flatpickr luôn trả về định dạng dd/MM/yyyy HH:mm, không cần validate thêm
+    // Giá trị thoiGianMoThauStr trả về định dạng dd/MM/yyyy HH:mm
     const parts = cleanStr.split(' ');
     const dateParts = parts[0].split('/');
     const timeParts = (parts[1] || '').split(':');
