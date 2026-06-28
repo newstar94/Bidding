@@ -340,6 +340,195 @@ async def sync_api(request):
         updated_versioned_tables = set()
         orphaned_ids = []  # Danh sách record bị từ chối do FK (parent đã bị xóa) — gửi về client để xóa khỏi IndexedDB
         
+        # Pass 1: Validation
+        validation_errors = []
+        
+        def is_valid_date_format(val):
+            if not val:
+                return True
+            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+                try:
+                    datetime.strptime(val, fmt)
+                    return True
+                except ValueError:
+                    pass
+            return False
+            
+        def parse_date(val):
+            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+                try:
+                    return datetime.strptime(val, fmt)
+                except ValueError:
+                    pass
+            return None
+
+        for payload_key, table_name in TABLE_KEYS.items():
+            if payload_key not in data:
+                continue
+            items = data[payload_key]
+            if not isinstance(items, list):
+                continue
+                
+            for item in items:
+                item_errors = []
+                c_id = get_clean_id(table_name, item.get('id'))
+                c_root_id = get_clean_id(table_name, item.get('rootId')) or c_id
+                
+                # 1. Required fields
+                if table_name == "chu_dau_tu":
+                    ten = item.get("tenChuDauTu") or item.get("ten_chu_dau_tu")
+                    if not ten or not str(ten).strip():
+                        item_errors.append("Tên chủ đầu tư không được để trống.")
+                elif table_name == "ke_hoach_lcnt":
+                    ten = item.get("tenKeHoach") or item.get("ten_ke_hoach")
+                    if not ten or not str(ten).strip():
+                        item_errors.append("Tên kế hoạch LCNT không được để trống.")
+                elif table_name == "goi_thau":
+                    ten = item.get("tenGoiThau") or item.get("ten_goi_thau")
+                    if not ten or not str(ten).strip():
+                        item_errors.append("Tên gói thầu không được để trống.")
+                elif table_name == "nha_thau":
+                    ten = item.get("tenNhaThau") or item.get("ten_nha_thau")
+                    if not ten or not str(ten).strip():
+                        item_errors.append("Tên nhà thầu không được để trống.")
+                elif table_name == "chuyen_gia":
+                    ten = item.get("hoTen") or item.get("ho_ten")
+                    if not ten or not str(ten).strip():
+                        item_errors.append("Họ và tên chuyên gia không được để trống.")
+                elif table_name == "hop_dong":
+                    ten = item.get("tenHopDong") or item.get("ten_hop_dong")
+                    so_hd = item.get("soHopDong") or item.get("so_hop_dong")
+                    if not ten or not str(ten).strip():
+                        item_errors.append("Tên hợp đồng không được để trống.")
+                    if not so_hd or not str(so_hd).strip():
+                        item_errors.append("Số hợp đồng không được để trống.")
+
+                # 2. Format validation
+                email = item.get("email")
+                if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", str(email).strip()):
+                    item_errors.append("Email không đúng định dạng.")
+                    
+                phone = item.get("soDienThoai") or item.get("so_dien_thoai")
+                if phone and not re.match(r"^[0-9\s+\-()]*$", str(phone).strip()):
+                    item_errors.append("Số điện thoại không đúng định dạng.")
+                
+                for date_key in ["ngayQuyetDinh", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau", "ngayPheDuyet", "ngayKy"]:
+                    val = item.get(date_key)
+                    if val and not is_valid_date_format(str(val).strip()):
+                        item_errors.append(f"Trường ngày/giờ '{date_key}' không đúng định dạng.")
+
+                # 3. Logic validation
+                if table_name == "goi_thau":
+                    dang_tai_str = item.get("thoiGianDangTai") or item.get("thoi_gian_dang_tai")
+                    dong_thau_str = item.get("thoiGianDongThau") or item.get("thoi_gian_dong_thau")
+                    mo_thau_str = item.get("thoiGianMoThau") or item.get("thoi_gian_mo_thau")
+                    
+                    dang_tai = parse_date(dang_tai_str) if dang_tai_str else None
+                    dong_thau = parse_date(dong_thau_str) if dong_thau_str else None
+                    mo_thau = parse_date(mo_thau_str) if mo_thau_str else None
+                    
+                    if dang_tai and dong_thau and dong_thau <= dang_tai:
+                        item_errors.append("Thời gian đóng thầu phải sau thời gian đăng tải.")
+                    if dong_thau and mo_thau and mo_thau < dong_thau:
+                        item_errors.append("Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu.")
+                        
+                    trong_so = item.get("trongSoKyThuat") or item.get("trong_so_ky_thuat")
+                    if trong_so is not None:
+                        ts_val = safe_int(trong_so)
+                        if ts_val is not None and (ts_val < 0 or ts_val > 100):
+                            item_errors.append("Trọng số kỹ thuật phải nằm trong khoảng từ 0% đến 100%.")
+                            
+                    gia = item.get("giaGoiThau") or item.get("gia_goi_thau")
+                    if gia is not None:
+                        gia_val = safe_float(gia)
+                        if gia_val is not None and gia_val < 0:
+                            item_errors.append("Giá gói thầu không được nhỏ hơn 0.")
+                            
+                elif table_name == "ke_hoach_lcnt":
+                    tong_muc = item.get("tongMucDauTu") or item.get("tong_muc_dau_tu")
+                    if tong_muc is not None:
+                        tm_val = safe_float(tong_muc)
+                        if tm_val is not None and tm_val < 0:
+                            item_errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
+                            
+                elif table_name == "hop_dong":
+                    gia_tri = item.get("giaTri") or item.get("gia_tri")
+                    if gia_tri is not None:
+                        gt_val = safe_float(gia_tri)
+                        if gt_val is not None and gt_val < 0:
+                            item_errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
+
+                # 4. Duplicate checks
+                if table_name == "chu_dau_tu":
+                    ma = item.get("maChuDauTu") or item.get("ma_chu_dau_tu")
+                    mst = item.get("maSoThue") or item.get("ma_so_thue")
+                    if ma and str(ma).strip():
+                        cursor.execute("SELECT 1 FROM chu_dau_tu WHERE owner_id = ? AND ma_chu_dau_tu = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Mã chủ đầu tư '{ma}' đã tồn tại.")
+                    if mst and str(mst).strip():
+                        cursor.execute("SELECT 1 FROM chu_dau_tu WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Mã số thuế '{mst}' đã tồn tại.")
+                            
+                elif table_name == "ke_hoach_lcnt":
+                    ma = item.get("maKeHoach") or item.get("ma_ke_hoach")
+                    if ma and str(ma).strip():
+                        cursor.execute("SELECT 1 FROM ke_hoach_lcnt WHERE owner_id = ? AND ma_ke_hoach = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Mã kế hoạch '{ma}' đã tồn tại.")
+                            
+                elif table_name == "goi_thau":
+                    ma = item.get("maGoiThau") or item.get("ma_goi_thau")
+                    if ma and str(ma).strip():
+                        cursor.execute("SELECT 1 FROM goi_thau WHERE owner_id = ? AND ma_goi_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Mã gói thầu '{ma}' đã tồn tại.")
+                            
+                elif table_name == "nha_thau":
+                    ma = item.get("maNhaThau") or item.get("ma_nha_thau")
+                    mst = item.get("maSoThue") or item.get("ma_so_thue")
+                    if ma and str(ma).strip():
+                        cursor.execute("SELECT 1 FROM nha_thau WHERE owner_id = ? AND ma_nha_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Mã nhà thầu '{ma}' đã tồn tại.")
+                    if mst and str(mst).strip():
+                        cursor.execute("SELECT 1 FROM nha_thau WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Mã số thuế '{mst}' đã tồn tại.")
+                            
+                elif table_name == "chuyen_gia":
+                    cccd = item.get("soCCCD") or item.get("so_cccd")
+                    if cccd and str(cccd).strip():
+                        cursor.execute("SELECT 1 FROM chuyen_gia WHERE owner_id = ? AND so_cccd = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(cccd).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Số CCCD chuyên gia '{cccd}' đã tồn tại.")
+                            
+                elif table_name == "hop_dong":
+                    so_hd = item.get("soHopDong") or item.get("so_hop_dong")
+                    if so_hd and str(so_hd).strip():
+                        cursor.execute("SELECT 1 FROM hop_dong WHERE owner_id = ? AND so_hop_dong = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(so_hd).strip(), c_id, c_root_id))
+                        if cursor.fetchone():
+                            item_errors.append(f"Số hợp đồng '{so_hd}' đã tồn tại.")
+
+                if item_errors:
+                    display_name = item.get("tenChuDauTu") or item.get("tenKeHoach") or item.get("tenGoiThau") or item.get("tenNhaThau") or item.get("hoTen") or item.get("tenHopDong") or item.get("id")
+                    for err in item_errors:
+                        validation_errors.append({
+                            "table": table_name,
+                            "id": item.get("id"),
+                            "message": f"[{display_name}]: {err}"
+                        })
+
+        if validation_errors:
+            conn.rollback()
+            conn.close()
+            return JSONResponse({
+                "status": "error",
+                "message": "Không thể lưu dữ liệu do phát hiện lỗi:",
+                "errors": validation_errors
+            }, status_code=400)
+
         for payload_key, table_name in TABLE_KEYS.items():
             if payload_key not in data:
                 continue

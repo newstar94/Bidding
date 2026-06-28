@@ -305,7 +305,8 @@ export async function handleKeHoachSubmit(e) {
                     }, { once: true });
                 }
             }
-            inputEl.focus();
+            inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => inputEl.focus({ preventScroll: true }), 300);
             return;
         }
     }
@@ -779,6 +780,17 @@ export async function savePlanBreakdown() {
                 cvChuaDuDieuKienList: cvChuaDuDieuKien
             });
 
+            // Tự động phân công phiên bản kế hoạch mới cho chuyên viên đang thao tác
+            const activeUserId = this.model.state.activeuser.id;
+            if (activeUserId) {
+                await this.model.addRecord('assignments', {
+                    id: window.generateUUID(),
+                    empId: activeUserId,
+                    targetId: newId,
+                    type: 'kehoach'
+                });
+            }
+
             // Duplicate packages and bids from the old plan version to the new plan version
             const oldPackages = this.model.state.goithau.filter(gt => gt.keHoachId === oldKh.id);
             oldPackages.forEach(gt => {
@@ -819,6 +831,17 @@ export async function savePlanBreakdown() {
             currentKh.cvDaThucHienList = cvDaThucHien;
             currentKh.cvKhongApDungList = cvKhongApDung;
             currentKh.cvChuaDuDieuKienList = cvChuaDuDieuKien;
+        }
+
+        // Tự động phân công kế hoạch mới tạo cho chính chuyên viên tạo
+        const activeUserId = this.model.state.activeuser.id;
+        if (activeUserId) {
+            await this.model.addRecord('assignments', {
+                id: window.generateUUID(),
+                empId: activeUserId,
+                targetId: finalPlanId,
+                type: 'kehoach'
+            });
         }
     }
 

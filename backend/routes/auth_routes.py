@@ -306,7 +306,13 @@ async def resend_code_api(request):
             return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400)
             
         user = dict(row)
+        is_verified = False
         if user['da_xac_minh']:
+            # Kiểm tra an toàn tránh ép kiểu chuỗi '0' thành True trong Python
+            if str(user['da_xac_minh']).strip() not in ('0', 'False', 'None', ''):
+                is_verified = True
+                
+        if is_verified:
             conn.close()
             return JSONResponse({"error": "Tài khoản này đã được xác thực trước đó!"}, status_code=400)
             

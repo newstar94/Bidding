@@ -790,7 +790,8 @@ export async function handleGoiThauSubmit(e) {
                     }, { once: true });
                 }
             }
-            inputEl.focus();
+            inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => inputEl.focus({ preventScroll: true }), 300);
             return;
         }
     }

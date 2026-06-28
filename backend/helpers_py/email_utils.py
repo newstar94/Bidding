@@ -3,8 +3,23 @@ import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from db_helper import database
+import sys
+
+def log_error(message, context="Email"):
+    # Tự ghi log để tránh circular import với helpers.py
+    print(f"[{context}] ERROR: {message}", file=sys.stderr)
+
 
 def gui_email(email_nhan, tieu_de, noi_dung_html):
+    SMTP_USER = os.environ.get("SMTP_USER", "")
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+    SMTP_SENDER = os.environ.get("SMTP_SENDER", "")
+    SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    try:
+        SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+    except ValueError:
+        SMTP_PORT = 587
+
     if not SMTP_USER or not SMTP_PASSWORD:
         msg = f"[MOCK MAIL] Gửi tới: {email_nhan}\nTiêu đề: {tieu_de}\nNội dung:\n{noi_dung_html}\n"
         log_error(msg, context="EmailMock")

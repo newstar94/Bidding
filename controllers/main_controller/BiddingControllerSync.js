@@ -20,6 +20,7 @@ export function setupAutoSyncBackground() {
 
 
 export function autoSync() {
+    const self = this;
     return fetch('/api/sync', {
         method: 'POST',
         headers: {
@@ -31,12 +32,81 @@ export function autoSync() {
         body: JSON.stringify(this.model.state)
     })
         .then(res => {
-            if (res.ok) {
-                return res.json();
-            }
-            throw new Error("Sync failed");
+            // Luôn đọc JSON dù response ok hay lỗi để có thể lấy validation_errors
+            return res.json().then(data => ({ ok: res.ok, status: res.status, data }));
         })
-        .then(data => {
+        .then(({ ok, status, data }) => {
+            // Xử lý lỗi validation từ server (status 400)
+            if (!ok || data.status === 'error') {
+                if (Array.isArray(data.errors) && data.errors.length > 0) {
+                    const TABLE_LABELS = {
+                        'chu_dau_tu': 'Chủ đầu tư',
+                        'ke_hoach_lcnt': 'Kế hoạch LCNT',
+                        'goi_thau': 'Gói thầu',
+                        'nha_thau': 'Nhà thầu',
+                        'chuyen_gia': 'Chuyên gia',
+                        'hop_dong': 'Hợp đồng',
+                        'thong_tin_mo_thau': 'Thông tin mở thầu'
+                    };
+
+                    // Nhóm lỗi theo loại (thiếu trường, sai định dạng, sai logic, trùng lặp)
+                    const categorized = {
+                        missing: [],
+                        format: [],
+                        logic: [],
+                        duplicate: []
+                    };
+
+                    data.errors.forEach(err => {
+                        const msg = err.message || '';
+                        if (msg.includes('không được để trống')) {
+                            categorized.missing.push(msg);
+                        } else if (msg.includes('định dạng') || msg.includes('không đúng')) {
+                            categorized.format.push(msg);
+                        } else if (msg.includes('phải sau') || msg.includes('phải bằng') || msg.includes('phải nằm') || msg.includes('không được nhỏ')) {
+                            categorized.logic.push(msg);
+                        } else if (msg.includes('đã tồn tại')) {
+                            categorized.duplicate.push(msg);
+                        } else {
+                            categorized.format.push(msg);
+                        }
+                    });
+
+                    let msgLines = ['⚠️ Phát hiện lỗi dữ liệu, không thể đồng bộ:\n'];
+
+                    if (categorized.missing.length > 0) {
+                        msgLines.push('❌ THIẾU THÔNG TIN BẮT BUỘC:');
+                        categorized.missing.forEach(m => msgLines.push('  • ' + m));
+                        msgLines.push('');
+                    }
+                    if (categorized.format.length > 0) {
+                        msgLines.push('📋 SAI ĐỊNH DẠNG:');
+                        categorized.format.forEach(m => msgLines.push('  • ' + m));
+                        msgLines.push('');
+                    }
+                    if (categorized.logic.length > 0) {
+                        msgLines.push('⚡ SAI LOGIC NGHIỆP VỤ:');
+                        categorized.logic.forEach(m => msgLines.push('  • ' + m));
+                        msgLines.push('');
+                    }
+                    if (categorized.duplicate.length > 0) {
+                        msgLines.push('🔁 DỮ LIỆU BỊ TRÙNG LẶP:');
+                        categorized.duplicate.forEach(m => msgLines.push('  • ' + m));
+                    }
+
+                    const fullMsg = msgLines.join('\n');
+                    console.error('[Sync Validation Error]', data.errors);
+
+                    // Hiển thị dialog lỗi nếu có view
+                    if (self.view && typeof self.view.customAlert === 'function') {
+                        self.view.customAlert('Lỗi lưu dữ liệu', fullMsg, 'x-circle');
+                    }
+                } else {
+                    console.error('[Sync Error]', data.error || data.message || 'Đồng bộ thất bại');
+                }
+                return;
+            }
+
             if (data.timestamp) {
                 localStorage.setItem('bf_last_sync_timestamp', data.timestamp);
             }

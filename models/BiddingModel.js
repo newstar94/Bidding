@@ -621,12 +621,22 @@ export class BiddingModel {
 
         const empId = this.state.activeuser.id;
         const cleanEmpId = String(empId).replace(/^(emp-|user-|sa-|mgr-)+/, '');
-        // A plan is visible to an employee if any package in it is assigned to them
+        
+        // A plan is visible to an employee if:
+        // 1. The plan itself is assigned to them (type === 'kehoach')
+        // 2. Or any package in it is assigned to them (type === 'goithau')
+        const assignedPlanIds = this.state.assignments
+            .filter(a => String(a.empId).replace(/^(emp-|user-|sa-|mgr-)+/, '') === cleanEmpId && a.type === 'kehoach')
+            .map(a => String(a.targetId).replace(/^(gt-|hd-)+/, ''));
+
         const assignedPackages = this.state.assignments
             .filter(a => String(a.empId).replace(/^(emp-|user-|sa-|mgr-)+/, '') === cleanEmpId && a.type === 'goithau')
             .map(a => String(a.targetId).replace(/^(gt-|hd-)+/, ''));
 
         return allPlans.filter(kh => {
+            const isPlanAssigned = assignedPlanIds.includes(String(kh.id).replace(/^(gt-|hd-)+/, ''));
+            if (isPlanAssigned) return true;
+            
             const planPackages = this.state.goithau.filter(gt => gt.keHoachId === kh.id);
             return planPackages.some(gt => assignedPackages.includes(String(gt.id).replace(/^(gt-|hd-)+/, '')));
         });
