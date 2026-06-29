@@ -40,7 +40,7 @@ yarn-error.log*
 
 # Vite cache & build
 .vite/
-# dist/
+dist/
 
 # Agent Customizations
 .agents/
