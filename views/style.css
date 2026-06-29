@@ -3843,6 +3843,22 @@ body.dark-mode .btn-excel-action:hover {
     box-sizing: border-box;
 }
 
+.custom-select-container.disabled {
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+    opacity: 0.7;
+}
+
+.custom-select-container.disabled .custom-select-trigger {
+    background-color: #e2e8f0 !important;
+    background: #e2e8f0 !important;
+    border-color: var(--border-color, #cbd5e1) !important;
+    color: #64748b !important;
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+}
+
+
 .custom-select-container.open .custom-select-trigger {
     border-color: var(--primary, #3b82f6);
     background-color: var(--bg-card, #ffffff);

@@ -584,14 +584,30 @@ export function editGoiThau(id, isReadOnly = false) {
     });
 
     // Khóa/mở khóa tổ chuyên gia và tổ thẩm định
-    document.querySelectorAll('#to-chuyengia-tbody input, #to-chuyengia-tbody select, #to-thamdinh-tbody input, #to-thamdinh-tbody select').forEach(el => {
-        el.disabled = !!isOpenedOrLater;
-    });
+    if (isOpenedOrLater) {
+        // Khi gói thầu đã phát hành → khóa tất cả
+        document.querySelectorAll('#to-chuyengia-tbody input, #to-chuyengia-tbody select, #to-thamdinh-tbody input, #to-thamdinh-tbody select').forEach(el => {
+            el.disabled = true;
+        });
+    } else {
+        // Khi đang chỉnh sửa → chỉ cho phép checkbox; select/input phải đợi checkbox được tích
+        // 1. Chỉ enable checkbox
+        document.querySelectorAll('#to-chuyengia-tbody input[type="checkbox"], #to-thamdinh-tbody input[type="checkbox"]').forEach(cb => {
+            cb.disabled = false;
+        });
+        // 2. Giữ nguyên select và input theo trạng thái checkbox — enforceSingleLeader sẽ xử lý
+        document.querySelectorAll('#to-chuyengia-tbody select, #to-chuyengia-tbody input[type="text"], #to-thamdinh-tbody select, #to-thamdinh-tbody input[type="text"]').forEach(el => {
+            const row = el.closest('tr');
+            const cb = row ? row.querySelector('input[type="checkbox"]') : null;
+            el.disabled = !(cb && cb.checked);
+        });
+    }
 
     if (!isReadOnly && !isOpenedOrLater) {
         this.enforceSingleLeader('to-chuyengia-tbody', 'tochuyengia-chucvu');
         this.enforceSingleLeader('to-thamdinh-tbody', 'tothamdinh-chucvu');
     }
+
 
     // Khóa/mở khóa phân lô và tùy chọn mua thêm (inputs, selects, buttons xóa dòng)
     document.querySelectorAll('#phanlo-tbody input, #phanlo-tbody select, #phanlo-tbody button, #tuychonmuathem-tbody input, #tuychonmuathem-tbody select, #tuychonmuathem-tbody button').forEach(el => {

@@ -190,11 +190,18 @@ export function initCustomSelect(selectId) {
             </ul>
         `;
 
+        // Sync disabled state ngay khi khởi tạo
+        if (select.disabled) {
+            wrapper.classList.add('disabled');
+        }
+
         const trigger = wrapper.querySelector('.custom-select-trigger');
 
         // SỰ KIỆN MỞ DROPDOWN VÀ ĐẨY RA BODY
         trigger.addEventListener('click', (e) => {
             e.stopPropagation();
+            // Không mở nếu select đang bị disabled
+            if (select.disabled || wrapper.classList.contains('disabled')) return;
             const wasOpen = wrapper.classList.contains('open');
             const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector('.custom-select-options');
 
@@ -238,15 +245,29 @@ export function initCustomSelect(selectId) {
         if (isVersionSelect && !wrapper.classList.contains('version-select-container')) wrapper.classList.add('version-select-container');
         if (select.classList.contains('page-version-select') && !wrapper.classList.contains('page-version-select')) wrapper.classList.add('page-version-select');
 
+        // Sync disabled class khi cập nhật
+        wrapper.classList.toggle('disabled', !!select.disabled);
+
         const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector('.custom-select-options');
         if (optionsList) {
             optionsList.innerHTML = options.map(opt => `
                 <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: ${isVersionSelect ? '4px 14px' : '8px 14px'}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
             `).join('');
         }
+        
+        // Luôn cập nhật lại text hiển thị trên trigger dựa trên option được chọn mới nhất
+        const activeSelectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
+        let activeTriggerText = activeSelectedOption.text.trim();
+        if (activeTriggerText.startsWith('Tháng ')) {
+            let coreText = activeTriggerText.substring(6).trim();
+            const monthMap = { 'một': '1', 'hai': '2', 'ba': '3', 'bốn': '4', 'năm': '5', 'sáu': '6', 'bảy': '7', 'tám': '8', 'chín': '9', 'mười': '10', 'mười một': '11', 'mười hai': '12' };
+            if (monthMap[coreText.toLowerCase()]) coreText = monthMap[coreText.toLowerCase()];
+            activeTriggerText = 'Th' + coreText;
+        }
         const triggerSpan = wrapper.querySelector('.custom-select-trigger span');
-        if (triggerSpan) triggerSpan.textContent = triggerText;
+        if (triggerSpan) triggerSpan.textContent = activeTriggerText;
     }
+
 
     // Gắn sự kiện chọn cho các option (cho cả khởi tạo mới và cập nhật lại)
     const activeOptionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector('.custom-select-options');
@@ -280,5 +301,28 @@ export function initCustomSelect(selectId) {
                 initCustomSelect(selectId);
             });
         });
+    }
+}
+
+/**
+ * Sync trạng thái disabled từ native select lên custom-select-container wrapper.
+ * Gọi sau khi thay đổi select.disabled để wrapper hiển thị đúng.
+ * @param {HTMLSelectElement} selectEl - Native select element
+ */
+export function syncCustomSelectDisabled(selectEl) {
+    if (!selectEl || !selectEl.id) return;
+    const wrapper = selectEl.closest('.custom-select-container') ||
+        (selectEl.parentNode && selectEl.parentNode.querySelector(`.custom-select-container[data-target="${selectEl.id}"]`));
+    if (!wrapper) return;
+    wrapper.classList.toggle('disabled', !!selectEl.disabled);
+    // Đóng dropdown nếu đang mở
+    if (selectEl.disabled && wrapper.classList.contains('open')) {
+        wrapper.classList.remove('open');
+        const optionsList = document.body.querySelector(`.custom-select-options[data-parent="${selectEl.id}"]`) ||
+            wrapper.querySelector('.custom-select-options');
+        if (optionsList) {
+            optionsList.style.display = 'none';
+            wrapper.appendChild(optionsList);
+        }
     }
 }

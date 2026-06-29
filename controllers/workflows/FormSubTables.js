@@ -455,7 +455,7 @@ export function enforceSingleLeader(tbodyId, roleName, changedSelect = null) {
 
     const selects = tbody.querySelectorAll(`select[name="${roleName}"]`);
     let leaderSelect = null;
-    
+
     if (changedSelect && changedSelect.value === 'Tổ trưởng') {
         leaderSelect = changedSelect;
     } else {
@@ -475,6 +475,11 @@ export function enforceSingleLeader(tbodyId, roleName, changedSelect = null) {
         } else {
             sel.disabled = true;
             sel.value = 'Tổ viên';
+        }
+
+        // Sync class 'disabled' lên custom-select-container wrapper để hiển thị đúng
+        if (window.syncCustomSelectDisabled) {
+            window.syncCustomSelectDisabled(sel);
         }
 
         if (leaderSelect) {

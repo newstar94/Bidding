@@ -183,6 +183,7 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
 # ==========================================
 
 async def register_api(request):
+    conn = None  # [CQ-2] Khởi tạo trước try để finally luôn đóng conn
     try:
         # Rate limiting
         ip = _get_client_ip(request)
@@ -205,13 +206,11 @@ async def register_api(request):
         # Check if username exists
         cursor.execute("SELECT id FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
         if cursor.fetchone():
-            conn.close()
             return JSONResponse({"error": "Tài khoản đăng nhập đã tồn tại!"}, status_code=400)
             
         # Check if email exists
         cursor.execute("SELECT id FROM tai_khoan WHERE email = ?", (email,))
         if cursor.fetchone():
-            conn.close()
             return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
             
         user_uuid = "user-" + str(uuid.uuid4())
@@ -225,7 +224,6 @@ async def register_api(request):
             (user_uuid, username, hash_password(password), name, role, email, 'silver', 0, code, expiry)
         )
         conn.commit()
-        conn.close()
         
         # Send Email
         tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"
@@ -256,6 +254,10 @@ async def register_api(request):
     except Exception as e:
         log_error(e, "register_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau."}, status_code=500)
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
 async def verify_email_api(request):
     try:
@@ -361,6 +363,7 @@ async def resend_code_api(request):
         return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
 
 async def login_api(request):
+    conn = None  # [CQ-2] Khởi tạo trước try để finally luôn đóng conn
     try:
         # Rate limiting bảo vệ brute force
         ip = _get_client_ip(request)
@@ -383,16 +386,13 @@ async def login_api(request):
         row = cursor.fetchone()
 
         if not row:
-            conn.close()
             return JSONResponse({"error": "Tên đăng nhập hoặc mật khẩu không đúng"}, status_code=400)
             
         user = dict(row)
         if not verify_password(user['mat_khau'], password):
-            conn.close()
             return JSONResponse({"error": "Tên đăng nhập hoặc mật khẩu không đúng"}, status_code=400)
             
         if not user.get('da_xac_minh'):
-            conn.close()
             return JSONResponse({
                 "error": "Tài khoản của bạn chưa được xác thực email. Vui lòng xác thực trước khi đăng nhập!",
                 "unverified": True,
@@ -413,7 +413,6 @@ async def login_api(request):
         )
         org_names = get_user_org_names(cursor, user['id'])
         conn.commit()
-        conn.close()
         
         effective_roles = list(get_effective_roles(user['vai_tro']))
         response = JSONResponse({
@@ -435,6 +434,10 @@ async def login_api(request):
     except Exception as e:
         log_error(e, "login_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đăng nhập. Vui lòng thử lại sau."}, status_code=500)
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
 async def check_session_api(request):
     try:
@@ -526,6 +529,7 @@ async def check_session_api(request):
         return JSONResponse({"valid": False, "error": "L\u1ed7i ki\u1ec3m tra phi\u00ean l\u00e0m vi\u1ec7c."}, status_code=500)
 
 async def forgot_password_api(request):
+    conn = None  # [CQ-2] Khởi tạo trước try để finally luôn đóng conn
     try:
         # Rate limiting cho quên mật khẩu
         ip = _get_client_ip(request)
@@ -545,7 +549,6 @@ async def forgot_password_api(request):
         row = cursor.fetchone()
         
         if not row:
-            conn.close()
             return JSONResponse({"error": "Thông tin tài khoản hoặc email không khớp!"}, status_code=400)
             
         user = dict(row)
@@ -554,7 +557,6 @@ async def forgot_password_api(request):
         temp_pwd = secrets.token_hex(4)
         cursor.execute("UPDATE tai_khoan SET mat_khau = ? WHERE id = ?", (hash_password(temp_pwd), user_id))
         conn.commit()
-        conn.close()
         
         tieu_de = "[BiddingFlow] Khôi phục mật khẩu tài khoản"
         noi_dung_html = f"""
@@ -585,6 +587,10 @@ async def forgot_password_api(request):
     except Exception as e:
         log_error(e, "forgot_password_api")
         return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
 async def update_profile_api(request):
     try:

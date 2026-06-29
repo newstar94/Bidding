@@ -102,10 +102,12 @@ export function editKeHoach(id) {
     form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
 
     const cdtSelect = document.getElementById('kh-chudautuid');
+    const latestCDTs = this.model.getLatestChuDauTu() || [];
     cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' +
-        this.model.state.chudautu.map(c => `<option value="${c.id}" data-search="${c.maChuDauTu || ''} ${c.tenChuDauTu || ''}">${c.tenChuDauTu}</option>`).join('') +
+        latestCDTs.map(c => `<option value="${c.id}" data-search="${c.maChuDauTu || ''} ${c.tenChuDauTu || ''}">${c.tenChuDauTu}</option>`).join('') +
         '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
     this.makeSearchableSelect(cdtSelect, 'Tìm kiếm Chủ đầu tư...');
+
 
     const loaiHinhSelect = document.getElementById('kh-loaihinh');
     const projectFields = document.getElementById('kh-project-fields');

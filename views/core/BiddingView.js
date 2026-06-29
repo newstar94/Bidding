@@ -6,7 +6,11 @@ import * as Dashboard from '/views/subviews/DashboardView.js';
 import * as Plan from '/views/subviews/PlanView.js';
 import * as Partner from '/views/subviews/PartnerView.js';
 import * as SystemUser from '/views/subviews/SystemUserView.js';
-import { initCustomSelect } from '../subviews/view_helpers.js';
+import { initCustomSelect, syncCustomSelectDisabled } from '../subviews/view_helpers.js';
+
+// Expose helpers globally so other files can access them without ESM import issues
+window.initCustomSelect = initCustomSelect;
+window.syncCustomSelectDisabled = syncCustomSelectDisabled;
 
 export class BiddingView {
     constructor(model) {

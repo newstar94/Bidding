@@ -20,7 +20,8 @@ from helpers import (
     get_active_org,
     recalculate_is_latest,
     recalculate_tong_muc_dau_tu,
-    OrgPermissionError
+    OrgPermissionError,
+    _assert_safe_table  # [SEC-1] Guard tường minh chống SQL Injection do thiếu whitelist
 )
 
 # Global dictionary to store active WebSocket connections
@@ -626,7 +627,13 @@ async def sync_api(request):
                                 if val is None and "NOT NULL" in col_type_upper:
                                     continue
                                     
-                                db_row_data[col] = val
+                        # Chuẩn hóa dữ liệu trước khi ghi
+                        # [BL-5] Normalize trang_thai: chấp nhận cả 'Huỷ thầu' (ý) và 'Hủy thầu' (ũ) — chuẩn hóa về một dạng
+                        if col == 'trang_thai' and val is not None:
+                            if str(val).strip() == 'Huỷ thầu':  # u+1ef7 → chuẩn hóa về u+1ee7
+                                val = 'Hủy thầu'
+                                
+                        db_row_data[col] = val
                         
                     # Để tránh lỗi UNIQUE constraint failed khi chèn/cập nhật phan_cong_nhan_su hoặc ma_tran_phan_quyen
                     # và xóa phân công cũ của mục tiêu này để tránh trùng lặp khi đổi chuyên viên phụ trách
@@ -807,7 +814,9 @@ async def get_all_data_api(request):
                 since = '1970-01-01 00:00:00'
             else:
                 try:
-                    since = datetime.utcfromtimestamp(val).strftime('%Y-%m-%d %H:%M:%S')
+                    # [BL-1] Dùng fromtimestamp (localtime) thay vì utcfromtimestamp (UTC)
+                    # vì DB lưu updated_at bằng datetime('now', 'localtime') → UTC+7
+                    since = datetime.fromtimestamp(val).strftime('%Y-%m-%d %H:%M:%S')
                 except Exception:
                     since = '1970-01-01 00:00:00'
         else:
@@ -993,6 +1002,7 @@ async def get_all_data_api(request):
         return JSONResponse({"error": "Da xay ra loi he thong khi lay du lieu."}, status_code=500)
 
 async def paginate_api(request):
+    conn = None  # [BL-4] Khởi tạo trước try để finally có thể đóng khi exception
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -1000,6 +1010,12 @@ async def paginate_api(request):
             
         params = request.query_params
         table_key = params.get("table")
+        # [SEC-1] Validate table_key trước khi tiếp tục xử lý
+        if table_key not in TABLE_KEYS:
+            return JSONResponse({"error": "Invalid table key"}, status_code=400)
+        table_name = TABLE_KEYS[table_key]
+        _assert_safe_table(table_name)  # [SEC-1] Guard tường minh: raise ValueError nếu không hợp lệ
+        
         page_size_raw = params.get("pageSize", "10")
         try:
             page = max(1, int(params.get("page", 1)))
@@ -1008,12 +1024,6 @@ async def paginate_api(request):
             return JSONResponse({"error": "Tham số phân trang không hợp lệ"}, status_code=400)
         search = params.get("search", "").strip().lower()
         
-        # Sử dụng TABLE_KEYS toàn cục
-        
-        if table_key not in TABLE_KEYS:
-            return JSONResponse({"error": "Invalid table key"}, status_code=400)
-            
-        table_name = TABLE_KEYS[table_key]
         org_name = get_active_org(request, role_or_err.user_id)
         
         # Build query
@@ -1198,3 +1208,10 @@ async def paginate_api(request):
     except Exception as e:
         traceback.print_exc()
         return JSONResponse({"error": "Da xay ra loi he thong khi phan trang."}, status_code=500)
+    finally:
+        # [BL-4] Đảm bảo conn luôn được đóng kể cả khi exception
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass

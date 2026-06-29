@@ -99,8 +99,12 @@ def compile_html(file_path):
         full_path = os.path.join(project_root, include_path)
         if not os.path.exists(full_path) and include_path.startswith("views/"):
             full_path = os.path.join(project_root, include_path.replace("views/", ""))
-        if os.path.exists(full_path):
-            with open(full_path, 'r', encoding='utf-8') as f:
+        # [SEC-5] Chặn path traversal: đảm bảo đường dẫn nằm trong project root
+        resolved = os.path.realpath(full_path)
+        if not resolved.startswith(os.path.realpath(project_root)):
+            return f"<!-- INCLUDE ERROR: Path traversal denied for '{include_path}' -->"
+        if os.path.exists(resolved):
+            with open(resolved, 'r', encoding='utf-8') as f:
                 return compile_content(f.read())
         return f"<!-- INCLUDE ERROR: File not found {include_path} ({full_path}) -->"
 
@@ -408,9 +412,11 @@ async def lifespan(app):
                 try:
                     from helpers import database as _db
                     _conn = _db.get_connection()
+                    # [SEC-2] Sửa: deleted_at lưu TEXT ISO → so sánh TEXT ISO với TEXT ISO
+                    # Trước: strftime('%s','now') - 7776000 (Integer Unix timestamp — sai kiểu)
                     _conn.execute(
-                        "DELETE FROM deleted_records WHERE deleted_at < strftime('%s','now') - 7776000"
-                    )  # 7776000 = 90 ngày * 86400 giây
+                        "DELETE FROM deleted_records WHERE deleted_at < datetime('now', 'localtime', '-90 days')"
+                    )
                     _conn.commit()
                     _conn.close()
                 except Exception:
