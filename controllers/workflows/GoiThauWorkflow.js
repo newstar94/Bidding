@@ -362,7 +362,8 @@ export function editGoiThau(id, isReadOnly = false) {
             }
         }
         const khSelect = document.getElementById('gt-kehoachid');
-        khSelect.value = gt.keHoachId;
+        const latestPlan = this.model.getLatestPlan(gt.keHoachId);
+        khSelect.value = latestPlan ? latestPlan.id : gt.keHoachId;
         khSelect.dispatchEvent(new Event('change'));
         document.getElementById('gt-ten').value = gt.tenGoiThau;
         document.getElementById('gt-gia').value = this.model.formatVND(gt.giaGoiThau);
@@ -979,8 +980,12 @@ export async function handleGoiThauSubmit(e) {
         }
     }
 
+    const selectedPlanId = document.getElementById('gt-kehoachid').value;
+    const latestPlan = this.model.getLatestPlan(selectedPlanId);
+    const planIdToSave = latestPlan ? latestPlan.id : selectedPlanId;
+
     const gtData = {
-        keHoachId: document.getElementById('gt-kehoachid').value,
+        keHoachId: planIdToSave,
         tenGoiThau: document.getElementById('gt-ten').value.trim(),
         giaGoiThau: this.model.parseVND(document.getElementById('gt-gia').value),
         thoiGianThucHien: document.getElementById('gt-thoigian').value.trim(),

@@ -154,7 +154,7 @@ export async function renderKeHoachTable() {
             if (!this.model.state.selectedPlanVersion) {
                 this.model.state.selectedPlanVersion = {};
             }
-            const selectedId = this.model.state.selectedPlanVersion[root] || kh.id;
+            const selectedId = this.model.state.selectedPlanVersion[root] || allVersions[0]?.id || kh.id;
             const displayedKh = this.model.state.kehoach.find(k => k.id === selectedId) || kh;
 
             const cdt = this.model.state.chudautu.find(c => c.id === displayedKh.chuDauTuId);
@@ -216,7 +216,16 @@ export async function renderKeHoachTable() {
 }
 
 
-export function showKeHoachDetails(id) {
+export function showKeHoachDetails(id, isSwitchingVersion = false) {
+    let targetId = id;
+    if (!isSwitchingVersion) {
+        const latestPlan = this.model.getLatestPlan(id);
+        if (latestPlan) {
+            targetId = latestPlan.id;
+        }
+    }
+    id = targetId;
+
     const detailPane = document.getElementById('tab-kehoach-detail');
     if (!detailPane || !detailPane.classList.contains('active')) {
         window.switchTab('kehoach-detail', id);
@@ -225,13 +234,6 @@ export function showKeHoachDetails(id) {
     const kh = this.model.state.kehoach.find(k => k.id === id);
     if (!kh) return;
 
-    const editBtn = document.getElementById('btn-edit-kehoach-fullpage');
-    if (editBtn) {
-        editBtn.onclick = () => {
-            window.editKeHoach(id);
-        };
-    }
-
     this.renderPlanVersionDetails(id);
 }
 
@@ -239,6 +241,20 @@ export function showKeHoachDetails(id) {
 export function renderPlanVersionDetails(versionId) {
     const kh = this.model.state.kehoach.find(k => k.id === versionId);
     if (!kh) return;
+
+    const editBtn = document.getElementById('btn-edit-kehoach-fullpage');
+    if (editBtn) {
+        const latestPlan = this.model.getLatestPlan(versionId);
+        const isLatest = latestPlan && latestPlan.id === versionId;
+        if (isLatest) {
+            editBtn.style.display = 'flex';
+            editBtn.onclick = () => {
+                window.editKeHoach(versionId);
+            };
+        } else {
+            editBtn.style.display = 'none';
+        }
+    }
 
     const rootId = kh.rootId || kh.id;
     const allRelated = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);

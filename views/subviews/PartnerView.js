@@ -122,12 +122,14 @@ export async function renderChuDauTuTable() {
                 </td>
                 <td class="text-right">
                     <div class="action-btn-group">
+                        ${displayedCdt.id === c.id ? `
                         <button class="action-btn btn-edit" onclick="window.editChuDauTu('${displayedCdt.id}')" title="Sửa">
                             <i data-lucide="edit-2"></i>
                         </button>
                         <button class="action-btn btn-delete" onclick="window.deleteChuDauTu('${displayedCdt.id}')" title="Xóa">
                             <i data-lucide="trash-2"></i>
                         </button>
+                        ` : ''}
                     </div>
                 </td>
             </tr>
@@ -267,12 +269,14 @@ export async function renderNhaThauTable() {
                         <td>${bankAccs}</td>
                         <td class="text-right">
                             <div class="action-btn-group">
+                                ${displayedNt.id === nt.id ? `
                                 <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
                                 <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${displayedNt.id}')" title="Xóa">
                                     <i data-lucide="trash-2"></i>
                                 </button>
+                                ` : ''}
                             </div>
                         </td>
                     </tr>
@@ -299,12 +303,14 @@ export async function renderNhaThauTable() {
                         <td>${bankAcc}</td>
                         <td class="text-right">
                             <div class="action-btn-group">
+                                ${displayedNt.id === nt.id ? `
                                 <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
                                 <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${displayedNt.id}')" title="Xóa">
                                     <i data-lucide="trash-2"></i>
                                 </button>
+                                ` : ''}
                             </div>
                         </td>
                     </tr>
@@ -436,12 +442,14 @@ export async function renderChuyenGiaTable() {
                 <td class="text-right">
                     ${isEmployee ? '' : `
                     <div class="action-btn-group">
+                        ${displayedCg.id === cg.id ? `
                         <button class="action-btn btn-edit" onclick="window.editChuyenGia('${displayedCg.id}')" title="Sửa">
                             <i data-lucide="edit-2"></i>
                         </button>
                         <button class="action-btn btn-delete" onclick="window.deleteChuyenGia('${displayedCg.id}')" title="Xóa">
                             <i data-lucide="trash-2"></i>
                         </button>
+                        ` : ''}
                     </div>
                     `}
                 </td>
@@ -669,17 +677,19 @@ export async function renderHopDongTable() {
                     <td>${statusBadge}</td>
                     <td class="text-right">
                         <div class="action-btn-group">
-                            ${(displayedHd.goiThauIds && displayedHd.goiThauIds.length > 0) ? `
-                            <button class="action-btn btn-export" onclick="window.exportContractFromHopDong('${displayedHd.goiThauIds[0]}', '${displayedHd.soHopDong}')" title="Xuất hợp đồng" style="color: var(--emerald);">
-                                <i data-lucide="file-text"></i>
-                            </button>
+                            ${displayedHd.id === h.id ? `
+                                ${(displayedHd.goiThauIds && displayedHd.goiThauIds.length > 0) ? `
+                                <button class="action-btn btn-export" onclick="window.exportContractFromHopDong('${displayedHd.goiThauIds[0]}', '${displayedHd.soHopDong}')" title="Xuất hợp đồng" style="color: var(--emerald);">
+                                    <i data-lucide="file-text"></i>
+                                </button>
+                                ` : ''}
+                                <button class="action-btn btn-edit" onclick="window.editHopDong('${displayedHd.id}')" title="Sửa">
+                                    <i data-lucide="edit-2"></i>
+                                </button>
+                                <button class="action-btn btn-delete" onclick="window.deleteHopDong('${displayedHd.id}')" title="Xóa">
+                                    <i data-lucide="trash-2"></i>
+                                </button>
                             ` : ''}
-                            <button class="action-btn btn-edit" onclick="window.editHopDong('${displayedHd.id}')" title="Sửa">
-                                <i data-lucide="edit-2"></i>
-                            </button>
-                            <button class="action-btn btn-delete" onclick="window.deleteHopDong('${displayedHd.id}')" title="Xóa">
-                                <i data-lucide="trash-2"></i>
-                            </button>
                         </div>
                     </td>
                 </tr>
@@ -1165,7 +1175,16 @@ export function getJointVentureMemberHTML(cardId, memberData = null) {
     `;
 }
 
-export function showHopDongDetails(id) {
+export function showHopDongDetails(id, isSwitchingVersion = false) {
+    let targetId = id;
+    if (!isSwitchingVersion) {
+        const latestContract = this.model.getLatestContract(id);
+        if (latestContract) {
+            targetId = latestContract.id;
+        }
+    }
+    id = targetId;
+
     const detailPane = document.getElementById('tab-hopdong-detail');
     if (!detailPane || !detailPane.classList.contains('active')) {
         window.switchTab('hopdong-detail', id);
@@ -1174,19 +1193,26 @@ export function showHopDongDetails(id) {
     const hd = this.model.state.hopdong.find(h => h.id === id);
     if (!hd) return;
 
-    const editBtn = document.getElementById('btn-edit-hopdong-fullpage');
-    if (editBtn) {
-        editBtn.onclick = () => {
-            window.editHopDong(id);
-        };
-    }
-
     this.renderContractVersionDetails(id);
 }
 
 export function renderContractVersionDetails(versionId) {
     const hd = this.model.state.hopdong.find(h => h.id === versionId);
     if (!hd) return;
+
+    const editBtn = document.getElementById('btn-edit-hopdong-fullpage');
+    if (editBtn) {
+        const latestContract = this.model.getLatestContract(versionId);
+        const isLatest = latestContract && latestContract.id === versionId;
+        if (isLatest) {
+            editBtn.style.display = 'flex';
+            editBtn.onclick = () => {
+                window.editHopDong(versionId);
+            };
+        } else {
+            editBtn.style.display = 'none';
+        }
+    }
 
     const cdt = this.model.state.chudautu.find(c => c.id === hd.chuDauTuId);
     const nt = this.model.state.nhathau.find(n => n.id === hd.nhaThauId);

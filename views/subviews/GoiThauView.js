@@ -172,31 +172,31 @@ export async function renderGoiThauTable() {
 
         tableBody.innerHTML = slicedData.map(gt => {
             const root = gt.rootId || gt.id;
-            const allVersions = gt.allVersions || this.model.state.goithau.filter(g => {
-                if ((g.rootId || g.id) !== root) return false;
-                if (g.keHoachId) {
-                    const plan = (this.model.state.kehoach || []).find(k => String(k.id) === String(g.keHoachId));
-                    if (plan && String(plan.isLatest) !== '1' && String(plan.is_latest) !== '1') {
-                        return false;
+            const allRelated = this.model.state.goithau.filter(g => (g.rootId || g.id) === root);
+
+            // Group packages by version number, keeping the one from the highest plan version
+            const verMap = {};
+            allRelated.forEach(g => {
+                const ver = g.phienBan || '00';
+                if (!verMap[ver]) {
+                    verMap[ver] = g;
+                } else {
+                    const p1 = (this.model.state.kehoach || []).find(k => String(k.id) === String(g.keHoachId));
+                    const p2 = (this.model.state.kehoach || []).find(k => String(k.id) === String(verMap[ver].keHoachId));
+                    const v1 = p1 ? (parseInt(p1.phienBan) || 0) : 0;
+                    const v2 = p2 ? (parseInt(p2.phienBan) || 0) : 0;
+                    if (v1 > v2) {
+                        verMap[ver] = g;
                     }
                 }
-                return true;
-            }).sort((a, b) => parseInt(b.phienBan) - parseInt(a.phienBan));
-
-            // Deduplicate versions by version number (phienBan) to ensure unique dropdown options
-            const uniqueVersionsMap = new Map();
-            allVersions.forEach(v => {
-                const label = v.phienBan || '00';
-                if (!uniqueVersionsMap.has(label)) {
-                    uniqueVersionsMap.set(label, v);
-                }
             });
-            const uniqueVersions = Array.from(uniqueVersionsMap.values());
+            const uniqueVersions = Object.values(verMap);
+            uniqueVersions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
 
             if (!this.model.state.selectedPackageVersion) {
                 this.model.state.selectedPackageVersion = {};
             }
-            const selectedId = this.model.state.selectedPackageVersion[root] || gt.id;
+            const selectedId = this.model.state.selectedPackageVersion[root] || uniqueVersions[0]?.id || gt.id;
             const displayedGt = this.model.state.goithau.find(g => g.id === selectedId) || gt;
 
             const kh = this.model.getLatestPlan(displayedGt.keHoachId);
@@ -367,7 +367,16 @@ export async function renderGoiThauTable() {
 }
 
 
-export function showPackageDetails(id) {
+export function showPackageDetails(id, isSwitchingVersion = false) {
+    let targetId = id;
+    if (!isSwitchingVersion) {
+        const latestPkg = this.model.getLatestPackage(id);
+        if (latestPkg) {
+            targetId = latestPkg.id;
+        }
+    }
+    id = targetId;
+
     // Safely restore form-goithau to its modal parent before clearing innerHTML
     const formEl = document.getElementById('form-goithau');
     const modalMCard = document.querySelector('#modal-goithau .modal-card');
@@ -468,8 +477,15 @@ export function showPackageDetails(id) {
     // Check and setup edit buttons
     const editBtn = document.getElementById('btn-edit-goithau-fullpage');
     const editAwardBtn = document.getElementById('btn-edit-award-result');
+
+    const latestPlan = this.model.getLatestPlan(gt.keHoachId);
+    const isPlanLatest = latestPlan && latestPlan.id === gt.keHoachId;
+    const latestPkg = this.model.getLatestPackage(gt.id);
+    const isPkgLatest = latestPkg && latestPkg.id === gt.id;
+    const isEditable = isPlanLatest && isPkgLatest;
+
     if (editBtn) {
-        if (this._currentWorkflowTab === 'preparation' && gt.trangThai !== 'Đang chấm thầu' && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu' && !this._inPlaceEditMode) {
+        if (isEditable && this._currentWorkflowTab === 'preparation' && gt.trangThai !== 'Đang chấm thầu' && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu' && !this._inPlaceEditMode) {
             editBtn.style.display = 'flex';
             editBtn.onclick = () => {
                 this._inPlaceEditMode = true;
@@ -480,7 +496,7 @@ export function showPackageDetails(id) {
         }
     }
     if (editAwardBtn) {
-        if (this._currentWorkflowTab === 'result' && (gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu')) {
+        if (isEditable && this._currentWorkflowTab === 'result' && (gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu')) {
             editAwardBtn.style.display = 'flex';
             editAwardBtn.onclick = async () => {
                 gt.trangThai = 'Đang chấm thầu';
@@ -555,7 +571,7 @@ export function showPackageDetails(id) {
                 return `<option value="${g.id}" ${isSelected ? 'selected' : ''}>${label}</option>`;
             }).join('');
             verSelect.onchange = (e) => {
-                this.showPackageDetails(e.target.value);
+                this.showPackageDetails(e.target.value, true);
             };
             if (window.initCustomSelect) window.initCustomSelect('detail-workflow-version-select');
         } else {
@@ -902,9 +918,12 @@ export function showPackageDetails(id) {
                                 this.model.state.selectedPackageVersion[rootId] = newGtId;
 
                                 // Clone and push new package version
+                                const latestPlan = this.model.getLatestPlan(gt.keHoachId);
+                                const latestPlanId = latestPlan ? latestPlan.id : gt.keHoachId;
                                 this.model.state.goithau.push({
                                     ...gt,
                                     ...gtData,
+                                    keHoachId: latestPlanId,
                                     id: newGtId,
                                     phienBan: nextVersion,
                                     isLatest: 1,
@@ -947,6 +966,10 @@ export function showPackageDetails(id) {
                                 }
                             } else {
                                 // Overwrite current version
+                                const latestPlan = this.model.getLatestPlan(gt.keHoachId);
+                                if (latestPlan) {
+                                    gt.keHoachId = latestPlan.id;
+                                }
                                 Object.assign(gt, gtData);
                                 gt.updatedAt = Math.floor(Date.now() / 1000);
                                 gt.updated_at = gt.updatedAt;
