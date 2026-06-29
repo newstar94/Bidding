@@ -138,7 +138,7 @@ export function makeSearchableSelect(select, placeholder) {
     // Create toggle arrow
     const arrow = document.createElement('div');
     arrow.className = 'custom-select-arrow';
-    arrow.innerHTML = '▼';
+    arrow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" style="display: block;"><path d="m6 9 6 6 6-6"/></svg>`;
 
     // Create options container
     const optionsList = document.createElement('ul');

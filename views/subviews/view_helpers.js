@@ -243,7 +243,7 @@ export function initCustomSelect(selectId) {
                 dropdown.style.position = 'fixed';
                 dropdown.style.top = (rect.bottom + 4) + 'px';
                 dropdown.style.left = rect.left + 'px';
-                dropdown.style.minWidth = isVersion ? '52px' : '70px';
+                dropdown.style.setProperty('min-width', rect.width + 'px', 'important');
                 dropdown.style.width = 'max-content';
                 dropdown.style.maxHeight = Math.max(140, window.innerHeight - rect.bottom - 15) + 'px';
                 dropdown.style.overflowY = 'auto';
