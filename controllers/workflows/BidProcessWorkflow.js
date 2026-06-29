@@ -303,7 +303,9 @@ export function renderMoThauPanel() {
 
     // 1. Populate packages dropdown — hiện gói đang mời thầu (đã qua hạn nộp), đã mở thầu hoặc đang chấm thầu
     const now = new Date();
+    const selectedVal = select.value;
     const targetPackages = this.model.state.goithau.filter(g => {
+        if (g.id === selectedVal) return true;
         if (g.trangThai !== 'Đang mời thầu' && g.trangThai !== 'Đã mở thầu' && g.trangThai !== 'Đang chấm thầu' && g.trangThai !== 'Đã có kết quả') return false;
         if (g.trangThai === 'Đang mời thầu') {
             if (!g.thoiGianDongThau) return false;
@@ -312,7 +314,6 @@ export function renderMoThauPanel() {
         }
         return true;
     });
-    const selectedVal = select.value;
     select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang chấm thầu / Đã có kết quả) --</option>' +
         targetPackages.map(g => `<option value="${g.id}" data-search="${g.maGoiThau || ''} ${g.tenGoiThau || ''}">${g.tenGoiThau} (${g.maGoiThau || 'Chưa có mã'})</option>`).join('');
 

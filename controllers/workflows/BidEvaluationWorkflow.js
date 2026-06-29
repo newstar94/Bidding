@@ -7,10 +7,11 @@ export function renderDanhGiaHsdtPanel() {
     if (!select) return;
 
     // 1. Populate packages dropdown - hiện gói đang chấm thầu hoặc đã có kết quả
-    const targetPackages = this.model.state.goithau.filter(g =>
-        g.trangThai === 'Đang chấm thầu' || g.trangThai === 'Đã có kết quả'
-    );
     const selectedVal = select.value;
+    const targetPackages = this.model.state.goithau.filter(g => {
+        if (g.id === selectedVal) return true;
+        return g.trangThai === 'Đang chấm thầu' || g.trangThai === 'Đã có kết quả';
+    });
     select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang chấm thầu / Đã có kết quả) --</option>' +
         targetPackages.map(g => `<option value="${g.id}" data-search="${g.maGoiThau || ''} ${g.tenGoiThau || ''}">${g.tenGoiThau} (${g.maGoiThau || 'Chưa có mã'})</option>`).join('');
 

@@ -692,10 +692,14 @@ export async function handleGoiThauSubmit(e) {
     // Custom validation for extensions
     const mainDongThauStr = document.getElementById('gt-thoigiandongthau').value;
 
-    // Helper function to parse Date from Vietnamese dd/MM/yyyy HH:mm
+    // Helper function to parse Date from Vietnamese dd/MM/yyyy HH:mm or ISO format
     const parseDMYHM = (str) => {
         if (!str) return null;
-        const parts = str.trim().split(/\s+/);
+        let cleaned = str.trim();
+        if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(cleaned)) {
+            return new Date(cleaned.replace(' ', 'T'));
+        }
+        const parts = cleaned.split(/\s+/);
         if (parts.length < 2) return null;
         const dateParts = parts[0].split('/');
         const timeParts = parts[1].split(':');
