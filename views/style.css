@@ -3844,9 +3844,9 @@ body.dark-mode .btn-excel-action:hover {
 }
 
 .custom-select-container.open .custom-select-trigger {
-    border: 2px solid var(--primary, #3b82f6);
+    border-color: var(--primary, #3b82f6);
     background-color: var(--bg-card, #ffffff);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .custom-select-trigger span {

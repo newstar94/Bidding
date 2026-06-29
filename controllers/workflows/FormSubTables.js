@@ -449,33 +449,49 @@ export function _collectTraLoiLamRoRows() {
 }
 
 
-export function enforceSingleLeader(tbodyId, roleName) {
+export function enforceSingleLeader(tbodyId, roleName, changedSelect = null) {
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;
 
-    // Find if there is any select set to 'Tổ trưởng' that is not disabled
     const selects = tbody.querySelectorAll(`select[name="${roleName}"]`);
     let leaderSelect = null;
-    selects.forEach(sel => {
-        if (!sel.disabled && sel.value === 'Tổ trưởng') {
-            leaderSelect = sel;
+    
+    if (changedSelect && changedSelect.value === 'Tổ trưởng') {
+        leaderSelect = changedSelect;
+    } else {
+        for (const sel of selects) {
+            if (!sel.disabled && sel.value === 'Tổ trưởng') {
+                leaderSelect = sel;
+                break;
+            }
         }
-    });
+    }
 
     selects.forEach(sel => {
         const row = sel.closest('tr');
         const cb = row.querySelector('input[type="checkbox"]');
+        if (cb && cb.checked) {
+            sel.disabled = false;
+        } else {
+            sel.disabled = true;
+            sel.value = 'Tổ viên';
+        }
+
         if (leaderSelect) {
             if (sel !== leaderSelect) {
+                const wasLeader = sel.value === 'Tổ trưởng';
                 sel.value = 'Tổ viên';
-                sel.disabled = true;
-            }
-        } else {
-            // Enable if the checkbox is checked
-            if (cb && cb.checked) {
-                sel.disabled = false;
-            } else {
-                sel.disabled = true;
+                if (wasLeader) {
+                    const jobName = roleName === 'tochuyengia-chucvu' ? 'tochuyengia-congviec' : 'tothamdinh-congviec';
+                    const jobInput = row.querySelector(`input[name="${jobName}"]`);
+                    if (jobInput) {
+                        if (tbodyId === 'to-chuyengia-tbody') {
+                            jobInput.value = 'Lập HSMT, đánh giá HSDT';
+                        } else if (tbodyId === 'to-thamdinh-tbody') {
+                            jobInput.value = 'Thẩm định HSMT, thẩm định KQLCNT';
+                        }
+                    }
+                }
             }
         }
     });

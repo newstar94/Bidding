@@ -178,7 +178,7 @@ export function editHopDong(id) {
                     const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                     return `<option value="${v.id}">${label}</option>`;
                 }).join('');
-                versionGroup.style.display = 'block';
+                versionGroup.style.display = 'flex';
 
                 versionSelect.onchange = (e) => {
                     const selectedVerCdt = this.model.state.chudautu.find(c => c.id === e.target.value);
@@ -228,7 +228,7 @@ export function editHopDong(id) {
                     const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
                     return `<option value="${v.id}">${label}</option>`;
                 }).join('');
-                versionGroup.style.display = 'block';
+                versionGroup.style.display = 'flex';
 
                 versionSelect.onchange = (e) => {
                     const selectedVerNt = this.model.state.nhathau.find(n => n.id === e.target.value);

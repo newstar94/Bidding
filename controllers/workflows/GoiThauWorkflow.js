@@ -279,7 +279,7 @@ export function editGoiThau(id, isReadOnly = false) {
             const roleSelect = row.querySelector(`select[name="${roleName}"]`);
             if (roleSelect) {
                 roleSelect.addEventListener('change', () => {
-                    this.enforceSingleLeader(tbodyId, roleName);
+                    this.enforceSingleLeader(tbodyId, roleName, roleSelect);
 
                     const jobInput = row.querySelector(`input[name="${jobName}"]`);
                     if (jobInput) {
@@ -300,14 +300,7 @@ export function editGoiThau(id, isReadOnly = false) {
 
                 if (roleSelect) {
                     if (newChecked) {
-                        // Check if a leader already exists in the team
-                        const currentLeader = tbody.querySelector(`select[name="${roleName}"]:not([disabled])[value="Tổ trưởng"]`);
-                        if (currentLeader) {
-                            roleSelect.value = 'Tổ viên';
-                            roleSelect.disabled = true;
-                        } else {
-                            roleSelect.disabled = false;
-                        }
+                        roleSelect.disabled = false;
                     } else {
                         roleSelect.value = 'Tổ viên';
                         roleSelect.disabled = true;
@@ -316,7 +309,6 @@ export function editGoiThau(id, isReadOnly = false) {
                 if (jobInput) {
                     jobInput.disabled = !newChecked;
                     if (newChecked) {
-                        // Auto fill on check
                         if (tbodyId === 'to-chuyengia-tbody') {
                             jobInput.value = roleSelect.value === 'Tổ trưởng' ? 'Tổng hợp, lập HSMT, đánh giá HSDT' : 'Lập HSMT, đánh giá HSDT';
                         } else if (tbodyId === 'to-thamdinh-tbody') {
@@ -332,7 +324,7 @@ export function editGoiThau(id, isReadOnly = false) {
                     otherRow.style.display = newChecked ? 'none' : '';
                 }
 
-                this.enforceSingleLeader(tbodyId, roleName);
+                this.enforceSingleLeader(tbodyId, roleName, roleSelect);
             });
         });
     };
@@ -595,6 +587,11 @@ export function editGoiThau(id, isReadOnly = false) {
     document.querySelectorAll('#to-chuyengia-tbody input, #to-chuyengia-tbody select, #to-thamdinh-tbody input, #to-thamdinh-tbody select').forEach(el => {
         el.disabled = !!isOpenedOrLater;
     });
+
+    if (!isReadOnly && !isOpenedOrLater) {
+        this.enforceSingleLeader('to-chuyengia-tbody', 'tochuyengia-chucvu');
+        this.enforceSingleLeader('to-thamdinh-tbody', 'tothamdinh-chucvu');
+    }
 
     // Khóa/mở khóa phân lô và tùy chọn mua thêm (inputs, selects, buttons xóa dòng)
     document.querySelectorAll('#phanlo-tbody input, #phanlo-tbody select, #phanlo-tbody button, #tuychonmuathem-tbody input, #tuychonmuathem-tbody select, #tuychonmuathem-tbody button').forEach(el => {
