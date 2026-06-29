@@ -208,9 +208,10 @@ class SafeStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
-# Đảm bảo thư mục dist tồn tại để tránh StaticFiles báo lỗi khi chưa chạy build lần đầu
+# Đảm bảo thư mục dist và templates/uploads tồn tại để tránh StaticFiles báo lỗi khi khởi chạy app
 dist_dir = os.path.join(project_root, 'dist')
 os.makedirs(dist_dir, exist_ok=True)
+os.makedirs(os.path.join(project_root, 'templates', 'uploads'), exist_ok=True)
 
 routes = [
     Route("/", index, methods=["GET"]),
