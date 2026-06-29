@@ -269,7 +269,7 @@ export async function renderNhaThauTable() {
                         <td>${bankAccs}</td>
                         <td class="text-right">
                             <div class="action-btn-group">
-                                ${displayedNt.id === nt.id ? `
+                                ${displayedNt.id === n.id ? `
                                 <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
@@ -303,7 +303,7 @@ export async function renderNhaThauTable() {
                         <td>${bankAcc}</td>
                         <td class="text-right">
                             <div class="action-btn-group">
-                                ${displayedNt.id === nt.id ? `
+                                ${displayedNt.id === n.id ? `
                                 <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
