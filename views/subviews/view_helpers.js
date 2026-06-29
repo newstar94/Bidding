@@ -235,7 +235,39 @@ export function initCustomSelect(selectId) {
             window.lucide.createIcons();
         }
     } else {
-        // Chỉ cập nhật trạng thái đã chọn và text hiển thị của trigger mà không dựng lại DOM
+        // Đồng bộ lại danh sách options nếu danh sách options của select gốc thay đổi
+        const optionsList = wrapper.querySelector('.custom-select-options');
+        if (optionsList) {
+            optionsList.innerHTML = options.map(opt => `
+                <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: 8px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
+            `).join('');
+
+            // Gắn lại sự kiện hover và click cho các option mới
+            optionsList.querySelectorAll('.custom-option-item').forEach(li => {
+                li.addEventListener('mouseover', () => {
+                    if (!li.classList.contains('selected')) {
+                        li.style.backgroundColor = 'var(--neutral-soft)';
+                        li.style.color = 'var(--primary)';
+                    }
+                });
+                li.addEventListener('mouseout', () => {
+                    if (!li.classList.contains('selected')) {
+                        li.style.backgroundColor = '';
+                        li.style.color = 'var(--text-main)';
+                    }
+                });
+
+                li.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    select.value = li.getAttribute('data-value');
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    document.dispatchEvent(new Event('click'));
+                    initCustomSelect(selectId);
+                });
+            });
+        }
+
+        // Chỉ cập nhật trạng thái đã chọn và text hiển thị của trigger mà không dựng lại DOM toàn bộ
         const triggerSpan = wrapper.querySelector('.custom-select-trigger span');
         if (triggerSpan) {
             triggerSpan.textContent = triggerText;
