@@ -129,7 +129,8 @@ export function initCustomSelect(selectId) {
             });
         });
 
-        // Đóng menu khi cuộn trang
+        // Đóng menu khi cuộn trang (Đã tắt tính năng tự ẩn khi cuộn dọc theo yêu cầu)
+        /*
         document.addEventListener('scroll', (e) => {
             // Bỏ qua nếu đang cuộn bên trong chính danh sách
             if (e.target && e.target.classList && e.target.classList.contains('custom-select-options')) return;
@@ -140,6 +141,7 @@ export function initCustomSelect(selectId) {
                 if (absoluteDropdown) absoluteDropdown.style.display = 'none';
             });
         }, { capture: true, passive: true });
+        */
         window._unifiedSelectClickListenerRegistered = true;
     }
     // =========================================================================
@@ -159,6 +161,12 @@ export function initCustomSelect(selectId) {
         triggerText = 'Th' + coreText;
     }
 
+    const isVersionSelect = select.classList.contains('page-version-select') || 
+                            select.classList.contains('version-select') || 
+                            select.classList.contains('phienban-select') || 
+                            select.classList.contains('modal-version-select') ||
+                            select.classList.contains('version-droplist');
+
     if (!wrapper) {
         wrapper = document.createElement('div');
         wrapper.className = 'custom-select-container';
@@ -170,9 +178,11 @@ export function initCustomSelect(selectId) {
         wrapper.innerHTML = `
             <div class="custom-select-trigger">
                 <span>${triggerText}</span>
+                ${isVersionSelect ? '' : `
                 <div class="custom-select-trigger-arrow">
                     <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
                 </div>
+                `}
             </div>
             <ul class="custom-select-options" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-height: 220px; overflow-y: auto; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); z-index: 1000; list-style: none; padding: 6px 0; margin: 0;">
                 ${options.map(opt => `
