@@ -732,10 +732,14 @@ export class BiddingModel {
             minutes = String(d.getMinutes()).padStart(2, '0');
             hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
         } else {
-            // Hỗ trợ chuẩn hóa "dd/MM/yyyy - HH:mm" và các biến thể dấu "-" trước khi xử lý
-            const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+            const str = String(dateStr).trim();
             const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
-            const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+            let dmyMatch = null;
+            if (!ymdMatch) {
+                const resolvedDmy = str.replace(/\s*-\s*/, ' ').trim();
+                dmyMatch = resolvedDmy.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+            }
+
 
             if (ymdMatch) {
                 year = ymdMatch[1];
@@ -786,9 +790,14 @@ export class BiddingModel {
             hours = String(d.getHours()).padStart(2, '0');
             minutes = String(d.getMinutes()).padStart(2, '0');
         } else {
-            const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+            const str = String(dateStr).trim();
             const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
-            const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+            let dmyMatch = null;
+            if (!ymdMatch) {
+                const resolvedDmy = str.replace(/\s*-\s*/, ' ').trim();
+                dmyMatch = resolvedDmy.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+            }
+
 
             if (ymdMatch) {
                 year = ymdMatch[1];
@@ -920,9 +929,16 @@ export class BiddingModel {
         if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
             return cleaned;
         }
-        cleaned = cleaned.replace(/\s*-\s*/, ' ');
+        
+        // Normalize separators: replace -HH:mm with space HH:mm
+        cleaned = cleaned.replace(/-(\d{2}:\d{2})/, ' $1');
+        cleaned = cleaned.replace(/\s*-\s*/, ' ').trim();
+        
         const partsSpace = cleaned.split(' ');
-        const datePart = partsSpace[0];
+        let datePart = partsSpace[0];
+        // Replace dashes in date part with slashes
+        datePart = datePart.replace(/-/g, '/');
+        
         const parts = datePart.split('/');
         if (parts.length !== 3) return dmyStr;
         const day = parts[0].padStart(2, '0');
@@ -933,10 +949,10 @@ export class BiddingModel {
 
     convertDMYHMSToYMDHMS(dmyHMSStr) {
         if (!dmyHMSStr) return '';
-        // Chuẩn hóa dấu gạch ngang phân cách dạng "dd/MM/yyyy - HH:mm" thành "dd/MM/yyyy HH:mm" trước
-        let cleaned = String(dmyHMSStr).replace(/\s*-\s*/, ' ').trim();
+        let cleaned = String(dmyHMSStr).trim();
         
-        if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}(:\d{2})?/.test(cleaned)) {
+        // Nếu là định dạng ISO YYYY-MM-DDTHH:mm hoặc YYYY-MM-DD HH:mm
+        if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(cleaned)) {
             let normalized = cleaned.replace('T', ' ');
             const parts = normalized.split(' ');
             let timePart = parts[1].split('+')[0];
@@ -945,9 +961,26 @@ export class BiddingModel {
             }
             return `${parts[0]} ${timePart}`;
         }
-        
+
+        // Thay thế dấu nối giữa ngày và giờ (nếu có dạng -HH:mm hoặc -HH:mm:ss) bằng khoảng trắng
+        cleaned = cleaned.replace(/-(\d{2}:\d{2})/, ' $1');
+        // Support old format "HH:mm ngày dd/MM/yyyy"
+        const oldFormatMatch = cleaned.match(/^(\d{2}):(\d{2})\s+ngày\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+        if (oldFormatMatch) {
+            const hh = oldFormatMatch[1];
+            const mm = oldFormatMatch[2];
+            const d = oldFormatMatch[3];
+            const m = oldFormatMatch[4];
+            const y = oldFormatMatch[5];
+            return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')} ${hh}:${mm}:00`;
+        }
+
+        cleaned = cleaned.replace(/\s*-\s*/, ' ').trim();
+
         const parts = cleaned.split(' ');
-        const datePart = parts[0];
+        let datePart = parts[0];
+        datePart = datePart.replace(/-/g, '/');
+
         let timePart = parts[1] || '00:00:00';
         if (timePart.split(':').length === 2) {
             timePart += ':00';

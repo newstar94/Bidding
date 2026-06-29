@@ -165,16 +165,8 @@ export async function showSystemUserDetail(userId) {
         if (orgContainer) {
             orgContainer.style.display = (user.package_id && user.package_id !== 'none') ? 'block' : 'none';
         }
-        if (this.view.fpSuStartDate) {
-            this.view.fpSuStartDate.setDate(user.package_start_date ? this.model.formatDate(user.package_start_date) : '');
-        } else {
-            document.getElementById('detail-su-startdate').value = user.package_start_date ? this.model.formatDate(user.package_start_date) : '';
-        }
-        if (this.view.fpSuEndDate) {
-            this.view.fpSuEndDate.setDate(user.package_end_date ? this.model.formatDate(user.package_end_date) : '');
-        } else {
-            document.getElementById('detail-su-enddate').value = user.package_end_date ? this.model.formatDate(user.package_end_date) : '';
-        }
+        document.getElementById('detail-su-startdate').value = user.package_start_date ? this.model.formatForDateInput(user.package_start_date) : '';
+        document.getElementById('detail-su-enddate').value = user.package_end_date ? this.model.formatForDateInput(user.package_end_date) : '';
 
         // Open Modal
         this.view.openModal('modal-detail-system-user');

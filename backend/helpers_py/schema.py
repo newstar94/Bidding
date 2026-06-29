@@ -169,6 +169,7 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_dang_tai": "TEXT",
             "thoi_gian_dong_thau": "TEXT",
             "thoi_gian_mo_thau": "TEXT",
+            "thoi_gian_mo_ehsdxtc": "TEXT",
             "so_quyet_dinh": "TEXT",
             "ngay_quyet_dinh": "TEXT",
             "so_quyet_dinh_ket_qua": "TEXT",
@@ -202,6 +203,7 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_dang_tai": "thoiGianDangTai",
             "thoi_gian_dong_thau": "thoiGianDongThau",
             "thoi_gian_mo_thau": "thoiGianMoThau",
+            "thoi_gian_mo_ehsdxtc": "thoiGianMoEhsdxtc",
             "gia_han_list": "giaHanList",
             "yeu_cau_lam_ro_list": "yeuCauLamRoList",
             "tra_loi_lam_ro_list": "traLoiLamRoList",
@@ -220,6 +222,7 @@ SCHEMA_DINH_NGHIA = {
             "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt",
             "so_bao_cao_tham_dinh_hsmt": "soBaoCaoThamDinhHsmt",
             "ngay_bao_cao_tham_dinh_hsmt": "ngayBaoCaoThamDinhHsmt"
+
         }
     },
     "chuyen_gia": {

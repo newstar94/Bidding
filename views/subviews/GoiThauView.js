@@ -774,14 +774,24 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</span>
                                         `}
                                     </div>
-                                    <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
-                                        <span style="color: var(--text-muted); font-weight: 600;">Thời gian mở thầu</span>
+                                    <div style="display: flex; justify-content: space-between; border-bottom: ${gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ' ? '1px solid rgba(226, 232, 240, 0.5)' : 'none'}; padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">${gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ' ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}</span>
                                         ${this._inPlaceEditMode ? `
                                             <input type="datetime-local" id="ip-mothau" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : ''}">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</span>
                                         `}
                                     </div>
+                                    ${gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ' ? `
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">Thời gian mở E-HSĐXTC</span>
+                                        ${this._inPlaceEditMode ? `
+                                            <input type="datetime-local" id="ip-moehsdxtc" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}">
+                                        ` : `
+                                            <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : '--'}</span>
+                                        `}
+                                    </div>
+                                    ` : ''}
                                 </div>
                             </div>
                         </div>
@@ -871,6 +881,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const valDangTai = document.getElementById('ip-dangtai').value;
                             const valDongThau = document.getElementById('ip-dongthau').value;
                             const valMoThau = document.getElementById('ip-mothau').value;
+                            const inputMoEhsdxtc = document.getElementById('ip-moehsdxtc');
+                            const valMoEhsdxtc = inputMoEhsdxtc ? inputMoEhsdxtc.value : '';
                             const valSoQuyetDinh = document.getElementById('ip-soquyetdinh').value;
                             const valNgayQuyetDinh = document.getElementById('ip-ngayquyetdinh').value;
                             const valYeuCauThamDinh = document.getElementById('ip-yeucauthamdinh').value;
@@ -881,6 +893,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 thoiGianDangTai: valDangTai ? this.model.convertDMYHMSToYMDHMS(valDangTai) : '',
                                 thoiGianDongThau: valDongThau ? this.model.convertDMYHMSToYMDHMS(valDongThau) : '',
                                 thoiGianMoThau: valMoThau ? this.model.convertDMYHMSToYMDHMS(valMoThau) : '',
+                                thoiGianMoEhsdxtc: valMoEhsdxtc ? this.model.convertDMYHMSToYMDHMS(valMoEhsdxtc) : '',
                                 soQuyetDinh: valSoQuyetDinh,
                                 ngayQuyetDinh: valNgayQuyetDinh ? this.model.convertDMYToYMD(valNgayQuyetDinh) : '',
                                 yeuCauThamDinhHsmt: valYeuCauThamDinh,
@@ -1582,6 +1595,19 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </div>
                         ` : ''}
                     </div>
+                    <div style="background: var(--bg-card); padding: 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 20px; display: flex; align-items: center; gap: 16px;">
+                        <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Thời gian mở E-HSĐXTC:</div>
+                        <div style="width: 240px;">
+                            ${isReadOnly ? `
+                                <span style="font-weight: 700; color: var(--primary);">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>
+                            ` : `
+                                <input type="datetime-local" id="op-fin-thoigianmothau" class="form-control" style="font-size: 0.85rem; padding: 6px 12px;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}">
+                            `}
+                        </div>
+                        ${!isReadOnly ? `
+                            <div class="text-muted" style="font-size: 0.75rem;">(Hệ thống tự động ghi nhận thời gian hiện tại khi Lưu nếu để trống)</div>
+                        ` : ''}
+                    </div>
                     <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 20px;">
                         Nhập giá dự thầu, tỷ lệ giảm giá của các nhà thầu vượt qua bước đánh giá kỹ thuật.
                     </p>
@@ -1636,7 +1662,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </table>
                     </div>
                     <div style="display:flex; justify-content:flex-end;">
-                        ${isReadOnly ? '' : `
+                        ${isReadOnly ? `
+                            <button class="btn btn-outline" id="btn-edit-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="edit-3"></i> Chỉnh sửa</button>
+                        ` : `
                             <button class="btn btn-primary" id="btn-save-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu Biên bản mở HSĐXTC</button>
                         `}
                     </div>
@@ -1690,6 +1718,15 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         };
                     }
 
+                    const editBtn = document.getElementById('btn-edit-opening-fin');
+                    if (editBtn) {
+                        editBtn.onclick = () => {
+                            this._editingState = this._editingState || {};
+                            this._editingState[this._currentWorkflowTab] = true;
+                            this.showPackageDetails(gt.id);
+                        };
+                    }
+
                     const saveBtn = document.getElementById('btn-save-opening-fin');
                     if (saveBtn) {
                         saveBtn.onclick = async () => {
@@ -1707,9 +1744,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 }
                             });
                             this.model.persistData('thongtinmothau');
+                            const inputOpFinTime = document.getElementById('op-fin-thoigianmothau');
+                            if (inputOpFinTime && inputOpFinTime.value) {
+                                gt.thoiGianMoEhsdxtc = this.model.convertDMYHMSToYMDHMS(inputOpFinTime.value);
+                            } else if (!gt.thoiGianMoEhsdxtc) {
+                                gt.thoiGianMoEhsdxtc = this.model.getCurrentDateTimeString();
+                            }
                             this.model.persistData('goithau');
                             window.appController.autoSync();
-
                             if (this._editingState) {
                                 this._editingState[this._currentWorkflowTab] = false;
                             }

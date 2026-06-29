@@ -57,6 +57,7 @@ export class BiddingView {
         // Auto-upgrade all eligible native selects in the DOM to the custom style
         this.upgradeAllSelects();
 
+
         if (this._tableObserver) {
             this._tableObserver.observe(document.body, { childList: true, subtree: true });
         }
@@ -106,6 +107,7 @@ export class BiddingView {
             initCustomSelect(select.id);
         });
     }
+
 
     enhanceTableHeaders(tableOrId, tableKey) {
         let table = typeof tableOrId === 'string' ? document.getElementById(tableOrId) : tableOrId;
@@ -349,6 +351,7 @@ export class BiddingView {
     }
 
     customConfirm(title, message, iconName = 'help-circle') {
+        if (iconName === 'warning') iconName = 'alert-triangle';
         return new Promise((resolve) => {
             const modal = document.getElementById('modal-custom-dialog');
             const titleEl = document.getElementById('dialog-title');
@@ -511,6 +514,7 @@ export class BiddingView {
     }
 
     customAlert(title, message, iconName = 'info', focusTarget = null) {
+        if (iconName === 'warning') iconName = 'alert-triangle';
         return new Promise((resolve) => {
             const modal = document.getElementById('modal-custom-dialog');
             const titleEl = document.getElementById('dialog-title');

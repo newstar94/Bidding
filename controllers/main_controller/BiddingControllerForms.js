@@ -981,12 +981,17 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
         if (phanLoTable) phanLoTable.style.display = 'none';
     }
 
+    const phuongThuc = document.getElementById('gt-phuongthuc')?.value || '';
+    const is1G2T = phuongThuc === 'Một giai đoạn hai túi hồ sơ';
+    const isOpenedOrLaterStatus = (trangThai === 'Đã mở thầu' || trangThai === 'Đang chấm thầu' || trangThai === 'Đã có kết quả' || trangThai === 'Hủy thầu');
+
     const fields = [
         { id: 'gt-soquyetdinh', required: true, label: 'Số QĐ phê duyệt' },
         { id: 'gt-ngayquyetdinh', required: true, label: 'Ngày QĐ phê duyệt' },
         { id: 'gt-thoigiandangtai', required: true, label: 'Thời gian đăng tải thông báo' },
         { id: 'gt-thoigiandongthau', required: true, label: 'Thời gian đóng thầu' },
-        { id: 'gt-thoigianmothau', required: (trangThai === 'Đã mở thầu' || trangThai === 'Đang chấm thầu' || trangThai === 'Đã có kết quả' || trangThai === 'Hủy thầu'), label: 'Thời gian mở thầu' }
+        { id: 'gt-thoigianmothau', required: isOpenedOrLaterStatus, label: is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu' },
+        { id: 'gt-thoigianmoehsdxtc', required: (is1G2T && isOpenedOrLaterStatus), label: 'Thời gian mở E-HSĐXTC' }
     ];
 
     fields.forEach(f => {
@@ -1003,7 +1008,10 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
             if (label) {
                 label.innerHTML = f.label;
             }
-        } else if (trangThai === 'Đang mời thầu' && f.id === 'gt-thoigianmothau') {
+        } else if (trangThai === 'Đang mời thầu' && (f.id === 'gt-thoigianmothau' || f.id === 'gt-thoigianmoehsdxtc')) {
+            formGroup.style.display = 'none';
+            input.removeAttribute('required');
+        } else if (f.id === 'gt-thoigianmoehsdxtc' && !is1G2T) {
             formGroup.style.display = 'none';
             input.removeAttribute('required');
         } else {
@@ -1011,6 +1019,8 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
             if (f.required) {
                 input.setAttribute('required', 'true');
                 if (label && !label.querySelector('.required')) {
+                    label.innerHTML = `${f.label} <span class="required">*</span>`;
+                } else if (label) {
                     label.innerHTML = `${f.label} <span class="required">*</span>`;
                 }
             } else {

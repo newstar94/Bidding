@@ -411,17 +411,12 @@ export function editHopDong(id) {
             
             coQdSelect.value = '0';
             soQdInput.value = '';
-            if (this.view.fpNgayQdChiDinh) {
-                this.view.fpNgayQdChiDinh.clear();
-            } else {
-                ngayQdInput.value = '';
-            }
+            ngayQdInput.value = '';
             toggleQdFields();
             
             document.getElementById('form-hopdong-id').value = '';
-            if (this.view.fpNgayKy) {
-                this.view.fpNgayKy.clear();
-            }
+            const ngayKyInp = document.getElementById('hd-ngayky');
+            if (ngayKyInp) ngayKyInp.value = '';
             cdtSelect.value = '';
             cdtSelect.dispatchEvent(new Event('change'));
             handleCdtChange('');

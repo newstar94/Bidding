@@ -4022,11 +4022,4 @@ body.dark-mode .btn-excel-action:hover {
     font-size: 0.75rem !important;
     text-align: center !important;
 }
-
-/* Override đặc biệt cho trang chi tiết (page-version-select) để cao 28px khớp với mã chi tiết */
-.custom-select-container.version-select-container.page-version-select .custom-select-trigger {
-    height: 28px !important;
-    padding: 0 12px !important;
-    font-size: 0.8rem !important;
-    font-weight: 700 !important;
-}
+

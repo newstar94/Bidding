@@ -422,6 +422,12 @@ export function editGoiThau(id, isReadOnly = false) {
         document.getElementById('gt-thoigiandangtai').value = gt.thoiGianDangTai ? this.model.formatForDatetimeLocal(gt.thoiGianDangTai) : '';
         document.getElementById('gt-thoigiandongthau').value = gt.thoiGianDongThau ? this.model.formatForDatetimeLocal(gt.thoiGianDongThau) : '';
         document.getElementById('gt-thoigianmothau').value = gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : '';
+        
+        const inputMoEhsdxtc = document.getElementById('gt-thoigianmoehsdxtc');
+        if (inputMoEhsdxtc) {
+            inputMoEhsdxtc.value = gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : '';
+        }
+
 
         // Load saved experts for Tổ chuyên gia
         const savedToChuyenGia = gt.toChuyenGia || [];
@@ -473,10 +479,15 @@ export function editGoiThau(id, isReadOnly = false) {
             window._preModalAction = this.model.state.activeaction || null;
         }
         this.switchTab('goithau', 'taomoi', true);
-        if (this.view.fpNgayQuyetDinh) this.view.fpNgayQuyetDinh.clear();
-        if (this.view.fpThoiGianDangTai) this.view.fpThoiGianDangTai.clear();
-        if (this.view.fpThoiGianDongThau) this.view.fpThoiGianDongThau.clear();
-        if (this.view.fpThoiGianMoThau) this.view.fpThoiGianMoThau.clear();
+        document.getElementById('gt-ngayquyetdinh').value = '';
+        document.getElementById('gt-thoigiandangtai').value = '';
+        document.getElementById('gt-thoigiandongthau').value = '';
+        document.getElementById('gt-thoigianmothau').value = '';
+        document.getElementById('gt-thoigianmoehsdxtc').value = '';
+        
+        const inputMoEhsdxtc = document.getElementById('gt-thoigianmoehsdxtc');
+        if (inputMoEhsdxtc) inputMoEhsdxtc.value = '';
+
 
         document.getElementById('modal-goithau-title').textContent = isReadOnly ? 'Chi tiết Gói thầu' : 'Thêm Gói thầu mới';
         form.reset();
@@ -654,13 +665,6 @@ export function editGoiThau(id, isReadOnly = false) {
 
         if (submitBtn) submitBtn.style.display = 'none';
 
-        ['fpNgayQuyetDinh', 'fpThoiGianDangTai', 'fpThoiGianDongThau', 'fpThoiGianMoThau'].forEach(fpKey => {
-            const fp = this.view[fpKey];
-            if (fp) {
-                fp.input.disabled = true;
-                fp.set('clickOpens', false);
-            }
-        });
 
         document.querySelectorAll('#phanlo-tbody input, #phanlo-tbody select, #phanlo-tbody button, #tuychonmuathem-tbody input, #tuychonmuathem-tbody select, #tuychonmuathem-tbody button').forEach(el => {
             el.disabled = true;
@@ -824,11 +828,15 @@ export async function handleGoiThauSubmit(e) {
     const valueDate2 = document.getElementById('gt-thoigiandongthau').value;
     const valueDate3 = document.getElementById('gt-thoigianmothau').value;
     const valueDate4 = document.getElementById('gt-ngayquyetdinh').value;
+    const inputMoEhsdxtc = document.getElementById('gt-thoigianmoehsdxtc');
+    const valueDate5 = inputMoEhsdxtc ? inputMoEhsdxtc.value : '';
 
     const formattedDate1 = valueDate1 ? this.model.convertDMYHMSToYMDHMS(valueDate1) : '';
     const formattedDate2 = valueDate2 ? this.model.convertDMYHMSToYMDHMS(valueDate2) : '';
     const formattedDate3 = valueDate3 ? this.model.convertDMYHMSToYMDHMS(valueDate3) : '';
     const formattedDate4 = valueDate4 ? this.model.convertDMYToYMD(valueDate4) : '';
+    const formattedDate5 = valueDate5 ? this.model.convertDMYHMSToYMDHMS(valueDate5) : '';
+
 
     const toChuyenGia = [];
     document.querySelectorAll('#to-chuyengia-tbody tr').forEach(row => {
@@ -1031,6 +1039,7 @@ export async function handleGoiThauSubmit(e) {
         thoiGianDangTai: formattedDate1,
         thoiGianDongThau: formattedDate2,
         thoiGianMoThau: formattedDate3,
+        thoiGianMoEhsdxtc: formattedDate5,
         toChuyenGia: toChuyenGia,
         toThamDinh: toThamDinh,
         giaTriDamBaoDuThau: (linhVuc === 'Tư vấn') ? 0 : (isPhanLo ? collectedPhanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0) : this.model.parseVND(document.getElementById('gt-giatribaomothau')?.value || '0')),

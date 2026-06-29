@@ -18,17 +18,35 @@ export async function moThauGoiThau(id) {
         return;
     }
 
-    // Giá trị thoiGianMoThauStr trả về định dạng dd/MM/yyyy HH:mm
-    const parts = cleanStr.split(' ');
-    const dateParts = parts[0].split('/');
-    const timeParts = (parts[1] || '').split(':');
-    const d = parseInt(dateParts[0]), m = parseInt(dateParts[1]), y = parseInt(dateParts[2]);
-    const hh = parseInt(timeParts[0] || 0), mm = parseInt(timeParts[1] || 0);
+    // Thử phân tích theo định dạng "HH:mm ngày dd/MM/yyyy" trước
+    let d, m, y, hh = 0, mm = 0;
+    const newFormatMatch = cleanStr.match(/^(\d{2}):(\d{2})\s+ngày\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+    
+    if (newFormatMatch) {
+        hh = parseInt(newFormatMatch[1], 10);
+        mm = parseInt(newFormatMatch[2], 10);
+        d = parseInt(newFormatMatch[3], 10);
+        m = parseInt(newFormatMatch[4], 10);
+        y = parseInt(newFormatMatch[5], 10);
+    } else {
+        // Fallback lại cách parse cũ "dd/MM/yyyy HH:mm"
+        const parts = cleanStr.split(' ');
+        if (parts.length >= 2) {
+            const dateParts = parts[0].split('/');
+            const timeParts = parts[1].split(':');
+            d = parseInt(dateParts[0], 10);
+            m = parseInt(dateParts[1], 10);
+            y = parseInt(dateParts[2], 10);
+            hh = parseInt(timeParts[0] || 0, 10);
+            mm = parseInt(timeParts[1] || 0, 10);
+        }
+    }
 
     if (isNaN(d) || isNaN(m) || isNaN(y) || isNaN(hh) || isNaN(mm)) {
         await this.view.customAlert('Lỗi', 'Thời gian mở thầu không hợp lệ. Vui lòng chọn lại!', 'x-circle');
         return;
     }
+
 
     const confirmed = await this.view.customConfirm(
         'Mở thầu gói thầu',
@@ -71,23 +89,9 @@ export async function phatHanhHsmtGoiThau(id) {
     document.getElementById('phathanh-hieuluchsdt').value = gt.hieuLucHsdt || '';
     document.getElementById('phathanh-giatribaomothau').value = gt.giaTriDamBaoDuThau ? this.model.formatVND(gt.giaTriDamBaoDuThau) : '';
 
-    if (this.view.fpPhathanhNgayQuyetDinh) {
-        this.view.fpPhathanhNgayQuyetDinh.setDate(gt.ngayQuyetDinh ? new Date(gt.ngayQuyetDinh) : '');
-    } else {
-        document.getElementById('phathanh-ngayquyetdinh').value = gt.ngayQuyetDinh ? this.model.formatDate(gt.ngayQuyetDinh) : '';
-    }
-
-    if (this.view.fpPhathanhThoiGianDangTai) {
-        this.view.fpPhathanhThoiGianDangTai.setDate(gt.thoiGianDangTai ? new Date(gt.thoiGianDangTai) : '');
-    } else {
-        document.getElementById('phathanh-thoigiandangtai').value = gt.thoiGianDangTai ? this.model.formatDateWithTime(gt.thoiGianDangTai) : '';
-    }
-
-    if (this.view.fpPhathanhThoiGianDongThau) {
-        this.view.fpPhathanhThoiGianDongThau.setDate(gt.thoiGianDongThau ? new Date(gt.thoiGianDongThau) : '');
-    } else {
-        document.getElementById('phathanh-thoigiandongthau').value = gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '';
-    }
+    document.getElementById('phathanh-ngayquyetdinh').value = gt.ngayQuyetDinh ? this.model.formatForDateInput(gt.ngayQuyetDinh) : '';
+    document.getElementById('phathanh-thoigiandangtai').value = gt.thoiGianDangTai ? this.model.formatForDatetimeLocal(gt.thoiGianDangTai) : '';
+    document.getElementById('phathanh-thoigiandongthau').value = gt.thoiGianDongThau ? this.model.formatForDatetimeLocal(gt.thoiGianDongThau) : '';
 
     // Dynamically show/hide & set required status for single guarantee input based on package fields
     const isTuVan = gt.linhVuc === 'Tư vấn';
@@ -256,8 +260,8 @@ export async function handlePhatHanhHsmtSubmit(e) {
         gt.thoiGianDangTai = valueDate1 ? this.model.convertDMYHMSToYMDHMS(valueDate1) : '';
         gt.thoiGianDongThau = valueDate2 ? this.model.convertDMYHMSToYMDHMS(valueDate2) : '';
 
-        // Auto-calculate thoiGianMoThau (equal to thoiGianDongThau)
-        gt.thoiGianMoThau = gt.thoiGianDongThau;
+        // Do not auto-calculate thoiGianMoThau anymore (it will be filled when saving opening minutes)
+        gt.thoiGianMoThau = '';
 
         gt.hieuLucHsdt = hieuLucHsdtVal;
         gt.hieuLucDamBaoDuThau = hieuLucHsdtVal + 30; // Tự động tính toán = Thời gian hiệu lực HSDT + 30 ngày
@@ -390,8 +394,22 @@ export function renderMoThauPanel() {
                 <div>• <strong>Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                 <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                 <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                <div>• <strong>Thời gian mở thầu:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
             </div>
+            
+            <div style="background: var(--bg-card); padding: 12px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 16px;">
+                <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</div>
+                <div style="width: 240px;">
+                    ${isReadOnly ? `
+                        <span style="font-weight: 700; color: var(--primary);">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span>
+                    ` : `
+                        <input type="datetime-local" id="op-thoigianmothau" class="form-control" style="font-size: 0.85rem; padding: 6px 12px;" value="${gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : ''}">
+                    `}
+                </div>
+                ${!isReadOnly ? `
+                    <div class="text-muted" style="font-size: 0.75rem;">(Hệ thống tự động ghi nhận thời gian hiện tại khi Lưu nếu để trống)</div>
+                ` : ''}
+            </div>
+
             ${(isLocked || isReadOnly) ? `<div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px; color:#dc2626; font-weight:600; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 Biên bản mở thầu đã bị khóa — Gói thầu có trạng thái <strong style="margin-left:4px;">${gt.trangThai}</strong>
@@ -411,7 +429,14 @@ export function renderMoThauPanel() {
         if (downloadExcelBtnTop) downloadExcelBtnTop.style.display = isEditable ? '' : 'none';
         if (saveBtn2) {
             if (isReadOnly) {
-                saveBtn2.style.display = 'none';
+                saveBtn2.style.display = '';
+                saveBtn2.innerHTML = '<i data-lucide="edit-3"></i> Chỉnh sửa';
+                saveBtn2.className = 'btn btn-outline';
+                saveBtn2.onclick = () => {
+                    this.view._editingState = this.view._editingState || {};
+                    this.view._editingState[stepKey] = true;
+                    this.renderMoThauPanel();
+                };
             } else {
                 saveBtn2.style.display = '';
                 saveBtn2.innerHTML = '<i data-lucide="save"></i> Lưu thông tin mở thầu';
@@ -1231,6 +1256,13 @@ export async function saveThongTinMoThau() {
             'x-circle'
         );
         return;
+    }
+
+    const inputOpTime = document.getElementById('op-thoigianmothau');
+    if (inputOpTime && inputOpTime.value) {
+        gt.thoiGianMoThau = this.model.convertDMYHMSToYMDHMS(inputOpTime.value);
+    } else if (!gt.thoiGianMoThau) {
+        gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
     }
 
     const rows = document.querySelectorAll('#mothau-table-tbody tr');

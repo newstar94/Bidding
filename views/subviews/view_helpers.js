@@ -68,10 +68,14 @@ export function formatDate(dateStr) {
         minutes = String(d.getMinutes()).padStart(2, '0');
         hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
     } else {
-        // Hỗ trợ chuẩn hóa "dd/MM/yyyy - HH:mm" và các biến thể dấu "-" trước khi xử lý
-        const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
+        const str = String(dateStr).trim();
         const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
-        const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+        let dmyMatch = null;
+        if (!ymdMatch) {
+            const resolvedDmy = str.replace(/\s*-\s*/, ' ').trim();
+            dmyMatch = resolvedDmy.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
+        }
+
 
         if (ymdMatch) {
             year = ymdMatch[1];
@@ -104,7 +108,7 @@ export function formatDate(dateStr) {
     }
 
     if (hasTime) {
-        return `${day}/${month}/${year} ${hours}:${minutes}`;
+        return `${hours}:${minutes} ngày ${day}/${month}/${year}`;
     }
     return `${day}/${month}/${year}`;
 }

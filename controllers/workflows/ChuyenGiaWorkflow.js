@@ -108,8 +108,8 @@ export function editChuyenGia(id) {
         form.reset();
         document.getElementById('form-chuyengia-id').value = '';
 
-        if (this.view.fpNgayCapCCCD) this.view.fpNgayCapCCCD.clear();
-        if (this.view.fpNgayCapChungChi) this.view.fpNgayCapChungChi.clear();
+        document.getElementById('cg-ngaycapcccd').value = '';
+        document.getElementById('cg-ngaycapchungchi').value = '';
 
         this.tempChuyenGiaImageBase64 = '';
         previewImg.src = '';

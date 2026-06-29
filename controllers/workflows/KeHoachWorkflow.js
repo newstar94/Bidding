@@ -228,9 +228,9 @@ export function editKeHoach(id) {
 
         document.getElementById('kh-pheduyet').value = '';
         togglePheDuyetFields();
-        if (this.view.fpNgayTrinhKeHoach) this.view.fpNgayTrinhKeHoach.clear();
-        if (this.view.fpNgayTrinhDuToan) this.view.fpNgayTrinhDuToan.clear();
-        if (this.view.fpNgayPheDuyetDuToan) this.view.fpNgayPheDuyetDuToan.clear();
+        document.getElementById('kh-ngaytrinhkehoach').value = '';
+        document.getElementById('kh-ngaytrinhdutoan').value = '';
+        document.getElementById('kh-ngaypheduyetdutoan').value = '';
         document.getElementById('kh-quyetdinhpheduyetdutoan').value = '';
 
         // Reset additional Project fields
@@ -238,18 +238,14 @@ export function editKeHoach(id) {
         document.getElementById('kh-nguonvon').value = '';
         document.getElementById('kh-thoigian-duan').value = '';
         document.getElementById('kh-soqdpheduyetduan').value = '';
-        if (this.view.fpNgayQdPheDuyetDuAn) this.view.fpNgayQdPheDuyetDuAn.clear();
+        document.getElementById('kh-ngayqdpheduyetduan').value = '';
         document.getElementById('kh-coquanpheduyetduan').value = '';
         document.getElementById('kh-diadiem-quymo').value = '';
         document.getElementById('kh-thongtinkhac').value = '';
         toggleProjectFields();
 
-        if (this.view.fpNgayPheDuyet) this.view.fpNgayPheDuyet.clear();
-        if (this.view.fpThoiGianDang) {
-            this.view.fpThoiGianDang.clear();
-        } else {
-            document.getElementById('kh-thoigiandang').value = '';
-        }
+        document.getElementById('kh-ngaypheduyet').value = '';
+        document.getElementById('kh-thoigiandang').value = '';
         const khMaInput = document.getElementById('kh-ma');
         if (khMaInput) {
             khMaInput.removeAttribute('readonly');
