@@ -27,9 +27,6 @@ export async function editChuDauTu(id) {
     const form = document.getElementById('form-chudautu');
     form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
 
-    const verSelect = document.getElementById('cdt-version-select');
-    const verContainer = document.getElementById('cdt-version-select-container');
-
     if (id) {
         this.switchTab('chudautu', 'chinhsua', true);
         document.getElementById('modal-chudautu-title').textContent = 'Cập nhật Chủ đầu tư';
@@ -57,24 +54,6 @@ export async function editChuDauTu(id) {
         document.getElementById('cdt-email').value = cdt.email || '';
         document.getElementById('cdt-maqhns').value = cdt.maQHNS || '';
         document.getElementById('cdt-coquanchuquan').value = cdt.coQuanChuQuan || '';
-
-        // Setup version history dropdown
-        if (verSelect && verContainer) {
-            verContainer.style.display = 'flex';
-            const rootId = cdt.rootId || cdt.id;
-            const versions = this.model.state.chudautu.filter(c => c.rootId === rootId || c.id === rootId);
-            versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
-            
-            verSelect.innerHTML = versions.map(v => {
-                const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
-                return `<option value="${v.id}" ${v.id === cdt.id ? 'selected' : ''}>${label}</option>`;
-            }).join('');
-
-            verSelect.onchange = (e) => {
-                this.editChuDauTu(e.target.value);
-            };
-            if (window.initCustomSelect) window.initCustomSelect('cdt-version-select');
-        }
     } else {
         this.switchTab('chudautu', 'taomoi', true);
         document.getElementById('modal-chudautu-title').textContent = 'Thêm Chủ đầu tư mới';
@@ -83,10 +62,6 @@ export async function editChuDauTu(id) {
         document.getElementById('cdt-coquanchuquan').value = '';
         document.getElementById('cdt-diachichitiet').value = '';
         await this.initAddressDropdowns('cdt-tinh', 'cdt-xa', '', '');
-
-        if (verContainer) {
-            verContainer.style.display = 'none';
-        }
     }
     this.view.openModal('modal-chudautu');
 }

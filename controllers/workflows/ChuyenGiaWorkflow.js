@@ -102,23 +102,6 @@ export function editChuyenGia(id) {
             previewContainerChuky.style.display = 'none';
             uploadZoneChuky.style.display = 'flex';
         }
-        // Setup version history dropdown
-        const verSelect = document.getElementById('cg-version-select');
-        const verContainer = document.getElementById('cg-version-select-container');
-        if (verSelect && verContainer) {
-            verContainer.style.display = 'flex';
-            const rootId = cg.rootId || cg.id;
-            const versions = this.model.state.chuyengia.filter(c => c.rootId === rootId || c.id === rootId);
-            versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
-            verSelect.innerHTML = versions.map(v => {
-                const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
-                return `<option value="${v.id}" ${v.id === cg.id ? 'selected' : ''}>${label}</option>`;
-            }).join('');
-            verSelect.onchange = (e) => {
-                this.editChuyenGia(e.target.value);
-            };
-            if (window.initCustomSelect) window.initCustomSelect('cg-version-select');
-        }
     } else {
         this.switchTab('chuyengia', 'taomoi', true);
         document.getElementById('modal-chuyengia-title').textContent = 'Thêm Chuyên gia mới';
@@ -137,11 +120,6 @@ export function editChuyenGia(id) {
         previewImgChuky.src = '';
         previewContainerChuky.style.display = 'none';
         uploadZoneChuky.style.display = 'flex';
-
-        const verContainer = document.getElementById('cg-version-select-container');
-        if (verContainer) {
-            verContainer.style.display = 'none';
-        }
     }
     this.view.openModal('modal-chuyengia');
 }
