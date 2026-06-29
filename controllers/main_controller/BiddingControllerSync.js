@@ -21,6 +21,11 @@ export function setupAutoSyncBackground() {
 
 export function autoSync() {
     const self = this;
+    const deletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
+    const payload = {
+        ...this.model.state,
+        deletions: deletions
+    };
     return fetch('/api/sync', {
         method: 'POST',
         headers: {
@@ -29,7 +34,7 @@ export function autoSync() {
             'X-Username': sessionStorage.getItem('bf_username') || '',
             'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
         },
-        body: JSON.stringify(this.model.state)
+        body: JSON.stringify(payload)
     })
         .then(res => {
             // Luôn đọc JSON dù response ok hay lỗi để có thể lấy validation_errors
@@ -107,6 +112,7 @@ export function autoSync() {
 
             if (data.timestamp) {
                 localStorage.setItem('bf_last_sync_timestamp', data.timestamp);
+                localStorage.removeItem('bf_local_deletions');
             }
             // Xóa các record mồ côi (parent đã bị xóa trên server) khỏi local state
             if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {

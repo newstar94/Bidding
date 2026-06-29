@@ -308,7 +308,7 @@ export async function renderGoiThauTable() {
                 </select>
             `;
 
-            const isLatest = displayedGt.id === gt.id;
+            const isLatest = displayedGt.id === this.model.getLatestPackage(displayedGt.id).id;
             const hasResultOrCanceled = displayedGt.trangThai === 'Đã có kết quả' || displayedGt.trangThai === 'Hủy thầu';
 
             let actionButtonsHtml = '';

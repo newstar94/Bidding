@@ -977,31 +977,38 @@ export class BiddingModel {
     }
 
     getLatestPackages() {
-        const validPackages = (this.state.goithau || []).filter(gt => {
-            if (!gt.keHoachId) return true;
-            const plan = this.getLatestPlan(gt.keHoachId);
-            return plan && plan.id === gt.keHoachId;
-        });
-
-        const latestMap = {};
-        validPackages.forEach(gt => {
+        // Group ALL packages by rootId regardless of plan version
+        const rootMap = {};
+        (this.state.goithau || []).forEach(gt => {
             const root = gt.rootId || gt.id;
-            const verNum = parseInt(gt.phienBan) || 0;
-            const isLatest = gt.isLatest == 1 || gt.is_latest == 1;
-
-            if (!latestMap[root]) {
-                latestMap[root] = gt;
-            } else {
-                const existingVer = parseInt(latestMap[root].phienBan) || 0;
-                const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
-                if (isLatest && !existingLatest) {
-                    latestMap[root] = gt;
-                } else if (verNum > existingVer) {
-                    latestMap[root] = gt;
-                }
-            }
+            if (!rootMap[root]) rootMap[root] = [];
+            rootMap[root].push(gt);
         });
-        return Object.values(latestMap);
+
+        const result = [];
+        Object.values(rootMap).forEach(candidates => {
+            // Find the highest package version number
+            const maxVer = Math.max(...candidates.map(g => parseInt(g.phienBan) || 0));
+            const topVersionCandidates = candidates.filter(g => (parseInt(g.phienBan) || 0) === maxVer);
+
+            // Among same-version candidates, prefer the one linked to the latest plan version
+            let best = topVersionCandidates[0];
+            if (topVersionCandidates.length > 1) {
+                let maxPlanVer = -1;
+                topVersionCandidates.forEach(c => {
+                    const plan = (this.state.kehoach || []).find(k => k.id === c.keHoachId);
+                    if (plan) {
+                        const ver = parseInt(plan.phienBan) || 0;
+                        if (ver > maxPlanVer) {
+                            maxPlanVer = ver;
+                            best = c;
+                        }
+                    }
+                });
+            }
+            if (best) result.push(best);
+        });
+        return result;
     }
 
     // Duplicate version label functions have been removed. Use getVersionLabel instead.
@@ -1150,22 +1157,31 @@ export class BiddingModel {
         const pkg = (this.state.goithau || []).find(g => g.id === packageId);
         if (!pkg) return null;
         const root = pkg.rootId || pkg.root_id || pkg.id;
-        const candidates = (this.state.goithau || []).filter(g => (g.rootId === root || g.root_id === root || g.id === root) && (g.isLatest == 1 || g.is_latest == 1));
-        if (candidates.length <= 1) return candidates[0] || pkg;
-        
-        let bestCandidate = candidates[0];
+
+        // Get ALL packages sharing this rootId
+        const all = (this.state.goithau || []).filter(g => (g.rootId === root || g.root_id === root || g.id === root));
+        if (all.length === 0) return pkg;
+        if (all.length === 1) return all[0];
+
+        // Find the highest package version number
+        const maxVer = Math.max(...all.map(g => parseInt(g.phienBan) || 0));
+        const topVersionCandidates = all.filter(g => (parseInt(g.phienBan) || 0) === maxVer);
+        if (topVersionCandidates.length === 1) return topVersionCandidates[0];
+
+        // Among same-version candidates, pick the one linked to the highest plan version
+        let best = topVersionCandidates[0];
         let maxPlanVer = -1;
-        candidates.forEach(c => {
+        topVersionCandidates.forEach(c => {
             const plan = (this.state.kehoach || []).find(k => k.id === c.keHoachId);
             if (plan) {
                 const ver = parseInt(plan.phienBan) || 0;
                 if (ver > maxPlanVer) {
                     maxPlanVer = ver;
-                    bestCandidate = c;
+                    best = c;
                 }
             }
         });
-        return bestCandidate;
+        return best;
     }
 
     getLatestContract(contractId) {

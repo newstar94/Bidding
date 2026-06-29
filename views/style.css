@@ -3998,7 +3998,6 @@ body.dark-mode .btn-excel-action:hover {
 .custom-select-container.version-select-container .custom-select-options {
     min-width: 100% !important;
     width: 100% !important;
-    top: calc(100% + 1px) !important;
     border-radius: 4px !important;
 }
 
@@ -4014,10 +4013,4 @@ body.dark-mode .btn-excel-action:hover {
     padding: 0 12px !important;
     font-size: 0.8rem !important;
     font-weight: 700 !important;
-}
-
-/* Override khoảng cách drop-up của dropdown phiên bản */
-.custom-select-container.version-select-container.drop-up .custom-select-options {
-    top: auto !important;
-    bottom: calc(100% + 1px) !important;
 }
