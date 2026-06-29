@@ -47,8 +47,10 @@ export function authFetchDownload(url, filename) {
 }
 
 export function formatCurrency(value) {
-    if (value === null || value === undefined) return '--';
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
+    if (value === null || value === undefined || value === '') return '--';
+    const num = Number(value);
+    if (isNaN(num)) return value;
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
 }
 
 export function formatDate(dateStr) {
@@ -66,6 +68,7 @@ export function formatDate(dateStr) {
         minutes = String(d.getMinutes()).padStart(2, '0');
         hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
     } else {
+        // Hỗ trợ chuẩn hóa "dd/MM/yyyy - HH:mm" và các biến thể dấu "-" trước khi xử lý
         const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
         const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
         const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
@@ -96,7 +99,7 @@ export function formatDate(dateStr) {
             year = d.getFullYear();
             hours = String(d.getHours()).padStart(2, '0');
             minutes = String(d.getMinutes()).padStart(2, '0');
-            hasTime = /[T\s]\d{1,2}:\d{2}/.test(dateStr);
+            hasTime = /[T\s]\d{1,2}:\d{2}/.test(String(dateStr));
         }
     }
 

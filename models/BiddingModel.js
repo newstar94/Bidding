@@ -732,6 +732,7 @@ export class BiddingModel {
             minutes = String(d.getMinutes()).padStart(2, '0');
             hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
         } else {
+            // Hỗ trợ chuẩn hóa "dd/MM/yyyy - HH:mm" và các biến thể dấu "-" trước khi xử lý
             const str = String(dateStr).replace(/\s*-\s*/, ' ').trim();
             const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
             const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
@@ -762,7 +763,7 @@ export class BiddingModel {
                 year = d.getFullYear();
                 hours = String(d.getHours()).padStart(2, '0');
                 minutes = String(d.getMinutes()).padStart(2, '0');
-                hasTime = /[T\s]\d{1,2}:\d{2}/.test(dateStr);
+                hasTime = /[T\s]\d{1,2}:\d{2}/.test(String(dateStr));
             }
         }
 
@@ -932,7 +933,9 @@ export class BiddingModel {
 
     convertDMYHMSToYMDHMS(dmyHMSStr) {
         if (!dmyHMSStr) return '';
-        let cleaned = String(dmyHMSStr).trim();
+        // Chuẩn hóa dấu gạch ngang phân cách dạng "dd/MM/yyyy - HH:mm" thành "dd/MM/yyyy HH:mm" trước
+        let cleaned = String(dmyHMSStr).replace(/\s*-\s*/, ' ').trim();
+        
         if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}(:\d{2})?/.test(cleaned)) {
             let normalized = cleaned.replace('T', ' ');
             const parts = normalized.split(' ');
@@ -942,7 +945,7 @@ export class BiddingModel {
             }
             return `${parts[0]} ${timePart}`;
         }
-        cleaned = cleaned.replace(/\s*-\s*/, ' ');
+        
         const parts = cleaned.split(' ');
         const datePart = parts[0];
         let timePart = parts[1] || '00:00:00';
@@ -1046,7 +1049,12 @@ export class BiddingModel {
         return result;
     }
 
-    // Duplicate version label functions have been removed. Use getVersionLabel instead.
+    formatCurrency(value) {
+        if (value === null || value === undefined || value === '') return '--';
+        const num = Number(value);
+        if (isNaN(num)) return value;
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
+    }
 
     getLatestChuDauTu() {
         const chudautuList = Array.isArray(this.state.chudautu) ? this.state.chudautu : [];
