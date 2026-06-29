@@ -947,10 +947,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     isLatest: 1,
                                     is_latest: 1,
                                     rootId: rootId,
-                                    createdAt: gt.createdAt || Math.floor(Date.now() / 1000),
-                                    created_at: gt.created_at || Math.floor(Date.now() / 1000),
-                                    updatedAt: Math.floor(Date.now() / 1000),
-                                    updated_at: Math.floor(Date.now() / 1000)
+                                    createdAt: gt.createdAt || this.model.getCurrentDateTimeString(),
+                                    created_at: gt.created_at || this.model.getCurrentDateTimeString(),
+                                    updatedAt: this.model.getCurrentDateTimeString(),
+                                    updated_at: this.model.getCurrentDateTimeString()
                                 });
 
                                 // Duplicate related contracts (hopdong)
@@ -989,7 +989,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     gt.keHoachId = latestPlan.id;
                                 }
                                 Object.assign(gt, gtData);
-                                gt.updatedAt = Math.floor(Date.now() / 1000);
+                                gt.updatedAt = this.model.getCurrentDateTimeString();
                                 gt.updated_at = gt.updatedAt;
                             }
 

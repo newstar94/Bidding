@@ -183,9 +183,9 @@ export function initCustomSelect(selectId) {
                 </div>
                 `}
             </div>
-            <ul class="custom-select-options" data-parent="${selectId}" style="display: none; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: var(--shadow-lg); z-index: 999999; list-style: none; padding: 4px 0; margin: 0; max-height: 220px; overflow-y: auto;">
+            <ul class="custom-select-options" data-parent="${selectId}" style="display: none; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); z-index: 999999; list-style: none; padding: 6px 0; margin: 0; max-height: 220px; overflow-y: auto;">
                 ${options.map(opt => `
-                    <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: 4px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
+                    <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: 8px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
                 `).join('')}
             </ul>
         `;

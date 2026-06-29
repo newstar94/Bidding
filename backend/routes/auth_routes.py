@@ -1078,7 +1078,7 @@ async def remove_user_from_org_api(request):
             cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE id = ?", (pq_id,))
             cursor.execute(
                 "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
-                ("ma_tran_phan_quyen", pq_id, org_id, int(time.time()))
+                ("ma_tran_phan_quyen", pq_id, org_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
             
         # Gỡ các bản ghi phan_cong_nhan_su (tự động ghi nhận deletion log qua DB trigger)

@@ -387,7 +387,7 @@ export async function handleKeHoachSubmit(e) {
         const oldKh = this.model.state.kehoach.find(k => k.id === id);
         if (oldKh) {
             Object.assign(oldKh, this.tempPlanData);
-            oldKh.updatedAt = Math.floor(Date.now() / 1000);
+            oldKh.updatedAt = this.model.getCurrentDateTimeString();
             oldKh.updated_at = oldKh.updatedAt;
         }
     } else {
@@ -403,10 +403,10 @@ export async function handleKeHoachSubmit(e) {
             isLatest: 1,
             is_latest: 1,
             rootId: planId,
-            createdAt: Math.floor(Date.now() / 1000),
-            created_at: Math.floor(Date.now() / 1000),
-            updatedAt: Math.floor(Date.now() / 1000),
-            updated_at: Math.floor(Date.now() / 1000),
+            createdAt: this.model.getCurrentDateTimeString(),
+            created_at: this.model.getCurrentDateTimeString(),
+            updatedAt: this.model.getCurrentDateTimeString(),
+            updated_at: this.model.getCurrentDateTimeString(),
             ...this.tempPlanData
         });
     }
@@ -771,10 +771,10 @@ export async function savePlanBreakdown() {
                 isLatest: 1,
                 is_latest: 1,
                 rootId: rootId,
-                createdAt: oldKh.createdAt || Math.floor(Date.now() / 1000),
-                created_at: oldKh.created_at || Math.floor(Date.now() / 1000),
-                updatedAt: Math.floor(Date.now() / 1000),
-                updated_at: Math.floor(Date.now() / 1000),
+                createdAt: oldKh.createdAt || this.model.getCurrentDateTimeString(),
+                created_at: oldKh.created_at || this.model.getCurrentDateTimeString(),
+                updatedAt: this.model.getCurrentDateTimeString(),
+                updated_at: this.model.getCurrentDateTimeString(),
                 cvDaThucHienList: cvDaThucHien,
                 cvKhongApDungList: cvKhongApDung,
                 cvChuaDuDieuKienList: cvChuaDuDieuKien

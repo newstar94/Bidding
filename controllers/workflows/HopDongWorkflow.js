@@ -556,9 +556,9 @@ export async function handleHopDongSubmit(e) {
             data.phien_ban = nextVerStr;
             data.isLatest = 1;
             data.is_latest = 1;
-            data.createdAt = currentHd.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             this.model.state.hopdong.push(data);
             finalHdId = data.id;
@@ -569,9 +569,9 @@ export async function handleHopDongSubmit(e) {
             data.phien_ban = currentHd.phienBan || currentHd.phien_ban || '00';
             data.isLatest = currentHd.isLatest !== undefined ? currentHd.isLatest : 1;
             data.is_latest = currentHd.is_latest !== undefined ? currentHd.is_latest : 1;
-            data.createdAt = currentHd.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             const idx = this.model.state.hopdong.findIndex(h => h.id === id);
             this.model.state.hopdong[idx] = data;
@@ -584,9 +584,9 @@ export async function handleHopDongSubmit(e) {
         data.phien_ban = '00';
         data.isLatest = 1;
         data.is_latest = 1;
-        data.createdAt = Math.floor(Date.now() / 1000);
+        data.createdAt = this.model.getCurrentDateTimeString();
         data.created_at = data.createdAt;
-        data.updatedAt = Math.floor(Date.now() / 1000);
+        data.updatedAt = this.model.getCurrentDateTimeString();
         data.updated_at = data.updatedAt;
         this.model.state.hopdong.push(data);
         finalHdId = newId;

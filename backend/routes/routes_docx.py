@@ -732,7 +732,7 @@ async def save_word_mapping_api(request):
         if not m_id:
             m_id = "wm-" + secrets.token_hex(8)
             
-        current_time = int(datetime.utcnow().timestamp())
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         conn = database.get_connection()
         cursor = conn.cursor()

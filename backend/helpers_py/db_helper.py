@@ -100,7 +100,7 @@ def optimized_get_connection(*args, **kwargs):
                     FOR EACH ROW
                     WHEN OLD.updated_at = NEW.updated_at
                     BEGIN
-                        UPDATE {tbl} SET updated_at = CAST(strftime('%s','now') AS INTEGER)
+                        UPDATE {tbl} SET updated_at = datetime('now', 'localtime')
                         WHERE id = NEW.id;
                     END
                 """)
@@ -114,7 +114,7 @@ def optimized_get_connection(*args, **kwargs):
                     FOR EACH ROW
                     BEGIN
                         INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at)
-                        VALUES ('{tbl}', OLD.id, OLD.owner_id, CAST(strftime('%s','now') AS INTEGER));
+                        VALUES ('{tbl}', OLD.id, OLD.owner_id, datetime('now', 'localtime'));
                     END
                 """)
                 

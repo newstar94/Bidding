@@ -270,9 +270,9 @@ export async function handleNhaThauSubmit(e) {
             data.phien_ban = nextVerStr;
             data.isLatest = 1;
             data.is_latest = 1;
-            data.createdAt = currentNt.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             this.model.state.nhathau.push(data);
         } else {
@@ -282,9 +282,9 @@ export async function handleNhaThauSubmit(e) {
             data.phien_ban = currentNt.phienBan || currentNt.phien_ban || '00';
             data.isLatest = currentNt.isLatest !== undefined ? currentNt.isLatest : 1;
             data.is_latest = currentNt.is_latest !== undefined ? currentNt.is_latest : 1;
-            data.createdAt = currentNt.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             const idx = this.model.state.nhathau.findIndex(n => n.id === id);
             this.model.state.nhathau[idx] = data;
@@ -297,9 +297,9 @@ export async function handleNhaThauSubmit(e) {
         data.phien_ban = '00';
         data.isLatest = 1;
         data.is_latest = 1;
-        data.createdAt = Math.floor(Date.now() / 1000);
+        data.createdAt = this.model.getCurrentDateTimeString();
         data.created_at = data.createdAt;
-        data.updatedAt = Math.floor(Date.now() / 1000);
+        data.updatedAt = this.model.getCurrentDateTimeString();
         data.updated_at = data.updatedAt;
         this.model.state.nhathau.push(data);
     }

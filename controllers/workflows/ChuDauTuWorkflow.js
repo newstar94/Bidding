@@ -143,9 +143,9 @@ export async function handleChuDauTuSubmit(e) {
             data.phien_ban = nextVerStr;
             data.isLatest = 1;
             data.is_latest = 1;
-            data.createdAt = currentCdt.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             this.model.state.chudautu.push(data);
         } else {
@@ -155,9 +155,9 @@ export async function handleChuDauTuSubmit(e) {
             data.phien_ban = currentCdt.phienBan || currentCdt.phien_ban || '00';
             data.isLatest = currentCdt.isLatest !== undefined ? currentCdt.isLatest : 1;
             data.is_latest = currentCdt.is_latest !== undefined ? currentCdt.is_latest : 1;
-            data.createdAt = currentCdt.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             const idx = this.model.state.chudautu.findIndex(c => c.id === id);
             this.model.state.chudautu[idx] = data;
@@ -170,9 +170,9 @@ export async function handleChuDauTuSubmit(e) {
         data.phien_ban = '00';
         data.isLatest = 1;
         data.is_latest = 1;
-        data.createdAt = Math.floor(Date.now() / 1000);
+        data.createdAt = this.model.getCurrentDateTimeString();
         data.created_at = data.createdAt;
-        data.updatedAt = Math.floor(Date.now() / 1000);
+        data.updatedAt = this.model.getCurrentDateTimeString();
         data.updated_at = data.updatedAt;
         this.model.state.chudautu.push(data);
     }

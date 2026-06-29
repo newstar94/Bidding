@@ -253,9 +253,9 @@ export async function handleChuyenGiaSubmit(e) {
             data.phien_ban = nextVerStr;
             data.isLatest = 1;
             data.is_latest = 1;
-            data.createdAt = currentCg.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             this.model.state.chuyengia.push(data);
         } else {
@@ -265,9 +265,9 @@ export async function handleChuyenGiaSubmit(e) {
             data.phien_ban = currentCg.phienBan || currentCg.phien_ban || '00';
             data.isLatest = currentCg.isLatest !== undefined ? currentCg.isLatest : 1;
             data.is_latest = currentCg.is_latest !== undefined ? currentCg.is_latest : 1;
-            data.createdAt = currentCg.createdAt || Math.floor(Date.now() / 1000);
+            data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
             data.created_at = data.createdAt;
-            data.updatedAt = Math.floor(Date.now() / 1000);
+            data.updatedAt = this.model.getCurrentDateTimeString();
             data.updated_at = data.updatedAt;
             const idx = this.model.state.chuyengia.findIndex(c => c.id === id);
             this.model.state.chuyengia[idx] = data;
@@ -280,9 +280,9 @@ export async function handleChuyenGiaSubmit(e) {
         data.phien_ban = '00';
         data.isLatest = 1;
         data.is_latest = 1;
-        data.createdAt = Math.floor(Date.now() / 1000);
+        data.createdAt = this.model.getCurrentDateTimeString();
         data.created_at = data.createdAt;
-        data.updatedAt = Math.floor(Date.now() / 1000);
+        data.updatedAt = this.model.getCurrentDateTimeString();
         data.updated_at = data.updatedAt;
         this.model.state.chuyengia.push(data);
     }

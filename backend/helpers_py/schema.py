@@ -6,8 +6,8 @@ SCHEMA_DINH_NGHIA = {
             "gia_ca": "REAL",
             "han_muc_nhan_su": "INTEGER",
             "mo_ta": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
     },
     "tai_khoan": {
@@ -28,8 +28,8 @@ SCHEMA_DINH_NGHIA = {
             "da_xac_minh": "INTEGER DEFAULT 0",
             "ma_xac_minh": "TEXT",
             "han_xac_minh": "INTEGER",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": ["FOREIGN KEY (goi_dich_vu_id) REFERENCES goi_dich_vu(id) ON DELETE SET NULL"],
         "field_map": {
@@ -60,8 +60,8 @@ SCHEMA_DINH_NGHIA = {
             "email": "TEXT",
             "ma_qhns": "TEXT",
             "co_quan_chu_quan": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "field_map": {
             "ma_qhns": "maQHNS"
@@ -100,8 +100,8 @@ SCHEMA_DINH_NGHIA = {
             "ngay_phe_duyet_du_toan": "TEXT",
             "so_qd_phe_duyet_du_toan": "TEXT",
             "ngay_trinh_ke_hoach": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL"],
         "field_map": {
@@ -137,8 +137,8 @@ SCHEMA_DINH_NGHIA = {
             "so_tai_khoan": "TEXT",
             "noi_mo_tai_khoan": "TEXT",
             "ma_ngan_hang": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
     },
     "goi_thau": {
@@ -190,8 +190,8 @@ SCHEMA_DINH_NGHIA = {
             "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không'",
             "so_bao_cao_tham_dinh_hsmt": "TEXT",
             "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": [
             "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE CASCADE",
@@ -241,8 +241,8 @@ SCHEMA_DINH_NGHIA = {
             "ten_anh_chung_chi": "TEXT",
             "anh_chu_ky": "TEXT",
             "ten_anh_chu_ky": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "field_map": {
             "so_cccd": "soCCCD",
@@ -271,8 +271,8 @@ SCHEMA_DINH_NGHIA = {
             "co_qd_chi_dinh": "INTEGER DEFAULT 0",
             "so_qd_chi_dinh": "TEXT",
             "ngay_qd_chi_dinh": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": [
             "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
@@ -289,8 +289,8 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "hop_dong_id": "TEXT",
             "goi_thau_id": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "primary_keys": ["hop_dong_id", "goi_thau_id"],
         "foreign_keys": [
@@ -305,8 +305,8 @@ SCHEMA_DINH_NGHIA = {
             "id_nhan_vien": "TEXT NOT NULL",
             "id_muc_tieu": "TEXT NOT NULL",
             "loai_doi_tuong": "TEXT NOT NULL",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
             "UNIQUE(id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
@@ -330,8 +330,8 @@ SCHEMA_DINH_NGHIA = {
             "org_id": "TEXT",
             "name": "TEXT",
             "color": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
     },
     # =============================================================================
@@ -376,8 +376,8 @@ SCHEMA_DINH_NGHIA = {
             "nguyen_nhan_khong_dat_hop_le": "TEXT",
             "nguyen_nhan_khong_dat_nang_luc": "TEXT",
             "nguyen_nhan_khong_dat_ky_thuat": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
@@ -422,8 +422,8 @@ SCHEMA_DINH_NGHIA = {
             "id": "TEXT PRIMARY KEY",
             "ten_to_chuc": "TEXT UNIQUE NOT NULL",
             "quan_ly_id": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": ["FOREIGN KEY (quan_ly_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"]
     },
@@ -432,8 +432,8 @@ SCHEMA_DINH_NGHIA = {
             "user_id": "TEXT NOT NULL",
             "to_chuc_id": "TEXT NOT NULL",
             "vai_tro_trong_to_chuc": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "primary_keys": ["user_id", "to_chuc_id"],
         "foreign_keys": [
@@ -448,7 +448,7 @@ SCHEMA_DINH_NGHIA = {
             "loai": "TEXT NOT NULL DEFAULT 'chuyen_gia'",
             "chuc_vu": "TEXT",
             "cong_viec": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "primary_keys": ["goi_thau_id", "chuyen_gia_id", "loai"],
         "foreign_keys": [
@@ -462,7 +462,7 @@ SCHEMA_DINH_NGHIA = {
             "table_name": "TEXT NOT NULL",
             "record_id": "TEXT NOT NULL",
             "owner_id": "TEXT NOT NULL",
-            "deleted_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "deleted_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
     },
     "cau_hinh_bien_word": {
@@ -472,8 +472,8 @@ SCHEMA_DINH_NGHIA = {
             "ten_bien": "TEXT NOT NULL",
             "source_table": "TEXT NOT NULL",
             "source_column": "TEXT NOT NULL",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
             "UNIQUE(owner_id, ten_bien)"
@@ -494,8 +494,8 @@ SCHEMA_DINH_NGHIA = {
             "chuyengia": "TEXT",
             "hopdong": "TEXT",
             "thongtinmothau": "TEXT",
-            "created_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))",
-            "updated_at": "INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
             "UNIQUE(owner_id, emp_id)"

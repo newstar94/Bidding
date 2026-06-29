@@ -1102,10 +1102,10 @@ export async function handleGoiThauSubmit(e) {
                 isLatest: 1,
                 is_latest: 1,
                 rootId: rootId,
-                createdAt: oldGt.createdAt || Math.floor(Date.now() / 1000),
-                created_at: oldGt.created_at || Math.floor(Date.now() / 1000),
-                updatedAt: Math.floor(Date.now() / 1000),
-                updated_at: Math.floor(Date.now() / 1000),
+                createdAt: oldGt.createdAt || this.model.getCurrentDateTimeString(),
+                created_at: oldGt.created_at || this.model.getCurrentDateTimeString(),
+                updatedAt: this.model.getCurrentDateTimeString(),
+                updated_at: this.model.getCurrentDateTimeString(),
                 ...gtData
             });
 
@@ -1146,7 +1146,7 @@ export async function handleGoiThauSubmit(e) {
         } else {
             oldGt.maGoiThau = inputCode;
             Object.assign(oldGt, gtData);
-            oldGt.updatedAt = Math.floor(Date.now() / 1000);
+            oldGt.updatedAt = this.model.getCurrentDateTimeString();
             oldGt.updated_at = oldGt.updatedAt;
 
             // Cập nhật/Xóa phân công chuyên viên cho gói thầu hiện tại khi ghi đè
@@ -1169,10 +1169,10 @@ export async function handleGoiThauSubmit(e) {
             isLatest: 1,
             is_latest: 1,
             rootId: newGtId,
-            createdAt: Math.floor(Date.now() / 1000),
-            created_at: Math.floor(Date.now() / 1000),
-            updatedAt: Math.floor(Date.now() / 1000),
-            updated_at: Math.floor(Date.now() / 1000),
+            createdAt: this.model.getCurrentDateTimeString(),
+            created_at: this.model.getCurrentDateTimeString(),
+            updatedAt: this.model.getCurrentDateTimeString(),
+            updated_at: this.model.getCurrentDateTimeString(),
             ...gtData
         });
 

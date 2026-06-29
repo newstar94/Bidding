@@ -318,7 +318,7 @@ async def sync_api(request):
         cursor = conn.cursor()
         
         org_name = get_active_org(request, role_or_err.user_id)
-        current_time = int(datetime.utcnow().timestamp())
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         # LG-5: Validate org_name (owner_id) to ensure it exists in to_chuc or tai_khoan
         cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (org_name,))
@@ -800,16 +800,22 @@ async def get_all_data_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
             
-        since = 0
-        try:
-            since = int(request.query_params.get('since', 0))
-        except Exception:
-            pass
-            
+        since_val = request.query_params.get('since', '0')
+        if since_val.isdigit() and int(since_val) < 10000000000:
+            val = int(since_val)
+            if val == 0:
+                since = '1970-01-01 00:00:00'
+            else:
+                try:
+                    since = datetime.utcfromtimestamp(val).strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    since = '1970-01-01 00:00:00'
+        else:
+            since = since_val
+
         conn = database.get_connection()
         cursor = conn.cursor()
-        current_time = int(datetime.utcnow().timestamp())
-        
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
         org_name = get_active_org(request, role_or_err.user_id)
@@ -829,7 +835,7 @@ async def get_all_data_api(request):
             if use_server_pagination:
                 # If using server pagination, do not fetch all data, client will fetch paginated
                 return []
-            if since > 0:
+            if since != '1970-01-01 00:00:00' and since != '0':
                 cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ? AND updated_at > ?", (org_name, since))
             else:
                 cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ?", (org_name,))
@@ -936,7 +942,7 @@ async def get_all_data_api(request):
             
         # 11. Deletions
         deletions = []
-        if since > 0:
+        if since != '1970-01-01 00:00:00' and since != '0':
             # LIMIT 1000 phòng trường hợp có quá nhiều deletion log — tránh trả payload khổng
             cursor.execute(
                 "SELECT table_name, record_id FROM deleted_records "
