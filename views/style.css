@@ -3966,8 +3966,6 @@ body.dark-mode .btn-excel-action:hover {
     border-radius: 8px !important;
     padding: 4px !important;
     max-height: 150px !important;
-    width: 52px !important;
-    min-width: 52px !important;
 }
 
 .version-select-dropdown .custom-select-option {
@@ -4076,8 +4074,6 @@ select.page-version-select:focus {
     border-radius: 8px !important;
     padding: 4px !important;
     max-height: 180px !important;
-    width: 70px !important;
-    min-width: 70px !important;
 }
 
 .compact-version-select-dropdown .custom-select-option {
