@@ -482,7 +482,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
     const isPlanLatest = latestPlan && latestPlan.id === gt.keHoachId;
     const latestPkg = this.model.getLatestPackage(gt.id);
     const isPkgLatest = latestPkg && latestPkg.id === gt.id;
-    const isEditable = isPlanLatest && isPkgLatest;
+    const isEditable = isPkgLatest;
 
     if (editBtn) {
         if (isEditable && this._currentWorkflowTab === 'preparation' && gt.trangThai !== 'Đang chấm thầu' && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu' && !this._inPlaceEditMode) {

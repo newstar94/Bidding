@@ -1150,8 +1150,22 @@ export class BiddingModel {
         const pkg = (this.state.goithau || []).find(g => g.id === packageId);
         if (!pkg) return null;
         const root = pkg.rootId || pkg.root_id || pkg.id;
-        const latest = (this.state.goithau || []).find(g => (g.rootId === root || g.root_id === root || g.id === root) && (g.isLatest == 1 || g.is_latest == 1));
-        return latest || pkg;
+        const candidates = (this.state.goithau || []).filter(g => (g.rootId === root || g.root_id === root || g.id === root) && (g.isLatest == 1 || g.is_latest == 1));
+        if (candidates.length <= 1) return candidates[0] || pkg;
+        
+        let bestCandidate = candidates[0];
+        let maxPlanVer = -1;
+        candidates.forEach(c => {
+            const plan = (this.state.kehoach || []).find(k => k.id === c.keHoachId);
+            if (plan) {
+                const ver = parseInt(plan.phienBan) || 0;
+                if (ver > maxPlanVer) {
+                    maxPlanVer = ver;
+                    bestCandidate = c;
+                }
+            }
+        });
+        return bestCandidate;
     }
 
     getLatestContract(contractId) {
