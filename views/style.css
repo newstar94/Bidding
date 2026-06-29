@@ -4022,4 +4022,159 @@ body.dark-mode .btn-excel-action:hover {
     font-size: 0.75rem !important;
     text-align: center !important;
 }
+
+/* ==========================================================================
+   Flatpickr Custom Styles & Year Grid Overrides
+   ========================================================================== */
+.flatpickr-calendar {
+    font-family: var(--font-primary) !important;
+    border-radius: var(--radius-md) !important;
+    border: 1px solid var(--border-color) !important;
+    background: var(--bg-card) !important;
+    box-shadow: var(--shadow-lg) !important;
+    color: var(--text-main) !important;
+}
+
+.flatpickr-months .flatpickr-month,
+.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-next-month {
+    color: var(--text-main) !important;
+    fill: var(--text-main) !important;
+}
+
+.flatpickr-current-month .numInputWrapper span.arrowUp::after {
+    border-bottom-color: var(--text-main) !important;
+}
+.flatpickr-current-month .numInputWrapper span.arrowDown::after {
+    border-top-color: var(--text-main) !important;
+}
+
+.flatpickr-calendar .flatpickr-innerContainer {
+    background: var(--bg-card) !important;
+}
+
+.flatpickr-weekday {
+    color: var(--text-muted) !important;
+    font-weight: 700 !important;
+}
+
+/* T7 và CN (Thứ 7 và Chủ nhật) chữ màu đỏ ở phần header */
+.flatpickr-weekdays span.flatpickr-weekday:nth-child(6),
+.flatpickr-weekdays span.flatpickr-weekday:nth-child(7) {
+    color: #dc2626 !important;
+}
+
+/* Ngày T7 và CN màu đỏ ở phần bảng lịch */
+.flatpickr-day:nth-child(7n - 1),
+.flatpickr-day:nth-child(7n) {
+    color: #dc2626 !important;
+}
+
+/* Làm mờ tất cả ngày không thuộc tháng đang xem */
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+    color: var(--text-light) !important;
+    opacity: 0.35 !important;
+}
+
+/* Khi ngày bị disabled */
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover {
+    color: var(--text-light) !important;
+    opacity: 0.25 !important;
+}
+
+/* Ngày hiện tại có viền xanh bao bên ngoài */
+.flatpickr-day.today {
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: transparent !important;
+    font-weight: 700;
+}
+.flatpickr-day.today:hover {
+    background: var(--primary-soft) !important;
+    color: var(--primary) !important;
+}
+
+/* Ngày đang chọn nền xanh đồng bộ với màu ứng dụng */
+.flatpickr-day.selected,
+.flatpickr-day.selected:focus,
+.flatpickr-day.selected:hover,
+.flatpickr-day.selected.prevMonthDay,
+.flatpickr-day.selected.nextMonthDay {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: #ffffff !important;
+}
+
+/* Flatpickr Footer & Buttons */
+.flatpickr-footer {
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-app);
+    padding: 8px 12px;
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+}
+
+.flatpickr-footer button {
+    cursor: pointer;
+    font-weight: 600;
+    transition: all var(--transition-fast);
+}
+
+/* Bảng Grid chọn năm */
+.flatpickr-year-grid {
+    animation: fadeIn var(--transition-fast) ease;
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+}
+
+.flatpickr-year-grid-item {
+    border: 1px solid var(--border-color);
+    transition: all var(--transition-fast);
+}
+
+.flatpickr-year-grid-item:hover {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--primary) !important;
+}
+
+.flatpickr-year-grid-item.active {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: #ffffff !important;
+    font-weight: 700;
+}
+
+.flatpickr-day {
+    color: var(--text-main) !important;
+}
+.flatpickr-day:hover {
+    background: var(--neutral-soft) !important;
+}
+.flatpickr-time {
+    border-top: 1px solid var(--border-color) !important;
+    background: var(--bg-card) !important;
+}
+.flatpickr-time input {
+    color: var(--text-main) !important;
+}
+.flatpickr-time .flatpickr-time-separator {
+    color: var(--text-main) !important;
+}
+.flatpickr-time .numInputWrapper span.arrowUp::after {
+    border-bottom-color: var(--text-main) !important;
+}
+.flatpickr-time .numInputWrapper span.arrowDown::after {
+    border-top-color: var(--text-main) !important;
+}
+
+.flatpickr-current-month .numInputWrapper {
+    cursor: pointer;
+}
+.flatpickr-current-month .numInputWrapper input.flatpickr-year {
+    pointer-events: none;
+}
+
 

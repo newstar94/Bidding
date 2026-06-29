@@ -865,7 +865,7 @@ export class BiddingModel {
                 }
             }
         }
-        return `${year}-${month}-${day}`;
+        return `${day}/${month}/${year}`;
     }
 
     formatForDatetimeLocal(dateStr) {
@@ -920,7 +920,7 @@ export class BiddingModel {
                 }
             }
         }
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
+        return `${day}/${month}/${year} ${hours}:${minutes}`;
     }
 
     convertDMYToYMD(dmyStr) {

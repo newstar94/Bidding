@@ -57,6 +57,8 @@ export class BiddingView {
         // Auto-upgrade all eligible native selects in the DOM to the custom style
         this.upgradeAllSelects();
 
+        // Auto-initialize Flatpickr for date/datetime inputs
+        this.initFlatpickr(document);
 
         if (this._tableObserver) {
             this._tableObserver.observe(document.body, { childList: true, subtree: true });
@@ -75,6 +77,13 @@ export class BiddingView {
         });
 
         document.querySelectorAll('select').forEach(select => {
+            // Exclude flatpickr month and custom year dropdowns
+            if (select.closest('.flatpickr-calendar') || 
+                select.classList.contains('flatpickr-monthDropdown-months') || 
+                select.classList.contains('flatpickr-year-select')) {
+                return;
+            }
+
             // Exclude version selects, elements marked as no-custom, or those with a custom-select-wrapper sibling (searchable selects)
             const hasNoCustomAttr = select.getAttribute('data-no-custom') === 'true';
             const hasSearchableWrapper = select.id && select.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
@@ -340,7 +349,150 @@ export class BiddingView {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.add('active');
+            this.initFlatpickr(modal);
         }
+    }
+
+    initFlatpickr(container = document) {
+        if (typeof flatpickr === 'undefined') return;
+        
+        const setupPlugins = (instance) => {
+            // 1. Add Footer Buttons (Confirm/Cancel)
+            const footer = document.createElement("div");
+            footer.className = "flatpickr-footer";
+            footer.style.display = "flex";
+            footer.style.justifyContent = "flex-end";
+            footer.style.gap = "8px";
+            
+            const cancelBtn = document.createElement("button");
+            cancelBtn.type = "button";
+            cancelBtn.className = "btn btn-outline";
+            cancelBtn.textContent = "Hủy";
+            cancelBtn.style.borderRadius = "var(--radius-sm)";
+            cancelBtn.onclick = (e) => {
+                e.stopPropagation();
+                instance.close();
+            };
+            
+            const confirmBtn = document.createElement("button");
+            confirmBtn.type = "button";
+            confirmBtn.className = "btn btn-primary";
+            confirmBtn.textContent = "Xác nhận";
+            confirmBtn.style.borderRadius = "var(--radius-sm)";
+            confirmBtn.onclick = (e) => {
+                e.stopPropagation();
+                instance.close();
+            };
+            
+            footer.appendChild(cancelBtn);
+            footer.appendChild(confirmBtn);
+            instance.calendarContainer.appendChild(footer);
+            
+            // 2. Function to ensure custom year dropdown is present and updated
+            const ensureYearDropdown = () => {
+                const yearInput = instance.calendarContainer.querySelector(".numInput.flatpickr-year");
+                if (!yearInput) return;
+                
+                const yearWrapper = yearInput.parentNode;
+                if (!yearWrapper) return;
+                
+                let select = yearWrapper.querySelector(".flatpickr-year-select");
+                if (select) {
+                    select.value = instance.currentYear;
+                    return;
+                }
+                
+                // Hide standard input elements
+                yearInput.style.display = "none";
+                const arrowUp = yearWrapper.querySelector(".arrowUp");
+                const arrowDown = yearWrapper.querySelector(".arrowDown");
+                if (arrowUp) arrowUp.style.display = "none";
+                if (arrowDown) arrowDown.style.display = "none";
+                
+                // Set explicit width on wrapper so it doesn't collapse
+                yearWrapper.style.width = "75px";
+                yearWrapper.style.display = "inline-block";
+                
+                // Create dropdown select
+                select = document.createElement("select");
+                select.className = "flatpickr-year-select";
+                select.style.fontSize = "inherit";
+                select.style.fontWeight = "inherit";
+                select.style.color = "inherit";
+                select.style.background = "transparent";
+                select.style.border = "none";
+                select.style.cursor = "pointer";
+                select.style.outline = "none";
+                select.style.padding = "0 4px";
+                select.style.width = "100%";
+                select.style.height = "100%";
+                select.style.textAlign = "center";
+                
+                const updateSelectOptions = () => {
+                    select.innerHTML = "";
+                    const currentYear = instance.currentYear;
+                    for (let y = currentYear - 7; y <= currentYear + 7; y++) {
+                        const opt = document.createElement("option");
+                        opt.value = y;
+                        opt.textContent = y;
+                        opt.selected = y === currentYear;
+                        opt.style.background = "var(--bg-card)";
+                        opt.style.color = "var(--text-main)";
+                        select.appendChild(opt);
+                    }
+                };
+                
+                updateSelectOptions();
+                
+                select.addEventListener("change", (e) => {
+                    instance.changeYear(parseInt(e.target.value));
+                    updateSelectOptions();
+                });
+                
+                yearWrapper.appendChild(select);
+            };
+            
+            // Run initially
+            ensureYearDropdown();
+            
+            // Bind to flatpickr change events
+            instance.config.onMonthChange.push(ensureYearDropdown);
+            instance.config.onYearChange.push(ensureYearDropdown);
+            instance.config.onOpen.push(ensureYearDropdown);
+        };
+
+        setTimeout(() => {
+            // Cấu hình chọn ngày (dd/MM/yyyy)
+            container.querySelectorAll('input.flatpickr-date').forEach(el => {
+                el.setAttribute('autocomplete', 'off');
+                if (el._flatpickr) return;
+                flatpickr(el, {
+                    dateFormat: 'd/m/Y',
+                    allowInput: true,
+                    locale: 'vn',
+                    time_24hr: true,
+                    onReady: function(selectedDates, dateStr, instance) {
+                        setupPlugins(instance);
+                    }
+                });
+            });
+            
+            // Cấu hình chọn ngày & giờ (dd/MM/yyyy HH:mm)
+            container.querySelectorAll('input.flatpickr-datetime').forEach(el => {
+                el.setAttribute('autocomplete', 'off');
+                if (el._flatpickr) return;
+                flatpickr(el, {
+                    dateFormat: 'd/m/Y H:i',
+                    enableTime: true,
+                    time_24hr: true,
+                    allowInput: true,
+                    locale: 'vn',
+                    onReady: function(selectedDates, dateStr, instance) {
+                        setupPlugins(instance);
+                    }
+                });
+            });
+        }, 50);
     }
 
     closeModal(modalId) {

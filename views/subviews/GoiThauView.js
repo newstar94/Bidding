@@ -761,7 +761,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian đăng tải</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="datetime-local" id="ip-dangtai" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDangTai ? this.model.formatForDatetimeLocal(gt.thoiGianDangTai) : ''}">
+                                            <input type="text" id="ip-dangtai" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDangTai ? this.model.formatForDatetimeLocal(gt.thoiGianDangTai) : ''}" placeholder="dd/MM/yyyy HH:mm">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianDangTai ? this.model.formatDateWithTime(gt.thoiGianDangTai) : '--'}</span>
                                         `}
@@ -769,7 +769,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian đóng thầu</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="datetime-local" id="ip-dongthau" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDongThau ? this.model.formatForDatetimeLocal(gt.thoiGianDongThau) : ''}">
+                                            <input type="text" id="ip-dongthau" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianDongThau ? this.model.formatForDatetimeLocal(gt.thoiGianDongThau) : ''}" placeholder="dd/MM/yyyy HH:mm">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</span>
                                         `}
@@ -777,7 +777,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <div style="display: flex; justify-content: space-between; border-bottom: ${gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ' ? '1px solid rgba(226, 232, 240, 0.5)' : 'none'}; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">${gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ' ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="datetime-local" id="ip-mothau" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : ''}">
+                                            <input type="text" id="ip-mothau" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : ''}" placeholder="dd/MM/yyyy HH:mm">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</span>
                                         `}
@@ -786,7 +786,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian mở E-HSĐXTC</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="datetime-local" id="ip-moehsdxtc" class="form-control" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}">
+                                            <input type="text" id="ip-moehsdxtc" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : '--'}</span>
                                         `}
@@ -815,7 +815,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Ngày quyết định phê duyệt HSMT</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="date" id="ip-ngayquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayQuyetDinh ? this.model.formatForDateInput(gt.ngayQuyetDinh) : ''}">
+                                            <input type="text" id="ip-ngayquyetdinh" class="form-control flatpickr-date" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayQuyetDinh ? this.model.formatForDateInput(gt.ngayQuyetDinh) : ''}" placeholder="dd/MM/yyyy">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.ngayQuyetDinh ? this.model.formatDate(gt.ngayQuyetDinh) : '--'}</span>
                                         `}
@@ -844,7 +844,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <div id="wrapper-ngaybaocaothamdinh" style="display: ${this._inPlaceEditMode || gt.yeuCauThamDinhHsmt === 'Có' ? 'flex' : 'none'}; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Ngày báo cáo thẩm định HSMT</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="date" id="ip-ngaybaocaothamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatForDateInput(gt.ngayBaoCaoThamDinhHsmt) : ''}">
+                                            <input type="text" id="ip-ngaybaocaothamdinh" class="form-control flatpickr-date" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatForDateInput(gt.ngayBaoCaoThamDinhHsmt) : ''}" placeholder="dd/MM/yyyy">
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatDate(gt.ngayBaoCaoThamDinhHsmt) : '--'}</span>
                                         `}
@@ -1336,7 +1336,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </div>
                         <div class="form-group">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày báo cáo đánh giá <span class="required">*</span></label>
-                            <input type="date" id="danhgiahsdt-ngay-baocao" class="form-control" required>
+                            <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-date" required placeholder="dd/MM/yyyy">
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
@@ -1392,7 +1392,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </div>
                         <div class="form-group">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày báo cáo đánh giá <span class="required">*</span></label>
-                            <input type="date" id="danhgiahsdt-ngay-baocao" class="form-control" required>
+                            <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-date" required placeholder="dd/MM/yyyy">
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
@@ -1471,7 +1471,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Ngày QĐ phê duyệt <span class="text-danger">*</span></label>
-                                <input type="date" id="qualified-ngay-qd" class="form-control" value="${ngayQd ? this.model.formatForDateInput(ngayQd) : ''}" style="width: 100%;" ${isReadOnly ? 'readonly' : ''}>
+                                <input type="text" id="qualified-ngay-qd" class="form-control flatpickr-date" value="${ngayQd ? this.model.formatForDateInput(ngayQd) : ''}" style="width: 100%;" ${isReadOnly ? 'readonly' : ''} placeholder="dd/MM/yyyy">
                                 <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày QĐ phê duyệt!</span>
                             </div>
                         </div>
@@ -1601,7 +1601,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             ${isReadOnly ? `
                                 <span style="font-weight: 700; color: var(--primary);">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>
                             ` : `
-                                <input type="datetime-local" id="op-fin-thoigianmothau" class="form-control" style="font-size: 0.85rem; padding: 6px 12px;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}">
+                                <input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.85rem; padding: 6px 12px;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">
                             `}
                         </div>
                         ${!isReadOnly ? `
@@ -2273,7 +2273,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </div>
                             <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
                                 <label style="font-weight:700; font-size:0.85rem;">Ngày ký QĐ <span class="required">*</span></label>
-                                <input type="date" id="award-decision-date" class="form-control" required value="${gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : ''}">
+                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" required value="${gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : ''}" placeholder="dd/MM/yyyy">
                                 <span class="error-text">Vui lòng chọn ngày ký QĐ</span>
                             </div>
                         </div>
