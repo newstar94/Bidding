@@ -3946,4 +3946,78 @@ body.dark-mode .btn-excel-action:hover {
     font-size: 0.85rem;
     font-weight: bold;
 }
-
+
+/* =========================================================================
+   CUSTOM DROPDOWN CHO BẢNG BIỂU VÀ DROP-UP (MỞ NGƯỢC LÊN)
+   ========================================================================= */
+.custom-select-container.table-select .custom-select-options {
+    min-width: 100%;
+    width: max-content;
+}
+
+/* Mở ngược lên trên khi thêm class .drop-up */
+.custom-select-container.drop-up .custom-select-options {
+    top: auto !important;
+    bottom: calc(100% + 4px) !important;
+    animation: selectDropdownFadeUp 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+@keyframes selectDropdownFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Đồng bộ kích thước của dropdown phiên bản cho khớp với mã */
+.custom-select-container.version-select-container {
+    width: auto !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+.custom-select-container.version-select-container .custom-select-trigger {
+    height: 22px !important;
+    padding: 0 10px !important;
+    font-size: 0.72rem !important;
+    font-weight: 800 !important;
+    border-radius: 4px !important;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    justify-content: center !important;
+    min-width: 52px !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+
+.custom-select-container.version-select-container .custom-select-options {
+    min-width: 100% !important;
+    width: 100% !important;
+    top: calc(100% + 1px) !important;
+    border-radius: 4px !important;
+}
+
+.custom-select-container.version-select-container .custom-select-options li {
+    padding: 6px 0 !important;
+    font-size: 0.75rem !important;
+    text-align: center !important;
+}
+
+/* Override đặc biệt cho trang chi tiết (page-version-select) để cao 28px khớp với mã chi tiết */
+.custom-select-container.version-select-container.page-version-select .custom-select-trigger {
+    height: 28px !important;
+    padding: 0 12px !important;
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+}
+
+/* Override khoảng cách drop-up của dropdown phiên bản */
+.custom-select-container.version-select-container.drop-up .custom-select-options {
+    top: auto !important;
+    bottom: calc(100% + 1px) !important;
+}

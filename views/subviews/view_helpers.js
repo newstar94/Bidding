@@ -170,6 +170,15 @@ export function initCustomSelect(selectId) {
     if (!wrapper) {
         wrapper = document.createElement('div');
         wrapper.className = 'custom-select-container';
+        if (select.closest('table')) {
+            wrapper.classList.add('table-select');
+        }
+        if (isVersionSelect) {
+            wrapper.classList.add('version-select-container');
+        }
+        if (select.classList.contains('page-version-select')) {
+            wrapper.classList.add('page-version-select');
+        }
         wrapper.setAttribute('data-target', selectId);
         wrapper.style.position = 'relative';
 
@@ -204,6 +213,16 @@ export function initCustomSelect(selectId) {
             if (!wasOpen) {
                 wrapper.classList.add('open');
                 optionsList.style.display = 'block';
+
+                // Tự động kiểm tra không gian bên dưới để mở ngược lên (drop-up)
+                const rect = wrapper.getBoundingClientRect();
+                const dropdownHeight = optionsList.offsetHeight || 200;
+                const spaceBelow = window.innerHeight - rect.bottom;
+                if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
+                    wrapper.classList.add('drop-up');
+                } else {
+                    wrapper.classList.remove('drop-up');
+                }
             }
         });
 
@@ -235,6 +254,12 @@ export function initCustomSelect(selectId) {
             window.lucide.createIcons();
         }
     } else {
+        if (isVersionSelect && !wrapper.classList.contains('version-select-container')) {
+            wrapper.classList.add('version-select-container');
+        }
+        if (select.classList.contains('page-version-select') && !wrapper.classList.contains('page-version-select')) {
+            wrapper.classList.add('page-version-select');
+        }
         // Đồng bộ lại danh sách options nếu danh sách options của select gốc thay đổi
         const optionsList = wrapper.querySelector('.custom-select-options');
         if (optionsList) {
