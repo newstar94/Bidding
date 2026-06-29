@@ -194,7 +194,7 @@ export async function renderKeHoachTable() {
                     <td class="text-blue fw-bold">${formatCurrency(displayedKh.tongMucDauTu)}</td>
                     <td>${formatDate(displayedKh.ngayPheDuyet)}</td>
                     <td>${displayedKh.quyetDinhPheDuyet}</td>
-                    <td><small class="fw-bold text-muted">${displayedKh.thoiGianDangMa ? this.model.formatDateWithTime(displayedKh.thoiGianDangMa) : '--'}</small></td>
+                    <td><span class="fw-bold text-muted">${displayedKh.thoiGianDangMa ? this.model.formatDateWithTime(displayedKh.thoiGianDangMa) : '--'}</span></td>
                     <td class="text-right">
                         <div class="action-btn-group">
                             ${editBtnHtml}

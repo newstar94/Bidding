@@ -113,30 +113,17 @@ export function initCustomSelect(selectId) {
     // Đảm bảo thẻ select gốc bị ẩn hoàn toàn (sử dụng !important để tránh bị CSS hệ thống đè lên)
     select.setAttribute('style', 'display: none !important;');
 
-    // Phân loại hộp chọn
-    const isVersion = select.classList.contains('version-droplist');
-    const isCompact = select.classList.contains('page-version-select') || select.classList.contains('modal-version-select');
-
     // =========================================================================
-    // TRÌNH QUẢN LÝ SỰ KIỆN TOÀN CỤC (Áp dụng chung cho cả 2 loại)
+    // TRÌNH QUẢN LÝ SỰ KIỆN TOÀN CỤC (Chỉ cho Dropdown Absolute thông thường)
     // =========================================================================
     if (!window._unifiedSelectClickListenerRegistered) {
         // Đóng menu khi nhấp chuột ra ngoài
         document.addEventListener('click', (e) => {
             document.querySelectorAll('.custom-select-container.open').forEach(w => {
-                const targetId = w.getAttribute('data-target');
-                const fixedDropdown = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
                 const absoluteDropdown = w.querySelector('.custom-select-options');
 
-                if (!w.contains(e.target) && (!fixedDropdown || !fixedDropdown.contains(e.target))) {
+                if (!w.contains(e.target)) {
                     w.classList.remove('open');
-                    // Thu dọn menu Fixed (Phiên bản)
-                    if (fixedDropdown && fixedDropdown.parentElement === document.body) {
-                        w.appendChild(fixedDropdown);
-                        fixedDropdown.style.opacity = '0';
-                        fixedDropdown.style.visibility = 'hidden';
-                    }
-                    // Thu dọn menu Absolute (Thông thường)
                     if (absoluteDropdown) absoluteDropdown.style.display = 'none';
                 }
             });
@@ -145,42 +132,21 @@ export function initCustomSelect(selectId) {
         // Đóng menu khi cuộn trang
         document.addEventListener('scroll', (e) => {
             // Bỏ qua nếu đang cuộn bên trong chính danh sách
-            if (e.target && e.target.classList && (e.target.classList.contains('custom-select-dropdown') || e.target.classList.contains('custom-select-options'))) return;
+            if (e.target && e.target.classList && e.target.classList.contains('custom-select-options')) return;
 
             document.querySelectorAll('.custom-select-container.open').forEach(w => {
                 w.classList.remove('open');
-                const targetId = w.getAttribute('data-target');
-                const fixedDropdown = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
                 const absoluteDropdown = w.querySelector('.custom-select-options');
-
-                if (fixedDropdown && fixedDropdown.parentElement === document.body) {
-                    w.appendChild(fixedDropdown);
-                    fixedDropdown.style.opacity = '0';
-                    fixedDropdown.style.visibility = 'hidden';
-                }
                 if (absoluteDropdown) absoluteDropdown.style.display = 'none';
             });
         }, { capture: true, passive: true });
-
         window._unifiedSelectClickListenerRegistered = true;
     }
-
     // =========================================================================
     // KHỞI TẠO KHUNG BAO BỌC (Container)
     // =========================================================================
-    // Trở lại dùng lớp .custom-select-container để tránh xung đột với các Combobox cũ
     let wrapper = select.parentElement.querySelector(`.custom-select-container[data-target="${selectId}"]`);
-    if (!wrapper) {
-        wrapper = document.createElement('div');
-        wrapper.className = 'custom-select-container' + (isVersion ? ' version-select-container' : '') + (isCompact ? ' compact-version-select-container' : '');
-        wrapper.setAttribute('data-target', selectId);
-
-        // Cấp thuộc tính relative để danh sách Absolute có tọa độ bám vào
-        if (!isVersion && !isCompact) wrapper.style.position = 'relative';
-
-        select.parentNode.insertBefore(wrapper, select.nextSibling);
-    }
-
+    
     // Trích xuất dữ liệu
     const options = Array.from(select.options);
     const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
@@ -193,85 +159,14 @@ export function initCustomSelect(selectId) {
         triggerText = 'Th' + coreText;
     }
 
-    // Dọn dẹp DOM rác trên Body (nếu có từ phiên làm việc trước)
-    const oldDropdownOnBody = document.body.querySelector(`.custom-select-dropdown[data-target="${selectId}"]`);
-    if (oldDropdownOnBody) oldDropdownOnBody.remove();
+    if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'custom-select-container';
+        wrapper.setAttribute('data-target', selectId);
+        wrapper.style.position = 'relative';
 
-    // =========================================================================
-    // PHẦN 1: DÀNH RIÊNG CHO DROPDOWN PHIÊN BẢN (Dùng Position: Fixed)
-    // =========================================================================
-    if (isVersion || isCompact) {
-        wrapper.style.display = 'inline-block';
-        wrapper.style.verticalAlign = 'middle';
-        wrapper.style.margin = '0';
-        if (isVersion) {
-            wrapper.style.width = '52px';
-            wrapper.style.height = '22px';
-        } else {
-            wrapper.style.width = '70px';
-            wrapper.style.minWidth = '70px';
-        }
+        select.parentNode.insertBefore(wrapper, select.nextSibling);
 
-        wrapper.innerHTML = `
-            <div class="custom-select-trigger">
-                <span>${triggerText}</span>
-            </div>
-            <div class="custom-select-dropdown${isVersion ? ' version-select-dropdown' : ' compact-version-select-dropdown'}" data-target="${selectId}">
-                ${options.map(opt => `
-                    <div class="custom-select-option ${opt.selected ? 'selected' : ''}" data-value="${opt.value}">
-                        <span>${opt.text}</span>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-
-        const trigger = wrapper.querySelector('.custom-select-trigger');
-        const dropdown = wrapper.querySelector('.custom-select-dropdown');
-
-        trigger.addEventListener('click', (e) => {
-            e.stopPropagation();
-            // Ra lệnh đóng toàn bộ menu đang mở bằng cách mô phỏng cú nhấp ngoài
-            document.dispatchEvent(new Event('click'));
-
-            if (wrapper.classList.toggle('open')) {
-                document.body.appendChild(dropdown);
-                dropdown.style.opacity = '0';
-                dropdown.style.visibility = 'hidden';
-                dropdown.style.display = 'block';
-
-                const rect = wrapper.getBoundingClientRect();
-                dropdown.style.position = 'fixed';
-                dropdown.style.top = (rect.bottom + 4) + 'px';
-                dropdown.style.left = rect.left + 'px';
-                dropdown.style.setProperty('min-width', rect.width + 'px', 'important');
-                dropdown.style.width = 'max-content';
-                dropdown.style.maxHeight = Math.max(140, window.innerHeight - rect.bottom - 15) + 'px';
-                dropdown.style.overflowY = 'auto';
-                dropdown.style.zIndex = '999999';
-                dropdown.style.margin = '0';
-                dropdown.style.transform = 'none';
-
-                dropdown.querySelectorAll('.custom-select-option').forEach(opt => opt.style.whiteSpace = 'nowrap');
-
-                dropdown.style.opacity = '1';
-                dropdown.style.visibility = 'visible';
-            }
-        });
-
-        wrapper.querySelectorAll('.custom-select-option').forEach(optEl => {
-            optEl.addEventListener('click', (e) => {
-                e.stopPropagation();
-                select.value = optEl.getAttribute('data-value');
-                select.dispatchEvent(new Event('change', { bubbles: true }));
-                document.dispatchEvent(new Event('click')); // Đóng menu
-                initCustomSelect(selectId);
-            });
-        });
-    }
-    // =========================================================================
-    // PHẦN 2: DÀNH CHO TOÀN BỘ DROPDOWN CÒN LẠI (Dùng Position: Absolute)
-    // =========================================================================
-    else {
         wrapper.innerHTML = `
             <div class="custom-select-trigger">
                 <span>${triggerText}</span>
@@ -329,5 +224,24 @@ export function initCustomSelect(selectId) {
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
         }
+    } else {
+        // Chỉ cập nhật trạng thái đã chọn và text hiển thị của trigger mà không dựng lại DOM
+        const triggerSpan = wrapper.querySelector('.custom-select-trigger span');
+        if (triggerSpan) {
+            triggerSpan.textContent = triggerText;
+        }
+
+        wrapper.querySelectorAll('.custom-option-item').forEach(li => {
+            const val = li.getAttribute('data-value');
+            if (val === select.value) {
+                li.classList.add('selected');
+                li.style.backgroundColor = '';
+                li.style.color = 'var(--primary)';
+            } else {
+                li.classList.remove('selected');
+                li.style.backgroundColor = '';
+                li.style.color = 'var(--text-main)';
+            }
+        });
     }
 }

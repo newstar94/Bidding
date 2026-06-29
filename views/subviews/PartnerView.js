@@ -673,7 +673,6 @@ export async function renderHopDongTable() {
                     <td><span class="badge badge-info">${displayedHd.loaiHopDong || 'Trọn gói'}</span></td>
                     <td><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${displayedHd.phanLoai || 'Tư vấn'}</span></td>
                     <td>${displayedHd.soNgayThucHien ? (isNaN(displayedHd.soNgayThucHien) ? displayedHd.soNgayThucHien : displayedHd.soNgayThucHien + ' ngày') : '--'}</td>
-                    <td>${linkedPkgs || '<span class="text-danger" style="font-weight: 500;">Chưa liên kết</span>'}</td>
                     <td>${statusBadge}</td>
                     <td class="text-right">
                         <div class="action-btn-group">
