@@ -1008,59 +1008,74 @@ export class BiddingModel {
 
     getLatestChuDauTu() {
         const chudautuList = Array.isArray(this.state.chudautu) ? this.state.chudautu : [];
-        const latest = chudautuList.filter(c => c.isLatest == 1);
-        if (latest.length > 0) return latest;
         const latestMap = {};
         chudautuList.forEach(c => {
-            const root = c.rootId || c.id;
-            const verNum = parseInt(c.phienBan) || 0;
+            const root = c.rootId || c.root_id || c.id;
+            const verNum = parseInt(c.phienBan || c.phien_ban) || 0;
+            const isLatest = c.isLatest == 1 || c.is_latest == 1;
 
-            if (!latestMap[root] || verNum > latestMap[root].version) {
-                latestMap[root] = {
-                    item: c,
-                    version: verNum
-                };
+            if (!latestMap[root]) {
+                latestMap[root] = c;
+            } else {
+                const existingVer = parseInt(latestMap[root].phienBan || latestMap[root].phien_ban) || 0;
+                const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
+
+                if (isLatest && !existingLatest) {
+                    latestMap[root] = c;
+                } else if (verNum > existingVer) {
+                    latestMap[root] = c;
+                }
             }
         });
-        return Object.values(latestMap).map(item => item.item);
+        return Object.values(latestMap);
     }
 
     getLatestNhaThau() {
         const nhathauList = Array.isArray(this.state.nhathau) ? this.state.nhathau : [];
-        const latest = nhathauList.filter(n => n.isLatest == 1);
-        if (latest.length > 0) return latest;
         const latestMap = {};
         nhathauList.forEach(n => {
-            const root = n.rootId || n.id;
-            const verNum = parseInt(n.phienBan) || 0;
+            const root = n.rootId || n.root_id || n.id;
+            const verNum = parseInt(n.phienBan || n.phien_ban) || 0;
+            const isLatest = n.isLatest == 1 || n.is_latest == 1;
 
-            if (!latestMap[root] || verNum > latestMap[root].version) {
-                latestMap[root] = {
-                    item: n,
-                    version: verNum
-                };
+            if (!latestMap[root]) {
+                latestMap[root] = n;
+            } else {
+                const existingVer = parseInt(latestMap[root].phienBan || latestMap[root].phien_ban) || 0;
+                const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
+
+                if (isLatest && !existingLatest) {
+                    latestMap[root] = n;
+                } else if (verNum > existingVer) {
+                    latestMap[root] = n;
+                }
             }
         });
-        return Object.values(latestMap).map(item => item.item);
+        return Object.values(latestMap);
     }
 
     getLatestChuyenGia() {
         const chuyengiaList = Array.isArray(this.state.chuyengia) ? this.state.chuyengia : [];
-        const latest = chuyengiaList.filter(c => c.isLatest == 1);
-        if (latest.length > 0) return latest;
         const latestMap = {};
         chuyengiaList.forEach(c => {
-            const root = c.rootId || c.id;
-            const verNum = parseInt(c.phienBan) || 0;
+            const root = c.rootId || c.root_id || c.id;
+            const verNum = parseInt(c.phienBan || c.phien_ban) || 0;
+            const isLatest = c.isLatest == 1 || c.is_latest == 1;
 
-            if (!latestMap[root] || verNum > latestMap[root].version) {
-                latestMap[root] = {
-                    item: c,
-                    version: verNum
-                };
+            if (!latestMap[root]) {
+                latestMap[root] = c;
+            } else {
+                const existingVer = parseInt(latestMap[root].phienBan || latestMap[root].phien_ban) || 0;
+                const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
+
+                if (isLatest && !existingLatest) {
+                    latestMap[root] = c;
+                } else if (verNum > existingVer) {
+                    latestMap[root] = c;
+                }
             }
         });
-        return Object.values(latestMap).map(item => item.item);
+        return Object.values(latestMap);
     }
 
     getLatestHopDong() {
@@ -1095,21 +1110,21 @@ export class BiddingModel {
             return linkedIds.some(id => {
                 const pkg = (this.state.goithau || []).find(g => g.id === id);
                 if (!pkg) return false;
-                const root = pkg.rootId || pkg.id;
-                return latestPkgs.some(g => (g.rootId === root || g.id === root));
+                const root = pkg.rootId || pkg.root_id || pkg.id;
+                return latestPkgs.some(g => (g.rootId === root || g.root_id === root || g.id === root));
             });
         });
 
         const latestMap = {};
         validContracts.forEach(h => {
-            const root = h.rootId || h.id;
-            const verNum = parseInt(h.phienBan) || 0;
+            const root = h.rootId || h.root_id || h.id;
+            const verNum = parseInt(h.phienBan || h.phien_ban) || 0;
             const isLatest = h.isLatest == 1 || h.is_latest == 1;
 
             if (!latestMap[root]) {
                 latestMap[root] = h;
             } else {
-                const existingVer = parseInt(latestMap[root].phienBan) || 0;
+                const existingVer = parseInt(latestMap[root].phienBan || latestMap[root].phien_ban) || 0;
                 const existingLatest = latestMap[root].isLatest == 1 || latestMap[root].is_latest == 1;
                 if (isLatest && !existingLatest) {
                     latestMap[root] = h;
@@ -1125,8 +1140,8 @@ export class BiddingModel {
         if (!planId) return null;
         const plan = (this.state.kehoach || []).find(k => k.id === planId);
         if (!plan) return null;
-        const root = plan.rootId || plan.id;
-        const latest = (this.state.kehoach || []).find(k => (k.rootId === root || k.id === root) && (k.isLatest == 1 || k.is_latest == 1));
+        const root = plan.rootId || plan.root_id || plan.id;
+        const latest = (this.state.kehoach || []).find(k => (k.rootId === root || k.root_id === root || k.id === root) && (k.isLatest == 1 || k.is_latest == 1));
         return latest || plan;
     }
 
@@ -1134,8 +1149,8 @@ export class BiddingModel {
         if (!packageId) return null;
         const pkg = (this.state.goithau || []).find(g => g.id === packageId);
         if (!pkg) return null;
-        const root = pkg.rootId || pkg.id;
-        const latest = (this.state.goithau || []).find(g => (g.rootId === root || g.id === root) && (g.isLatest == 1 || g.is_latest == 1));
+        const root = pkg.rootId || pkg.root_id || pkg.id;
+        const latest = (this.state.goithau || []).find(g => (g.rootId === root || g.root_id === root || g.id === root) && (g.isLatest == 1 || g.is_latest == 1));
         return latest || pkg;
     }
 
@@ -1143,8 +1158,8 @@ export class BiddingModel {
         if (!contractId) return null;
         const hd = (this.state.hopdong || []).find(h => h.id === contractId);
         if (!hd) return null;
-        const root = hd.rootId || hd.id;
-        const latest = (this.state.hopdong || []).find(h => (h.rootId === root || h.id === root) && (h.isLatest == 1 || h.is_latest == 1));
+        const root = hd.rootId || hd.root_id || hd.id;
+        const latest = (this.state.hopdong || []).find(h => (h.rootId === root || h.root_id === root || h.id === root) && (h.isLatest == 1 || h.is_latest == 1));
         return latest || hd;
     }
 }

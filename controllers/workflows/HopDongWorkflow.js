@@ -399,24 +399,6 @@ export function editHopDong(id) {
                 khSelect.dispatchEvent(new Event('change'));
                 renderPackagesForPlan('', []);
             }
-
-            // Setup version history dropdown
-            const verSelect = document.getElementById('hd-version-select');
-            const verContainer = document.getElementById('hd-version-select-container');
-            if (verSelect && verContainer) {
-                verContainer.style.display = 'flex';
-                const rootId = hd.rootId || hd.id;
-                const versions = this.model.state.hopdong.filter(h => h.rootId === rootId || h.id === rootId);
-                versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
-                verSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
-                    return `<option value="${v.id}" ${v.id === hd.id ? 'selected' : ''}>${label}</option>`;
-                }).join('');
-                verSelect.onchange = (e) => {
-                    this.editHopDong(e.target.value);
-                };
-                if (window.initCustomSelect) window.initCustomSelect('hd-version-select');
-            }
         } else {
             if (!window._preModalTab) {
                 window._preModalTab = this.model.state.activetab || 'hopdong';
@@ -451,11 +433,6 @@ export function editHopDong(id) {
             khSelect.value = '';
             khSelect.dispatchEvent(new Event('change'));
             renderPackagesForPlan('', []);
-
-            const verContainer = document.getElementById('hd-version-select-container');
-            if (verContainer) {
-                verContainer.style.display = 'none';
-            }
         }
 
         if (this.model.state.activerole === 'employee') {

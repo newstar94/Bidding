@@ -68,19 +68,12 @@ export async function editNhaThau(id, isReadOnly = false) {
         
         form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
 
-        const verSelect = document.getElementById('nt-version-select');
-        const verContainer = document.getElementById('nt-version-select-container');
-
         // Set form editability based on isReadOnly
         const inputs = form.querySelectorAll('input, select, textarea');
         inputs.forEach(inp => {
-            if (inp.id === 'nt-version-select') {
-                inp.disabled = false;
-            } else {
-                inp.disabled = isReadOnly;
-                if (inp.tagName === 'INPUT') {
-                    inp.readOnly = isReadOnly;
-                }
+            inp.disabled = isReadOnly;
+            if (inp.tagName === 'INPUT') {
+                inp.readOnly = isReadOnly;
             }
         });
 
@@ -139,24 +132,6 @@ export async function editNhaThau(id, isReadOnly = false) {
             if (document.getElementById('nt-sotaikhoan')) document.getElementById('nt-sotaikhoan').value = nt.soTaiKhoan || '';
             if (document.getElementById('nt-noimotaikhoan')) document.getElementById('nt-noimotaikhoan').value = nt.noiMoTaiKhoan || '';
             if (document.getElementById('nt-manganhang')) document.getElementById('nt-manganhang').value = nt.maNganHang || '';
-
-            // Setup version history dropdown
-            if (verSelect && verContainer) {
-                verContainer.style.display = 'flex';
-                const rootId = nt.rootId || nt.id;
-                const versions = this.model.state.nhathau.filter(n => n.rootId === rootId || n.id === rootId);
-                versions.sort((a, b) => (parseInt(a.phienBan || a.phien_ban || 0) - parseInt(b.phienBan || b.phien_ban || 0)));
-                
-                verSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
-                    return `<option value="${v.id}" ${v.id === nt.id ? 'selected' : ''}>${label}</option>`;
-                }).join('');
-
-                verSelect.onchange = (e) => {
-                    this.editNhaThau(e.target.value, isReadOnly);
-                };
-                if (window.initCustomSelect) window.initCustomSelect('nt-version-select');
-            }
         } else {
             window._nhaThauViewOnly = false;
             this.switchTab('nhathau', 'taomoi', true);
@@ -169,10 +144,6 @@ export async function editNhaThau(id, isReadOnly = false) {
             
             const idInput = document.getElementById('form-nhathau-id');
             if (idInput) idInput.value = '';
-
-            if (verContainer) {
-                verContainer.style.display = 'none';
-            }
         }
         this.view.openModal('modal-nhathau');
     } catch (err) {
