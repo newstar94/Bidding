@@ -186,7 +186,7 @@ SCHEMA_DINH_NGHIA = {
             "phuong_phap_danh_gia": "TEXT",
             "trong_so_ky_thuat": "INTEGER",
             "is_thuoc": "INTEGER DEFAULT 0",
-            "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu') OR trang_thai IS NULL)",
+            "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu') OR trang_thai IS NULL)",
             "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không'",
             "so_bao_cao_tham_dinh_hsmt": "TEXT",
             "ngay_bao_cao_tham_dinh_hsmt": "TEXT",

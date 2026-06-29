@@ -346,7 +346,16 @@ async def sync_api(request):
         def is_valid_date_format(val):
             if not val:
                 return True
-            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+            for fmt in (
+                "%Y-%m-%d",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M",
+                "%Y-%m-%d %H:%M",
+                "%d/%m/%Y",
+                "%d/%m/%Y %H:%M:%S",
+                "%d/%m/%Y %H:%M"
+            ):
                 try:
                     datetime.strptime(val, fmt)
                     return True
@@ -355,7 +364,16 @@ async def sync_api(request):
             return False
             
         def parse_date(val):
-            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+            for fmt in (
+                "%Y-%m-%d",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M",
+                "%Y-%m-%d %H:%M",
+                "%d/%m/%Y",
+                "%d/%m/%Y %H:%M:%S",
+                "%d/%m/%Y %H:%M"
+            ):
                 try:
                     return datetime.strptime(val, fmt)
                 except ValueError:

@@ -239,7 +239,7 @@ def khoi_tao_va_di_tru_he_thong():
                         rebuild_needed = True
                         break
 
-            # Check for CHECK constraints updates
+            # Check for CHECK constraints updates (compare full constraint definition)
             cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'")
             db_sql_row = cursor.fetchone()
             if db_sql_row:
@@ -249,6 +249,25 @@ def khoi_tao_va_di_tru_he_thong():
                 if has_check_in_code and not has_check_in_db:
                     print(f"Đồng bộ: Thiếu ràng buộc CHECK trong bảng '{table_name}'. Cần xây dựng lại.")
                     rebuild_needed = True
+                elif has_check_in_code and has_check_in_db:
+                    # So sánh chi tiết nội dung CHECK constraint
+                    import re as _re
+                    check_defs_in_code = [
+                        str(c_def) for c_def in expected_cols.values()
+                        if "CHECK" in str(c_def).upper()
+                    ]
+                    for check_def in check_defs_in_code:
+                        # Trích phần trong CHECK(...) từ code
+                        m_code = _re.search(r'CHECK\s*\((.+)\)', check_def, _re.IGNORECASE | _re.DOTALL)
+                        if not m_code:
+                            continue
+                        code_check_content = _re.sub(r'\s+', ' ', m_code.group(1).strip())
+                        # Kiểm tra chuỗi đó có trong định nghĩa SQL của bảng không
+                        normalized_table_sql = _re.sub(r'\s+', ' ', table_sql)
+                        if code_check_content not in normalized_table_sql:
+                            print(f"Đồng bộ: Ràng buộc CHECK trong bảng '{table_name}' đã thay đổi. Cần xây dựng lại.")
+                            rebuild_needed = True
+                            break
 
             # Check foreign key counts to detect changes
             cursor.execute(f"PRAGMA foreign_key_list({table_name})")
