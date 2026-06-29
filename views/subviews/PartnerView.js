@@ -101,7 +101,7 @@ export async function renderChuDauTuTable() {
             <tr>
                 <td>
                     <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" onclick="event.preventDefault(); window.editChuDauTu('${displayedCdt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedCdt.maChuDauTu || ''}</span></a>
+                        <a href="#" onclick="event.preventDefault(); window.showChuDauTuDetails('${displayedCdt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedCdt.maChuDauTu || ''}</span></a>
                         <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                         ${dropdownHtml}
                     </div>
@@ -251,7 +251,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" onclick="event.preventDefault(); window.editNhaThau('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -289,7 +289,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" onclick="event.preventDefault(); window.editNhaThau('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết / Sửa Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -1386,4 +1386,306 @@ export function renderContractVersionDetails(versionId) {
         lucide.createIcons();
     }
 }
+
+export function showChuDauTuDetails(id, isSwitchingVersion = false) {
+    const detailPane = document.getElementById('tab-chudautu-detail');
+    if (!detailPane || !detailPane.classList.contains('active')) {
+        window.switchTab('chudautu-detail', id);
+        return;
+    }
+
+    const cdt = this.model.state.chudautu.find(c => c.id === id);
+    if (!cdt) return;
+
+    this.renderChuDauTuVersionDetails(id);
+}
+
+export function renderChuDauTuVersionDetails(versionId) {
+    const cdt = this.model.state.chudautu.find(c => c.id === versionId);
+    if (!cdt) return;
+
+    // Check freeze status (hide edit button if not latest version)
+    const root = cdt.rootId || cdt.id;
+    const allRelated = (this.model.state.chudautu || []).filter(c => c.rootId === root || c.id === root);
+    allRelated.sort((a, b) => (parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0)));
+    const isLatest = allRelated[0] && allRelated[0].id === versionId;
+
+    const editBtn = document.getElementById('btn-edit-chudautu-fullpage');
+    if (editBtn) {
+        if (isLatest) {
+            editBtn.style.display = 'flex';
+            editBtn.onclick = () => {
+                window.editChuDauTu(versionId);
+            };
+        } else {
+            editBtn.style.display = 'none';
+        }
+    }
+
+    const selectOptionsHtml = allRelated.map(v => {
+        const ver = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+        return `<option value="${v.id}" ${v.id === versionId ? 'selected' : ''}>${ver}</option>`;
+    }).join('');
+
+    const versionSelectHtml = `
+        <select id="fullpage-cdt-version-select" class="page-version-select" style="min-width: 100px; max-width: 320px; width: auto;" ${allRelated.length < 2 ? 'disabled' : ''}>
+            ${selectOptionsHtml}
+        </select>
+    `;
+
+    const addressParts = (cdt.diaChi || '').split(' | ');
+    const addressStr = addressParts.filter(Boolean).join(', ');
+
+    const html = `
+        <div class="detail-section">
+            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${cdt.maChuDauTu || '--'}</span>
+                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+                        ${versionSelectHtml}
+                    </div>
+                </div>
+                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${cdt.tenChuDauTu || 'Chủ đầu tư chưa có tên'}</h4>
+            </div>
+            
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Mã số thuế</div>
+                    <div class="detail-value fw-bold">${cdt.maSoThue || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Người ký quyết định</div>
+                    <div class="detail-value">${cdt.nguoiKyQuyetDinh ? cdt.danhXung + ' ' + cdt.nguoiKyQuyetDinh : '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Chức vụ người ký</div>
+                    <div class="detail-value">${cdt.chucVuNguoiKy || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Chức vụ người đứng đầu</div>
+                    <div class="detail-value">${cdt.chucVuNguoiDungDau || '--'}</div>
+                </div>
+                <div class="detail-item" style="grid-column: span 2;">
+                    <div class="detail-label">Địa chỉ</div>
+                    <div class="detail-value">${addressStr || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số điện thoại</div>
+                    <div class="detail-value">${cdt.soDienThoai || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Email liên hệ</div>
+                    <div class="detail-value">${cdt.email || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số tài khoản</div>
+                    <div class="detail-value fw-bold text-blue">${cdt.soTaiKhoan || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Nơi mở tài khoản</div>
+                    <div class="detail-value">${cdt.noiMoTaiKhoan || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Mã QHNS</div>
+                    <div class="detail-value">${cdt.maQHNS || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Cơ quan chủ quản</div>
+                    <div class="detail-value">${cdt.coQuanChuQuan || '--'}</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const contentEl = document.getElementById('fullpage-chudautu-content');
+    if (contentEl) {
+        contentEl.innerHTML = html;
+        const innerSelect = document.getElementById('fullpage-cdt-version-select');
+        if (innerSelect) {
+            if (allRelated.length >= 2) {
+                innerSelect.onchange = (e) => {
+                    this.renderChuDauTuVersionDetails(e.target.value);
+                };
+            } else {
+                innerSelect.onchange = null;
+            }
+            if (window.initCustomSelect) window.initCustomSelect('fullpage-cdt-version-select');
+        }
+        lucide.createIcons();
+    }
+}
+
+export function showNhaThauDetails(id, isSwitchingVersion = false) {
+    const detailPane = document.getElementById('tab-nhathau-detail');
+    if (!detailPane || !detailPane.classList.contains('active')) {
+        window.switchTab('nhathau-detail', id);
+        return;
+    }
+
+    const nt = this.model.state.nhathau.find(n => n.id === id);
+    if (!nt) return;
+
+    this.renderNhaThauVersionDetails(id);
+}
+
+export function renderNhaThauVersionDetails(versionId) {
+    const nt = this.model.state.nhathau.find(n => n.id === versionId);
+    if (!nt) return;
+
+    // Check freeze status (hide edit button if not latest version)
+    const root = nt.rootId || nt.id;
+    const allRelated = (this.model.state.nhathau || []).filter(n => n.rootId === root || n.id === root);
+    allRelated.sort((a, b) => (parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0)));
+    const isLatest = allRelated[0] && allRelated[0].id === versionId;
+
+    const editBtn = document.getElementById('btn-edit-nhathau-fullpage');
+    if (editBtn) {
+        if (isLatest) {
+            editBtn.style.display = 'flex';
+            editBtn.onclick = () => {
+                window.editNhaThau(versionId);
+            };
+        } else {
+            editBtn.style.display = 'none';
+        }
+    }
+
+    const selectOptionsHtml = allRelated.map(v => {
+        const ver = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+        return `<option value="${v.id}" ${v.id === versionId ? 'selected' : ''}>${ver}</option>`;
+    }).join('');
+
+    const versionSelectHtml = `
+        <select id="fullpage-nt-version-select" class="page-version-select" style="min-width: 100px; max-width: 320px; width: auto;" ${allRelated.length < 2 ? 'disabled' : ''}>
+            ${selectOptionsHtml}
+        </select>
+    `;
+
+    const addressParts = (nt.diaChi || '').split(' | ');
+    const addressStr = addressParts.filter(Boolean).join(', ');
+
+    let detailsHtml = '';
+    const isJV = nt.loaiNhaThau === 'Liên danh';
+
+    if (isJV) {
+        const members = nt.thanhVienLienDanh || [];
+        detailsHtml = `
+            <div class="detail-grid" style="margin-bottom: 24px;">
+                <div class="detail-item">
+                    <div class="detail-label">Loại nhà thầu</div>
+                    <div class="detail-value"><span class="badge badge-info">Liên danh (${members.length} thành viên)</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số thành viên</div>
+                    <div class="detail-value fw-bold">${members.length} TV</div>
+                </div>
+            </div>
+
+            <h5 class="detail-sub-title" style="margin-top: 24px; color: var(--primary); font-weight: 700;">Danh sách thành viên liên danh</h5>
+            <div class="associated-list">
+                ${members.map((m, index) => {
+                    const memberAddress = (m.diaChi || '').split(' | ').filter(Boolean).join(', ');
+                    return `
+                        <div class="associated-item" style="flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px;">
+                            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                                <strong style="font-size: 0.95rem; color: var(--text-main);">${index + 1}. ${m.tenNhaThau} ${index === 0 ? '<span class="badge badge-primary" style="margin-left: 8px; font-size: 0.7rem;">Trưởng Liên danh</span>' : ''}</strong>
+                                <span class="badge badge-secondary" style="background-color: var(--primary-soft); color: var(--primary); font-weight: 600;">MST: ${m.maSoThue || '--'}</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; margin-top: 4px; font-size: 0.85rem;">
+                                <div><span class="text-muted">Đại diện:</span> ${m.danhXung || 'Ông'} ${m.nguoiDaiDien || '--'} (${m.chucVu || '--'})</div>
+                                <div><span class="text-muted">Liên hệ:</span> SĐT: ${m.soDienThoai || '--'} | Email: ${m.email || '--'}</div>
+                                <div style="grid-column: span 2;"><span class="text-muted">Tài khoản ngân hàng:</span> <strong>${m.soTaiKhoan || '--'}</strong> tại ${m.noiMoTaiKhoan || '--'} ${m.maNganHang ? '(' + m.maNganHang + ')' : ''}</div>
+                                <div style="grid-column: span 2;"><span class="text-muted">Địa chỉ:</span> ${memberAddress || '--'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    } else {
+        detailsHtml = `
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Loại nhà thầu</div>
+                    <div class="detail-value"><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">Độc lập</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Mã số thuế</div>
+                    <div class="detail-value fw-bold">${nt.maSoThue || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Người đại diện</div>
+                    <div class="detail-value">${nt.nguoiDaiDien ? nt.danhXung + ' ' + nt.nguoiDaiDien : '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Chức vụ người đại diện</div>
+                    <div class="detail-value">${nt.chucVu || '--'}</div>
+                </div>
+                <div class="detail-item" style="grid-column: span 2;">
+                    <div class="detail-label">Địa chỉ</div>
+                    <div class="detail-value">${addressStr || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số điện thoại</div>
+                    <div class="detail-value">${nt.soDienThoai || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Email liên hệ</div>
+                    <div class="detail-value">${nt.email || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số tài khoản</div>
+                    <div class="detail-value fw-bold text-blue">${nt.soTaiKhoan || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Nơi mở tài khoản</div>
+                    <div class="detail-value">${nt.noiMoTaiKhoan || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Mã ngân hàng</div>
+                    <div class="detail-value">${nt.maNganHang || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Website</div>
+                    <div class="detail-value">${nt.website ? `<a href="${nt.website}" target="_blank" class="text-blue link-hover">${nt.website}</a>` : '--'}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    const html = `
+        <div class="detail-section">
+            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${nt.maNhaThau || '--'}</span>
+                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+                        ${versionSelectHtml}
+                    </div>
+                </div>
+                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${nt.tenNhaThau || 'Nhà thầu chưa có tên'}</h4>
+            </div>
+            ${detailsHtml}
+        </div>
+    `;
+
+    const contentEl = document.getElementById('fullpage-nhathau-content');
+    if (contentEl) {
+        contentEl.innerHTML = html;
+        const innerSelect = document.getElementById('fullpage-nt-version-select');
+        if (innerSelect) {
+            if (allRelated.length >= 2) {
+                innerSelect.onchange = (e) => {
+                    this.renderNhaThauVersionDetails(e.target.value);
+                };
+            } else {
+                innerSelect.onchange = null;
+            }
+            if (window.initCustomSelect) window.initCustomSelect('fullpage-nt-version-select');
+        }
+        lucide.createIcons();
+    }
+}
+
 

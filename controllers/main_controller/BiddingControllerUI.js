@@ -234,6 +234,22 @@ export function switchTab(tabName, action = null, updateState = true) {
                 urlAction = encodeURIComponent(hd.soHopDong.replace(/\//g, '-')) + (isUnique ? '' : '_' + hd.id.substring(0, 8));
             }
         }
+        if (tabName === 'chudautu-detail' && action) {
+            const cdt = this.model.state.chudautu.find(c => c.id === action);
+            if (cdt && cdt.maChuDauTu) {
+                const duplicates = this.model.state.chudautu.filter(c => c.maChuDauTu === cdt.maChuDauTu);
+                const isUnique = duplicates.length <= 1;
+                urlAction = encodeURIComponent(cdt.maChuDauTu) + (isUnique ? '' : '_' + cdt.id.substring(0, 8));
+            }
+        }
+        if (tabName === 'nhathau-detail' && action) {
+            const nt = this.model.state.nhathau.find(n => n.id === action);
+            if (nt && nt.maNhaThau) {
+                const duplicates = this.model.state.nhathau.filter(n => n.maNhaThau === nt.maNhaThau);
+                const isUnique = duplicates.length <= 1;
+                urlAction = encodeURIComponent(nt.maNhaThau) + (isUnique ? '' : '_' + nt.id.substring(0, 8));
+            }
+        }
         const path = '/' + urlTab + (urlAction ? '/' + urlAction : '');
         history.pushState({ tab: tabName, action: action }, '', path);
     }
@@ -272,6 +288,8 @@ export function switchTab(tabName, action = null, updateState = true) {
         'goithau-detail': 'Chi tiết Quy trình Gói thầu',
         'kehoach-detail': 'Chi tiết Kế hoạch Lựa chọn Nhà thầu',
         'hopdong-detail': 'Chi tiết Hợp đồng',
+        'chudautu-detail': 'Chi tiết Chủ đầu tư',
+        'nhathau-detail': 'Chi tiết Nhà thầu',
         profile: 'Thông tin tài khoản cá nhân'
     };
     this.view.elements.pageTitle.textContent = titleMap[tabName] || 'Hệ thống Quản lý';
@@ -388,6 +406,22 @@ export function renderTabData(tabName, action = null) {
                 this.view.showHopDongDetails(hdId);
             } else {
                 this.switchTab('hopdong');
+            }
+            break;
+        case 'chudautu-detail':
+            const cdtId = action || (history.state ? history.state.action : null);
+            if (cdtId) {
+                this.view.showChuDauTuDetails(cdtId);
+            } else {
+                this.switchTab('chudautu');
+            }
+            break;
+        case 'nhathau-detail':
+            const ntId = action || (history.state ? history.state.action : null);
+            if (ntId) {
+                this.view.showNhaThauDetails(ntId);
+            } else {
+                this.switchTab('nhathau');
             }
             break;
     }

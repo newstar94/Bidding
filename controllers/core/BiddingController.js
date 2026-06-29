@@ -358,6 +358,8 @@ export class BiddingController {
         window.showKeHoachDetails = (id) => this.view.showKeHoachDetails(id);
         window.showHopDongDetails = (id) => this.view.showHopDongDetails(id);
         window.showChuyenGiaDetails = (id) => this.view.showChuyenGiaDetails(id);
+        window.showChuDauTuDetails = (id) => this.view.showChuDauTuDetails(id);
+        window.showNhaThauDetails = (id) => this.view.showNhaThauDetails(id);
 
         window.zoomCertificateImage = (id) => {
             const cg = this.model.state.chuyengia.find(c => c.id === id);

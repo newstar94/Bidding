@@ -220,7 +220,7 @@ export async function renderGoiThauTable() {
                 };
                 ntLink = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${ntDisplayName}</a>`;
             } else if (nt) {
-                ntLink = `<a href="#" onclick="event.preventDefault(); window.editNhaThau('${nt.id}', true)" class="text-blue fw-bold link-hover">${ntDisplayName}</a>`;
+                ntLink = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${nt.id}')" class="text-blue fw-bold link-hover">${ntDisplayName}</a>`;
             } else {
                 ntLink = `<span class="fw-bold text-success">${ntDisplayName}</span>`;
             }
@@ -284,7 +284,7 @@ export async function renderGoiThauTable() {
                         };
                         link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${name}</a>`;
                     } else if (singleWinnerNt) {
-                        link = `<a href="#" onclick="event.preventDefault(); window.editNhaThau('${singleWinnerNt.id}', true)" class="text-blue fw-bold link-hover">${name}</a>`;
+                        link = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${singleWinnerNt.id}')" class="text-blue fw-bold link-hover">${name}</a>`;
                     } else {
                         link = `<span class="fw-bold text-success">${name}</span>`;
                     }
@@ -1814,7 +1814,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const winnerMst = winnerNt ? (winnerNt.maSoThue || winnerNt.maNhaThau) : (currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau);
                             winnerDisplayHtml = `
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                    <a href="#" onclick="event.preventDefault(); window.editNhaThau('${currentWinnerBid.nhaThauId}', true)" class="link-hover" style="color:var(--primary);">${currentWinnerBid.tenNhaThau}</a>
+                                    <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${currentWinnerBid.nhaThauId}')" class="link-hover" style="color:var(--primary);">${currentWinnerBid.tenNhaThau}</a>
                                 </h5>
                                 <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
                                     MST: <strong>${winnerMst || 'Chưa có'}</strong>
