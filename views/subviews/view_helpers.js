@@ -241,7 +241,7 @@ export function initCustomSelect(selectId) {
         const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector('.custom-select-options');
         if (optionsList) {
             optionsList.innerHTML = options.map(opt => `
-                <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: 2px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
+                <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: 8px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
             `).join('');
         }
         const triggerSpan = wrapper.querySelector('.custom-select-trigger span');

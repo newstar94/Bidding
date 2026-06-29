@@ -907,7 +907,7 @@ async def get_all_data_api(request):
             
         # 7. Assignments
         assignments = []
-        if since > 0:
+        if since != '1970-01-01 00:00:00' and since != '0':
             cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND updated_at > ?", (org_name, since))
         else:
             cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ?", (org_name,))
@@ -916,7 +916,7 @@ async def get_all_data_api(request):
             
         # 8. Custom Paper Statuses
         custompaperstatuses = []
-        if since > 0:
+        if since != '1970-01-01 00:00:00' and since != '0':
             cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND updated_at > ?", (org_name, since))
         else:
             cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ?", (org_name,))
@@ -931,7 +931,7 @@ async def get_all_data_api(request):
         # 10. Permission Matrix - [MỚI] Đồng bộ phân quyền nhân viên từ server
         permissionmatrix = []
         try:
-            if since > 0:
+            if since != '1970-01-01 00:00:00' and since != '0':
                 cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND updated_at > ?", (org_name, since))
             else:
                 cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ?", (org_name,))
