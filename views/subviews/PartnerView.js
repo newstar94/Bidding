@@ -86,7 +86,7 @@ export async function renderChuDauTuTable() {
             const displayedCdt = this.model.state.chudautu.find(x => x.id === selectedId) || c;
 
             const optionsHtml = allVersions.map(v => {
-                const label = `V${parseInt(v.phienBan || v.phien_ban || 0)}`;
+                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
                 const isSel = v.id === displayedCdt.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;
             }).join('');
@@ -228,7 +228,7 @@ export async function renderNhaThauTable() {
             const displayedNt = this.model.state.nhathau.find(x => x.id === selectedId) || n;
 
             const optionsHtml = allVersions.map(v => {
-                const label = `V${parseInt(v.phienBan || v.phien_ban || 0)}`;
+                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
                 const isSel = v.id === displayedNt.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;
             }).join('');
@@ -415,7 +415,7 @@ export async function renderChuyenGiaTable() {
             const displayedCg = this.model.state.chuyengia.find(x => x.id === selectedId) || cg;
 
             const optionsHtml = allVersions.map(v => {
-                const label = `V${parseInt(v.phienBan || v.phien_ban || 0)}`;
+                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
                 const isSel = v.id === displayedCg.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;
             }).join('');
@@ -623,7 +623,7 @@ export async function renderHopDongTable() {
             const displayedHd = this.model.state.hopdong.find(x => x.id === selectedId) || h;
 
             const optionsHtml = allVersions.map(v => {
-                const label = `V${parseInt(v.phienBan || v.phien_ban || 0)}`;
+                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
                 const isSel = v.id === displayedHd.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;
             }).join('');
@@ -1248,7 +1248,7 @@ export function renderContractVersionDetails(versionId) {
 
     const selectOptionsHtml = allVersions.map(h => {
         const ver = h.phienBan || h.phien_ban || '00';
-        const label = `V${parseInt(ver)}`;
+        const label = String(parseInt(ver)).padStart(2, '0');
         return `<option value="${h.id}" ${h.id === versionId ? 'selected' : ''}>${label}</option>`;
     }).join('');
 

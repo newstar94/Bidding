@@ -540,6 +540,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
     const verSelect = document.getElementById('detail-workflow-version-select');
     if (verSelect) {
+        // Step 1: Always destroy stale custom select wrapper and body dropdown first
+        const staleWrapper = verSelect.parentElement
+            ? verSelect.parentElement.querySelector('.custom-select-container[data-target="detail-workflow-version-select"]')
+            : null;
+        if (staleWrapper) staleWrapper.remove();
+        const staleDropdown = document.body.querySelector('.custom-select-dropdown[data-target="detail-workflow-version-select"]');
+        if (staleDropdown) staleDropdown.remove();
+        verSelect.style.display = 'none';
+
+        // Step 2: Build version list for this specific package
         const rootId = gt.rootId || gt.id;
         const allRelated = this.model.state.goithau.filter(g => (g.rootId || g.id) === rootId);
         
@@ -562,22 +572,30 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         relatedGts.sort((a, b) => (parseInt(a.phienBan || 0) - parseInt(b.phienBan || 0)));
 
         const separator = document.getElementById('detail-workflow-version-separator');
+
+        // Step 3: Rebuild select options for this package
+        verSelect.innerHTML = relatedGts.map(g => {
+            const label = g.phienBan || '00';
+            const isSelected = (g.phienBan || '00') === (gt.phienBan || '00');
+            return `<option value="${g.id}" ${isSelected ? 'selected' : ''}>${label}</option>`;
+        }).join('');
+
+        // Step 4: Show/hide and wire up based on version count
+        if (separator) separator.style.display = 'inline-block';
+        verSelect.style.display = 'inline-block';
+
         if (relatedGts.length >= 2) {
-            if (separator) separator.style.display = 'inline-block';
-            verSelect.style.display = 'inline-block';
-            verSelect.innerHTML = relatedGts.map(g => {
-                const label = g.phienBan || '00';
-                const isSelected = (g.phienBan || '00') === (gt.phienBan || '00');
-                return `<option value="${g.id}" ${isSelected ? 'selected' : ''}>${label}</option>`;
-            }).join('');
+            verSelect.disabled = false;
             verSelect.onchange = (e) => {
                 this.showPackageDetails(e.target.value, true);
             };
-            if (window.initCustomSelect) window.initCustomSelect('detail-workflow-version-select');
         } else {
-            if (separator) separator.style.display = 'none';
-            verSelect.style.display = 'none';
+            verSelect.disabled = true;
+            verSelect.onchange = null;
         }
+
+        // Step 5: Build fresh custom select UI
+        if (window.initCustomSelect) window.initCustomSelect('detail-workflow-version-select');
     }
 
     // 2. Setup dynamic workflow sub-tab

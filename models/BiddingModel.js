@@ -947,7 +947,7 @@ export class BiddingModel {
 
     getVersionLabel(phienBan) {
         const verNum = parseInt(phienBan) || 0;
-        return verNum === 0 ? 'V0 (Gốc)' : `V${verNum} (Điều chỉnh ${verNum})`;
+        return String(verNum).padStart(2, '0');
     }
 
     getPackageBaseCode(code) {
