@@ -110,81 +110,111 @@ export function initCustomSelect(selectId) {
     const select = document.getElementById(selectId);
     if (!select) return;
 
-    // Kiểm tra xem đây có phải là Dropdown chọn Phiên bản không
+    // Đảm bảo thẻ select gốc bị ẩn hoàn toàn (sử dụng !important để tránh bị CSS hệ thống đè lên)
+    select.setAttribute('style', 'display: none !important;');
+
+    // Phân loại hộp chọn
     const isVersion = select.classList.contains('version-droplist');
     const isCompact = select.classList.contains('page-version-select') || select.classList.contains('modal-version-select');
 
     // =========================================================================
-    // PHẦN 1: DÀNH RIÊNG CHO DROPDOWN PHIÊN BẢN (Sử dụng cơ chế Position: Fixed)
+    // TRÌNH QUẢN LÝ SỰ KIỆN TOÀN CỤC (Áp dụng chung cho cả 2 loại)
+    // =========================================================================
+    if (!window._unifiedSelectClickListenerRegistered) {
+        // Đóng menu khi nhấp chuột ra ngoài
+        document.addEventListener('click', (e) => {
+            document.querySelectorAll('.custom-select-container.open').forEach(w => {
+                const targetId = w.getAttribute('data-target');
+                const fixedDropdown = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
+                const absoluteDropdown = w.querySelector('.custom-select-options');
+
+                if (!w.contains(e.target) && (!fixedDropdown || !fixedDropdown.contains(e.target))) {
+                    w.classList.remove('open');
+                    // Thu dọn menu Fixed (Phiên bản)
+                    if (fixedDropdown && fixedDropdown.parentElement === document.body) {
+                        w.appendChild(fixedDropdown);
+                        fixedDropdown.style.opacity = '0';
+                        fixedDropdown.style.visibility = 'hidden';
+                    }
+                    // Thu dọn menu Absolute (Thông thường)
+                    if (absoluteDropdown) absoluteDropdown.style.display = 'none';
+                }
+            });
+        });
+
+        // Đóng menu khi cuộn trang
+        document.addEventListener('scroll', (e) => {
+            // Bỏ qua nếu đang cuộn bên trong chính danh sách
+            if (e.target && e.target.classList && (e.target.classList.contains('custom-select-dropdown') || e.target.classList.contains('custom-select-options'))) return;
+
+            document.querySelectorAll('.custom-select-container.open').forEach(w => {
+                w.classList.remove('open');
+                const targetId = w.getAttribute('data-target');
+                const fixedDropdown = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
+                const absoluteDropdown = w.querySelector('.custom-select-options');
+
+                if (fixedDropdown && fixedDropdown.parentElement === document.body) {
+                    w.appendChild(fixedDropdown);
+                    fixedDropdown.style.opacity = '0';
+                    fixedDropdown.style.visibility = 'hidden';
+                }
+                if (absoluteDropdown) absoluteDropdown.style.display = 'none';
+            });
+        }, { capture: true, passive: true });
+
+        window._unifiedSelectClickListenerRegistered = true;
+    }
+
+    // =========================================================================
+    // KHỞI TẠO KHUNG BAO BỌC (Container)
+    // =========================================================================
+    // Trở lại dùng lớp .custom-select-container để tránh xung đột với các Combobox cũ
+    let wrapper = select.parentElement.querySelector(`.custom-select-container[data-target="${selectId}"]`);
+    if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'custom-select-container' + (isVersion ? ' version-select-container' : '') + (isCompact ? ' compact-version-select-container' : '');
+        wrapper.setAttribute('data-target', selectId);
+
+        // Cấp thuộc tính relative để danh sách Absolute có tọa độ bám vào
+        if (!isVersion && !isCompact) wrapper.style.position = 'relative';
+
+        select.parentNode.insertBefore(wrapper, select.nextSibling);
+    }
+
+    // Trích xuất dữ liệu
+    const options = Array.from(select.options);
+    const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
+    let triggerText = selectedOption.text.trim();
+
+    if (triggerText.startsWith('Tháng ')) {
+        let coreText = triggerText.substring(6).trim();
+        const monthMap = { 'một': '1', 'hai': '2', 'ba': '3', 'bốn': '4', 'năm': '5', 'sáu': '6', 'bảy': '7', 'tám': '8', 'chín': '9', 'mười': '10', 'mười một': '11', 'mười hai': '12' };
+        if (monthMap[coreText.toLowerCase()]) coreText = monthMap[coreText.toLowerCase()];
+        triggerText = 'Th' + coreText;
+    }
+
+    // Dọn dẹp DOM rác trên Body (nếu có từ phiên làm việc trước)
+    const oldDropdownOnBody = document.body.querySelector(`.custom-select-dropdown[data-target="${selectId}"]`);
+    if (oldDropdownOnBody) oldDropdownOnBody.remove();
+
+    // =========================================================================
+    // PHẦN 1: DÀNH RIÊNG CHO DROPDOWN PHIÊN BẢN (Dùng Position: Fixed)
     // =========================================================================
     if (isVersion || isCompact) {
-        select.style.display = 'none';
-
-        let wrapper = select.parentElement.querySelector(`.custom-select-container[data-target="${selectId}"]`);
-        if (!wrapper) {
-            wrapper = document.createElement('div');
-            wrapper.className = 'custom-select-container' + (isVersion ? ' version-select-container' : ' compact-version-select-container');
-            wrapper.setAttribute('data-target', selectId);
-            select.parentNode.insertBefore(wrapper, select.nextSibling);
-
-            wrapper.style.display = 'inline-block';
-            wrapper.style.verticalAlign = 'middle';
-            wrapper.style.margin = '0';
-
-            if (isVersion) {
-                wrapper.style.width = '52px';
-                wrapper.style.height = '22px';
-            } else {
-                wrapper.style.width = '70px';
-                wrapper.style.minWidth = '70px';
-            }
-
-            // Bộ lắng nghe sự kiện đóng dropdown phiên bản
-            if (!window._customSelectClickListenerRegistered) {
-                document.addEventListener('click', (e) => {
-                    document.querySelectorAll('.custom-select-container.open').forEach(w => {
-                        const targetId = w.getAttribute('data-target');
-                        const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
-                        if (!w.contains(e.target) && (!dropdownEl || !dropdownEl.contains(e.target))) {
-                            w.classList.remove('open');
-                            if (dropdownEl && dropdownEl.parentElement === document.body) {
-                                w.appendChild(dropdownEl);
-                                dropdownEl.style.opacity = '0';
-                                dropdownEl.style.visibility = 'hidden';
-                            }
-                        }
-                    });
-                });
-                window._customSelectClickListenerRegistered = true;
-            }
-
-            if (!window._customSelectGlobalScrollListenerRegistered) {
-                document.addEventListener('scroll', (e) => {
-                    if (e.target && e.target.classList && e.target.classList.contains('custom-select-dropdown')) return;
-                    document.querySelectorAll('.custom-select-container.open').forEach(w => {
-                        w.classList.remove('open');
-                        const targetId = w.getAttribute('data-target');
-                        const dropdownEl = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
-                        if (dropdownEl && dropdownEl.parentElement === document.body) {
-                            w.appendChild(dropdownEl);
-                            dropdownEl.style.opacity = '0';
-                            dropdownEl.style.visibility = 'hidden';
-                        }
-                    });
-                }, { capture: true, passive: true });
-                window._customSelectGlobalScrollListenerRegistered = true;
-            }
+        wrapper.style.display = 'inline-block';
+        wrapper.style.verticalAlign = 'middle';
+        wrapper.style.margin = '0';
+        if (isVersion) {
+            wrapper.style.width = '52px';
+            wrapper.style.height = '22px';
+        } else {
+            wrapper.style.width = '70px';
+            wrapper.style.minWidth = '70px';
         }
-
-        const options = Array.from(select.options);
-        const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
-
-        const oldDropdownOnBody = document.body.querySelector(`.custom-select-dropdown[data-target="${selectId}"]`);
-        if (oldDropdownOnBody) oldDropdownOnBody.remove();
 
         wrapper.innerHTML = `
             <div class="custom-select-trigger">
-                <span>${selectedOption.text.trim()}</span>
+                <span>${triggerText}</span>
             </div>
             <div class="custom-select-dropdown${isVersion ? ' version-select-dropdown' : ' compact-version-select-dropdown'}" data-target="${selectId}">
                 ${options.map(opt => `
@@ -200,18 +230,8 @@ export function initCustomSelect(selectId) {
 
         trigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            document.querySelectorAll('.custom-select-container').forEach(w => {
-                if (w !== wrapper) {
-                    w.classList.remove('open');
-                    const targetId = w.getAttribute('data-target');
-                    const otherDropdown = document.querySelector(`.custom-select-dropdown[data-target="${targetId}"]`);
-                    if (otherDropdown && otherDropdown.parentElement === document.body) {
-                        w.appendChild(otherDropdown);
-                        otherDropdown.style.opacity = '0';
-                        otherDropdown.style.visibility = 'hidden';
-                    }
-                }
-            });
+            // Ra lệnh đóng toàn bộ menu đang mở bằng cách mô phỏng cú nhấp ngoài
+            document.dispatchEvent(new Event('click'));
 
             if (wrapper.classList.toggle('open')) {
                 document.body.appendChild(dropdown);
@@ -225,24 +245,16 @@ export function initCustomSelect(selectId) {
                 dropdown.style.left = rect.left + 'px';
                 dropdown.style.minWidth = isVersion ? '52px' : '70px';
                 dropdown.style.width = 'max-content';
-
-                const maxAvailableHeight = window.innerHeight - rect.bottom - 15;
-                dropdown.style.maxHeight = Math.max(140, maxAvailableHeight) + 'px';
+                dropdown.style.maxHeight = Math.max(140, window.innerHeight - rect.bottom - 15) + 'px';
                 dropdown.style.overflowY = 'auto';
                 dropdown.style.zIndex = '999999';
                 dropdown.style.margin = '0';
                 dropdown.style.transform = 'none';
 
-                dropdown.querySelectorAll('.custom-select-option').forEach(opt => {
-                    opt.style.whiteSpace = 'nowrap';
-                });
+                dropdown.querySelectorAll('.custom-select-option').forEach(opt => opt.style.whiteSpace = 'nowrap');
 
                 dropdown.style.opacity = '1';
                 dropdown.style.visibility = 'visible';
-            } else {
-                dropdown.style.opacity = '0';
-                dropdown.style.visibility = 'hidden';
-                wrapper.appendChild(dropdown);
             }
         });
 
@@ -251,106 +263,71 @@ export function initCustomSelect(selectId) {
                 e.stopPropagation();
                 select.value = optEl.getAttribute('data-value');
                 select.dispatchEvent(new Event('change', { bubbles: true }));
-                wrapper.classList.remove('open');
-                if (dropdown.parentElement === document.body) {
-                    wrapper.appendChild(dropdown);
-                    dropdown.style.opacity = '0';
-                    dropdown.style.visibility = 'hidden';
-                }
+                document.dispatchEvent(new Event('click')); // Đóng menu
                 initCustomSelect(selectId);
             });
         });
     }
     // =========================================================================
-    // PHẦN 2: DÀNH CHO TOÀN BỘ DROPDOWN CÒN LẠI (Dùng cấu trúc custom-select-search)
+    // PHẦN 2: DÀNH CHO TOÀN BỘ DROPDOWN CÒN LẠI (Dùng Position: Absolute)
     // =========================================================================
     else {
-        select.style.display = 'none';
-        let wrapper = select.parentElement.querySelector(`.custom-select-wrapper[data-target="${selectId}"]`);
-
-        if (!wrapper) {
-            wrapper = document.createElement('div');
-            wrapper.className = 'custom-select-wrapper';
-            wrapper.setAttribute('data-target', selectId);
-            select.parentNode.insertBefore(wrapper, select.nextSibling);
-
-            // Bắt sự kiện click toàn cục để thu gọn menu kiểu mới
-            if (!window._relativeSelectClickListenerRegistered) {
-                document.addEventListener('click', (e) => {
-                    document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
-                        if (!w.contains(e.target)) {
-                            w.classList.remove('open');
-                        }
-                    });
-                });
-                window._relativeSelectClickListenerRegistered = true;
-            }
-        }
-
-        const options = Array.from(select.options);
-        const selectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
-        let triggerText = selectedOption.text.trim();
-
-        if (triggerText.startsWith('Tháng ')) {
-            let coreText = triggerText.substring(6).trim();
-            const monthMap = { 'một': '1', 'hai': '2', 'ba': '3', 'bốn': '4', 'năm': '5', 'sáu': '6', 'bảy': '7', 'tám': '8', 'chín': '9', 'mười': '10', 'mười một': '11', 'mười hai': '12' };
-            if (monthMap[coreText.toLowerCase()]) coreText = monthMap[coreText.toLowerCase()];
-            triggerText = 'Th' + coreText;
-        }
-
-        // Vẽ HTML mô phỏng chính xác giao diện của custom-select-search
         wrapper.innerHTML = `
-            <div class="custom-select-search" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select:none;">${triggerText}</span>
-                <i data-lucide="chevron-down" class="custom-select-arrow" style="width:16px; height:16px; flex-shrink:0;"></i>
+            <div class="custom-select-trigger">
+                <span>${triggerText}</span>
+                <div class="custom-select-trigger-arrow">
+                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                </div>
             </div>
-            <ul class="custom-select-options">
+            <ul class="custom-select-options" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-height: 220px; overflow-y: auto; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); z-index: 1000; list-style: none; padding: 6px 0; margin: 0;">
                 ${options.map(opt => `
-                    <li data-value="${opt.value}" class="${opt.selected ? 'selected' : ''}">${opt.text}</li>
+                    <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: 8px 14px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
                 `).join('')}
             </ul>
         `;
 
-        const trigger = wrapper.querySelector('.custom-select-search');
+        const trigger = wrapper.querySelector('.custom-select-trigger');
+        const optionsList = wrapper.querySelector('.custom-select-options');
 
         trigger.addEventListener('click', (e) => {
             e.stopPropagation();
+            const wasOpen = wrapper.classList.contains('open');
 
-            // Đóng tất cả các menu loại mới đang mở
-            document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
-                if (w !== wrapper) w.classList.remove('open');
+            // Đóng tất cả menu khác
+            document.dispatchEvent(new Event('click'));
+
+            if (!wasOpen) {
+                wrapper.classList.add('open');
+                optionsList.style.display = 'block';
+            }
+        });
+
+        // Xử lý hiệu ứng di chuột và chọn mục
+        wrapper.querySelectorAll('.custom-option-item').forEach(li => {
+            li.addEventListener('mouseover', () => {
+                if (!li.classList.contains('selected')) {
+                    li.style.backgroundColor = 'var(--neutral-soft)';
+                    li.style.color = 'var(--primary)';
+                }
             });
-
-            // Đóng tất cả các menu loại cũ (phiên bản) đang mở để dọn dẹp giao diện
-            document.querySelectorAll('.custom-select-container.open').forEach(w => {
-                w.classList.remove('open');
-                const tId = w.getAttribute('data-target');
-                const oDrop = document.querySelector(`.custom-select-dropdown[data-target="${tId}"]`);
-                if (oDrop && oDrop.parentElement === document.body) {
-                    w.appendChild(oDrop);
-                    oDrop.style.opacity = '0';
-                    oDrop.style.visibility = 'hidden';
+            li.addEventListener('mouseout', () => {
+                if (!li.classList.contains('selected')) {
+                    li.style.backgroundColor = '';
+                    li.style.color = 'var(--text-main)';
                 }
             });
 
-            wrapper.classList.toggle('open');
-        });
-
-        // Xử lý sự kiện khi người dùng chọn một mục trong danh sách
-        wrapper.querySelectorAll('.custom-select-options li').forEach(li => {
             li.addEventListener('click', (e) => {
                 e.stopPropagation();
                 select.value = li.getAttribute('data-value');
-                select.dispatchEvent(new Event('change', { bubbles: true })); // Kích hoạt sự kiện change cho hệ thống
-                wrapper.classList.remove('open');
-                initCustomSelect(selectId); // Vẽ lại giao diện sau khi chọn
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                document.dispatchEvent(new Event('click')); // Đóng menu sau khi chọn
+                initCustomSelect(selectId);
             });
         });
 
-        // Cập nhật icon mũi tên
         if (window.lucide && typeof window.lucide.createIcons === 'function') {
             window.lucide.createIcons();
         }
     }
 }
-
