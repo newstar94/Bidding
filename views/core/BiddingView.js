@@ -388,77 +388,190 @@ export class BiddingView {
             footer.appendChild(confirmBtn);
             instance.calendarContainer.appendChild(footer);
             
-            // 2. Function to ensure custom year dropdown is present and updated
-            const ensureYearDropdown = () => {
-                const yearInput = instance.calendarContainer.querySelector(".numInput.flatpickr-year");
-                if (!yearInput) return;
+            // 2. Setup Custom Grid Month & Year Selectors
+            const container = instance.calendarContainer;
+            
+            // Create a wrapper for grid overlays inside the calendar
+            let gridOverlay = container.querySelector(".flatpickr-grid-overlay");
+            if (!gridOverlay) {
+                gridOverlay = document.createElement("div");
+                gridOverlay.className = "flatpickr-grid-overlay";
+                gridOverlay.style.display = "none";
                 
-                const yearWrapper = yearInput.parentNode;
-                if (!yearWrapper) return;
+                const footerEl = container.querySelector(".flatpickr-footer");
+                if (footerEl) {
+                    container.insertBefore(gridOverlay, footerEl);
+                } else {
+                    container.appendChild(gridOverlay);
+                }
+            }
+
+            const showGrid = (type) => {
+                // Hide normal views
+                const innerContainer = container.querySelector(".flatpickr-innerContainer");
+                if (innerContainer) innerContainer.style.display = "none";
+                const timeContainer = container.querySelector(".flatpickr-time");
+                if (timeContainer) timeContainer.style.display = "none";
                 
-                let select = yearWrapper.querySelector(".flatpickr-year-select");
-                if (select) {
-                    select.value = instance.currentYear;
-                    return;
+                // Hide month navigation arrows
+                const prevMonth = container.querySelector(".flatpickr-prev-month");
+                const nextMonth = container.querySelector(".flatpickr-next-month");
+                if (prevMonth) prevMonth.style.display = "none";
+                if (nextMonth) nextMonth.style.display = "none";
+                
+                gridOverlay.style.display = "block";
+                gridOverlay.innerHTML = "";
+                
+                if (type === "month") {
+                    gridOverlay.className = "flatpickr-grid-overlay flatpickr-month-grid-mode";
+                    
+                    const header = document.createElement("div");
+                    header.className = "grid-header";
+                    header.innerHTML = `<span class="grid-title">Chọn Tháng</span>`;
+                    gridOverlay.appendChild(header);
+
+                    const grid = document.createElement("div");
+                    grid.className = "flatpickr-month-grid";
+                    
+                    for (let m = 0; m < 12; m++) {
+                        const item = document.createElement("div");
+                        item.className = `flatpickr-grid-item ${instance.currentMonth === m ? 'active' : ''}`;
+                        item.textContent = `Tháng ${m + 1}`;
+                        item.onclick = (e) => {
+                            e.stopPropagation();
+                            instance.changeMonth(m, false);
+                            hideGrid();
+                        };
+                        grid.appendChild(item);
+                    }
+                    gridOverlay.appendChild(grid);
+                } else if (type === "year") {
+                    gridOverlay.className = "flatpickr-grid-overlay flatpickr-year-grid-mode";
+                    
+                    const startYear = instance.currentYear - 5;
+                    
+                    const header = document.createElement("div");
+                    header.className = "grid-header";
+                    
+                    const prevBtn = document.createElement("button");
+                    prevBtn.type = "button";
+                    prevBtn.className = "grid-nav-btn";
+                    prevBtn.innerHTML = "&larr;";
+                    prevBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        instance.currentYear -= 10;
+                        showGrid("year");
+                    };
+                    
+                    const title = document.createElement("span");
+                    title.className = "grid-title";
+                    title.textContent = `${startYear} - ${startYear + 11}`;
+                    
+                    const nextBtn = document.createElement("button");
+                    nextBtn.type = "button";
+                    nextBtn.className = "grid-nav-btn";
+                    nextBtn.innerHTML = "&rarr;";
+                    nextBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        instance.currentYear += 10;
+                        showGrid("year");
+                    };
+                    
+                    header.appendChild(prevBtn);
+                    header.appendChild(title);
+                    header.appendChild(nextBtn);
+                    gridOverlay.appendChild(header);
+                    
+                    const grid = document.createElement("div");
+                    grid.className = "flatpickr-year-grid";
+                    
+                    for (let y = startYear; y < startYear + 12; y++) {
+                        const item = document.createElement("div");
+                        item.className = `flatpickr-grid-item flatpickr-year-grid-item ${instance.currentYear === y ? 'active' : ''}`;
+                        item.textContent = y;
+                        item.onclick = (e) => {
+                            e.stopPropagation();
+                            instance.changeYear(y);
+                            hideGrid();
+                        };
+                        grid.appendChild(item);
+                    }
+                    gridOverlay.appendChild(grid);
+                }
+            };
+
+            const hideGrid = () => {
+                gridOverlay.style.display = "none";
+                
+                // Show normal views
+                const innerContainer = container.querySelector(".flatpickr-innerContainer");
+                if (innerContainer) innerContainer.style.display = "";
+                const timeContainer = container.querySelector(".flatpickr-time");
+                if (timeContainer) timeContainer.style.display = "";
+                
+                // Show month navigation arrows
+                const prevMonth = container.querySelector(".flatpickr-prev-month");
+                const nextMonth = container.querySelector(".flatpickr-next-month");
+                if (prevMonth) prevMonth.style.display = "";
+                if (nextMonth) nextMonth.style.display = "";
+            };
+
+            // Attach click listeners to the month label and year text/input
+            const monthElement = container.querySelector(".flatpickr-current-month");
+            if (monthElement) {
+                const curMonthSpan = monthElement.querySelector(".cur-month");
+                if (curMonthSpan) {
+                    curMonthSpan.style.cursor = "pointer";
+                    curMonthSpan.onclick = (e) => {
+                        e.stopPropagation();
+                        if (gridOverlay.style.display === "block" && gridOverlay.classList.contains("flatpickr-month-grid-mode")) {
+                            hideGrid();
+                        } else {
+                            showGrid("month");
+                        }
+                    };
                 }
                 
-                // Hide standard input elements
-                yearInput.style.display = "none";
-                const arrowUp = yearWrapper.querySelector(".arrowUp");
-                const arrowDown = yearWrapper.querySelector(".arrowDown");
-                if (arrowUp) arrowUp.style.display = "none";
-                if (arrowDown) arrowDown.style.display = "none";
-                
-                // Set explicit width on wrapper so it doesn't collapse
-                yearWrapper.style.width = "75px";
-                yearWrapper.style.display = "inline-block";
-                
-                // Create dropdown select
-                select = document.createElement("select");
-                select.className = "flatpickr-year-select";
-                select.style.fontSize = "inherit";
-                select.style.fontWeight = "inherit";
-                select.style.color = "inherit";
-                select.style.background = "transparent";
-                select.style.border = "none";
-                select.style.cursor = "pointer";
-                select.style.outline = "none";
-                select.style.padding = "0 4px";
-                select.style.width = "100%";
-                select.style.height = "100%";
-                select.style.textAlign = "center";
-                
-                const updateSelectOptions = () => {
-                    select.innerHTML = "";
-                    const currentYear = instance.currentYear;
-                    for (let y = currentYear - 7; y <= currentYear + 7; y++) {
-                        const opt = document.createElement("option");
-                        opt.value = y;
-                        opt.textContent = y;
-                        opt.selected = y === currentYear;
-                        opt.style.background = "var(--bg-card)";
-                        opt.style.color = "var(--text-main)";
-                        select.appendChild(opt);
+                const yearInputWrapper = monthElement.querySelector(".numInputWrapper");
+                if (yearInputWrapper) {
+                    yearInputWrapper.style.cursor = "pointer";
+                    yearInputWrapper.onclick = (e) => {
+                        e.stopPropagation();
+                        if (gridOverlay.style.display === "block" && gridOverlay.classList.contains("flatpickr-year-grid-mode")) {
+                            hideGrid();
+                        } else {
+                            showGrid("year");
+                        }
+                    };
+                    
+                    const yearInput = yearInputWrapper.querySelector(".cur-year");
+                    if (yearInput) {
+                        yearInput.style.pointerEvents = "none"; // disable default input interaction
                     }
-                };
-                
-                updateSelectOptions();
-                
-                select.addEventListener("change", (e) => {
-                    instance.changeYear(parseInt(e.target.value));
-                    updateSelectOptions();
-                });
-                
-                yearWrapper.appendChild(select);
+                }
+            }
+
+            const formatHeaderMonth = () => {
+                setTimeout(() => {
+                    const curMonthSpan = container.querySelector(".cur-month");
+                    if (curMonthSpan) {
+                        curMonthSpan.textContent = `Tháng ${instance.currentMonth + 1} `;
+                    }
+                }, 0);
             };
-            
-            // Run initially
-            ensureYearDropdown();
-            
-            // Bind to flatpickr change events
-            instance.config.onMonthChange.push(ensureYearDropdown);
-            instance.config.onYearChange.push(ensureYearDropdown);
-            instance.config.onOpen.push(ensureYearDropdown);
+
+            // Run formatting initially
+            formatHeaderMonth();
+
+            // Hook into flatpickr updates to maintain formatted month text
+            instance.config.onMonthChange.push(formatHeaderMonth);
+            instance.config.onOpen.push(formatHeaderMonth);
+            instance.config.onYearChange.push(formatHeaderMonth);
+
+            // Close grid when calendar closes
+            instance.config.onClose.push(() => {
+                hideGrid();
+            });
         };
 
         setTimeout(() => {
@@ -469,6 +582,7 @@ export class BiddingView {
                 flatpickr(el, {
                     dateFormat: 'd/m/Y',
                     allowInput: true,
+                    monthSelectorType: 'static',
                     locale: 'vn',
                     time_24hr: true,
                     onReady: function(selectedDates, dateStr, instance) {
@@ -485,6 +599,7 @@ export class BiddingView {
                     dateFormat: 'd/m/Y H:i',
                     enableTime: true,
                     time_24hr: true,
+                    monthSelectorType: 'static',
                     allowInput: true,
                     locale: 'vn',
                     onReady: function(selectedDates, dateStr, instance) {

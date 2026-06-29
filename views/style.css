@@ -4122,29 +4122,87 @@ body.dark-mode .btn-excel-action:hover {
     transition: all var(--transition-fast);
 }
 
-/* Bảng Grid chọn năm */
-.flatpickr-year-grid {
+/* Bảng Grid chọn tháng và năm */
+.flatpickr-grid-overlay {
+    position: relative;
+    width: 100%;
+    min-height: 240px;
+    background: var(--bg-card);
+    box-sizing: border-box;
+    padding: 12px;
     animation: fadeIn var(--transition-fast) ease;
     border-bottom-left-radius: var(--radius-md);
     border-bottom-right-radius: var(--radius-md);
 }
 
-.flatpickr-year-grid-item {
+.flatpickr-grid-overlay .grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.flatpickr-grid-overlay .grid-title {
+    font-weight: bold;
+    font-size: 14px;
+    color: var(--text-main);
+    flex-grow: 1;
+    text-align: center;
+}
+
+.flatpickr-grid-overlay .grid-nav-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 8px;
+    color: var(--text-main);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+}
+
+.flatpickr-grid-overlay .grid-nav-btn:hover {
+    background: var(--neutral-soft);
+    color: var(--primary);
+}
+
+.flatpickr-month-grid,
+.flatpickr-year-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flatpickr-grid-overlay .flatpickr-grid-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
     border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    background: var(--bg-app);
     transition: all var(--transition-fast);
 }
 
-.flatpickr-year-grid-item:hover {
+.flatpickr-grid-overlay .flatpickr-grid-item:hover {
     background: var(--primary-soft);
     border-color: var(--primary);
     color: var(--primary) !important;
 }
 
-.flatpickr-year-grid-item.active {
+.flatpickr-grid-overlay .flatpickr-grid-item.active {
     background: var(--primary) !important;
     border-color: var(--primary) !important;
     color: #ffffff !important;
-    font-weight: 700;
+    font-weight: bold;
 }
 
 .flatpickr-day {
@@ -4171,10 +4229,62 @@ body.dark-mode .btn-excel-action:hover {
 }
 
 .flatpickr-current-month .numInputWrapper {
-    cursor: pointer;
+    cursor: pointer !important;
 }
-.flatpickr-current-month .numInputWrapper input.flatpickr-year {
-    pointer-events: none;
+.flatpickr-current-month .numInputWrapper input.cur-year {
+    pointer-events: none !important;
+    cursor: pointer !important;
+    user-select: none !important;
 }
+
+/* Align month and year selectors horizontally */
+.flatpickr-current-month {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+}
+
+/* Remove hover background from month title */
+.flatpickr-current-month .cur-month:hover,
+.flatpickr-current-month .flatpickr-monthDropdown-months:hover {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+/* Make month title not bold */
+.flatpickr-current-month .cur-month {
+    font-weight: normal !important;
+}
+.flatpickr-current-month .cur-month::after {
+    content: " năm";
+}
+
+/* Hide year input arrows in header */
+.flatpickr-current-month .numInputWrapper span {
+    display: none !important;
+}
+
+/* Shrink the month dropdown and year dropdown */
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+    max-width: 140px !important;
+    font-size: 16px !important;
+    padding: 2px 6px !important;
+}
+
+.flatpickr-current-month .flatpickr-year-select {
+    max-width: 90px !important;
+    font-size: 16px !important;
+    padding: 2px 6px !important;
+}
+
+.flatpickr-current-month .flatpickr-year-select option {
+    font-size: 16px !important;
+    background: var(--bg-card);
+    color: var(--text-main);
+}
+
+
+
 
 
