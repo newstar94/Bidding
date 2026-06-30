@@ -883,7 +883,8 @@ async def update_user_package_api(request):
             if p and p not in valid_pkg_ids:
                 conn.close()
                 return JSONResponse({"error": "Gói đăng ký không hợp lệ!"}, status_code=400)
-        cursor.execute("UPDATE tai_khoan SET goi_dich_vu_id = ? WHERE id = ?", (new_package, user_id))
+        db_package = None if new_package in ('none', '', None) else new_package
+        cursor.execute("UPDATE tai_khoan SET goi_dich_vu_id = ? WHERE id = ?", (db_package, user_id))
         conn.commit()
         conn.close()
         # Invalidate session cache ngay lập tức để thay đổi gói có hiệu lực tức thời

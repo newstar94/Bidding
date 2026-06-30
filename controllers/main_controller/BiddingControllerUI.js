@@ -473,11 +473,17 @@ export async function closeModal(modalId) {
         window._preModalAction = null;
         this.switchTab(destTab, destAction, true);
     } else if (modalId === 'modal-goithau') {
-        const destTab = window._preModalTab || 'goithau';
-        const destAction = window._preModalAction || null;
-        window._preModalTab = null;
-        window._preModalAction = null;
-        this.switchTab(destTab, destAction, true);
+        const modalBreakdown = document.getElementById('modal-plan-breakdown');
+        const modalKeHoach = document.getElementById('modal-kehoach');
+        const isParentModalActive = (modalBreakdown && modalBreakdown.classList.contains('active')) || 
+                                     (modalKeHoach && modalKeHoach.classList.contains('active'));
+        if (!isParentModalActive) {
+            const destTab = window._preModalTab || 'goithau';
+            const destAction = window._preModalAction || null;
+            window._preModalTab = null;
+            window._preModalAction = null;
+            this.switchTab(destTab, destAction, true);
+        }
     } else if (modalId === 'modal-chudautu') {
         this.switchTab('chudautu', null, true);
     } else if (modalId === 'modal-nhathau') {

@@ -432,11 +432,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
     const tabs = [{ id: 'preparation', label: 'Thông tin gói thầu' }];
     if (gt.trangThai === 'Chuẩn bị') {
-        tabs.push({ id: 'preparation_action', label: 'Chuẩn bị' });
+        tabs.push({ id: 'preparation_action', label: 'Phát hành E-HSMT' });
     } else {
         if (is1G2T) {
             tabs.push({ id: 'opening_tech', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở E-HSĐXKT' });
-            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
+            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu' && (gt.trangThai !== 'Hủy thầu' || isTechEvalSaved)) {
                 tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSĐXKT' });
             }
 
@@ -459,18 +459,22 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved) {
                 tabs.push({ id: 'eval_fin', label: 'Báo cáo đánh giá E-HSĐXTC' });
             }
-            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả')) {
+            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && gt.soQuyetDinhKetQua))) {
                 tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
             }
         } else {
             tabs.push({ id: 'opening', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở thầu' });
-            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
+            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu' && (gt.trangThai !== 'Hủy thầu' || isEvalSaved1G1T)) {
                 tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSDT' });
             }
-            if (isEvalSaved1G1T || gt.trangThai === 'Đã có kết quả') {
+            if (isEvalSaved1G1T || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && isEvalSaved1G1T && gt.soQuyetDinhKetQua)) {
                 tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
             }
         }
+    }
+
+    if (gt.trangThai === 'Hủy thầu' || this._currentWorkflowTab === 'cancel') {
+        tabs.push({ id: 'cancel', label: 'Hủy thầu' });
     }
 
     if (!tabs.some(t => t.id === this._currentWorkflowTab) || this._currentWorkflowPackageId !== id) {
@@ -482,7 +486,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
     const isPlanLatest = latestPlan && latestPlan.id === gt.keHoachId;
     const latestPkg = this.model.getLatestPackage(gt.id);
     const isPkgLatest = latestPkg && latestPkg.id === gt.id;
-    const isEditable = isPkgLatest;
+    const isEditable = isPkgLatest && gt.trangThai !== 'Hủy thầu';
 
     const kh = this.model.getLatestPlan(gt.keHoachId);
 
@@ -494,6 +498,33 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
     if (codeEl) codeEl.innerText = gt.maGoiThau || 'Gói thầu';
     if (badgeEl) badgeEl.innerHTML = this.getStatusBadge(gt.trangThai);
     if (titleEl) titleEl.innerText = gt.tenGoiThau || 'Chưa nhập tên';
+
+    const actionsEl = document.getElementById('detail-workflow-actions');
+    if (actionsEl) {
+        let actionsHtml = `
+            <button class="btn btn-outline" onclick="window.switchTab('goithau')"
+                style="padding: 10px 20px; font-weight: 600; display: flex; align-items: center; gap: 6px; height: 38px;">
+                <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Quay lại danh sách
+            </button>
+        `;
+        if (gt.trangThai !== 'Chuẩn bị' && gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu' && gt.trangThai !== 'Hủy thầu') {
+            actionsHtml += `
+                <button id="btn-workflow-cancel-package" class="btn btn-danger"
+                    style="padding: 10px 20px; font-weight: 600; display: flex; align-items: center; gap: 6px; height: 38px; background-color: var(--danger, #ef4444); color: white; border: none; border-radius: var(--radius-md); cursor: pointer;">
+                    <i data-lucide="x-circle" style="width: 16px; height: 16px;"></i> Hủy thầu
+                </button>
+            `;
+        }
+        actionsEl.innerHTML = actionsHtml;
+        
+        const btnCancel = document.getElementById('btn-workflow-cancel-package');
+        if (btnCancel) {
+            btnCancel.onclick = () => {
+                this._currentWorkflowTab = 'cancel';
+                this.showPackageDetails(gt.id);
+            };
+        }
+    }
 
     const verSelect = document.getElementById('detail-workflow-version-select');
     if (verSelect) {
@@ -1483,9 +1514,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const isCompleted = !!metadata.technical.qualifiedSaved;
                 const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
                 const isFinOpened = !!gt.thoiGianMoEhsdxtc; // Biên bản mở E-HSĐXTC đã được lưu
-                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả';
+                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu';
                 // Cho phép chỉnh sửa nếu đã lưu nhưng biên bản mở TC chưa có
-                const canEdit = isReadOnly && isCompleted && !isFinOpened && gt.trangThai !== 'Đã có kết quả';
+                const canEdit = isReadOnly && isCompleted && !isFinOpened && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu';
 
                 contentWrapper.innerHTML = `
                     <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
@@ -1709,8 +1740,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         }
                     } catch (e) { }
                 }
-                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả' || isFinEvalSaved;
-                const canEdit = !isFinEvalSaved && gt.trangThai !== 'Đã có kết quả';
+                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu' || isFinEvalSaved;
+                const canEdit = !isFinEvalSaved && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu';
 
                 contentWrapper.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -2835,20 +2866,44 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         if (!meta.result) meta.result = {};
                         meta.result.soBctdKetQua = soBctdResultVal;
                         meta.result.ngayBctdKetQua = ngayBctdResultVal;
+
+                        const hasActualWinner = (gt.phanLo === 'Có') 
+                            ? (typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || [])).some(pl => pl.nhaThauTrungThauId)
+                            : (winnerIdStr !== 'none' && !!gt.nhaThauTrungThauId);
+
+                        if (!hasActualWinner) {
+                            if (!meta.cancelDetails) meta.cancelDetails = {};
+                            meta.cancelDetails.soQuyetDinhHuyThau = decNo;
+                            meta.cancelDetails.ngayQuyetDinhHuyThau = decDate;
+                            meta.cancelDetails.lyDoHuyThau = "Tất cả các hồ sơ dự thầu không đáp ứng yêu cầu của hồ sơ mời thầu. Hủy thầu theo quy định tại Điểm a Khoản 1 Điều 17 Luật Đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023, sửa đổi, bổ sung tại Luật số 57/2024/QH15, Luật số 90/2025/QH15.";
+                            
+                            gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+                            gt.soQuyetDinhKetQua = decNo;
+                            gt.ngayQuyetDinhKetQua = decDate;
+
+                            this.model.persistData('goithau');
+                            this.model.persistData('thongtinmothau');
+                            this.renderGoiThauTable();
+                            window.appController.autoSync();
+
+                            this._currentWorkflowTab = 'cancel';
+                            await this.customAlert('Không có nhà thầu trúng thầu', 'Không có nhà thầu nào đạt yêu cầu. Hệ thống đã tự động điền các thông tin hủy thầu tương ứng và chuyển bạn sang tab Hủy thầu để xem lại hoặc điều chỉnh trước khi xác nhận hủy thầu chính thức.', 'info');
+                            this.showPackageDetails(gt.id);
+                            return;
+                        }
+
                         gt.danhGiaHsdtMetadata = JSON.stringify(meta);
 
                         gt.soQuyetDinhKetQua = decNo;
                         gt.ngayQuyetDinhKetQua = decDate;
-                        gt.trangThai = hasWinner ? 'Đã có kết quả' : 'Hủy thầu';
+                        gt.trangThai = 'Đã có kết quả';
 
                         this.model.persistData('goithau');
                         this.model.persistData('thongtinmothau');
                         this.renderGoiThauTable();
                         window.appController.autoSync();
 
-                        const alertTitle = winnerIdStr === 'none' ? 'Hủy thầu thành công' : 'Chúc mừng';
-                        const alertMsg = winnerIdStr === 'none' ? `Đã cập nhật trạng thái hủy thầu cho gói thầu "${gt.tenGoiThau}" thành công!` : `Đã phê duyệt trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`;
-                        await this.customAlert(alertTitle, alertMsg, 'check-circle');
+                        await this.customAlert('Chúc mừng', `Đã phê duyệt kết quả trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`, 'check-circle');
                         this.showPackageDetails(id);
                     };
                 }
@@ -2870,6 +2925,96 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 };
             }
             break;
+
+        case 'cancel': {
+            let meta = {};
+            try {
+                meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+            } catch (e) { }
+            if (!meta.cancelDetails) meta.cancelDetails = {};
+            
+            const soQdHuy = meta.cancelDetails.soQuyetDinhHuyThau || '';
+            const ngayQdHuy = meta.cancelDetails.ngayQuyetDinhHuyThau || '';
+            const lyDoHuy = meta.cancelDetails.lyDoHuyThau || '';
+            
+            const displayDate = ngayQdHuy ? this.model.formatForDateInput(ngayQdHuy) : '';
+            const isCanceled = gt.trangThai === 'Hủy thầu';
+            
+            contentWrapper.innerHTML = `
+                <div class="card" style="padding: 24px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); box-shadow: var(--shadow-sm);">
+                    <h4 style="font-weight: 700; color: var(--danger, #ef4444); border-bottom: 2px solid rgba(239, 68, 68, 0.1); padding-bottom: 12px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; font-size: 1.05rem;">
+                        <i data-lucide="x-circle" style="width: 20px; height: 20px;"></i> Quyết định Hủy thầu
+                    </h4>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 20px; max-width: 650px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                            <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-weight: 600; font-size: 0.85rem; color: var(--text-main);">Số quyết định hủy thầu <span style="color: var(--danger);">*</span></label>
+                                <input type="text" id="cancel-dec-no" class="form-control" value="${soQdHuy}" placeholder="VD: 123/QĐ-CDT" ${isCanceled ? 'disabled' : ''} style="width: 100%; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: ${isCanceled ? 'var(--bg-input-disabled, #f1f5f9)' : 'var(--bg-input)'}; color: var(--text-main);" />
+                            </div>
+                            <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-weight: 600; font-size: 0.85rem; color: var(--text-main);">Ngày quyết định hủy thầu <span style="color: var(--danger);">*</span></label>
+                                <input type="text" id="cancel-dec-date" class="form-control flatpickr-date" value="${displayDate}" placeholder="dd/MM/yyyy" ${isCanceled ? 'disabled' : ''} style="width: 100%; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: ${isCanceled ? 'var(--bg-input-disabled, #f1f5f9)' : 'var(--bg-input)'}; color: var(--text-main);" />
+                            </div>
+                        </div>
+                        
+                        <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-weight: 600; font-size: 0.85rem; color: var(--text-main);">Lý do hủy thầu <span style="color: var(--danger);">*</span></label>
+                            <textarea id="cancel-reason" class="form-control" rows="5" placeholder="Nhập lý do hủy thầu..." ${isCanceled ? 'disabled' : ''} style="width: 100%; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: ${isCanceled ? 'var(--bg-input-disabled, #f1f5f9)' : 'var(--bg-input)'}; color: var(--text-main); resize: vertical; line-height: 1.5; font-family: inherit;">${lyDoHuy}</textarea>
+                        </div>
+                        
+                        ${!isCanceled ? `
+                        <div style="display: flex; gap: 12px; margin-top: 10px;">
+                            <button id="btn-save-cancel-details" class="btn btn-primary" style="padding: 10px 24px; font-weight: 700; background-color: var(--primary); border: none; border-radius: var(--radius-md); color: white; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                <i data-lucide="check"></i> Xác nhận hủy thầu
+                            </button>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            if (typeof this.initFlatpickr === 'function') {
+                this.initFlatpickr(contentWrapper);
+            }
+            if (window.lucide) window.lucide.createIcons();
+            
+            const btnSaveCancel = document.getElementById('btn-save-cancel-details');
+            if (btnSaveCancel) {
+                btnSaveCancel.onclick = async () => {
+                    const decNo = document.getElementById('cancel-dec-no').value.trim();
+                    const decDate = document.getElementById('cancel-dec-date').value.trim();
+                    const reason = document.getElementById('cancel-reason').value.trim();
+                    
+                    if (!decNo || !decDate || !reason) {
+                        await this.customAlert('Thiếu thông tin', 'Vui lòng điền đầy đủ Số quyết định, Ngày quyết định và Lý do hủy thầu.', 'alert-triangle');
+                        return;
+                    }
+                    
+                    const formattedDecDate = decDate ? this.model.convertDMYToYMD(decDate) : '';
+                    
+                    let meta = {};
+                    try {
+                        meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                    } catch (e) { }
+                    if (!meta.cancelDetails) meta.cancelDetails = {};
+                    meta.cancelDetails.soQuyetDinhHuyThau = decNo;
+                    meta.cancelDetails.ngayQuyetDinhHuyThau = formattedDecDate;
+                    meta.cancelDetails.lyDoHuyThau = reason;
+                    gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+                    
+                    gt.trangThai = 'Hủy thầu';
+                    
+                    this.model.persistData('goithau');
+                    this.renderGoiThauTable();
+                    window.appController.autoSync();
+                    
+                    await this.customAlert('Thành công', 'Đã lưu quyết định hủy thầu và cập nhật trạng thái gói thầu.', 'check-circle');
+                    this.showPackageDetails(gt.id);
+                };
+            }
+            break;
+        }
     }
     lucide.createIcons();
     if (window.appController && window.appController.setupExcelImportEvents) {
