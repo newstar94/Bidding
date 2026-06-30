@@ -1397,9 +1397,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             window.appController.renderDanhGiaHsdtPanel();
             break;
 
-        case 'qualified':
+        case 'qualified': {
             const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
             const qualifiedBids = allBids.filter(checkBidQualified);
+            const hasTechScore = qualifiedBids.some(b => {
+                if (!b.danhGiaKyThuat) return false;
+                const clean = String(b.danhGiaKyThuat).trim().replace(/,/g, '.');
+                return !isNaN(parseFloat(clean)) && isFinite(clean);
+            }) || ['Kết hợp giữa kỹ thuật và giá', 'Giá cố định', 'Dựa trên kỹ thuật'].includes(gt.phuongPhapDanhGia);
 
             if (qualifiedBids.length === 0) {
                 contentWrapper.innerHTML = `
@@ -1494,33 +1499,64 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
  
                      <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
                          <table class="data-table" style="min-width: 100%;">
-                             <thead>
-                                 <tr>
-                                     ${gt.phanLo === 'Có' ? `
-                                         <th style="width: 15%;">Mã phần lô</th>
-                                         <th style="width: 25%;">Tên phần lô</th>
-                                     ` : ''}
-                                     <th style="width: 15%;">Mã nhà thầu</th>
-                                     <th style="width: 30%;">Tên nhà thầu</th>
-                                     <th style="width: 15%; text-align: center;">Kết quả</th>
-                                 </tr>
-                             </thead>
-                             <tbody>
-                                 ${qualifiedBids.map(b => `
-                                     <tr>
-                                         ${gt.phanLo === 'Có' ? `
-                                             <td>${b.maPhanLo || '--'}</td>
-                                             <td>${b.tenPhanLo || '--'}</td>
-                                         ` : ''}
-                                         <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
-                                         <td class="fw-bold">${b.tenNhaThau || '--'}</td>
-                                         <td style="text-align: center;">
-                                             <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 4px;">Đạt kỹ thuật</span>
-                                         </td>
-                                     </tr>
-                                 `).join('')}
-                             </tbody>
-                         </table>
+
+                              <thead>
+
+                                  <tr>
+
+                                      ${gt.phanLo === 'Có' ? `
+
+                                          <th style="width: 15%;">Mã phần lô</th>
+
+                                          <th style="width: 20%;">Tên phần lô</th>
+
+                                      ` : ''}
+
+                                      <th style="width: 15%;">Mã nhà thầu</th>
+
+                                      <th style="width: ${gt.phanLo === 'Có' ? '25%' : '40%'};">Tên nhà thầu</th>
+
+                                      ${hasTechScore ? `<th style="width: 15%; text-align: center;">Điểm kỹ thuật</th>` : ''}
+
+                                      <th style="width: 15%; text-align: center;">Kết quả</th>
+
+                                  </tr>
+
+                              </thead>
+
+                              <tbody>
+
+                                  ${qualifiedBids.map(b => `
+
+                                      <tr>
+
+                                          ${gt.phanLo === 'Có' ? `
+
+                                              <td>${b.maPhanLo || '--'}</td>
+
+                                              <td>${b.tenPhanLo || '--'}</td>
+
+                                          ` : ''}
+
+                                          <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
+
+                                          <td class="fw-bold">${b.tenNhaThau || '--'}</td>
+
+                                          ${hasTechScore ? `<td style="text-align: center; font-weight: 700;">${b.danhGiaKyThuat || '--'}</td>` : ''}
+
+                                          <td style="text-align: center;">
+
+                                              <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 4px;">Đạt kỹ thuật</span>
+
+                                          </td>
+
+                                      </tr>
+
+                                  `).join('')}
+
+                              </tbody>
+
+                          </table>
                      </div>
                     <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
                          ${!isReadOnly ? `
@@ -1619,11 +1655,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 }
             }
             break;
+        }
 
-        case 'opening_fin':
+        case 'opening_fin': {
             const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
             const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
-
+            const hasTechScore = qualifiedBidsForOpening.some(b => {
+                if (!b.danhGiaKyThuat) return false;
+                const clean = String(b.danhGiaKyThuat).trim().replace(/,/g, '.');
+                return !isNaN(parseFloat(clean)) && isFinite(clean);
+            }) || ['Kết hợp giữa kỹ thuật và giá', 'Giá cố định', 'Dựa trên kỹ thuật'].includes(gt.phuongPhapDanhGia);
             if (qualifiedBidsForOpening.length === 0) {
                 contentWrapper.innerHTML = `
                     <div style="text-align: center; padding: 48px; color: var(--text-muted);">
@@ -1664,13 +1705,21 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+
+                            <div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXKT:</strong> <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</span></div>
+
+                            <div style="display: flex; align-items: center; gap: 8px; grid-column: span 2; white-space: nowrap;">
+
                                 <span>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong></span>
+
                                 ${isReadOnly
-                                    ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
-                                    : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">
-                                      <span class="text-muted" style="font-size: 0.73rem;">(để trống = tự ghi nhận)</span>`
-                                }
+
+                        ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
+
+                        : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">`
+
+                    }
+
                             </div>
                         </div>
                     </div>
@@ -1683,47 +1732,48 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <tr>
                                     <th>Mã nhà thầu</th>
                                     <th>Tên nhà thầu</th>
+                                    ${hasTechScore ? `<th style="width:100px; text-align: center;">Điểm kỹ thuật</th>` : ''}
                                     <th style="width:160px;">Giá dự thầu (VNĐ)</th>
                                     <th style="width:80px;">Tỷ lệ %</th>
                                     <th style="width:160px;">Giá sau giảm</th>
-                                    <th style="width:120px;">Hiệu lực HSDT</th>
-                                    <th style="width:120px;">Thời gian TH</th>
+                                    ${gt.linhVuc === 'Tư vấn' ? `<th style="width:150px;">Hiệu lực E-HSĐXTC</th>` : ''}
                                 </tr>
                             </thead>
                             <tbody>
-                                ${qualifiedBidsForOpening.map(b => {
-                    const valGiaDuThau = this.model.formatVND(b.giaDuThau) || '';
-                    const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
-                    const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
-                    const valHieuLucHsdt = b.hieuLucHsdt || '';
-                    const valThoiGianTh = b.thoiGianThucHien || gt.thoiGianThucHien || '';
 
-                    if (isReadOnly) {
-                        return `
+                                ${qualifiedBidsForOpening.map(b => {
+
+                        const valGiaDuThau = this.model.formatVND(b.giaDuThau) || '';
+                        const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
+                        const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
+                        const valHieuLucHsdt = b.hieuLucHsdt || b.hieuLucHsdxt || '';
+
+                        if (isReadOnly) {
+                            return `
                                             <tr>
                                                 <td><strong>${b.maNhaThau || b.maDinhDanh || '--'}</strong></td>
                                                 <td><strong>${b.tenNhaThau}</strong></td>
+                                                ${hasTechScore ? `<td style="text-align:center; font-weight:bold;">${b.danhGiaKyThuat || '--'}</td>` : ''}
                                                 <td>${valGiaDuThau || '--'}</td>
                                                 <td style="text-align:right;">${valTyLeGiam}</td>
                                                 <td>${valGiaSauGiam || '--'}</td>
-                                                <td>${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : '--'}</td>
-                                                <td>${valThoiGianTh || '--'}</td>
+                                                ${gt.linhVuc === 'Tư vấn' ? `<td>${valHieuLucHsdt ? valHieuLucHsdt + (String(valHieuLucHsdt).includes('ngày') ? '' : ' ngày') : '--'}</td>` : ''}
                                             </tr>
                                         `;
-                    } else {
-                        return `
+                        } else {
+                            return `
                                             <tr data-opening-bid-id="${b.id}">
                                                 <td><strong>${b.maNhaThau || b.maDinhDanh || '--'}</strong></td>
                                                 <td><strong>${b.tenNhaThau}</strong></td>
+                                                ${hasTechScore ? `<td style="text-align:center; font-weight:bold;">${b.danhGiaKyThuat || '--'}</td>` : ''}
                                                 <td><input type="text" class="form-control op-gia-du-thau" value="${valGiaDuThau}" placeholder="Nhập giá..." style="padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-ty-le-giam" value="${valTyLeGiam}" placeholder="0" style="text-align:right; padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-gia-sau-giam" value="${valGiaSauGiam}" readonly style="background:#f1f5f9; padding:4px 8px; font-size:0.8rem;"></td>
-                                                <td><input type="text" class="form-control op-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : ''}" placeholder="Ví dụ: 90 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>
-                                                <td><input type="text" class="form-control op-thoi-gian-th" value="${valThoiGianTh}" placeholder="Ví dụ: 60 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>
+                                                ${gt.linhVuc === 'Tư vấn' ? `<td><input type="text" class="form-control op-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + (String(valHieuLucHsdt).includes('ngày') ? '' : ' ngày') : ''}" placeholder="Ví dụ: 90 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>` : ''}
                                             </tr>
                                         `;
-                    }
-                }).join('')}
+                        }
+                    }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -1804,9 +1854,12 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     const tyLeValRaw = tr.querySelector('.op-ty-le-giam')?.value || '0';
                                     bid.tyLeGiamGia = parseFloat(tyLeValRaw.replace(/,/g, '.')) || 0;
                                     bid.giaSauGiamGia = this.model.parseVND(tr.querySelector('.op-gia-sau-giam')?.value || '');
-                                    bid.hieuLucHsdt = parseInt(tr.querySelector('.op-hieu-luc-hsdt')?.value || '0', 10);
-                                    const opThoiGianVal = tr.querySelector('.op-thoi-gian-th')?.value.trim() || '';
-                                    bid.thoiGianThucHien = opThoiGianVal || bid.thoiGianThucHien || gt.thoiGianThucHien || '';
+                                    const hieuLucEl = tr.querySelector('.op-hieu-luc-hsdt');
+                                    if (hieuLucEl) {
+                                        bid.hieuLucHsdt = parseInt(hieuLucEl.value, 10) || 0;
+                                    } else if (gt.linhVuc === 'Tư vấn') {
+                                        bid.hieuLucHsdt = parseInt(bid.hieuLucHsdxt, 10) || 0;
+                                    }
                                 }
                             });
                             this.model.persistData('thongtinmothau');
@@ -1830,6 +1883,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 }
             }
             break;
+        }
 
         case 'result':
             const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
