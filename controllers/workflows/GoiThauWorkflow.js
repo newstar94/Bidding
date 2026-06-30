@@ -944,6 +944,39 @@ export async function handleGoiThauSubmit(e) {
     const collectedTuyChonList = this._collectTuyChonMuaThemRows();
 
     if (isPhanLo) {
+        // Kiểm tra trùng mã phần lô
+        const codes = collectedPhanLoList.map(item => item.maPhanLo ? item.maPhanLo.trim().toLowerCase() : '');
+        const duplicateCodes = codes.filter((code, idx) => code !== '' && codes.indexOf(code) !== idx);
+        if (duplicateCodes.length > 0) {
+            let duplicateInput = null;
+            const duplicateCodeValue = duplicateCodes[0];
+            document.querySelectorAll('#phanlo-tbody tr').forEach(tr => {
+                const inp = tr.querySelector('.pl-code-input');
+                if (inp && inp.value.trim().toLowerCase() === duplicateCodeValue) {
+                    duplicateInput = inp;
+                }
+            });
+
+            if (duplicateInput) {
+                duplicateInput.style.borderColor = 'var(--danger)';
+                const clearError = () => {
+                    duplicateInput.style.borderColor = '';
+                    duplicateInput.removeEventListener('input', clearError);
+                    duplicateInput.removeEventListener('change', clearError);
+                };
+                duplicateInput.addEventListener('input', clearError);
+                duplicateInput.addEventListener('change', clearError);
+            }
+
+            await this.view.customAlert(
+                'Mã phần lô trùng lặp',
+                `Mã phần lô "${duplicateCodes[0].toUpperCase()}" bị trùng lặp. Vui lòng nhập các mã phần lô khác nhau!`,
+                'alert-triangle',
+                duplicateInput
+            );
+            return;
+        }
+
         if (targetStatus !== 'Chuẩn bị') {
             let emptyInput = null;
             let invalidBaoDamInput = null;

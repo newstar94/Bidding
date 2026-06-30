@@ -370,8 +370,9 @@ export function renderMoThauPanel() {
             } catch(e) {}
         }
 
-        // Step 1 (Mo thau) is completed only if it is not in mời/mở thầu status AND the next step is saved
-        const isCompleted = (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') && isNextStepSaved;
+        // Step 1 (Mo thau) is completed only if it is not in mời/mở thầu status AND the next step is saved OR the opening data has been saved
+        const hasSavedOpeningData = this.model.state.thongtinmothau.some(b => String(b.goiThauId) === String(gt.id));
+        const isCompleted = ((gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') && isNextStepSaved) || hasSavedOpeningData;
         const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
         const isReadOnly = isCompleted && !isEditingThisStep;
         const isEditable = !isReadOnly;
@@ -387,14 +388,20 @@ export function renderMoThauPanel() {
                 <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                 <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                 <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
-                <div>• <strong>Giá gói thầu:</strong> <span class="text-blue fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
+                <div>• <strong>Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
                 <div>• <strong>Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || '--'}</div>
                 ${gt.phuongPhapDanhGia ? `<div>• <strong>Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá' && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ''}</div>` : ''}
                 <div>• <strong>Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
                 <div>• <strong>Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                 <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                 <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                <div>• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> <span class="text-blue fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span></div>
+                <div>• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> 
+                    ${isEditable ? `
+                        <input type="text" id="op-thoigianmothau" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: left; display: inline-block; vertical-align: middle;" value="${gt.thoiGianMoThau ? this.model.formatDate(gt.thoiGianMoThau) : ''}" placeholder="dd/MM/yyyy HH:mm">
+                    ` : `
+                        <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span>
+                    `}
+                </div>
             </div>
 
             ${(isLocked || isReadOnly) ? `<div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px; color:#dc2626; font-weight:600; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
@@ -402,6 +409,10 @@ export function renderMoThauPanel() {
                 Biên bản mở thầu đã bị khóa — Gói thầu có trạng thái <strong style="margin-left:4px;">${gt.trangThai}</strong>
             </div>` : ''}
         `;
+
+        if (isEditable) {
+            this.view.initFlatpickr(summaryContainer);
+        }
 
         emptyState.style.display = 'none';
         bidContainer.style.display = 'block';
@@ -416,14 +427,18 @@ export function renderMoThauPanel() {
         if (downloadExcelBtnTop) downloadExcelBtnTop.style.display = isEditable ? '' : 'none';
         if (saveBtn2) {
             if (isReadOnly) {
-                saveBtn2.style.display = '';
-                saveBtn2.innerHTML = '<i data-lucide="edit-3"></i> Chỉnh sửa';
-                saveBtn2.className = 'btn btn-outline';
-                saveBtn2.onclick = () => {
-                    this.view._editingState = this.view._editingState || {};
-                    this.view._editingState[stepKey] = true;
-                    this.renderMoThauPanel();
-                };
+                if (isNextStepSaved || isLocked) {
+                    saveBtn2.style.display = 'none';
+                } else {
+                    saveBtn2.style.display = '';
+                    saveBtn2.innerHTML = '<i data-lucide="edit"></i> Chỉnh sửa';
+                    saveBtn2.className = 'btn btn-primary';
+                    saveBtn2.onclick = () => {
+                        this.view._editingState = this.view._editingState || {};
+                        this.view._editingState[stepKey] = true;
+                        this.renderMoThauPanel();
+                    };
+                }
             } else {
                 saveBtn2.style.display = '';
                 saveBtn2.innerHTML = '<i data-lucide="save"></i> Lưu thông tin mở thầu';

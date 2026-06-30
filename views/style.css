@@ -1175,6 +1175,18 @@ a:hover {
     border-color: var(--border-hover);
 }
 
+.btn-outline-primary {
+    background-color: var(--bg-card);
+    border: 1px solid var(--primary);
+    color: var(--primary);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-soft);
+    border-color: var(--primary-hover);
+    color: var(--primary-hover);
+}
+
 .btn-sm {
     padding: 6px 12px;
     font-size: 0.75rem;
@@ -4312,7 +4324,12 @@ body.dark-mode .btn-excel-action:hover {
 }
 
 /* Hide package selection dropdown wrapper inside package detail view tab */
-#tab-goithau-detail .custom-select-wrapper[data-select-id="mothau-goithau-select"] {
+#tab-goithau-detail .custom-select-wrapper[data-select-id="mothau-goithau-select"],
+#tab-goithau-detail .custom-select-container[data-target="mothau-goithau-select"],
+#tab-goithau-detail .custom-select-wrapper[data-select-id="danhgiahsdt-goithau-select"],
+#tab-goithau-detail .custom-select-container[data-target="danhgiahsdt-goithau-select"],
+#tab-goithau-detail .custom-select-wrapper[data-select-id="result-goithau-select"],
+#tab-goithau-detail .custom-select-container[data-target="result-goithau-select"] {
     display: none !important;
 }
 

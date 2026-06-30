@@ -99,11 +99,9 @@ export function renderDanhGiaHsdtPanel() {
 
         const stepKey = this.currentDanhGiaTab === 'financial' ? 'eval_fin' : 'eval_tech';
         const isEditingThisStep = this.view._editingState && this.view._editingState[stepKey];
-        const isReadOnly = is1G2T
-            ? (this.currentDanhGiaTab === 'technical'
-                ? (isQualifiedSaved || gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu')
-                : (gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu'))
-            : (gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu');
+        const isLocked = gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu';
+        const isTabLocked = isLocked || (is1G2T && this.currentDanhGiaTab === 'technical' && isQualifiedSaved);
+        const isReadOnly = isTabLocked || (isCompleted && !isEditingThisStep);
         const isEditable = !isReadOnly;
 
         // 2. Render Summary Card
@@ -115,7 +113,7 @@ export function renderDanhGiaHsdtPanel() {
                 <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                 <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                 <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
-                <div>• <strong>Giá gói thầu:</strong> <span class="text-blue fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
+                <div>• <strong>Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
                 <div>• <strong>Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || '--'}</div>
                 ${gt.phuongPhapDanhGia ? `<div>• <strong>Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá' && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ''}</div>` : ''}
                 <div>• <strong>Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
@@ -309,7 +307,18 @@ export function renderDanhGiaHsdtPanel() {
         }
         if (saveBtn) {
             if (isReadOnly) {
-                saveBtn.style.display = 'none';
+                if (isTabLocked) {
+                    saveBtn.style.display = 'none';
+                } else {
+                    saveBtn.style.display = '';
+                    saveBtn.innerHTML = '<i data-lucide="edit"></i> Chỉnh sửa';
+                    saveBtn.className = 'btn btn-primary';
+                    saveBtn.onclick = () => {
+                        this.view._editingState = this.view._editingState || {};
+                        this.view._editingState[stepKey] = true;
+                        this.renderDanhGiaHsdtPanel();
+                    };
+                }
             } else {
                 saveBtn.style.display = '';
                 saveBtn.innerHTML = '<i data-lucide="save"></i> Lưu thông tin đánh giá';
@@ -1436,6 +1445,11 @@ export async function saveDanhGiaHsdt() {
     this.model.persistData('thongtinmothau');
     this.view.renderGoiThauTable();
     this.autoSync();
+
+    const stepKey = this.currentDanhGiaTab === 'financial' ? 'eval_fin' : 'eval_tech';
+    if (this.view._editingState) {
+        this.view._editingState[stepKey] = false;
+    }
 
     // Tự động chuyển tab kết quả hoặc danh sách đạt kỹ thuật sau khi lưu
     const detailPane = document.getElementById('tab-goithau-detail');
