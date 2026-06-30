@@ -21,7 +21,7 @@ export async function moThauGoiThau(id) {
     // Thử phân tích theo định dạng "HH:mm ngày dd/MM/yyyy" trước
     let d, m, y, hh = 0, mm = 0;
     const newFormatMatch = cleanStr.match(/^(\d{2}):(\d{2})\s+ngày\s+(\d{2})\/(\d{2})\/(\d{4})/i);
-    
+
     if (newFormatMatch) {
         hh = parseInt(newFormatMatch[1], 10);
         mm = parseInt(newFormatMatch[2], 10);
@@ -367,7 +367,7 @@ export function renderMoThauPanel() {
                 } else {
                     isNextStepSaved = !!parsed.saved;
                 }
-            } catch(e) {}
+            } catch (e) { }
         }
 
         // Step 1 (Mo thau) is completed only if it is not in mời/mở thầu status AND the next step is saved OR the opening data has been saved
@@ -406,7 +406,7 @@ export function renderMoThauPanel() {
 
             ${(isLocked || isReadOnly) ? `<div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px; color:#dc2626; font-weight:600; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                Biên bản mở thầu đã bị khóa — Gói thầu có trạng thái <strong style="margin-left:4px;">${gt.trangThai}</strong>
+                 ${is1G2T ? 'Biên bản mở E-HSĐXKT đã được khóa' : 'Biên bản mở thầu đã được khóa'}
             </div>` : ''}
         `;
 
@@ -1246,7 +1246,7 @@ export async function saveThongTinMoThau() {
             } else {
                 isNextStepSaved = !!parsed.saved;
             }
-        } catch(e) {}
+        } catch (e) { }
     }
 
     const isAllowedToSave = gt.trangThai === 'Đang mời thầu' || gt.trangThai === 'Đã mở thầu' || (gt.trangThai === 'Đang chấm thầu' && !isNextStepSaved);

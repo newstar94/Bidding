@@ -226,74 +226,78 @@ export async function renderGoiThauTable() {
             }
 
             let winnerInfoHtml = '--';
-            if (displayedGt.phanLo === 'Có') {
-                const plList = typeof displayedGt.phanLoList === 'string' ? JSON.parse(displayedGt.phanLoList || '[]') : (displayedGt.phanLoList || []);
-                const winningLots = plList.filter(pl => pl.nhaThauTrungThauId);
-                const uniqueWinnerIds = [...new Set(winningLots.map(pl => String(pl.nhaThauTrungThauId)).filter(Boolean))];
+            if (displayedGt.trangThai === 'Đã có kết quả') {
+                if (displayedGt.phanLo === 'Có') {
+                    const plList = typeof displayedGt.phanLoList === 'string' ? JSON.parse(displayedGt.phanLoList || '[]') : (displayedGt.phanLoList || []);
+                    const winningLots = plList.filter(pl => pl.nhaThauTrungThauId);
+                    const uniqueWinnerIds = [...new Set(winningLots.map(pl => String(pl.nhaThauTrungThauId)).filter(Boolean))];
 
-                if (uniqueWinnerIds.length > 1) {
-                    window._lotWinnersMap = window._lotWinnersMap || {};
-                    window._lotWinnersMap[displayedGt.id] = winningLots.map(pl => {
-                        const bidderInfo = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
-                        const ntInfo = this.model.state.nhathau.find(n => n.id === pl.nhaThauTrungThauId);
-                        const ntName = bidderInfo ? bidderInfo.tenNhaThau : (ntInfo ? ntInfo.tenNhaThau : 'Nhà thầu #' + pl.nhaThauTrungThauId);
-                        const isJV = bidderInfo && bidderInfo.loaiNhaThau === 'Liên danh';
-                        let jvData = null;
-                        if (isJV) {
-                            const allJvMembers = bidderInfo.thanhVienLienDanh || [];
+                    if (uniqueWinnerIds.length > 1) {
+                        window._lotWinnersMap = window._lotWinnersMap || {};
+                        window._lotWinnersMap[displayedGt.id] = winningLots.map(pl => {
+                            const bidderInfo = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
+                            const ntInfo = this.model.state.nhathau.find(n => n.id === pl.nhaThauTrungThauId);
+                            const ntName = bidderInfo ? bidderInfo.tenNhaThau : (ntInfo ? ntInfo.tenNhaThau : 'Nhà thầu #' + pl.nhaThauTrungThauId);
+                            const isJV = bidderInfo && bidderInfo.loaiNhaThau === 'Liên danh';
+                            let jvData = null;
+                            if (isJV) {
+                                const allJvMembers = bidderInfo.thanhVienLienDanh || [];
+                                const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
+                                const leadName = leadMember?.tenNhaThau || ntName;
+                                const leadCode = leadMember?.maSoThue || ntInfo?.maSoThue || ntInfo?.maNhaThau || bidderInfo.maDinhDanh || bidderInfo.maNhaThau || '';
+                                const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
+                                jvData = {
+                                    members: subMembers,
+                                    leadName,
+                                    leadCode
+                                };
+                            }
+                            return {
+                                maPhanLo: pl.maPhanLo,
+                                tenPhanLo: pl.tenPhanLo,
+                                nhaThauTrungThauId: pl.nhaThauTrungThauId,
+                                tenNhaThau: ntName,
+                                giaTrungThau: pl.giaTrungThau,
+                                isJV,
+                                jvData
+                            };
+                        });
+                        const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
+                        winnerInfoHtml = `<a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${displayedGt.id}')" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
+                    } else if (uniqueWinnerIds.length === 1) {
+                        const singleWinnerId = uniqueWinnerIds[0];
+                        const singleWinnerNt = this.model.state.nhathau.find(n => String(n.id) === String(singleWinnerId));
+                        const singleWinnerBid = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(singleWinnerId));
+                        const name = singleWinnerBid ? singleWinnerBid.tenNhaThau : (singleWinnerNt ? singleWinnerNt.tenNhaThau : 'Nhà thầu #' + singleWinnerId);
+                        const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
+
+                        let link;
+                        if (singleWinnerBid && singleWinnerBid.loaiNhaThau === 'Liên danh') {
+                            const allJvMembers = singleWinnerBid.thanhVienLienDanh || [];
                             const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
-                            const leadName = leadMember?.tenNhaThau || ntName;
-                            const leadCode = leadMember?.maSoThue || ntInfo?.maSoThue || ntInfo?.maNhaThau || bidderInfo.maDinhDanh || bidderInfo.maNhaThau || '';
+                            const leadName = leadMember?.tenNhaThau || name;
+                            const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || '';
                             const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
-                            jvData = {
+                            window._jvDataMap[displayedGt.id] = {
                                 members: subMembers,
                                 leadName,
                                 leadCode
                             };
+                            link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${name}</a>`;
+                        } else if (singleWinnerNt) {
+                            link = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${singleWinnerNt.id}')" class="text-blue fw-bold link-hover">${name}</a>`;
+                        } else {
+                            link = `<span class="fw-bold text-success">${name}</span>`;
                         }
-                        return {
-                            maPhanLo: pl.maPhanLo,
-                            tenPhanLo: pl.tenPhanLo,
-                            nhaThauTrungThauId: pl.nhaThauTrungThauId,
-                            tenNhaThau: ntName,
-                            giaTrungThau: pl.giaTrungThau,
-                            isJV,
-                            jvData
-                        };
-                    });
-                    const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
-                    winnerInfoHtml = `<a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${displayedGt.id}')" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
-                } else if (uniqueWinnerIds.length === 1) {
-                    const singleWinnerId = uniqueWinnerIds[0];
-                    const singleWinnerNt = this.model.state.nhathau.find(n => String(n.id) === String(singleWinnerId));
-                    const singleWinnerBid = this.model.state.thongtinmothau.find(b => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(singleWinnerId));
-                    const name = singleWinnerBid ? singleWinnerBid.tenNhaThau : (singleWinnerNt ? singleWinnerNt.tenNhaThau : 'Nhà thầu #' + singleWinnerId);
-                    const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
-
-                    let link;
-                    if (singleWinnerBid && singleWinnerBid.loaiNhaThau === 'Liên danh') {
-                        const allJvMembers = singleWinnerBid.thanhVienLienDanh || [];
-                        const leadMember = allJvMembers.find(m => m.vaiTro === 'Đứng đầu liên danh');
-                        const leadName = leadMember?.tenNhaThau || name;
-                        const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || '';
-                        const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
-                        window._jvDataMap[displayedGt.id] = {
-                            members: subMembers,
-                            leadName,
-                            leadCode
-                        };
-                        link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${name}</a>`;
-                    } else if (singleWinnerNt) {
-                        link = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${singleWinnerNt.id}')" class="text-blue fw-bold link-hover">${name}</a>`;
+                        winnerInfoHtml = `${link}<br><small class="text-muted">Giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
                     } else {
-                        link = `<span class="fw-bold text-success">${name}</span>`;
+                        winnerInfoHtml = '--';
                     }
-                    winnerInfoHtml = `${link}<br><small class="text-muted">Giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
                 } else {
-                    winnerInfoHtml = '--';
+                    winnerInfoHtml = displayedGt.nhaThauTrungThauId ? (ntLink + '<br><small class="text-muted">Giá: ' + this.model.formatCurrency(displayedGt.giaTrungThau) + '</small>') : '--';
                 }
             } else {
-                winnerInfoHtml = displayedGt.nhaThauTrungThauId ? (ntLink + '<br><small class="text-muted">Giá: ' + this.model.formatCurrency(displayedGt.giaTrungThau) + '</small>') : '--';
+                winnerInfoHtml = '--';
             }
 
             const optionsHtml = uniqueVersions.map(v => {
@@ -1468,6 +1472,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
                             <div>• <strong style="color: var(--primary);">${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
+                            ${is1G2T ? `<div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</div>` : ''}
                         </div>
                     </div>
 
@@ -1499,63 +1504,34 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
  
                      <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
                          <table class="data-table" style="min-width: 100%;">
-
                               <thead>
-
                                   <tr>
-
                                       ${gt.phanLo === 'Có' ? `
-
                                           <th style="width: 15%;">Mã phần lô</th>
-
                                           <th style="width: 20%;">Tên phần lô</th>
-
                                       ` : ''}
-
                                       <th style="width: 15%;">Mã nhà thầu</th>
-
                                       <th style="width: ${gt.phanLo === 'Có' ? '25%' : '40%'};">Tên nhà thầu</th>
-
                                       ${hasTechScore ? `<th style="width: 15%; text-align: center;">Điểm kỹ thuật</th>` : ''}
-
                                       <th style="width: 15%; text-align: center;">Kết quả</th>
-
                                   </tr>
-
                               </thead>
-
                               <tbody>
-
                                   ${qualifiedBids.map(b => `
-
                                       <tr>
-
                                           ${gt.phanLo === 'Có' ? `
-
                                               <td>${b.maPhanLo || '--'}</td>
-
                                               <td>${b.tenPhanLo || '--'}</td>
-
                                           ` : ''}
-
                                           <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
-
-                                          <td class="fw-bold">${b.tenNhaThau || '--'}</td>
-
-                                          ${hasTechScore ? `<td style="text-align: center; font-weight: 700;">${b.danhGiaKyThuat || '--'}</td>` : ''}
-
+                                          <td>${b.tenNhaThau || '--'}</td>
+                                          ${hasTechScore ? `<td style="text-align: center;">${b.danhGiaKyThuat || '--'}</td>` : ''}
                                           <td style="text-align: center;">
-
                                               <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 4px;">Đạt kỹ thuật</span>
-
                                           </td>
-
                                       </tr>
-
                                   `).join('')}
-
                               </tbody>
-
                           </table>
                      </div>
                     <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
@@ -1677,7 +1653,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const isFinOpeningSaved = qualifiedBidsForOpening.some(b => b.giaDuThau && b.giaDuThau > 0);
                 const isCompleted = isFinOpeningSaved;
                 const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
-                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả';
+                let isFinEvalSaved = false;
+                if (gt.danhGiaHsdtMetadata) {
+                    try {
+                        const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+                        if (parsed.financial && parsed.financial.saved) {
+                            isFinEvalSaved = true;
+                        }
+                    } catch (e) { }
+                }
+                const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả' || isFinEvalSaved;
+                const canEdit = !isFinEvalSaved && gt.trangThai !== 'Đã có kết quả';
 
                 contentWrapper.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -1705,23 +1691,21 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-
                             <div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXKT:</strong> <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</span></div>
-
                             <div style="display: flex; align-items: center; gap: 8px; grid-column: span 2; white-space: nowrap;">
-
                                 <span>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong></span>
-
                                 ${isReadOnly
-
                         ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
-
                         : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">`
-
                     }
-
                             </div>
                         </div>
+                        ${isReadOnly ? `
+                        <div style="margin-top: 12px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 6px; color: #dc2626; font-weight: 600; font-size: 0.82rem; display: flex; align-items: center; gap: 6px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                            Biên bản mở E-HSĐXTC đã được khóa
+                        </div>
+                        ` : ''}
                     </div>
                     <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 20px;">
                         Nhập giá dự thầu, tỷ lệ giảm giá của các nhà thầu vượt qua bước đánh giá kỹ thuật.
@@ -1751,9 +1735,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         if (isReadOnly) {
                             return `
                                             <tr>
-                                                <td><strong>${b.maNhaThau || b.maDinhDanh || '--'}</strong></td>
-                                                <td><strong>${b.tenNhaThau}</strong></td>
-                                                ${hasTechScore ? `<td style="text-align:center; font-weight:bold;">${b.danhGiaKyThuat || '--'}</td>` : ''}
+                                                <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
+                                                <td>${b.tenNhaThau}</td>
+                                                ${hasTechScore ? `<td style="text-align:center;">${b.danhGiaKyThuat || '--'}</td>` : ''}
                                                 <td>${valGiaDuThau || '--'}</td>
                                                 <td style="text-align:right;">${valTyLeGiam}</td>
                                                 <td>${valGiaSauGiam || '--'}</td>
@@ -1763,9 +1747,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         } else {
                             return `
                                             <tr data-opening-bid-id="${b.id}">
-                                                <td><strong>${b.maNhaThau || b.maDinhDanh || '--'}</strong></td>
-                                                <td><strong>${b.tenNhaThau}</strong></td>
-                                                ${hasTechScore ? `<td style="text-align:center; font-weight:bold;">${b.danhGiaKyThuat || '--'}</td>` : ''}
+                                                <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
+                                                <td>${b.tenNhaThau}</td>
+                                                ${hasTechScore ? `<td style="text-align:center;">${b.danhGiaKyThuat || '--'}</td>` : ''}
                                                 <td><input type="text" class="form-control op-gia-du-thau" value="${valGiaDuThau}" placeholder="Nhập giá..." style="padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-ty-le-giam" value="${valTyLeGiam}" placeholder="0" style="text-align:right; padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-gia-sau-giam" value="${valGiaSauGiam}" readonly style="background:#f1f5f9; padding:4px 8px; font-size:0.8rem;"></td>
@@ -1778,9 +1762,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </table>
                     </div>
                     <div style="display:flex; justify-content:flex-end;">
-                        ${isReadOnly ? `
-                            <button class="btn btn-outline" id="btn-edit-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="edit-3"></i> Chỉnh sửa</button>
-                        ` : `
+                        ${isReadOnly ? (canEdit ? `
+                            <button class="btn btn-primary" id="btn-edit-opening-fin" style="padding:10px 24px; font-weight:700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="edit"></i> Chỉnh sửa</button>
+                        ` : '') : `
                             <button class="btn btn-primary" id="btn-save-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu Biên bản mở E-HSĐXTC</button>
                         `}
                     </div>
@@ -1886,6 +1870,20 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         }
 
         case 'result':
+            const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
+            let metadata = { technical: {}, result: {} };
+            if (gt.danhGiaHsdtMetadata) {
+                try {
+                    metadata = JSON.parse(gt.danhGiaHsdtMetadata);
+                    if (!metadata.technical) metadata.technical = {};
+                    if (!metadata.result) metadata.result = {};
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+            const soBctdResult = metadata.result.soBctdKetQua || '';
+            const ngayBctdResult = metadata.result.ngayBctdKetQua || '';
+
             const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
                 String(b.goiThauId) === String(gt.id) && checkBidQualified(b)
             );
@@ -2186,11 +2184,19 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--success);">${this.model.formatCurrency(savings)} (${savingsPct}%)</h5>
                             </div>
                             <div>
-                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">QĐ phê duyệt số</span>
+                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Số BCTĐ kết quả</span>
+                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${soBctdResult || '--'}</h5>
+                            </div>
+                            <div>
+                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày BCTĐ kết quả</span>
+                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${ngayBctdResult ? this.model.formatDate(ngayBctdResult) : '--'}</h5>
+                            </div>
+                            <div>
+                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Số QĐ phê duyệt Kết quả</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.soQuyetDinhKetQua || '--'}</h5>
                             </div>
                             <div>
-                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày ký QĐ</span>
+                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày ký QĐ phê duyệt Kết quả</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.ngayQuyetDinhKetQua ? this.model.formatDate(gt.ngayQuyetDinhKetQua) : '--'}</h5>
                             </div>
                         </div>
@@ -2376,9 +2382,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <td>${b.tenPhanLo || '--'}</td>
                             ` : ''}
                             <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
-                            <td class="fw-bold">${b.tenNhaThau || '--'}</td>
+                            <td>${b.tenNhaThau || '--'}</td>
                             ${isCombinedMethod ? `
-                                <td style="text-align: center; font-weight: 700; color: var(--primary);">${score !== undefined && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : '--'}</td>
+                                <td style="text-align: center; color: var(--primary);">${score !== undefined && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : '--'}</td>
                             ` : ''}
                             <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
                             <td>
@@ -2418,7 +2424,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian mở thầu:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
+                            <div>• <strong style="color: var(--primary);">${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
+                            ${is1G2T ? `<div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</div>` : ''}
                         </div>
                     </div>
 
@@ -2441,17 +2448,28 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </div>
                     </div>
 
-                    <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-card); display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
-                        <div class="form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
-                                <label style="font-weight:700; font-size:0.85rem;">QĐ phê duyệt số <span class="required">*</span></label>
-                                <input type="text" id="award-decision-no" class="form-control" required value="${gt.soQuyetDinhKetQua || ''}" placeholder="Số QĐ...">
-                                <span class="error-text">Vui lòng nhập số QĐ</span>
+                    <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
+                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Quyết định phê duyệt Kết quả LCNT</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số BCTĐ kết quả <span class="text-danger">*</span></label>
+                                <input type="text" id="award-so-bctd" class="form-control" value="${soBctdResult}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng nhập Số BCTĐ kết quả!</span>
                             </div>
-                            <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom:0;">
-                                <label style="font-weight:700; font-size:0.85rem;">Ngày ký QĐ <span class="required">*</span></label>
-                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" required value="${gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : ''}" placeholder="dd/MM/yyyy">
-                                <span class="error-text">Vui lòng chọn ngày ký QĐ</span>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Ngày BCTĐ kết quả <span class="text-danger">*</span></label>
+                                <input type="text" id="award-ngay-bctd" class="form-control flatpickr-date" value="${ngayBctdResult ? this.model.formatForDateInput(ngayBctdResult) : ''}" style="width: 100%;" placeholder="dd/MM/yyyy">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày BCTĐ kết quả!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số QĐ phê duyệt Kết quả <span class="text-danger">*</span></label>
+                                <input type="text" id="award-decision-no" class="form-control" value="${gt.soQuyetDinhKetQua || ''}" placeholder="Số QĐ Kết quả..." style="width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Ngày ký QĐ phê duyệt Kết quả <span class="text-danger">*</span></label>
+                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : ''}" style="width: 100%;" placeholder="dd/MM/yyyy">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
                             </div>
                         </div>
                     </div>
@@ -2604,11 +2622,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         const decDateRaw = document.getElementById('award-decision-date')?.value || '';
                         const decDate = this.model.convertDMYToYMD(decDateRaw);
 
+                        const soBctdResultVal = document.getElementById('award-so-bctd')?.value.trim() || '';
+                        const ngayBctdResultRaw = document.getElementById('award-ngay-bctd')?.value || '';
+                        const ngayBctdResultVal = this.model.convertDMYToYMD(ngayBctdResultRaw);
+
                         let hasError = false;
                         const errorInputs = [];
 
-                        // Validate QĐ inputs
+                        // Validate inputs
                         const fields = [
+                            { el: document.getElementById('award-so-bctd'), val: soBctdResultVal },
+                            { el: document.getElementById('award-ngay-bctd'), val: ngayBctdResultRaw },
                             { el: document.getElementById('award-decision-no'), val: decNo },
                             { el: document.getElementById('award-decision-date'), val: decDateRaw }
                         ];
@@ -2618,8 +2642,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 hasError = true;
                                 if (f.el) {
                                     errorInputs.push(f.el);
+                                    f.el.closest('.form-group')?.querySelector('.error-text') ? (f.el.closest('.form-group').querySelector('.error-text').style.display = 'block') : null;
                                     f.el.closest('.form-group')?.classList.add('invalid');
                                     const clearInvalid = () => {
+                                        f.el.closest('.form-group')?.querySelector('.error-text') ? (f.el.closest('.form-group').querySelector('.error-text').style.display = 'none') : null;
                                         f.el.closest('.form-group')?.classList.remove('invalid');
                                     };
                                     f.el.addEventListener('input', clearInvalid);
@@ -2735,6 +2761,15 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             gt.thoiGianGoiThau = winnerIdStr === 'none' ? '' : durPkg;
                             gt.thoiGianHopDong = winnerIdStr === 'none' ? '' : durCtr;
                         }
+                        let meta = {};
+                        try {
+                            meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                        } catch (e) { }
+                        if (!meta.result) meta.result = {};
+                        meta.result.soBctdKetQua = soBctdResultVal;
+                        meta.result.ngayBctdKetQua = ngayBctdResultVal;
+                        gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+
                         gt.soQuyetDinhKetQua = decNo;
                         gt.ngayQuyetDinhKetQua = decDate;
                         gt.trangThai = hasWinner ? 'Đã có kết quả' : 'Hủy thầu';
