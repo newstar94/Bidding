@@ -463,7 +463,7 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 10%;">Giá dự thầu</th>
                     <th style="width: 6%;">Tỷ lệ %</th>
                     <th style="width: 10%;">Giá sau giảm</th>
-                    <th style="width: 10%;">Hiệu lực E-HSĐXTC</th>
+                    ${isTuVan ? '<th style="width: 10%;">Hiệu lực E-HSĐXTC</th>' : ''}
                     <th style="width: 8%;">Làm rõ tài chính</th>
                     ${showCombinedScore ? `
                         <th style="width: 6%;">Đánh giá KT</th>
@@ -483,7 +483,7 @@ export function renderDanhGiaHsdtPanel() {
                     <th style="width: 9%;">Giá dự thầu</th>
                     <th style="width: 5%;">Tỷ lệ %</th>
                     <th style="width: 9%;">Giá sau giảm</th>
-                    <th style="width: 8%;">Hiệu lực E-HSĐXTC</th>
+                    ${isTuVan ? '<th style="width: 8%;">Hiệu lực E-HSĐXTC</th>' : ''}
                     <th style="width: 8%;">Làm rõ tài chính</th>
                     ${showCombinedScore ? `
                         <th style="width: 6%;">Đánh giá KT</th>
@@ -846,7 +846,7 @@ export function renderDanhGiaHsdtPanel() {
                             <td><span>${valGiaDuThau || '--'}</span></td>
                             <td style="text-align:right;"><span>${valTyLeGiam}</span></td>
                             <td><span>${valGiaSauGiam || '--'}</span></td>
-                            <td><span>${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : '--'}</span></td>
+                            ${isTuVan ? `<td><span>${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : '--'}</span></td>` : ''}
                             <td><span>${valLamRoTaiChinh || '--'}</span></td>
                             ${showCombinedScore ? `
                                 <td><span>${bid.danhGiaKyThuat || '--'}</span></td>
@@ -859,7 +859,7 @@ export function renderDanhGiaHsdtPanel() {
                             <td><input type="text" class="form-control mt-gia-du-thau" value="${valGiaDuThau}" readonly placeholder="Ví dụ: 1.000.000.000" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-ty-le-giam-gia" value="${valTyLeGiam}" readonly placeholder="0" style="background:#f1f5f9; text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-gia-sau-giam-gia" value="${valGiaSauGiam}" readonly placeholder="Tự tính..." style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                            <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : ''}" readonly placeholder="Ví dụ: 90 ngày" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                            ${isTuVan ? `<td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : ''}" readonly placeholder="Ví dụ: 90 ngày" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>` : ''}
                             <td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${valLamRoTaiChinh}" placeholder="Nhập làm rõ tài chính..." style="padding: 4px 6px; font-size:0.8rem;"></td>
                             ${showCombinedScore ? `
                                 <td><span>${bid.danhGiaKyThuat || '--'}</span></td>

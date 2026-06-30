@@ -1825,27 +1825,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         if (inpTyLe) inpTyLe.addEventListener('input', reCalc);
                     });
 
-                    const exportBtn = document.getElementById('btn-opening-fin-export-excel');
-                    if (exportBtn) {
-                        exportBtn.onclick = () => {
-                            const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                            authFetchDownload(`/api/export-opening-fin-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`, `Mau_Mo_Tai_Chinh_${safeCode}.xlsx`);
-                        };
-                    }
-
                     const importBtn = document.getElementById('btn-opening-fin-import-excel');
                     if (importBtn) {
                         importBtn.onclick = () => {
                             window.appController.openExcelImportModal('opening_fin');
-                        };
-                    }
-
-                    const editBtn = document.getElementById('btn-edit-opening-fin');
-                    if (editBtn) {
-                        editBtn.onclick = () => {
-                            this._editingState = this._editingState || {};
-                            this._editingState[this._currentWorkflowTab] = true;
-                            this.showPackageDetails(gt.id);
                         };
                     }
 
@@ -1886,6 +1869,24 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             this.showPackageDetails(id);
                         };
                     }
+                }
+
+                // Register handlers outside if (!isReadOnly) so they work in read-only view mode
+                const exportBtn = document.getElementById('btn-opening-fin-export-excel');
+                if (exportBtn) {
+                    exportBtn.onclick = () => {
+                        const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
+                        authFetchDownload(`/api/export-opening-fin-template?package_id=${gt.id}&package_name=${encodeURIComponent(safeCode)}`, `Mau_Mo_Tai_Chinh_${safeCode}.xlsx`);
+                    };
+                }
+
+                const editBtn = document.getElementById('btn-edit-opening-fin');
+                if (editBtn) {
+                    editBtn.onclick = () => {
+                        this._editingState = this._editingState || {};
+                        this._editingState[this._currentWorkflowTab] = true;
+                        this.showPackageDetails(gt.id);
+                    };
                 }
             }
             break;
