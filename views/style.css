@@ -4230,11 +4230,25 @@ body.dark-mode .btn-excel-action:hover {
 
 .flatpickr-current-month .numInputWrapper {
     cursor: pointer !important;
+    display: inline-block !important;
+    height: 24px !important;
+    vertical-align: middle !important;
+    width: 4.5ch !important;
 }
 .flatpickr-current-month .numInputWrapper input.cur-year {
     pointer-events: none !important;
     cursor: pointer !important;
     user-select: none !important;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-block !important;
+    height: 24px !important;
+    line-height: 24px !important;
+    vertical-align: top !important;
+    width: 4.5ch !important;
+    text-align: center !important;
 }
 
 /* Align month and year selectors horizontally */
@@ -4252,12 +4266,25 @@ body.dark-mode .btn-excel-action:hover {
     background-color: transparent !important;
 }
 
-/* Make month title not bold */
+/* Synchronize month and year font style */
 .flatpickr-current-month .cur-month {
-    font-weight: normal !important;
+    font-family: var(--font-primary) !important;
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    color: var(--text-main) !important;
+    display: inline-block !important;
+    height: 24px !important;
+    line-height: 24px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    vertical-align: middle !important;
 }
-.flatpickr-current-month .cur-month::after {
-    content: " năm";
+
+.flatpickr-current-month input.cur-year {
+    font-family: var(--font-primary) !important;
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    color: var(--text-main) !important;
 }
 
 /* Hide year input arrows in header */
@@ -4282,6 +4309,11 @@ body.dark-mode .btn-excel-action:hover {
     font-size: 16px !important;
     background: var(--bg-card);
     color: var(--text-main);
+}
+
+/* Hide package selection dropdown wrapper inside package detail view tab */
+#tab-goithau-detail .custom-select-wrapper[data-select-id="mothau-goithau-select"] {
+    display: none !important;
 }
 
 

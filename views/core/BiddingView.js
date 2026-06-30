@@ -555,7 +555,7 @@ export class BiddingView {
                 setTimeout(() => {
                     const curMonthSpan = container.querySelector(".cur-month");
                     if (curMonthSpan) {
-                        curMonthSpan.textContent = `Tháng ${instance.currentMonth + 1} `;
+                        curMonthSpan.textContent = `Tháng ${instance.currentMonth + 1}`;
                     }
                 }, 0);
             };
@@ -567,6 +567,7 @@ export class BiddingView {
             instance.config.onMonthChange.push(formatHeaderMonth);
             instance.config.onOpen.push(formatHeaderMonth);
             instance.config.onYearChange.push(formatHeaderMonth);
+            instance.config.onChange.push(formatHeaderMonth);
 
             // Close grid when calendar closes
             instance.config.onClose.push(() => {
@@ -761,14 +762,12 @@ export class BiddingView {
                 
                 modal.classList.remove('active');
 
-                // Restore card styles and button container after transition finishes
-                setTimeout(() => {
-                    cardEl.style.width = originalCardWidth;
-                    cardEl.style.maxWidth = originalCardMaxWidth;
-                    buttonContainer.style.flexDirection = originalFlexDirection;
-                    buttonContainer.style.gap = originalGap;
-                    buttonContainer.innerHTML = originalButtonsHtml;
-                }, 300);
+                // Restore card styles and button container synchronously to prevent race conditions on immediate dialog chains
+                cardEl.style.width = originalCardWidth;
+                cardEl.style.maxWidth = originalCardMaxWidth;
+                buttonContainer.style.flexDirection = originalFlexDirection;
+                buttonContainer.style.gap = originalGap;
+                buttonContainer.innerHTML = originalButtonsHtml;
             };
 
             opt1Btn.addEventListener('click', onOpt1);
@@ -934,7 +933,8 @@ export class BiddingView {
             // Tạo container động
             const inputContainer = document.createElement('div');
             inputContainer.id = 'dialog-prompt-container';
-            inputContainer.style.marginTop = '16px';
+            inputContainer.style.marginTop = '8px';
+            inputContainer.style.marginBottom = '20px';
             inputContainer.style.textAlign = 'left';
 
             const inputEl = document.createElement('input');
@@ -957,11 +957,12 @@ export class BiddingView {
             messageEl.parentNode.insertBefore(inputContainer, messageEl.nextSibling);
 
             if (isDatePicker) {
-                inputEl.type = 'datetime-local';
+                inputEl.classList.add('flatpickr-datetime');
+                inputEl.placeholder = 'dd/MM/yyyy HH:mm';
                 if (defaultValue) {
-                    inputEl.value = this.model.formatForDatetimeLocal(defaultValue);
+                    inputEl.value = this.model.formatDate(defaultValue);
                 }
-                setTimeout(() => inputEl.focus(), 100);
+                this.initFlatpickr(inputContainer);
             } else {
                 // Tự động focus nếu không phải date picker
                 setTimeout(() => inputEl.focus(), 100);
@@ -997,6 +998,9 @@ export class BiddingView {
             };
 
             const cleanup = () => {
+                if (inputEl._flatpickr) {
+                    inputEl._flatpickr.destroy();
+                }
                 okBtn.removeEventListener('click', onOk);
                 cancelBtn.removeEventListener('click', onCancel);
                 if (closeBtn) closeBtn.removeEventListener('click', onClose);

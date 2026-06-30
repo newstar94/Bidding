@@ -394,20 +394,7 @@ export function renderMoThauPanel() {
                 <div>• <strong>Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                 <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                 <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-            </div>
-            
-            <div style="background: var(--bg-card); padding: 12px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 16px;">
-                <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</div>
-                <div style="width: 240px;">
-                    ${isReadOnly ? `
-                        <span style="font-weight: 700; color: var(--primary);">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span>
-                    ` : `
-                        <input type="datetime-local" id="op-thoigianmothau" class="form-control" style="font-size: 0.85rem; padding: 6px 12px;" value="${gt.thoiGianMoThau ? this.model.formatForDatetimeLocal(gt.thoiGianMoThau) : ''}">
-                    `}
-                </div>
-                ${!isReadOnly ? `
-                    <div class="text-muted" style="font-size: 0.75rem;">(Hệ thống tự động ghi nhận thời gian hiện tại khi Lưu nếu để trống)</div>
-                ` : ''}
+                <div>• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> <span class="text-blue fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span></div>
             </div>
 
             ${(isLocked || isReadOnly) ? `<div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px; color:#dc2626; font-weight:600; font-size:0.82rem; display:flex; align-items:center; gap:6px;">

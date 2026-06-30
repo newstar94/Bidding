@@ -822,13 +822,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     </div>
                                 </div>
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Yêu cầu thẩm định HSMT</span>
                                         ${this._inPlaceEditMode ? `
-                                            <select id="ip-yeucauthamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align-last: right;">
-                                                <option value="Có" ${gt.yeuCauThamDinhHsmt === 'Có' ? 'selected' : ''}>Có</option>
-                                                <option value="Không" ${gt.yeuCauThamDinhHsmt === 'Không' || !gt.yeuCauThamDinhHsmt ? 'selected' : ''}>Không</option>
-                                            </select>
+                                            <div style="display: flex; gap: 16px; align-items: center;">
+                                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 600; color: var(--text-main);">
+                                                    <input type="radio" name="ip-yeucauthamdinh" value="Có" ${gt.yeuCauThamDinhHsmt === 'Có' ? 'checked' : ''} style="cursor: pointer; accent-color: var(--primary); margin: 0;"> Có
+                                                </label>
+                                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 600; color: var(--text-main);">
+                                                    <input type="radio" name="ip-yeucauthamdinh" value="Không" ${gt.yeuCauThamDinhHsmt === 'Không' || !gt.yeuCauThamDinhHsmt ? 'checked' : ''} style="cursor: pointer; accent-color: var(--primary); margin: 0;"> Không
+                                                </label>
+                                            </div>
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.yeuCauThamDinhHsmt || 'Không'}</span>
                                         `}
@@ -864,14 +868,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 if (this._inPlaceEditMode) {
 
 
-                    const selectYeuCau = document.getElementById('ip-yeucauthamdinh');
-                    if (selectYeuCau) {
+                    const radioYeuCaus = document.querySelectorAll('input[name="ip-yeucauthamdinh"]');
+                    if (radioYeuCaus.length > 0) {
                         const toggleReportFields = () => {
-                            const show = selectYeuCau.value === 'Có';
+                            const checkedRadio = document.querySelector('input[name="ip-yeucauthamdinh"]:checked');
+                            const show = checkedRadio && checkedRadio.value === 'Có';
                             document.getElementById('wrapper-sobaocaothamdinh').style.display = show ? 'flex' : 'none';
                             document.getElementById('wrapper-ngaybaocaothamdinh').style.display = show ? 'flex' : 'none';
                         };
-                        selectYeuCau.onchange = toggleReportFields;
+                        radioYeuCaus.forEach(radio => {
+                            radio.onchange = toggleReportFields;
+                        });
                         toggleReportFields();
                     }
 
@@ -885,7 +892,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const valMoEhsdxtc = inputMoEhsdxtc ? inputMoEhsdxtc.value : '';
                             const valSoQuyetDinh = document.getElementById('ip-soquyetdinh').value;
                             const valNgayQuyetDinh = document.getElementById('ip-ngayquyetdinh').value;
-                            const valYeuCauThamDinh = document.getElementById('ip-yeucauthamdinh').value;
+                            const checkedRadio = document.querySelector('input[name="ip-yeucauthamdinh"]:checked');
+                            const valYeuCauThamDinh = checkedRadio ? checkedRadio.value : 'Không';
                             const valSoBaoCao = document.getElementById('ip-sobaocaothamdinh').value;
                             const valNgayBaoCao = document.getElementById('ip-ngaybaocaothamdinh').value;
 
