@@ -569,8 +569,10 @@ async def sync_api(request):
                     for col in columns:
                         if col == "owner_id":
                             db_row_data[col] = org_name
+                            continue
                         elif col == "updated_at":
                             db_row_data[col] = current_time
+                            continue
                         else:
                             # Rút trích key JSON tương ứng từ trường DB
                             field_map = SCHEMA_DINH_NGHIA.get(table_name, {}).get("field_map", {})
@@ -758,7 +760,18 @@ async def sync_api(request):
                         table_name = TABLE_KEYS[tbl_key]
                         c_id = get_clean_id(table_name, rec_id)
                         if c_id:
-                            cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
+                            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
+                                # Tìm id_goc của bản ghi trước khi xóa để xóa sạch toàn bộ lịch sử các phiên bản
+                                cursor.execute(f"SELECT id_goc FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
+                                row = cursor.fetchone()
+                                id_goc = row[0] if row else None
+                                if id_goc:
+                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND (id = ? OR id_goc = ?)", (org_name, id_goc, id_goc))
+                                else:
+                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND (id = ? OR id_goc = ?)", (org_name, c_id, c_id))
+                            else:
+                                cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
+
                             cursor.execute(
                                 "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
                                 (table_name, c_id, org_name, current_time)
