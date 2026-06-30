@@ -766,6 +766,23 @@ export function renderDanhGiaHsdtPanel() {
                 const tr = document.createElement('tr');
                 tr.setAttribute('data-bid-id', bid.id);
 
+                // Link bid security (đám bảo dự thầu) and validity from opening minutes (damBaoDuThau, hieuLucDamBao) if 1G2T and not Tư vấn
+                let finalGiaTriDamBao = bid.giaTriDamBao || 0;
+                let finalHieuLucDamBao = bid.hieuLucBaoDamNgay ? String(bid.hieuLucBaoDamNgay) : '';
+
+                if (is1G2T && gt.linhVuc !== 'Tư vấn') {
+                    if (bid.damBaoDuThau !== undefined && bid.damBaoDuThau !== null) {
+                        finalGiaTriDamBao = bid.damBaoDuThau;
+                    }
+                    if (bid.hieuLucDamBao) {
+                        finalHieuLucDamBao = String(bid.hieuLucDamBao);
+                    }
+                }
+                
+                if (finalHieuLucDamBao && !finalHieuLucDamBao.includes('ngày')) {
+                    finalHieuLucDamBao = finalHieuLucDamBao + ' ngày';
+                }
+
                 let maNhaThauHienThi = bid.maNhaThau || bid.maDinhDanh || '--';
                 // Với liên danh: ưu tiên tên liên danh đã lưu trong bid, không ghi đè bằng tên CSDL
                 let tenNhaThauHienThi = bid.tenNhaThau || '--';
@@ -886,8 +903,8 @@ export function renderDanhGiaHsdtPanel() {
                                 `;
                             } else if (caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT') {
                                 cellHtml += `
-                                    <td><span>${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : '--'}</span></td>
-                                    <td><span>${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : '--'}</span></td>
+                                    <td><span>${finalGiaTriDamBao ? this.model.formatVND(finalGiaTriDamBao) : '--'}</span></td>
+                                    <td><span>${finalHieuLucDamBao || '--'}</span></td>
                                     <td><span>${valHieuLucHsdtDisplay}</span></td>
                                 `;
                             }
@@ -933,8 +950,8 @@ export function renderDanhGiaHsdtPanel() {
                                 `;
                             } else if (caseType === '1G2T_NO_LOT' || caseType === '1G2T_WITH_LOT') {
                                 cellHtml += `
-                                    <td><input type="text" class="form-control" value="${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                    <td><input type="text" class="form-control" value="${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + ' ngày' : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control" value="${finalGiaTriDamBao ? this.model.formatVND(finalGiaTriDamBao) : ''}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control" value="${finalHieuLucDamBao}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                     <td><input type="text" class="form-control" value="${valHieuLucHsdtInput}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                 `;
                             }

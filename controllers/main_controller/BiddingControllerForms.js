@@ -1244,11 +1244,28 @@ export function updateAwardedContractorUI(defaultDataList = null) {
                 filteredBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(goiThauId));
             }
 
-            const nhathauOptions = filteredBids.length > 0
-                ? filteredBids.map(b => `<option value="${b.nhaThauId}">${b.tenNhaThau}</option>`).join('')
-                : this.model.state.nhathau.map(n => `<option value="${n.id}">${n.tenNhaThau}</option>`).join('');
-
             phanLoList.forEach((pl) => {
+                // Find bids that match both goiThauId AND the specific Lot (pl.maPhanLo or pl.tenPhanLo)
+                let lotBids = filteredBids.filter(b => String(b.maPhanLo) === String(pl.maPhanLo) || String(b.tenPhanLo) === String(pl.tenPhanLo));
+                if (lotBids.length === 0) {
+                    lotBids = filteredBids;
+                }
+
+                const uniqueBiddersMap = new Map();
+                lotBids.forEach(b => {
+                    if (b.nhaThauId) {
+                        const key = String(b.nhaThauId);
+                        if (!uniqueBiddersMap.has(key) || (b.tenNhaThau && !uniqueBiddersMap.get(key).tenNhaThau)) {
+                            uniqueBiddersMap.set(key, b);
+                        }
+                    }
+                });
+                const uniqueBidders = Array.from(uniqueBiddersMap.values());
+
+                const nhathauOptions = uniqueBidders.length > 0
+                    ? uniqueBidders.map(b => `<option value="${b.nhaThauId}">${b.tenNhaThau}</option>`).join('')
+                    : this.model.state.nhathau.map(n => `<option value="${n.id}">${n.tenNhaThau}</option>`).join('');
+
                 const row = document.createElement('tr');
                 let matchedData = null;
                 if (defaultDataList && defaultDataList.length > 0) {

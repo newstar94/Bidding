@@ -764,6 +764,14 @@ window.openMoThauJVManager = (tr) => {
 };
 
 
+window.showNhaThauDetailsAndCloseJV = (ntId) => {
+    const jvModal = document.getElementById('modal-mothau-jv-view');
+    if (jvModal) jvModal.remove();
+    if (window.showNhaThauDetails) {
+        window.showNhaThauDetails(ntId);
+    }
+};
+
 window.openMoThauJVViewModal = (members, leadName, leadCode) => {
     const modalId = 'modal-mothau-jv-view';
     let modal = document.getElementById(modalId);
@@ -794,22 +802,54 @@ window.openMoThauJVViewModal = (members, leadName, leadCode) => {
     const displayLeadName = leadName || 'Chưa cập nhật';
     const displayLeadCode = leadCode || 'Chưa cập nhật';
 
+    // Helper function to resolve contractor ID
+    const findNhaThauId = (code, name) => {
+        const list = window.appController?.model?.state?.nhathau || [];
+        let found = null;
+        if (code && code !== 'Chưa cập nhật') {
+            found = list.find(n => (n.maNhaThau && n.maNhaThau.trim().toLowerCase() === code.trim().toLowerCase()) || 
+                                 (n.maSoThue && n.maSoThue.trim().toLowerCase() === code.trim().toLowerCase()));
+        }
+        if (!found && name && name !== 'Chưa cập nhật') {
+            found = list.find(n => n.tenNhaThau && n.tenNhaThau.trim().toLowerCase() === name.trim().toLowerCase());
+        }
+        return found ? found.id : null;
+    };
+
+    const leadNtId = findNhaThauId(displayLeadCode, displayLeadName);
+    const leadCodeHtml = leadNtId 
+        ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${leadNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${displayLeadCode}</a>` 
+        : displayLeadCode;
+    const leadNameHtml = leadNtId 
+        ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${leadNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${displayLeadName}</a>` 
+        : displayLeadName;
+
     let membersHtml = '';
     if (members.length === 0) {
         membersHtml = `<div style="text-align: center; color: var(--text-muted); padding: 12px;"><small>Không có Thành viên liên danh</small></div>`;
     } else {
-        membersHtml = members.map((m, idx) => `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-nested, rgba(0,0,0,0.01)); margin-bottom: 8px;">
-                <div>
-                    <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Mã số thuế / Mã nhà thầu</div>
-                    <div style="font-size: 0.85rem; font-weight: 600;">${m.maSoThue || '--'}</div>
+        membersHtml = members.map((m, idx) => {
+            const memberNtId = findNhaThauId(m.maSoThue, m.tenNhaThau);
+            const mCodeHtml = memberNtId 
+                ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${memberNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${m.maSoThue || '--'}</a>` 
+                : (m.maSoThue || '--');
+            const mNameHtml = memberNtId 
+                ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${memberNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${m.tenNhaThau || '--'}</a>` 
+                : (m.tenNhaThau || '--');
+
+            return `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-nested, rgba(0,0,0,0.01)); margin-bottom: 8px;">
+                    <div>
+                        <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Mã số thuế / Mã nhà thầu</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">${mCodeHtml}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Tên thành viên ${idx + 2}</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">${mNameHtml}</div>
+                    </div>
                 </div>
-                <div>
-                    <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Tên thành viên ${idx + 2}</div>
-                    <div style="font-size: 0.85rem; font-weight: 600;">${m.tenNhaThau || '--'}</div>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     body.innerHTML = `
@@ -818,11 +858,11 @@ window.openMoThauJVViewModal = (members, leadName, leadCode) => {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                     <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Mã/MST thành viên đứng đầu</div>
-                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${displayLeadCode}</div>
+                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${leadCodeHtml}</div>
                 </div>
                 <div>
                     <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Tên thành viên đứng đầu</div>
-                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${displayLeadName}</div>
+                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${leadNameHtml}</div>
                 </div>
             </div>
         </div>

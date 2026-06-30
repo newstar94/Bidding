@@ -1636,6 +1636,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         case 'opening_fin': {
             const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
             const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
+            qualifiedBidsForOpening.sort((a, b) => {
+                 const lotA = String(a.maPhanLo || '').toLowerCase();
+                 const lotB = String(b.maPhanLo || '').toLowerCase();
+                 const lotCompare = lotA.localeCompare(lotB, 'vi', { numeric: true });
+                 if (lotCompare !== 0) return lotCompare;
+                 
+                 const ntA = String(a.maNhaThau || a.maDinhDanh || '').toLowerCase();
+                 const ntB = String(b.maNhaThau || b.maDinhDanh || '').toLowerCase();
+                 return ntA.localeCompare(ntB, 'vi', { numeric: true });
+             });
             const hasTechScore = qualifiedBidsForOpening.some(b => {
                 if (!b.danhGiaKyThuat) return false;
                 const clean = String(b.danhGiaKyThuat).trim().replace(/,/g, '.');
@@ -1714,6 +1724,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <table class="data-table" id="opening-fin-table" style="min-width: 100%;">
                             <thead>
                                 <tr>
+                                    ${gt.phanLo === 'Có' ? `
+                                        <th style="width:120px;">Mã phần lô</th>
+                                        <th style="width:180px;">Tên phần lô</th>
+                                    ` : ''}
                                     <th>Mã nhà thầu</th>
                                     <th>Tên nhà thầu</th>
                                     ${hasTechScore ? `<th style="width:100px; text-align: center;">Điểm kỹ thuật</th>` : ''}
@@ -1735,6 +1749,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         if (isReadOnly) {
                             return `
                                             <tr>
+                                                ${gt.phanLo === 'Có' ? `
+                                                    <td>${b.maPhanLo || '--'}</td>
+                                                    <td>${b.tenPhanLo || '--'}</td>
+                                                ` : ''}
                                                 <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
                                                 <td>${b.tenNhaThau}</td>
                                                 ${hasTechScore ? `<td style="text-align:center;">${b.danhGiaKyThuat || '--'}</td>` : ''}
@@ -1747,6 +1765,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         } else {
                             return `
                                             <tr data-opening-bid-id="${b.id}">
+                                                ${gt.phanLo === 'Có' ? `
+                                                    <td>${b.maPhanLo || '--'}</td>
+                                                    <td>${b.tenPhanLo || '--'}</td>
+                                                ` : ''}
                                                 <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
                                                 <td>${b.tenNhaThau}</td>
                                                 ${hasTechScore ? `<td style="text-align:center;">${b.danhGiaKyThuat || '--'}</td>` : ''}
