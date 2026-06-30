@@ -390,6 +390,7 @@ export class BiddingController {
 
         window.editGoiThau = (id, isReadOnly = false) => this.editGoiThau(id, isReadOnly);
         window.deleteGoiThau = (id) => this.deleteGoiThau(id);
+        window.restoreCanceledPackage = (id) => this.restoreCanceledPackage(id);
         window.addGiaHanRow = (data) => this.addGiaHanRow(data);
         window.validateGiaHanRealtime = () => this.validateGiaHanRealtime();
         window.moThauGoiThau = (id) => this.moThauGoiThau(id);

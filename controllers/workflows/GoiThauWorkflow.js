@@ -1274,3 +1274,32 @@ export async function handleGoiThauSubmit(e) {
         }
     }
 }
+
+export async function restoreCanceledPackage(id) {
+    const gt = this.model.state.goithau.find(g => g.id === id);
+    if (!gt) return;
+    
+    let previousState = 'Đang chấm thầu';
+    if (gt.danhGiaHsdtMetadata) {
+        try {
+            const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+            if (parsed.cancelDetails && parsed.cancelDetails.trangThaiTruocHuy) {
+                previousState = parsed.cancelDetails.trangThaiTruocHuy;
+            }
+        } catch(e) {}
+    }
+    
+    const confirmed = await this.view.customConfirm(
+        'Khôi phục hủy thầu',
+        `Bạn có chắc chắn muốn khôi phục gói thầu "${gt.tenGoiThau}"? Trạng thái sẽ được chuyển về "${previousState}".`,
+        'rotate-ccw'
+    );
+    if (!confirmed) return;
+    
+    gt.trangThai = previousState;
+    this.model.persistData('goithau');
+    this.view.renderGoiThauTable();
+    this.autoSync();
+    
+    await this.view.customAlert('Thành công', 'Đã khôi phục trạng thái gói thầu thành công.', 'check-circle');
+}

@@ -318,10 +318,19 @@ export async function renderGoiThauTable() {
             let actionButtonsHtml = '';
             if (isLatest) {
                 if (hasResultOrCanceled) {
+                    let restoreBtnHtml = '';
+                    if (displayedGt.trangThai === 'Hủy thầu') {
+                        restoreBtnHtml = `
+                            <button class="action-btn btn-restore" onclick="window.restoreCanceledPackage('${displayedGt.id}')" title="Khôi phục hủy thầu" style="color: var(--success, #10b981);">
+                                <i data-lucide="rotate-ccw"></i>
+                            </button>
+                        `;
+                    }
                     actionButtonsHtml = `
                         <button class="action-btn btn-view" onclick="window.editGoiThau('${displayedGt.id}', true)" title="Xem chi tiết Gói thầu">
                             <i data-lucide="eye" style="color: var(--primary);"></i>
                         </button>
+                        ${restoreBtnHtml}
                         <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${displayedGt.id}')" title="Xóa">
                             <i data-lucide="trash-2"></i>
                         </button>
@@ -473,7 +482,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         }
     }
 
-    if (gt.trangThai === 'Hủy thầu' || this._currentWorkflowTab === 'cancel') {
+    let hasCancelDetails = false;
+    if (gt.danhGiaHsdtMetadata) {
+        try {
+            const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+            if (parsed.cancelDetails && (parsed.cancelDetails.soQuyetDinhHuyThau || parsed.cancelDetails.lyDoHuyThau)) {
+                hasCancelDetails = true;
+            }
+        } catch(e) {}
+    }
+    if (gt.trangThai === 'Hủy thầu' || this._currentWorkflowTab === 'cancel' || hasCancelDetails) {
         tabs.push({ id: 'cancel', label: 'Hủy thầu' });
     }
 
@@ -2998,6 +3016,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
                     } catch (e) { }
                     if (!meta.cancelDetails) meta.cancelDetails = {};
+                    if (!meta.cancelDetails.trangThaiTruocHuy && gt.trangThai !== 'Hủy thầu') {
+                        meta.cancelDetails.trangThaiTruocHuy = gt.trangThai;
+                    }
                     meta.cancelDetails.soQuyetDinhHuyThau = decNo;
                     meta.cancelDetails.ngayQuyetDinhHuyThau = formattedDecDate;
                     meta.cancelDetails.lyDoHuyThau = reason;
