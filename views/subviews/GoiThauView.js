@@ -114,7 +114,7 @@ export async function renderGoiThauTable() {
                 gt.tenGoiThau.toLowerCase().includes(searchVal);
             const matchesTrangThai = !filterTrangThai || gt.trangThai === filterTrangThai;
             const matchesHinhThuc = !filterHinhThuc || gt.hinhThucLuaChon === filterHinhThuc;
-            
+
             let matchesYear = true;
             let matchesMonth = true;
             const dateVal = gt.ngayQuyetDinh;
@@ -132,7 +132,7 @@ export async function renderGoiThauTable() {
                     matchesMonth = false;
                 }
             }
-            
+
             return matchesSearch && matchesTrangThai && matchesHinhThuc && matchesYear && matchesMonth;
         });
 
@@ -431,7 +431,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         tabs.push({ id: 'preparation_action', label: 'Chuẩn bị' });
     } else {
         if (is1G2T) {
-            tabs.push({ id: 'opening_tech', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở HSĐXKT' });
+            tabs.push({ id: 'opening_tech', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở E-HSĐXKT' });
             if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu') {
                 tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSĐXKT' });
             }
@@ -505,7 +505,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         // Step 2: Build version list for this specific package
         const rootId = gt.rootId || gt.id;
         const allRelated = this.model.state.goithau.filter(g => (g.rootId || g.id) === rootId);
-        
+
         const verMap = {};
         allRelated.forEach(g => {
             const ver = g.phienBan || '00';
@@ -1410,6 +1410,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     </div>
                 `;
             } else {
+                const khObj = this.model.getLatestPlan(gt.keHoachId);
+                const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
+                const tenCdt = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
+                const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
+
                 let metadata = { is1G2T: true, technical: { saved: false }, financial: { saved: false } };
                 if (gt.danhGiaHsdtMetadata) {
                     try {
@@ -1433,16 +1438,49 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                 const soQd = metadata.technical.soQdPheDuyetKt || '';
                 const ngayQd = metadata.technical.ngayQdPheDuyetKt || '';
+                const soBctd = metadata.technical.soBctdKt || '';
+                const ngayBctd = metadata.technical.ngayBctdKt || '';
                 const isCompleted = !!metadata.technical.qualifiedSaved;
                 const isEditingThisStep = this._editingState && this._editingState[this._currentWorkflowTab];
+                const isFinOpened = !!gt.thoiGianMoEhsdxtc; // Biên bản mở E-HSĐXTC đã được lưu
                 const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả';
+                // Cho phép chỉnh sửa nếu đã lưu nhưng biên bản mở TC chưa có
+                const canEdit = isReadOnly && isCompleted && !isFinOpened && gt.trangThai !== 'Đã có kết quả';
 
                 contentWrapper.innerHTML = `
+                    <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
+                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
+                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
+                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
+                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
+                            <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
+                            <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
+                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || '--'}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá' && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ''}</div>` : ''}
+                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
+                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
+                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
+                            <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
+                            <div>• <strong style="color: var(--primary);">${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
+                        </div>
+                    </div>
+
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật <span class="text-danger">*</span></label>
+                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số BCTĐ kỹ thuật <span class="text-danger">*</span></label>
+                                <input type="text" id="qualified-so-bctd" class="form-control" value="${soBctd}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;" ${isReadOnly ? 'readonly' : ''}>
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng nhập Số BCTĐ kỹ thuật!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Ngày BCTĐ kỹ thuật <span class="text-danger">*</span></label>
+                                <input type="text" id="qualified-ngay-bctd" class="form-control flatpickr-date" value="${ngayBctd ? this.model.formatForDateInput(ngayBctd) : ''}" style="width: 100%;" ${isReadOnly ? 'readonly' : ''} placeholder="dd/MM/yyyy">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày BCTĐ kỹ thuật!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số QĐ phê duyệt nhà thầu đạt kỹ thuật <span class="text-danger">*</span></label>
                                 <input type="text" id="qualified-so-qd" class="form-control" value="${soQd}" placeholder="Ví dụ: 120/QĐ-CDT" style="width: 100%;" ${isReadOnly ? 'readonly' : ''}>
                                 <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng nhập Số QĐ phê duyệt!</span>
                             </div>
@@ -1484,12 +1522,28 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                              </tbody>
                          </table>
                      </div>
-                     <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-                         ${isReadOnly ? '' : `
+                    <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                         ${!isReadOnly ? `
                              <button class="btn btn-primary" id="btn-save-qualified-decision" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
-                         `}
+                         ` : canEdit ? `
+                             <button class="btn btn-primary" id="btn-edit-qualified-decision" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="edit-3"></i> Chỉnh sửa</button>
+                         ` : ''}
                      </div>
                  `;
+
+                if (typeof this.initFlatpickr === 'function') {
+                    this.initFlatpickr(contentWrapper);
+                }
+
+                // Nút Chỉnh sửa (khi đã lưu nhưng biên bản mở TC chưa có)
+                const btnEdit = contentWrapper.querySelector('#btn-edit-qualified-decision');
+                if (btnEdit) {
+                    btnEdit.onclick = () => {
+                        this._editingState = this._editingState || {};
+                        this._editingState[this._currentWorkflowTab] = true;
+                        this.showPackageDetails(gt.id);
+                    };
+                }
 
                 if (!isReadOnly) {
                     const btnSave = contentWrapper.querySelector('#btn-save-qualified-decision');
@@ -1497,8 +1551,12 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         btnSave.onclick = async () => {
                             const inpSo = contentWrapper.querySelector('#qualified-so-qd');
                             const inpNgay = contentWrapper.querySelector('#qualified-ngay-qd');
+                            const inpSoBctd = contentWrapper.querySelector('#qualified-so-bctd');
+                            const inpNgayBctd = contentWrapper.querySelector('#qualified-ngay-bctd');
                             const valSo = inpSo.value.trim();
                             const valNgayRaw = inpNgay.value.trim();
+                            const valSoBctd = inpSoBctd.value.trim();
+                            const valNgayBctdRaw = inpNgayBctd.value.trim();
 
                             let hasErr = false;
                             if (!valSo) {
@@ -1519,10 +1577,30 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 inpNgay.closest('.form-group').classList.remove('invalid');
                             }
 
+                            if (!valSoBctd) {
+                                hasErr = true;
+                                inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
+                                inpSoBctd.closest('.form-group').classList.add('invalid');
+                            } else {
+                                inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
+                                inpSoBctd.closest('.form-group').classList.remove('invalid');
+                            }
+
+                            if (!valNgayBctdRaw) {
+                                hasErr = true;
+                                inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
+                                inpNgayBctd.closest('.form-group').classList.add('invalid');
+                            } else {
+                                inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
+                                inpNgayBctd.closest('.form-group').classList.remove('invalid');
+                            }
+
                             if (hasErr) return;
 
                             metadata.technical.soQdPheDuyetKt = valSo;
                             metadata.technical.ngayQdPheDuyetKt = this.model.convertDMYToYMD(valNgayRaw);
+                            metadata.technical.soBctdKt = valSoBctd;
+                            metadata.technical.ngayBctdKt = this.model.convertDMYToYMD(valNgayBctdRaw);
                             metadata.technical.qualifiedSaved = true;
 
                             gt.danhGiaHsdtMetadata = JSON.stringify(metadata);
@@ -1572,18 +1650,29 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </div>
                         ` : ''}
                     </div>
-                    <div style="background: var(--bg-card); padding: 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 20px; display: flex; align-items: center; gap: 16px;">
-                        <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Thời gian mở E-HSĐXTC:</div>
-                        <div style="width: 240px;">
-                            ${isReadOnly ? `
-                                <span style="font-weight: 700; color: var(--primary);">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>
-                            ` : `
-                                <input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.85rem; padding: 6px 12px;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">
-                            `}
+                    <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
+                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
+                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${(() => { const khO = this.model.getLatestPlan(gt.keHoachId); const cdO = khO ? this.model.state.chudautu.find(c => c.id === khO.chuDauTuId) : null; return cdO ? cdO.tenChuDauTu : 'Không rõ'; })()}</span></div>
+                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
+                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
+                            <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
+                            <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
+                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || '--'}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá' && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ''}</div>` : ''}
+                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
+                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
+                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
+                            <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong></span>
+                                ${isReadOnly
+                                    ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
+                                    : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">
+                                      <span class="text-muted" style="font-size: 0.73rem;">(để trống = tự ghi nhận)</span>`
+                                }
+                            </div>
                         </div>
-                        ${!isReadOnly ? `
-                            <div class="text-muted" style="font-size: 0.75rem;">(Hệ thống tự động ghi nhận thời gian hiện tại khi Lưu nếu để trống)</div>
-                        ` : ''}
                     </div>
                     <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 20px;">
                         Nhập giá dự thầu, tỷ lệ giảm giá của các nhà thầu vượt qua bước đánh giá kỹ thuật.
@@ -1642,7 +1731,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         ${isReadOnly ? `
                             <button class="btn btn-outline" id="btn-edit-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="edit-3"></i> Chỉnh sửa</button>
                         ` : `
-                            <button class="btn btn-primary" id="btn-save-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu Biên bản mở HSĐXTC</button>
+                            <button class="btn btn-primary" id="btn-save-opening-fin" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu Biên bản mở E-HSĐXTC</button>
                         `}
                     </div>
                 `;
@@ -2080,7 +2169,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 if (editResultBottomBtn) {
                     editResultBottomBtn.onclick = async () => {
                         gt.trangThai = 'Đang chấm thầu';
-                        
+
                         // Clear any stored standard reasons in database to let them recalculate fresh
                         const standardReasons = [
                             "Không đạt yêu cầu về tính hợp lệ",

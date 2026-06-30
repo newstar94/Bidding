@@ -120,7 +120,7 @@ export function renderDanhGiaHsdtPanel() {
                 <div>• <strong>Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                 <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                 <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                <div>• <strong>Thời gian mở thầu:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
+                <div>• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
             </div>
             ${isReadOnly ? `<div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px; color:#dc2626; font-weight:600; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
@@ -956,7 +956,7 @@ export function renderDanhGiaHsdtPanel() {
                             </td>
                             <td><input type="text" class="form-control mt-lam-ro-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoNangLuc}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ năng lực...'}"></td>
                             <td>
-                                <input type="text" class="form-control mt-dg-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valKyThuat}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Điểm hoặc Đạt...'}">
+                                <input type="text" class="form-control mt-dg-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valKyThuat}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : (gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá' ? 'Nhập điểm kỹ thuật...' : 'Điểm hoặc Đạt...')}">
                                 <input type="text" class="form-control mt-reason-fail-kythuat" value="${bid.nguyenNhanKhongDatKyThuat || ''}" placeholder="Lý do không đạt kỹ thuật..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: none;" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''}>
                             </td>
                             <td><input type="text" class="form-control mt-lam-ro-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ''} value="${valLamRoKyThuat}" placeholder="${forceRowDisabled ? 'Chờ đánh giá hạng trên...' : 'Nhập làm rõ kỹ thuật...'}"></td>

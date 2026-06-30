@@ -395,11 +395,11 @@ export function renderMoThauPanel() {
                 <div>• <strong>Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                 <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                 <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                <div>• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> 
+                <div style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> 
                     ${isEditable ? `
-                        <input type="text" id="op-thoigianmothau" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: left; display: inline-block; vertical-align: middle;" value="${gt.thoiGianMoThau ? this.model.formatDate(gt.thoiGianMoThau) : ''}" placeholder="dd/MM/yyyy HH:mm">
+                        <input type="text" id="op-thoigianmothau" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: left; display: inline-block; vertical-align: middle; margin-left: 4px;" value="${gt.thoiGianMoThau ? this.model.formatDate(gt.thoiGianMoThau) : ''}" placeholder="dd/MM/yyyy HH:mm">
                     ` : `
-                        <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span>
+                        <span class="text-dark fw-bold" style="margin-left: 4px;">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span>
                     `}
                 </div>
             </div>

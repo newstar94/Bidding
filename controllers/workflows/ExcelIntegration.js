@@ -207,7 +207,7 @@ export function openExcelImportModal(type) {
         else if (type === 'mothau') typeText = 'Thông tin Mở thầu';
         else if (type === 'danhgiahsdt') typeText = 'Đánh giá HSDT';
         else if (type === 'ketquaqd') typeText = 'Kết quả phê duyệt LCNT';
-        else if (type === 'opening_fin') typeText = 'Biên bản mở HSĐXTC';
+        else if (type === 'opening_fin') typeText = 'Biên bản mở E-HSĐXTC';
 
         modalTitle.textContent = `Nhập khẩu ${typeText} từ Excel`;
     }
