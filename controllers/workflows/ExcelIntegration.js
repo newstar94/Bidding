@@ -1,4 +1,4 @@
-import { getAuthDownloadUrl, authFetchDownload } from '../utils/workflow_helpers.js';
+import { authFetchDownload } from '../utils/workflow_helpers.js';
 export function setupExcelImportEvents() {
     // Bind all direct download buttons
     document.querySelectorAll('.btn-download-excel-template-direct').forEach(btn => {

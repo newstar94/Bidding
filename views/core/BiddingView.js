@@ -792,6 +792,74 @@ export class BiddingView {
         });
     }
 
+    customSelectConfirm(title, message, options = []) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('modal-custom-dialog');
+            const titleEl = document.getElementById('dialog-title');
+            const messageEl = document.getElementById('dialog-message');
+            const iconContainer = document.getElementById('dialog-icon-container');
+            const iconEl = document.getElementById('dialog-icon');
+            const okBtn = document.getElementById('btn-dialog-ok');
+            const cancelBtn = document.getElementById('btn-dialog-cancel');
+            const closeBtn = document.getElementById('btn-dialog-close');
+
+            titleEl.textContent = title;
+            iconEl.setAttribute('data-lucide', 'help-circle');
+            iconContainer.style.background = 'rgba(59, 130, 246, 0.1)';
+            iconContainer.style.color = 'var(--primary)';
+            okBtn.className = 'btn btn-primary';
+            okBtn.style.background = '';
+            okBtn.style.borderColor = '';
+
+            const originalMessageHtml = messageEl.innerHTML;
+            const originalMessageStyle = messageEl.style.display;
+
+            cancelBtn.style.display = 'block';
+            if (closeBtn) closeBtn.style.display = 'block';
+
+            const optionsHtml = options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('');
+            messageEl.innerHTML = `
+                <div style="margin-bottom: 12px;">${message}</div>
+                <select id="dialog-custom-select" class="form-control" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                    ${optionsHtml}
+                </select>
+            `;
+
+            lucide.createIcons();
+            modal.classList.add('active');
+
+            const onOk = () => {
+                const selectEl = document.getElementById('dialog-custom-select');
+                const val = selectEl ? selectEl.value : null;
+                cleanup();
+                resolve(val);
+            };
+
+            const onCancel = () => {
+                cleanup();
+                resolve(null);
+            };
+
+            const onClose = () => {
+                cleanup();
+                resolve(null);
+            };
+
+            const cleanup = () => {
+                okBtn.removeEventListener('click', onOk);
+                cancelBtn.removeEventListener('click', onCancel);
+                if (closeBtn) closeBtn.removeEventListener('click', onClose);
+                modal.classList.remove('active');
+                messageEl.innerHTML = originalMessageHtml;
+                messageEl.style.display = originalMessageStyle;
+            };
+
+            okBtn.addEventListener('click', onOk);
+            cancelBtn.addEventListener('click', onCancel);
+            if (closeBtn) closeBtn.addEventListener('click', onClose);
+        });
+    }
+
     customAlert(title, message, iconName = 'info', focusTarget = null) {
         if (iconName === 'warning') iconName = 'alert-triangle';
         return new Promise((resolve) => {

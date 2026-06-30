@@ -57,8 +57,16 @@ export function setupConditionalUI() {
 
     const gtKeHoachSelect = document.getElementById('gt-kehoachid');
     if (gtKeHoachSelect) {
-        gtKeHoachSelect.addEventListener('change', (e) => {
+        gtKeHoachSelect.addEventListener('change', async (e) => {
             this.updateNguonVonFieldState(e.target.value);
+            
+            const idInput = document.getElementById('form-goithau-id');
+            const isNewPackage = !idInput || !idInput.value;
+            if (isNewPackage && e.target.value) {
+                if (typeof this.checkAndInheritCanceledPackage === 'function') {
+                    await this.checkAndInheritCanceledPackage(e.target.value);
+                }
+            }
         });
     }
 

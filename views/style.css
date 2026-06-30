@@ -4333,6 +4333,18 @@ body.dark-mode .btn-excel-action:hover {
     display: none !important;
 }
 
+/* Đồng nhất chiều cao của các ô nhập liệu và select dropdown trong bảng dữ liệu */
+.data-table .form-control,
+.data-table select.form-control,
+.data-table input.form-control {
+    height: 38px !important;
+    padding: 6px 12px !important;
+    box-sizing: border-box !important;
+    font-size: 0.85rem !important;
+    border-radius: var(--radius-md) !important;
+}
+
+
 
 
 

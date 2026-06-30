@@ -142,9 +142,37 @@ export function renderDanhGiaHsdtPanel() {
             if (showQuyTrinh) {
                 quyTrinhContainer.style.display = 'flex';
                 // Load existing value
+                // Load existing value
                 const currentQuyTrinh = gt.quyTrinhDanhGia || 'quytrinh1';
                 const radio1 = quyTrinhContainer.querySelector('input[value="quytrinh1"]');
                 const radio2 = quyTrinhContainer.querySelector('input[value="quytrinh2"]');
+                const checkboxUuDai = quyTrinhContainer.querySelector('#eval-co-uu-dai');
+                const warningMsg = quyTrinhContainer.querySelector('#quytrinh2-warning-msg');
+
+                let meta = {};
+                try {
+                    meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                } catch (e) {}
+
+                if (checkboxUuDai) {
+                    checkboxUuDai.checked = !!meta.coUuDai;
+                    if (isReadOnly) {
+                        checkboxUuDai.disabled = true;
+                    } else {
+                        checkboxUuDai.removeAttribute('disabled');
+                    }
+                    checkboxUuDai.onchange = () => {
+                        let currentMeta = {};
+                        try {
+                            currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                        } catch (e) {}
+                        currentMeta.coUuDai = checkboxUuDai.checked;
+                        gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
+                        this.model.persistData('goithau');
+                        updateQuyTrinh2Eligibility();
+                    };
+                }
+
                 if (radio1 && radio2) {
                     radio1.checked = currentQuyTrinh === 'quytrinh1';
                     radio2.checked = currentQuyTrinh === 'quytrinh2';
@@ -160,26 +188,82 @@ export function renderDanhGiaHsdtPanel() {
                     // On change event
                     radio1.onchange = () => {
                         gt.quyTrinhDanhGia = 'quytrinh1';
-                        let meta = {};
+                        let currentMeta = {};
                         try {
-                            meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                            currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
                         } catch (e) {}
-                        meta.quyTrinhDanhGia = 'quytrinh1';
-                        gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+                        currentMeta.quyTrinhDanhGia = 'quytrinh1';
+                        gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
                         this.model.persistData('goithau');
                         handlePackageSelection();
                     };
                     radio2.onchange = () => {
                         gt.quyTrinhDanhGia = 'quytrinh2';
-                        let meta = {};
+                        let currentMeta = {};
                         try {
-                            meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                            currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
                         } catch (e) {}
-                        meta.quyTrinhDanhGia = 'quytrinh2';
-                        gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+                        currentMeta.quyTrinhDanhGia = 'quytrinh2';
+                        gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
                         this.model.persistData('goithau');
                         handlePackageSelection();
                     };
+
+                    const updateQuyTrinh2Eligibility = () => {
+                        let currentMeta = {};
+                        try {
+                            currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                        } catch (e) {}
+
+                        const bids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                        let eligible = true;
+                        let reasons = [];
+
+                        if (gt.phuongPhapDanhGia !== 'Giá thấp nhất') {
+                            eligible = false;
+                            reasons.push('PP đánh giá không phải "Giá thấp nhất"');
+                        }
+
+                        if (currentMeta.coUuDai) {
+                            eligible = false;
+                            reasons.push('Có nhà thầu được hưởng ưu đãi');
+                        }
+
+                        const prices = bids.map(b => b.giaSauGiamGia || b.giaDuThau || 0).filter(p => p > 0);
+                        if (prices.length >= 2) {
+                            const minPrice = Math.min(...prices);
+                            const countMin = prices.filter(p => p === minPrice).length;
+                            if (countMin >= 2) {
+                                eligible = false;
+                                reasons.push('Có từ 02 nhà thầu cùng xếp thứ nhất về giá');
+                            }
+                        }
+
+                        if (!eligible) {
+                            radio2.disabled = true;
+                            if (radio2.checked) {
+                                radio1.checked = true;
+                                gt.quyTrinhDanhGia = 'quytrinh1';
+                                currentMeta.quyTrinhDanhGia = 'quytrinh1';
+                                gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
+                                this.model.persistData('goithau');
+                                setTimeout(() => handlePackageSelection(), 100);
+                            }
+                            if (warningMsg) {
+                                warningMsg.textContent = `(Bắt buộc dùng Quy trình 1 do: ${reasons.join(', ')})`;
+                                warningMsg.style.display = 'inline';
+                            }
+                        } else {
+                            if (!isReadOnly) {
+                                radio2.removeAttribute('disabled');
+                            }
+                            if (warningMsg) {
+                                warningMsg.style.display = 'none';
+                            }
+                        }
+                    };
+
+                    updateQuyTrinh2Eligibility();
                 }
             } else {
                 quyTrinhContainer.style.display = 'none';
@@ -1095,6 +1179,9 @@ export function renderDanhGiaHsdtPanel() {
             updateAllRankings();
         }
         lucide.createIcons();
+        if (typeof this.unifyTableInputsHeight === 'function') {
+            this.unifyTableInputsHeight(document);
+        }
     };
 
     select.onchange = handlePackageSelection;

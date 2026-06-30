@@ -1260,6 +1260,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             window.openMoThauJVViewModal(tr._thanhVienLienDanh || [], tr._leadMemberName || ntName, ntCode);
         });
     }
+    if (typeof this.unifyTableInputsHeight === 'function') {
+        this.unifyTableInputsHeight(document);
+    }
 }
 
 

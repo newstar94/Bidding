@@ -634,7 +634,10 @@ export function updateBreakdownTotal(planId) {
     // Sum IV: Các gói thầu
     const latestPackages = this.model.getLatestPackages();
     const pkgs = latestPackages.filter(g => g.keHoachId === planId);
-    const sumIV = pkgs.reduce((acc, curr) => acc + curr.giaGoiThau, 0);
+    const sumIV = pkgs.reduce((acc, curr) => {
+        if (curr.isRebid) return acc;
+        return acc + (curr.giaGoiThau || 0);
+    }, 0);
 
     const isProject = kh.loaiHinhMuaSam === 'Dự án';
     const total = isProject ? (sumI + sumII + sumIII + sumIV) : (sumII + sumIII + sumIV);
@@ -678,7 +681,10 @@ export function recalculatePlanTotal(planId) {
         .map(k => k.id);
 
     const pkgs = latestPackages.filter(g => planVersionIds.includes(g.keHoachId));
-    const sumIV = pkgs.reduce((acc, curr) => acc + (curr.giaGoiThau || 0), 0);
+    const sumIV = pkgs.reduce((acc, curr) => {
+        if (curr.isRebid) return acc;
+        return acc + (curr.giaGoiThau || 0);
+    }, 0);
 
     const isProject = kh.loaiHinhMuaSam === 'Dự án';
     kh.tongMucDauTu = isProject ? (sumI + sumII + sumIII + sumIV) : (sumII + sumIII + sumIV);

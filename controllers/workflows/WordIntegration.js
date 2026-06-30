@@ -1,4 +1,4 @@
-import { getAuthDownloadUrl, authFetchDownload } from '../utils/workflow_helpers.js';
+import { authFetchDownload } from '../utils/workflow_helpers.js';
 export function setupWordTemplatesEvents() {
     const templateInput = document.getElementById('word-file-input') || document.getElementById('word-template-file-input');
     if (templateInput) {

@@ -1,4 +1,4 @@
-import { getAuthDownloadUrl, authFetchDownload, initCustomSelect } from './view_helpers.js';
+import { authFetchDownload, initCustomSelect } from './view_helpers.js';
 
 export function checkBidQualified(b) {
     if (!b) return false;
@@ -1406,7 +1406,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
-                    <div id="danhgiahsdt-quytrinh-container" style="display:none; margin-bottom: 20px; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); align-items: center; gap: 24px;">
+                    <div id="danhgiahsdt-quytrinh-container" style="display:none; margin-bottom: 20px; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); align-items: center; gap: 24px; flex-wrap: wrap;">
                         <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Quy trình đánh giá:</span>
                         <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main);">
                             <input type="radio" name="danhgiahsdt-quytrinh" value="quytrinh1" checked style="accent-color: var(--primary); cursor: pointer;">
@@ -1416,6 +1416,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <input type="radio" name="danhgiahsdt-quytrinh" value="quytrinh2" style="accent-color: var(--primary); cursor: pointer;">
                             Quy trình 2
                         </label>
+                        <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main); margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--border-color);">
+                            <input type="checkbox" id="eval-co-uu-dai" style="accent-color: var(--primary); cursor: pointer;">
+                            Có nhà thầu/E-HSDT được hưởng ưu đãi
+                        </label>
+                        <span id="quytrinh2-warning-msg" style="color: #ef4444; font-size: 0.8rem; font-weight: 600; display: none;"></span>
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -3062,6 +3067,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         const container = document.querySelector(`.custom-select-container[data-target="${selectId}"]`);
         if (container) container.remove();
     });
+    if (window.appController && typeof window.appController.unifyTableInputsHeight === 'function') {
+        window.appController.unifyTableInputsHeight(document);
+    }
 }
 
 
