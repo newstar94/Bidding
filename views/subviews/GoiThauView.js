@@ -752,12 +752,42 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 </div>
                             </div>
                         </div>
+
+                        ${gt.hinhThucLuaChon === 'Chào hàng cạnh tranh' ? `
+                        <!-- Cột 4: Quyết định phê duyệt HSMT (Dành riêng cho Chào hàng cạnh tranh ở dạng cột) -->
+                        <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <h4 style="font-weight: 700; color: var(--primary); border-bottom: 2px solid rgba(59, 130, 246, 0.1); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
+                                    <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> Quyết định phê duyệt HSMT
+                                </h4>
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">Số quyết định phê duyệt HSMT</span>
+                                        ${this._inPlaceEditMode ? `
+                                            <input type="text" id="ip-soquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soQuyetDinh || ''}" placeholder="Nhập số quyết định">
+                                        ` : `
+                                            <span style="color: var(--text-main); font-weight: 700;">${gt.soQuyetDinh || '--'}</span>
+                                        `}
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">Ngày quyết định phê duyệt HSMT</span>
+                                        ${this._inPlaceEditMode ? `
+                                            <input type="text" id="ip-ngayquyetdinh" class="form-control flatpickr-date" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayQuyetDinh ? this.model.formatForDateInput(gt.ngayQuyetDinh) : ''}" placeholder="dd/MM/yyyy">
+                                        ` : `
+                                            <span style="color: var(--text-main); font-weight: 700;">${gt.ngayQuyetDinh ? this.model.formatDate(gt.ngayQuyetDinh) : '--'}</span>
+                                        `}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
 
+                    ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' ? `
                     <!-- Cột 4: Quyết định & Thẩm định HSMT (Trải ngang full chiều rộng) -->
                     <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 24px;">
                             <h4 style="font-weight: 700; color: var(--primary); border-bottom: 2px solid rgba(59, 130, 246, 0.1); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
-                                <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> ${gt.hinhThucLuaChon === 'Chào hàng cạnh tranh' ? 'Quyết định phê duyệt HSMT' : 'Quyết định & Thẩm định HSMT'}
+                                <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> Quyết định & Thẩm định HSMT
                             </h4>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -778,7 +808,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         `}
                                     </div>
                                 </div>
-                                ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' ? `
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Yêu cầu thẩm định HSMT</span>
@@ -812,9 +841,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         `}
                                     </div>
                                 </div>
-                                ` : ''}
                             </div>
                         </div>
+                        ` : ''}
                      ${this._inPlaceEditMode ? `
                         <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
                             <button id="btn-cancel-inplace" class="btn btn-outline" style="padding: 8px 20px; font-weight: 700; border-radius: var(--radius-md);">Hủy</button>
