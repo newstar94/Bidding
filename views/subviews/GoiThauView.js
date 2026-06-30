@@ -757,7 +757,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     <!-- Cột 4: Quyết định & Thẩm định HSMT (Trải ngang full chiều rộng) -->
                     <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 24px;">
                             <h4 style="font-weight: 700; color: var(--primary); border-bottom: 2px solid rgba(59, 130, 246, 0.1); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
-                                <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> Quyết định & Thẩm định HSMT
+                                <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> ${gt.hinhThucLuaChon === 'Chào hàng cạnh tranh' ? 'Quyết định phê duyệt HSMT' : 'Quyết định & Thẩm định HSMT'}
                             </h4>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -778,6 +778,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         `}
                                     </div>
                                 </div>
+                                ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' ? `
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Yêu cầu thẩm định HSMT</span>
@@ -811,6 +812,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         `}
                                     </div>
                                 </div>
+                                ` : ''}
                             </div>
                         </div>
                      ${this._inPlaceEditMode ? `
@@ -867,8 +869,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const valNgayQuyetDinh = document.getElementById('ip-ngayquyetdinh').value;
                             const checkedRadio = document.querySelector('input[name="ip-yeucauthamdinh"]:checked');
                             const valYeuCauThamDinh = checkedRadio ? checkedRadio.value : 'Không';
-                            const valSoBaoCao = document.getElementById('ip-sobaocaothamdinh').value;
-                            const valNgayBaoCao = document.getElementById('ip-ngaybaocaothamdinh').value;
+                            const valSoBaoCao = document.getElementById('ip-sobaocaothamdinh')?.value || '';
+                            const valNgayBaoCao = document.getElementById('ip-ngaybaocaothamdinh')?.value || '';
 
                             const gtData = {
                                 thoiGianDangTai: valDangTai ? this.model.convertDMYHMSToYMDHMS(valDangTai) : '',
@@ -1479,6 +1481,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                            ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' ? `
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số BCTĐ kỹ thuật <span class="text-danger">*</span></label>
                                 <input type="text" id="qualified-so-bctd" class="form-control" value="${soBctd}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;" ${isReadOnly ? 'readonly' : ''}>
@@ -1489,6 +1492,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <input type="text" id="qualified-ngay-bctd" class="form-control flatpickr-date" value="${ngayBctd ? this.model.formatForDateInput(ngayBctd) : ''}" style="width: 100%;" ${isReadOnly ? 'readonly' : ''} placeholder="dd/MM/yyyy">
                                 <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày BCTĐ kỹ thuật!</span>
                             </div>
+                            ` : ''}
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số QĐ phê duyệt nhà thầu đạt kỹ thuật <span class="text-danger">*</span></label>
                                 <input type="text" id="qualified-so-qd" class="form-control" value="${soQd}" placeholder="Ví dụ: 120/QĐ-CDT" style="width: 100%;" ${isReadOnly ? 'readonly' : ''}>
@@ -1567,8 +1571,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const inpNgayBctd = contentWrapper.querySelector('#qualified-ngay-bctd');
                             const valSo = inpSo.value.trim();
                             const valNgayRaw = inpNgay.value.trim();
-                            const valSoBctd = inpSoBctd.value.trim();
-                            const valNgayBctdRaw = inpNgayBctd.value.trim();
+                            const valSoBctd = inpSoBctd ? inpSoBctd.value.trim() : '';
+                            const valNgayBctdRaw = inpNgayBctd ? inpNgayBctd.value.trim() : '';
 
                             let hasErr = false;
                             if (!valSo) {
@@ -1589,30 +1593,34 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 inpNgay.closest('.form-group').classList.remove('invalid');
                             }
 
-                            if (!valSoBctd) {
-                                hasErr = true;
-                                inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
-                                inpSoBctd.closest('.form-group').classList.add('invalid');
-                            } else {
-                                inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
-                                inpSoBctd.closest('.form-group').classList.remove('invalid');
+                            if (inpSoBctd) {
+                                if (!valSoBctd) {
+                                    hasErr = true;
+                                    inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
+                                    inpSoBctd.closest('.form-group').classList.add('invalid');
+                                } else {
+                                    inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
+                                    inpSoBctd.closest('.form-group').classList.remove('invalid');
+                                }
                             }
 
-                            if (!valNgayBctdRaw) {
-                                hasErr = true;
-                                inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
-                                inpNgayBctd.closest('.form-group').classList.add('invalid');
-                            } else {
-                                inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
-                                inpNgayBctd.closest('.form-group').classList.remove('invalid');
+                            if (inpNgayBctd) {
+                                if (!valNgayBctdRaw) {
+                                    hasErr = true;
+                                    inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
+                                    inpNgayBctd.closest('.form-group').classList.add('invalid');
+                                } else {
+                                    inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
+                                    inpNgayBctd.closest('.form-group').classList.remove('invalid');
+                                }
                             }
 
                             if (hasErr) return;
 
                             metadata.technical.soQdPheDuyetKt = valSo;
                             metadata.technical.ngayQdPheDuyetKt = this.model.convertDMYToYMD(valNgayRaw);
-                            metadata.technical.soBctdKt = valSoBctd;
-                            metadata.technical.ngayBctdKt = this.model.convertDMYToYMD(valNgayBctdRaw);
+                            if (inpSoBctd) metadata.technical.soBctdKt = valSoBctd;
+                            if (inpNgayBctd) metadata.technical.ngayBctdKt = this.model.convertDMYToYMD(valNgayBctdRaw);
                             metadata.technical.qualifiedSaved = true;
 
                             gt.danhGiaHsdtMetadata = JSON.stringify(metadata);
@@ -2474,6 +2482,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Quyết định phê duyệt Kết quả LCNT</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                            ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' ? `
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số BCTĐ kết quả <span class="text-danger">*</span></label>
                                 <input type="text" id="award-so-bctd" class="form-control" value="${soBctdResult}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;">
@@ -2484,6 +2493,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <input type="text" id="award-ngay-bctd" class="form-control flatpickr-date" value="${ngayBctdResult ? this.model.formatForDateInput(ngayBctdResult) : ''}" style="width: 100%;" placeholder="dd/MM/yyyy">
                                 <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày BCTĐ kết quả!</span>
                             </div>
+                            ` : ''}
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số QĐ phê duyệt Kết quả <span class="text-danger">*</span></label>
                                 <input type="text" id="award-decision-no" class="form-control" value="${gt.soQuyetDinhKetQua || ''}" placeholder="Số QĐ Kết quả..." style="width: 100%;">
@@ -2653,12 +2663,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         const errorInputs = [];
 
                         // Validate inputs
-                        const fields = [
-                            { el: document.getElementById('award-so-bctd'), val: soBctdResultVal },
-                            { el: document.getElementById('award-ngay-bctd'), val: ngayBctdResultRaw },
+                        const fields = [];
+                        if (document.getElementById('award-so-bctd')) {
+                            fields.push({ el: document.getElementById('award-so-bctd'), val: soBctdResultVal });
+                        }
+                        if (document.getElementById('award-ngay-bctd')) {
+                            fields.push({ el: document.getElementById('award-ngay-bctd'), val: ngayBctdResultRaw });
+                        }
+                        fields.push(
                             { el: document.getElementById('award-decision-no'), val: decNo },
                             { el: document.getElementById('award-decision-date'), val: decDateRaw }
-                        ];
+                        );
 
                         fields.forEach(f => {
                             if (!f.val) {
