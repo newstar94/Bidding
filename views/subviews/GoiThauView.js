@@ -459,16 +459,21 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 } catch (e) { }
             }
 
-            if (isTechEvalSaved) {
+            const hasQualifiedBidders = qualifiedBidsForOpening.length > 0;
+            if (isTechEvalSaved && hasQualifiedBidders) {
                 tabs.push({ id: 'qualified', label: 'Danh sách nhà thầu đạt kỹ thuật' });
             }
-            if (isTechEvalSaved && isQualifiedSaved) {
+            if (isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders) {
                 tabs.push({ id: 'opening_fin', label: 'Biên bản mở E-HSĐXTC' });
             }
-            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved) {
+            if (isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders && isFinOpeningSaved) {
                 tabs.push({ id: 'eval_fin', label: 'Báo cáo đánh giá E-HSĐXTC' });
             }
-            if (isTechEvalSaved && isQualifiedSaved && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && gt.soQuyetDinhKetQua))) {
+            
+            const showResultNoQualified = isTechEvalSaved && !hasQualifiedBidders;
+            const showResultNormal = isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && gt.soQuyetDinhKetQua));
+
+            if (showResultNoQualified || showResultNormal) {
                 tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
             }
         } else {
@@ -1490,7 +1495,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 return !isNaN(parseFloat(clean)) && isFinite(clean);
             }) || ['Kết hợp giữa kỹ thuật và giá', 'Giá cố định', 'Dựa trên kỹ thuật'].includes(gt.phuongPhapDanhGia);
 
-            if (qualifiedBids.length === 0) {
+            if (!isTechEvalSaved) {
                 contentWrapper.innerHTML = `
                     <div style="text-align: center; padding: 48px; color: var(--text-muted);">
                         <i data-lucide="shield-alert" style="width: 48px; height: 48px; margin: 0 auto 16px; color: var(--warning);"></i>
@@ -1585,6 +1590,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     </div>
  
                      <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
+                         ${qualifiedBids.length === 0 ? `
+                             <div style="text-align: center; padding: 24px; color: var(--danger); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                 <i data-lucide="info" style="width: 18px; height: 18px;"></i> Không có nhà thầu nào đạt yêu cầu kỹ thuật. Vui lòng nhập số quyết định phê duyệt và ngày quyết định phía trên để lưu danh sách đạt kỹ thuật trống và chuyển sang bước Hủy thầu.
+                             </div>
+                         ` : `
                          <table class="data-table" style="min-width: 100%;">
                               <thead>
                                   <tr>
@@ -1615,6 +1625,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                   `).join('')}
                               </tbody>
                           </table>
+                          `}
                      </div>
                     <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
                          ${!isReadOnly ? `
@@ -1710,7 +1721,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             }
 
                             await this.customAlert('Thành công', 'Đã lưu QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật thành công!', 'check-circle');
-                            this._currentWorkflowTab = 'opening_fin';
+                            const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                            const qualifiedBids = allBids.filter(checkBidQualified);
+                            this._currentWorkflowTab = qualifiedBids.length > 0 ? 'opening_fin' : 'result';
                             this.showPackageDetails(gt.id);
                         };
                     }

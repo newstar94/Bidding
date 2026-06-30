@@ -1476,7 +1476,12 @@ export async function saveDanhGiaHsdt() {
             this.view._currentWorkflowTab = 'result';
         } else {
             if (this.currentDanhGiaTab === 'technical') {
-                this.view._currentWorkflowTab = 'qualified';
+                const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gtId));
+                const qualifiedBids = allBids.filter(b => {
+                    const kl = String(b.danhGiaKetLuan || '').trim().toLowerCase();
+                    return kl === 'đạt' || kl.startsWith('đạt') || kl.includes('trúng thầu');
+                });
+                this.view._currentWorkflowTab = qualifiedBids.length > 0 ? 'qualified' : 'result';
             } else {
                 this.view._currentWorkflowTab = 'result';
             }
