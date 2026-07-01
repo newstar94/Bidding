@@ -655,6 +655,14 @@ export function editGoiThau(id, isReadOnly = false) {
         }
     }
 
+    // ✅ FIX: Tái áp dụng logic khóa theo "Hình thức lựa chọn" SAU khi preOpeningFields đã chạy.
+    // Lý do: preOpeningFields vô điều kiện set disabled = !!isOpenedOrLater cho gt-phuongthuc và gt-quatmang,
+    // điều này xóa trắng trạng thái khóa mà handleHinhThucChange đã thiết lập trước đó.
+    // Gọi lại handleHinhThucChange ở đây để đảm bảo logic khóa theo hình thức luôn thắng.
+    if (!isReadOnly && !isOpenedOrLater && this.handleHinhThucChange) {
+        this.handleHinhThucChange();
+    }
+
     // Force read-only override for all elements if isReadOnly is true
     if (isReadOnly) {
         form.querySelectorAll('input, select, textarea').forEach(el => {
