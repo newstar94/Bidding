@@ -557,8 +557,30 @@ export async function handleExcelUpload(file) {
                     let comment = 'Hợp lệ';
 
                     if (!foundBid) {
-                        isValid = false;
-                        comment = `Không tìm thấy nhà thầu tương ứng trong thông tin mở thầu của gói thầu này!`;
+                        if (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                            const foundNt = this.model.getLatestNhaThau().find(n => 
+                                (n.maNhaThau && maNhaThau && n.maNhaThau.toLowerCase() === maNhaThau.toLowerCase()) ||
+                                (n.tenNhaThau && tenNhaThau && n.tenNhaThau.toLowerCase() === tenNhaThau.toLowerCase())
+                            );
+                            if (foundNt) {
+                                isValid = true;
+                                comment = 'Hợp lệ (Nhà thầu mới sẽ được thêm vào danh sách)';
+                                foundBid = {
+                                    id: window.generateUUID(),
+                                    nhaThauId: foundNt.id,
+                                    maNhaThau: foundNt.maNhaThau || foundNt.maSoThue || '',
+                                    tenNhaThau: foundNt.tenNhaThau,
+                                    loaiNhaThau: foundNt.loaiNhaThau || 'Độc lập',
+                                    thanhVienLienDanh: foundNt.thanhVienLienDanh || []
+                                };
+                            } else {
+                                isValid = false;
+                                comment = 'Không tìm thấy nhà thầu này trong danh sách Nhà thầu của hệ thống. Vui lòng thêm nhà thầu này trước!';
+                            }
+                        } else {
+                            isValid = false;
+                            comment = `Không tìm thấy nhà thầu tương ứng trong thông tin mở thầu của gói thầu này!`;
+                        }
                     }
 
                     return {
@@ -1094,7 +1116,32 @@ export async function saveExcelImport() {
                 let winnerRow = validRows.find(r => r.trangThai === 'Trúng thầu' || r.trangThai === 'trung');
 
                 validRows.forEach(row => {
-                    const bid = this.model.state.thongtinmothau.find(b => b.id === row.id);
+                    let bid = this.model.state.thongtinmothau.find(b => b.id === row.id);
+                    if (!bid && (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt')) {
+                        const ntId = row.nhaThauId;
+                        const latestNhaThauList = this.model.getLatestNhaThau();
+                        const foundNt = latestNhaThauList.find(n => n.id === ntId);
+                        
+                        bid = {
+                            id: row.id || window.generateUUID(),
+                            goiThauId: gtId,
+                            nhaThauId: ntId,
+                            maNhaThau: row.maNhaThau || (foundNt ? foundNt.maNhaThau : ''),
+                            tenNhaThau: row.tenNhaThau || (foundNt ? foundNt.tenNhaThau : ''),
+                            loaiNhaThau: (foundNt ? foundNt.loaiNhaThau : 'Độc lập'),
+                            thanhVienLienDanh: (foundNt ? foundNt.thanhVienLienDanh : []),
+                            giaDuThau: gt.giaGoiThau,
+                            giaSauGiamGia: gt.giaGoiThau,
+                            danhGiaHopLe: 'Đạt',
+                            danhGiaNangLuc: 'Đạt',
+                            danhGiaKyThuat: 'Đạt',
+                            danhGiaTaiChinh: 'Đạt',
+                            danhGiaKetLuan: 'Đạt',
+                            thoiGianThucHien: gt.thoiGianThucHien,
+                            lyDoTruot: ''
+                        };
+                        this.model.state.thongtinmothau.push(bid);
+                    }
                     if (bid) {
                         if (row.trangThai === 'Trúng thầu' || row.trangThai === 'trung') {
                             bid.lyDoTruot = '';

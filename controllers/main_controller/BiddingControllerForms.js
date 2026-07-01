@@ -44,6 +44,12 @@ export function setupConditionalUI() {
             this.updatePackageFieldsVisibility();
         });
     }
+    const hinhThucSelect = document.getElementById('gt-hinhthuc');
+    if (hinhThucSelect) {
+        hinhThucSelect.addEventListener('change', () => {
+            this.updatePackageFieldsVisibility();
+        });
+    }
 
     const khCdtSelect = document.getElementById('kh-chudautuid');
     if (khCdtSelect) {
@@ -59,7 +65,7 @@ export function setupConditionalUI() {
     if (gtKeHoachSelect) {
         gtKeHoachSelect.addEventListener('change', async (e) => {
             this.updateNguonVonFieldState(e.target.value);
-            
+
             const idInput = document.getElementById('form-goithau-id');
             const isNewPackage = !idInput || !idInput.value;
             if (isNewPackage && e.target.value) {
@@ -508,7 +514,7 @@ export function setupActionListeners() {
         const phuongThucVal = gtPhuongThucSelect ? gtPhuongThucSelect.value : '';
         const hinhThucVal = gtHinhThucSelect ? gtHinhThucSelect.value : '';
 
-        if (!hinhThucVal || hinhThucVal === 'Chỉ định thầu rút gọn') {
+        if (!hinhThucVal || hinhThucVal === 'Chỉ định thầu rút gọn' || hinhThucVal === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
             gtPhuongPhapDanhGiaContainer.style.display = 'none';
             gtPhuongPhapDanhGiaSelect.removeAttribute('required');
             gtPhuongPhapDanhGiaSelect.value = '';
@@ -582,6 +588,7 @@ export function setupActionListeners() {
         const handleHinhThucChange = () => {
             const val = gtHinhThucSelect.value;
             const linhVucVal = gtLinhVucSelect ? gtLinhVucSelect.value : '';
+            const gtQuaMangSelect = document.getElementById('gt-quatmang');
 
             if (!val) {
                 gtPhuongThucContainer.style.display = 'none';
@@ -591,7 +598,7 @@ export function setupActionListeners() {
                 gtPhuongThucSelect.setAttribute('required', 'true');
 
                 if (linhVucVal === 'Tư vấn') {
-                    if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                    if (val === 'Chỉ định thầu rút gọn') {
                         gtPhuongThucSelect.value = 'Không có';
                         gtPhuongThucSelect.disabled = true;
                     } else {
@@ -602,27 +609,12 @@ export function setupActionListeners() {
                     if (val === 'Chào hàng cạnh tranh') {
                         gtPhuongThucSelect.value = 'Một giai đoạn một túi hồ sơ';
                         gtPhuongThucSelect.disabled = true;
-                    } else if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                    } else if (val === 'Chỉ định thầu rút gọn') {
                         gtPhuongThucSelect.value = 'Không có';
                         gtPhuongThucSelect.disabled = true;
                     } else {
                         gtPhuongThucSelect.disabled = false;
                     }
-                }
-            }
-
-            // Lock/unlock Đấu thầu qua mạng (gt-quatmang)
-            const gtQuaMangSelect = document.getElementById('gt-quatmang');
-            if (gtQuaMangSelect) {
-                if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
-                    gtQuaMangSelect.value = 'Không qua mạng';
-                    gtQuaMangSelect.disabled = true;
-                } else {
-                    gtQuaMangSelect.disabled = false;
-                }
-                // Trigger change to update gtTrongNuocSelect if needed
-                if (this.handleQuaMangChange) {
-                    this.handleQuaMangChange();
                 }
             }
 
@@ -924,6 +916,20 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     const trangThai = document.getElementById('gt-trangthai')?.value;
     const formGoiThau = document.getElementById('form-goithau');
     const originalStatus = formGoiThau?.getAttribute('data-original-status') || '';
+    const htVal = document.getElementById('gt-hinhthuc')?.value || '';
+
+    // Hide/show status select based on hình thức
+    const gtTrangThai = document.getElementById('gt-trangthai');
+    if (gtTrangThai) {
+        const formGroup = gtTrangThai.closest('.form-group');
+        if (htVal === 'Chỉ định thầu rút gọn' || htVal === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+            if (formGroup) formGroup.style.display = 'none';
+            gtTrangThai.removeAttribute('required');
+        } else {
+            if (formGroup) formGroup.style.display = 'flex';
+            gtTrangThai.setAttribute('required', 'true');
+        }
+    }
 
     const statusOrder = ['Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Hủy thầu'];
     const currentIdx = statusOrder.indexOf(trangThai);
@@ -980,16 +986,17 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
             if (id === 'gt-phuongthuc') {
                 const lv = document.getElementById('gt-linhvuc')?.value;
                 const ht = document.getElementById('gt-hinhthuc')?.value;
-                if (lv === 'Tư vấn' || ht === 'Chào hàng cạnh tranh' || ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                if (lv === 'Tư vấn' || ht === 'Chào hàng cạnh tranh' || ht === 'Chỉ định thầu rút gọn') {
                     input.disabled = true;
                 }
+                if (window.initCustomSelect) initCustomSelect(id);
             }
-            // Re-enforce disabled rules for gt-quatmang if needed
             if (id === 'gt-quatmang') {
                 const ht = document.getElementById('gt-hinhthuc')?.value;
                 if (ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                     input.disabled = true;
                 }
+                if (window.initCustomSelect) initCustomSelect(id);
             }
             // Restore visibility for non-conditional fields if unlocked
             const nonConditional = [
@@ -1031,6 +1038,14 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
         if (!formGroup) return;
 
         const label = formGroup.querySelector('label');
+
+        if (htVal === 'Chỉ định thầu rút gọn' || htVal === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+            if (['gt-soquyetdinh', 'gt-ngayquyetdinh', 'gt-thoigiandangtai', 'gt-thoigiandongthau', 'gt-thoigianmothau', 'gt-thoigianmoehsdxtc'].includes(f.id)) {
+                formGroup.style.display = 'none';
+                input.removeAttribute('required');
+                return;
+            }
+        }
 
         if (trangThai === 'Chuẩn bị') {
             formGroup.style.display = 'none';
@@ -1107,7 +1122,9 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     const thBaoDam = document.getElementById('th-baodam-phanlo');
 
     // Lĩnh vực tư vấn không yêu cầu bảo đảm dự thầu, tất cả lĩnh vực khác đều yêu cầu (hiển thị để nhập)
-    if (linhVuc === 'Tư vấn') {
+    const ht = document.getElementById('gt-hinhthuc')?.value || '';
+    const noBidSecurity = (linhVuc === 'Tư vấn' || ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+    if (noBidSecurity) {
         if (containerBaoDam) containerBaoDam.style.display = 'none';
         if (containerHlBaoDam) containerHlBaoDam.style.display = 'none';
 
@@ -1200,7 +1217,8 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
 export function recalculateTotalLotSecurities() {
     const phanLo = document.getElementById('gt-phanlo')?.value;
     const linhVuc = document.getElementById('gt-linhvuc')?.value;
-    if (phanLo === 'Có' && linhVuc !== 'Tư vấn') {
+    const ht = document.getElementById('gt-hinhthuc')?.value;
+    if (phanLo === 'Có' && linhVuc !== 'Tư vấn' && ht !== 'Chỉ định thầu rút gọn' && ht !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
         let sum = 0;
         document.querySelectorAll('#phanlo-tbody tr').forEach(tr => {
             const baodamInput = tr.querySelector('.pl-baodam-input');

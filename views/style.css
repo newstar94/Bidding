@@ -4345,7 +4345,20 @@ body.dark-mode .btn-excel-action:hover {
 }
 
 
-
-
+/* Disabled state for custom-select-container */
+.custom-select-container.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.custom-select-container.disabled .custom-select-trigger {
+    background-color: var(--neutral-soft, #f1f5f9);
+    color: var(--text-muted, #94a3b8);
+    cursor: not-allowed;
+    border-color: var(--border-color);
+}
+.custom-select-container.disabled .custom-select-trigger-arrow {
+    color: var(--text-muted, #94a3b8);
+}
 
 
