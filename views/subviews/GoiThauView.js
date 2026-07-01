@@ -920,8 +920,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const btnEditBottom = document.getElementById('btn-edit-goithau-bottom');
                 if (btnEditBottom) {
                     btnEditBottom.onclick = () => {
-                        this._inPlaceEditMode = true;
-                        this.showPackageDetails(id);
+                        if (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                            if (window.editGoiThau) {
+                                window.editGoiThau(id);
+                            }
+                        } else {
+                            this._inPlaceEditMode = true;
+                            this.showPackageDetails(id);
+                        }
                     };
                 }
 
