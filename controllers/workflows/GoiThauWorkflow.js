@@ -386,6 +386,12 @@ export function editGoiThau(id, isReadOnly = false) {
 
         this.updatePackageFieldsVisibility(isReadOnly);
 
+        // Trigger change event to initialize conditional fields and their disabled states
+        const gtHinhThucEl = document.getElementById('gt-hinhthuc');
+        if (gtHinhThucEl) {
+            gtHinhThucEl.dispatchEvent(new Event('change'));
+        }
+
         this._isEditMode = true;
         this._loadPhanLoRows(gt.phanLoList || []);
         this._loadTuyChonMuaThemRows(gt.tuyChonMuaThemList || []);

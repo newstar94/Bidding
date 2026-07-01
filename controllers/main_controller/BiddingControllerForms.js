@@ -591,7 +591,7 @@ export function setupActionListeners() {
                 gtPhuongThucSelect.setAttribute('required', 'true');
 
                 if (linhVucVal === 'Tư vấn') {
-                    if (val === 'Chỉ định thầu rút gọn') {
+                    if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                         gtPhuongThucSelect.value = 'Không có';
                         gtPhuongThucSelect.disabled = true;
                     } else {
@@ -602,12 +602,27 @@ export function setupActionListeners() {
                     if (val === 'Chào hàng cạnh tranh') {
                         gtPhuongThucSelect.value = 'Một giai đoạn một túi hồ sơ';
                         gtPhuongThucSelect.disabled = true;
-                    } else if (val === 'Chỉ định thầu rút gọn') {
+                    } else if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                         gtPhuongThucSelect.value = 'Không có';
                         gtPhuongThucSelect.disabled = true;
                     } else {
                         gtPhuongThucSelect.disabled = false;
                     }
+                }
+            }
+
+            // Lock/unlock Đấu thầu qua mạng (gt-quatmang)
+            const gtQuaMangSelect = document.getElementById('gt-quatmang');
+            if (gtQuaMangSelect) {
+                if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                    gtQuaMangSelect.value = 'Không qua mạng';
+                    gtQuaMangSelect.disabled = true;
+                } else {
+                    gtQuaMangSelect.disabled = false;
+                }
+                // Trigger change to update gtTrongNuocSelect if needed
+                if (this.handleQuaMangChange) {
+                    this.handleQuaMangChange();
                 }
             }
 
@@ -965,7 +980,14 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
             if (id === 'gt-phuongthuc') {
                 const lv = document.getElementById('gt-linhvuc')?.value;
                 const ht = document.getElementById('gt-hinhthuc')?.value;
-                if (lv === 'Tư vấn' || ht === 'Chào hàng cạnh tranh' || ht === 'Chỉ định thầu rút gọn') {
+                if (lv === 'Tư vấn' || ht === 'Chào hàng cạnh tranh' || ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                    input.disabled = true;
+                }
+            }
+            // Re-enforce disabled rules for gt-quatmang if needed
+            if (id === 'gt-quatmang') {
+                const ht = document.getElementById('gt-hinhthuc')?.value;
+                if (ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                     input.disabled = true;
                 }
             }
