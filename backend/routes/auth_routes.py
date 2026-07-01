@@ -416,6 +416,7 @@ async def login_api(request):
             "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ? WHERE id = ?",
             (session_token, token_expiry, device_info, user['id'])
         )
+        _session_cache_invalidate_by_user_id(user['id'])
         org_names = get_user_org_names(cursor, user['id'])
         conn.commit()
         

@@ -2,6 +2,24 @@
    BiddingFlow - AuthController (Part of Controller split)
    ========================================================================== */
 
+// Setup BroadcastChannel to respond to session requests from other tabs of the same browser
+const sessionSyncChannel = new BroadcastChannel('bf_session_sync');
+sessionSyncChannel.onmessage = (event) => {
+    if (event.data && event.data.type === 'REQUEST_SESSION') {
+        const token = sessionStorage.getItem('bf_session_token');
+        const username = sessionStorage.getItem('bf_username');
+        const userId = sessionStorage.getItem('bf_user_id');
+        if (token && username) {
+            sessionSyncChannel.postMessage({
+                type: 'PROVIDE_SESSION',
+                token,
+                username,
+                userId
+            });
+        }
+    }
+};
+
 export function setupActivityTracker() {
     const updateActivity = () => {
         localStorage.setItem('bf_last_activity', Date.now().toString());
@@ -28,6 +46,7 @@ export function checkInactivity() {
         const storedTimeout = localStorage.getItem('bf_inactivity_timeout');
         const timeoutHours = storedTimeout ? parseInt(storedTimeout, 10) : 10;
         const inactivityLimit = timeoutHours * 60 * 60 * 1000;
+        const idleTime = Date.now() - parseInt(lastActivity, 10);
         
         if (idleTime > inactivityLimit) {
             if (this._sessionInterval) clearInterval(this._sessionInterval);

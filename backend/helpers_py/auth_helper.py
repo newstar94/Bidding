@@ -92,9 +92,7 @@ def verify_session(request, required_role=None):
     token = request.cookies.get('session_token') or request.headers.get('X-Session-Token')
     username = request.cookies.get('username') or request.headers.get('X-Username')
     
-    print(f"DEBUG: verify_session called with token={token}, username={username}, required_role={required_role}")
     if not token or not username:
-        print("DEBUG: Missing token or username")
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
     if required_role == 'super_admin':
