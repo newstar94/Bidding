@@ -439,50 +439,54 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
     const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
     const isFinOpeningSaved = qualifiedBidsForOpening.some(b => b.giaDuThau && b.giaDuThau > 0);
 
-    const tabs = [{ id: 'preparation', label: 'Thông tin gói thầu' }];
-    if (gt.trangThai === 'Chuẩn bị') {
-        tabs.push({ id: 'preparation_action', label: 'Phát hành E-HSMT' });
+    let tabs = [{ id: 'preparation', label: 'Thông tin gói thầu' }];
+    if (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+        tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
     } else {
-        if (is1G2T) {
-            tabs.push({ id: 'opening_tech', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở E-HSĐXKT' });
-            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu' && (gt.trangThai !== 'Hủy thầu' || isTechEvalSaved)) {
-                tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSĐXKT' });
-            }
-
-            let isQualifiedSaved = false;
-            if (gt.danhGiaHsdtMetadata) {
-                try {
-                    const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-                    if (parsed.is1G2T && parsed.technical) {
-                        isQualifiedSaved = !!parsed.technical.qualifiedSaved;
-                    }
-                } catch (e) { }
-            }
-
-            const hasQualifiedBidders = qualifiedBidsForOpening.length > 0;
-            if (isTechEvalSaved && hasQualifiedBidders) {
-                tabs.push({ id: 'qualified', label: 'Danh sách nhà thầu đạt kỹ thuật' });
-            }
-            if (isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders) {
-                tabs.push({ id: 'opening_fin', label: 'Biên bản mở E-HSĐXTC' });
-            }
-            if (isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders && isFinOpeningSaved) {
-                tabs.push({ id: 'eval_fin', label: 'Báo cáo đánh giá E-HSĐXTC' });
-            }
-            
-            const showResultNoQualified = isTechEvalSaved && !hasQualifiedBidders;
-            const showResultNormal = isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && gt.soQuyetDinhKetQua));
-
-            if (showResultNoQualified || showResultNormal) {
-                tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
-            }
+        if (gt.trangThai === 'Chuẩn bị') {
+            tabs.push({ id: 'preparation_action', label: 'Phát hành E-HSMT' });
         } else {
-            tabs.push({ id: 'opening', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở thầu' });
-            if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu' && (gt.trangThai !== 'Hủy thầu' || isEvalSaved1G1T)) {
-                tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSDT' });
-            }
-            if (isEvalSaved1G1T || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && isEvalSaved1G1T && gt.soQuyetDinhKetQua)) {
-                tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
+            if (is1G2T) {
+                tabs.push({ id: 'opening_tech', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở E-HSĐXKT' });
+                if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu' && (gt.trangThai !== 'Hủy thầu' || isTechEvalSaved)) {
+                    tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSĐXKT' });
+                }
+
+                let isQualifiedSaved = false;
+                if (gt.danhGiaHsdtMetadata) {
+                    try {
+                        const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
+                        if (parsed.is1G2T && parsed.technical) {
+                            isQualifiedSaved = !!parsed.technical.qualifiedSaved;
+                        }
+                    } catch (e) { }
+                }
+
+                const hasQualifiedBidders = qualifiedBidsForOpening.length > 0;
+                if (isTechEvalSaved && hasQualifiedBidders) {
+                    tabs.push({ id: 'qualified', label: 'Danh sách nhà thầu đạt kỹ thuật' });
+                }
+                if (isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders) {
+                    tabs.push({ id: 'opening_fin', label: 'Biên bản mở E-HSĐXTC' });
+                }
+                if (isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders && isFinOpeningSaved) {
+                    tabs.push({ id: 'eval_fin', label: 'Báo cáo đánh giá E-HSĐXTC' });
+                }
+
+                const showResultNoQualified = isTechEvalSaved && !hasQualifiedBidders;
+                const showResultNormal = isTechEvalSaved && isQualifiedSaved && hasQualifiedBidders && isFinOpeningSaved && (isFinEvalSaved || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && gt.soQuyetDinhKetQua));
+
+                if (showResultNoQualified || showResultNormal) {
+                    tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
+                }
+            } else {
+                tabs.push({ id: 'opening', label: gt.trangThai === 'Đang mời thầu' ? 'Thông tin mời thầu' : 'Biên bản mở thầu' });
+                if (gt.trangThai !== 'Đang mời thầu' && gt.trangThai !== 'Đã mở thầu' && (gt.trangThai !== 'Hủy thầu' || isEvalSaved1G1T)) {
+                    tabs.push({ id: 'eval_tech', label: 'Báo cáo đánh giá E-HSDT' });
+                }
+                if (isEvalSaved1G1T || gt.trangThai === 'Đã có kết quả' || (gt.trangThai === 'Hủy thầu' && isEvalSaved1G1T && gt.soQuyetDinhKetQua)) {
+                    tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
+                }
             }
         }
     }
@@ -494,7 +498,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             if (parsed.cancelDetails && (parsed.cancelDetails.soQuyetDinhHuyThau || parsed.cancelDetails.lyDoHuyThau)) {
                 hasCancelDetails = true;
             }
-        } catch(e) {}
+        } catch (e) { }
     }
     if (gt.trangThai === 'Hủy thầu' || this._currentWorkflowTab === 'cancel' || hasCancelDetails) {
         tabs.push({ id: 'cancel', label: 'Hủy thầu' });
@@ -539,7 +543,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             `;
         }
         actionsEl.innerHTML = actionsHtml;
-        
+
         const btnCancel = document.getElementById('btn-workflow-cancel-package');
         if (btnCancel) {
             btnCancel.onclick = () => {
@@ -761,14 +765,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian thực hiện</span>
                                         <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianThucHien || '--'}</span>
                                     </div>
-                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
-                                        <span style="color: var(--text-muted); font-weight: 600;">Thời gian tổ chức LCNT</span>
-                                        <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianToChuc || '--'}</span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
+                                    <div style="display: flex; justify-content: space-between; border-bottom: ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? 'none' : '1px solid rgba(226, 232, 240, 0.5)'}; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Bắt đầu tổ chức</span>
                                         <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianBatDauToChuc || '--'}</span>
                                     </div>
+                                    ${(gt.hinhThucLuaChon !== 'Chỉ định thầu rút gọn' && gt.hinhThucLuaChon !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian đăng tải</span>
                                         ${this._inPlaceEditMode ? `
@@ -802,6 +803,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : '--'}</span>
                                         `}
                                     </div>
+                                    ` : ''}
                                     ` : ''}
                                 </div>
                             </div>
@@ -837,7 +839,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         ` : ''}
                     </div>
 
-                    ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' ? `
+                    ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' && gt.hinhThucLuaChon !== 'Chỉ định thầu rút gọn' && gt.hinhThucLuaChon !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt' ? `
                     <!-- Cột 4: Quyết định & Thẩm định HSMT (Trải ngang full chiều rộng) -->
                     <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 24px;">
                             <h4 style="font-weight: 700; color: var(--primary); border-bottom: 2px solid rgba(59, 130, 246, 0.1); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
@@ -1741,15 +1743,15 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
             const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
             qualifiedBidsForOpening.sort((a, b) => {
-                 const lotA = String(a.maPhanLo || '').toLowerCase();
-                 const lotB = String(b.maPhanLo || '').toLowerCase();
-                 const lotCompare = lotA.localeCompare(lotB, 'vi', { numeric: true });
-                 if (lotCompare !== 0) return lotCompare;
-                 
-                 const ntA = String(a.maNhaThau || a.maDinhDanh || '').toLowerCase();
-                 const ntB = String(b.maNhaThau || b.maDinhDanh || '').toLowerCase();
-                 return ntA.localeCompare(ntB, 'vi', { numeric: true });
-             });
+                const lotA = String(a.maPhanLo || '').toLowerCase();
+                const lotB = String(b.maPhanLo || '').toLowerCase();
+                const lotCompare = lotA.localeCompare(lotB, 'vi', { numeric: true });
+                if (lotCompare !== 0) return lotCompare;
+
+                const ntA = String(a.maNhaThau || a.maDinhDanh || '').toLowerCase();
+                const ntB = String(b.maNhaThau || b.maDinhDanh || '').toLowerCase();
+                return ntA.localeCompare(ntB, 'vi', { numeric: true });
+            });
             const hasTechScore = qualifiedBidsForOpening.some(b => {
                 if (!b.danhGiaKyThuat) return false;
                 const clean = String(b.danhGiaKyThuat).trim().replace(/,/g, '.');
@@ -2565,7 +2567,12 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.
                             </p>
                         </div>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
+                                <button class="btn btn-outline btn-sm" id="btn-result-add-bidder" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu tham dự
+                                </button>
+                            ` : ''}
                             <button class="btn-excel-action" id="btn-result-export-excel-template">
                                 <i data-lucide="download"></i> Tải Excel Mẫu
                             </button>
@@ -2903,7 +2910,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         meta.result.soBctdKetQua = soBctdResultVal;
                         meta.result.ngayBctdKetQua = ngayBctdResultVal;
 
-                        const hasActualWinner = (gt.phanLo === 'Có') 
+                        const hasActualWinner = (gt.phanLo === 'Có')
                             ? (typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || [])).some(pl => pl.nhaThauTrungThauId)
                             : (winnerIdStr !== 'none' && !!gt.nhaThauTrungThauId);
 
@@ -2912,7 +2919,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             meta.cancelDetails.soQuyetDinhHuyThau = decNo;
                             meta.cancelDetails.ngayQuyetDinhHuyThau = decDate;
                             meta.cancelDetails.lyDoHuyThau = "Tất cả các hồ sơ dự thầu không đáp ứng yêu cầu của hồ sơ mời thầu. Hủy thầu theo quy định tại Điểm a Khoản 1 Điều 17 Luật Đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023, sửa đổi, bổ sung tại Luật số 57/2024/QH15, Luật số 90/2025/QH15.";
-                            
+
                             gt.danhGiaHsdtMetadata = JSON.stringify(meta);
                             gt.soQuyetDinhKetQua = decNo;
                             gt.ngayQuyetDinhKetQua = decDate;
@@ -2960,6 +2967,137 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     window.appController.openExcelImportModal('ketquaqd');
                 };
             }
+
+            const btnAddBidder = document.getElementById('btn-result-add-bidder');
+            if (btnAddBidder) {
+                btnAddBidder.onclick = () => {
+                    const nhathauList = this.model.state.nhathau || [];
+                    if (nhathauList.length === 0) {
+                        this.customAlert('Thông báo', 'Chưa có nhà thầu nào trong hệ thống. Vui lòng thêm nhà thầu trước.', 'info');
+                        return;
+                    }
+
+                    const modalId = 'modal-result-add-bidder';
+                    let modal = document.getElementById(modalId);
+                    if (modal) modal.remove();
+
+                    modal = document.createElement('div');
+                    modal.id = modalId;
+                    modal.className = 'modal-overlay active';
+                    modal.style.zIndex = '2000';
+
+                    const card = document.createElement('div');
+                    card.className = 'modal-card';
+                    card.style.maxWidth = '450px';
+
+                    let lotSelectHtml = '';
+                    if (gt.phanLo === 'Có') {
+                        const lots = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
+                        lotSelectHtml = `
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="font-weight:600; margin-bottom:6px; display:block;">Chọn Phần lô <span class="text-danger">*</span></label>
+                                <select id="add-bidder-lot" class="form-control" required style="width: 100%;">
+                                    ${lots.map(l => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}">${l.maPhanLo} - ${l.tenPhanLo}</option>`).join('')}
+                                </select>
+                            </div>
+                        `;
+                    }
+
+                    card.innerHTML = `
+                        <div class="modal-header">
+                            <h3>Thêm Nhà thầu tham dự</h3>
+                            <button class="modal-close" id="btn-close-add-bidder-modal">&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding: 20px;">
+                            <div class="form-group" style="margin-bottom: 15px;">
+                                <label style="font-weight:600; margin-bottom:6px; display:block;">Chọn Nhà thầu <span class="text-danger">*</span></label>
+                                <select id="add-bidder-select" class="form-control" style="width: 100%;">
+                                    ${nhathauList.map(n => `<option value="${n.id}">${n.tenNhaThau} (${n.maSoThue || n.maNhaThau || ''})</option>`).join('')}
+                                </select>
+                            </div>
+                            ${lotSelectHtml}
+                        </div>
+                        <div class="modal-footer" style="padding: 10px 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                            <button class="btn btn-outline" id="btn-cancel-add-bidder-modal">Hủy</button>
+                            <button class="btn btn-primary" id="btn-confirm-add-bidder">Thêm</button>
+                        </div>
+                    `;
+
+                    modal.appendChild(card);
+                    document.body.appendChild(modal);
+
+                    const closeModal = () => {
+                        modal.remove();
+                    };
+                    document.getElementById('btn-close-add-bidder-modal').onclick = closeModal;
+                    document.getElementById('btn-cancel-add-bidder-modal').onclick = closeModal;
+
+                    document.getElementById('btn-confirm-add-bidder').onclick = async () => {
+                        const ntId = document.getElementById('add-bidder-select').value;
+                        const nt = nhathauList.find(n => String(n.id) === String(ntId));
+                        if (!nt) return;
+
+                        let lotCode = '';
+                        let lotName = '';
+                        if (gt.phanLo === 'Có') {
+                            const lotSelect = document.getElementById('add-bidder-lot');
+                            if (lotSelect) {
+                                lotCode = lotSelect.value;
+                                lotName = lotSelect.options[lotSelect.selectedIndex].getAttribute('data-name');
+                            }
+                        }
+
+                        // Check if already exists
+                        const existingBids = this.model.state.thongtinmothau || [];
+                        const alreadyExists = existingBids.some(b =>
+                            String(b.goiThauId) === String(gt.id) &&
+                            String(b.nhaThauId) === String(nt.id) &&
+                            (gt.phanLo !== 'Có' || b.maPhanLo === lotCode)
+                        );
+
+                        if (alreadyExists) {
+                            alert('Nhà thầu này đã được thêm vào danh sách tham dự gói thầu/phần lô này!');
+                            return;
+                        }
+
+                        // Create bid entry
+                        const newBid = {
+                            id: window.generateUUID(),
+                            goiThauId: gt.id,
+                            nhaThauId: nt.id,
+                            maNhaThau: nt.maNhaThau || nt.maSoThue || '',
+                            tenNhaThau: nt.tenNhaThau,
+                            loaiNhaThau: nt.loaiNhaThau || 'Độc lập',
+                            thanhVienLienDanh: nt.thanhVienLienDanh || [],
+                            giaDuThau: gt.giaGoiThau,
+                            giaSauGiamGia: gt.giaGoiThau,
+                            danhGiaHopLe: 'Đạt',
+                            danhGiaNangLuc: 'Đạt',
+                            danhGiaKyThuat: 'Đạt',
+                            danhGiaTaiChinh: 'Đạt',
+                            danhGiaKetLuan: 'Đạt',
+                            thoiGianThucHien: gt.thoiGianThucHien,
+                            lyDoTruot: ''
+                        };
+                        if (gt.phanLo === 'Có') {
+                            newBid.maPhanLo = lotCode;
+                            newBid.tenPhanLo = lotName;
+                        }
+
+                        if (!this.model.state.thongtinmothau) {
+                            this.model.state.thongtinmothau = [];
+                        }
+                        this.model.state.thongtinmothau.push(newBid);
+                        this.model.persistData('thongtinmothau');
+                        if (window.appController && typeof window.appController.autoSync === 'function') {
+                            await window.appController.autoSync();
+                        }
+
+                        closeModal();
+                        this.showPackageDetails(gt.id);
+                    };
+                };
+            }
             break;
 
         case 'cancel': {
@@ -2968,14 +3106,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
             } catch (e) { }
             if (!meta.cancelDetails) meta.cancelDetails = {};
-            
+
             const soQdHuy = meta.cancelDetails.soQuyetDinhHuyThau || '';
             const ngayQdHuy = meta.cancelDetails.ngayQuyetDinhHuyThau || '';
             const lyDoHuy = meta.cancelDetails.lyDoHuyThau || '';
-            
+
             const displayDate = ngayQdHuy ? this.model.formatForDateInput(ngayQdHuy) : '';
             const isCanceled = gt.trangThai === 'Hủy thầu';
-            
+
             contentWrapper.innerHTML = `
                 <div class="card" style="padding: 24px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); box-shadow: var(--shadow-sm);">
                     <h4 style="font-weight: 700; color: var(--danger, #ef4444); border-bottom: 2px solid rgba(239, 68, 68, 0.1); padding-bottom: 12px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; font-size: 1.05rem;">
@@ -3009,26 +3147,26 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     </div>
                 </div>
             `;
-            
+
             if (typeof this.initFlatpickr === 'function') {
                 this.initFlatpickr(contentWrapper);
             }
             if (window.lucide) window.lucide.createIcons();
-            
+
             const btnSaveCancel = document.getElementById('btn-save-cancel-details');
             if (btnSaveCancel) {
                 btnSaveCancel.onclick = async () => {
                     const decNo = document.getElementById('cancel-dec-no').value.trim();
                     const decDate = document.getElementById('cancel-dec-date').value.trim();
                     const reason = document.getElementById('cancel-reason').value.trim();
-                    
+
                     if (!decNo || !decDate || !reason) {
                         await this.customAlert('Thiếu thông tin', 'Vui lòng điền đầy đủ Số quyết định, Ngày quyết định và Lý do hủy thầu.', 'alert-triangle');
                         return;
                     }
-                    
+
                     const formattedDecDate = decDate ? this.model.convertDMYToYMD(decDate) : '';
-                    
+
                     let meta = {};
                     try {
                         meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
@@ -3041,13 +3179,13 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     meta.cancelDetails.ngayQuyetDinhHuyThau = formattedDecDate;
                     meta.cancelDetails.lyDoHuyThau = reason;
                     gt.danhGiaHsdtMetadata = JSON.stringify(meta);
-                    
+
                     gt.trangThai = 'Hủy thầu';
-                    
+
                     this.model.persistData('goithau');
                     this.renderGoiThauTable();
                     window.appController.autoSync();
-                    
+
                     await this.customAlert('Thành công', 'Đã lưu quyết định hủy thầu và cập nhật trạng thái gói thầu.', 'check-circle');
                     this.showPackageDetails(gt.id);
                 };
