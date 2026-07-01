@@ -2454,6 +2454,21 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 });
 
                 const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+                if (isDirectOrSpecial && allBids.length === 0) {
+                    allBids.push({
+                        id: window.generateUUID(),
+                        goiThauId: gt.id,
+                        nhaThauId: '',
+                        maNhaThau: '',
+                        tenNhaThau: '',
+                        loaiNhaThau: 'Độc lập',
+                        thanhVienLienDanh: [],
+                        giaDuThau: null,
+                        giaSauGiamGia: null,
+                        thoiGianThucHien: '',
+                        lyDoTruot: ''
+                    });
+                }
                 const { rankings, scores } = window.appController.calculateRankings(gt, allBids);
                 const isCombinedMethod = gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá';
                 const getIsQualified = (bidItem) => {
@@ -3027,6 +3042,43 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 const loaiNt = tr.querySelector('.row-loai-nha-thau')?.value || 'Độc lập';
                                 const tvLd = tr._thanhVienLienDanh || [];
 
+                                // Find or create contractor in nhathau table to get the correct nhaThauId
+                                let foundNt = this.model.state.nhathau.find(n =>
+                                    (n.maNhaThau && maNhaThau && n.maNhaThau.toLowerCase() === maNhaThau.toLowerCase()) ||
+                                    (n.tenNhaThau && tenNhaThau && n.tenNhaThau.toLowerCase() === tenNhaThau.toLowerCase())
+                                );
+
+                                if (!foundNt && tenNhaThau) {
+                                    const newNtId = window.generateUUID();
+                                    foundNt = {
+                                        id: newNtId,
+                                        rootId: newNtId,
+                                        phienBan: '00',
+                                        isLatest: 1,
+                                        maNhaThau: maNhaThau || 'NT-' + window.generateUUID().toString().substr(8),
+                                        tenNhaThau: tenNhaThau,
+                                        loaiNhaThau: loaiNt,
+                                        maSoThue: maNhaThau || '',
+                                        nguoiDaiDien: '',
+                                        danhXung: 'Ông',
+                                        soDienThoai: '',
+                                        email: '',
+                                        diaChi: '',
+                                        soTaiKhoan: '',
+                                        noiMoTaiKhoan: '',
+                                        maNganHang: '',
+                                        thanhVienLienDanh: loaiNt === 'Liên danh' ? tvLd.map(m => ({
+                                            tenNhaThau: m.tenNhaThau,
+                                            maSoThue: m.maSoThue,
+                                            vaiTro: "Thành viên liên danh"
+                                        })) : []
+                                    };
+                                    this.model.state.nhathau.push(foundNt);
+                                    this.model.persistData('nhathau');
+                                }
+
+                                const nhaThauId = foundNt ? foundNt.id : bidId;
+
                                 // Reconstruct full JV list including the lead member
                                 const fullJvList = [];
                                 if (loaiNt === 'Liên danh') {
@@ -3049,7 +3101,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 bid = {
                                     id: bidId,
                                     goiThauId: gt.id,
-                                    nhaThauId: bidId,
+                                    nhaThauId: nhaThauId,
                                     maNhaThau: maNhaThau,
                                     tenNhaThau: tenNhaThau,
                                     loaiNhaThau: loaiNt,
@@ -3094,7 +3146,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     }
                                 });
                                 if (lotWinnerTr) {
-                                    const wId = lotWinnerTr.getAttribute('data-nt-id');
+                                    let wId = lotWinnerTr.getAttribute('data-nt-id');
+                                    if (isDirectOrSpecial) {
+                                        const wMa = lotWinnerTr.querySelector('.row-ma-nha-thau')?.value.trim() || '';
+                                        const wTen = lotWinnerTr.querySelector('.row-ten-nha-thau')?.value.trim() || '';
+                                        const foundWinnerNt = this.model.state.nhathau.find(n =>
+                                            (n.maNhaThau && wMa && n.maNhaThau.toLowerCase() === wMa.toLowerCase()) ||
+                                            (n.tenNhaThau && wTen && n.tenNhaThau.toLowerCase() === wTen.toLowerCase())
+                                        );
+                                        wId = foundWinnerNt ? foundWinnerNt.id : lotWinnerTr.getAttribute('data-approve-bid-id');
+                                    }
                                     pl.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
                                     pl.giaTrungThau = this.model.parseVND(lotWinnerTr.querySelector('.row-gia-trung')?.value || '0');
                                     pl.thoiGianGoiThau = lotWinnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
@@ -3110,7 +3171,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                             const firstWinner = winnerRows[0];
                             if (firstWinner) {
-                                const wId = firstWinner.getAttribute('data-nt-id');
+                                let wId = firstWinner.getAttribute('data-nt-id');
+                                if (isDirectOrSpecial) {
+                                    const wMa = firstWinner.querySelector('.row-ma-nha-thau')?.value.trim() || '';
+                                    const wTen = firstWinner.querySelector('.row-ten-nha-thau')?.value.trim() || '';
+                                    const foundWinnerNt = this.model.state.nhathau.find(n =>
+                                        (n.maNhaThau && wMa && n.maNhaThau.toLowerCase() === wMa.toLowerCase()) ||
+                                        (n.tenNhaThau && wTen && n.tenNhaThau.toLowerCase() === wTen.toLowerCase())
+                                    );
+                                    wId = foundWinnerNt ? foundWinnerNt.id : firstWinner.getAttribute('data-approve-bid-id');
+                                }
                                 gt.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
                                 gt.giaTrungThau = winnerRows.reduce((sum, tr) => sum + this.model.parseVND(tr.querySelector('.row-gia-trung')?.value || '0'), 0);
                                 winnerIdStr = wId || 'none';
@@ -3126,7 +3196,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             let durPkg = '';
                             let durCtr = '';
                             if (winnerTr) {
-                                winnerIdStr = winnerTr.getAttribute('data-nt-id');
+                                if (isDirectOrSpecial) {
+                                    const wMa = winnerTr.querySelector('.row-ma-nha-thau')?.value.trim() || '';
+                                    const wTen = winnerTr.querySelector('.row-ten-nha-thau')?.value.trim() || '';
+                                    const foundWinnerNt = this.model.state.nhathau.find(n =>
+                                        (n.maNhaThau && wMa && n.maNhaThau.toLowerCase() === wMa.toLowerCase()) ||
+                                        (n.tenNhaThau && wTen && n.tenNhaThau.toLowerCase() === wTen.toLowerCase())
+                                    );
+                                    winnerIdStr = foundWinnerNt ? foundWinnerNt.id : winnerTr.getAttribute('data-approve-bid-id');
+                                } else {
+                                    winnerIdStr = winnerTr.getAttribute('data-nt-id');
+                                }
                                 finalPrice = this.model.parseVND(winnerTr.querySelector('.row-gia-trung')?.value || '0');
                                 durPkg = winnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
                                 durCtr = winnerTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
