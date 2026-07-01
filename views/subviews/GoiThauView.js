@@ -695,7 +695,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${tenCdtStr}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
-                                        <span style="color: var(--text-muted); font-weight: 600;">Kế hoạch liên kết</span>
+                                        <span style="color: var(--text-muted); font-weight: 600;">Kế hoạch LCNT</span>
                                         <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${tenKhStr}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
@@ -765,9 +765,13 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian thực hiện</span>
                                         <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianThucHien || '--'}</span>
                                     </div>
-                                    <div style="display: flex; justify-content: space-between; border-bottom: ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? 'none' : '1px solid rgba(226, 232, 240, 0.5)'}; padding-bottom: 8px; font-size: 0.83rem;">
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Bắt đầu tổ chức</span>
                                         <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianBatDauToChuc || '--'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; border-bottom: ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? 'none' : '1px solid rgba(226, 232, 240, 0.5)'}; padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">${khObj && khObj.pheDuyet === 'Kế hoạch' ? 'Phê duyệt kế hoạch' : 'Phê duyệt dự toán và kế hoạch'}</span>
+                                        <span style="color: var(--text-main); font-weight: 700;">${khObj && khObj.ngayPheDuyet ? this.model.formatDate(khObj.ngayPheDuyet) : '--'}</span>
                                     </div>
                                     ${(gt.hinhThucLuaChon !== 'Chỉ định thầu rút gọn' && gt.hinhThucLuaChon !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
@@ -1150,12 +1154,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
+                const tenKhStr = khObj ? khObj.tenKeHoach : 'Không rõ';
 
                 contentWrapper.innerHTML = `
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 20px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdtStr}</span></div>
+                            <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}${gt.linhVuc === 'Hàng hóa' ? (gt.isThuoc === 1 || gt.isThuoc === '1' ? ' (Thuốc)' : ' (Không phải thuốc)') : ''}</div>
                             <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1187,12 +1193,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
+                const tenKhStr = khObj ? khObj.tenKeHoach : 'Không rõ';
 
                 contentWrapper.innerHTML = `
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 20px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdtStr}</span></div>
+                            <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}${gt.linhVuc === 'Hàng hóa' ? (gt.isThuoc === 1 || gt.isThuoc === '1' ? ' (Thuốc)' : ' (Không phải thuốc)') : ''}</div>
                             <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1426,7 +1434,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </label>
                         <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main); margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--border-color);">
                             <input type="checkbox" id="eval-co-uu-dai" style="accent-color: var(--primary); cursor: pointer;">
-                            Có nhà thầu/E-HSDT được hưởng ưu đãi
+                            Có nhà thầu được hưởng ưu đãi
                         </label>
                         <span id="quytrinh2-warning-msg" style="color: #ef4444; font-size: 0.8rem; font-weight: 600; display: none;"></span>
                     </div>
@@ -1520,6 +1528,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdt = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
+                const tenKhStr = khObj ? khObj.tenKeHoach : 'Không rõ';
                 const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
 
                 let metadata = { is1G2T: true, technical: { saved: false }, financial: { saved: false } };
@@ -1560,6 +1569,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1806,6 +1816,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${(() => { const khO = this.model.getLatestPlan(gt.keHoachId); const cdO = khO ? this.model.state.chudautu.find(c => c.id === khO.chuDauTuId) : null; return cdO ? cdO.tenChuDauTu : 'Không rõ'; })()}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${(() => { const khO = this.model.getLatestPlan(gt.keHoachId); return khO ? khO.tenKeHoach : 'Không rõ'; })()}</span></div>
                             <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1821,9 +1832,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div style="display: flex; align-items: center; gap: 8px; grid-column: span 2; white-space: nowrap;">
                                 <span>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong></span>
                                 ${isReadOnly
-                        ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
-                        : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">`
-                    }
+                            ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
+                            : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">`
+                        }
                             </div>
                             ` : ''}
                         </div>
@@ -1858,13 +1869,13 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                                 ${qualifiedBidsForOpening.map(b => {
 
-                        const valGiaDuThau = this.model.formatVND(b.giaDuThau) || '';
-                        const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
-                        const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
-                        const valHieuLucHsdt = b.hieuLucHsdt || b.hieuLucHsdxt || '';
+                            const valGiaDuThau = this.model.formatVND(b.giaDuThau) || '';
+                            const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
+                            const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
+                            const valHieuLucHsdt = b.hieuLucHsdt || b.hieuLucHsdxt || '';
 
-                        if (isReadOnly) {
-                            return `
+                            if (isReadOnly) {
+                                return `
                                             <tr>
                                                 ${gt.phanLo === 'Có' ? `
                                                     <td>${b.maPhanLo || '--'}</td>
@@ -1879,8 +1890,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                                 ${gt.linhVuc === 'Tư vấn' ? `<td>${valHieuLucHsdt ? valHieuLucHsdt + (String(valHieuLucHsdt).includes('ngày') ? '' : ' ngày') : '--'}</td>` : ''}
                                             </tr>
                                         `;
-                        } else {
-                            return `
+                            } else {
+                                return `
                                             <tr data-opening-bid-id="${b.id}">
                                                 ${gt.phanLo === 'Có' ? `
                                                     <td>${b.maPhanLo || '--'}</td>
@@ -1895,8 +1906,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                                 ${gt.linhVuc === 'Tư vấn' ? `<td><input type="text" class="form-control op-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + (String(valHieuLucHsdt).includes('ngày') ? '' : ' ngày') : ''}" placeholder="Ví dụ: 90 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>` : ''}
                                             </tr>
                                         `;
-                        }
-                    }).join('')}
+                            }
+                        }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -1945,7 +1956,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     const importBtn = document.getElementById('btn-opening-fin-import-excel');
                     if (importBtn) {
                         importBtn.onclick = () => {
-                            window.appController.openExcelImportModal('opening_fin');
+                            window.appController.triggerExcelImport('opening_fin');
                         };
                     }
 
@@ -2034,8 +2045,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     gt.nhaThauTrungThauId = allBidsForResult[0].nhaThauId || allBidsForResult[0].id;
                 }
                 const winnerBid = allBidsForResult.find(b => String(b.nhaThauId) === String(gt.nhaThauTrungThauId)) || allBidsForResult[0];
-                const savings = gt.giaGoiThau - (gt.giaTrungThau || 0);
-                const savingsPct = gt.giaGoiThau > 0 ? ((savings / gt.giaGoiThau) * 100).toFixed(2) : '0,00';
 
                 let winnerDisplayHtml = '';
                 let hasMultipleWinners = false;
@@ -2300,8 +2309,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <p class="text-muted" style="margin:0; font-size:0.8rem;">Đã phê duyệt kết quả lựa chọn nhà thầu chính thức.</p>                                </div>
                             </div>
                             <div style="display:flex; gap:8px;">
-                                <button class="btn-excel-action btn-download-excel-template-direct" data-type="ketquaqd" id="btn-result-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
-                                <button class="btn-excel-action btn-import-excel-direct" data-type="ketquaqd" id="btn-result-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
                                 <button class="btn btn-primary" id="btn-export-docx-report" style="font-weight:700;"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
                             </div>
                         </div>
@@ -2319,18 +2326,18 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Thời gian thực hiện</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.thoiGianGoiThau || '--'}</h5>
                             </div>
-                            <div>
-                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Hiệu quả tiết kiệm</span>
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--success);">${this.model.formatCurrency(savings)} (${savingsPct}%)</h5>
-                            </div>
+                            ${soBctdResult ? `
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Số BCTĐ kết quả</span>
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${soBctdResult || '--'}</h5>
+                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${soBctdResult}</h5>
                             </div>
+                            ` : ''}
+                            ${ngayBctdResult ? `
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày BCTĐ kết quả</span>
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${ngayBctdResult ? this.model.formatDate(ngayBctdResult) : '--'}</h5>
+                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${this.model.formatDate(ngayBctdResult)}</h5>
                             </div>
+                            ` : ''}
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Số QĐ phê duyệt Kết quả</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.soQuyetDinhKetQua || '--'}</h5>
@@ -2437,6 +2444,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const kh = this.model.getLatestPlan(gt.keHoachId);
                 const cdt = kh ? this.model.state.chudautu.find(c => c.id === kh.chuDauTuId) : null;
                 const tenCdt = cdt ? cdt.tenChuDauTu : 'Không rõ';
+                const tenKhStr = kh ? kh.tenKeHoach : 'Không rõ';
                 const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
                 // Sort by maPhanLo A-Z
                 allBids.sort((x, y) => {
@@ -2580,6 +2588,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -2605,14 +2614,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <p class="text-muted" style="font-size:0.82rem; margin: 4px 0 0 0;">
                                 Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.
                             </p>
-                        </div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <button class="btn-excel-action" id="btn-result-export-excel-template">
-                                <i data-lucide="download"></i> Tải Excel Mẫu
-                            </button>
-                            <button class="btn-excel-action" id="btn-result-import-excel">
-                                <i data-lucide="upload"></i> Nhập từ Excel
-                            </button>
                         </div>
                     </div>
 
@@ -2648,11 +2649,26 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <h5 style="font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px; margin: 0;">
                             <i data-lucide="list"></i> ${isDirectOrSpecial ? 'Danh sách nhà thầu trúng thầu' : 'Danh sách nhà thầu tham dự & Kết quả LCNT'}
                         </h5>
-                        ${isDirectOrSpecial ? `
-                            <button class="btn btn-outline btn-sm" id="btn-result-add-bidder" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu tham dự
-                            </button>
-                        ` : ''}
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            ${isDirectOrSpecial ? `
+                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="download"></i> Tải Excel Mẫu
+                                </button>
+                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="upload"></i> Nhập từ Excel
+                                </button>
+                                <button class="btn btn-outline btn-sm" id="btn-result-add-bidder" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu tham dự
+                                </button>
+                            ` : `
+                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="download"></i> Tải Excel Mẫu
+                                </button>
+                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="upload"></i> Nhập từ Excel
+                                </button>
+                            `}
+                        </div>
                     </div>
                     <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
                         <table class="data-table" style="min-width: 100%;">
@@ -3101,7 +3117,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             if (resultImportBtn) {
                 resultImportBtn.onclick = () => {
                     window.appController._currentResultPackageId = gt.id;
-                    window.appController.openExcelImportModal('ketquaqd');
+                    window.appController.triggerExcelImport('ketquaqd');
                 };
             }
 
@@ -3325,7 +3341,7 @@ export function renderExcelPreview(rows, importType) {
         // goithau
         maGoiThau: 'Mã gói thầu',
         tenGoiThau: 'Tên gói thầu',
-        keHoachId: 'Mã Kế hoạch liên kết',
+        keHoachId: 'Mã Kế hoạch LCNT',
         giaGoiThau: 'Giá gói thầu',
         hinhThucLuaChon: 'Hình thức LCNT',
         phuongThucLuaChon: 'Phương thức LCNT',

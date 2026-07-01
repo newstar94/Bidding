@@ -46,6 +46,8 @@
     --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+
+
 /* DARK THEME VARIABLES */
 body.dark-mode {
     --bg-app: #0b0f19;

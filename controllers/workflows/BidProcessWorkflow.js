@@ -349,6 +349,7 @@ export function renderMoThauPanel() {
         const kh = this.model.getLatestPlan(gt.keHoachId);
         const cdt = kh ? this.model.state.chudautu.find(c => c.id === kh.chuDauTuId) : null;
         const tenCdt = cdt ? cdt.tenChuDauTu : 'Không rõ';
+        const tenKhStr = kh ? kh.tenKeHoach : 'Không rõ';
 
         const isTuVan = gt.linhVuc === 'Tư vấn';
         const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
@@ -385,6 +386,7 @@ export function renderMoThauPanel() {
             <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem; margin-bottom: 12px;">
                 <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
+                <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                 <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                 <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                 <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>

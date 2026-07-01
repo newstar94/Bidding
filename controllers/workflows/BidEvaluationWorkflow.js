@@ -69,6 +69,7 @@ export function renderDanhGiaHsdtPanel() {
         const kh = this.model.getLatestPlan(gt.keHoachId);
         const cdt = kh ? this.model.state.chudautu.find(c => c.id === kh.chuDauTuId) : null;
         const tenCdt = cdt ? cdt.tenChuDauTu : 'Không rõ';
+        const tenKhStr = kh ? kh.tenKeHoach : 'Không rõ';
 
         const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
 
@@ -110,6 +111,7 @@ export function renderDanhGiaHsdtPanel() {
             <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem; margin-bottom: 12px;">
                 <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
+                <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                 <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                 <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                 <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -141,8 +143,6 @@ export function renderDanhGiaHsdtPanel() {
         if (quyTrinhContainer) {
             if (showQuyTrinh) {
                 quyTrinhContainer.style.display = 'flex';
-                // Load existing value
-                // Load existing value
                 const currentQuyTrinh = gt.quyTrinhDanhGia || 'quytrinh1';
                 const radio1 = quyTrinhContainer.querySelector('input[value="quytrinh1"]');
                 const radio2 = quyTrinhContainer.querySelector('input[value="quytrinh2"]');
@@ -153,6 +153,61 @@ export function renderDanhGiaHsdtPanel() {
                 try {
                     meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
                 } catch (e) {}
+
+                const updateQuyTrinh2Eligibility = () => {
+                    if (!radio1 || !radio2) return;
+                    let currentMeta = {};
+                    try {
+                        currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
+                    } catch (e) {}
+
+                    const bids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                    let eligible = true;
+                    let reasons = [];
+
+                    if (gt.phuongPhapDanhGia !== 'Giá thấp nhất') {
+                        eligible = false;
+                        reasons.push('PP đánh giá không phải "Giá thấp nhất"');
+                    }
+
+                    if (currentMeta.coUuDai) {
+                        eligible = false;
+                        reasons.push('Có nhà thầu được hưởng ưu đãi');
+                    }
+
+                    const prices = bids.map(b => b.giaSauGiamGia || b.giaDuThau || 0).filter(p => p > 0);
+                    if (prices.length >= 2) {
+                        const minPrice = Math.min(...prices);
+                        const countMin = prices.filter(p => p === minPrice).length;
+                        if (countMin >= 2) {
+                            eligible = false;
+                            reasons.push('Có từ 02 nhà thầu cùng xếp thứ nhất về giá');
+                        }
+                    }
+
+                    if (!eligible) {
+                        radio2.disabled = true;
+                        if (radio2.checked) {
+                            radio1.checked = true;
+                            gt.quyTrinhDanhGia = 'quytrinh1';
+                            currentMeta.quyTrinhDanhGia = 'quytrinh1';
+                            gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
+                            this.model.persistData('goithau');
+                            setTimeout(() => handlePackageSelection(), 100);
+                        }
+                        if (warningMsg) {
+                            warningMsg.textContent = `(Bắt buộc dùng Quy trình 1 do: ${reasons.join(', ')})`;
+                            warningMsg.style.display = 'inline';
+                        }
+                    } else {
+                        if (!isReadOnly) {
+                            radio2.removeAttribute('disabled');
+                        }
+                        if (warningMsg) {
+                            warningMsg.style.display = 'none';
+                        }
+                    }
+                };
 
                 if (checkboxUuDai) {
                     checkboxUuDai.checked = !!meta.coUuDai;
@@ -207,60 +262,6 @@ export function renderDanhGiaHsdtPanel() {
                         gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
                         this.model.persistData('goithau');
                         handlePackageSelection();
-                    };
-
-                    const updateQuyTrinh2Eligibility = () => {
-                        let currentMeta = {};
-                        try {
-                            currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-                        } catch (e) {}
-
-                        const bids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
-                        let eligible = true;
-                        let reasons = [];
-
-                        if (gt.phuongPhapDanhGia !== 'Giá thấp nhất') {
-                            eligible = false;
-                            reasons.push('PP đánh giá không phải "Giá thấp nhất"');
-                        }
-
-                        if (currentMeta.coUuDai) {
-                            eligible = false;
-                            reasons.push('Có nhà thầu được hưởng ưu đãi');
-                        }
-
-                        const prices = bids.map(b => b.giaSauGiamGia || b.giaDuThau || 0).filter(p => p > 0);
-                        if (prices.length >= 2) {
-                            const minPrice = Math.min(...prices);
-                            const countMin = prices.filter(p => p === minPrice).length;
-                            if (countMin >= 2) {
-                                eligible = false;
-                                reasons.push('Có từ 02 nhà thầu cùng xếp thứ nhất về giá');
-                            }
-                        }
-
-                        if (!eligible) {
-                            radio2.disabled = true;
-                            if (radio2.checked) {
-                                radio1.checked = true;
-                                gt.quyTrinhDanhGia = 'quytrinh1';
-                                currentMeta.quyTrinhDanhGia = 'quytrinh1';
-                                gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
-                                this.model.persistData('goithau');
-                                setTimeout(() => handlePackageSelection(), 100);
-                            }
-                            if (warningMsg) {
-                                warningMsg.textContent = `(Bắt buộc dùng Quy trình 1 do: ${reasons.join(', ')})`;
-                                warningMsg.style.display = 'inline';
-                            }
-                        } else {
-                            if (!isReadOnly) {
-                                radio2.removeAttribute('disabled');
-                            }
-                            if (warningMsg) {
-                                warningMsg.style.display = 'none';
-                            }
-                        }
                     };
 
                     updateQuyTrinh2Eligibility();
