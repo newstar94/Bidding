@@ -25,16 +25,18 @@ export function checkInactivity() {
 
     const lastActivity = localStorage.getItem('bf_last_activity');
     if (lastActivity) {
-        const idleTime = Date.now() - parseInt(lastActivity, 10);
-        const tenHours = 10 * 60 * 60 * 1000; // 10 hours in milliseconds
-        if (idleTime > tenHours) {
+        const storedTimeout = localStorage.getItem('bf_inactivity_timeout');
+        const timeoutHours = storedTimeout ? parseInt(storedTimeout, 10) : 10;
+        const inactivityLimit = timeoutHours * 60 * 60 * 1000;
+        
+        if (idleTime > inactivityLimit) {
             if (this._sessionInterval) clearInterval(this._sessionInterval);
             this.model.clearSessionData();
             
             // Show session expired notification using custom popup if available, else fallback to styled banner
             const showSessionExpired = async () => {
                 if (this.view && typeof this.view.customAlert === 'function') {
-                    await this.view.customAlert('Phiên làm việc hết hạn', 'Bạn đã không hoạt động trong ứng dụng hơn 10 giờ. Vui lòng đăng nhập lại để đảm bảo bảo mật thông tin.', 'clock');
+                    await this.view.customAlert('Phiên làm việc hết hạn', 'Bạn đã không hoạt động trong ứng dụng hơn ' + timeoutHours + ' giờ. Vui lòng đăng nhập lại để đảm bảo bảo mật thông tin.', 'clock');
                 } else {
                     const banner = document.createElement('div');
                     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-weight:700;font-size:0.9rem;text-align:center;';
@@ -85,7 +87,7 @@ export function startBackgroundSessionChecker() {
         fetch('/api/auth/check-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, session_token: token })
+            body: JSON.stringify({ username, session_token: token, remember: localStorage.getItem('bf_remember_me') === 'true' })
         }).then(res => {
             if (res.ok) return res.json();
             throw new Error("Invalid session");
@@ -169,8 +171,19 @@ export function setupAuth() {
     const formForgot = document.getElementById('form-auth-forgot');
     const formVerify = document.getElementById('form-auth-verify');
 
-    const token = sessionStorage.getItem('bf_session_token');
-    const username = sessionStorage.getItem('bf_username');
+    let token = sessionStorage.getItem('bf_session_token');
+    let username = sessionStorage.getItem('bf_username');
+
+    if (!token && localStorage.getItem('bf_remember_me') === 'true') {
+        token = localStorage.getItem('bf_session_token');
+        username = localStorage.getItem('bf_username');
+        const userId = localStorage.getItem('bf_user_id');
+        if (token && username) {
+            sessionStorage.setItem('bf_session_token', token);
+            sessionStorage.setItem('bf_username', username);
+            if (userId) sessionStorage.setItem('bf_user_id', userId);
+        }
+    }
 
     if (!token || !username) {
         overlay.style.display = 'flex';
@@ -182,7 +195,7 @@ export function setupAuth() {
         fetch('/api/auth/check-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, session_token: token })
+            body: JSON.stringify({ username, session_token: token, remember: localStorage.getItem('bf_remember_me') === 'true' })
         }).then(res => {
             if (res.ok) {
                 return res.json();
@@ -201,6 +214,12 @@ export function setupAuth() {
             } else {
                 // Update active user details dynamically to prevent cache issues
                 if (data.user) {
+                    if (!this.model.state.activeuser) {
+                        this.model.state.activeuser = {};
+                    }
+                    if (!this.model.state.activerole) {
+                        this.model.state.activerole = data.user.role || 'employee';
+                    }
                     this.model.state.activeuser.name = data.user.name;
                     this.model.state.activeuser.avatar = data.user.avatar || '';
                     this.model.state.activeuser.email = data.user.email || '';
@@ -208,6 +227,10 @@ export function setupAuth() {
                     this.model.state.activeuser.dbRoles = data.user.effective_roles || [];
                     this.model.state.activeuser.package_id = data.user.package_id || 'none';
                     this.model.state.activeuser.organization_name = data.user.organization_name || '';
+                    
+                    if (data.user.inactivity_timeout_hours) {
+                        localStorage.setItem('bf_inactivity_timeout', data.user.inactivity_timeout_hours);
+                    }
                     
                     let title = 'Chuyên viên';
                     if (this.model.state.activerole === 'super_admin') title = 'Super Admin';
@@ -337,11 +360,13 @@ export function setupAuth() {
         const errorDiv = document.getElementById('login-error');
         errorDiv.style.display = 'none';
 
+        const remember = document.getElementById('login-remember')?.checked || false;
+
         try {
             const res = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({ username, password, remember })
             });
             const data = await res.json();
             if (!res.ok) {
@@ -358,10 +383,22 @@ export function setupAuth() {
                 return;
             }
 
-            // Save to localStorage
+            // Save to localStorage/sessionStorage
             sessionStorage.setItem('bf_session_token', data.session_token);
             sessionStorage.setItem('bf_username', data.username);
             sessionStorage.setItem('bf_user_id', data.id);
+
+            if (remember) {
+                localStorage.setItem('bf_remember_me', 'true');
+                localStorage.setItem('bf_session_token', data.session_token);
+                localStorage.setItem('bf_username', data.username);
+                localStorage.setItem('bf_user_id', data.id);
+            } else {
+                localStorage.removeItem('bf_remember_me');
+                localStorage.removeItem('bf_session_token');
+                localStorage.removeItem('bf_username');
+                localStorage.removeItem('bf_user_id');
+            }
 
             // Re-initialize database connection name and data keys for this specific user
             await this.model.init();
@@ -385,6 +422,10 @@ export function setupAuth() {
             this.model.state.activeuser.package_id = data.package_id || 'none';
             this.model.state.activeuser.organization_name = data.organization_name || '';
             localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
+
+            if (data.inactivity_timeout_hours) {
+                localStorage.setItem('bf_inactivity_timeout', data.inactivity_timeout_hours);
+            }
 
             // Hide Auth overlay
             overlay.style.display = 'none';

@@ -32,7 +32,9 @@ from .sync_routes import disconnect_user_websockets
 _SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
 
 # Thời gian hiệu lực phiên đăng nhập (giờ)
-SESSION_EXPIRY_HOURS = 12
+SESSION_EXPIRY_HOURS = int(os.environ.get("SESSION_EXPIRY_HOURS", "12"))
+SESSION_REMEMBER_EXPIRY_HOURS = int(os.environ.get("SESSION_REMEMBER_EXPIRY_HOURS", "720"))
+SESSION_INACTIVITY_TIMEOUT_HOURS = int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10"))
 
 # ==========================================
 # RATE LIMITER (In-memory, per IP)
@@ -373,6 +375,7 @@ async def login_api(request):
         data = await request.json()
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
+        remember = data.get('remember', False)
         
         if not username or not password:
             return JSONResponse({"error": "Vui lòng nhập tài khoản và mật khẩu!"}, status_code=400)
@@ -401,7 +404,9 @@ async def login_api(request):
             
         # Generate new active session token (uuid) to log out other devices
         session_token = str(uuid.uuid4())
-        token_expiry = int((datetime.utcnow() + timedelta(hours=SESSION_EXPIRY_HOURS)).timestamp())
+        expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
+        import time as _time
+        token_expiry = int(_time.time() + expiry_hours * 3600)
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
             "ip": request.client.host,
@@ -426,10 +431,12 @@ async def login_api(request):
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "package_id": user.get('goi_dich_vu_id'),
-            "organization_name": org_names
+            "organization_name": org_names,
+            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
         })
-        response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
-        response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
+        cookie_max_age = SESSION_REMEMBER_EXPIRY_HOURS * 3600 if remember else None
+        response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
+        response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
         return response
     except Exception as e:
         log_error(e, "login_api")
@@ -444,72 +451,70 @@ async def check_session_api(request):
         data = await request.json()
         username = data.get('username', '').strip()
         session_token = data.get('session_token', '').strip()
+        remember = data.get('remember', False)
         
         if not username or not session_token:
-            return JSONResponse({"valid": False, "error": "Thi\u1ebfu th\u00f4ng tin x\u00e1c th\u1ef1c"}, status_code=400)
-        
-        # BE-4: Th\u1eed l\u1ea5y t\u1eeb session cache tr\u01b0\u1edbc \u0111\u1ec3 tr\u00e1nh query DB kh\u00f4ng c\u1ea7n thi\u1ebft
+            return JSONResponse({"valid": False, "error": "Thiếu thông tin xác thực"}, status_code=400)
+            
+        # Lấy thông tin user (từ cache hoặc DB)
+        user = None
         cached = _session_cache_get(session_token)
         if cached and cached.get('token_phien') == session_token and 'ten_dang_nhap' in cached:
-            # Kiểm tra token expiry trong cache
-            if cached.get('han_su_dung_token'):
-                try:
-                    if time.time() > float(cached['han_su_dung_token']):
-                        _session_cache_invalidate(session_token)
-                        return JSONResponse({"valid": False, "reason": "token_expired"})
-                except Exception:
-                    pass
-            effective_roles = list(get_effective_roles(cached['vai_tro']))
-            # Lấy org_names từ DB khi cần (không có trong cache những thông tin đó)
+            user = cached
+        else:
             conn = database.get_connection()
             cursor = conn.cursor()
-            org_names = get_user_org_names(cursor, cached['id'])
-            conn.close()
-            return JSONResponse({
-                "valid": True,
-                "device_info": cached.get('thong_tin_thiet_bi_cuoi'),
-                "user": {
-                    "id": cached['id'],
-                    "username": cached['ten_dang_nhap'],
-                    "name": cached['ho_ten'],
-                    "role": cached['vai_tro'],
-                    "effective_roles": effective_roles,
-                    "email": cached['email'],
-                    "avatar": cached.get('anh_dai_dien'),
-                    "package_id": cached.get('goi_dich_vu_id'),
-                    "organization_name": org_names
-                }
-            })
-            
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien, goi_dich_vu_id, token_phien, han_su_dung_token, thong_tin_thiet_bi_cuoi FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
+            cursor.execute("SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien, goi_dich_vu_id, token_phien, han_su_dung_token, thong_tin_thiet_bi_cuoi FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
+            row = cursor.fetchone()
+            if row:
+                user = dict(row)
+            if conn:
+                conn.close()
+
+        if not user:
             return JSONResponse({"valid": False, "reason": "user_not_found"})
-            
-        user = dict(row)
-        org_names = get_user_org_names(cursor, user['id'])
-        conn.close()
-        
-        active_token = user.get('token_phien')
-        if active_token != session_token:
+
+        if user.get('token_phien') != session_token:
             return JSONResponse({"valid": False, "reason": "logged_in_elsewhere"})
             
+        now = time.time()
+        # Xác minh hạn dùng của token
         if user.get('han_su_dung_token'):
             try:
-                # So s\u00e1nh Unix timestamp (s\u1ed1 nguy\u00ean) thay v\u00ec ISO string
-                if time.time() > float(user['han_su_dung_token']):
+                if now > float(user['han_su_dung_token']):
+                    _session_cache_invalidate(session_token)
                     return JSONResponse({"valid": False, "reason": "token_expired"})
             except Exception:
                 pass
+
+        # Cơ chế Sliding Expiration: Tự động kéo dài thời hạn nếu thời gian còn lại ít hơn một nửa chu kỳ
+        expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
+        current_expiry = float(user.get('han_su_dung_token') or 0)
         
-        # L\u01b0u v\u00e0o session cache sau khi verify th\u00e0nh c\u00f4ng
+        new_expiry_set = False
+        if current_expiry - now < (expiry_hours * 3600) / 2:
+            new_expiry = int(now + expiry_hours * 3600)
+            user['han_su_dung_token'] = new_expiry
+            
+            # Cập nhật vào DB
+            conn = database.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE tai_khoan SET han_su_dung_token = ? WHERE id = ?", (new_expiry, user['id']))
+            conn.commit()
+            conn.close()
+            new_expiry_set = True
+
+        # Lưu lại/cập nhật cache
         _session_cache_set(session_token, user)
                 
+        # Lấy danh sách org
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        org_names = get_user_org_names(cursor, user['id'])
+        conn.close()
+
         effective_roles = list(get_effective_roles(user['vai_tro']))
-        return JSONResponse({
+        response = JSONResponse({
             "valid": True,
             "device_info": user.get('thong_tin_thiet_bi_cuoi'),
             "user": {
@@ -521,12 +526,21 @@ async def check_session_api(request):
                 "email": user['email'],
                 "avatar": user.get('anh_dai_dien'),
                 "package_id": user.get('goi_dich_vu_id'),
-                "organization_name": org_names
+                "organization_name": org_names,
+                "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
             }
         })
+        
+        # Nếu gia hạn token, gia hạn luôn cả cookie
+        if new_expiry_set:
+            cookie_max_age = expiry_hours * 3600 if remember else None
+            response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
+            response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
+            
+        return response
     except Exception as e:
         log_error(e, "check_session_api")
-        return JSONResponse({"valid": False, "error": "L\u1ed7i ki\u1ec3m tra phi\u00ean l\u00e0m vi\u1ec7c."}, status_code=500)
+        return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
 
 async def forgot_password_api(request):
     conn = None  # [CQ-2] Khởi tạo trước try để finally luôn đóng conn

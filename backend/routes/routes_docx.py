@@ -177,6 +177,25 @@ async def export_report_api(request):
             conn.close()
             return JSONResponse({"error": f"Package with id {package_id} not found"}, status_code=404)
         pkg = dict(row)
+
+        metadata_str = pkg.get('danh_gia_hsdt_metadata')
+        if metadata_str:
+            try:
+                metadata_val = json.loads(metadata_str)
+                result_data = metadata_val.get('result', {})
+                if isinstance(result_data, dict):
+                    for k, v in result_data.items():
+                        import re
+                        snake_key = re.sub(r'(?<!^)(?=[A-Z])', '_', k).lower()
+                        if isinstance(v, str) and re.match(r'^\d{4}-\d{2}-\d{2}$', v):
+                            try:
+                                dt = datetime.strptime(v, '%Y-%m-%d')
+                                v = dt.strftime('%d/%m/%Y')
+                            except:
+                                pass
+                        pkg[snake_key] = v
+            except Exception:
+                pass
         
         cursor.execute("SELECT * FROM ke_hoach_lcnt WHERE id = ? AND owner_id = ?", (pkg['ke_hoach_id'], org_name))
         row_plan = cursor.fetchone()

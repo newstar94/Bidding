@@ -78,8 +78,20 @@ export class BiddingController {
         // Intercept native fetch to automatically append security headers & handle auth errors globally
         const originalFetch = window.fetch;
         window.fetch = async (url, options = {}) => {
-            const token = sessionStorage.getItem('bf_session_token');
-            const username = sessionStorage.getItem('bf_username');
+            let token = sessionStorage.getItem('bf_session_token');
+            let username = sessionStorage.getItem('bf_username');
+            
+            if (!token && localStorage.getItem('bf_remember_me') === 'true') {
+                token = localStorage.getItem('bf_session_token');
+                username = localStorage.getItem('bf_username');
+                const userId = localStorage.getItem('bf_user_id');
+                if (token && username) {
+                    sessionStorage.setItem('bf_session_token', token);
+                    sessionStorage.setItem('bf_username', username);
+                    if (userId) sessionStorage.setItem('bf_user_id', userId);
+                }
+            }
+
             const activeOrg = localStorage.getItem('bf_active_org');
 
             if (typeof url === 'string' && url.startsWith('/api/') && token && username) {

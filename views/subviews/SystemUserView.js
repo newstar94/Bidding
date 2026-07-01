@@ -8,7 +8,7 @@ export function updateActiveUserProfileDisplay() {
     const p = document.getElementById('header-profile-role');
     
     if (avatar && h4 && p) {
-        const user = this.model.state.activeuser;
+        const user = this.model.state.activeuser || { name: 'Khách', title: 'Khách', id: '' };
         h4.textContent = user.name;
         const orgs = user.organization_name ? user.organization_name.split(',').map(o => o.trim()).filter(Boolean) : [];
         let activeOrg = localStorage.getItem('bf_active_org');

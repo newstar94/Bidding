@@ -92,7 +92,9 @@ def verify_session(request, required_role=None):
     token = request.cookies.get('session_token') or request.headers.get('X-Session-Token')
     username = request.cookies.get('username') or request.headers.get('X-Username')
     
+    print(f"DEBUG: verify_session called with token={token}, username={username}, required_role={required_role}")
     if not token or not username:
+        print("DEBUG: Missing token or username")
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
     if required_role == 'super_admin':
@@ -126,22 +128,27 @@ def verify_session(request, required_role=None):
     conn.close()
     
     if not row:
+        print("DEBUG: User not found in DB")
         return False, "Tài khoản không tồn tại!"
         
     user = dict(row)
     if user['token_phien'] != token:
+        print(f"DEBUG: Token mismatch! DB token={user['token_phien']}, Request token={token}")
         return False, "Phiên làm việc đã hết hạn hoặc không hợp lệ!"
 
     if user.get('han_su_dung_token'):
         try:
             import time as _time
             if _time.time() > float(user['han_su_dung_token']):
+                print(f"DEBUG: Token expired! Current={_time.time()}, Expiry={user['han_su_dung_token']}")
                 _session_cache_invalidate(token)
                 return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
-        except Exception:
+        except Exception as ex:
+            print(f"DEBUG: Exception checking expiry: {ex}")
             pass
         
     if required_role and required_role not in get_effective_roles(user['vai_tro']):
+        print(f"DEBUG: Role missing! User role={user['vai_tro']}, Required={required_role}")
         return False, "Bạn không có quyền thực hiện thao tác này!"
 
 

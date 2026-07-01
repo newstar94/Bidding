@@ -519,6 +519,11 @@ export class BiddingModel {
         });
         sessionStorage.removeItem('bf_session_token');
         sessionStorage.removeItem('bf_username');
+        sessionStorage.removeItem('bf_user_id');
+        localStorage.removeItem('bf_remember_me');
+        localStorage.removeItem('bf_session_token');
+        localStorage.removeItem('bf_username');
+        localStorage.removeItem('bf_user_id');
         // Reset model state
         Object.keys(this.state).forEach(key => {
             if (Array.isArray(this.state[key])) {

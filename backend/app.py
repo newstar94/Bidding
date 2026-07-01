@@ -203,6 +203,26 @@ from routes.address_routes import (
 )
 
 
+_holidays_cache = None
+
+async def list_holidays_api(request):
+    global _holidays_cache
+    if _holidays_cache is not None:
+        return JSONResponse(_holidays_cache)
+
+    import json
+    holidays_file = os.path.join(project_root, 'holidays.json')
+    try:
+        if os.path.exists(holidays_file):
+            with open(holidays_file, 'r', encoding='utf-8') as f:
+                _holidays_cache = json.load(f)
+        else:
+            _holidays_cache = {}
+        return JSONResponse(_holidays_cache)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 class SafeStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         # Chỉ cho phép các file tĩnh phục vụ Frontend (.js, .css), từ chối mã nguồn Python và file nhạy cảm
@@ -219,6 +239,7 @@ os.makedirs(os.path.join(project_root, 'templates', 'uploads'), exist_ok=True)
 
 routes = [
     Route("/", index, methods=["GET"]),
+    Route("/api/holidays", list_holidays_api, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),
     Route("/api/paginate", paginate_api, methods=["GET"]),
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),

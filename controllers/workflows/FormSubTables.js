@@ -14,8 +14,10 @@ export function addPhanLoRow(data = {}) {
 
     const isMoiThauOrLater = (document.getElementById('gt-trangthai')?.value !== 'Chuẩn bị');
     const linhVuc = document.getElementById('gt-linhvuc')?.value || '';
-    const isBaoDamRequired = isMoiThauOrLater && (linhVuc !== 'Tư vấn');
-    const displayStyle = (linhVuc !== 'Tư vấn') ? '' : 'display: none;';
+    const hinhThuc = document.getElementById('gt-hinhthucluachon')?.value || document.getElementById('gt-hinhthuc')?.value || '';
+    const isDirectOrSpecial = (hinhThuc === 'Chỉ định thầu rút gọn' || hinhThuc === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+    const isBaoDamRequired = isMoiThauOrLater && (linhVuc !== 'Tư vấn' && !isDirectOrSpecial);
+    const displayStyle = (linhVuc !== 'Tư vấn' && !isDirectOrSpecial) ? '' : 'display: none;';
     const requiredAttr = isBaoDamRequired ? 'required' : '';
 
     tr.innerHTML = `

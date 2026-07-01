@@ -381,6 +381,20 @@ export async function renderGoiThauTable() {
 
 
 export function showPackageDetails(id, isSwitchingVersion = false) {
+    if (!window._vietnameseHolidays) {
+        fetch('/api/holidays')
+            .then(r => r.json())
+            .then(data => {
+                window._vietnameseHolidays = data || {};
+                this.showPackageDetails(id, isSwitchingVersion);
+            })
+            .catch(e => {
+                console.error('Failed to load holidays:', e);
+                window._vietnameseHolidays = {};
+                this.showPackageDetails(id, isSwitchingVersion);
+            });
+        return;
+    }
     let targetId = id;
     if (!isSwitchingVersion) {
         const latestPkg = this.model.getLatestPackage(id);
@@ -441,7 +455,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
     let tabs = [{ id: 'preparation', label: 'Thông tin gói thầu' }];
     if (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
-        tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
+        tabs.push({ id: 'opening', label: 'Dữ liệu nhà thầu' });
+        const hasSavedBidders = this.model.state.thongtinmothau.some(b => String(b.goiThauId) === String(gt.id));
+        if (hasSavedBidders) {
+            tabs.push({ id: 'result', label: 'Kết quả lựa chọn nhà thầu' });
+        }
     } else {
         if (gt.trangThai === 'Chuẩn bị') {
             tabs.push({ id: 'preparation_action', label: 'Phát hành E-HSMT' });
@@ -1148,8 +1166,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             break;
 
         case 'opening':
-        case 'opening_tech':
-            if (gt.trangThai === 'Chuẩn bị') {
+        case 'opening_tech': {
+            const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+            if (gt.trangThai === 'Chuẩn bị' && !isDirectOrSpecial) {
                 // Keep fallback just in case
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
@@ -1189,7 +1208,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     </div>
                 `;
                 lucide.createIcons();
-            } else if (gt.trangThai === 'Đang mời thầu') {
+            } else if (gt.trangThai === 'Đang mời thầu' && !isDirectOrSpecial) {
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
@@ -1378,11 +1397,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     <div id="mothau-goithau-summary" style="display:none;"></div>
                     <div id="mothau-bid-container" style="display:none;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                            <h4 id="mothau-table-title" style="font-weight:700; font-size:0.95rem; color:var(--text-main);">Danh sách Nhà thầu tham dự & Nộp hồ sơ</h4>
+                            <h4 id="mothau-table-title" style="font-weight:700; font-size:0.95rem; color:var(--text-main);">${isDirectOrSpecial ? 'Danh sách Nhà thầu' : 'Danh sách Nhà thầu tham dự &amp; Nộp hồ sơ'}</h4>
                             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                 <button class="btn-excel-action btn-download-excel-template-direct" data-type="mothau" id="btn-mothau-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
                                 <button class="btn-excel-action btn-import-excel-direct" data-type="mothau" id="btn-mothau-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
-                                <button class="btn btn-outline btn-sm" id="btn-mothau-add-bid" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600;"><i data-lucide="plus"></i> Thêm Nhà thầu nộp hồ sơ</button>
+                                <button class="btn btn-outline btn-sm" id="btn-mothau-add-bid" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600;"><i data-lucide="plus"></i> ${isDirectOrSpecial ? 'Thêm nhà thầu' : 'Thêm Nhà thầu nộp hồ sơ'}</button>
                             </div>
                         </div>
                         <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px;">
@@ -1392,13 +1411,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </table>
                         </div>
                         <div style="display:flex; justify-content:flex-end; gap:12px;">
-                            <button class="btn btn-primary" id="btn-mothau-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> Lưu thông tin mở thầu</button>
+                            <button class="btn btn-primary" id="btn-mothau-save" style="padding:10px 24px; font-weight:700;"><i data-lucide="save"></i> ${isDirectOrSpecial ? 'Lưu thông tin' : 'Lưu thông tin mở thầu'}</button>
                         </div>
                     </div>
                     <div id="mothau-empty-state" style="display:none;"></div>
                 `;
                 window.appController.renderMoThauPanel();
             }
+        }
             break;
 
         case 'eval_tech':
@@ -2454,163 +2474,207 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 });
 
                 const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
-                if (isDirectOrSpecial && allBids.length === 0) {
-                    allBids.push({
-                        id: window.generateUUID(),
-                        goiThauId: gt.id,
-                        nhaThauId: '',
-                        maNhaThau: '',
-                        tenNhaThau: '',
-                        loaiNhaThau: 'Độc lập',
-                        thanhVienLienDanh: [],
-                        giaDuThau: null,
-                        giaSauGiamGia: null,
-                        thoiGianThucHien: '',
-                        lyDoTruot: ''
-                    });
+                const danhGiaNangLuc = metadata.result.danhGiaNangLuc || 'Không';
+                // Helper tính ngày làm việc (trừ thứ 7, CN và các ngày nghỉ lễ từ holidays.json)
+                const addWorkingDays = (startDateStr, days) => {
+                    if (!startDateStr) return '';
+                    let date = new Date(startDateStr);
+                    if (isNaN(date.getTime())) return '';
+
+                    const holidaysData = window._vietnameseHolidays || {};
+                    let direction = days < 0 ? -1 : 1;
+                    let remainingDays = Math.abs(days);
+                    while (remainingDays > 0) {
+                        date.setDate(date.getDate() + direction);
+                        let dayOfWeek = date.getDay();
+                        let dateStr = date.toISOString().split('T')[0];
+                        let yearStr = String(date.getFullYear());
+                        
+                        let isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+                        
+                        // Check working weekend swaps
+                        const yearWorkingWeekends = holidaysData[yearStr]?.working_weekends || [];
+                        if (isWeekend && yearWorkingWeekends.includes(dateStr)) {
+                            isWeekend = false;
+                        }
+                        
+                        // Check holidays
+                        const yearHolidays = holidaysData[yearStr]?.holidays || [];
+                        const isHoliday = yearHolidays.includes(dateStr);
+                        
+                        if (!isWeekend && !isHoliday) {
+                            remainingDays--;
+                        }
+                    }
+                    return date.toISOString().split('T')[0];
+                };
+
+                let defaultYcbgi = '';
+                let defaultGbgi = '';
+                let defaultBcdg = '';
+                let defaultMtt = '';
+                let defaultTt = '';
+                let defaultTkq = '';
+                let defaultPdkq = '';
+
+                if (kh) {
+                    const isPheDuyetKeHoach = kh.pheDuyet === 'Kế hoạch';
+                    const anchorDate = isPheDuyetKeHoach ? kh.ngayTrinhDuToan : kh.ngayTrinhKeHoach;
+                    const approvalDate = kh.ngayPheDuyet || '';
+
+                    defaultYcbgi = addWorkingDays(anchorDate, -5);
+                    defaultGbgi = addWorkingDays(anchorDate, -1);
+                    defaultBcdg = approvalDate;
+                    defaultMtt = approvalDate;
+                    defaultTt = addWorkingDays(approvalDate, 1);
+                    defaultTkq = defaultTt;
+                    defaultPdkq = defaultTkq;
                 }
+
+                const ngayYeuCauBaoGia = metadata.result.ngayYeuCauBaoGia ? this.model.formatForDateInput(metadata.result.ngayYeuCauBaoGia) : (defaultYcbgi ? this.model.formatForDateInput(defaultYcbgi) : '');
+                const ngayGuiBaoGia = metadata.result.ngayGuiBaoGia ? this.model.formatForDateInput(metadata.result.ngayGuiBaoGia) : (defaultGbgi ? this.model.formatForDateInput(defaultGbgi) : '');
+                const ngayBaoCaoDanhGiaNhaThau = metadata.result.ngayBaoCaoDanhGiaNhaThau ? this.model.formatForDateInput(metadata.result.ngayBaoCaoDanhGiaNhaThau) : (defaultBcdg ? this.model.formatForDateInput(defaultBcdg) : '');
+                const ngayMoiThuongThao = metadata.result.ngayMoiThuongThao ? this.model.formatForDateInput(metadata.result.ngayMoiThuongThao) : (defaultMtt ? this.model.formatForDateInput(defaultMtt) : '');
+                const ngayThuongThao = metadata.result.ngayThuongThao ? this.model.formatForDateInput(metadata.result.ngayThuongThao) : (defaultTt ? this.model.formatForDateInput(defaultTt) : '');
+                const ngayTrinhKetQua = metadata.result.ngayTrinhKetQua ? this.model.formatForDateInput(metadata.result.ngayTrinhKetQua) : (defaultTkq ? this.model.formatForDateInput(defaultTkq) : '');
+                const defaultDecDate = gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : (defaultPdkq ? this.model.formatForDateInput(defaultPdkq) : '');
                 const { rankings, scores } = window.appController.calculateRankings(gt, allBids);
                 const isCombinedMethod = gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá';
                 const getIsQualified = (bidItem) => {
                     return checkBidQualified(bidItem);
                 };
-
                 const lots = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
 
-                const allBiddersHtml = allBids.map((b, idx) => {
-                    const isQualified = getIsQualified(b);
-
-                    let defaultReason = '';
-                    if (gt.quyTrinhDanhGia === 'quytrinh2' && b.danhGiaKetLuan === 'Không đánh giá') {
-                        defaultReason = "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu";
-                    } else if (!isQualified) {
-                        const hl = String(b.danhGiaHopLe || '').trim().toLowerCase();
-                        const nl = String(b.danhGiaNangLuc || '').trim().toLowerCase();
-                        if (hl !== 'đạt') {
-                            defaultReason = "Không đạt yêu cầu về tính hợp lệ";
-                        } else if (nl !== 'đạt') {
-                            defaultReason = "Không đạt yêu cầu về năng lực, kinh nghiệm";
-                        } else {
-                            defaultReason = "Không đạt yêu cầu kỹ thuật";
-                        }
-                    } else {
-                        defaultReason = "Nhà thầu xếp hạng 1 trúng thầu";
-                    }
-
-                    const standardReasons = [
-                        "Không đạt yêu cầu về tính hợp lệ",
-                        "Không đạt yêu cầu về năng lực, kinh nghiệm",
-                        "Không đạt yêu cầu kỹ thuật",
-                        "Nhà thầu xếp hạng 1 trúng thầu",
-                        "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu",
-                        ""
-                    ];
-                    const isStaleOrEmpty = !b.lyDoTruot || standardReasons.includes(b.lyDoTruot.trim());
-                    const displayReason = isStaleOrEmpty ? defaultReason : b.lyDoTruot;
-
-                    const defaultPrice = this.model.formatVND(b.giaSauGiamGia || b.giaDuThau || '') || '';
-                    const defaultDurationPkg = b.thoiGianThucHien || gt.thoiGianThucHien || '';
-                    const defaultDurationCtr = defaultDurationPkg ? (defaultDurationPkg + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
-                    const rank = rankings[b.id];
-                    const score = scores[b.id];
-                    const rankDisplay = rank ? `Xếp hạng ${rank}` : (isQualified ? '--' : 'Không xếp hạng');
-
-                    let isRowWinner = false;
-                    if (isDirectOrSpecial) {
-                        isRowWinner = true;
-                    } else if (isQualified) {
-                        if (gt.phanLo === 'Có') {
-                            const plList = lots;
-                            const currentLotCode = b.maPhanLo;
-                            const pl = plList.find(p => p.maPhanLo === currentLotCode);
-                            if (pl && pl.nhaThauTrungThauId) {
-                                isRowWinner = String(pl.nhaThauTrungThauId) === String(b.nhaThauId || b.id);
-                            } else {
-                                isRowWinner = (rank === 1);
-                            }
-                        } else {
-                            if (gt.nhaThauTrungThauId) {
-                                isRowWinner = String(gt.nhaThauTrungThauId) === String(b.nhaThauId || b.id);
-                            } else {
-                                isRowWinner = (rank === 1);
-                            }
-                        }
-                    }
-
-                    return `
-                        <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}"
-                            data-default-price="${defaultPrice}" data-default-duration-pkg="${defaultDurationPkg}" data-default-duration-ctr="${defaultDurationCtr}"
-                            data-default-reason="${defaultReason}">
-                            ${gt.phanLo === 'Có' ? `
-                                <td>
-                                    ${isDirectOrSpecial ? `
-                                        <select class="form-control row-ma-phan-lo" style="padding:4px 8px; font-size:0.8rem;">
-                                            ${lots.map(l => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}" ${l.maPhanLo === b.maPhanLo ? 'selected' : ''}>${l.maPhanLo}</option>`).join('')}
-                                        </select>
-                                    ` : `${b.maPhanLo || '--'}`}
-                                </td>
-                                <td>
-                                    ${isDirectOrSpecial ? `
-                                        <input type="text" class="form-control row-ten-phan-lo" value="${b.tenPhanLo || ''}" readonly style="padding:4px 8px; font-size:0.8rem; background:#f1f5f9;">
-                                    ` : `${b.tenPhanLo || '--'}`}
-                                </td>
-                            ` : ''}
-                            ${isDirectOrSpecial ? `
-                                 <td>
-                                     <select class="form-control row-loai-nha-thau" style="padding:4px 8px; font-size:0.8rem;">
-                                         <option value="Độc lập" ${b.loaiNhaThau === 'Độc lập' ? 'selected' : ''}>Độc lập</option>
-                                         <option value="Liên danh" ${b.loaiNhaThau === 'Liên danh' ? 'selected' : ''}>Liên danh</option>
-                                     </select>
-                                 </td>
-                             ` : ''}
-                            <td>
-                                ${isDirectOrSpecial ? `
-                                    <input type="text" class="form-control row-ma-nha-thau" value="${b.maNhaThau || b.maDinhDanh || ''}" placeholder="Mã nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
-                                ` : `${b.maNhaThau || b.maDinhDanh || '--'}`}
+                let allBiddersHtml = '';
+                if (isDirectOrSpecial && allBids.length === 0) {
+                    allBiddersHtml = `
+                        <tr>
+                            <td colspan="100%" style="text-align: center; padding: 24px; color: var(--danger); font-weight: 600;">
+                                <i data-lucide="info" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 6px;"></i>
+                                Vui lòng nhập và lưu danh sách nhà thầu tại tab "Biên bản mở thầu" trước.
                             </td>
-                            <td>
-                                ${isDirectOrSpecial ? `
-                                    <input type="text" class="form-control row-ten-nha-thau" value="${b.tenNhaThau || ''}" placeholder="Tên nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
-                                    <div class="row-jv-members-container" style="margin-top: 4px; display: ${b.loaiNhaThau === 'Liên danh' ? 'block' : 'none'};">
-                                         <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
-                                             <i data-lucide="users" style="width: 12px; height: 12px;"></i>
-                                             <span class="row-jv-btn-text">Thành viên liên danh (${(b.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau).length})</span>
-                                         </button>
-                                     </div>
-                                ` : `${b.tenNhaThau || '--'}`}
-                            </td>
-                            ${isCombinedMethod ? `
-                                <td style="text-align: center; color: var(--primary);">${score !== undefined && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : '--'}</td>
-                            ` : ''}
-                            ${!isDirectOrSpecial ? `
-                                <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
-                                <td>
-                                    <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? 'disabled' : ''}>
-                                        <option value="truot" ${!isRowWinner ? 'selected' : ''}>Trượt thầu</option>
-                                        ${isQualified ? `<option value="trung" ${isRowWinner ? 'selected' : ''}>Trúng thầu</option>` : ''}
-                                    </select>
-                                </td>
-                                <td>
-                                    <input type="text" class="form-control row-ly-do-truot" value="${!isRowWinner ? displayReason : ''}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
-                                </td>
-                            ` : ''}
-                            <td>
-                                <input type="text" class="form-control row-gia-trung" value="${isRowWinner ? defaultPrice : ''}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
-                            </td>
-                            <td>
-                                <input type="text" class="form-control row-tg-goithau" value="${isRowWinner ? defaultDurationPkg : ''}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
-                            </td>
-                            <td>
-                                <input type="text" class="form-control row-tg-hopdong" value="${isRowWinner ? defaultDurationCtr : ''}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
-                            </td>
-                            ${isDirectOrSpecial ? `
-                                <td style="text-align: center;">
-                                    <button class="action-btn btn-delete row-remove-bidder" style="border:none; background:none; cursor:pointer; color:var(--danger);"><i data-lucide="trash-2" style="width:16px; height:16px;"></i></button>
-                                </td>
-                            ` : ''}
                         </tr>
                     `;
-                }).join('');
+                } else {
+                    allBiddersHtml = allBids.map((b, idx) => {
+                        const isQualified = getIsQualified(b);
+
+                        let defaultReason = '';
+                        if (gt.quyTrinhDanhGia === 'quytrinh2' && b.danhGiaKetLuan === 'Không đánh giá') {
+                            defaultReason = "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu";
+                        } else if (!isQualified) {
+                            const hl = String(b.danhGiaHopLe || '').trim().toLowerCase();
+                            const nl = String(b.danhGiaNangLuc || '').trim().toLowerCase();
+                            if (hl !== 'đạt') {
+                                defaultReason = "Không đạt yêu cầu về tính hợp lệ";
+                            } else if (nl !== 'đạt') {
+                                defaultReason = "Không đạt yêu cầu về năng lực, kinh nghiệm";
+                            } else {
+                                defaultReason = "Không đạt yêu cầu kỹ thuật";
+                            }
+                        } else {
+                            defaultReason = "Nhà thầu xếp hạng 1 trúng thầu";
+                        }
+
+                        const standardReasons = [
+                            "Không đạt yêu cầu về tính hợp lệ",
+                            "Không đạt yêu cầu về năng lực, kinh nghiệm",
+                            "Không đạt yêu cầu kỹ thuật",
+                            "Nhà thầu xếp hạng 1 trúng thầu",
+                            "Đánh giá theo quy trình 2. Nhà thầu giá thấp hơn trúng thầu",
+                            ""
+                        ];
+                        const isStaleOrEmpty = !b.lyDoTruot || standardReasons.includes(b.lyDoTruot.trim());
+                        const displayReason = isStaleOrEmpty ? defaultReason : b.lyDoTruot;
+
+                        const defaultPrice = this.model.formatVND(b.giaSauGiamGia || b.giaDuThau || '') || '';
+                        const defaultDurationPkg = b.thoiGianThucHien || gt.thoiGianThucHien || '';
+                        const defaultDurationCtr = b.thoiGianThucHienHopDong || (defaultDurationPkg ? (defaultDurationPkg + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '');
+                        const rank = rankings[b.id];
+                        const score = scores[b.id];
+                        const rankDisplay = rank ? `Xếp hạng ${rank}` : (isQualified ? '--' : 'Không xếp hạng');
+
+                        let isRowWinner = false;
+                        if (isDirectOrSpecial) {
+                            isRowWinner = true;
+                        } else if (isQualified) {
+                            if (gt.phanLo === 'Có') {
+                                const plList = lots;
+                                const currentLotCode = b.maPhanLo;
+                                const pl = plList.find(p => p.maPhanLo === currentLotCode);
+                                if (pl && pl.nhaThauTrungThauId) {
+                                    isRowWinner = String(pl.nhaThauTrungThauId) === String(b.nhaThauId || b.id);
+                                } else {
+                                    isRowWinner = (rank === 1);
+                                }
+                            } else {
+                                if (gt.nhaThauTrungThauId) {
+                                    isRowWinner = String(gt.nhaThauTrungThauId) === String(b.nhaThauId || b.id);
+                                } else {
+                                    isRowWinner = (rank === 1);
+                                }
+                            }
+                        }
+
+                        return `
+                            <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}"
+                                data-default-price="${defaultPrice}" data-default-duration-pkg="${defaultDurationPkg}" data-default-duration-ctr="${defaultDurationCtr}"
+                                data-default-reason="${defaultReason}">
+                                ${gt.phanLo === 'Có' ? `
+                                    <td>
+                                        ${b.maPhanLo || '--'}
+                                    </td>
+                                    <td>
+                                        ${b.tenPhanLo || '--'}
+                                    </td>
+                                ` : ''}
+                                ${isDirectOrSpecial ? `
+                                     <td>
+                                         ${b.loaiNhaThau || 'Độc lập'}
+                                     </td>
+                                 ` : ''}
+                                <td>
+                                ${b.maNhaThau || b.maDinhDanh || '--'}
+                                </td>
+                                <td>
+                                    ${b.tenNhaThau || '--'}
+                                    ${b.loaiNhaThau === 'Liên danh' ? `
+                                         <div class="row-jv-members-container" style="margin-top: 4px;">
+                                              <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; display: inline-flex; align-items: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
+                                                  <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+                                                  <span class="row-jv-btn-text">Thành viên liên danh (${(b.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau).length})</span>
+                                              </button>
+                                         </div>
+                                    ` : ''}
+                                </td>
+                                ${isCombinedMethod ? `
+                                    <td style="text-align: center; color: var(--primary);">${score !== undefined && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : '--'}</td>
+                                ` : ''}
+                                ${!isDirectOrSpecial ? `
+                                    <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
+                                    <td>
+                                        <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? 'disabled' : ''}>
+                                            <option value="truot" ${!isRowWinner ? 'selected' : ''}>Trượt thầu</option>
+                                            ${isQualified ? `<option value="trung" ${isRowWinner ? 'selected' : ''}>Trúng thầu</option>` : ''}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input type="text" class="form-control row-ly-do-truot" value="${!isRowWinner ? displayReason : ''}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                    </td>
+                                ` : ''}
+                                <td>
+                                    <input type="text" class="form-control row-gia-trung" value="${isRowWinner ? defaultPrice : ''}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control row-tg-goithau" value="${isRowWinner ? defaultDurationPkg : ''}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control row-tg-hopdong" value="${isRowWinner ? defaultDurationCtr : ''}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
 
                 contentWrapper.innerHTML = `
                     <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
@@ -2642,67 +2706,90 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </h4>
                             <p class="text-muted" style="font-size:0.82rem; margin: 4px 0 0 0;">
                                 ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt')
-                                    ? 'Nhập danh sách nhà thầu tham dự, điền QĐ phê duyệt và nhấn Lưu &amp; Phê duyệt Kết quả.'
+                                    ? 'Kiểm tra danh sách nhà thầu trúng thầu, điền QĐ phê duyệt và nhấn Phê duyệt &amp; Hoàn thành LCNT.'
                                     : 'Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.'}
                             </p>
                         </div>
-<<<<<<< HEAD
                         <div style="display: flex; gap: 8px; align-items: center;">
-                            ${!(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
-                            <button class="btn-excel-action" id="btn-result-export-excel-template">
-                                <i data-lucide="download"></i> Tải Excel Mẫu
-                            </button>
-                            <button class="btn-excel-action" id="btn-result-import-excel">
-                                <i data-lucide="upload"></i> Nhập từ Excel
-                            </button>` : ''}
+                            ${!isDirectOrSpecial ? `
+                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="download"></i> Tải Excel Mẫu
+                                </button>
+                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="upload"></i> Nhập từ Excel
+                                </button>
+                            ` : ''}
                         </div>
-=======
->>>>>>> 8a20487bd7376555a17f37db61a5d37f542e4f90
                     </div>
 
-                    ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
-                    <div style="margin-bottom:20px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
-                            <h5 style="font-weight:700; font-size:0.95rem; color:var(--text-main); margin:0; display:flex; align-items:center; gap:6px;">
-                                <i data-lucide="users"></i> Danh sách Nhà thầu tham dự (nhập trực tiếp)
-                            </h5>
-                            <button class="btn btn-outline btn-sm" id="btn-cdtrug-add-bidder" style="padding:6px 12px; font-size:0.82rem; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
-                                <i data-lucide="plus" style="width:14px;height:14px;"></i> Thêm Nhà thầu
-                            </button>
+                    ${isDirectOrSpecial ? `
+                    <div style="background: var(--neutral-soft); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                        <div style="font-weight: 700; color: var(--primary); font-size: 0.85rem; min-width: 140px; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Quyết định phê duyệt:
                         </div>
-                        <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:8px; background:var(--bg-card);">
-                            <table class="data-table" id="cdtrug-mothau-table" style="min-width:100%;">
-                                <thead>
-                                    <tr>
-                                        ${gt.phanLo === 'Có' ? '<th style="width:8%;">Mã phần lô</th><th style="width:8%;">Tên phần lô</th>' : ''}
-                                        <th style="width:10%;">Loại NT</th>
-                                        <th style="width:12%;">Mã nhà thầu <span style="color:var(--danger);">*</span></th>
-                                        <th style="width:18%;">Tên nhà thầu <span style="color:var(--danger);">*</span></th>
-                                        <th style="width:10%;">Giá dự thầu</th>
-                                        <th style="width:6%;">TL giảm (%)</th>
-                                        <th style="width:10%;">Giá sau giảm</th>
-                                        <th style="width:7%;">Hiệu lực HSDT</th>
-                                        <th style="width:9%;">Giá trị ĐB</th>
-                                        <th style="width:6%;">Hiệu lực ĐB</th>
-                                        <th style="width:8%;">Thời gian TH</th>
-                                        <th style="width:4%; text-align:center;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="cdtrug-mothau-tbody"></tbody>
-                            </table>
+                        <div style="display: flex; gap: 16px; flex-grow: 1; flex-wrap: wrap;">
+                            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                                <input type="text" id="award-decision-no" class="form-control" value="${gt.soQuyetDinhKetQua || ''}" placeholder="Số QĐ phê duyệt *" style="width: 100%; height: 36px; font-size: 0.85rem;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : (defaultDecDate ? defaultDecDate : '')}" style="width: 100%; height: 36px; font-size: 0.85rem;" placeholder="Ngày ký QĐ * (dd/MM/yyyy)">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
+                            </div>
                         </div>
-                        <p style="font-size:0.78rem; color:var(--text-muted); margin:0;"><i data-lucide="info" style="width:12px;height:12px;"></i> Giá dự thầu và các trường tài chính không bắt buộc — có thể để trống.</p>
                     </div>
-                    ` : ''}
 
-                    <h5 style="margin-top:24px; margin-bottom:12px; font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="list"></i> ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? 'Kết quả Lựa chọn Nhà thầu' : 'Danh sách nhà thầu tham dự &amp; Kết quả LCNT'}
-                    </h5>
-
+                    <div style="background: var(--neutral-soft); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 16px;">
+                        <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
+                            <span style="font-weight: 700; color: var(--primary); font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i> Đánh giá năng lực nhà thầu:
+                            </span>
+                            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="radio" name="result-danh-gia-nang-luc" value="Có" ${danhGiaNangLuc === 'Có' ? 'checked' : ''}> Có
+                            </label>
+                            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="radio" name="result-danh-gia-nang-luc" value="Không" ${danhGiaNangLuc === 'Không' ? 'checked' : ''}> Không
+                            </label>
+                        </div>
+                        
+                        <div id="result-dates-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.78rem; margin-bottom: 4px; display: block;">Ngày yêu cầu báo giá <span class="text-danger">*</span></label>
+                                <input type="text" id="date-yeu-cau-bao-gia" class="form-control flatpickr-date" value="${ngayYeuCauBaoGia}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.72rem; display: none; margin-top: 4px;">Vui lòng nhập Ngày yêu cầu báo giá!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.78rem; margin-bottom: 4px; display: block;">Ngày gửi báo giá <span class="text-danger">*</span></label>
+                                <input type="text" id="date-gui-bao-gia" class="form-control flatpickr-date" value="${ngayGuiBaoGia}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.72rem; display: none; margin-top: 4px;">Vui lòng nhập Ngày gửi báo giá!</span>
+                            </div>
+                            <div class="form-group" id="container-date-bao-cao-danh-gia" style="margin-bottom: 0; display: ${danhGiaNangLuc === 'Có' ? 'block' : 'none'};">
+                                <label style="font-weight: 600; font-size: 0.78rem; margin-bottom: 4px; display: block;">Ngày báo cáo đánh giá nhà thầu <span class="text-danger">*</span></label>
+                                <input type="text" id="date-bao-cao-danh-gia" class="form-control flatpickr-date" value="${ngayBaoCaoDanhGiaNhaThau}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.72rem; display: none; margin-top: 4px;">Vui lòng nhập Ngày báo cáo đánh giá nhà thầu!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.78rem; margin-bottom: 4px; display: block;">Ngày mời thương thảo <span class="text-danger">*</span></label>
+                                <input type="text" id="date-moi-thuong-thao" class="form-control flatpickr-date" value="${ngayMoiThuongThao}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.72rem; display: none; margin-top: 4px;">Vui lòng nhập Ngày mời thương thảo!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.78rem; margin-bottom: 4px; display: block;">Ngày thương thảo <span class="text-danger">*</span></label>
+                                <input type="text" id="date-thuong-thao" class="form-control flatpickr-date" value="${ngayThuongThao}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.72rem; display: none; margin-top: 4px;">Vui lòng nhập Ngày thương thảo!</span>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.78rem; margin-bottom: 4px; display: block;">Ngày trình kết quả <span class="text-danger">*</span></label>
+                                <input type="text" id="date-trinh-ket-qua" class="form-control flatpickr-date" value="${ngayTrinhKetQua}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <span class="error-text" style="color: var(--danger); font-size: 0.72rem; display: none; margin-top: 4px;">Vui lòng nhập Ngày trình kết quả!</span>
+                            </div>
+                        </div>
+                    </div>
+                    ` : `
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Quyết định phê duyệt Kết quả LCNT</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
-                            ${(gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' && !isDirectOrSpecial) ? `
+                            ${(gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh') ? `
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số BCTĐ kết quả <span class="text-danger">*</span></label>
                                 <input type="text" id="award-so-bctd" class="form-control" value="${soBctdResult}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;">
@@ -2726,32 +2813,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </div>
                         </div>
                     </div>
+                    `}
 
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top:24px; margin-bottom:12px;">
-                        <h5 style="font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px; margin: 0;">
-                            <i data-lucide="list"></i> ${isDirectOrSpecial ? 'Danh sách nhà thầu trúng thầu' : 'Danh sách nhà thầu tham dự & Kết quả LCNT'}
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 12px;">
+                        <h5 style="font-weight:700; font-size:0.9rem; color:var(--text-main); display:flex; align-items:center; gap:6px; margin: 0;">
+                            <i data-lucide="list"></i> ${isDirectOrSpecial ? 'Danh sách nhà thầu trúng thầu' : 'Danh sách nhà thầu tham dự &amp; Kết quả LCNT'}
                         </h5>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            ${isDirectOrSpecial ? `
-                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                    <i data-lucide="download"></i> Tải Excel Mẫu
-                                </button>
-                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                    <i data-lucide="upload"></i> Nhập từ Excel
-                                </button>
-                                <button class="btn btn-outline btn-sm" id="btn-result-add-bidder" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu
-                                </button>
-                            ` : `
-                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                    <i data-lucide="download"></i> Tải Excel Mẫu
-                                </button>
-                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                    <i data-lucide="upload"></i> Nhập từ Excel
-                                </button>
-                            `}
-                        </div>
                     </div>
+
                     <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
                         <table class="data-table" style="min-width: 100%;">
                             <thead>
@@ -2774,9 +2843,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <th style="width: 12%;">Giá trúng thầu</th>
                                     <th style="width: 14%;">Thời gian thực hiện gói thầu</th>
                                     <th style="width: 18%;">Thời gian thực hiện hợp đồng</th>
-                                    ${isDirectOrSpecial ? `
-                                        <th style="width: 6%; text-align: center;">Thao tác</th>
-                                    ` : ''}
                                 </tr>
                             </thead>
                             <tbody id="approve-bidders-tbody">
@@ -2791,6 +2857,39 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </button>
                     </div>
                 `;
+
+                // Toggle evaluation report date container based on capability assessment selection
+                const rads = contentWrapper.querySelectorAll('input[name="result-danh-gia-nang-luc"]');
+                const dgContainer = contentWrapper.querySelector('#container-date-bao-cao-danh-gia');
+                rads.forEach(rad => {
+                    rad.addEventListener('change', () => {
+                        if (dgContainer) {
+                            dgContainer.style.display = rad.value === 'Có' ? 'block' : 'none';
+                        }
+                    });
+                });
+
+                // Auto-sync cascaded dates
+                const inpThuongThao = contentWrapper.querySelector('#date-thuong-thao');
+                const inpTrinhkq = contentWrapper.querySelector('#date-trinh-ket-qua');
+                const inpDecDate = contentWrapper.querySelector('#award-decision-date');
+
+                if (inpThuongThao && inpTrinhkq) {
+                    inpThuongThao.addEventListener('change', () => {
+                        inpTrinhkq.value = inpThuongThao.value;
+                        if (inpTrinhkq._flatpickr) inpTrinhkq._flatpickr.setDate(inpThuongThao.value);
+                        if (inpDecDate) {
+                            inpDecDate.value = inpThuongThao.value;
+                            if (inpDecDate._flatpickr) inpDecDate._flatpickr.setDate(inpThuongThao.value);
+                        }
+                    });
+                }
+                if (inpTrinhkq && inpDecDate) {
+                    inpTrinhkq.addEventListener('change', () => {
+                        inpDecDate.value = inpTrinhkq.value;
+                        if (inpDecDate._flatpickr) inpDecDate._flatpickr.setDate(inpTrinhkq.value);
+                    });
+                }
 
                 const tbodyApprove = document.getElementById('approve-bidders-tbody');
                 if (tbodyApprove) {
