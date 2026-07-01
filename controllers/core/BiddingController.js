@@ -228,7 +228,6 @@ export class BiddingController {
                 });
             }
             localStorage.setItem('bf_id_prefix_cleaned_v2', 'true');
-            console.log("Client-side IndexedDB cache reset for ID prefix removal migration.");
         }
 
         this.view.initDOM();

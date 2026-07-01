@@ -364,8 +364,6 @@ export function editGoiThau(id, isReadOnly = false) {
         document.getElementById('gt-phuongthuc').value = gt.phuongThucLuaChon;
         document.getElementById('gt-trangthai').value = gt.trangThai;
 
-
-
         document.getElementById('gt-linhvuc').value = gt.linhVuc || '';
         const isThuocVal = (gt.isThuoc === 1 || gt.isThuoc === '1') ? '1' : '0';
         const radioToCheck = document.querySelector(`input[name="gt-goithauthuoc"][value="${isThuocVal}"]`);

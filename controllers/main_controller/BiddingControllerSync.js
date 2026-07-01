@@ -4,12 +4,8 @@ export function setupAutoSyncBackground() {
         const username = sessionStorage.getItem('bf_username');
         if (!token || !username) return; // Only sync if logged in
 
-        console.log("Triggering automatic background delta sync...");
         this.forceSyncData(true).catch(err => console.error("Auto sync failed:", err));
     };
-
-    // Check every 30 seconds
-    // setInterval(checkAndSync, 30000); // Tắt cơ chế polling tự động 30 giây
 
     // Check on window focus (user switches tab or returns to app)
     window.addEventListener('focus', checkAndSync);
@@ -20,7 +16,6 @@ export function setupAutoSyncBackground() {
 
 
 export function autoSync() {
-    const self = this;
     const deletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
     const payload = {
         ...this.model.state,
@@ -101,9 +96,6 @@ export function autoSync() {
 
                     const fullMsg = msgLines.join('\n');
                     console.error('[Sync Error]\n' + fullMsg, data.errors);
-                    // if (self.view && typeof self.view.customAlert === 'function') {
-                    //     self.view.customAlert('Lỗi lưu dữ liệu', fullMsg, 'x-circle');
-                    // }
                 } else {
                     console.error('[Sync Error]', data.error || data.message || 'Đồng bộ thất bại');
                 }
