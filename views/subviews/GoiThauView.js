@@ -2540,6 +2540,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     ` : `${b.tenPhanLo || '--'}`}
                                 </td>
                             ` : ''}
+                            ${isDirectOrSpecial ? `
+                                 <td>
+                                     <select class="form-control row-loai-nha-thau" style="padding:4px 8px; font-size:0.8rem;">
+                                         <option value="Độc lập" ${b.loaiNhaThau === 'Độc lập' ? 'selected' : ''}>Độc lập</option>
+                                         <option value="Liên danh" ${b.loaiNhaThau === 'Liên danh' ? 'selected' : ''}>Liên danh</option>
+                                     </select>
+                                 </td>
+                             ` : ''}
                             <td>
                                 ${isDirectOrSpecial ? `
                                     <input type="text" class="form-control row-ma-nha-thau" value="${b.maNhaThau || b.maDinhDanh || ''}" placeholder="Mã nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
@@ -2548,6 +2556,12 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <td>
                                 ${isDirectOrSpecial ? `
                                     <input type="text" class="form-control row-ten-nha-thau" value="${b.tenNhaThau || ''}" placeholder="Tên nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
+                                    <div class="row-jv-members-container" style="margin-top: 4px; display: ${b.loaiNhaThau === 'Liên danh' ? 'block' : 'none'};">
+                                         <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
+                                             <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+                                             <span class="row-jv-btn-text">Thành viên liên danh (${(b.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau).length})</span>
+                                         </button>
+                                     </div>
                                 ` : `${b.tenNhaThau || '--'}`}
                             </td>
                             ${isCombinedMethod ? `
@@ -2658,7 +2672,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <i data-lucide="upload"></i> Nhập từ Excel
                                 </button>
                                 <button class="btn btn-outline btn-sm" id="btn-result-add-bidder" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu tham dự
+                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu
                                 </button>
                             ` : `
                                 <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
@@ -2678,6 +2692,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         <th style="width: 10%;">Mã phần lô</th>
                                         <th style="width: 10%;">Tên phần lô</th>
                                     ` : ''}
+                                    ${isDirectOrSpecial ? `<th style="width: 12%;">Loại nhà thầu</th>` : ''}
                                     <th style="width: 12%;">Mã nhà thầu</th>
                                     <th style="width: 20%;">Tên nhà thầu</th>
                                     ${isCombinedMethod ? `
@@ -2711,6 +2726,15 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                 const tbodyApprove = document.getElementById('approve-bidders-tbody');
                 if (tbodyApprove) {
+                    // Populate initial Joint Venture members data on tr elements
+                    allBids.forEach(b => {
+                        const tr = tbodyApprove.querySelector(`tr[data-approve-bid-id="${b.id}"]`);
+                        if (tr) {
+                            tr._thanhVienLienDanh = (b.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau);
+                            tr._leadMemberName = b.tenNhaThau || '';
+                        }
+                    });
+
                     // Format VND currency input
                     const initRowListeners = (tr) => {
                         tr.querySelectorAll('.row-gia-trung').forEach(inp => {
@@ -2729,6 +2753,41 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 }
                             });
                         });
+
+                        // Toggle Joint Venture elements based on type dropdown selection
+                        const selectLoai = tr.querySelector('.row-loai-nha-thau');
+                        const jvContainer = tr.querySelector('.row-jv-members-container');
+                        if (selectLoai && jvContainer) {
+                            selectLoai.addEventListener('change', () => {
+                                jvContainer.style.display = selectLoai.value === 'Liên danh' ? 'block' : 'none';
+                            });
+                        }
+
+                        // Bind manage JV members button
+                        const btnManage = tr.querySelector('.row-btn-manage-members');
+                        if (btnManage) {
+                            btnManage.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                window.openMoThauJVManager(tr);
+                            });
+                        }
+
+                        // Auto fill contractor name if code matches one in the database
+                        const inputMa = tr.querySelector('.row-ma-nha-thau');
+                        const inputTen = tr.querySelector('.row-ten-nha-thau');
+                        if (inputMa && inputTen) {
+                            const handleCodeChange = () => {
+                                const code = inputMa.value.trim();
+                                if (!code) return;
+                                const latestList = this.model.getLatestNhaThau();
+                                const matched = latestList.find(n => n.maNhaThau && n.maNhaThau.trim().toLowerCase() === code.toLowerCase());
+                                if (matched) {
+                                    inputTen.value = matched.tenNhaThau || '';
+                                }
+                            };
+                            inputMa.addEventListener('input', handleCodeChange);
+                            inputMa.addEventListener('change', handleCodeChange);
+                        }
                     };
 
                     tbodyApprove.querySelectorAll('tr').forEach(initRowListeners);
@@ -2965,14 +3024,36 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             }
 
                             if (isDirectOrSpecial) {
+                                const loaiNt = tr.querySelector('.row-loai-nha-thau')?.value || 'Độc lập';
+                                const tvLd = tr._thanhVienLienDanh || [];
+
+                                // Reconstruct full JV list including the lead member
+                                const fullJvList = [];
+                                if (loaiNt === 'Liên danh') {
+                                    // Lead member
+                                    fullJvList.push({
+                                        tenNhaThau: tr._leadMemberName || tenNhaThau,
+                                        maSoThue: maNhaThau,
+                                        vaiTro: "Đứng đầu liên danh"
+                                    });
+                                    // Other members
+                                    tvLd.forEach(m => {
+                                        fullJvList.push({
+                                            tenNhaThau: m.tenNhaThau,
+                                            maSoThue: m.maSoThue,
+                                            vaiTro: "Thành viên liên danh"
+                                        });
+                                    });
+                                }
+
                                 bid = {
                                     id: bidId,
                                     goiThauId: gt.id,
                                     nhaThauId: bidId,
                                     maNhaThau: maNhaThau,
                                     tenNhaThau: tenNhaThau,
-                                    loaiNhaThau: 'Độc lập',
-                                    thanhVienLienDanh: [],
+                                    loaiNhaThau: loaiNt,
+                                    thanhVienLienDanh: fullJvList,
                                     giaDuThau: giaTrung || gt.giaGoiThau,
                                     giaSauGiamGia: giaTrung || gt.giaGoiThau,
                                     danhGiaHopLe: 'Đạt',
@@ -3150,13 +3231,27 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         `;
                     }
 
+                    tr._thanhVienLienDanh = [];
+                    tr._leadMemberName = '';
                     tr.innerHTML = `
                         ${lotCells}
+                        <td>
+                            <select class="form-control row-loai-nha-thau" style="padding:4px 8px; font-size:0.8rem;">
+                                <option value="Độc lập" selected>Độc lập</option>
+                                <option value="Liên danh">Liên danh</option>
+                            </select>
+                        </td>
                         <td>
                             <input type="text" class="form-control row-ma-nha-thau" value="" placeholder="Mã nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
                         </td>
                         <td>
                             <input type="text" class="form-control row-ten-nha-thau" value="" placeholder="Tên nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
+                            <div class="row-jv-members-container" style="margin-top: 4px; display: none;">
+                                <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
+                                    <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+                                    <span class="row-jv-btn-text">Thành viên liên danh (0)</span>
+                                </button>
+                            </div>
                         </td>
                         <td>
                             <input type="text" class="form-control row-gia-trung" value="" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
@@ -3178,26 +3273,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         window.lucide.createIcons();
                     }
 
-                    // Format VND input
-                    const inpGia = tr.querySelector('.row-gia-trung');
-                    if (inpGia) {
-                        inpGia.addEventListener('input', (e) => {
-                            const formatted = this.model.formatVND(e.target.value);
-                            e.target.value = formatted;
-                        });
-                    }
-
-                    // Auto-fill contract duration
-                    const inpDurationPkg = tr.querySelector('.row-tg-goithau');
-                    if (inpDurationPkg) {
-                        inpDurationPkg.addEventListener('input', (e) => {
-                            const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
-                            if (inpDurationCtr) {
-                                const val = e.target.value.trim();
-                                inpDurationCtr.value = val ? (val + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
-                            }
-                        });
-                    }
+                    initRowListeners(tr);
                 };
             }
             break;

@@ -584,7 +584,7 @@ export function renderMoThauPanel() {
 
 
 window.openMoThauJVManager = (tr) => {
-    const leadCode = tr.querySelector('.mt-ma-nha-thau')?.value.trim() || '';
+    const leadCode = (tr.querySelector('.mt-ma-nha-thau') || tr.querySelector('.row-ma-nha-thau'))?.value.trim() || '';
     const members = (tr._thanhVienLienDanh || []).filter(m =>
         String(m.maSoThue).toLowerCase().trim() !== String(leadCode).toLowerCase().trim() &&
         m.vaiTro !== "Đứng đầu liên danh"
@@ -754,7 +754,7 @@ window.openMoThauJVManager = (tr) => {
         tr._leadMemberName = leadNameInput;
         tr._thanhVienLienDanh = updatedMembers;
 
-        const labelSpan = tr.querySelector('.mt-jv-btn-text');
+        const labelSpan = tr.querySelector('.mt-jv-btn-text') || tr.querySelector('.row-jv-btn-text');
         if (labelSpan) {
             labelSpan.textContent = `Thành viên liên danh (${updatedMembers.length})`;
         }
