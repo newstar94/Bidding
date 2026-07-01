@@ -695,7 +695,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${tenCdtStr}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
-                                        <span style="color: var(--text-muted); font-weight: 600;">Kế hoạch liên kết</span>
+                                        <span style="color: var(--text-muted); font-weight: 600;">Kế hoạch LCNT</span>
                                         <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${tenKhStr}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
@@ -765,9 +765,13 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         <span style="color: var(--text-muted); font-weight: 600;">Thời gian thực hiện</span>
                                         <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianThucHien || '--'}</span>
                                     </div>
-                                    <div style="display: flex; justify-content: space-between; border-bottom: ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? 'none' : '1px solid rgba(226, 232, 240, 0.5)'}; padding-bottom: 8px; font-size: 0.83rem;">
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Bắt đầu tổ chức</span>
                                         <span style="color: var(--text-main); font-weight: 700;">${gt.thoiGianBatDauToChuc || '--'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; border-bottom: ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? 'none' : '1px solid rgba(226, 232, 240, 0.5)'}; padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">${khObj && khObj.pheDuyet === 'Kế hoạch' ? 'Phê duyệt kế hoạch' : 'Phê duyệt dự toán và kế hoạch'}</span>
+                                        <span style="color: var(--text-main); font-weight: 700;">${khObj && khObj.ngayPheDuyet ? this.model.formatDate(khObj.ngayPheDuyet) : '--'}</span>
                                     </div>
                                     ${(gt.hinhThucLuaChon !== 'Chỉ định thầu rút gọn' && gt.hinhThucLuaChon !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
@@ -1150,12 +1154,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
+                const tenKhStr = khObj ? khObj.tenKeHoach : 'Không rõ';
 
                 contentWrapper.innerHTML = `
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 20px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdtStr}</span></div>
+                            <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}${gt.linhVuc === 'Hàng hóa' ? (gt.isThuoc === 1 || gt.isThuoc === '1' ? ' (Thuốc)' : ' (Không phải thuốc)') : ''}</div>
                             <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1187,12 +1193,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
+                const tenKhStr = khObj ? khObj.tenKeHoach : 'Không rõ';
 
                 contentWrapper.innerHTML = `
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 20px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdtStr}</span></div>
+                            <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}${gt.linhVuc === 'Hàng hóa' ? (gt.isThuoc === 1 || gt.isThuoc === '1' ? ' (Thuốc)' : ' (Không phải thuốc)') : ''}</div>
                             <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1426,7 +1434,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </label>
                         <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main); margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--border-color);">
                             <input type="checkbox" id="eval-co-uu-dai" style="accent-color: var(--primary); cursor: pointer;">
-                            Có nhà thầu/E-HSDT được hưởng ưu đãi
+                            Có nhà thầu được hưởng ưu đãi
                         </label>
                         <span id="quytrinh2-warning-msg" style="color: #ef4444; font-size: 0.8rem; font-weight: 600; display: none;"></span>
                     </div>
@@ -1520,6 +1528,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const khObj = this.model.getLatestPlan(gt.keHoachId);
                 const cdtObj = khObj ? this.model.state.chudautu.find(c => c.id === khObj.chuDauTuId) : null;
                 const tenCdt = cdtObj ? cdtObj.tenChuDauTu : 'Không rõ';
+                const tenKhStr = khObj ? khObj.tenKeHoach : 'Không rõ';
                 const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
 
                 let metadata = { is1G2T: true, technical: { saved: false }, financial: { saved: false } };
@@ -1553,12 +1562,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu';
                 // Cho phép chỉnh sửa nếu đã lưu nhưng biên bản mở TC chưa có
                 const canEdit = isReadOnly && isCompleted && !isFinOpened && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu';
+                const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
 
                 contentWrapper.innerHTML = `
                     <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1568,9 +1579,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
+                            ${!isDirectOrSpecial ? `
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
                             <div>• <strong style="color: var(--primary);">${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
                             ${is1G2T ? `<div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</div>` : ''}
+                            ` : ''}
                         </div>
                     </div>
 
@@ -1744,7 +1757,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             }
             break;
         }
-
         case 'opening_fin': {
             const allBidsForOpening = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
             const qualifiedBidsForOpening = allBidsForOpening.filter(checkBidQualified);
@@ -1786,6 +1798,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 }
                 const isReadOnly = (isCompleted && !isEditingThisStep) || gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu' || isFinEvalSaved;
                 const canEdit = !isFinEvalSaved && gt.trangThai !== 'Đã có kết quả' && gt.trangThai !== 'Hủy thầu';
+                const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
 
                 contentWrapper.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -1803,6 +1816,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${(() => { const khO = this.model.getLatestPlan(gt.keHoachId); const cdO = khO ? this.model.state.chudautu.find(c => c.id === khO.chuDauTuId) : null; return cdO ? cdO.tenChuDauTu : 'Không rõ'; })()}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${(() => { const khO = this.model.getLatestPlan(gt.keHoachId); return khO ? khO.tenKeHoach : 'Không rõ'; })()}</span></div>
                             <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -1812,15 +1826,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
+                            ${!isDirectOrSpecial ? `
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXKT:</strong> <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</span></div>
                             <div style="display: flex; align-items: center; gap: 8px; grid-column: span 2; white-space: nowrap;">
                                 <span>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong></span>
                                 ${isReadOnly
-                        ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
-                        : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">`
-                    }
+                            ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</span>`
+                            : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ''}" placeholder="dd/MM/yyyy HH:mm">`
+                        }
                             </div>
+                            ` : ''}
                         </div>
                         ${isReadOnly ? `
                         <div style="margin-top: 12px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 6px; color: #dc2626; font-weight: 600; font-size: 0.82rem; display: flex; align-items: center; gap: 6px;">
@@ -1853,13 +1869,13 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                                 ${qualifiedBidsForOpening.map(b => {
 
-                        const valGiaDuThau = this.model.formatVND(b.giaDuThau) || '';
-                        const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
-                        const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
-                        const valHieuLucHsdt = b.hieuLucHsdt || b.hieuLucHsdxt || '';
+                            const valGiaDuThau = this.model.formatVND(b.giaDuThau) || '';
+                            const valTyLeGiam = (b.tyLeGiamGia || 0).toString().replace('.', ',');
+                            const valGiaSauGiam = this.model.formatVND(b.giaSauGiamGia) || '';
+                            const valHieuLucHsdt = b.hieuLucHsdt || b.hieuLucHsdxt || '';
 
-                        if (isReadOnly) {
-                            return `
+                            if (isReadOnly) {
+                                return `
                                             <tr>
                                                 ${gt.phanLo === 'Có' ? `
                                                     <td>${b.maPhanLo || '--'}</td>
@@ -1874,8 +1890,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                                 ${gt.linhVuc === 'Tư vấn' ? `<td>${valHieuLucHsdt ? valHieuLucHsdt + (String(valHieuLucHsdt).includes('ngày') ? '' : ' ngày') : '--'}</td>` : ''}
                                             </tr>
                                         `;
-                        } else {
-                            return `
+                            } else {
+                                return `
                                             <tr data-opening-bid-id="${b.id}">
                                                 ${gt.phanLo === 'Có' ? `
                                                     <td>${b.maPhanLo || '--'}</td>
@@ -1890,8 +1906,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                                 ${gt.linhVuc === 'Tư vấn' ? `<td><input type="text" class="form-control op-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + (String(valHieuLucHsdt).includes('ngày') ? '' : ' ngày') : ''}" placeholder="Ví dụ: 90 ngày" style="padding:4px 8px; font-size:0.8rem;"></td>` : ''}
                                             </tr>
                                         `;
-                        }
-                    }).join('')}
+                            }
+                        }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -1940,7 +1956,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     const importBtn = document.getElementById('btn-opening-fin-import-excel');
                     if (importBtn) {
                         importBtn.onclick = () => {
-                            window.appController.openExcelImportModal('opening_fin');
+                            window.appController.triggerExcelImport('opening_fin');
                         };
                     }
 
@@ -2029,8 +2045,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     gt.nhaThauTrungThauId = allBidsForResult[0].nhaThauId || allBidsForResult[0].id;
                 }
                 const winnerBid = allBidsForResult.find(b => String(b.nhaThauId) === String(gt.nhaThauTrungThauId)) || allBidsForResult[0];
-                const savings = gt.giaGoiThau - (gt.giaTrungThau || 0);
-                const savingsPct = gt.giaGoiThau > 0 ? ((savings / gt.giaGoiThau) * 100).toFixed(2) : '0,00';
 
                 let winnerDisplayHtml = '';
                 let hasMultipleWinners = false;
@@ -2295,8 +2309,6 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     <p class="text-muted" style="margin:0; font-size:0.8rem;">Đã phê duyệt kết quả lựa chọn nhà thầu chính thức.</p>                                </div>
                             </div>
                             <div style="display:flex; gap:8px;">
-                                <button class="btn-excel-action btn-download-excel-template-direct" data-type="ketquaqd" id="btn-result-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
-                                <button class="btn-excel-action btn-import-excel-direct" data-type="ketquaqd" id="btn-result-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
                                 <button class="btn btn-primary" id="btn-export-docx-report" style="font-weight:700;"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
                             </div>
                         </div>
@@ -2314,18 +2326,18 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Thời gian thực hiện</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.thoiGianGoiThau || '--'}</h5>
                             </div>
-                            <div>
-                                <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Hiệu quả tiết kiệm</span>
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--success);">${this.model.formatCurrency(savings)} (${savingsPct}%)</h5>
-                            </div>
+                            ${soBctdResult ? `
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Số BCTĐ kết quả</span>
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${soBctdResult || '--'}</h5>
+                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${soBctdResult}</h5>
                             </div>
+                            ` : ''}
+                            ${ngayBctdResult ? `
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày BCTĐ kết quả</span>
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${ngayBctdResult ? this.model.formatDate(ngayBctdResult) : '--'}</h5>
+                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${this.model.formatDate(ngayBctdResult)}</h5>
                             </div>
+                            ` : ''}
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Số QĐ phê duyệt Kết quả</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.soQuyetDinhKetQua || '--'}</h5>
@@ -2432,6 +2444,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const kh = this.model.getLatestPlan(gt.keHoachId);
                 const cdt = kh ? this.model.state.chudautu.find(c => c.id === kh.chuDauTuId) : null;
                 const tenCdt = cdt ? cdt.tenChuDauTu : 'Không rõ';
+                const tenKhStr = kh ? kh.tenKeHoach : 'Không rõ';
                 const allBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
                 // Sort by maPhanLo A-Z
                 allBids.sort((x, y) => {
@@ -2439,16 +2452,30 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     const lotY = String(y.maPhanLo || '').trim();
                     return lotX.localeCompare(lotY, 'vi', { numeric: true });
                 });
-                const allBidsForResult = this.model.state.thongtinmothau.filter(b =>
-                    String(b.goiThauId) === String(gt.id) &&
-                    checkBidQualified(b)
-                );
 
+                const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+                if (isDirectOrSpecial && allBids.length === 0) {
+                    allBids.push({
+                        id: window.generateUUID(),
+                        goiThauId: gt.id,
+                        nhaThauId: '',
+                        maNhaThau: '',
+                        tenNhaThau: '',
+                        loaiNhaThau: 'Độc lập',
+                        thanhVienLienDanh: [],
+                        giaDuThau: null,
+                        giaSauGiamGia: null,
+                        thoiGianThucHien: '',
+                        lyDoTruot: ''
+                    });
+                }
                 const { rankings, scores } = window.appController.calculateRankings(gt, allBids);
                 const isCombinedMethod = gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá';
                 const getIsQualified = (bidItem) => {
                     return checkBidQualified(bidItem);
                 };
+
+                const lots = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
 
                 const allBiddersHtml = allBids.map((b, idx) => {
                     const isQualified = getIsQualified(b);
@@ -2489,9 +2516,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     const rankDisplay = rank ? `Xếp hạng ${rank}` : (isQualified ? '--' : 'Không xếp hạng');
 
                     let isRowWinner = false;
-                    if (isQualified) {
+                    if (isDirectOrSpecial) {
+                        isRowWinner = true;
+                    } else if (isQualified) {
                         if (gt.phanLo === 'Có') {
-                            const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
+                            const plList = lots;
                             const currentLotCode = b.maPhanLo;
                             const pl = plList.find(p => p.maPhanLo === currentLotCode);
                             if (pl && pl.nhaThauTrungThauId) {
@@ -2513,24 +2542,58 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             data-default-price="${defaultPrice}" data-default-duration-pkg="${defaultDurationPkg}" data-default-duration-ctr="${defaultDurationCtr}"
                             data-default-reason="${defaultReason}">
                             ${gt.phanLo === 'Có' ? `
-                                <td>${b.maPhanLo || '--'}</td>
-                                <td>${b.tenPhanLo || '--'}</td>
+                                <td>
+                                    ${isDirectOrSpecial ? `
+                                        <select class="form-control row-ma-phan-lo" style="padding:4px 8px; font-size:0.8rem;">
+                                            ${lots.map(l => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}" ${l.maPhanLo === b.maPhanLo ? 'selected' : ''}>${l.maPhanLo}</option>`).join('')}
+                                        </select>
+                                    ` : `${b.maPhanLo || '--'}`}
+                                </td>
+                                <td>
+                                    ${isDirectOrSpecial ? `
+                                        <input type="text" class="form-control row-ten-phan-lo" value="${b.tenPhanLo || ''}" readonly style="padding:4px 8px; font-size:0.8rem; background:#f1f5f9;">
+                                    ` : `${b.tenPhanLo || '--'}`}
+                                </td>
                             ` : ''}
-                            <td>${b.maNhaThau || b.maDinhDanh || '--'}</td>
-                            <td>${b.tenNhaThau || '--'}</td>
+                            ${isDirectOrSpecial ? `
+                                 <td>
+                                     <select class="form-control row-loai-nha-thau" style="padding:4px 8px; font-size:0.8rem;">
+                                         <option value="Độc lập" ${b.loaiNhaThau === 'Độc lập' ? 'selected' : ''}>Độc lập</option>
+                                         <option value="Liên danh" ${b.loaiNhaThau === 'Liên danh' ? 'selected' : ''}>Liên danh</option>
+                                     </select>
+                                 </td>
+                             ` : ''}
+                            <td>
+                                ${isDirectOrSpecial ? `
+                                    <input type="text" class="form-control row-ma-nha-thau" value="${b.maNhaThau || b.maDinhDanh || ''}" placeholder="Mã nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
+                                ` : `${b.maNhaThau || b.maDinhDanh || '--'}`}
+                            </td>
+                            <td>
+                                ${isDirectOrSpecial ? `
+                                    <input type="text" class="form-control row-ten-nha-thau" value="${b.tenNhaThau || ''}" placeholder="Tên nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
+                                    <div class="row-jv-members-container" style="margin-top: 4px; display: ${b.loaiNhaThau === 'Liên danh' ? 'block' : 'none'};">
+                                         <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
+                                             <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+                                             <span class="row-jv-btn-text">Thành viên liên danh (${(b.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau).length})</span>
+                                         </button>
+                                     </div>
+                                ` : `${b.tenNhaThau || '--'}`}
+                            </td>
                             ${isCombinedMethod ? `
                                 <td style="text-align: center; color: var(--primary);">${score !== undefined && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : '--'}</td>
                             ` : ''}
-                            <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
-                            <td>
-                                <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? 'disabled' : ''}>
-                                    <option value="truot" ${!isRowWinner ? 'selected' : ''}>Trượt thầu</option>
-                                    ${isQualified ? `<option value="trung" ${isRowWinner ? 'selected' : ''}>Trúng thầu</option>` : ''}
-                                </select>
-                            </td>
-                            <td>
-                                <input type="text" class="form-control row-ly-do-truot" value="${!isRowWinner ? displayReason : ''}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
-                            </td>
+                            ${!isDirectOrSpecial ? `
+                                <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
+                                <td>
+                                    <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? 'disabled' : ''}>
+                                        <option value="truot" ${!isRowWinner ? 'selected' : ''}>Trượt thầu</option>
+                                        ${isQualified ? `<option value="trung" ${isRowWinner ? 'selected' : ''}>Trúng thầu</option>` : ''}
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control row-ly-do-truot" value="${!isRowWinner ? displayReason : ''}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
+                                </td>
+                            ` : ''}
                             <td>
                                 <input type="text" class="form-control row-gia-trung" value="${isRowWinner ? defaultPrice : ''}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
                             </td>
@@ -2540,6 +2603,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <td>
                                 <input type="text" class="form-control row-tg-hopdong" value="${isRowWinner ? defaultDurationCtr : ''}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ''}>
                             </td>
+                            ${isDirectOrSpecial ? `
+                                <td style="text-align: center;">
+                                    <button class="action-btn btn-delete row-remove-bidder" style="border:none; background:none; cursor:pointer; color:var(--danger);"><i data-lucide="trash-2" style="width:16px; height:16px;"></i></button>
+                                </td>
+                            ` : ''}
                         </tr>
                     `;
                 }).join('');
@@ -2549,6 +2617,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
                             <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
                             <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
                             <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
@@ -2558,9 +2627,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
                             <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
+                            ${!isDirectOrSpecial ? `
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
                             <div>• <strong style="color: var(--primary);">${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
                             ${is1G2T ? `<div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</div>` : ''}
+                            ` : ''}
                         </div>
                     </div>
 
@@ -2575,6 +2646,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     : 'Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.'}
                             </p>
                         </div>
+<<<<<<< HEAD
                         <div style="display: flex; gap: 8px; align-items: center;">
                             ${!(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
                             <button class="btn-excel-action" id="btn-result-export-excel-template">
@@ -2584,6 +2656,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <i data-lucide="upload"></i> Nhập từ Excel
                             </button>` : ''}
                         </div>
+=======
+>>>>>>> 8a20487bd7376555a17f37db61a5d37f542e4f90
                     </div>
 
                     ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
@@ -2628,7 +2702,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Quyết định phê duyệt Kết quả LCNT</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
-                            ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' ? `
+                            ${(gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' && !isDirectOrSpecial) ? `
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số BCTĐ kết quả <span class="text-danger">*</span></label>
                                 <input type="text" id="award-so-bctd" class="form-control" value="${soBctdResult}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;">
@@ -2653,9 +2727,31 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         </div>
                     </div>
 
-                    <h5 style="margin-top:24px; margin-bottom:12px; font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="list"></i> Danh sách nhà thầu tham dự & Kết quả LCNT
-                    </h5>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top:24px; margin-bottom:12px;">
+                        <h5 style="font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px; margin: 0;">
+                            <i data-lucide="list"></i> ${isDirectOrSpecial ? 'Danh sách nhà thầu trúng thầu' : 'Danh sách nhà thầu tham dự & Kết quả LCNT'}
+                        </h5>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            ${isDirectOrSpecial ? `
+                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="download"></i> Tải Excel Mẫu
+                                </button>
+                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="upload"></i> Nhập từ Excel
+                                </button>
+                                <button class="btn btn-outline btn-sm" id="btn-result-add-bidder" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu
+                                </button>
+                            ` : `
+                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="download"></i> Tải Excel Mẫu
+                                </button>
+                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                    <i data-lucide="upload"></i> Nhập từ Excel
+                                </button>
+                            `}
+                        </div>
+                    </div>
                     <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
                         <table class="data-table" style="min-width: 100%;">
                             <thead>
@@ -2664,17 +2760,23 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                         <th style="width: 10%;">Mã phần lô</th>
                                         <th style="width: 10%;">Tên phần lô</th>
                                     ` : ''}
-                                    <th style="width: 10%;">Mã nhà thầu</th>
-                                    <th style="width: 16%;">Tên nhà thầu</th>
+                                    ${isDirectOrSpecial ? `<th style="width: 12%;">Loại nhà thầu</th>` : ''}
+                                    <th style="width: 12%;">Mã nhà thầu</th>
+                                    <th style="width: 20%;">Tên nhà thầu</th>
                                     ${isCombinedMethod ? `
                                         <th style="width: 10%; text-align: center;">Điểm tổng hợp</th>
                                     ` : ''}
-                                    <th style="width: 10%; text-align: center;">Xếp hạng nhà thầu</th>
-                                    <th style="width: 10%;">Trúng thầu/trượt thầu</th>
-                                    <th style="width: 14%;">Lý do trượt</th>
-                                    <th style="width: 10%;">Giá trúng thầu</th>
-                                    <th style="width: 8%;">Thời gian thực hiện gói thầu</th>
-                                    <th style="width: 8%;">Thời gian thực hiện hợp đồng</th>
+                                    ${!isDirectOrSpecial ? `
+                                        <th style="width: 10%; text-align: center;">Xếp hạng nhà thầu</th>
+                                        <th style="width: 10%;">Trúng thầu/trượt thầu</th>
+                                        <th style="width: 14%;">Lý do trượt</th>
+                                    ` : ''}
+                                    <th style="width: 12%;">Giá trúng thầu</th>
+                                    <th style="width: 14%;">Thời gian thực hiện gói thầu</th>
+                                    <th style="width: 18%;">Thời gian thực hiện hợp đồng</th>
+                                    ${isDirectOrSpecial ? `
+                                        <th style="width: 6%; text-align: center;">Thao tác</th>
+                                    ` : ''}
                                 </tr>
                             </thead>
                             <tbody id="approve-bidders-tbody">
@@ -2692,106 +2794,182 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                 const tbodyApprove = document.getElementById('approve-bidders-tbody');
                 if (tbodyApprove) {
+                    // Populate initial Joint Venture members data on tr elements
+                    allBids.forEach(b => {
+                        const tr = tbodyApprove.querySelector(`tr[data-approve-bid-id="${b.id}"]`);
+                        if (tr) {
+                            tr._thanhVienLienDanh = (b.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau);
+                            tr._leadMemberName = b.tenNhaThau || '';
+                        }
+                    });
+
                     // Format VND currency input
-                    tbodyApprove.querySelectorAll('.row-gia-trung').forEach(inp => {
-                        inp.addEventListener('input', (e) => {
-                            const formatted = this.model.formatVND(e.target.value);
-                            e.target.value = formatted;
+                    const initRowListeners = (tr) => {
+                        tr.querySelectorAll('.row-gia-trung').forEach(inp => {
+                            inp.addEventListener('input', (e) => {
+                                const formatted = this.model.formatVND(e.target.value);
+                                e.target.value = formatted;
+                            });
                         });
-                    });
 
-                    // Auto-fill contract execution duration based on package execution duration
-                    tbodyApprove.querySelectorAll('.row-tg-goithau').forEach(inp => {
-                        inp.addEventListener('input', (e) => {
-                            const tr = e.target.closest('tr');
-                            const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
-                            if (inpDurationCtr) {
-                                const val = e.target.value.trim();
-                                inpDurationCtr.value = val ? (val + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
-                            }
-                        });
-                    });
-
-                    // Dropdown status change listeners
-                    tbodyApprove.querySelectorAll('.row-status-select').forEach(selectEl => {
-                        selectEl.addEventListener('change', (e) => {
-                            const tr = e.target.closest('tr');
-                            const val = e.target.value;
-
-                            if (val === 'trung') {
-                                // Reset all other rows to 'truot' (only in same lot if package has lots)
-                                const currentLot = tr.cells[0]?.textContent.trim();
-                                tbodyApprove.querySelectorAll('tr').forEach(otherTr => {
-                                    if (otherTr !== tr) {
-                                        if (gt.phanLo === 'Có') {
-                                            const otherLot = otherTr.cells[0]?.textContent.trim();
-                                            if (otherLot !== currentLot) return; // skip rows belonging to different lots
-                                        }
-
-                                        const otherSelect = otherTr.querySelector('.row-status-select');
-                                        if (otherSelect && !otherSelect.disabled) {
-                                            otherSelect.value = 'truot';
-                                        }
-
-                                        const otherLyDo = otherTr.querySelector('.row-ly-do-truot');
-                                        if (otherLyDo) {
-                                            otherLyDo.disabled = false;
-                                            otherLyDo.style.background = '';
-                                            if (!otherLyDo.value) {
-                                                otherLyDo.value = otherTr.getAttribute('data-default-reason') || 'Nhà thầu xếp hạng 1 trúng thầu';
-                                            }
-                                        }
-
-                                        const otherGia = otherTr.querySelector('.row-gia-trung');
-                                        if (otherGia) { otherGia.disabled = true; otherGia.style.background = '#f1f5f9'; otherGia.value = ''; }
-                                        const otherDurationPkg = otherTr.querySelector('.row-tg-goithau');
-                                        if (otherDurationPkg) { otherDurationPkg.disabled = true; otherDurationPkg.style.background = '#f1f5f9'; otherDurationPkg.value = ''; }
-                                        const otherDurationCtr = otherTr.querySelector('.row-tg-hopdong');
-                                        if (otherDurationCtr) { otherDurationCtr.disabled = true; otherDurationCtr.style.background = '#f1f5f9'; otherDurationCtr.value = ''; }
-                                    }
-                                });
-
-                                // Enable winning inputs on this row and populate defaults
-                                const inpGia = tr.querySelector('.row-gia-trung');
-                                if (inpGia) {
-                                    inpGia.disabled = false;
-                                    inpGia.style.background = '';
-                                    inpGia.value = tr.getAttribute('data-default-price') || '';
-                                }
-                                const inpDurationPkg = tr.querySelector('.row-tg-goithau');
-                                if (inpDurationPkg) {
-                                    inpDurationPkg.disabled = false;
-                                    inpDurationPkg.style.background = '';
-                                    inpDurationPkg.value = tr.getAttribute('data-default-duration-pkg') || '';
-                                }
+                        tr.querySelectorAll('.row-tg-goithau').forEach(inp => {
+                            inp.addEventListener('input', (e) => {
                                 const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
                                 if (inpDurationCtr) {
-                                    inpDurationCtr.disabled = false;
-                                    inpDurationCtr.style.background = '';
-                                    inpDurationCtr.value = tr.getAttribute('data-default-duration-ctr') || '';
+                                    const val = e.target.value.trim();
+                                    inpDurationCtr.value = val ? (val + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
                                 }
+                            });
+                        });
 
-                                // Disable failure reason input on this row
-                                const inpLyDo = tr.querySelector('.row-ly-do-truot');
-                                if (inpLyDo) { inpLyDo.disabled = true; inpLyDo.style.background = '#f1f5f9'; inpLyDo.value = ''; }
-                            } else {
-                                // Enable failure reason, disable and clear winning inputs on this row
-                                const inpGia = tr.querySelector('.row-gia-trung');
-                                if (inpGia) { inpGia.disabled = true; inpGia.style.background = '#f1f5f9'; inpGia.value = ''; }
-                                const inpDurationPkg = tr.querySelector('.row-tg-goithau');
-                                if (inpDurationPkg) { inpDurationPkg.disabled = true; inpDurationPkg.style.background = '#f1f5f9'; inpDurationPkg.value = ''; }
-                                const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
-                                if (inpDurationCtr) { inpDurationCtr.disabled = true; inpDurationCtr.style.background = '#f1f5f9'; inpDurationCtr.value = ''; }
+                        // Toggle Joint Venture elements based on type dropdown selection
+                        const selectLoai = tr.querySelector('.row-loai-nha-thau');
+                        const jvContainer = tr.querySelector('.row-jv-members-container');
+                        if (selectLoai && jvContainer) {
+                            selectLoai.addEventListener('change', () => {
+                                jvContainer.style.display = selectLoai.value === 'Liên danh' ? 'block' : 'none';
+                            });
+                        }
 
-                                const inpLyDo = tr.querySelector('.row-ly-do-truot');
-                                if (inpLyDo) {
-                                    inpLyDo.disabled = false;
-                                    inpLyDo.style.background = '';
-                                    inpLyDo.value = tr.getAttribute('data-default-reason') || 'Nhà thầu xếp hạng 1 trúng thầu';
+                        // Bind manage JV members button
+                        const btnManage = tr.querySelector('.row-btn-manage-members');
+                        if (btnManage) {
+                            btnManage.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                window.openMoThauJVManager(tr);
+                            });
+                        }
+
+                        // Auto fill contractor name if code matches one in the database
+                        const inputMa = tr.querySelector('.row-ma-nha-thau');
+                        const inputTen = tr.querySelector('.row-ten-nha-thau');
+                        if (inputMa && inputTen) {
+                            const handleCodeChange = () => {
+                                const code = inputMa.value.trim();
+                                if (!code) return;
+                                const latestList = this.model.getLatestNhaThau();
+                                const matched = latestList.find(n => n.maNhaThau && n.maNhaThau.trim().toLowerCase() === code.toLowerCase());
+                                if (matched) {
+                                    inputTen.value = matched.tenNhaThau || '';
+                                }
+                            };
+                            inputMa.addEventListener('input', handleCodeChange);
+                            inputMa.addEventListener('change', handleCodeChange);
+                        }
+                    };
+
+                    tbodyApprove.querySelectorAll('tr').forEach(initRowListeners);
+
+                    if (isDirectOrSpecial) {
+                        // Event delegation for removal
+                        tbodyApprove.addEventListener('click', async (e) => {
+                            const btnRemove = e.target.closest('.row-remove-bidder');
+                            if (btnRemove) {
+                                const tr = btnRemove.closest('tr');
+                                if (tr) {
+                                    const confirmed = await this.customConfirm('Xác nhận xóa', 'Bạn có chắc chắn muốn xóa dòng nhà thầu này?', 'trash-2');
+                                    if (confirmed) {
+                                        tr.remove();
+                                    }
                                 }
                             }
                         });
-                    });
+
+                        // Event delegation for lot select change
+                        tbodyApprove.addEventListener('change', (e) => {
+                            if (e.target.classList.contains('row-ma-phan-lo')) {
+                                const selectEl = e.target;
+                                const tr = selectEl.closest('tr');
+                                const tenPhanLoInput = tr.querySelector('.row-ten-phan-lo');
+                                if (tenPhanLoInput) {
+                                    const selectedOption = selectEl.options[selectEl.selectedIndex];
+                                    const tenPhanLo = selectedOption ? selectedOption.getAttribute('data-name') : '';
+                                    tenPhanLoInput.value = tenPhanLo || '';
+                                }
+                            }
+                        });
+                    } else {
+                        // Dropdown status change listeners
+                        tbodyApprove.querySelectorAll('.row-status-select').forEach(selectEl => {
+                            selectEl.addEventListener('change', (e) => {
+                                const tr = e.target.closest('tr');
+                                const val = e.target.value;
+
+                                if (val === 'trung') {
+                                    // Reset all other rows to 'truot' (only in same lot if package has lots)
+                                    const currentLot = tr.cells[0]?.textContent.trim();
+                                    tbodyApprove.querySelectorAll('tr').forEach(otherTr => {
+                                        if (otherTr !== tr) {
+                                            if (gt.phanLo === 'Có') {
+                                                const otherLot = otherTr.cells[0]?.textContent.trim();
+                                                if (otherLot !== currentLot) return; // skip rows belonging to different lots
+                                            }
+
+                                            const otherSelect = otherTr.querySelector('.row-status-select');
+                                            if (otherSelect && !otherSelect.disabled) {
+                                                otherSelect.value = 'truot';
+                                            }
+
+                                            const otherLyDo = otherTr.querySelector('.row-ly-do-truot');
+                                            if (otherLyDo) {
+                                                otherLyDo.disabled = false;
+                                                otherLyDo.style.background = '';
+                                                if (!otherLyDo.value) {
+                                                    otherLyDo.value = otherTr.getAttribute('data-default-reason') || 'Nhà thầu xếp hạng 1 trúng thầu';
+                                                }
+                                            }
+
+                                            const otherGia = otherTr.querySelector('.row-gia-trung');
+                                            if (otherGia) { otherGia.disabled = true; otherGia.style.background = '#f1f5f9'; otherGia.value = ''; }
+                                            const otherDurationPkg = otherTr.querySelector('.row-tg-goithau');
+                                            if (otherDurationPkg) { otherDurationPkg.disabled = true; otherDurationPkg.style.background = '#f1f5f9'; otherDurationPkg.value = ''; }
+                                            const otherDurationCtr = otherTr.querySelector('.row-tg-hopdong');
+                                            if (otherDurationCtr) { otherDurationCtr.disabled = true; otherDurationCtr.style.background = '#f1f5f9'; otherDurationCtr.value = ''; }
+                                        }
+                                    });
+
+                                    // Enable winning inputs on this row and populate defaults
+                                    const inpGia = tr.querySelector('.row-gia-trung');
+                                    if (inpGia) {
+                                        inpGia.disabled = false;
+                                        inpGia.style.background = '';
+                                        inpGia.value = tr.getAttribute('data-default-price') || '';
+                                    }
+                                    const inpDurationPkg = tr.querySelector('.row-tg-goithau');
+                                    if (inpDurationPkg) {
+                                        inpDurationPkg.disabled = false;
+                                        inpDurationPkg.style.background = '';
+                                        inpDurationPkg.value = tr.getAttribute('data-default-duration-pkg') || '';
+                                    }
+                                    const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
+                                    if (inpDurationCtr) {
+                                        inpDurationCtr.disabled = false;
+                                        inpDurationCtr.style.background = '';
+                                        inpDurationCtr.value = tr.getAttribute('data-default-duration-ctr') || '';
+                                    }
+
+                                    // Disable failure reason input on this row
+                                    const inpLyDo = tr.querySelector('.row-ly-do-truot');
+                                    if (inpLyDo) { inpLyDo.disabled = true; inpLyDo.style.background = '#f1f5f9'; inpLyDo.value = ''; }
+                                } else {
+                                    // Enable failure reason, disable and clear winning inputs on this row
+                                    const inpGia = tr.querySelector('.row-gia-trung');
+                                    if (inpGia) { inpGia.disabled = true; inpGia.style.background = '#f1f5f9'; inpGia.value = ''; }
+                                    const inpDurationPkg = tr.querySelector('.row-tg-goithau');
+                                    if (inpDurationPkg) { inpDurationPkg.disabled = true; inpDurationPkg.style.background = '#f1f5f9'; inpDurationPkg.value = ''; }
+                                    const inpDurationCtr = tr.querySelector('.row-tg-hopdong');
+                                    if (inpDurationCtr) { inpDurationCtr.disabled = true; inpDurationCtr.style.background = '#f1f5f9'; inpDurationCtr.value = ''; }
+
+                                    const inpLyDo = tr.querySelector('.row-ly-do-truot');
+                                    if (inpLyDo) {
+                                        inpLyDo.disabled = false;
+                                        inpLyDo.style.background = '';
+                                        inpLyDo.value = tr.getAttribute('data-default-reason') || 'Nhà thầu xếp hạng 1 trúng thầu';
+                                    }
+                                }
+                            });
+                        });
+                    }
                 }
 
                 // ── Event handlers cho bảng nhập nhà thầu (Chỉ định thầu rút gọn) ──────
@@ -2947,7 +3125,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         // Identify winner rows
                         const winnerRows = [];
                         tbodyApprove.querySelectorAll('tr').forEach(tr => {
-                            const status = tr.querySelector('.row-status-select')?.value;
+                            const status = tr.querySelector('.row-status-select')?.value || (isDirectOrSpecial ? 'trung' : 'truot');
                             if (status === 'trung') {
                                 winnerRows.push(tr);
                             }
@@ -2958,11 +3136,18 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const durPkg = wTr.querySelector('.row-tg-goithau')?.value.trim() || '';
                             const durCtr = wTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
 
-                            const rowInputs = [
+                            const rowInputs = [];
+                            if (isDirectOrSpecial) {
+                                rowInputs.push(
+                                    { el: wTr.querySelector('.row-ma-nha-thau'), val: wTr.querySelector('.row-ma-nha-thau')?.value.trim() },
+                                    { el: wTr.querySelector('.row-ten-nha-thau'), val: wTr.querySelector('.row-ten-nha-thau')?.value.trim() }
+                                );
+                            }
+                            rowInputs.push(
                                 { el: wTr.querySelector('.row-gia-trung'), val: finalPriceRaw },
                                 { el: wTr.querySelector('.row-tg-goithau'), val: durPkg },
                                 { el: wTr.querySelector('.row-tg-hopdong'), val: durCtr }
-                            ];
+                            );
 
                             rowInputs.forEach(f => {
                                 if (!f.val) {
@@ -2988,16 +3173,121 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             return;
                         }
 
+                        if (isDirectOrSpecial) {
+                            // Reconstruct bidders from input rows
+                            this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) !== String(gt.id));
+                        }
+
                         // Save bidder failure reasons to database / model state
                         tbodyApprove.querySelectorAll('tr').forEach(tr => {
                             const bidId = tr.getAttribute('data-approve-bid-id');
-                            const bid = this.model.state.thongtinmothau.find(b => b.id === bidId);
-                            if (bid) {
-                                const status = tr.querySelector('.row-status-select')?.value;
-                                if (status === 'trung') {
-                                    bid.lyDoTruot = '';
-                                } else {
-                                    bid.lyDoTruot = tr.querySelector('.row-ly-do-truot')?.value.trim() || '';
+                            let bid = this.model.state.thongtinmothau.find(b => b.id === bidId);
+
+                            const maNhaThau = tr.querySelector('.row-ma-nha-thau')?.value.trim() || '';
+                            const tenNhaThau = tr.querySelector('.row-ten-nha-thau')?.value.trim() || '';
+                            const giaTrungRaw = tr.querySelector('.row-gia-trung')?.value || '';
+                            const giaTrung = this.model.parseVND(giaTrungRaw);
+                            const durPkg = tr.querySelector('.row-tg-goithau')?.value.trim() || '';
+                            const durCtr = tr.querySelector('.row-tg-hopdong')?.value.trim() || '';
+
+                            let maPhanLo = '';
+                            let tenPhanLo = '';
+                            if (gt.phanLo === 'Có') {
+                                maPhanLo = tr.querySelector('.row-ma-phan-lo')?.value || '';
+                                tenPhanLo = tr.querySelector('.row-ten-phan-lo')?.value || '';
+                            }
+
+                            if (isDirectOrSpecial) {
+                                const loaiNt = tr.querySelector('.row-loai-nha-thau')?.value || 'Độc lập';
+                                const tvLd = tr._thanhVienLienDanh || [];
+
+                                // Find or create contractor in nhathau table to get the correct nhaThauId
+                                let foundNt = this.model.state.nhathau.find(n =>
+                                    (n.maNhaThau && maNhaThau && n.maNhaThau.toLowerCase() === maNhaThau.toLowerCase()) ||
+                                    (n.tenNhaThau && tenNhaThau && n.tenNhaThau.toLowerCase() === tenNhaThau.toLowerCase())
+                                );
+
+                                if (!foundNt && tenNhaThau) {
+                                    const newNtId = window.generateUUID();
+                                    foundNt = {
+                                        id: newNtId,
+                                        rootId: newNtId,
+                                        phienBan: '00',
+                                        isLatest: 1,
+                                        maNhaThau: maNhaThau || 'NT-' + window.generateUUID().toString().substr(8),
+                                        tenNhaThau: tenNhaThau,
+                                        loaiNhaThau: loaiNt,
+                                        maSoThue: maNhaThau || '',
+                                        nguoiDaiDien: '',
+                                        danhXung: 'Ông',
+                                        soDienThoai: '',
+                                        email: '',
+                                        diaChi: '',
+                                        soTaiKhoan: '',
+                                        noiMoTaiKhoan: '',
+                                        maNganHang: '',
+                                        thanhVienLienDanh: loaiNt === 'Liên danh' ? tvLd.map(m => ({
+                                            tenNhaThau: m.tenNhaThau,
+                                            maSoThue: m.maSoThue,
+                                            vaiTro: "Thành viên liên danh"
+                                        })) : []
+                                    };
+                                    this.model.state.nhathau.push(foundNt);
+                                    this.model.persistData('nhathau');
+                                }
+
+                                const nhaThauId = foundNt ? foundNt.id : bidId;
+
+                                // Reconstruct full JV list including the lead member
+                                const fullJvList = [];
+                                if (loaiNt === 'Liên danh') {
+                                    // Lead member
+                                    fullJvList.push({
+                                        tenNhaThau: tr._leadMemberName || tenNhaThau,
+                                        maSoThue: maNhaThau,
+                                        vaiTro: "Đứng đầu liên danh"
+                                    });
+                                    // Other members
+                                    tvLd.forEach(m => {
+                                        fullJvList.push({
+                                            tenNhaThau: m.tenNhaThau,
+                                            maSoThue: m.maSoThue,
+                                            vaiTro: "Thành viên liên danh"
+                                        });
+                                    });
+                                }
+
+                                bid = {
+                                    id: bidId,
+                                    goiThauId: gt.id,
+                                    nhaThauId: nhaThauId,
+                                    maNhaThau: maNhaThau,
+                                    tenNhaThau: tenNhaThau,
+                                    loaiNhaThau: loaiNt,
+                                    thanhVienLienDanh: fullJvList,
+                                    giaDuThau: giaTrung || gt.giaGoiThau,
+                                    giaSauGiamGia: giaTrung || gt.giaGoiThau,
+                                    danhGiaHopLe: 'Đạt',
+                                    danhGiaNangLuc: 'Đạt',
+                                    danhGiaKyThuat: 'Đạt',
+                                    danhGiaTaiChinh: 'Đạt',
+                                    danhGiaKetLuan: 'Đạt',
+                                    thoiGianThucHien: durPkg,
+                                    lyDoTruot: ''
+                                };
+                                if (gt.phanLo === 'Có') {
+                                    bid.maPhanLo = maPhanLo;
+                                    bid.tenPhanLo = tenPhanLo;
+                                }
+                                this.model.state.thongtinmothau.push(bid);
+                            } else {
+                                if (bid) {
+                                    const status = tr.querySelector('.row-status-select')?.value || (isDirectOrSpecial ? 'trung' : 'truot');
+                                    if (status === 'trung') {
+                                        bid.lyDoTruot = '';
+                                    } else {
+                                        bid.lyDoTruot = tr.querySelector('.row-ly-do-truot')?.value.trim() || '';
+                                    }
                                 }
                             }
                         });
@@ -3007,9 +3297,24 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         if (gt.phanLo === 'Có') {
                             const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
                             plList.forEach(pl => {
-                                const lotWinnerTr = winnerRows.find(tr => tr.cells[0]?.textContent.trim() === pl.maPhanLo);
+                                const lotWinnerTr = winnerRows.find(tr => {
+                                    if (isDirectOrSpecial) {
+                                        return tr.querySelector('.row-ma-phan-lo')?.value === pl.maPhanLo;
+                                    } else {
+                                        return tr.cells[0]?.textContent.trim() === pl.maPhanLo;
+                                    }
+                                });
                                 if (lotWinnerTr) {
-                                    const wId = lotWinnerTr.getAttribute('data-nt-id');
+                                    let wId = lotWinnerTr.getAttribute('data-nt-id');
+                                    if (isDirectOrSpecial) {
+                                        const wMa = lotWinnerTr.querySelector('.row-ma-nha-thau')?.value.trim() || '';
+                                        const wTen = lotWinnerTr.querySelector('.row-ten-nha-thau')?.value.trim() || '';
+                                        const foundWinnerNt = this.model.state.nhathau.find(n =>
+                                            (n.maNhaThau && wMa && n.maNhaThau.toLowerCase() === wMa.toLowerCase()) ||
+                                            (n.tenNhaThau && wTen && n.tenNhaThau.toLowerCase() === wTen.toLowerCase())
+                                        );
+                                        wId = foundWinnerNt ? foundWinnerNt.id : lotWinnerTr.getAttribute('data-approve-bid-id');
+                                    }
                                     pl.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
                                     pl.giaTrungThau = this.model.parseVND(lotWinnerTr.querySelector('.row-gia-trung')?.value || '0');
                                     pl.thoiGianGoiThau = lotWinnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
@@ -3025,7 +3330,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                             const firstWinner = winnerRows[0];
                             if (firstWinner) {
-                                const wId = firstWinner.getAttribute('data-nt-id');
+                                let wId = firstWinner.getAttribute('data-nt-id');
+                                if (isDirectOrSpecial) {
+                                    const wMa = firstWinner.querySelector('.row-ma-nha-thau')?.value.trim() || '';
+                                    const wTen = firstWinner.querySelector('.row-ten-nha-thau')?.value.trim() || '';
+                                    const foundWinnerNt = this.model.state.nhathau.find(n =>
+                                        (n.maNhaThau && wMa && n.maNhaThau.toLowerCase() === wMa.toLowerCase()) ||
+                                        (n.tenNhaThau && wTen && n.tenNhaThau.toLowerCase() === wTen.toLowerCase())
+                                    );
+                                    wId = foundWinnerNt ? foundWinnerNt.id : firstWinner.getAttribute('data-approve-bid-id');
+                                }
                                 gt.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
                                 gt.giaTrungThau = winnerRows.reduce((sum, tr) => sum + this.model.parseVND(tr.querySelector('.row-gia-trung')?.value || '0'), 0);
                                 winnerIdStr = wId || 'none';
@@ -3041,7 +3355,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             let durPkg = '';
                             let durCtr = '';
                             if (winnerTr) {
-                                winnerIdStr = winnerTr.getAttribute('data-nt-id');
+                                if (isDirectOrSpecial) {
+                                    const wMa = winnerTr.querySelector('.row-ma-nha-thau')?.value.trim() || '';
+                                    const wTen = winnerTr.querySelector('.row-ten-nha-thau')?.value.trim() || '';
+                                    const foundWinnerNt = this.model.state.nhathau.find(n =>
+                                        (n.maNhaThau && wMa && n.maNhaThau.toLowerCase() === wMa.toLowerCase()) ||
+                                        (n.tenNhaThau && wTen && n.tenNhaThau.toLowerCase() === wTen.toLowerCase())
+                                    );
+                                    winnerIdStr = foundWinnerNt ? foundWinnerNt.id : winnerTr.getAttribute('data-approve-bid-id');
+                                } else {
+                                    winnerIdStr = winnerTr.getAttribute('data-nt-id');
+                                }
                                 finalPrice = this.model.parseVND(winnerTr.querySelector('.row-gia-trung')?.value || '0');
                                 durPkg = winnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
                                 durCtr = winnerTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
@@ -3113,138 +3437,82 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             if (resultImportBtn) {
                 resultImportBtn.onclick = () => {
                     window.appController._currentResultPackageId = gt.id;
-                    window.appController.openExcelImportModal('ketquaqd');
+                    window.appController.triggerExcelImport('ketquaqd');
                 };
             }
 
             const btnAddBidder = document.getElementById('btn-result-add-bidder');
             if (btnAddBidder) {
                 btnAddBidder.onclick = () => {
-                    const nhathauList = this.model.state.nhathau || [];
-                    if (nhathauList.length === 0) {
-                        this.customAlert('Thông báo', 'Chưa có nhà thầu nào trong hệ thống. Vui lòng thêm nhà thầu trước.', 'info');
-                        return;
-                    }
+                    const tbody = document.getElementById('approve-bidders-tbody');
+                    if (!tbody) return;
 
-                    const modalId = 'modal-result-add-bidder';
-                    let modal = document.getElementById(modalId);
-                    if (modal) modal.remove();
+                    const newId = window.generateUUID();
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-approve-bid-id', newId);
+                    tr.setAttribute('data-is-qualified', 'true');
+                    tr.setAttribute('data-nt-id', newId);
 
-                    modal = document.createElement('div');
-                    modal.id = modalId;
-                    modal.className = 'modal-overlay active';
-                    modal.style.zIndex = '2000';
-
-                    const card = document.createElement('div');
-                    card.className = 'modal-card';
-                    card.style.maxWidth = '450px';
-
-                    let lotSelectHtml = '';
+                    let lotCells = '';
                     if (gt.phanLo === 'Có') {
                         const lots = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
-                        lotSelectHtml = `
-                            <div class="form-group" style="margin-bottom: 15px;">
-                                <label style="font-weight:600; margin-bottom:6px; display:block;">Chọn Phần lô <span class="text-danger">*</span></label>
-                                <select id="add-bidder-lot" class="form-control" required style="width: 100%;">
-                                    ${lots.map(l => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}">${l.maPhanLo} - ${l.tenPhanLo}</option>`).join('')}
+                        const optionsHtml = lots.map(l => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}">${l.maPhanLo}</option>`).join('');
+                        const firstLotName = lots[0] ? lots[0].tenPhanLo : '';
+                        lotCells = `
+                            <td>
+                                <select class="form-control row-ma-phan-lo" style="padding:4px 8px; font-size:0.8rem;">
+                                    ${optionsHtml}
                                 </select>
-                            </div>
+                            </td>
+                            <td>
+                                <input type="text" class="form-control row-ten-phan-lo" value="${firstLotName}" readonly style="padding:4px 8px; font-size:0.8rem; background:#f1f5f9;">
+                            </td>
                         `;
                     }
 
-                    card.innerHTML = `
-                        <div class="modal-header">
-                            <h3>Thêm Nhà thầu tham dự</h3>
-                            <button class="modal-close" id="btn-close-add-bidder-modal">&times;</button>
-                        </div>
-                        <div class="modal-body" style="padding: 20px;">
-                            <div class="form-group" style="margin-bottom: 15px;">
-                                <label style="font-weight:600; margin-bottom:6px; display:block;">Chọn Nhà thầu <span class="text-danger">*</span></label>
-                                <select id="add-bidder-select" class="form-control" style="width: 100%;">
-                                    ${nhathauList.map(n => `<option value="${n.id}">${n.tenNhaThau} (${n.maSoThue || n.maNhaThau || ''})</option>`).join('')}
-                                </select>
+                    tr._thanhVienLienDanh = [];
+                    tr._leadMemberName = '';
+                    tr.innerHTML = `
+                        ${lotCells}
+                        <td>
+                            <select class="form-control row-loai-nha-thau" style="padding:4px 8px; font-size:0.8rem;">
+                                <option value="Độc lập" selected>Độc lập</option>
+                                <option value="Liên danh">Liên danh</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control row-ma-nha-thau" value="" placeholder="Mã nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
+                        </td>
+                        <td>
+                            <input type="text" class="form-control row-ten-nha-thau" value="" placeholder="Tên nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
+                            <div class="row-jv-members-container" style="margin-top: 4px; display: none;">
+                                <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
+                                    <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+                                    <span class="row-jv-btn-text">Thành viên liên danh (0)</span>
+                                </button>
                             </div>
-                            ${lotSelectHtml}
-                        </div>
-                        <div class="modal-footer" style="padding: 10px 20px; display: flex; justify-content: flex-end; gap: 10px;">
-                            <button class="btn btn-outline" id="btn-cancel-add-bidder-modal">Hủy</button>
-                            <button class="btn btn-primary" id="btn-confirm-add-bidder">Thêm</button>
-                        </div>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control row-gia-trung" value="" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                        </td>
+                        <td>
+                            <input type="text" class="form-control row-tg-goithau" value="${gt.thoiGianThucHien || ''}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                        </td>
+                        <td>
+                            <input type="text" class="form-control row-tg-hopdong" value="${gt.thoiGianThucHien ? (gt.thoiGianThucHien + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : ''}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                        </td>
+                        <td style="text-align: center;">
+                            <button class="action-btn btn-delete row-remove-bidder" style="border:none; background:none; cursor:pointer; color:var(--danger);"><i data-lucide="trash-2" style="width:16px; height:16px;"></i></button>
+                        </td>
                     `;
 
-                    modal.appendChild(card);
-                    document.body.appendChild(modal);
+                    tbody.appendChild(tr);
 
-                    const closeModal = () => {
-                        modal.remove();
-                    };
-                    document.getElementById('btn-close-add-bidder-modal').onclick = closeModal;
-                    document.getElementById('btn-cancel-add-bidder-modal').onclick = closeModal;
+                    if (window.lucide) {
+                        window.lucide.createIcons();
+                    }
 
-                    document.getElementById('btn-confirm-add-bidder').onclick = async () => {
-                        const ntId = document.getElementById('add-bidder-select').value;
-                        const nt = nhathauList.find(n => String(n.id) === String(ntId));
-                        if (!nt) return;
-
-                        let lotCode = '';
-                        let lotName = '';
-                        if (gt.phanLo === 'Có') {
-                            const lotSelect = document.getElementById('add-bidder-lot');
-                            if (lotSelect) {
-                                lotCode = lotSelect.value;
-                                lotName = lotSelect.options[lotSelect.selectedIndex].getAttribute('data-name');
-                            }
-                        }
-
-                        // Check if already exists
-                        const existingBids = this.model.state.thongtinmothau || [];
-                        const alreadyExists = existingBids.some(b =>
-                            String(b.goiThauId) === String(gt.id) &&
-                            String(b.nhaThauId) === String(nt.id) &&
-                            (gt.phanLo !== 'Có' || b.maPhanLo === lotCode)
-                        );
-
-                        if (alreadyExists) {
-                            alert('Nhà thầu này đã được thêm vào danh sách tham dự gói thầu/phần lô này!');
-                            return;
-                        }
-
-                        // Create bid entry
-                        const newBid = {
-                            id: window.generateUUID(),
-                            goiThauId: gt.id,
-                            nhaThauId: nt.id,
-                            maNhaThau: nt.maNhaThau || nt.maSoThue || '',
-                            tenNhaThau: nt.tenNhaThau,
-                            loaiNhaThau: nt.loaiNhaThau || 'Độc lập',
-                            thanhVienLienDanh: nt.thanhVienLienDanh || [],
-                            giaDuThau: gt.giaGoiThau,
-                            giaSauGiamGia: gt.giaGoiThau,
-                            danhGiaHopLe: 'Đạt',
-                            danhGiaNangLuc: 'Đạt',
-                            danhGiaKyThuat: 'Đạt',
-                            danhGiaTaiChinh: 'Đạt',
-                            danhGiaKetLuan: 'Đạt',
-                            thoiGianThucHien: gt.thoiGianThucHien,
-                            lyDoTruot: ''
-                        };
-                        if (gt.phanLo === 'Có') {
-                            newBid.maPhanLo = lotCode;
-                            newBid.tenPhanLo = lotName;
-                        }
-
-                        if (!this.model.state.thongtinmothau) {
-                            this.model.state.thongtinmothau = [];
-                        }
-                        this.model.state.thongtinmothau.push(newBid);
-                        this.model.persistData('thongtinmothau');
-                        if (window.appController && typeof window.appController.autoSync === 'function') {
-                            await window.appController.autoSync();
-                        }
-
-                        closeModal();
-                        this.showPackageDetails(gt.id);
-                    };
+                    initRowListeners(tr);
                 };
             }
             break;
@@ -3388,7 +3656,7 @@ export function renderExcelPreview(rows, importType) {
         // goithau
         maGoiThau: 'Mã gói thầu',
         tenGoiThau: 'Tên gói thầu',
-        keHoachId: 'Mã Kế hoạch liên kết',
+        keHoachId: 'Mã Kế hoạch LCNT',
         giaGoiThau: 'Giá gói thầu',
         hinhThucLuaChon: 'Hình thức LCNT',
         phuongThucLuaChon: 'Phương thức LCNT',

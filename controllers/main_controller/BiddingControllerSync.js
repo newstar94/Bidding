@@ -145,7 +145,7 @@ export async function forceSyncData(isBackground = false) {
     if (syncStatusText) syncStatusText.textContent = 'Đang đồng bộ...';
 
     try {
-        const since = localStorage.getItem('bf_last_sync_timestamp') || '0';
+        const since = isBackground ? (localStorage.getItem('bf_last_sync_timestamp') || '0') : '0';
         const response = await fetch('/api/get-all-data?since=' + since, {
             headers: {
                 'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',

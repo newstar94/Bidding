@@ -28,7 +28,7 @@ export function setupExcelImportEvents() {
         btn._hasExcelListener = true;
         btn.addEventListener('click', () => {
             const type = btn.getAttribute('data-type');
-            this.openExcelImportModal(type);
+            this.triggerExcelImport(type);
         });
     });
 
@@ -104,7 +104,6 @@ export function triggerExcelImport(type) {
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
-                this.openExcelImportModal(type);
                 this.handleExcelUpload(file);
             }
         });
@@ -179,114 +178,7 @@ export function triggerExcelTemplateDownload(type) {
 
 
 export function openExcelImportModal(type) {
-    this._excelImportType = type; // 'kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'mothau'
-
-    const fileInput = document.getElementById('excel-file-input');
-    if (fileInput) fileInput.value = '';
-
-    const fileInfo = document.getElementById('excel-file-info');
-    if (fileInfo) fileInfo.style.display = 'none';
-
-    const previewContainer = document.getElementById('excel-preview-container');
-    if (previewContainer) previewContainer.style.display = 'none';
-
-    const saveBtn = document.getElementById('btn-save-excel-import');
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.style.display = 'none';
-    }
-
-    const modalTitle = document.getElementById('modal-excel-import-title');
-    if (modalTitle) {
-        let typeText = 'Kế hoạch LCNT';
-        if (type === 'goithau' || type === 'package') typeText = 'Gói thầu';
-        else if (type === 'chudautu') typeText = 'Chủ đầu tư';
-        else if (type === 'nhathau') typeText = 'Nhà thầu';
-        else if (type === 'chuyengia') typeText = 'Chuyên gia';
-        else if (type === 'hopdong') typeText = 'Hợp đồng';
-        else if (type === 'mothau') typeText = 'Thông tin Mở thầu';
-        else if (type === 'danhgiahsdt') typeText = 'Đánh giá HSDT';
-        else if (type === 'ketquaqd') typeText = 'Kết quả phê duyệt LCNT';
-        else if (type === 'opening_fin') typeText = 'Biên bản mở E-HSĐXTC';
-
-        modalTitle.textContent = `Nhập khẩu ${typeText} từ Excel`;
-    }
-
-    // Configure Excel modal template download to dynamically match mothau packages if chosen
-    const downloadTemplateBtn = document.getElementById('btn-download-excel-template');
-    if (downloadTemplateBtn) {
-        // Clear all previous listeners
-        const clone = downloadTemplateBtn.cloneNode(true);
-        downloadTemplateBtn.parentNode.replaceChild(clone, downloadTemplateBtn);
-        clone._hasExcelListener = true;
-
-        clone.onclick = (e) => {
-            e.preventDefault();
-            if (this._excelImportType === 'mothau') {
-                // Dynamically trigger the Excel template download
-                const select = document.getElementById('mothau-goithau-select');
-                if (!select || !select.value) {
-                    this.view.customAlert('Chưa chọn Gói thầu', 'Vui lòng chọn gói thầu ở màn hình nhập mở thầu trước để tải file mẫu tương ứng!', 'alert-triangle');
-                    return;
-                }
-                const gtId = select.value;
-                const gt = this.model.state.goithau.find(g => g.id === gtId);
-                if (!gt) return;
-
-                const isTuVan = gt.linhVuc === 'Tư vấn';
-                const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
-                const is1G1T = gt.phuongThucLuaChon === 'Một giai đoạn một túi hồ sơ';
-                const hasPhanLo = gt.phanLo === 'Có';
-
-                let caseType = '1G1T_NO_LOT';
-                if (isTuVan) caseType = 'TU_VAN';
-                else if (!isTuVan && is1G2T) caseType = hasPhanLo ? '1G2T_WITH_LOT' : '1G2T_NO_LOT';
-                else if (is1G1T) caseType = hasPhanLo ? '1G1T_WITH_LOT' : '1G1T_NO_LOT';
-
-                const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                const lotCodes = (gt.phanLoList || []).map(l => l.maPhanLo).join(',');
-
-                // Redirect to backend API for downloading the strictly validated template
-                authFetchDownload(`/api/export-mothau-template?case_type=${caseType}&package_name=${encodeURIComponent(safeCode)}&lot_codes=${encodeURIComponent(lotCodes)}`, `Mau_Mo_Thau_${caseType}_${safeCode}.xlsx`);
-            } else if (this._excelImportType === 'danhgiahsdt') {
-                const select = document.getElementById('danhgiahsdt-goithau-select');
-                if (!select || !select.value) {
-                    this.view.customAlert('Chưa chọn Gói thầu', 'Vui lòng chọn gói thầu ở màn hình đánh giá HSDT trước để tải file mẫu tương ứng!', 'alert-triangle');
-                    return;
-                }
-                const gtId = select.value;
-                const gt = this.model.state.goithau.find(g => g.id === gtId);
-                if (!gt) return;
-                const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                authFetchDownload(`/api/export-danhgiahsdt-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}&eval_type=${this.currentDanhGiaTab || 'technical'}`, `DanhGia_HSDT_${safeCode}.xlsx`);
-            } else if (this._excelImportType === 'ketquaqd') {
-                const gtId = this._currentResultPackageId;
-                if (!gtId) {
-                    this.view.customAlert('Chưa chọn Gói thầu', 'Không tìm thấy thông tin gói thầu hiện tại!', 'alert-triangle');
-                    return;
-                }
-                const gt = this.model.state.goithau.find(g => g.id === gtId);
-                if (!gt) return;
-                const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                authFetchDownload(`/api/export-ketquaqd-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `KetQua_QD_${safeCode}.xlsx`);
-            } else if (this._excelImportType === 'opening_fin') {
-                const select = document.getElementById('mothau-goithau-select') || document.getElementById('danhgiahsdt-goithau-select');
-                const gtId = select ? select.value : (this._currentPackageId || '');
-                const gt = this.model.state.goithau.find(g => g.id === gtId);
-                if (!gt) {
-                    this.view.customAlert('Chưa chọn Gói thầu', 'Không tìm thấy thông tin gói thầu hiện tại!', 'alert-triangle');
-                    return;
-                }
-                const safeCode = (gt.maGoiThau || 'GoiThau').replace(/[^a-zA-Z0-9_-]/g, '').trim().substring(0, 30);
-                authFetchDownload(`/api/export-opening-fin-template?package_id=${gtId}&package_name=${encodeURIComponent(safeCode)}`, `Mau_Mo_Tai_Chinh_${safeCode}.xlsx`);
-            } else {
-                const type = this._excelImportType || 'kehoach';
-                authFetchDownload(`/api/export-excel-template/${type}`, `Mau_nhap_lieu_${type}.xlsx`);
-            }
-        };
-    }
-
-    this.view.openModal('modal-excel-preview');
+    // This modal has been removed. Do nothing.
 }
 
 
@@ -723,15 +615,7 @@ export async function handleExcelUpload(file) {
                 });
 
                 this._excelImportData = parsedBids;
-
-                // Render preview table via BiddingView
-                this.view.renderExcelPreview(this._excelImportData, this._excelImportType);
-
-                const saveBtn = document.getElementById('btn-save-excel-import');
-                if (saveBtn) {
-                    saveBtn.disabled = false;
-                    saveBtn.style.display = 'inline-flex';
-                }
+                await this.saveExcelImport();
             } catch (err) {
                 console.error(err);
                 await this.view.customAlert('Lỗi', 'Không thể đọc tệp tin Excel này. Vui lòng kiểm tra lại!', 'alert-triangle');
@@ -758,15 +642,7 @@ export async function handleExcelUpload(file) {
         const data = await res.json();
         if (res.ok && data.success) {
             this._excelImportData = data.rows || data.data || [];
-
-            // Render preview table via our dynamic PlanView function
-            this.view.renderExcelPreview(this._excelImportData, this._excelImportType);
-
-            const saveBtn = document.getElementById('btn-save-excel-import');
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.style.display = 'inline-flex';
-            }
+            await this.saveExcelImport();
         } else {
             await this.view.customAlert('Thất bại', data.error || 'Không thể đọc tệp tin Excel này.', 'alert-triangle');
         }

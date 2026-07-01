@@ -287,7 +287,8 @@ export function setupWordTemplatesEvents() {
     };
 
     window.deleteWordMapping = async (id) => {
-        if (!confirm('Bạn có chắc chắn muốn xóa biến ánh xạ này không?')) return;
+        const confirmed = await this.view.customConfirm('Xác nhận xóa', 'Bạn có chắc chắn muốn xóa biến ánh xạ này không?', 'trash-2');
+        if (!confirmed) return;
         try {
             const res = await fetch(`/api/word-mappings/${id}`, {
                 method: 'DELETE'

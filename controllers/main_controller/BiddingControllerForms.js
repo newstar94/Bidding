@@ -875,7 +875,7 @@ export function setupActionListeners() {
     document.querySelectorAll('.btn-import-excel').forEach(btn => {
         btn.addEventListener('click', () => {
             const type = btn.getAttribute('data-type');
-            this.openExcelImportModal(type);
+            this.triggerExcelImport(type);
         });
     });
 }

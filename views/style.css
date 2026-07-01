@@ -46,6 +46,8 @@
     --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+
+
 /* DARK THEME VARIABLES */
 body.dark-mode {
     --bg-app: #0b0f19;
@@ -3388,7 +3390,7 @@ select.form-control:focus {
 }
 
 /* Add bid button */
-#btn-mothau-add-bid {
+#btn-mothau-add-bid, #btn-result-add-bidder {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -3404,13 +3406,13 @@ select.form-control:focus {
     transition: all var(--transition-fast);
 }
 
-#btn-mothau-add-bid:hover {
+#btn-mothau-add-bid:hover, #btn-result-add-bidder:hover {
     background: var(--primary-soft);
     box-shadow: 0 3px 8px rgba(37, 99, 235, 0.15);
     transform: translateY(-1px);
 }
 
-#btn-mothau-add-bid i {
+#btn-mothau-add-bid i, #btn-result-add-bidder i {
     width: 15px;
     height: 15px;
 }
