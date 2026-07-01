@@ -1558,3 +1558,366 @@ export async function saveThongTinMoThau() {
         this.view.showPackageDetails(gtId);
     }
 }
+
+
+/* ==========================================================================
+   saveKetQuaChiDinhThau — Lưu kết quả LCNT cho Chỉ định thầu rút gọn
+   và Lựa chọn nhà thầu trong trường hợp đặc biệt.
+   Thực hiện 3 bước chạy ngầm:
+     Bước 1: Ghi Biên bản mở thầu (thongtinmothau)
+     Bước 2: Tự động đặt đánh giá "Đạt" (danhGiaHsdtMetadata)
+     Bước 3: Lưu chính thức kết quả LCNT (goithau)
+   Nếu bất kỳ bước nào thất bại → rollback toàn bộ.
+   ========================================================================== */
+export async function saveKetQuaChiDinhThau(gtId) {
+    const gt = this.model.state.goithau.find(g => g.id === gtId);
+    if (!gt) return;
+
+    // ── Snapshot để rollback ──────────────────────────────────────────────────
+    const snapshotGt = JSON.parse(JSON.stringify(gt));
+    const snapshotBids = JSON.parse(JSON.stringify(
+        this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gtId))
+    ));
+
+    // ── Đọc thông tin quyết định từ form ─────────────────────────────────────
+    const decNo     = document.getElementById('award-decision-no')?.value.trim() || '';
+    const decDateRaw= document.getElementById('award-decision-date')?.value || '';
+    const decDate   = this.model.convertDMYToYMD(decDateRaw);
+
+    const soBctdVal  = document.getElementById('award-so-bctd')?.value.trim() || '';
+    const ngayBctdRaw= document.getElementById('award-ngay-bctd')?.value || '';
+    const ngayBctdVal= this.model.convertDMYToYMD(ngayBctdRaw);
+
+    // ── Validate bắt buộc: số QĐ + ngày QĐ ──────────────────────────────────
+    let hasError = false;
+    const errorInputs = [];
+    const validateField = (elId, val) => {
+        const el = document.getElementById(elId);
+        if (!val && el) {
+            hasError = true;
+            errorInputs.push(el);
+            el.closest('.form-group')?.querySelector('.error-text') &&
+                (el.closest('.form-group').querySelector('.error-text').style.display = 'block');
+            el.closest('.form-group')?.classList.add('invalid');
+            const clear = () => {
+                el.closest('.form-group')?.querySelector('.error-text') &&
+                    (el.closest('.form-group').querySelector('.error-text').style.display = 'none');
+                el.closest('.form-group')?.classList.remove('invalid');
+            };
+            el.addEventListener('input', clear, { once: true });
+            el.addEventListener('change', clear, { once: true });
+        }
+    };
+    validateField('award-decision-no', decNo);
+    validateField('award-decision-date', decDateRaw);
+    if (document.getElementById('award-so-bctd'))  validateField('award-so-bctd', soBctdVal);
+    if (document.getElementById('award-ngay-bctd')) validateField('award-ngay-bctd', ngayBctdRaw);
+
+    if (hasError) {
+        if (errorInputs[0]) {
+            errorInputs[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => errorInputs[0].focus({ preventScroll: true }), 300);
+        }
+        return;
+    }
+
+    // ── Đọc danh sách nhà thầu từ bảng nhập ─────────────────────────────────
+    const tbody = document.getElementById('cdtrug-mothau-tbody');
+    if (!tbody) {
+        await this.view.customAlert('Lỗi', 'Không tìm thấy bảng nhà thầu. Vui lòng tải lại trang!', 'x-circle');
+        return;
+    }
+
+    const rows = tbody.querySelectorAll('tr');
+    if (rows.length === 0) {
+        await this.view.customAlert('Thiếu dữ liệu', 'Vui lòng thêm ít nhất một Nhà thầu tham dự!', 'alert-triangle');
+        return;
+    }
+
+    // Validate mã NT + tên NT bắt buộc
+    let hasRowInvalid = false;
+    const invalidRowInputs = [];
+    rows.forEach(tr => {
+        const inputMa  = tr.querySelector('.cdtrug-ma-nha-thau');
+        const inputTen = tr.querySelector('.cdtrug-ten-nha-thau');
+        const maNT  = inputMa  ? inputMa.value.trim()  : '';
+        const tenNT = inputTen ? inputTen.value.trim() : '';
+        if (!maNT) { hasRowInvalid = true; if (inputMa)  invalidRowInputs.push(inputMa);  tr.classList.add('invalid'); }
+        if (!tenNT){ hasRowInvalid = true; if (inputTen) invalidRowInputs.push(inputTen); tr.classList.add('invalid'); }
+        if (maNT && tenNT) tr.classList.remove('invalid');
+    });
+    if (hasRowInvalid) {
+        if (invalidRowInputs[0]) {
+            invalidRowInputs[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => invalidRowInputs[0].focus({ preventScroll: true }), 300);
+        }
+        await this.view.customAlert('Thiếu dữ liệu', 'Vui lòng nhập đầy đủ Mã nhà thầu và Tên nhà thầu cho tất cả các dòng!', 'alert-triangle');
+        return;
+    }
+
+    // ── Kiểm tra có ít nhất 1 nhà thầu trúng thầu ───────────────────────────
+    const tbodyResult = document.getElementById('approve-bidders-tbody');
+    let winnerRows = [];
+    if (tbodyResult) {
+        tbodyResult.querySelectorAll('tr').forEach(tr => {
+            if (tr.querySelector('.row-status-select')?.value === 'trung') winnerRows.push(tr);
+        });
+    }
+
+    try {
+        // ════════════════════════════════════════════════════════════════════
+        // BƯỚC 1 — Ghi Biên bản mở thầu (thongtinmothau)
+        // ════════════════════════════════════════════════════════════════════
+        const tempBids = [];
+        const latestNhaThauList = this.model.getLatestNhaThau();
+
+        rows.forEach(tr => {
+            const bidId        = tr.getAttribute('data-cdtrug-id') || window.generateUUID();
+            const maNhaThau    = tr.querySelector('.cdtrug-ma-nha-thau')?.value.trim()    || '';
+            const tenNhaThau   = tr.querySelector('.cdtrug-ten-nha-thau')?.value.trim()   || '';
+            const loaiNhaThau  = tr.querySelector('.cdtrug-loai-nha-thau')?.value         || 'Độc lập';
+            const maPhanLo     = tr.querySelector('.cdtrug-ma-phan-lo')?.value             || '';
+            const tenPhanLo    = tr.querySelector('.cdtrug-ten-phan-lo')?.value.trim()     || '';
+            const giaDuThau    = this.model.parseVND(tr.querySelector('.cdtrug-gia-du-thau')?.value     || '');
+            const tyLeGiamGiaRaw = tr.querySelector('.cdtrug-ty-le-giam-gia')?.value || '0';
+            const tyLeGiamGia  = parseFloat(tyLeGiamGiaRaw.replace(/,/g, '.')) || 0;
+            const giaSauGiamGia= this.model.parseVND(tr.querySelector('.cdtrug-gia-sau-giam-gia')?.value || '');
+            const hieuLucHsdt  = parseInt(tr.querySelector('.cdtrug-hieu-luc-hsdt')?.value  || '0', 10);
+            const giaTriDamBao = this.model.parseVND(tr.querySelector('.cdtrug-gia-tri-dam-bao')?.value || '');
+            const hieuLucBaoDamNgay = parseInt(tr.querySelector('.cdtrug-hieu-luc-bao-dam-ngay')?.value || '0', 10);
+            const thoiGianThucHien  = tr.querySelector('.cdtrug-thoi-gian-thuc-hien')?.value.trim() || '';
+
+            // Tra cứu / tạo mới nhà thầu trong CSDL
+            let foundNt = latestNhaThauList.find(n =>
+                n.maNhaThau && n.maNhaThau.trim().toLowerCase() === maNhaThau.trim().toLowerCase()
+            );
+            if (!foundNt) {
+                const newId = window.generateUUID();
+                foundNt = {
+                    id: newId,
+                    maNhaThau,
+                    tenNhaThau,
+                    loaiNhaThau: 'Độc lập',
+                    maSoThue: maNhaThau,
+                    nguoiDaiDien: '',
+                    danhXung: 'Ông',
+                    soDienThoai: '',
+                    email: '',
+                    diaChi: '',
+                    soTaiKhoan: '',
+                    noiMoTaiKhoan: '',
+                    maNganHang: '',
+                    thanhVienLienDanh: [],
+                    phienBan: 0
+                };
+                this.model.state.nhathau.push(foundNt);
+                this.model.persistData('nhathau');
+                latestNhaThauList.push(foundNt);
+            }
+
+            const bidEntry = {
+                id: bidId,
+                goiThauId: gtId,
+                nhaThauId: foundNt.id,
+                maPhanLo,
+                tenPhanLo,
+                maNhaThau,
+                maDinhDanh: maNhaThau,
+                tenNhaThau: loaiNhaThau === 'Liên danh' ? tenNhaThau : (foundNt.tenNhaThau || tenNhaThau),
+                loaiNhaThau,
+                thanhVienLienDanh: [],
+                giaDuThau:    giaDuThau    || gt.giaGoiThau || 0,
+                tyLeGiamGia,
+                giaSauGiamGia: giaSauGiamGia || giaDuThau || gt.giaGoiThau || 0,
+                hieuLucHsdt,
+                giaTriDamBao,
+                hieuLucBaoDamNgay,
+                thoiGianThucHien: thoiGianThucHien || gt.thoiGianThucHien || '',
+                lyDoTruot: ''
+            };
+            tempBids.push(bidEntry);
+        });
+
+        // Thay thế dữ liệu cũ
+        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(
+            b => String(b.goiThauId) !== String(gtId)
+        );
+        this.model.state.thongtinmothau.push(...tempBids);
+
+        // Đặt thời gian mở thầu nếu chưa có
+        if (!gt.thoiGianMoThau) {
+            gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
+        }
+        gt.trangThai = 'Đang chấm thầu';
+        this.model.persistData('thongtinmothau');
+        this.model.persistData('goithau');
+
+        // ════════════════════════════════════════════════════════════════════
+        // BƯỚC 2 — Tự động đặt đánh giá "Đạt" cho tất cả nhà thầu
+        // ════════════════════════════════════════════════════════════════════
+        tempBids.forEach((bid, idx) => {
+            const bidInState = this.model.state.thongtinmothau.find(b => b.id === bid.id);
+            if (bidInState) {
+                bidInState.danhGiaHopLe    = 'Đạt';
+                bidInState.danhGiaNangLuc  = 'Đạt';
+                bidInState.danhGiaKyThuat  = 'Đạt';
+                bidInState.danhGiaKetLuan  = 'Đạt';
+                bidInState.danhGiaTaiChinh = 'Xếp hạng 1';
+            }
+        });
+
+        // Lưu metadata đánh giá tự động (không ghi đè nếu đã có saved = true)
+        let existingMeta = {};
+        try { existingMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {}; } catch (e) {}
+        if (!existingMeta.saved) {
+            const today = new Date().toISOString().split('T')[0];
+            gt.danhGiaHsdtMetadata = JSON.stringify({
+                ...existingMeta,
+                soBaoCao: 'Tự động',
+                ngayBaoCao: today,
+                saved: true
+            });
+        }
+        this.model.persistData('thongtinmothau');
+        this.model.persistData('goithau');
+
+        // ════════════════════════════════════════════════════════════════════
+        // BƯỚC 3 — Commit kết quả LCNT chính thức
+        // ════════════════════════════════════════════════════════════════════
+        // Lấy thông tin thắng/thua từ bảng kết quả (approve-bidders-tbody)
+        // Nếu chưa có bảng kết quả (winnerRows rỗng), mặc định hàng đầu tiên trúng thầu
+        if (tbodyResult) {
+            tbodyResult.querySelectorAll('tr').forEach(tr => {
+                const bidId = tr.getAttribute('data-approve-bid-id');
+                const bid   = this.model.state.thongtinmothau.find(b => b.id === bidId);
+                if (bid) {
+                    const status = tr.querySelector('.row-status-select')?.value;
+                    if (status === 'trung') {
+                        bid.lyDoTruot = '';
+                    } else {
+                        bid.lyDoTruot = tr.querySelector('.row-ly-do-truot')?.value.trim() || 'Nhà thầu xếp hạng 1 trúng thầu';
+                    }
+                }
+            });
+        }
+
+        // Xác định nhà thầu trúng thầu
+        let winnerId     = '';
+        let winnerPrice  = 0;
+        let winnerDurPkg = '';
+        let winnerDurCtr = '';
+
+        if (winnerRows.length > 0) {
+            const wTr = winnerRows[0];
+            winnerId     = wTr.getAttribute('data-nt-id') || '';
+            winnerPrice  = this.model.parseVND(wTr.querySelector('.row-gia-trung')?.value || '0');
+            winnerDurPkg = wTr.querySelector('.row-tg-goithau')?.value.trim() || '';
+            winnerDurCtr = wTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
+        } else {
+            // Fallback: nhà thầu đầu tiên trong danh sách trúng thầu
+            const firstBid = tempBids[0];
+            if (firstBid) {
+                const foundNtForWinner = this.model.state.thongtinmothau.find(b => b.id === firstBid.id);
+                if (foundNtForWinner) {
+                    winnerId     = foundNtForWinner.nhaThauId || foundNtForWinner.id;
+                    winnerPrice  = foundNtForWinner.giaSauGiamGia || foundNtForWinner.giaDuThau || 0;
+                    winnerDurPkg = foundNtForWinner.thoiGianThucHien || gt.thoiGianThucHien || '';
+                    winnerDurCtr = winnerDurPkg ? (winnerDurPkg + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
+                }
+            }
+        }
+
+        // Xử lý phân lô
+        if (gt.phanLo === 'Có') {
+            const plList = typeof gt.phanLoList === 'string' ? JSON.parse(gt.phanLoList || '[]') : (gt.phanLoList || []);
+            if (tbodyResult) {
+                plList.forEach(pl => {
+                    const lotWinnerTr = winnerRows.find(tr => tr.cells[0]?.textContent.trim() === pl.maPhanLo);
+                    if (lotWinnerTr) {
+                        const wId = lotWinnerTr.getAttribute('data-nt-id');
+                        pl.nhaThauTrungThauId = wId ? (isNaN(wId) ? wId : parseInt(wId)) : '';
+                        pl.giaTrungThau   = this.model.parseVND(lotWinnerTr.querySelector('.row-gia-trung')?.value || '0');
+                        pl.thoiGianGoiThau= lotWinnerTr.querySelector('.row-tg-goithau')?.value.trim() || '';
+                        pl.thoiGianHopDong= lotWinnerTr.querySelector('.row-tg-hopdong')?.value.trim() || '';
+                    } else {
+                        // Fallback: nhà thầu đầu tiên trong lô
+                        const firstLotBid = tempBids.find(b => b.maPhanLo === pl.maPhanLo);
+                        if (firstLotBid) {
+                            const bidState = this.model.state.thongtinmothau.find(b => b.id === firstLotBid.id);
+                            pl.nhaThauTrungThauId = bidState?.nhaThauId || '';
+                            pl.giaTrungThau       = bidState?.giaSauGiamGia || bidState?.giaDuThau || 0;
+                            pl.thoiGianGoiThau    = bidState?.thoiGianThucHien || gt.thoiGianThucHien || '';
+                            pl.thoiGianHopDong    = pl.thoiGianGoiThau ? (pl.thoiGianGoiThau + ' + Thời gian thực hiện các nghĩa vụ theo hợp đồng') : '';
+                        }
+                    }
+                });
+                gt.phanLoList = plList;
+            }
+            if (winnerId) gt.nhaThauTrungThauId = isNaN(winnerId) ? winnerId : parseInt(winnerId);
+            gt.giaTrungThau  = winnerRows.reduce((sum, tr) => sum + this.model.parseVND(tr.querySelector('.row-gia-trung')?.value || '0'), 0)
+                               || (tempBids.reduce((sum, b) => {
+                                   const bs = this.model.state.thongtinmothau.find(x => x.id === b.id);
+                                   return sum + (bs?.giaSauGiamGia || bs?.giaDuThau || 0);
+                               }, 0));
+        } else {
+            gt.nhaThauTrungThauId = winnerId ? (isNaN(winnerId) ? winnerId : parseInt(winnerId)) : '';
+            gt.giaTrungThau  = winnerPrice;
+            gt.thoiGianGoiThau = winnerDurPkg;
+            gt.thoiGianHopDong = winnerDurCtr;
+        }
+
+        // Lưu metadata kết quả
+        let metaFinal = {};
+        try { metaFinal = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {}; } catch (e) {}
+        if (!metaFinal.result) metaFinal.result = {};
+        if (soBctdVal)  metaFinal.result.soBctdKetQua  = soBctdVal;
+        if (ngayBctdVal)metaFinal.result.ngayBctdKetQua = ngayBctdVal;
+        gt.danhGiaHsdtMetadata = JSON.stringify(metaFinal);
+
+        gt.soQuyetDinhKetQua  = decNo;
+        gt.ngayQuyetDinhKetQua= decDate;
+        gt.trangThai          = 'Đã có kết quả';
+
+        this.model.persistData('goithau');
+        this.model.persistData('thongtinmothau');
+        this.view.renderGoiThauTable();
+        this.autoSync();
+
+        await this.view.customAlert(
+            'Chúc mừng',
+            `Đã lưu và phê duyệt kết quả lựa chọn nhà thầu cho gói thầu "${gt.tenGoiThau}" thành công!`,
+            'check-circle'
+        );
+        this.view._currentWorkflowTab = 'result';
+        this.view.showPackageDetails(gtId);
+
+    } catch (err) {
+        // ── ROLLBACK ────────────────────────────────────────────────────────
+        console.error('[saveKetQuaChiDinhThau] Lỗi trong chuỗi chạy ngầm, đang rollback...', err);
+
+        // Khôi phục goithau
+        const gtIndex = this.model.state.goithau.findIndex(g => g.id === gtId);
+        if (gtIndex !== -1) {
+            this.model.state.goithau[gtIndex] = snapshotGt;
+        }
+
+        // Khôi phục thongtinmothau
+        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(
+            b => String(b.goiThauId) !== String(gtId)
+        );
+        this.model.state.thongtinmothau.push(...snapshotBids);
+
+        try {
+            this.model.persistData('goithau');
+            this.model.persistData('thongtinmothau');
+        } catch (rollbackErr) {
+            console.error('[saveKetQuaChiDinhThau] Lỗi khi rollback:', rollbackErr);
+        }
+
+        await this.view.customAlert(
+            'Lỗi hệ thống',
+            `Đã xảy ra lỗi trong quá trình xử lý ngầm và hệ thống đã tự động hoàn tác toàn bộ thay đổi.\n\nChi tiết lỗi: ${err.message || String(err)}\n\nVui lòng thử lại hoặc liên hệ hỗ trợ.`,
+            'x-circle'
+        );
+    }
+}

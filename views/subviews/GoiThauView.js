@@ -2570,23 +2570,60 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)
                             </h4>
                             <p class="text-muted" style="font-size:0.82rem; margin: 4px 0 0 0;">
-                                Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.
+                                ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt')
+                                    ? 'Nhập danh sách nhà thầu tham dự, điền QĐ phê duyệt và nhấn Lưu &amp; Phê duyệt Kết quả.'
+                                    : 'Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.'}
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center;">
-                            ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
-                                <button class="btn btn-outline btn-sm" id="btn-result-add-bidder" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
-                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Thêm Nhà thầu tham dự
-                                </button>
-                            ` : ''}
+                            ${!(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
                             <button class="btn-excel-action" id="btn-result-export-excel-template">
                                 <i data-lucide="download"></i> Tải Excel Mẫu
                             </button>
                             <button class="btn-excel-action" id="btn-result-import-excel">
                                 <i data-lucide="upload"></i> Nhập từ Excel
-                            </button>
+                            </button>` : ''}
                         </div>
                     </div>
+
+                    ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? `
+                    <div style="margin-bottom:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                            <h5 style="font-weight:700; font-size:0.95rem; color:var(--text-main); margin:0; display:flex; align-items:center; gap:6px;">
+                                <i data-lucide="users"></i> Danh sách Nhà thầu tham dự (nhập trực tiếp)
+                            </h5>
+                            <button class="btn btn-outline btn-sm" id="btn-cdtrug-add-bidder" style="padding:6px 12px; font-size:0.82rem; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+                                <i data-lucide="plus" style="width:14px;height:14px;"></i> Thêm Nhà thầu
+                            </button>
+                        </div>
+                        <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:8px; background:var(--bg-card);">
+                            <table class="data-table" id="cdtrug-mothau-table" style="min-width:100%;">
+                                <thead>
+                                    <tr>
+                                        ${gt.phanLo === 'Có' ? '<th style="width:8%;">Mã phần lô</th><th style="width:8%;">Tên phần lô</th>' : ''}
+                                        <th style="width:10%;">Loại NT</th>
+                                        <th style="width:12%;">Mã nhà thầu <span style="color:var(--danger);">*</span></th>
+                                        <th style="width:18%;">Tên nhà thầu <span style="color:var(--danger);">*</span></th>
+                                        <th style="width:10%;">Giá dự thầu</th>
+                                        <th style="width:6%;">TL giảm (%)</th>
+                                        <th style="width:10%;">Giá sau giảm</th>
+                                        <th style="width:7%;">Hiệu lực HSDT</th>
+                                        <th style="width:9%;">Giá trị ĐB</th>
+                                        <th style="width:6%;">Hiệu lực ĐB</th>
+                                        <th style="width:8%;">Thời gian TH</th>
+                                        <th style="width:4%; text-align:center;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cdtrug-mothau-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p style="font-size:0.78rem; color:var(--text-muted); margin:0;"><i data-lucide="info" style="width:12px;height:12px;"></i> Giá dự thầu và các trường tài chính không bắt buộc — có thể để trống.</p>
+                    </div>
+                    ` : ''}
+
+                    <h5 style="margin-top:24px; margin-bottom:12px; font-weight:700; font-size:0.95rem; color:var(--text-main); display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="list"></i> ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') ? 'Kết quả Lựa chọn Nhà thầu' : 'Danh sách nhà thầu tham dự &amp; Kết quả LCNT'}
+                    </h5>
 
                     <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Quyết định phê duyệt Kết quả LCNT</div>
@@ -2757,9 +2794,115 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     });
                 }
 
+                // ── Event handlers cho bảng nhập nhà thầu (Chỉ định thầu rút gọn) ──────
+                const isSpecialBiddingType = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+                const cdtrugTbody = document.getElementById('cdtrug-mothau-tbody');
+
+                // Helper: thêm hàng mới vào bảng nhập nhà thầu
+                const addCdtrugRow = (bidData = {}) => {
+                    if (!cdtrugTbody) return;
+                    const rowId = bidData.id || window.generateUUID();
+                    const hasPhanLo = gt.phanLo === 'Có';
+                    const lotList = gt.phanLoList || [];
+                    const lotOptions = (Array.isArray(lotList) ? lotList : (typeof lotList === 'string' ? JSON.parse(lotList || '[]') : []))
+                        .map(l => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}" ${bidData.maPhanLo === l.maPhanLo ? 'selected' : ''}>${l.maPhanLo}</option>`).join('');
+
+                    const ntCode = bidData.maNhaThau || bidData.maDinhDanh || '';
+                    const ntName = bidData.tenNhaThau || '';
+                    const ntType = bidData.loaiNhaThau || 'Độc lập';
+
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-cdtrug-id', rowId);
+                    tr.innerHTML = `
+                        ${hasPhanLo ? `
+                            <td><select class="form-control cdtrug-ma-phan-lo" style="padding:4px 6px;font-size:0.8rem;">
+                                <option value="">-- Chọn --</option>${lotOptions}
+                            </select></td>
+                            <td><input type="text" class="form-control cdtrug-ten-phan-lo" value="${bidData.tenPhanLo || ''}" readonly placeholder="Tên lô" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        ` : ''}
+                        <td><select class="form-control cdtrug-loai-nha-thau" style="padding:4px 6px;font-size:0.8rem;">
+                            <option value="Độc lập" ${ntType === 'Độc lập' ? 'selected' : ''}>Độc lập</option>
+                            <option value="Liên danh" ${ntType === 'Liên danh' ? 'selected' : ''}>Liên danh</option>
+                        </select></td>
+                        <td><input type="text" class="form-control cdtrug-ma-nha-thau" value="${ntCode}" required placeholder="Mã NT" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-du-thau cdtrug-format-vnd" value="${bidData.giaDuThau ? this.model.formatVND(bidData.giaDuThau) : ''}" placeholder="Giá dự thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-ty-le-giam-gia" value="${bidData.tyLeGiamGia !== undefined ? (bidData.tyLeGiamGia || 0).toString().replace('.', ',') : '0'}" style="padding:4px 6px;font-size:0.8rem;text-align:right;"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-sau-giam-gia cdtrug-format-vnd" value="${bidData.giaSauGiamGia ? this.model.formatVND(bidData.giaSauGiamGia) : ''}" readonly placeholder="Tự tính" style="padding:4px 6px;font-size:0.8rem;background:var(--bg-input-disabled,#f1f5f9);cursor:not-allowed;"></td>
+                        <td><input type="text" class="form-control cdtrug-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + ' ngày' : (gt.hieuLucHsdt ? gt.hieuLucHsdt + ' ngày' : '90 ngày')}" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-tri-dam-bao cdtrug-format-vnd" value="${bidData.giaTriDamBao ? this.model.formatVND(bidData.giaTriDamBao) : ''}" placeholder="Giá trị ĐB" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-hieu-luc-bao-dam-ngay" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + ' ngày' : (gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + ' ngày' : '120 ngày')}" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-thoi-gian-thuc-hien" value="${bidData.thoiGianThucHien || gt.thoiGianThucHien || ''}" placeholder="Thực hiện" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td style="text-align:center;">
+                            <button type="button" class="action-btn btn-delete cdtrug-remove-row" title="Xóa hàng">
+                                <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                            </button>
+                        </td>
+                    `;
+
+                    // Auto-calc giá sau giảm
+                    const inpGia = tr.querySelector('.cdtrug-gia-du-thau');
+                    const inpTL  = tr.querySelector('.cdtrug-ty-le-giam-gia');
+                    const inpGSG = tr.querySelector('.cdtrug-gia-sau-giam-gia');
+                    const calcGSG = () => {
+                        const g = this.model.parseVND(inpGia.value) || 0;
+                        const t = parseFloat((inpTL.value || '0').replace(/,/g, '.')) || 0;
+                        const gsg = g * (1 - t / 100);
+                        inpGSG.value = gsg > 0 ? this.model.formatVND(gsg) : '';
+                    };
+                    if (inpGia)  inpGia.addEventListener('input', calcGSG);
+                    if (inpTL)   inpTL.addEventListener('input',  calcGSG);
+
+                    // Format VND
+                    ['.cdtrug-gia-du-thau', '.cdtrug-gia-tri-dam-bao'].forEach(cls => {
+                        const el = tr.querySelector(cls);
+                        if (el) el.addEventListener('blur', () => { el.value = this.model.formatVND(this.model.parseVND(el.value)) || ''; });
+                    });
+
+                    // Lot select change
+                    const lotSel = tr.querySelector('.cdtrug-ma-phan-lo');
+                    if (lotSel) {
+                        lotSel.addEventListener('change', () => {
+                            const opt = lotSel.options[lotSel.selectedIndex];
+                            const tenPhanLoEl = tr.querySelector('.cdtrug-ten-phan-lo');
+                            if (tenPhanLoEl) tenPhanLoEl.value = opt?.getAttribute('data-name') || '';
+                        });
+                    }
+
+                    // Delete row
+                    tr.querySelector('.cdtrug-remove-row').addEventListener('click', () => tr.remove());
+
+                    cdtrugTbody.appendChild(tr);
+                    if (window.lucide) window.lucide.createIcons({ root: tr });
+                };
+
+                if (isSpecialBiddingType && cdtrugTbody) {
+                    // Pre-populate existing bids
+                    const existingBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
+                    if (existingBids.length > 0) {
+                        existingBids.forEach(b => addCdtrugRow(b));
+                    } else {
+                        addCdtrugRow(); // empty row
+                    }
+
+                    // 'Add Bidder' button
+                    const btnAddCdtrug = document.getElementById('btn-cdtrug-add-bidder');
+                    if (btnAddCdtrug) {
+                        btnAddCdtrug.addEventListener('click', () => {
+                            addCdtrugRow();
+                            if (window.lucide) window.lucide.createIcons();
+                        });
+                    }
+                }
+
                 const approveBtn = document.getElementById('btn-approve-award');
                 if (approveBtn) {
                     approveBtn.onclick = async () => {
+                        if (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
+                            await window.saveKetQuaChiDinhThau(gt.id);
+                            return;
+                        }
+
                         const decNo = document.getElementById('award-decision-no')?.value.trim() || '';
                         const decDateRaw = document.getElementById('award-decision-date')?.value || '';
                         const decDate = this.model.convertDMYToYMD(decDateRaw);

@@ -408,6 +408,8 @@ export class BiddingController {
         window.editHopDong = (id) => this.editHopDong(id);
         window.deleteHopDong = (id) => this.deleteHopDong(id);
 
+        window.saveKetQuaChiDinhThau = (gtId) => Bidding.saveKetQuaChiDinhThau.call(this, gtId);
+
         window.exportContractFromHopDong = (pkgId, soHopDong) => {
             const dbId = pkgId;
 
