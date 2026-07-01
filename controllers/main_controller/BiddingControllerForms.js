@@ -1005,12 +1005,14 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
                 if (lv === 'Tư vấn' || ht === 'Chào hàng cạnh tranh' || ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                     input.disabled = true;
                 }
+                if (window.initCustomSelect) initCustomSelect(id);
             }
             if (id === 'gt-quatmang') {
                 const ht = document.getElementById('gt-hinhthuc')?.value;
                 if (ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                     input.disabled = true;
                 }
+                if (window.initCustomSelect) initCustomSelect(id);
             }
             // Restore visibility for non-conditional fields if unlocked
             const nonConditional = [
