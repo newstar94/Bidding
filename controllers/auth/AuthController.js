@@ -221,6 +221,9 @@ export function setupAuth() {
         formForgot.style.display = 'none';
         hideInitLoader();
     } else {
+        // Ẩn màn hình loading ngay lập tức nếu đã có session để tải từ IndexedDB local lên hiển thị tức thời
+        hideInitLoader();
+
         const loaderText = document.getElementById('system-init-loader-text');
         if (loaderText) loaderText.textContent = 'Đang xác thực phiên đăng nhập...';
 
@@ -294,16 +297,17 @@ export function setupAuth() {
                     }
                 }
 
-                // Sync data — sau khi sync xong, re-route để giải mã mã gói thầu từ URL
+                // Ẩn màn hình chờ ngay lập tức vì dữ liệu offline đã được load từ IndexedDB và render xong
+                hideInitLoader();
+
+                // Đồng bộ dữ liệu ngầm sau đó
                 this.forceSyncData().then(() => {
-                    // Re-route sau sync để đảm bảo goithau-detail có thể map maGoiThau → id
+                    // Re-route sau sync để đảm bảo các trang chi tiết cập nhật chính xác dữ liệu mới nhất
                     if (typeof this.handlePathRouting === 'function') {
                         this.handlePathRouting(window.location.pathname, false, true);
                     }
-                    hideInitLoader();
                 }).catch(err => {
                     console.error("Failed to force sync data after F5 restore:", err);
-                    hideInitLoader();
                 });
 
                 this.startBackgroundSessionChecker();

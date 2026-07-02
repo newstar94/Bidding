@@ -289,10 +289,7 @@ export function setupActionListeners() {
         this.view.renderHopDongTable();
     });
 
-    const syncBtn = document.getElementById('btn-force-sync');
-    if (syncBtn) {
-        syncBtn.addEventListener('click', () => this.forceSyncData());
-    }
+
 
     document.getElementById('btn-add-kehoach').addEventListener('click', () => this.editKeHoach(null));
     document.getElementById('btn-add-goithau').addEventListener('click', () => this.editGoiThau(null));
