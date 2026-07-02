@@ -495,13 +495,29 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     </div>
 
                     ${gt.hinhThucLuaChon !== 'Chào hàng cạnh tranh' && gt.hinhThucLuaChon !== 'Chỉ định thầu rút gọn' && gt.hinhThucLuaChon !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt' ? `
-                    <!-- Cột 4: Quyết định & Thẩm định HSMT (Trải ngang full chiều rộng) -->
+                    <!-- Cột 4: Phê duyệt HSMT (Trải ngang full chiều rộng) -->
                     <div class="card" style="padding: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-bottom: 24px;">
                             <h4 style="font-weight: 700; color: var(--primary); border-bottom: 2px solid rgba(59, 130, 246, 0.1); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
-                                <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> Quyết định & Thẩm định HSMT
+                                <i data-lucide="file-text" style="width: 18px; height: 18px;"></i> Phê duyệt HSMT
                             </h4>
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">Số tờ trình HSMT</span>
+                                        ${this._inPlaceEditMode ? `
+                                            <input type="text" id="ip-sototrinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soToTrinhHsmt || ''}" placeholder="Nhập số tờ trình">
+                                        ` : `
+                                            <span style="color: var(--text-main); font-weight: 700;">${gt.soToTrinhHsmt || '--'}</span>
+                                        `}
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">Ngày trình HSMT</span>
+                                        ${this._inPlaceEditMode ? `
+                                            <input type="text" id="ip-ngaytrinh" class="form-control flatpickr-date" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayTrinhHsmt ? this.model.formatForDateInput(gt.ngayTrinhHsmt) : ''}" placeholder="dd/MM/yyyy">
+                                        ` : `
+                                            <span style="color: var(--text-main); font-weight: 700;">${gt.ngayTrinhHsmt ? this.model.formatDate(gt.ngayTrinhHsmt) : '--'}</span>
+                                        `}
+                                    </div>
                                     <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
                                         <span style="color: var(--text-muted); font-weight: 600;">Số quyết định phê duyệt HSMT</span>
                                         ${this._inPlaceEditMode ? `
@@ -535,18 +551,24 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.yeuCauThamDinhHsmt || 'Không'}</span>
                                         `}
                                     </div>
-                                    <div id="wrapper-sobaocaothamdinh" style="display: ${this._inPlaceEditMode || gt.yeuCauThamDinhHsmt === 'Có' ? 'flex' : 'none'}; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem;">
-                                        <span style="color: var(--text-muted); font-weight: 600;">Số báo cáo thẩm định HSMT</span>
+                                    <div id="wrapper-sobaocaothamdinh" style="display: ${this._inPlaceEditMode || gt.yeuCauThamDinhHsmt === 'Có' ? 'flex' : 'none'}; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">Số BCTĐ HSMT</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="text" id="ip-sobaocaothamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soBaoCaoThamDinhHsmt || ''}" placeholder="Nhập số báo cáo">
+                                            <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                                                <input type="text" id="ip-sobaocaothamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soBaoCaoThamDinhHsmt || ''}" placeholder="Nhập số báo cáo">
+                                                <span class="error-msg-inline" id="err-sobaocao" style="display: none; color: #ef4444; font-size: 0.72rem; margin-top: 4px; font-weight: 600;">Vui lòng nhập số báo cáo</span>
+                                            </div>
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.soBaoCaoThamDinhHsmt || '--'}</span>
                                         `}
                                     </div>
-                                    <div id="wrapper-ngaybaocaothamdinh" style="display: ${this._inPlaceEditMode || gt.yeuCauThamDinhHsmt === 'Có' ? 'flex' : 'none'}; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
-                                        <span style="color: var(--text-muted); font-weight: 600;">Ngày báo cáo thẩm định HSMT</span>
+                                    <div id="wrapper-ngaybaocaothamdinh" style="display: ${this._inPlaceEditMode || gt.yeuCauThamDinhHsmt === 'Có' ? 'flex' : 'none'}; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
+                                        <span style="color: var(--text-muted); font-weight: 600;">Ngày BCTĐ HSMT</span>
                                         ${this._inPlaceEditMode ? `
-                                            <input type="text" id="ip-ngaybaocaothamdinh" class="form-control flatpickr-date" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatForDateInput(gt.ngayBaoCaoThamDinhHsmt) : ''}" placeholder="dd/MM/yyyy">
+                                            <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                                                <input type="text" id="ip-ngaybaocaothamdinh" class="form-control flatpickr-date" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatForDateInput(gt.ngayBaoCaoThamDinhHsmt) : ''}" placeholder="dd/MM/yyyy">
+                                                <span class="error-msg-inline" id="err-ngaybaocao" style="display: none; color: #ef4444; font-size: 0.72rem; margin-top: 4px; font-weight: 600;">Vui lòng chọn ngày báo cáo</span>
+                                            </div>
                                         ` : `
                                             <span style="color: var(--text-main); font-weight: 700;">${gt.ngayBaoCaoThamDinhHsmt ? this.model.formatDate(gt.ngayBaoCaoThamDinhHsmt) : '--'}</span>
                                         `}
@@ -613,10 +635,49 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const valMoEhsdxtc = inputMoEhsdxtc ? inputMoEhsdxtc.value : '';
                             const valSoQuyetDinh = document.getElementById('ip-soquyetdinh').value;
                             const valNgayQuyetDinh = document.getElementById('ip-ngayquyetdinh').value;
+                            const valSoToTrinh = document.getElementById('ip-sototrinh')?.value || '';
+                            const valNgayTrinh = document.getElementById('ip-ngaytrinh')?.value || '';
                             const checkedRadio = document.querySelector('input[name="ip-yeucauthamdinh"]:checked');
                             const valYeuCauThamDinh = checkedRadio ? checkedRadio.value : 'Không';
                             const valSoBaoCao = document.getElementById('ip-sobaocaothamdinh')?.value || '';
                             const valNgayBaoCao = document.getElementById('ip-ngaybaocaothamdinh')?.value || '';
+                             if (valYeuCauThamDinh === 'Có') {
+                                 let hasErr = false;
+                                 const inpSo = document.getElementById('ip-sobaocaothamdinh');
+                                 const inpNgay = document.getElementById('ip-ngaybaocaothamdinh');
+                                 
+                                 if (inpSo) {
+                                     const errEl = document.getElementById('err-sobaocao');
+                                     if (!valSoBaoCao.trim()) {
+                                         inpSo.style.setProperty('border', '1px solid #ef4444', 'important');
+                                         if (errEl) errEl.style.display = 'block';
+                                         hasErr = true;
+                                     } else {
+                                         inpSo.style.removeProperty('border');
+                                         if (errEl) errEl.style.display = 'none';
+                                     }
+                                     inpSo.oninput = () => {
+                                         inpSo.style.removeProperty('border');
+                                         if (errEl) errEl.style.display = 'none';
+                                     };
+                                 }
+                                 if (inpNgay) {
+                                     const errEl = document.getElementById('err-ngaybaocao');
+                                     if (!valNgayBaoCao.trim()) {
+                                         inpNgay.style.setProperty('border', '1px solid #ef4444', 'important');
+                                         if (errEl) errEl.style.display = 'block';
+                                         hasErr = true;
+                                     } else {
+                                         inpNgay.style.removeProperty('border');
+                                         if (errEl) errEl.style.display = 'none';
+                                     }
+                                     inpNgay.onchange = () => {
+                                         inpNgay.style.removeProperty('border');
+                                         if (errEl) errEl.style.display = 'none';
+                                     };
+                                 }
+                                 if (hasErr) return;
+                             }
 
                             const gtData = {
                                 thoiGianDangTai: valDangTai ? this.model.convertDMYHMSToYMDHMS(valDangTai) : '',
@@ -625,6 +686,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 thoiGianMoEhsdxtc: valMoEhsdxtc ? this.model.convertDMYHMSToYMDHMS(valMoEhsdxtc) : '',
                                 soQuyetDinh: valSoQuyetDinh,
                                 ngayQuyetDinh: valNgayQuyetDinh ? this.model.convertDMYToYMD(valNgayQuyetDinh) : '',
+                                soToTrinhHsmt: valSoToTrinh,
+                                ngayTrinhHsmt: valNgayTrinh ? this.model.convertDMYToYMD(valNgayTrinh) : '',
                                 yeuCauThamDinhHsmt: valYeuCauThamDinh,
                                 soBaoCaoThamDinhHsmt: valYeuCauThamDinh === 'Không' ? '' : valSoBaoCao,
                                 ngayBaoCaoThamDinhHsmt: (valYeuCauThamDinh === 'Không' || !valNgayBaoCao) ? '' : this.model.convertDMYToYMD(valNgayBaoCao)
@@ -2122,19 +2185,19 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         let dayOfWeek = date.getDay();
                         let dateStr = date.toISOString().split('T')[0];
                         let yearStr = String(date.getFullYear());
-                        
+
                         let isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-                        
+
                         // Check working weekend swaps
                         const yearWorkingWeekends = holidaysData[yearStr]?.working_weekends || [];
                         if (isWeekend && yearWorkingWeekends.includes(dateStr)) {
                             isWeekend = false;
                         }
-                        
+
                         // Check holidays
                         const yearHolidays = holidaysData[yearStr]?.holidays || [];
                         const isHoliday = yearHolidays.includes(dateStr);
-                        
+
                         if (!isWeekend && !isHoliday) {
                             remainingDays--;
                         }
@@ -2339,8 +2402,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             </h4>
                             <p class="text-muted" style="font-size:0.82rem; margin: 4px 0 0 0;">
                                 ${(gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt')
-                                    ? 'Kiểm tra danh sách nhà thầu trúng thầu, điền QĐ phê duyệt và nhấn Phê duyệt &amp; Hoàn thành LCNT.'
-                                    : 'Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.'}
+                        ? 'Kiểm tra danh sách nhà thầu trúng thầu, điền QĐ phê duyệt và nhấn Phê duyệt &amp; Hoàn thành LCNT.'
+                        : 'Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới.'}
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center;">
@@ -2752,7 +2815,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                     // Auto-calc giá sau giảm
                     const inpGia = tr.querySelector('.cdtrug-gia-du-thau');
-                    const inpTL  = tr.querySelector('.cdtrug-ty-le-giam-gia');
+                    const inpTL = tr.querySelector('.cdtrug-ty-le-giam-gia');
                     const inpGSG = tr.querySelector('.cdtrug-gia-sau-giam-gia');
                     const calcGSG = () => {
                         const g = this.model.parseVND(inpGia.value) || 0;
@@ -2760,8 +2823,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         const gsg = g * (1 - t / 100);
                         inpGSG.value = gsg > 0 ? this.model.formatVND(gsg) : '';
                     };
-                    if (inpGia)  inpGia.addEventListener('input', calcGSG);
-                    if (inpTL)   inpTL.addEventListener('input',  calcGSG);
+                    if (inpGia) inpGia.addEventListener('input', calcGSG);
+                    if (inpTL) inpTL.addEventListener('input', calcGSG);
 
                     // Format VND
                     ['.cdtrug-gia-du-thau', '.cdtrug-gia-tri-dam-bao'].forEach(cls => {

@@ -191,8 +191,10 @@ SCHEMA_DINH_NGHIA = {
             "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không'",
             "so_bao_cao_tham_dinh_hsmt": "TEXT",
             "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
-            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
-            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
+            "so_to_trinh_hsmt": "TEXT",
+            "ngay_trinh_hsmt": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
             "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE CASCADE",
@@ -221,8 +223,9 @@ SCHEMA_DINH_NGHIA = {
             "awarded_phan_lo_list": "awardedPhanLoList",
             "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt",
             "so_bao_cao_tham_dinh_hsmt": "soBaoCaoThamDinhHsmt",
-            "ngay_bao_cao_tham_dinh_hsmt": "ngayBaoCaoThamDinhHsmt"
-
+            "ngay_bao_cao_tham_dinh_hsmt": "ngayBaoCaoThamDinhHsmt",
+            "so_to_trinh_hsmt": "soToTrinhHsmt",
+            "ngay_trinh_hsmt": "ngayTrinhHsmt"
         }
     },
     "chuyen_gia": {

@@ -393,6 +393,36 @@ export function setupActionListeners() {
         });
     }
 
+    document.querySelectorAll('input[name="phathanh-yeucauthamdinh"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const show = e.target.value === 'Có';
+            const soBaoCaoContainer = document.getElementById('phathanh-sobaocao-container');
+            const ngayBaoCaoContainer = document.getElementById('phathanh-ngaybaocao-container');
+            const soBaoCaoInp = document.getElementById('phathanh-sobaocaothamdinh');
+            const ngayBaoCaoInp = document.getElementById('phathanh-ngaybaocaothamdinh');
+            
+            if (soBaoCaoContainer) soBaoCaoContainer.style.display = show ? 'block' : 'none';
+            if (ngayBaoCaoContainer) ngayBaoCaoContainer.style.display = show ? 'block' : 'none';
+            
+            if (show) {
+                if (soBaoCaoInp) soBaoCaoInp.setAttribute('required', 'true');
+                if (ngayBaoCaoInp) ngayBaoCaoInp.setAttribute('required', 'true');
+            } else {
+                if (soBaoCaoInp) {
+                    soBaoCaoInp.removeAttribute('required');
+                    soBaoCaoInp.value = '';
+                }
+                if (ngayBaoCaoInp) {
+                    ngayBaoCaoInp.removeAttribute('required');
+                    ngayBaoCaoInp.value = '';
+                    if (ngayBaoCaoInp._flatpickr) {
+                        ngayBaoCaoInp._flatpickr.clear();
+                    }
+                }
+            }
+        });
+    });
+
     const gtHinhThucSelect = document.getElementById('gt-hinhthuc');
     const gtPhuongThucSelect = document.getElementById('gt-phuongthuc');
     const gtPhuongThucContainer = document.getElementById('gt-phuongthuc-container');

@@ -5,7 +5,7 @@ export function formatCurrency(value) {
     const parts = fixedValue.split('.');
     const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     const decimalPart = parts[1] ? ',' + parts[1] : '';
-    return integerPart + decimalPart + ' VND';
+    return integerPart + decimalPart + ' ₫';
 }
 
 export function formatVND(value) {

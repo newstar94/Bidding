@@ -87,7 +87,7 @@ export async function handlePhatHanhHsmtSubmit(e) {
     if (!this.view.validateForm(form)) return;
 
     const data = this.view.getPhathanhHsmtFormData(this.model);
-    const { id, maGoiThauVal, hieuLucHsdtVal, giaTriDamBaoVal, soQuyetDinh, thoiGianDangTai, thoiGianDongThau, ngayQuyetDinh, phanLoRows } = data;
+    const { id, maGoiThauVal, hieuLucHsdtVal, giaTriDamBaoVal, soQuyetDinh, thoiGianDangTai, thoiGianDongThau, ngayQuyetDinh, soToTrinhHsmt, ngayTrinhHsmt, yeuCauThamDinhHsmt, soBaoCaoThamDinhHsmt, ngayBaoCaoThamDinhHsmt, phanLoRows } = data;
 
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
@@ -104,6 +104,8 @@ export async function handlePhatHanhHsmtSubmit(e) {
         await this.view.customAlert('Thiếu thông tin', 'Thời gian hiệu lực hồ sơ dự thầu phải lớn hơn 0!', 'alert-triangle', document.getElementById('phathanh-hieuluchsdt'));
         return;
     }
+
+
 
     if (!isTuVan && !isPhanLo) {
         if (giaTriDamBaoVal <= 0) {
@@ -148,10 +150,15 @@ export async function handlePhatHanhHsmtSubmit(e) {
 
     if (confirmed) {
         gt.maGoiThau = maGoiThauVal;
+        gt.soToTrinhHsmt = soToTrinhHsmt;
+        gt.ngayTrinhHsmt = ngayTrinhHsmt ? this.model.convertDMYToYMD(ngayTrinhHsmt) : '';
         gt.soQuyetDinh = soQuyetDinh;
         gt.ngayQuyetDinh = ngayQuyetDinh ? this.model.convertDMYToYMD(ngayQuyetDinh) : '';
         gt.thoiGianDangTai = thoiGianDangTai ? this.model.convertDMYHMSToYMDHMS(thoiGianDangTai) : '';
         gt.thoiGianDongThau = thoiGianDongThau ? this.model.convertDMYHMSToYMDHMS(thoiGianDongThau) : '';
+        gt.yeuCauThamDinhHsmt = yeuCauThamDinhHsmt;
+        gt.soBaoCaoThamDinhHsmt = soBaoCaoThamDinhHsmt;
+        gt.ngayBaoCaoThamDinhHsmt = ngayBaoCaoThamDinhHsmt ? this.model.convertDMYToYMD(ngayBaoCaoThamDinhHsmt) : '';
 
         gt.thoiGianMoThau = '';
 

@@ -19,25 +19,67 @@
                         <span class="error-text">Vui lòng nhập Mã gói thầu</span>
                     </div>
                     <div class="form-group">
+                        <label for="phathanh-sototrinh">Số tờ trình HSMT <span class="required">*</span></label>
+                        <input type="text" id="phathanh-sototrinh" required placeholder="Ví dụ: 123/TTr-BTTTT">
+                        <span class="error-text">Vui lòng nhập Số tờ trình HSMT</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="phathanh-ngaytrinh">Ngày trình HSMT <span class="required">*</span></label>
+                        <input type="text" id="phathanh-ngaytrinh" class="flatpickr-date" required
+                            placeholder="dd/MM/yyyy">
+                        <span class="error-text">Vui lòng chọn Ngày trình HSMT</span>
+                    </div>
+                    <div class="form-group">
                         <label for="phathanh-soquyetdinh">Số QĐ phê duyệt <span class="required">*</span></label>
                         <input type="text" id="phathanh-soquyetdinh" required placeholder="Ví dụ: 456/QĐ-BTTTT">
                         <span class="error-text">Vui lòng nhập Số QĐ phê duyệt</span>
                     </div>
                     <div class="form-group">
                         <label for="phathanh-ngayquyetdinh">Ngày QĐ phê duyệt <span class="required">*</span></label>
-                        <input type="text" id="phathanh-ngayquyetdinh" class="flatpickr-date" required placeholder="dd/MM/yyyy">
+                        <input type="text" id="phathanh-ngayquyetdinh" class="flatpickr-date" required
+                            placeholder="dd/MM/yyyy">
                         <span class="error-text">Vui lòng chọn Ngày QĐ phê duyệt</span>
+                    </div>
+                    <div class="form-group col-span-2">
+                        <label>Yêu cầu thẩm định HSMT <span class="required">*</span></label>
+                        <div class="radio-group"
+                            style="display: flex; gap: 16px; margin-top: 8px; align-items: center; height: 38px;">
+                            <label
+                                style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
+                                <input type="radio" name="phathanh-yeucauthamdinh" value="Có" style="cursor: pointer;">
+                                Có
+                            </label>
+                            <label
+                                style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
+                                <input type="radio" name="phathanh-yeucauthamdinh" value="Không" checked
+                                    style="cursor: pointer;">
+                                Không
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" id="phathanh-sobaocao-container" style="display: none;">
+                        <label for="phathanh-sobaocaothamdinh">Số BCTĐ HSMT <span class="required">*</span></label>
+                        <input type="text" id="phathanh-sobaocaothamdinh" placeholder="Ví dụ: 789/BC-TĐ">
+                        <span class="error-text">Vui lòng nhập Số báo cáo thẩm định</span>
+                    </div>
+                    <div class="form-group" id="phathanh-ngaybaocao-container" style="display: none;">
+                        <label for="phathanh-ngaybaocaothamdinh">Ngày BCTĐ HSMT <span class="required">*</span></label>
+                        <input type="text" id="phathanh-ngaybaocaothamdinh" class="flatpickr-date"
+                            placeholder="dd/MM/yyyy">
+                        <span class="error-text">Vui lòng chọn Ngày báo cáo thẩm định</span>
                     </div>
                     <div class="form-group">
                         <label for="phathanh-thoigiandangtai">Thời gian đăng tải thông báo <span
                                 class="required">*</span></label>
-                        <input type="text" id="phathanh-thoigiandangtai" class="flatpickr-datetime" required placeholder="dd/MM/yyyy HH:mm">
+                        <input type="text" id="phathanh-thoigiandangtai" class="flatpickr-datetime" required
+                            placeholder="dd/MM/yyyy HH:mm">
                         <span class="error-text">Vui lòng chọn Thời gian đăng tải thông báo</span>
                     </div>
                     <div class="form-group">
                         <label for="phathanh-thoigiandongthau">Thời gian đóng thầu <span
                                 class="required">*</span></label>
-                        <input type="text" id="phathanh-thoigiandongthau" class="flatpickr-datetime" required placeholder="dd/MM/yyyy HH:mm">
+                        <input type="text" id="phathanh-thoigiandongthau" class="flatpickr-datetime" required
+                            placeholder="dd/MM/yyyy HH:mm">
                         <span class="error-text">Vui lòng chọn Thời gian đóng thầu</span>
                     </div>
                     <div class="form-group" id="phathanh-baodam-container">

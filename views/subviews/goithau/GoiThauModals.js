@@ -440,6 +440,8 @@ export function populatePhathanhHsmtForm(gt, model) {
 
     setVal('phathanh-gt-id', gt.id);
     setVal('phathanh-magoithau', gt.maGoiThau || '');
+    setVal('phathanh-sototrinh', gt.soToTrinhHsmt || '');
+    setVal('phathanh-ngaytrinh', gt.ngayTrinhHsmt ? model.formatForDateInput(gt.ngayTrinhHsmt) : '');
     setVal('phathanh-soquyetdinh', gt.soQuyetDinh || '');
     setVal('phathanh-hieuluchsdt', gt.hieuLucHsdt || '');
     setVal('phathanh-giatribaomothau', gt.giaTriDamBaoDuThau ? model.formatVND(gt.giaTriDamBaoDuThau) : '');
@@ -447,6 +449,31 @@ export function populatePhathanhHsmtForm(gt, model) {
     setVal('phathanh-ngayquyetdinh', gt.ngayQuyetDinh ? model.formatForDateInput(gt.ngayQuyetDinh) : '');
     setVal('phathanh-thoigiandangtai', gt.thoiGianDangTai ? model.formatForDatetimeLocal(gt.thoiGianDangTai) : '');
     setVal('phathanh-thoigiandongthau', gt.thoiGianDongThau ? model.formatForDatetimeLocal(gt.thoiGianDongThau) : '');
+
+    const hasAudit = gt.yeuCauThamDinhHsmt === 'Có';
+    const auditRadios = document.querySelectorAll('input[name="phathanh-yeucauthamdinh"]');
+    auditRadios.forEach(radio => {
+        radio.checked = (radio.value === 'Có' && hasAudit) || (radio.value === 'Không' && !hasAudit);
+    });
+
+    setVal('phathanh-sobaocaothamdinh', hasAudit ? (gt.soBaoCaoThamDinhHsmt || '') : '');
+    setVal('phathanh-ngaybaocaothamdinh', hasAudit && gt.ngayBaoCaoThamDinhHsmt ? model.formatForDateInput(gt.ngayBaoCaoThamDinhHsmt) : '');
+
+    const soBaoCaoContainer = document.getElementById('phathanh-sobaocao-container');
+    const ngayBaoCaoContainer = document.getElementById('phathanh-ngaybaocao-container');
+    const soBaoCaoInp = document.getElementById('phathanh-sobaocaothamdinh');
+    const ngayBaoCaoInp = document.getElementById('phathanh-ngaybaocaothamdinh');
+
+    if (soBaoCaoContainer) soBaoCaoContainer.style.display = hasAudit ? 'block' : 'none';
+    if (ngayBaoCaoContainer) ngayBaoCaoContainer.style.display = hasAudit ? 'block' : 'none';
+
+    if (hasAudit) {
+        if (soBaoCaoInp) soBaoCaoInp.setAttribute('required', 'true');
+        if (ngayBaoCaoInp) ngayBaoCaoInp.setAttribute('required', 'true');
+    } else {
+        if (soBaoCaoInp) soBaoCaoInp.removeAttribute('required');
+        if (ngayBaoCaoInp) ngayBaoCaoInp.removeAttribute('required');
+    }
 
     const isTuVan = gt.linhVuc === 'Tư vấn';
     const isPhanLo = gt.phanLo === 'Có';
@@ -535,6 +562,8 @@ export function getPhathanhHsmtFormData(model) {
     const thoiGianDangTai = getVal('phathanh-thoigiandangtai');
     const thoiGianDongThau = getVal('phathanh-thoigiandongthau');
     const ngayQuyetDinh = getVal('phathanh-ngayquyetdinh');
+    const soToTrinhHsmt = getVal('phathanh-sototrinh');
+    const ngayTrinhHsmt = getVal('phathanh-ngaytrinh');
 
     const phanLoRows = [];
     document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
@@ -555,6 +584,11 @@ export function getPhathanhHsmtFormData(model) {
         });
     });
 
+    const auditRadioChecked = document.querySelector('input[name="phathanh-yeucauthamdinh"]:checked');
+    const yeuCauThamDinhHsmt = auditRadioChecked ? auditRadioChecked.value : 'Không';
+    const soBaoCaoThamDinhHsmt = yeuCauThamDinhHsmt === 'Có' ? getVal('phathanh-sobaocaothamdinh') : '';
+    const ngayBaoCaoThamDinhHsmt = yeuCauThamDinhHsmt === 'Có' ? getVal('phathanh-ngaybaocaothamdinh') : '';
+
     return {
         id,
         maGoiThauVal,
@@ -564,6 +598,11 @@ export function getPhathanhHsmtFormData(model) {
         thoiGianDangTai,
         thoiGianDongThau,
         ngayQuyetDinh,
+        soToTrinhHsmt,
+        ngayTrinhHsmt,
+        yeuCauThamDinhHsmt,
+        soBaoCaoThamDinhHsmt,
+        ngayBaoCaoThamDinhHsmt,
         phanLoRows
     };
 }
