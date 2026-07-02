@@ -446,6 +446,17 @@ async def lifespan(app):
                     _conn.close()
                 except Exception:
                     pass
+                # Xóa cache ảnh tối ưu hóa cũ hơn 30 ngày trong uploads/chuyen_gia/
+                try:
+                    _cg_dir = os.path.join(project_root, 'templates', 'uploads', 'chuyen_gia')
+                    if os.path.exists(_cg_dir):
+                        for _fname in os.listdir(_cg_dir):
+                            if "_opt_" in _fname:
+                                _fpath = os.path.join(_cg_dir, _fname)
+                                if os.path.getmtime(_fpath) < _time.time() - 86400 * 30:
+                                    os.remove(_fpath)
+                except Exception:
+                    pass
     threading.Thread(target=_run_cache_cleanup, daemon=True).start()
     yield
 

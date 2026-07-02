@@ -611,6 +611,11 @@ async def sync_api(request):
                                         val = "[]"
                                     elif not isinstance(val, str):
                                         val = json.dumps(val)
+
+                                # Bảo vệ XSS: Lọc sạch HTML/JS của các chuỗi văn bản thông thường
+                                if isinstance(val, str) and not (col in _explicit_json or col.endswith("_list") or col.startswith("cv_") or col == "goi_thau_ids" or val.startswith("[") or val.startswith("{")):
+                                    import html
+                                    val = html.escape(val.strip())
                                         
                                 # Chuẩn hóa kiểu dữ liệu số
                                 col_type_upper = table_spec["columns"][col].upper()
@@ -806,8 +811,18 @@ async def sync_api(request):
             response_data["orphanedIds"] = orphaned_ids  # Client sẽ xóa các record này khỏi IndexedDB
         return JSONResponse(response_data)
     except OrgPermissionError as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
         return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)
     finally:

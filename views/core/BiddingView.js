@@ -857,7 +857,70 @@ export class BiddingView {
         });
     }
 
+    showLoader() {
+        let loader = document.getElementById('top-bar-loader');
+        if (!loader) {
+            loader = document.createElement('div');
+            loader.id = 'top-bar-loader';
+            document.body.appendChild(loader);
+        }
+        loader.className = 'loading';
+        loader.style.width = '0%';
+        loader.offsetWidth; // Force reflow
+        loader.style.width = '90%';
+    }
+
+    hideLoader() {
+        const loader = document.getElementById('top-bar-loader');
+        if (loader) {
+            loader.className = 'finished';
+        }
+    }
+
+    showToast(title, message, type = 'info') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `bf-toast toast-${type}`;
+
+        const iconSvg = {
+            success: '<i data-lucide="check-circle"></i>',
+            error: '<i data-lucide="x-circle"></i>',
+            warning: '<i data-lucide="alert-triangle"></i>',
+            info: '<i data-lucide="info"></i>'
+        }[type] || '<i data-lucide="info"></i>';
+
+        toast.innerHTML = `
+            <div class="bf-toast-icon">${iconSvg}</div>
+            <div class="bf-toast-content">
+                <div class="bf-toast-title">${title}</div>
+                <div class="bf-toast-desc">${message}</div>
+            </div>
+        `;
+
+        container.appendChild(toast);
+        if (window.lucide) {
+            lucide.createIcons({ root: toast });
+        }
+
+        setTimeout(() => {
+            toast.classList.add('toast-hiding');
+            toast.addEventListener('animationend', () => {
+                toast.remove();
+            });
+        }, 3000);
+    }
+
     customAlert(title, message, iconName = 'info', focusTarget = null) {
+        if (title === 'Thành công' || (title && title.toLowerCase().includes('thành công')) || title === 'Chúc mừng') {
+            this.showToast(title, message, 'success');
+            return Promise.resolve(true);
+        }
         if (iconName === 'warning') iconName = 'alert-triangle';
         return new Promise((resolve) => {
             const modal = document.getElementById('modal-custom-dialog');

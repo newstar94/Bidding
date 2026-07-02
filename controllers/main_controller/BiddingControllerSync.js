@@ -143,6 +143,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
 
     if (syncIcon) syncIcon.classList.add('anim-spin');
     if (syncStatusText) syncStatusText.textContent = 'Đang đồng bộ...';
+    if (!isBackground && this.view && this.view.showLoader) this.view.showLoader();
 
     try {
         const since = forceFull ? '0' : (localStorage.getItem('bf_last_sync_timestamp') || '0');
@@ -257,6 +258,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         }
     } finally {
         if (syncIcon) syncIcon.classList.remove('anim-spin');
+        if (!isBackground && this.view && this.view.hideLoader) this.view.hideLoader();
     }
 }
 
