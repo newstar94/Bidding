@@ -154,13 +154,19 @@ from helpers import (
 import custom_exporter
 
 
-from routes.auth_routes import (
+from routes.otp_routes import (
     register_api,
     verify_email_api,
     resend_code_api,
+    forgot_password_api
+)
+from routes.org_routes import (
+    add_user_to_org_api,
+    remove_user_from_org_api
+)
+from routes.auth_routes import (
     login_api,
     check_session_api,
-    forgot_password_api,
     update_profile_api,
     change_password_api,
     list_users_api,
@@ -169,9 +175,7 @@ from routes.auth_routes import (
     update_user_package_api,
     update_user_metadata_api,
     list_system_packages_api,
-    update_system_package_api,
-    add_user_to_org_api,
-    remove_user_from_org_api
+    update_system_package_api
 )
 from routes.sync_routes import (
     sync_websocket_endpoint,

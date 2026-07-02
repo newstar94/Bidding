@@ -76,96 +76,7 @@ export async function phatHanhHsmtGoiThau(id) {
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
 
-    // Reset validation state of form
-    const form = document.getElementById('form-phathanh-hsmt');
-    if (form) {
-        form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
-    }
-
-    // Populate the form fields
-    document.getElementById('phathanh-gt-id').value = gt.id;
-    document.getElementById('phathanh-magoithau').value = gt.maGoiThau || '';
-    document.getElementById('phathanh-soquyetdinh').value = gt.soQuyetDinh || '';
-    document.getElementById('phathanh-hieuluchsdt').value = gt.hieuLucHsdt || '';
-    document.getElementById('phathanh-giatribaomothau').value = gt.giaTriDamBaoDuThau ? this.model.formatVND(gt.giaTriDamBaoDuThau) : '';
-
-    document.getElementById('phathanh-ngayquyetdinh').value = gt.ngayQuyetDinh ? this.model.formatForDateInput(gt.ngayQuyetDinh) : '';
-    document.getElementById('phathanh-thoigiandangtai').value = gt.thoiGianDangTai ? this.model.formatForDatetimeLocal(gt.thoiGianDangTai) : '';
-    document.getElementById('phathanh-thoigiandongthau').value = gt.thoiGianDongThau ? this.model.formatForDatetimeLocal(gt.thoiGianDongThau) : '';
-
-    // Dynamically show/hide & set required status for single guarantee input based on package fields
-    const isTuVan = gt.linhVuc === 'Tư vấn';
-    const isPhanLo = gt.phanLo === 'Có';
-    const baodamContainer = document.getElementById('phathanh-baodam-container');
-    const baodamInput = document.getElementById('phathanh-giatribaomothau');
-    const phanloBaodamContainer = document.getElementById('phathanh-phanlo-baodam-container');
-    const phanloBaodamTbody = document.getElementById('phathanh-phanlo-baodam-tbody');
-
-    if (baodamContainer && baodamInput && phanloBaodamContainer && phanloBaodamTbody) {
-        if (isTuVan) {
-            baodamContainer.style.display = 'none';
-            baodamInput.removeAttribute('required');
-            phanloBaodamContainer.style.display = 'none';
-            phanloBaodamTbody.innerHTML = '';
-        } else {
-            if (isPhanLo) {
-                baodamContainer.style.display = 'none';
-                baodamInput.removeAttribute('required');
-
-                phanloBaodamContainer.style.display = 'block';
-                phanloBaodamTbody.innerHTML = '';
-
-                const list = gt.phanLoList || [];
-                list.forEach(item => {
-                    const tr = document.createElement('tr');
-                    tr.setAttribute('data-id', item.id);
-                    const baoDamVal = item.baoDamDuThau || '';
-                    const giaTriVal = item.giaTriPhanLo || 0;
-                    tr.innerHTML = `
-                        <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-code-input" value="${item.maPhanLo || ''}" placeholder="Mã..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
-                        </td>
-                        <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-name-input" value="${item.tenPhanLo || ''}" placeholder="Tên..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
-                        </td>
-                        <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-price-input mt-format-vnd" value="${giaTriVal ? this.model.formatVND(giaTriVal) : ''}" placeholder="Giá trị..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
-                        </td>
-                        <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-baodam-input mt-format-vnd" required value="${baoDamVal ? this.model.formatVND(baoDamVal) : ''}" placeholder="Bảo đảm..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
-                        </td>
-                        <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-duration-input" value="${item.thoiGianThucHien || ''}" placeholder="Thời gian..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
-                        </td>
-                    `;
-                    phanloBaodamTbody.appendChild(tr);
-
-                    const setupInputFormat = (inp) => {
-                        if (!inp) return;
-                        inp.addEventListener('input', (e) => {
-                            const cursorPosition = e.target.selectionStart;
-                            const originalLength = e.target.value.length;
-                            const parsed = this.model.parseVND(e.target.value);
-                            e.target.value = this.model.formatVND(parsed);
-                            const newLength = e.target.value.length;
-                            e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
-                        });
-                    };
-                    setupInputFormat(tr.querySelector('.phathanh-pl-price-input'));
-                    setupInputFormat(tr.querySelector('.phathanh-pl-baodam-input'));
-                });
-            } else {
-                baodamContainer.style.display = 'block';
-                baodamInput.setAttribute('required', '');
-                baodamInput.setAttribute('required', 'true');
-                baodamInput.value = gt.giaTriDamBaoDuThau ? this.model.formatVND(gt.giaTriDamBaoDuThau) : '';
-
-                phanloBaodamContainer.style.display = 'none';
-                phanloBaodamTbody.innerHTML = '';
-            }
-        }
-    }
-
+    this.view.populatePhathanhHsmtForm(gt, this.model);
     this.view.openModal('modal-phathanh-hsmt');
 }
 
@@ -175,64 +86,50 @@ export async function handlePhatHanhHsmtSubmit(e) {
     const form = document.getElementById('form-phathanh-hsmt');
     if (!this.view.validateForm(form)) return;
 
-    const id = document.getElementById('phathanh-gt-id').value;
+    const data = this.view.getPhathanhHsmtFormData(this.model);
+    const { id, maGoiThauVal, hieuLucHsdtVal, giaTriDamBaoVal, soQuyetDinh, thoiGianDangTai, thoiGianDongThau, ngayQuyetDinh, phanLoRows } = data;
+
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
 
     const isTuVan = gt.linhVuc === 'Tư vấn';
     const isPhanLo = gt.phanLo === 'Có';
 
-    // Validate inputs
-    const maGoiThauVal = document.getElementById('phathanh-magoithau').value.trim();
     if (!maGoiThauVal) {
         await this.view.customAlert('Thiếu thông tin', 'Mã gói thầu là bắt buộc khi chuyển sang trạng thái Đang mời thầu!', 'alert-triangle', document.getElementById('phathanh-magoithau'));
         return;
     }
 
-    const hieuLucHsdtVal = parseInt(document.getElementById('phathanh-hieuluchsdt').value) || 0;
     if (hieuLucHsdtVal <= 0) {
         await this.view.customAlert('Thiếu thông tin', 'Thời gian hiệu lực hồ sơ dự thầu phải lớn hơn 0!', 'alert-triangle', document.getElementById('phathanh-hieuluchsdt'));
         return;
     }
 
-    let giaTriDamBaoVal = 0;
-    let lotBaoDamMap = {};
-
     if (!isTuVan && !isPhanLo) {
-        giaTriDamBaoVal = this.model.parseVND(document.getElementById('phathanh-giatribaomothau').value);
         if (giaTriDamBaoVal <= 0) {
             await this.view.customAlert('Thiếu thông tin', 'Giá trị bảo đảm dự thầu phải lớn hơn 0 (trừ gói tư vấn)!', 'alert-triangle', document.getElementById('phathanh-giatribaomothau'));
             return;
         }
     }
 
-    // Check if lot guarantees are satisfied for multi-lot bidding
     if (isPhanLo && !isTuVan) {
         let invalidInput = null;
         let exceedsInput = null;
         let exceedsMsg = '';
 
-        document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
-            const id = tr.getAttribute('data-id');
-            const inp = tr.querySelector('.phathanh-pl-baodam-input');
-            const val = inp ? this.model.parseVND(inp.value) : 0;
-
-            const priceInp = tr.querySelector('.phathanh-pl-price-input');
-            const priceVal = priceInp ? this.model.parseVND(priceInp.value) : 0;
-
-            if (val <= 0 && !invalidInput) {
-                invalidInput = inp;
+        for (const row of phanLoRows) {
+            if (row.baoDamDuThau <= 0 && !invalidInput) {
+                const tr = document.querySelector(`#phathanh-phanlo-baodam-tbody tr[data-id="${row.id}"]`);
+                invalidInput = tr ? tr.querySelector('.phathanh-pl-baodam-input') : null;
             }
-            if (priceVal > 0 && val > priceVal && !exceedsInput) {
-                exceedsInput = inp;
-                exceedsMsg = `Giá trị bảo đảm dự thầu (${this.model.formatVND(val)}) không được lớn hơn giá trị phần lô (${this.model.formatVND(priceVal)})!`;
+            if (row.giaTriPhanLo > 0 && row.baoDamDuThau > row.giaTriPhanLo && !exceedsInput) {
+                const tr = document.querySelector(`#phathanh-phanlo-baodam-tbody tr[data-id="${row.id}"]`);
+                exceedsInput = tr ? tr.querySelector('.phathanh-pl-baodam-input') : null;
+                exceedsMsg = `Giá trị bảo đảm dự thầu (${this.model.formatVND(row.baoDamDuThau)}) không được lớn hơn giá trị phần lô (${this.model.formatVND(row.giaTriPhanLo)})!`;
             }
-            if (id) {
-                lotBaoDamMap[id] = val;
-            }
-        });
+        }
 
-        if (invalidInput || !gt.phanLoList || gt.phanLoList.length === 0) {
+        if (invalidInput || phanLoRows.length === 0) {
             await this.view.customAlert('Thiếu thông tin', 'Gói thầu bắt buộc phải có Giá trị bảo đảm dự thầu lớn hơn 0 cho tất cả các phần lô (trừ gói tư vấn)!', 'alert-triangle', invalidInput);
             return;
         }
@@ -250,37 +147,26 @@ export async function handlePhatHanhHsmtSubmit(e) {
     );
 
     if (confirmed) {
-        const valueDate1 = document.getElementById('phathanh-thoigiandangtai').value;
-        const valueDate2 = document.getElementById('phathanh-thoigiandongthau').value;
-        const valueDate4 = document.getElementById('phathanh-ngayquyetdinh').value;
-
         gt.maGoiThau = maGoiThauVal;
-        gt.soQuyetDinh = document.getElementById('phathanh-soquyetdinh').value.trim();
-        gt.ngayQuyetDinh = valueDate4 ? this.model.convertDMYToYMD(valueDate4) : '';
-        gt.thoiGianDangTai = valueDate1 ? this.model.convertDMYHMSToYMDHMS(valueDate1) : '';
-        gt.thoiGianDongThau = valueDate2 ? this.model.convertDMYHMSToYMDHMS(valueDate2) : '';
+        gt.soQuyetDinh = soQuyetDinh;
+        gt.ngayQuyetDinh = ngayQuyetDinh ? this.model.convertDMYToYMD(ngayQuyetDinh) : '';
+        gt.thoiGianDangTai = thoiGianDangTai ? this.model.convertDMYHMSToYMDHMS(thoiGianDangTai) : '';
+        gt.thoiGianDongThau = thoiGianDongThau ? this.model.convertDMYHMSToYMDHMS(thoiGianDongThau) : '';
 
-        // Do not auto-calculate thoiGianMoThau anymore (it will be filled when saving opening minutes)
         gt.thoiGianMoThau = '';
 
         gt.hieuLucHsdt = hieuLucHsdtVal;
-        gt.hieuLucDamBaoDuThau = hieuLucHsdtVal + 30; // Tự động tính toán = Thời gian hiệu lực HSDT + 30 ngày
+        gt.hieuLucDamBaoDuThau = hieuLucHsdtVal + 30;
 
         if (isPhanLo && !isTuVan && gt.phanLoList) {
-            document.querySelectorAll('#phathanh-phanlo-baodam-tbody tr').forEach(tr => {
-                const trId = tr.getAttribute('data-id');
-                const pl = gt.phanLoList.find(p => p.id === trId);
+            phanLoRows.forEach(row => {
+                const pl = gt.phanLoList.find(p => p.id === row.id);
                 if (pl) {
-                    const codeInp = tr.querySelector('.phathanh-pl-code-input');
-                    const nameInp = tr.querySelector('.phathanh-pl-name-input');
-                    const priceInp = tr.querySelector('.phathanh-pl-price-input');
-                    const baodamInp = tr.querySelector('.phathanh-pl-baodam-input');
-                    const durationInp = tr.querySelector('.phathanh-pl-duration-input');
-                    pl.maPhanLo = codeInp ? codeInp.value.trim() : '';
-                    pl.tenPhanLo = nameInp ? nameInp.value.trim() : '';
-                    pl.giaTriPhanLo = priceInp ? this.model.parseVND(priceInp.value) : 0;
-                    pl.baoDamDuThau = baodamInp ? this.model.parseVND(baodamInp.value) : 0;
-                    pl.thoiGianThucHien = durationInp ? durationInp.value.trim() : '';
+                    pl.maPhanLo = row.maPhanLo;
+                    pl.tenPhanLo = row.tenPhanLo;
+                    pl.giaTriPhanLo = row.giaTriPhanLo;
+                    pl.baoDamDuThau = row.baoDamDuThau;
+                    pl.thoiGianThucHien = row.thoiGianThucHien;
                 }
             });
             gt.giaTriDamBaoDuThau = gt.phanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0);

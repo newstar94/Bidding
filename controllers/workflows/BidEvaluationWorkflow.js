@@ -290,7 +290,7 @@ export function renderDanhGiaHsdtPanel() {
         }
 
         if (is1G2T) {
-            const isWorkflowView = document.getElementById('tab-goithau-detail')?.classList.contains('active');
+            const isWorkflowView = this.view.isGoiThauDetailTabActive();
             if (tabsHeader) {
                 tabsHeader.style.display = isWorkflowView ? 'none' : 'flex';
             }
@@ -1558,8 +1558,7 @@ export async function saveDanhGiaHsdt() {
     }
 
     // Tự động chuyển tab kết quả hoặc danh sách đạt kỹ thuật sau khi lưu
-    const detailPane = document.getElementById('tab-goithau-detail');
-    if (detailPane && detailPane.classList.contains('active')) {
+    if (this.view.isGoiThauDetailTabActive()) {
         if (!is1G2T) {
             this.view._currentWorkflowTab = 'result';
         } else {

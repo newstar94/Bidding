@@ -1,0 +1,354 @@
+import { initCustomSelect } from '../view_helpers.js';
+
+export async function renderNhaThauTable() {
+    const tableBody = document.getElementById('nhathau-table').querySelector('tbody');
+    const searchVal = document.getElementById('search-nhathau').value.toLowerCase();
+
+    let slicedData = [];
+    let totalItems = 0;
+    const currentPage = this.model.currentPage.nhathau || 1;
+    const pageSize = this.model.pageSize || 10;
+
+    const sortState = this.model.sortState.nhathau || {};
+    const sortBy = sortState.field || '';
+    const sortOrder = sortState.order || 'asc';
+
+    if (this.model.useServerSidePagination) {
+        if (!tableBody.querySelector('.empty-state') && tableBody.children.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
+        }
+        try {
+            const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
+                headers: {
+                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
+                    'X-Username': sessionStorage.getItem('bf_username') || ''
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                slicedData = data.items;
+                totalItems = data.totalItems;
+            }
+        } catch (e) {
+            console.error("Failed to fetch paginated contractors", e);
+        }
+    } else {
+        const latestNhaThau = this.model.getLatestNhaThau();
+        const filtered = latestNhaThau.filter(n =>
+            (n.maNhaThau || '').toLowerCase().includes(searchVal) ||
+            (n.tenNhaThau || '').toLowerCase().includes(searchVal) ||
+            (n.maSoThue && n.maSoThue.includes(searchVal)) ||
+            (n.loaiNhaThau === 'Liên danh' && n.thanhVienLienDanh && n.thanhVienLienDanh.some(m => (m.tenNhaThau || '').toLowerCase().includes(searchVal) || (m.maSoThue || '').includes(searchVal)))
+        );
+
+        if (sortBy) {
+            filtered.sort((a, b) => {
+                let valA = a[sortBy] || '';
+                let valB = b[sortBy] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        totalItems = filtered.length;
+        const startIndex = (currentPage - 1) * pageSize;
+        slicedData = filtered.slice(startIndex, startIndex + pageSize);
+    }
+
+    if (totalItems === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="8">
+                    <div class="empty-state">
+                        <i data-lucide="shield-alert"></i>
+                        <p>Không tìm thấy Nhà thầu nào phù hợp</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        const pag = document.getElementById('nhathau-pagination');
+        if (pag) pag.innerHTML = '';
+    } else {
+        tableBody.innerHTML = slicedData.map(n => {
+            const root = n.rootId || n.id;
+            const allVersions = n.allVersions || this.model.state.nhathau.filter(x => (x.rootId || x.id) === root)
+                .sort((a, b) => parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0));
+
+            if (!this.model.state.selectedNhaThauVersion) {
+                this.model.state.selectedNhaThauVersion = {};
+            }
+            const selectedId = this.model.state.selectedNhaThauVersion[root] || n.id;
+            const displayedNt = this.model.state.nhathau.find(x => x.id === selectedId) || n;
+
+            const optionsHtml = allVersions.map(v => {
+                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+                const isSel = v.id === displayedNt.id ? 'selected' : '';
+                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+            }).join('');
+
+            const dropdownHtml = `
+                <select class="form-control version-droplist" onchange="window.changeNhaThauRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                    ${optionsHtml}
+                </select>
+            `;
+
+            const isJV = displayedNt.loaiNhaThau === 'Liên danh';
+            if (isJV) {
+                const members = displayedNt.thanhVienLienDanh || [];
+                const names = members.map(m => m.tenNhaThau || '').join('<br>+ ');
+                const msts = members.map(m => m.maSoThue || '').join(', ');
+                const leaders = members.length > 0 ? `${members[0].danhXung || 'Ông'} ${members[0].nguoiDaiDien || '--'} (Trưởng LD)` : '--';
+                const contacts = members.length > 0 ? `<small>SĐT: ${members[0].soDienThoai || '--'}</small><br><small>Email: ${members[0].email || '--'}</small>` : '--';
+                const bankAccs = members.length > 0 ? `<div style="font-size:0.85rem;" class="fw-bold">${members[0].soTaiKhoan || '--'}</div><div style="font-size:0.75rem; color:var(--text-light);">${members[0].noiMoTaiKhoan || '--'} (+${members.length - 1} TV)</div>` : '--';
+                return `
+                    <tr>
+                        <td>
+                            <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
+                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                                ${dropdownHtml}
+                            </div>
+                        </td>
+                        <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
+                            ${displayedNt.tenNhaThau || ''}
+                            <div style="margin-top: 4px;"><span class="badge badge-info">Liên danh (${members.length} TV)</span></div>
+                            <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--primary-soft); white-space: normal !important;">
+                                + ${names}
+                            </div>
+                        </td>
+                        <td><small>${msts}</small></td>
+                        <td>${leaders}</td>
+                        <td>${contacts}</td>
+                        <td>${bankAccs}</td>
+                        <td class="text-right">
+                            <div class="action-btn-group">
+                                ${displayedNt.id === n.id ? `
+                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
+                                    <i data-lucide="edit-2"></i>
+                                </button>
+                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${displayedNt.id}')" title="Xóa">
+                                    <i data-lucide="trash-2"></i>
+                                </button>
+                                ` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                const rep = `${displayedNt.danhXung || 'Ông'} ${displayedNt.nguoiDaiDien || '--'}`;
+                const contact = `<small>SĐT: ${displayedNt.soDienThoai || '--'}</small><br><small>Email: ${displayedNt.email || '--'}</small>`;
+                const bankAcc = `<div style="font-size:0.85rem;" class="fw-bold">${displayedNt.soTaiKhoan || '--'}</div><div style="font-size:0.75rem; color:var(--text-light);">${displayedNt.noiMoTaiKhoan || '--'}${displayedNt.maNganHang ? ' (' + displayedNt.maNganHang + ')' : ''}</div>`;
+                return `
+                    <tr>
+                        <td>
+                            <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
+                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                                ${dropdownHtml}
+                            </div>
+                        </td>
+                        <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
+                            ${displayedNt.tenNhaThau || ''}
+                        </td>
+                        <td>${displayedNt.maSoThue || '--'}</td>
+                        <td>${rep}</td>
+                        <td>${contact}</td>
+                        <td>${bankAcc}</td>
+                        <td class="text-right">
+                            <div class="action-btn-group">
+                                ${displayedNt.id === n.id ? `
+                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
+                                    <i data-lucide="edit-2"></i>
+                                </button>
+                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${displayedNt.id}')" title="Xóa">
+                                    <i data-lucide="trash-2"></i>
+                                </button>
+                                ` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }).join('');
+
+        if (window.renderTablePagination) {
+            window.renderTablePagination('nhathau-pagination', totalItems, currentPage, pageSize);
+        }
+    }
+    lucide.createIcons({ root: tableBody });
+    this.enhanceTableHeaders('nhathau-table', 'nhathau');
+}
+
+export function showNhaThauDetails(id, isSwitchingVersion = false) {
+    const detailPane = document.getElementById('tab-nhathau-detail');
+    if (!detailPane || !detailPane.classList.contains('active')) {
+        window.switchTab('nhathau-detail', id);
+        return;
+    }
+
+    const nt = this.model.state.nhathau.find(n => n.id === id);
+    if (!nt) return;
+
+    this.renderNhaThauVersionDetails(id);
+}
+
+export function renderNhaThauVersionDetails(versionId) {
+    const nt = this.model.state.nhathau.find(n => n.id === versionId);
+    if (!nt) return;
+
+    const root = nt.rootId || nt.id;
+    const allRelated = (this.model.state.nhathau || []).filter(n => n.rootId === root || n.id === root);
+    allRelated.sort((a, b) => (parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0)));
+    const isLatest = allRelated[0] && allRelated[0].id === versionId;
+
+    const editBtn = document.getElementById('btn-edit-nhathau-fullpage');
+    if (editBtn) {
+        if (isLatest) {
+            editBtn.style.display = 'flex';
+            editBtn.onclick = () => {
+                window.editNhaThau(versionId);
+            };
+        } else {
+            editBtn.style.display = 'none';
+        }
+    }
+
+    const selectOptionsHtml = allRelated.map(v => {
+        const ver = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+        return `<option value="${v.id}" ${v.id === versionId ? 'selected' : ''}>${ver}</option>`;
+    }).join('');
+
+    const versionSelectHtml = `
+        <select id="fullpage-nt-version-select" class="page-version-select" style="min-width: 100px; max-width: 320px; width: auto;" ${allRelated.length < 2 ? 'disabled' : ''}>
+            ${selectOptionsHtml}
+        </select>
+    `;
+
+    const addressParts = (nt.diaChi || '').split(' | ');
+    const addressStr = addressParts.filter(Boolean).join(', ');
+
+    let detailsHtml = '';
+    const isJV = nt.loaiNhaThau === 'Liên danh';
+
+    if (isJV) {
+        const members = nt.thanhVienLienDanh || [];
+        detailsHtml = `
+            <div class="detail-grid" style="margin-bottom: 24px;">
+                <div class="detail-item">
+                    <div class="detail-label">Loại nhà thầu</div>
+                    <div class="detail-value"><span class="badge badge-info">Liên danh (${members.length} thành viên)</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số thành viên</div>
+                    <div class="detail-value fw-bold">${members.length} TV</div>
+                </div>
+            </div>
+
+            <h5 class="detail-sub-title" style="margin-top: 24px; color: var(--primary); font-weight: 700;">Danh sách thành viên liên danh</h5>
+            <div class="associated-list">
+                ${members.map((m, index) => {
+                    const memberAddress = (m.diaChi || '').split(' | ').filter(Boolean).join(', ');
+                    return `
+                        <div class="associated-item" style="flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px;">
+                            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                                <strong style="font-size: 0.95rem; color: var(--text-main);">${index + 1}. ${m.tenNhaThau} ${index === 0 ? '<span class="badge badge-primary" style="margin-left: 8px; font-size: 0.7rem;">Trưởng Liên danh</span>' : ''}</strong>
+                                <span class="badge badge-secondary" style="background-color: var(--primary-soft); color: var(--primary); font-weight: 600;">MST: ${m.maSoThue || '--'}</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; margin-top: 4px; font-size: 0.85rem;">
+                                <div><span class="text-muted">Đại diện:</span> ${m.danhXung || 'Ông'} ${m.nguoiDaiDien || '--'} (${m.chucVu || '--'})</div>
+                                <div><span class="text-muted">Liên hệ:</span> SĐT: ${m.soDienThoai || '--'} | Email: ${m.email || '--'}</div>
+                                <div style="grid-column: span 2;"><span class="text-muted">Tài khoản ngân hàng:</span> <strong>${m.soTaiKhoan || '--'}</strong> tại ${m.noiMoTaiKhoan || '--'} ${m.maNganHang ? '(' + m.maNganHang + ')' : ''}</div>
+                                <div style="grid-column: span 2;"><span class="text-muted">Địa chỉ:</span> ${memberAddress || '--'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    } else {
+        detailsHtml = `
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Loại nhà thầu</div>
+                    <div class="detail-value"><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">Độc lập</span></div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Mã số thuế</div>
+                    <div class="detail-value fw-bold">${nt.maSoThue || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Người đại diện</div>
+                    <div class="detail-value">${nt.nguoiDaiDien ? nt.danhXung + ' ' + nt.nguoiDaiDien : '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Chức vụ người đại diện</div>
+                    <div class="detail-value">${nt.chucVu || '--'}</div>
+                </div>
+                <div class="detail-item" style="grid-column: span 2;">
+                    <div class="detail-label">Địa chỉ</div>
+                    <div class="detail-value">${addressStr || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số điện thoại</div>
+                    <div class="detail-value">${nt.soDienThoai || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Email liên hệ</div>
+                    <div class="detail-value">${nt.email || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Số tài khoản</div>
+                    <div class="detail-value fw-bold text-blue">${nt.soTaiKhoan || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Nơi mở tài khoản</div>
+                    <div class="detail-value">${nt.noiMoTaiKhoan || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Mã ngân hàng</div>
+                    <div class="detail-value">${nt.maNganHang || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Website</div>
+                    <div class="detail-value">${nt.website ? `<a href="${nt.website}" target="_blank" class="text-blue link-hover">${nt.website}</a>` : '--'}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    const html = `
+        <div class="detail-section">
+            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${nt.maNhaThau || '--'}</span>
+                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+                        ${versionSelectHtml}
+                    </div>
+                </div>
+                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${nt.tenNhaThau || 'Nhà thầu chưa có tên'}</h4>
+            </div>
+            ${detailsHtml}
+        </div>
+    `;
+
+    const contentEl = document.getElementById('fullpage-nhathau-content');
+    if (contentEl) {
+        contentEl.innerHTML = html;
+        const innerSelect = document.getElementById('fullpage-nt-version-select');
+        if (innerSelect) {
+            if (allRelated.length >= 2) {
+                innerSelect.onchange = (e) => {
+                    this.renderNhaThauVersionDetails(e.target.value);
+                };
+            } else {
+                innerSelect.onchange = null;
+            }
+            if (window.initCustomSelect) window.initCustomSelect('fullpage-nt-version-select');
+        }
+        lucide.createIcons();
+    }
+}

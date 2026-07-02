@@ -3,21 +3,17 @@ import sys
 import json
 import uuid
 import time
-import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 
 from starlette.responses import JSONResponse
-from starlette.background import BackgroundTasks
 
-# Import helpers from helpers.py
 from helpers import (
     database,
     verify_session,
-    hash_password,
     verify_password,
+    hash_password,
     get_effective_roles,
-    gui_email,
     log_error,
     _session_cache_invalidate,
     _session_cache_invalidate_by_user_id,
@@ -28,348 +24,23 @@ from helpers import (
 from helpers_py.auth_helper import _session_cache_get, _session_cache_set
 from .sync_routes import disconnect_user_websockets
 
-# Cấu hình cookie: bật secure=True khi chạy sau HTTPS reverse proxy
-_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
-
-# Thời gian hiệu lực phiên đăng nhập (giờ)
-SESSION_EXPIRY_HOURS = int(os.environ.get("SESSION_EXPIRY_HOURS", "12"))
-SESSION_REMEMBER_EXPIRY_HOURS = int(os.environ.get("SESSION_REMEMBER_EXPIRY_HOURS", "720"))
-SESSION_INACTIVITY_TIMEOUT_HOURS = int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10"))
-
-# ==========================================
-# RATE LIMITER (In-memory, per IP)
-# Bảo vệ chống brute force / spam OTP
-# BE-3: Kết hợp in-memory + DB persist để survive server restart
-# ==========================================
-_rate_limit_store = defaultdict(list)   # ip -> [timestamps]
-RATE_LIMIT_MAX = 5         # Tối đa 5 lần
-RATE_LIMIT_WINDOW = 60     # Trong vòng 60 giây
-
-def _get_client_ip(request) -> str:
-    """Lấy IP thật từ header X-Forwarded-For (nếu qua proxy/nginx) hoặc client.host"""
-    forwarded = request.headers.get('X-Forwarded-For')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return getattr(request.client, 'host', 'unknown')
-
-def _check_rate_limit(ip: str) -> bool:
-    """Trả về True nếu chưa vượt giới hạn, False nếu bị throttle.
-    Ghi lần thử vào DB để survive server restart (BE-3).
-    """
-    now = time.time()
-    window_start = now - RATE_LIMIT_WINDOW
-    
-    # 1) In-memory check (nhanh)
-    _rate_limit_store[ip] = [t for t in _rate_limit_store[ip] if t > window_start]
-    
-    # 2) DB-backed count để persist qua restart
-    try:
-        from helpers import database as _db
-        conn = _db.get_connection()
-        cur = conn.cursor()
-        key = f"rate_limit:{ip}"
-        cur.execute("SELECT config_value FROM sys_config WHERE config_key = ?", (key,))
-        row = cur.fetchone()
-        if row:
-            import json as _json
-            try:
-                db_timestamps = [t for t in _json.loads(row[0]) if t > window_start]
-            except Exception:
-                db_timestamps = []
-        else:
-            db_timestamps = list(_rate_limit_store[ip])
-        
-        # Merge in-memory + DB entries
-        all_timestamps = sorted(set(list(_rate_limit_store[ip]) + db_timestamps))
-        all_timestamps = [t for t in all_timestamps if t > window_start]
-        
-        if len(all_timestamps) >= RATE_LIMIT_MAX:
-            conn.close()
-            return False
-        
-        # Ghi lại vào DB
-        all_timestamps.append(now)
-        import json as _json
-        cur.execute(
-            "INSERT INTO sys_config (config_key, config_value) VALUES (?, ?) "
-            "ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value",
-            (key, _json.dumps(all_timestamps[-RATE_LIMIT_MAX:]))
-        )
-        conn.commit()
-        conn.close()
-        _rate_limit_store[ip] = all_timestamps
-    except Exception:
-        # Fallback: chỉ dùng in-memory nếu DB lỗi
-        if len(_rate_limit_store[ip]) >= RATE_LIMIT_MAX:
-            return False
-        _rate_limit_store[ip].append(now)
-    
-    return True
-
-def _generate_otp() -> str:
-    """Tạo mã OTP 6 số dùng secrets (cryptographically secure)."""
-    return str(secrets.randbelow(900000) + 100000)
-
-# ==========================================
-# CÁC HÀM TRỢ GIÚP CHO TÀI KHOẢN / TỔ CHỨC
-# ==========================================
-
-def get_user_org_names(cursor, user_id):
-    cursor.execute("""
-        SELECT tc.ten_to_chuc 
-        FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
-        WHERE tvtc.user_id = ?
-    """, (user_id,))
-    rows = cursor.fetchall()
-    return ", ".join(row['ten_to_chuc'] for row in rows)
-
-def update_user_organizations(cursor, user_id, organization_name, user_role='employee'):
-    import hashlib
-    # Parse new organizations
-    new_orgs = [o.strip() for o in organization_name.split(',') if o.strip()]
-    
-    # Get current associations
-    cursor.execute("""
-        SELECT tc.id, tc.ten_to_chuc 
-        FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
-        WHERE tvtc.user_id = ?
-    """, (user_id,))
-    current_assoc = {row['ten_to_chuc']: row['id'] for row in cursor.fetchall()}
-    
-    # 1. Add new associations
-    for org_name in new_orgs:
-        if org_name not in current_assoc:
-            # Check if organization already exists in to_chuc by name
-            cursor.execute("SELECT id FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
-            org_row = cursor.fetchone()
-            if org_row:
-                org_id = org_row['id']
-            else:
-                # Create new organization
-                org_id = "org-" + hashlib.md5(org_name.encode('utf-8')).hexdigest()[:16]
-                cursor.execute(
-                    "INSERT OR IGNORE INTO to_chuc (id, ten_to_chuc, quan_ly_id) VALUES (?, ?, ?)",
-                    (org_id, org_name, user_id)
-                )
-            
-            # Create association
-            role_in_org = 'employee'
-            if 'super_admin' in user_role:
-                role_in_org = 'super_admin'
-            elif 'manager' in user_role:
-                role_in_org = 'manager'
-            cursor.execute(
-                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-                (user_id, org_id, role_in_org)
-            )
-            
-    # 2. Remove associations for organizations no longer specified
-    removed_any = False
-    for org_name, org_id in current_assoc.items():
-        if org_name not in new_orgs:
-            cursor.execute(
-                "DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
-                (user_id, org_id)
-            )
-            removed_any = True
-
-    if removed_any:
-        # Xóa cache tổ chức hoạt động và ngắt kết nối WebSocket
-        _org_cache_invalidate_by_user_id(user_id)
-        disconnect_user_websockets(user_id)
-
-# ==========================================
-# CÁC ENDPOINT ĐĂNG KÝ, ĐĂNG NHẬP, QUÊN MẬT KHẨU
-# ==========================================
-
-async def register_api(request):
-    conn = None  # [CQ-2] Khởi tạo trước try để finally luôn đóng conn
-    try:
-        # Rate limiting
-        ip = _get_client_ip(request)
-        if not _check_rate_limit(f"register:{ip}"):
-            return JSONResponse({"error": "Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau 60 giây."}, status_code=429)
-
-        data = await request.json()
-        username = data.get('username', '').strip()
-        password = data.get('password', '').strip()
-        name = data.get('name', '').strip()
-        email = data.get('email', '').strip()
-        role = 'employee'
-        
-        if not username or not password or not name or not email:
-            return JSONResponse({"error": "Vui lòng nhập đầy đủ thông tin bắt buộc!"}, status_code=400)
-            
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        
-        # Check if username exists
-        cursor.execute("SELECT id FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
-        if cursor.fetchone():
-            return JSONResponse({"error": "Tài khoản đăng nhập đã tồn tại!"}, status_code=400)
-            
-        # Check if email exists
-        cursor.execute("SELECT id FROM tai_khoan WHERE email = ?", (email,))
-        if cursor.fetchone():
-            return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
-            
-        user_uuid = "user-" + str(uuid.uuid4())
-        
-        # Generate verification code (cryptographically secure OTP)
-        code = _generate_otp()
-        expiry = int(time.time()) + 600 # 10 minutes from now
-        
-        cursor.execute(
-            "INSERT INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, goi_dich_vu_id, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_uuid, username, hash_password(password), name, role, email, 'silver', 0, code, expiry)
-        )
-        conn.commit()
-        
-        # Send Email
-        tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"
-        noi_dung_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <h2 style="color: #2563eb; text-align: center;">Chào mừng bạn đến với BiddingFlow</h2>
-                <p>Xin chào <strong>{name}</strong>,</p>
-                <p>Cảm ơn bạn đã đăng ký tài khoản tại BiddingFlow. Mã OTP xác thực email của bạn là:</p>
-                <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0;">
-                    <span style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 4px;">{code}</span>
-                </div>
-                <p style="font-size: 0.9rem; color: #64748b;">Mã OTP này có hiệu lực trong vòng 10 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-            </div>
-        </body>
-        </html>
-        """
-        tasks = BackgroundTasks()
-        tasks.add_task(gui_email, email, tieu_de, noi_dung_html)
-        
-        return JSONResponse(
-            {"success": True, "message": "Đăng ký thành công! Vui lòng kiểm tra email để lấy mã xác nhận kích hoạt tài khoản."},
-            background=tasks
-        )
-    except Exception as e:
-        log_error(e, "register_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau."}, status_code=500)
-    finally:
-        if conn:
-            try: conn.close()
-            except Exception: pass
-
-async def verify_email_api(request):
-    try:
-        data = await request.json()
-        username = data.get('username', '').strip()
-        code = data.get('code', '').strip()
-        
-        if not username or not code:
-            return JSONResponse({"error": "Thiếu thông tin xác thực!"}, status_code=400)
-            
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, ma_xac_minh, han_xac_minh FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
-        row = cursor.fetchone()
-        
-        if not row:
-            conn.close()
-            return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400)
-            
-        user = dict(row)
-        current_time = int(time.time())
-        
-        if not secrets.compare_digest(str(user['ma_xac_minh']), str(code)):
-            conn.close()
-            return JSONResponse({"error": "Mã xác nhận không chính xác!"}, status_code=400)
-            
-        if user['han_xac_minh'] and current_time > user['han_xac_minh']:
-            conn.close()
-            return JSONResponse({"error": "Mã xác nhận đã hết hạn! Vui lòng yêu cầu mã mới."}, status_code=400)
-            
-        cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1, ma_xac_minh = NULL, han_xac_minh = NULL WHERE id = ?", (user['id'],))
-        conn.commit()
-        conn.close()
-        
-        return JSONResponse({"success": True, "message": "Xác thực email thành công! Bạn có thể đăng nhập ngay bây giờ."})
-    except Exception as e:
-        log_error(e, "verify_email_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi khi xác thực. Vui lòng thử lại sau."}, status_code=500)
-
-async def resend_code_api(request):
-    try:
-        data = await request.json()
-        username = data.get('username', '').strip()
-        
-        if not username:
-            return JSONResponse({"error": "Thiếu thông tin người dùng!"}, status_code=400)
-            
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, ho_ten, email, da_xac_minh FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
-        row = cursor.fetchone()
-        
-        if not row:
-            conn.close()
-            return JSONResponse({"error": "Tài khoản không tồn tại!"}, status_code=400)
-            
-        user = dict(row)
-        is_verified = bool(user.get('da_xac_minh'))
-                
-        if is_verified:
-            conn.close()
-            return JSONResponse({"error": "Tài khoản này đã được xác thực trước đó!"}, status_code=400)
-            
-        # Rate limiting cho resend
-        ip = _get_client_ip(request)
-        if not _check_rate_limit(f"resend:{ip}"):
-            return JSONResponse({"error": "Quá nhiều yêu cầu gửi lại OTP. Vui lòng thử lại sau 60 giây."}, status_code=429)
-
-        code = _generate_otp()
-        expiry = int(time.time()) + 600
-        
-        cursor.execute("UPDATE tai_khoan SET ma_xac_minh = ?, han_xac_minh = ? WHERE id = ?", (code, expiry, user['id']))
-        conn.commit()
-        conn.close()
-        
-        tieu_de = "[BiddingFlow] Gửi lại mã xác thực tài khoản"
-        noi_dung_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <h2 style="color: #2563eb; text-align: center;">Mã xác thực mới của bạn</h2>
-                <p>Xin chào <strong>{user['ho_ten']}</strong>,</p>
-                <p>Bạn đã yêu cầu gửi lại mã xác nhận email cho tài khoản BiddingFlow. Mã OTP mới là:</p>
-                <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0;">
-                    <span style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 4px;">{code}</span>
-                </div>
-                <p style="font-size: 0.9rem; color: #64748b;">Mã OTP này có hiệu lực trong vòng 10 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-            </div>
-        </body>
-        </html>
-        """
-        tasks = BackgroundTasks()
-        tasks.add_task(gui_email, user['email'], tieu_de, noi_dung_html)
-        
-        return JSONResponse(
-            {"success": True, "message": "Đã gửi lại mã OTP xác nhận vào email của bạn!"},
-            background=tasks
-        )
-    except Exception as e:
-        log_error(e, "resend_code_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
+# Import service helpers
+from services.auth_service import (
+    get_client_ip,
+    check_rate_limit,
+    get_user_org_names,
+    update_user_organizations,
+    _SECURE_COOKIES,
+    SESSION_EXPIRY_HOURS,
+    SESSION_REMEMBER_EXPIRY_HOURS,
+    SESSION_INACTIVITY_TIMEOUT_HOURS
+)
 
 async def login_api(request):
-    conn = None  # [CQ-2] Khởi tạo trước try để finally luôn đóng conn
+    conn = None
     try:
-        # Rate limiting bảo vệ brute force
-        ip = _get_client_ip(request)
-        if not _check_rate_limit(f"login:{ip}"):
+        ip = get_client_ip(request)
+        if not check_rate_limit(f"login:{ip}"):
             return JSONResponse({"error": "Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau 60 giây."}, status_code=429)
 
         data = await request.json()
@@ -402,11 +73,9 @@ async def login_api(request):
                 "username": user['ten_dang_nhap']
             }, status_code=400)
             
-        # Generate new active session token (uuid) to log out other devices
         session_token = str(uuid.uuid4())
         expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
-        import time as _time
-        token_expiry = int(_time.time() + expiry_hours * 3600)
+        token_expiry = int(time.time() + expiry_hours * 3600)
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
             "ip": request.client.host,
@@ -457,7 +126,6 @@ async def check_session_api(request):
         if not username or not session_token:
             return JSONResponse({"valid": False, "error": "Thiếu thông tin xác thực"}, status_code=400)
             
-        # Lấy thông tin user (từ cache hoặc DB)
         user = None
         cached = _session_cache_get(session_token)
         if cached and cached.get('token_phien') == session_token and 'ten_dang_nhap' in cached:
@@ -479,7 +147,6 @@ async def check_session_api(request):
             return JSONResponse({"valid": False, "reason": "logged_in_elsewhere"})
             
         now = time.time()
-        # Xác minh hạn dùng của token
         if user.get('han_su_dung_token'):
             try:
                 if now > float(user['han_su_dung_token']):
@@ -488,7 +155,6 @@ async def check_session_api(request):
             except Exception:
                 pass
 
-        # Cơ chế Sliding Expiration: Tự động kéo dài thời hạn nếu thời gian còn lại ít hơn một nửa chu kỳ
         expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
         current_expiry = float(user.get('han_su_dung_token') or 0)
         
@@ -497,7 +163,6 @@ async def check_session_api(request):
             new_expiry = int(now + expiry_hours * 3600)
             user['han_su_dung_token'] = new_expiry
             
-            # Cập nhật vào DB
             conn = database.get_connection()
             cursor = conn.cursor()
             cursor.execute("UPDATE tai_khoan SET han_su_dung_token = ? WHERE id = ?", (new_expiry, user['id']))
@@ -505,10 +170,8 @@ async def check_session_api(request):
             conn.close()
             new_expiry_set = True
 
-        # Lưu lại/cập nhật cache
         _session_cache_set(session_token, user)
-                
-        # Lấy danh sách org
+                 
         conn = database.get_connection()
         cursor = conn.cursor()
         org_names = get_user_org_names(cursor, user['id'])
@@ -532,7 +195,6 @@ async def check_session_api(request):
             }
         })
         
-        # Nếu gia hạn token, gia hạn luôn cả cookie
         if new_expiry_set:
             cookie_max_age = expiry_hours * 3600 if remember else None
             response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
@@ -542,70 +204,6 @@ async def check_session_api(request):
     except Exception as e:
         log_error(e, "check_session_api")
         return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
-
-async def forgot_password_api(request):
-    conn = None  # [CQ-2] Khởi tạo trước try để finally luôn đóng conn
-    try:
-        # Rate limiting cho quên mật khẩu
-        ip = _get_client_ip(request)
-        if not _check_rate_limit(f"forgot:{ip}"):
-            return JSONResponse({"error": "Quá nhiều yêu cầu. Vui lòng thử lại sau 60 giây."}, status_code=429)
-
-        data = await request.json()
-        username = data.get('username', '').strip()
-        email = data.get('email', '').strip()
-        
-        if not username or not email:
-            return JSONResponse({"error": "Vui lòng nhập tài khoản và email đã đăng ký!"}, status_code=400)
-            
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, ho_ten FROM tai_khoan WHERE ten_dang_nhap = ? AND email = ?", (username, email))
-        row = cursor.fetchone()
-        
-        if not row:
-            return JSONResponse({"error": "Thông tin tài khoản hoặc email không khớp!"}, status_code=400)
-            
-        user = dict(row)
-        user_id = user['id']
-        name = user['ho_ten']
-        temp_pwd = secrets.token_hex(4)
-        cursor.execute("UPDATE tai_khoan SET mat_khau = ? WHERE id = ?", (hash_password(temp_pwd), user_id))
-        conn.commit()
-        
-        tieu_de = "[BiddingFlow] Khôi phục mật khẩu tài khoản"
-        noi_dung_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <h2 style="color: #dc2626; text-align: center;">Khôi phục mật khẩu BiddingFlow</h2>
-                <p>Xin chào <strong>{name}</strong>,</p>
-                <p>Chúng tôi nhận được yêu cầu khôi phục mật khẩu cho tài khoản <strong>{username}</strong>.</p>
-                <p>Mật khẩu tạm thời mới của bạn là:</p>
-                <div style="background-color: #fef2f2; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0; border: 1px solid #fca5a5;">
-                    <span style="font-size: 22px; font-weight: bold; color: #991b1b; letter-spacing: 2px;">{temp_pwd}</span>
-                </div>
-                <p>Vui lòng đăng nhập bằng mật khẩu tạm thời này và tiến hành thay đổi mật khẩu ngay lập tức trong phần quản lý tài khoản để đảm bảo bảo mật thông tin.</p>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-            </div>
-        </body>
-        </html>
-        """
-        tasks = BackgroundTasks()
-        tasks.add_task(gui_email, email, tieu_de, noi_dung_html)
-        
-        return JSONResponse({
-            "success": True, 
-            "message": "Yêu cầu khôi phục mật khẩu thành công! Mật khẩu mới đã được gửi tới địa chỉ email của bạn. Vui lòng kiểm tra hộp thư (và thư mục Spam nếu không thấy)."
-        }, background=tasks)
-    except Exception as e:
-        log_error(e, "forgot_password_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
-    finally:
-        if conn:
-            try: conn.close()
-            except Exception: pass
 
 async def update_profile_api(request):
     try:
@@ -627,7 +225,6 @@ async def update_profile_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         
-        # Check if email is in use by another user
         cursor.execute("SELECT ten_dang_nhap FROM tai_khoan WHERE email = ? AND ten_dang_nhap != ?", (email, username))
         if cursor.fetchone():
             conn.close()
@@ -680,7 +277,6 @@ async def change_password_api(request):
             conn.close()
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
             
-        # Đổi mật khẩu và làm mới token (kích hoạt đăng xuất thiết bị khác)
         old_token = request.headers.get('X-Session-Token')
         new_token = str(uuid.uuid4())
         cursor.execute(
@@ -689,7 +285,6 @@ async def change_password_api(request):
         )
         conn.commit()
         conn.close()
-        # Xóa session cũ khỏi cache
         if old_token:
             _session_cache_invalidate(old_token)
         
@@ -711,7 +306,6 @@ async def list_users_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         
-        # Lấy thông tin tổ chức và vai trò của người đang yêu cầu
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
         requester = cursor.fetchone()
         if not requester:
@@ -720,13 +314,11 @@ async def list_users_api(request):
             
         req_role = requester['vai_tro']
         
-        # Lấy danh sách ID các tổ chức mà requester thuộc về
         cursor.execute("SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?", (role_or_err.user_id,))
         req_org_ids = [r['to_chuc_id'] for r in cursor.fetchall()]
         
         sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, email, anh_dai_dien AS avatar, goi_dich_vu_id AS package_id, ngay_bat_dau_goi AS package_start_date, ngay_het_han_goi AS package_end_date FROM tai_khoan"
         
-        # Hỗ trợ tìm kiếm theo email chính xác cho cả vai trò quản lý
         email_query = request.query_params.get('email')
         if email_query:
             cursor.execute(sql_base + " WHERE email = ?", (email_query.strip().lower(),))
@@ -736,11 +328,9 @@ async def list_users_api(request):
             users_raw = cursor.fetchall()
         else:
             if not req_org_ids:
-                # Nếu người dùng không thuộc tổ chức nào và không phải super_admin, chỉ trả về chính họ
                 cursor.execute(sql_base + " WHERE id = ?", (role_or_err.user_id,))
                 users_raw = cursor.fetchall()
             else:
-                # Lọc những tài khoản thuộc tổ chức hoạt động hiện tại (active_org)
                 active_org_id = get_active_org(request, role_or_err.user_id)
                 if active_org_id and active_org_id in req_org_ids:
                     cursor.execute(f"""
@@ -753,7 +343,6 @@ async def list_users_api(request):
                     """, (active_org_id,))
                     users_raw = cursor.fetchall()
                 else:
-                    # Fallback nếu không có active_org hợp lệ
                     placeholders = ",".join("?" for _ in req_org_ids)
                     cursor.execute(f"""
                         SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role, 
@@ -804,7 +393,6 @@ async def delete_user_api(request):
         conn.commit()
         conn.close()
         
-        # Xóa cache session, cache tổ chức hoạt động và ngắt kết nối WebSocket
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
@@ -831,17 +419,14 @@ async def update_user_role_api(request):
         if not user_id or not new_role:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
             
-        # Hỗ trợ nhiều role phân tách bằng dấu phẩy (VD: 'super_admin,manager')
         valid_roles = {'super_admin', 'manager', 'employee'}
         requested_roles = [r.strip() for r in new_role.split(',') if r.strip()]
         if not requested_roles or not all(r in valid_roles for r in requested_roles):
             return JSONResponse({"error": "Vai trò không hợp lệ!"}, status_code=400)
             
-        # Nếu người thực hiện không phải là super_admin, không được phép gán vai trò super_admin
         if 'super_admin' not in effective_roles and 'super_admin' in requested_roles:
             return JSONResponse({"error": "Bạn không có quyền gán vai trò Quản trị viên tối cao!"}, status_code=403)
         
-        # BE-7: Kiểm tra target user có trong cùng tổ chức với requester không (trừ super_admin)
         if 'super_admin' not in effective_roles:
             requester_id = role_or_err.user_id
             conn_check = database.get_connection()
@@ -860,7 +445,6 @@ async def update_user_role_api(request):
             if not requester_orgs.intersection(target_orgs):
                 return JSONResponse({"error": "Bạn không có quyền thay đổi vai trò của người dùng này!"}, status_code=403)
         
-        # Chuẩn hóa: nếu có super_admin thì không cần liệt kê lại manager/employee
         normalized_role = ','.join(requested_roles)
             
         conn = database.get_connection()
@@ -868,7 +452,6 @@ async def update_user_role_api(request):
         cursor.execute("UPDATE tai_khoan SET vai_tro = ? WHERE id = ?", (normalized_role, user_id))
         conn.commit()
         conn.close()
-        # Invalidate session cache ngay lập tức để quyền hạn có hiệu lực tức thời
         _session_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật vai trò người dùng thành công!"})
     except Exception as e:
@@ -891,7 +474,6 @@ async def update_user_package_api(request):
         pkgs = [p.strip() for p in new_package.split(',')]
         conn = database.get_connection()
         cursor = conn.cursor()
-        # Lấy danh sách gói hợp lệ từ DB thay vì hardcode
         cursor.execute("SELECT id FROM goi_dich_vu")
         valid_pkg_ids = {row['id'] for row in cursor.fetchall()} | {'none', ''}
         for p in pkgs:
@@ -902,7 +484,6 @@ async def update_user_package_api(request):
         cursor.execute("UPDATE tai_khoan SET goi_dich_vu_id = ? WHERE id = ?", (db_package, user_id))
         conn.commit()
         conn.close()
-        # Invalidate session cache ngay lập tức để thay đổi gói có hiệu lực tức thời
         _session_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật gói đăng ký thành công!"})
     except Exception as e:
@@ -934,7 +515,6 @@ async def update_user_metadata_api(request):
         cursor = conn.cursor()
         
         if field == 'organization_name':
-            # Get user role
             cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
             u_row = cursor.fetchone()
             role = u_row['vai_tro'] if u_row else 'employee'
@@ -994,129 +574,3 @@ async def update_system_package_api(request):
     except Exception as e:
         log_error(e, "update_system_package_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật gói dịch vụ."}, status_code=500)
-
-async def add_user_to_org_api(request):
-    try:
-        is_valid, role_or_err = verify_session(request)
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-            
-        effective_roles = get_effective_roles(role_or_err)
-        if 'manager' not in effective_roles:
-            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
-            
-        data = await request.json()
-        user_id = data.get('user_id')
-        if not user_id:
-            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-            
-        org_id = get_active_org(request, role_or_err.user_id)
-        
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        
-        # Kiểm tra xem tổ chức đã tồn tại chưa, nếu chưa thì tự động tạo
-        cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (org_id,))
-        if not cursor.fetchone():
-            cursor.execute("SELECT ho_ten, email FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
-            mgr_row = cursor.fetchone()
-            if mgr_row:
-                mgr_name = mgr_row['ho_ten'] or mgr_row['email'] or f"Quản lý {role_or_err.user_id}"
-            else:
-                mgr_name = f"Quản lý {role_or_err.user_id}"
-            
-            org_name = f"Tổ chức của {mgr_name}"
-            cursor.execute("SELECT 1 FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
-            if cursor.fetchone():
-                org_name = f"Tổ chức của {mgr_name} ({org_id})"
-                
-            cursor.execute(
-                "INSERT INTO to_chuc (id, ten_to_chuc, quan_ly_id) VALUES (?, ?, ?)",
-                (org_id, org_name, role_or_err.user_id)
-            )
-            cursor.execute(
-                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-                (role_or_err.user_id, org_id, 'manager')
-            )
-        
-        # Kiểm tra xem nhân sự đã thuộc tổ chức này chưa
-        cursor.execute("SELECT user_id FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
-        if cursor.fetchone():
-            conn.close()
-            return JSONResponse({"success": True, "message": "Nhân sự đã thuộc tổ chức này!"})
-            
-        # Thêm vào tổ chức
-        cursor.execute(
-            "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-            (user_id, org_id, 'employee')
-        )
-        
-        # Cập nhật vai trò hệ thống của tài khoản thành employee nếu vai trò trống hoặc là none
-        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
-        u_row = cursor.fetchone()
-        if u_row:
-            current_role = u_row['vai_tro'] or ''
-            if not current_role or current_role == 'none':
-                cursor.execute("UPDATE tai_khoan SET vai_tro = 'employee' WHERE id = ?", (user_id,))
-                
-        conn.commit()
-        conn.close()
-        _session_cache_invalidate_by_user_id(user_id)
-        
-        return JSONResponse({"success": True, "message": "Thêm nhân sự vào tổ chức thành công!"})
-    except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
-    except Exception as e:
-        log_error(e, "add_user_to_org_api")
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-async def remove_user_from_org_api(request):
-    try:
-        is_valid, role_or_err = verify_session(request)
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-            
-        effective_roles = get_effective_roles(role_or_err)
-        if 'manager' not in effective_roles:
-            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
-            
-        data = await request.json()
-        user_id = data.get('user_id')
-        if not user_id:
-            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-            
-        org_id = get_active_org(request, role_or_err.user_id)
-        
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
-        
-        # Gỡ các bản ghi ma_tran_phan_quyen của nhân sự trong tổ chức này và ghi nhận deletion log
-        cursor.execute("SELECT id FROM ma_tran_phan_quyen WHERE emp_id = ? AND owner_id = ?", (user_id, org_id))
-        pq_rows = cursor.fetchall()
-        for row in pq_rows:
-            pq_id = row['id']
-            cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE id = ?", (pq_id,))
-            cursor.execute(
-                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
-                ("ma_tran_phan_quyen", pq_id, org_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            )
-            
-        # Gỡ các bản ghi phan_cong_nhan_su (tự động ghi nhận deletion log qua DB trigger)
-        cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id_nhan_vien = ? AND owner_id = ?", (user_id, org_id))
-        
-        conn.commit()
-        conn.close()
-        
-        # Xóa cache session, cache tổ chức hoạt động và ngắt kết nối WebSocket
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
-        disconnect_user_websockets(user_id)
-        
-        return JSONResponse({"success": True, "message": "Gỡ nhân sự khỏi tổ chức thành công!"})
-    except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
-    except Exception as e:
-        log_error(e, "remove_user_from_org_api")
-        return JSONResponse({"error": str(e)}, status_code=500)

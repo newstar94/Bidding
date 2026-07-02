@@ -719,8 +719,9 @@ export async function handleGoiThauSubmit(e) {
     const form = document.getElementById('form-goithau');
     if (!this.view.validateForm(form)) return;
 
+    const formVals = this.view.getGoiThauFormInputValues(this.model);
     // Custom validation for extensions
-    const mainDongThauStr = document.getElementById('gt-thoigiandongthau').value;
+    const mainDongThauStr = formVals.thoiGianDongThau;
 
     // Helper function to parse Date from Vietnamese dd/MM/yyyy HH:mm or ISO format
     const parseDMYHM = (str) => {
@@ -783,7 +784,7 @@ export async function handleGoiThauSubmit(e) {
         return;
     }
 
-    const id = document.getElementById('form-goithau-id').value;
+    const id = formVals.id;
     let finalGtId = id;
     let oldPlanId = null;
     if (id) {
@@ -1019,7 +1020,7 @@ export async function handleGoiThauSubmit(e) {
         }
 
         // Kiểm tra giá gói thầu với tổng giá trị của các phần lô
-        const giaGoiThau = this.model.parseVND(document.getElementById('gt-gia').value) || 0;
+        const giaGoiThau = formVals.giaGoiThau || 0;
         const totalPhanLoVal = collectedPhanLoList.reduce((sum, item) => sum + (item.giaTriPhanLo || 0), 0);
         if (giaGoiThau !== totalPhanLoVal) {
             const confirmed = await this.view.customConfirm(
@@ -1033,10 +1034,9 @@ export async function handleGoiThauSubmit(e) {
         }
     }
 
-    const phuongPhapDanhGia = document.getElementById('gt-phuongphapdanhgia')?.value || '';
-    const trongSoKyThuatRaw = document.getElementById('gt-trongsokythuat')?.value || '';
-    const trongSoKyThuat = trongSoKyThuatRaw !== '' ? parseInt(trongSoKyThuatRaw) : null;
-    const phuongThucLuaChon = document.getElementById('gt-phuongthuc')?.value || '';
+    const phuongPhapDanhGia = formVals.phuongPhapDanhGia;
+    const trongSoKyThuat = formVals.trongSoKyThuat;
+    const phuongThucLuaChon = formVals.phuongThucLuaChon;
 
     if (this.validateTrongSoKyThuat) {
         if (!this.validateTrongSoKyThuat(true)) {
@@ -1051,36 +1051,36 @@ export async function handleGoiThauSubmit(e) {
         }
     }
 
-    const selectedPlanId = document.getElementById('gt-kehoachid').value;
+    const selectedPlanId = formVals.keHoachId;
     const latestPlan = this.model.getLatestPlan(selectedPlanId);
     const planIdToSave = latestPlan ? latestPlan.id : selectedPlanId;
 
     const gtData = {
         keHoachId: planIdToSave,
-        tenGoiThau: document.getElementById('gt-ten').value.trim(),
-        giaGoiThau: this.model.parseVND(document.getElementById('gt-gia').value),
-        thoiGianThucHien: document.getElementById('gt-thoigian').value.trim(),
-        hinhThucLuaChon: document.getElementById('gt-hinhthuc').value,
+        tenGoiThau: formVals.tenGoiThau,
+        giaGoiThau: formVals.giaGoiThau,
+        thoiGianThucHien: formVals.thoiGianThucHien,
+        hinhThucLuaChon: formVals.hinhThucLuaChon,
         phuongThucLuaChon: phuongThucLuaChon,
         phuongPhapDanhGia: phuongPhapDanhGia,
         trongSoKyThuat: trongSoKyThuat,
-        trangThai: document.getElementById('gt-trangthai').value,
+        trangThai: formVals.trangThai,
         linhVuc: linhVuc,
-        isThuoc: (linhVuc === 'Hàng hóa') ? (document.querySelector('input[name="gt-goithauthuoc"]:checked')?.value === '1' ? 1 : 0) : 0,
-        tuyChonMuaThem: document.getElementById('gt-tuychonmuathem').value,
-        nguonVon: document.getElementById('gt-nguonvon').value,
-        loaiHopDong: document.getElementById('gt-loaihopdong').value,
-        thoiGianToChuc: document.getElementById('gt-thoigiantochuc').value.trim(),
-        thoiGianBatDauToChuc: document.getElementById('gt-thoigianbatdautochuc').value.trim(),
-        quaMang: document.getElementById('gt-quatmang').value,
-        trongNuocQuocTe: document.getElementById('gt-trongnuocquocte').value,
-        phanLo: document.getElementById('gt-phanlo').value,
+        isThuoc: (linhVuc === 'Hàng hóa') ? formVals.isThuoc : 0,
+        tuyChonMuaThem: formVals.tuyChonMuaThem,
+        nguonVon: formVals.nguonVon,
+        loaiHopDong: formVals.loaiHopDong,
+        thoiGianToChuc: formVals.thoiGianToChuc,
+        thoiGianBatDauToChuc: formVals.thoiGianBatDauToChuc,
+        quaMang: formVals.quaMang,
+        trongNuocQuocTe: formVals.trongNuocQuocTe,
+        phanLo: formVals.phanLo,
         phanLoList: collectedPhanLoList,
         tuyChonMuaThemList: collectedTuyChonList,
         giaHanList: this._collectGiaHanRows(),
         yeuCauLamRoList: this._collectYeuCauLamRoRows(),
         traLoiLamRoList: this._collectTraLoiLamRoRows(),
-        soQuyetDinh: document.getElementById('gt-soquyetdinh').value.trim(),
+        soQuyetDinh: formVals.soQuyetDinh,
         ngayQuyetDinh: formattedDate4,
         thoiGianDangTai: formattedDate1,
         thoiGianDongThau: formattedDate2,
@@ -1088,17 +1088,17 @@ export async function handleGoiThauSubmit(e) {
         thoiGianMoEhsdxtc: formattedDate5,
         toChuyenGia: toChuyenGia,
         toThamDinh: toThamDinh,
-        giaTriDamBaoDuThau: (linhVuc === 'Tư vấn') ? 0 : (isPhanLo ? collectedPhanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0) : this.model.parseVND(document.getElementById('gt-giatribaomothau')?.value || '0')),
-        hieuLucHsdt: parseInt(document.getElementById('gt-hieuluchsdt')?.value) || null,
-        hieuLucDamBaoDuThau: parseInt(document.getElementById('gt-hieuluchbaomothau')?.value) || null
+        giaTriDamBaoDuThau: (linhVuc === 'Tư vấn') ? 0 : (isPhanLo ? collectedPhanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0) : this.model.parseVND(formVals.giaTriDamBaoDuThau || '0')),
+        hieuLucHsdt: formVals.hieuLucHsdt,
+        hieuLucDamBaoDuThau: formVals.hieuLucDamBaoDuThau
     };
 
     if (gtData.trangThai === 'Đã có kết quả') {
         if (!isPhanLo) {
-            gtData.nhaThauTrungThauId = document.getElementById('gt-nhathautrungthauid').value;
-            gtData.giaTrungThau = this.model.parseVND(document.getElementById('gt-giatrungthau').value);
-            gtData.thoiGianGoiThau = document.getElementById('gt-thoigian-goithau').value.trim();
-            gtData.thoiGianHopDong = document.getElementById('gt-thoigian-hopdong').value.trim();
+            gtData.nhaThauTrungThauId = formVals.nhaThauTrungThauId;
+            gtData.giaTrungThau = formVals.giaTrungThau;
+            gtData.thoiGianGoiThau = formVals.thoiGianGoiThau;
+            gtData.thoiGianHopDong = formVals.thoiGianHopDong;
             gtData.awardedPhanLoList = [];
         } else {
             gtData.awardedPhanLoList = this._collectAwardedPhanLoRows();
