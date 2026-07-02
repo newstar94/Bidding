@@ -254,6 +254,84 @@ export function editKeHoach(id) {
 
     lucide.createIcons();
     this.view.openModal('modal-kehoach');
+
+    // Auto-calculate dates based on user rules and working days
+    const addWorkingDays = (startDateStr, days) => {
+        if (!startDateStr) return '';
+        const parts = startDateStr.split('/');
+        if (parts.length !== 3) return '';
+        let date = new Date(parts[2], parts[1] - 1, parts[0]);
+        if (isNaN(date.getTime())) return '';
+
+        const holidaysData = window._vietnameseHolidays || {};
+        let direction = days < 0 ? -1 : 1;
+        let remainingDays = Math.abs(days);
+        while (remainingDays > 0) {
+            date.setDate(date.getDate() + direction);
+            let dayOfWeek = date.getDay();
+            let dateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+            let yearStr = String(date.getFullYear());
+            
+            let isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+            
+            // Check working weekend swaps
+            const yearWorkingWeekends = holidaysData[yearStr]?.working_weekends || [];
+            if (isWeekend && yearWorkingWeekends.includes(dateStr)) {
+                isWeekend = false;
+            }
+            
+            // Check holidays
+            const yearHolidays = holidaysData[yearStr]?.holidays || [];
+            const isHoliday = yearHolidays.includes(dateStr);
+            
+            if (!isWeekend && !isHoliday) {
+                remainingDays--;
+            }
+        }
+        return String(date.getDate()).padStart(2, '0') + '/' + String(date.getMonth() + 1).padStart(2, '0') + '/' + date.getFullYear();
+    };
+
+    const trinhDuToanInp = document.getElementById('kh-ngaytrinhdutoan');
+    const pheDuyetDuToanInp = document.getElementById('kh-ngaypheduyetdutoan');
+    const trinhKeHoachInp = document.getElementById('kh-ngaytrinhkehoach');
+    const pheDuyetKeHoachInp = document.getElementById('kh-ngaypheduyet');
+    const pheDuyetSel = document.getElementById('kh-pheduyet');
+
+    const updateFlatpickrValue = (inputEl, val) => {
+        if (!inputEl) return;
+        inputEl.value = val;
+        if (inputEl._flatpickr) {
+            inputEl._flatpickr.setDate(val, false);
+        }
+        inputEl.dispatchEvent(new Event('change'));
+    };
+
+    if (trinhDuToanInp && !trinhDuToanInp.dataset.hasDateListeners) {
+        trinhDuToanInp.dataset.hasDateListeners = 'true';
+        trinhDuToanInp.addEventListener('change', () => {
+            if (pheDuyetSel.value === 'Kế hoạch') {
+                const nextDate = addWorkingDays(trinhDuToanInp.value, 1);
+                updateFlatpickrValue(pheDuyetDuToanInp, nextDate);
+            }
+        });
+    }
+
+    if (pheDuyetDuToanInp && !pheDuyetDuToanInp.dataset.hasDateListeners) {
+        pheDuyetDuToanInp.dataset.hasDateListeners = 'true';
+        pheDuyetDuToanInp.addEventListener('change', () => {
+            if (pheDuyetSel.value === 'Kế hoạch') {
+                updateFlatpickrValue(trinhKeHoachInp, pheDuyetDuToanInp.value);
+            }
+        });
+    }
+
+    if (trinhKeHoachInp && !trinhKeHoachInp.dataset.hasDateListeners) {
+        trinhKeHoachInp.dataset.hasDateListeners = 'true';
+        trinhKeHoachInp.addEventListener('change', () => {
+            const nextDate = addWorkingDays(trinhKeHoachInp.value, 1);
+            updateFlatpickrValue(pheDuyetKeHoachInp, nextDate);
+        });
+    }
 }
 
 

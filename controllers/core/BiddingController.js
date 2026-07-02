@@ -248,6 +248,17 @@ export class BiddingController {
 
         this.registerGlobals();
         this.setupTheme();
+        if (!window._vietnameseHolidays) {
+            fetch('/api/holidays')
+                .then(res => res.json())
+                .then(data => {
+                    window._vietnameseHolidays = data || {};
+                })
+                .catch(e => {
+                    console.error('Failed to load holidays:', e);
+                    window._vietnameseHolidays = {};
+                });
+        }
         this.setupSidebar();
         this.setupTabs();
         this.setupActionListeners();
