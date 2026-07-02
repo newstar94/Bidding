@@ -748,7 +748,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('cg_cccd_' + cccd);
                             seenKeys.add('cg_cccd_' + cccd);
                             dbExists = (this.model.state.chuyengia || []).some(c => 
-                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                (c.isLatest == 1 || c.is_latest == 1 || c.isLatest === true || c.is_latest === true) &&
                                 String(c.soCCCD || '').trim().toLowerCase() === cccd
                             );
                         }
@@ -756,7 +756,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('cg_cc_' + cc);
                             seenKeys.add('cg_cc_' + cc);
                             dbExists = (this.model.state.chuyengia || []).some(c => 
-                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                (c.isLatest == 1 || c.is_latest == 1 || c.isLatest === true || c.is_latest === true) &&
                                 String(c.soChungChi || '').trim().toLowerCase() === cc
                             );
                         }
@@ -910,10 +910,16 @@ export async function saveExcelImport() {
         count = mappedData.length;
     } else if (type === 'chudautu') {
         const mappedData = validRows.map(row => {
-            const newId = window.generateUUID();
+            const mst = (row.maSoThue || '').trim();
+            const maCdt = (row.maChuDauTu || '').trim().toLowerCase();
+            const existing = this.model.state.chudautu.find(c => 
+                (mst && c.maSoThue && c.maSoThue.trim() === mst) ||
+                (maCdt && c.maChuDauTu && c.maChuDauTu.trim().toLowerCase() === maCdt)
+            );
+            const targetId = existing ? existing.id : window.generateUUID();
             return {
-                id: newId,
-                rootId: newId,
+                id: targetId,
+                rootId: targetId,
                 phienBan: '00',
                 phien_ban: '00',
                 isLatest: 1,
@@ -933,16 +939,29 @@ export async function saveExcelImport() {
                 maQHNS: row.maQHNS || ''
             };
         });
-        this.model.state.chudautu.push(...mappedData);
+        mappedData.forEach(item => {
+            const idx = this.model.state.chudautu.findIndex(c => c.id === item.id);
+            if (idx !== -1) {
+                this.model.state.chudautu[idx] = item;
+            } else {
+                this.model.state.chudautu.push(item);
+            }
+        });
         this.model.persistData('chudautu');
         this.view.renderChuDauTuTable();
         count = mappedData.length;
     } else if (type === 'nhathau') {
         const mappedData = validRows.map(row => {
-            const newId = window.generateUUID();
+            const mst = (row.maSoThue || '').trim();
+            const maNt = (row.maNhaThau || '').trim().toLowerCase();
+            const existing = this.model.state.nhathau.find(n => 
+                (mst && n.maSoThue && n.maSoThue.trim() === mst) ||
+                (maNt && n.maNhaThau && n.maNhaThau.trim().toLowerCase() === maNt)
+            );
+            const targetId = existing ? existing.id : window.generateUUID();
             return {
-                id: newId,
-                rootId: newId,
+                id: targetId,
+                rootId: targetId,
                 phienBan: '00',
                 phien_ban: '00',
                 isLatest: 1,
@@ -959,19 +978,32 @@ export async function saveExcelImport() {
                 soTaiKhoan: row.soTaiKhoan || '',
                 noiMoTaiKhoan: row.noiMoTaiKhoan || '',
                 maNganHang: row.maNganHang || '',
-                thanhVienLienDanh: []
+                thanhVienLienDanh: existing ? existing.thanhVienLienDanh : []
             };
         });
-        this.model.state.nhathau.push(...mappedData);
+        mappedData.forEach(item => {
+            const idx = this.model.state.nhathau.findIndex(n => n.id === item.id);
+            if (idx !== -1) {
+                this.model.state.nhathau[idx] = item;
+            } else {
+                this.model.state.nhathau.push(item);
+            }
+        });
         this.model.persistData('nhathau');
         this.view.renderNhaThauTable();
         count = mappedData.length;
     } else if (type === 'chuyengia') {
         const mappedData = validRows.map(row => {
-            const newId = window.generateUUID();
+            const cccd = (row.soCCCD || '').trim();
+            const soChungChi = (row.soChungChi || '').trim().toLowerCase();
+            const existing = this.model.state.chuyengia.find(cg => 
+                (cccd && cg.soCCCD && cg.soCCCD.trim() === cccd) ||
+                (soChungChi && cg.soChungChi && cg.soChungChi.trim().toLowerCase() === soChungChi)
+            );
+            const targetId = existing ? existing.id : window.generateUUID();
             return {
-                id: newId,
-                rootId: newId,
+                id: targetId,
+                rootId: targetId,
                 phienBan: '00',
                 phien_ban: '00',
                 isLatest: 1,
@@ -983,13 +1015,20 @@ export async function saveExcelImport() {
                 soChungChi: row.soChungChi || '',
                 ngayCapChungChi: ensureYMD(row.ngayCapChungChi),
                 donViCapChungChi: row.donViCapChungChi || '',
-                anhChungChi: '',
-                tenAnhChungChi: '',
-                anhChuKy: '',
-                tenAnhChuKy: ''
+                anhChungChi: existing ? existing.anhChungChi : '',
+                tenAnhChungChi: existing ? existing.tenAnhChungChi : '',
+                anhChuKy: existing ? existing.anhChuKy : '',
+                tenAnhChuKy: existing ? existing.tenAnhChuKy : ''
             };
         });
-        this.model.state.chuyengia.push(...mappedData);
+        mappedData.forEach(item => {
+            const idx = this.model.state.chuyengia.findIndex(cg => cg.id === item.id);
+            if (idx !== -1) {
+                this.model.state.chuyengia[idx] = item;
+            } else {
+                this.model.state.chuyengia.push(item);
+            }
+        });
         this.model.persistData('chuyengia');
         this.view.renderChuyenGiaTable();
         count = mappedData.length;
@@ -997,11 +1036,12 @@ export async function saveExcelImport() {
         const mappedData = validRows.map(row => {
             const cdt = this.model.state.chudautu.find(c => c.maChuDauTu.toLowerCase() === (row.chuDauTuId || '').toLowerCase());
             const nt = this.model.state.nhathau.find(n => n.maNhaThau.toLowerCase() === (row.nhaThauId || '').toLowerCase());
-
-            const newId = window.generateUUID();
+            const soHd = (row.soHopDong || '').trim().toLowerCase();
+            const existing = this.model.state.hopdong.find(h => h.soHopDong && h.soHopDong.trim().toLowerCase() === soHd);
+            const targetId = existing ? existing.id : window.generateUUID();
             return {
-                id: newId,
-                rootId: newId,
+                id: targetId,
+                rootId: targetId,
                 phienBan: '00',
                 phien_ban: '00',
                 isLatest: 1,
@@ -1018,10 +1058,17 @@ export async function saveExcelImport() {
                 soQdChiDinh: row.soQdChiDinh || '',
                 ngayQdChiDinh: ensureYMD(row.ngayQdChiDinh),
                 soNgayThucHien: row.soNgayThucHien ? String(row.soNgayThucHien).trim() : '',
-                goiThauIds: []
+                goiThauIds: existing ? existing.goiThauIds : []
             };
         });
-        this.model.state.hopdong.push(...mappedData);
+        mappedData.forEach(item => {
+            const idx = this.model.state.hopdong.findIndex(h => h.id === item.id);
+            if (idx !== -1) {
+                this.model.state.hopdong[idx] = item;
+            } else {
+                this.model.state.hopdong.push(item);
+            }
+        });
         this.model.persistData('hopdong');
         this.view.renderHopDongTable();
         count = mappedData.length;

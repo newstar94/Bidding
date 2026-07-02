@@ -299,7 +299,7 @@ export async function renderGoiThauTable() {
                 <td style="min-width: 240px; max-width: 320px;" class="text-wrap">${kh ? '<a href="#" onclick="event.preventDefault(); window.showKeHoachDetails(\'' + kh.id + '\')" class="text-blue fw-bold link-hover">' + kh.tenKeHoach + '</a>' : '<span class="text-danger">Không liên kết</span>'}</td>
                 <td class="fw-bold">${this.model.formatCurrency(displayedGt.giaGoiThau)}</td>
                 <td>${displayedGt.hinhThucLuaChon || '--'}</td>
-                <td><span class="badge ${displayedGt.trangThai === 'Hủy thầu' ? 'badge-danger' : 'badge-primary'}">${displayedGt.trangThai}</span></td>
+                <td>${this.getStatusBadge(displayedGt.trangThai)}</td>
                 <td style="min-width: 200px; max-width: 300px;" class="text-wrap">${winnerInfoHtml}</td>
                 <td class="text-right">
                     <div class="action-btn-group">

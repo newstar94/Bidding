@@ -877,7 +877,31 @@ export class BiddingView {
         }
     }
 
-    showToast(title, message, type = 'info') {
+    showToast(arg1, arg2, arg3) {
+        let title = '';
+        let message = '';
+        let type = 'info';
+        let duration = 4000;
+
+        if (arg3 !== undefined && (typeof arg3 === 'string' || typeof arg3 === 'number')) {
+            title = arg1;
+            message = arg2;
+            type = arg3;
+            if (typeof arg3 === 'number') {
+                duration = arg3;
+                type = 'info';
+            }
+        } else {
+            message = arg1;
+            type = arg2 || 'info';
+            duration = parseInt(arg3) || 4000;
+            
+            if (type === 'success') title = 'Thành công';
+            else if (type === 'error') title = 'Thất bại';
+            else if (type === 'warning') title = 'Cảnh báo';
+            else title = 'Thông báo';
+        }
+
         let container = document.getElementById('toast-container');
         if (!container) {
             container = document.createElement('div');
@@ -901,6 +925,9 @@ export class BiddingView {
                 <div class="bf-toast-title">${title}</div>
                 <div class="bf-toast-desc">${message}</div>
             </div>
+            <button class="bf-toast-close" type="button" aria-label="Dismiss toast">
+                <i data-lucide="x"></i>
+            </button>
         `;
 
         container.appendChild(toast);
@@ -908,18 +935,39 @@ export class BiddingView {
             lucide.createIcons({ root: toast });
         }
 
-        setTimeout(() => {
+        let isHiding = false;
+        let autoDismissTimer;
+
+        const dismissToast = () => {
+            if (isHiding) return;
+            isHiding = true;
+            if (autoDismissTimer) clearTimeout(autoDismissTimer);
             toast.classList.add('toast-hiding');
             toast.addEventListener('animationend', () => {
                 toast.remove();
             });
-        }, 3000);
+        };
+
+        const closeBtn = toast.querySelector('.bf-toast-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', dismissToast);
+        }
+
+        autoDismissTimer = setTimeout(dismissToast, duration);
     }
 
     customAlert(title, message, iconName = 'info', focusTarget = null) {
-        if (title === 'Thành công' || (title && title.toLowerCase().includes('thành công')) || title === 'Chúc mừng') {
-            this.showToast(title, message, 'success');
-            return Promise.resolve(true);
+        const isSuccess = title === 'Thành công' || 
+                          (title && title.toLowerCase().includes('thành công')) || 
+                          title === 'Chúc mừng' || 
+                          title === 'Hoàn thành' || 
+                          iconName === 'check-circle';
+
+        if (isSuccess) {
+            this.showToast(title || 'Thành công', message, 'success');
+            return new Promise((resolve) => {
+                setTimeout(() => resolve(true), 1800);
+            });
         }
         if (iconName === 'warning') iconName = 'alert-triangle';
         return new Promise((resolve) => {
@@ -1055,85 +1103,7 @@ export class BiddingView {
         });
     }
 
-    showToast(message, type = 'info', duration = 3500) {
-        let container = document.getElementById('toast-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'toast-container';
-            container.style.cssText = 'position: fixed; top: 24px; right: 24px; z-index: 10000; display: flex; flex-direction: column; gap: 12px; pointer-events: none; max-width: 380px; width: 100%;';
-            document.body.appendChild(container);
-        }
 
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.style.cssText = 'pointer-events: auto; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); transform: translateX(120%); opacity: 0;';
-
-        // Set type-specific borders, icons, colors
-        let iconName = 'info';
-        let colorStyle = 'var(--text-main)';
-        let iconColor = 'var(--primary)';
-        let borderStyle = 'var(--border-color)';
-
-        if (type === 'success') {
-            borderStyle = '1px solid var(--success)';
-            iconColor = 'var(--success)';
-            iconName = 'check-circle';
-        } else if (type === 'error') {
-            borderStyle = '1px solid var(--danger)';
-            iconColor = 'var(--danger)';
-            iconName = 'x-circle';
-        } else if (type === 'warning') {
-            borderStyle = '1px solid var(--warning)';
-            iconColor = 'var(--warning)';
-            iconName = 'alert-triangle';
-        }
-
-        toast.style.border = borderStyle;
-
-        toast.innerHTML = `
-            <div class="toast-icon" style="color: ${iconColor}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
-                <i data-lucide="${iconName}" style="width: 18px; height: 18px;"></i>
-            </div>
-            <div class="toast-content" style="flex: 1; font-size: 0.85rem; font-weight: 500; color: ${colorStyle}; line-height: 1.4; word-break: break-word;">
-                ${message}
-            </div>
-            <button class="toast-close" style="background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; outline: none; opacity: 0.7; transition: opacity 0.2s;">
-                <i data-lucide="x" style="width: 16px; height: 16px;"></i>
-            </button>
-        `;
-
-        container.appendChild(toast);
-        if (window.lucide) {
-            window.lucide.createIcons({ root: toast });
-        }
-
-        // Trigger slide-in
-        setTimeout(() => {
-            toast.style.transform = 'translateX(0)';
-            toast.style.opacity = '1';
-        }, 10);
-
-        const closeToast = () => {
-            toast.style.transform = 'translateX(120%)';
-            toast.style.opacity = '0';
-            setTimeout(() => {
-                toast.remove();
-                if (container.childNodes.length === 0) {
-                    container.remove();
-                }
-            }, 400);
-        };
-
-        toast.querySelector('.toast-close').addEventListener('click', closeToast);
-
-        // Hover effect for close button
-        const closeBtn = toast.querySelector('.toast-close');
-        closeBtn.addEventListener('mouseenter', () => closeBtn.style.opacity = '1');
-        closeBtn.addEventListener('mouseleave', () => closeBtn.style.opacity = '0.7');
-
-        // Auto remove
-        setTimeout(closeToast, duration);
-    }
 
     customPrompt(title, message, defaultValue = '', placeholder = '', isDatePicker = false) {
         return new Promise((resolve) => {

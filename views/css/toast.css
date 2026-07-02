@@ -16,10 +16,11 @@
 }
 
 .bf-toast {
+    position: relative;
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    padding: 16px;
+    padding: 16px 36px 16px 16px;
     background: var(--bg-card, #ffffff);
     border-left: 4px solid var(--primary);
     border-radius: var(--radius-md, 8px);
@@ -63,33 +64,105 @@
     font-size: 0.8rem;
 }
 
+.bf-toast-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    padding: 4px;
+    margin: 0;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+    opacity: 0.4;
+    transition: opacity 0.2s, background-color 0.2s;
+    border-radius: 50%;
+}
+.bf-toast-close:hover {
+    opacity: 0.95;
+    background-color: rgba(0, 0, 0, 0.06);
+}
+.bf-toast-close svg, .bf-toast-close i {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
 /* States styling */
 .bf-toast.toast-success {
     border-left-color: #10b981;
+    background-color: #ecfdf5;
+    border: 1px solid #a7f3d0;
+}
+.bf-toast.toast-success .bf-toast-title {
+    color: #065f46;
+}
+.bf-toast.toast-success .bf-toast-desc {
+    color: #047857;
 }
 .bf-toast.toast-success .bf-toast-icon {
     color: #10b981;
 }
+.bf-toast.toast-success .bf-toast-close {
+    color: #065f46;
+}
 
 .bf-toast.toast-error {
     border-left-color: #ef4444;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+}
+.bf-toast.toast-error .bf-toast-title {
+    color: #991b1b;
+}
+.bf-toast.toast-error .bf-toast-desc {
+    color: #b91c1c;
 }
 .bf-toast.toast-error .bf-toast-icon {
     color: #ef4444;
 }
+.bf-toast.toast-error .bf-toast-close {
+    color: #991b1b;
+}
 
 .bf-toast.toast-warning {
     border-left-color: #f59e0b;
+    background-color: #fffbeb;
+    border: 1px solid #fef3c7;
+}
+.bf-toast.toast-warning .bf-toast-title {
+    color: #92400e;
+}
+.bf-toast.toast-warning .bf-toast-desc {
+    color: #b45309;
 }
 .bf-toast.toast-warning .bf-toast-icon {
     color: #f59e0b;
 }
+.bf-toast.toast-warning .bf-toast-close {
+    color: #92400e;
+}
 
 .bf-toast.toast-info {
     border-left-color: #3b82f6;
+    background-color: #eff6ff;
+    border: 1px solid #bfdbfe;
+}
+.bf-toast.toast-info .bf-toast-title {
+    color: #1e3a8a;
+}
+.bf-toast.toast-info .bf-toast-desc {
+    color: #1d4ed8;
 }
 .bf-toast.toast-info .bf-toast-icon {
     color: #3b82f6;
+}
+.bf-toast.toast-info .bf-toast-close {
+    color: #1e3a8a;
 }
 
 /* Animations */
