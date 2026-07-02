@@ -860,10 +860,10 @@ window.openMoThauJVViewModal = (members, leadName, leadCode) => {
 
     const leadNtId = findNhaThauId(displayLeadCode, displayLeadName);
     const leadCodeHtml = leadNtId 
-        ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${leadNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${displayLeadCode}</a>` 
+        ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${leadNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadCode}</a>` 
         : displayLeadCode;
     const leadNameHtml = leadNtId 
-        ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${leadNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${displayLeadName}</a>` 
+        ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${leadNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadName}</a>` 
         : displayLeadName;
 
     let membersHtml = '';
@@ -873,10 +873,10 @@ window.openMoThauJVViewModal = (members, leadName, leadCode) => {
         membersHtml = members.map((m, idx) => {
             const memberNtId = findNhaThauId(m.maSoThue, m.tenNhaThau);
             const mCodeHtml = memberNtId 
-                ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${memberNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${m.maSoThue || '--'}</a>` 
+                ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${memberNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: none;">${m.maSoThue || '--'}</a>` 
                 : (m.maSoThue || '--');
             const mNameHtml = memberNtId 
-                ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${memberNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: underline;">${m.tenNhaThau || '--'}</a>` 
+                ? `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetailsAndCloseJV('${memberNtId}')" class="text-blue fw-bold link-hover" style="text-decoration: none;">${m.tenNhaThau || '--'}</a>` 
                 : (m.tenNhaThau || '--');
 
             return `

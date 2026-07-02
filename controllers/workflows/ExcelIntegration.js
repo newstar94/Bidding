@@ -615,7 +615,13 @@ export async function handleExcelUpload(file) {
                 });
 
                 this._excelImportData = parsedBids;
-                await this.saveExcelImport();
+                this.view.renderExcelPreview(this._excelImportData, this._excelImportType);
+
+                const saveBtn = document.getElementById('btn-save-excel-import');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.style.display = 'inline-flex';
+                }
             } catch (err) {
                 console.error(err);
                 await this.view.customAlert('Lỗi', 'Không thể đọc tệp tin Excel này. Vui lòng kiểm tra lại!', 'alert-triangle');
@@ -641,8 +647,48 @@ export async function handleExcelUpload(file) {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-            this._excelImportData = data.rows || data.data || [];
-            await this.saveExcelImport();
+            const rawRows = data.rows || data.data || [];
+            this._excelImportData = rawRows.map(row => {
+                let isValid = true;
+                let comment = 'Hợp lệ';
+
+                if (apiType === 'kehoach') {
+                    if (!row.maKeHoach) { isValid = false; comment = 'Mã kế hoạch không được để trống'; }
+                    else if (!row.tenKeHoach) { isValid = false; comment = 'Tên kế hoạch không được để trống'; }
+                } else if (apiType === 'goithau') {
+                    if (!row.maGoiThau) { isValid = false; comment = 'Mã gói thầu không được để trống'; }
+                    else if (!row.tenGoiThau) { isValid = false; comment = 'Tên gói thầu không được để trống'; }
+                } else if (apiType === 'chudautu') {
+                    if (!row.maChuDauTu) { isValid = false; comment = 'Mã chủ đầu tư không được để trống'; }
+                    else if (!row.tenChuDauTu) { isValid = false; comment = 'Tên chủ đầu tư không được để trống'; }
+                    else if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+                } else if (apiType === 'nhathau') {
+                    if (!row.maNhaThau) { isValid = false; comment = 'Mã nhà thầu không được để trống'; }
+                    else if (!row.tenNhaThau) { isValid = false; comment = 'Tên nhà thầu không được để trống'; }
+                    else if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+                } else if (apiType === 'chuyengia') {
+                    if (!row.hoTen) { isValid = false; comment = 'Họ tên không được để trống'; }
+                    else if (row.soCCCD && !/^\d{12}$/.test(String(row.soCCCD).trim())) { isValid = false; comment = 'Số CCCD phải gồm đúng 12 chữ số'; }
+                    else if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+                } else if (apiType === 'hopdong') {
+                    if (!row.soHopDong) { isValid = false; comment = 'Số hợp đồng không được để trống'; }
+                    else if (!row.tenHopDong) { isValid = false; comment = 'Tên hợp đồng không được để trống'; }
+                }
+
+                return {
+                    ...row,
+                    _valid: isValid,
+                    _comment: comment
+                };
+            });
+
+            this.view.renderExcelPreview(this._excelImportData, this._excelImportType);
+
+            const saveBtn = document.getElementById('btn-save-excel-import');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.style.display = 'inline-flex';
+            }
         } else {
             await this.view.customAlert('Thất bại', data.error || 'Không thể đọc tệp tin Excel này.', 'alert-triangle');
         }
@@ -658,8 +704,25 @@ export async function saveExcelImport() {
     const type = this._excelImportType;
     let count = 0;
 
+    const ensureYMD = (dateStr) => {
+        if (!dateStr) return '';
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) return dateStr.substring(0, 10);
+        return this.model.convertDMYToYMD ? this.model.convertDMYToYMD(dateStr) : dateStr;
+    };
+    const ensureYMDHMS = (dateStr) => {
+        if (!dateStr) return '';
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)) return dateStr;
+        return this.model.convertDMYHMSToYMDHMS ? this.model.convertDMYHMSToYMDHMS(dateStr) : dateStr;
+    };
+
+    const validRows = this._excelImportData.filter(r => r._valid);
+    if (validRows.length === 0 && ['plan', 'kehoach', 'package', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong'].includes(type)) {
+        await this.view.customAlert('Thông báo', 'Không có dòng dữ liệu nào hợp lệ để lưu vào hệ thống!', 'warning');
+        return;
+    }
+
     if (type === 'plan' || type === 'kehoach') {
-        const mappedData = this._excelImportData.map(row => {
+        const mappedData = validRows.map(row => {
             const planId = window.generateUUID();
             return {
                 id: planId,
@@ -672,9 +735,9 @@ export async function saveExcelImport() {
                 tenDuAnDuToan: row.tenDuAnDuToan || '',
                 chuDauTuId: '',
                 tongMucDauTu: parseFloat(row.tongMucDauTu) || 0,
-                ngayPheDuyet: row.ngayPheDuyet ? this.model.convertDMYToYMD(row.ngayPheDuyet) : '',
+                ngayPheDuyet: ensureYMD(row.ngayPheDuyet),
                 quyetDinhPheDuyet: row.quyetDinhPheDuyet || '',
-                thoiGianDangMa: row.thoiGianDangMa ? this.model.convertDMYToYMD(row.thoiGianDangMa) + ' 00:00:00' : ''
+                thoiGianDangMa: row.thoiGianDangMa ? ensureYMDHMS(row.thoiGianDangMa) : ''
             };
         });
         this.model.state.kehoach.push(...mappedData);
@@ -683,7 +746,7 @@ export async function saveExcelImport() {
         count = mappedData.length;
     } else if (type === 'package' || type === 'goithau') {
         const latestPlans = this.model.getLatestPlans();
-        const mappedData = this._excelImportData.map(row => {
+        const mappedData = validRows.map(row => {
             const matchedPlan = latestPlans.find(p => p.maKeHoach.toLowerCase() === (row.keHoachId || row.maKeHoach || '').toLowerCase());
             const gtId = window.generateUUID();
             return {
@@ -712,10 +775,10 @@ export async function saveExcelImport() {
                 phanLoList: [],
                 tuyChonMuaThemList: [],
                 soQuyetDinh: row.soQuyetDinh || '',
-                ngayQuyetDinh: row.ngayQuyetDinh ? this.model.convertDMYToYMD(row.ngayQuyetDinh) : '',
-                thoiGianDangTai: row.thoiGianDangTai ? this.model.convertDMYHMSToYMDHMS(row.thoiGianDangTai) : '',
-                thoiGianDongThau: row.thoiGianDongThau ? this.model.convertDMYHMSToYMDHMS(row.thoiGianDongThau) : '',
-                thoiGianMoThau: row.thoiGianMoThau ? this.model.convertDMYHMSToYMDHMS(row.thoiGianMoThau) : '',
+                ngayQuyetDinh: ensureYMD(row.ngayQuyetDinh),
+                thoiGianDangTai: row.thoiGianDangTai ? ensureYMDHMS(row.thoiGianDangTai) : '',
+                thoiGianDongThau: row.thoiGianDongThau ? ensureYMDHMS(row.thoiGianDongThau) : '',
+                thoiGianMoThau: row.thoiGianMoThau ? ensureYMDHMS(row.thoiGianMoThau) : '',
                 toChuyenGia: [],
                 toThamDinh: []
             };
@@ -730,7 +793,7 @@ export async function saveExcelImport() {
         this.view.renderGoiThauTable();
         count = mappedData.length;
     } else if (type === 'chudautu') {
-        const mappedData = this._excelImportData.map(row => {
+        const mappedData = validRows.map(row => {
             const newId = window.generateUUID();
             return {
                 id: newId,
@@ -759,7 +822,7 @@ export async function saveExcelImport() {
         this.view.renderChuDauTuTable();
         count = mappedData.length;
     } else if (type === 'nhathau') {
-        const mappedData = this._excelImportData.map(row => {
+        const mappedData = validRows.map(row => {
             const newId = window.generateUUID();
             return {
                 id: newId,
@@ -788,7 +851,7 @@ export async function saveExcelImport() {
         this.view.renderNhaThauTable();
         count = mappedData.length;
     } else if (type === 'chuyengia') {
-        const mappedData = this._excelImportData.map(row => {
+        const mappedData = validRows.map(row => {
             const newId = window.generateUUID();
             return {
                 id: newId,
@@ -799,10 +862,10 @@ export async function saveExcelImport() {
                 is_latest: 1,
                 hoTen: row.hoTen || '',
                 soCCCD: row.soCCCD || '',
-                ngayCapCCCD: row.ngayCapCCCD ? this.model.convertDMYToYMD(row.ngayCapCCCD) : '',
+                ngayCapCCCD: ensureYMD(row.ngayCapCCCD),
                 noiCapCCCD: row.noiCapCCCD || '',
                 soChungChi: row.soChungChi || '',
-                ngayCapChungChi: row.ngayCapChungChi ? this.model.convertDMYToYMD(row.ngayCapChungChi) : '',
+                ngayCapChungChi: ensureYMD(row.ngayCapChungChi),
                 donViCapChungChi: row.donViCapChungChi || '',
                 anhChungChi: '',
                 tenAnhChungChi: '',
@@ -815,7 +878,7 @@ export async function saveExcelImport() {
         this.view.renderChuyenGiaTable();
         count = mappedData.length;
     } else if (type === 'hopdong') {
-        const mappedData = this._excelImportData.map(row => {
+        const mappedData = validRows.map(row => {
             const cdt = this.model.state.chudautu.find(c => c.maChuDauTu.toLowerCase() === (row.chuDauTuId || '').toLowerCase());
             const nt = this.model.state.nhathau.find(n => n.maNhaThau.toLowerCase() === (row.nhaThauId || '').toLowerCase());
 
@@ -829,7 +892,7 @@ export async function saveExcelImport() {
                 is_latest: 1,
                 tenHopDong: row.tenHopDong || '',
                 soHopDong: row.soHopDong || '',
-                ngayKy: row.ngayKy ? this.model.convertDMYToYMD(row.ngayKy) : '',
+                ngayKy: ensureYMD(row.ngayKy),
                 chuDauTuId: cdt ? cdt.id : '',
                 nhaThauId: nt ? nt.id : '',
                 giaTri: parseFloat(row.giaTri) || 0,
@@ -837,7 +900,7 @@ export async function saveExcelImport() {
                 phanLoai: row.phanLoai || 'Tư vấn',
                 coQdChiDinh: (row.coQdChiDinh === 'Có' || row.coQdChiDinh === 1 || row.coQdChiDinh === '1') ? 1 : 0,
                 soQdChiDinh: row.soQdChiDinh || '',
-                ngayQdChiDinh: row.ngayQdChiDinh ? this.model.convertDMYToYMD(row.ngayQdChiDinh) : '',
+                ngayQdChiDinh: ensureYMD(row.ngayQdChiDinh),
                 soNgayThucHien: row.soNgayThucHien ? String(row.soNgayThucHien).trim() : '',
                 goiThauIds: []
             };

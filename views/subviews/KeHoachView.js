@@ -500,7 +500,7 @@ export function renderPlanVersionDetails(versionId) {
                 <h5 class="detail-sub-title" style="color: var(--primary);">IV. Phần công việc thuộc kế hoạch lựa chọn nhà thầu (Các gói thầu - ${uniqueLinkedPackages.length})</h5>
                 <div class="associated-list">
                     ${uniqueLinkedPackages.length > 0 ? uniqueLinkedPackages.map(gt => `
-                        <div class="associated-item">
+                        <div class="associated-item" style="cursor: pointer;" onclick="window.showPackageDetails('${gt.id}')" title="Xem chi tiết Gói thầu">
                             <div class="associated-info">
                                 <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
                                 <span><strong>${gt.maGoiThau}</strong> - ${gt.tenGoiThau}</span>

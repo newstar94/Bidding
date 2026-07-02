@@ -295,41 +295,107 @@ async def import_excel_api(request):
                     
                 item[key] = val
             
+            import re
+            email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+            cccd_pattern = r"^\d{12}$"
+            tax_pattern = r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$"
+            phone_pattern = r"^[0-9\s+\-()]{9,15}$"
+
             if import_type == 'chudautu':
-                if not item['tenChuDauTu']:
+                if not item.get('tenChuDauTu'):
                     validation_comments.append("Tên chủ đầu tư không được để trống")
-                if not item['maChuDauTu']:
+                if not item.get('maChuDauTu'):
                     validation_comments.append("Mã chủ đầu tư không được để trống")
+                mst = item.get('maSoThue')
+                if mst and not re.match(tax_pattern, str(mst).strip()):
+                    validation_comments.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số)")
+                email = item.get('email')
+                if email and not re.match(email_pattern, str(email).strip()):
+                    validation_comments.append("Email không đúng định dạng")
+                phone = item.get('soDienThoai')
+                if phone and not re.match(phone_pattern, str(phone).strip()):
+                    validation_comments.append("Số điện thoại không hợp lệ")
             elif import_type == 'kehoach':
-                if not item['tenKeHoach']:
+                if not item.get('tenKeHoach'):
                     validation_comments.append("Tên kế hoạch không được để trống")
-                if not item['maKeHoach']:
+                if not item.get('maKeHoach'):
                     validation_comments.append("Mã kế hoạch không được để trống")
+                tong_muc = item.get('tongMucDauTu')
+                if tong_muc is not None:
+                    try:
+                        tm_val = float(tong_muc)
+                        if tm_val < 0:
+                            validation_comments.append("Tổng mức đầu tư không được nhỏ hơn 0")
+                    except ValueError:
+                        validation_comments.append("Tổng mức đầu tư phải là số")
             elif import_type == 'goithau':
-                if not item['tenGoiThau']:
+                if not item.get('tenGoiThau'):
                     validation_comments.append("Tên gói thầu không được để trống")
-                if not item['maGoiThau']:
+                if not item.get('maGoiThau'):
                     validation_comments.append("Mã gói thầu không được để trống")
+                gia = item.get('giaGoiThau')
+                if gia is not None:
+                    try:
+                        g_val = float(gia)
+                        if g_val < 0:
+                            validation_comments.append("Giá gói thầu không được nhỏ hơn 0")
+                    except ValueError:
+                        validation_comments.append("Giá gói thầu phải là số")
+                tg = item.get('thoiGianThucHien')
+                if tg is not None:
+                    try:
+                        tg_val = int(tg)
+                        if tg_val <= 0:
+                            validation_comments.append("Thời gian thực hiện phải lớn hơn 0")
+                    except ValueError:
+                        validation_comments.append("Thời gian thực hiện phải là số nguyên")
             elif import_type == 'nhathau':
-                if not item['tenNhaThau']:
+                if not item.get('tenNhaThau'):
                     validation_comments.append("Tên nhà thầu không được để trống")
-                if not item['maNhaThau']:
+                if not item.get('maNhaThau'):
                     validation_comments.append("Mã nhà thầu không được để trống")
+                mst = item.get('maSoThue')
+                if not mst:
+                    validation_comments.append("Mã số thuế không được để trống")
+                elif not re.match(tax_pattern, str(mst).strip()):
+                    validation_comments.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số)")
+                email = item.get('email')
+                if email and not re.match(email_pattern, str(email).strip()):
+                    validation_comments.append("Email không đúng định dạng")
+                phone = item.get('soDienThoai')
+                if phone and not re.match(phone_pattern, str(phone).strip()):
+                    validation_comments.append("Số điện thoại không hợp lệ")
             elif import_type == 'chuyengia':
-                if not item['hoTen']:
+                if not item.get('hoTen'):
                     validation_comments.append("Họ và tên không được để trống")
-                if not item['soChungChi']:
+                if not item.get('soChungChi'):
                     validation_comments.append("Số chứng chỉ không được để trống")
+                cccd = item.get('soCCCD')
+                if not cccd:
+                    validation_comments.append("Số CCCD không được để trống")
+                elif not re.match(cccd_pattern, str(cccd).strip()):
+                    validation_comments.append("Số Căn cước công dân phải gồm đúng 12 chữ số")
+                email = item.get('email')
+                if email and not re.match(email_pattern, str(email).strip()):
+                    validation_comments.append("Email không đúng định dạng")
             elif import_type == 'hopdong':
-                if not item['tenHopDong']:
+                if not item.get('tenHopDong'):
                     validation_comments.append("Tên hợp đồng không được để trống")
-                if not item['soHopDong']:
+                if not item.get('soHopDong'):
                     validation_comments.append("Số hợp đồng không được để trống")
+                gia_tri = item.get('giaTri')
+                if gia_tri is not None:
+                    try:
+                        gt_val = float(gia_tri)
+                        if gt_val < 0:
+                            validation_comments.append("Giá trị hợp đồng không được nhỏ hơn 0")
+                    except ValueError:
+                        validation_comments.append("Giá trị hợp đồng phải là số")
             elif import_type == 'phanlo':
-                if not item['tenPhanLo']:
+                if not item.get('tenPhanLo'):
                     validation_comments.append("Tên phần lô không được để trống")
             elif import_type == 'tuychonmuathem':
-                if not item['hangMuc']:
+                if not item.get('hangMuc'):
                     validation_comments.append("Hạng mục không được để trống")
             
             item['_valid'] = len(validation_comments) == 0
