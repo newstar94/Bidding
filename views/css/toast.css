@@ -84,7 +84,8 @@
 }
 .bf-toast-close:hover {
     opacity: 0.95;
-    background-color: rgba(0, 0, 0, 0.06);
+    background-color: rgba(239, 68, 68, 0.08);
+    color: #ef4444 !important;
 }
 .bf-toast-close svg, .bf-toast-close i {
     width: 14px;
