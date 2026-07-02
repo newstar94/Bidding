@@ -218,7 +218,7 @@ export function initCustomSelect(selectId) {
                 <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: ${isVersionSelect ? '4px 14px' : '8px 14px'}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
             `).join('');
         }
-        
+
         // Luôn cập nhật lại text hiển thị trên trigger dựa trên option được chọn mới nhất
         const activeSelectedOption = select.options[select.selectedIndex] || select.options[0] || { text: '', value: '' };
         let activeTriggerText = activeSelectedOption.text.trim();

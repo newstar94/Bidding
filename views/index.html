@@ -51,6 +51,28 @@
         </div>
     </div>
 
+    <script>
+        // Inline script to instantly hide loader if a session is already present
+        (function() {
+            try {
+                var token = sessionStorage.getItem('bf_session_token');
+                var username = sessionStorage.getItem('bf_username');
+                if (!token && localStorage.getItem('bf_remember_me') === 'true') {
+                    token = localStorage.getItem('bf_session_token');
+                    username = localStorage.getItem('bf_username');
+                }
+                if (token && username) {
+                    var loader = document.getElementById('system-init-loader');
+                    if (loader) {
+                        loader.style.display = 'none';
+                    }
+                }
+            } catch (e) {
+                console.error("Loader bypass error:", e);
+            }
+        })();
+    </script>
+
     <div class="app-container">
         <!-- INCLUDE: views/components/sidebar.html -->
 
