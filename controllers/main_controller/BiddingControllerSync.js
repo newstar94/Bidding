@@ -222,11 +222,13 @@ export async function forceSyncData(isBackground = false) {
             this.updateSyncStatusDisplay(Date.now());
 
             if (!isBackground) {
-                // Re-evaluate URL mapping to replace raw ID with maGoiThau now that database data has loaded
+                // Re-evaluate URL mapping to replace raw ID/code with database item now that data has loaded
                 const cleanPath = window.location.pathname.startsWith('/') ? window.location.pathname.substring(1) : window.location.pathname;
                 const parts = cleanPath.split('/').filter(Boolean);
                 const urlTab = parts[0] || '';
-                if (this.routeMap['goithau-detail'] === urlTab && parts[1]) {
+                const detailTabs = ['goithau-detail', 'kehoach-detail', 'hopdong-detail', 'chudautu-detail', 'nhathau-detail'];
+                const isDetailTab = detailTabs.some(t => this.routeMap[t] === urlTab);
+                if (isDetailTab && parts[1]) {
                     this.handlePathRouting(window.location.pathname, false, true);
                 }
             }

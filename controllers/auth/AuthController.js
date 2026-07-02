@@ -204,13 +204,26 @@ export function setupAuth() {
         }
     }
 
+    const hideInitLoader = () => {
+        const initLoader = document.getElementById('system-init-loader');
+        if (initLoader) {
+            initLoader.style.opacity = '0';
+            initLoader.style.visibility = 'hidden';
+            setTimeout(() => initLoader.remove(), 400);
+        }
+    };
+
     if (!token || !username) {
         overlay.style.display = 'flex';
         document.querySelector('.app-container').style.filter = 'blur(10px)';
         formLogin.style.display = 'block';
         formRegister.style.display = 'none';
         formForgot.style.display = 'none';
+        hideInitLoader();
     } else {
+        const loaderText = document.getElementById('system-init-loader-text');
+        if (loaderText) loaderText.textContent = 'Đang xác thực phiên đăng nhập...';
+
         fetch('/api/auth/check-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -230,7 +243,10 @@ export function setupAuth() {
                 formForgot.style.display = 'none';
                 document.getElementById('login-username').value = '';
                 document.getElementById('login-password').value = '';
+                hideInitLoader();
             } else {
+                if (loaderText) loaderText.textContent = 'Đang đồng bộ dữ liệu...';
+
                 // Update active user details dynamically to prevent cache issues
                 if (data.user) {
                     if (!this.model.state.activeuser) {
@@ -284,14 +300,17 @@ export function setupAuth() {
                     if (typeof this.handlePathRouting === 'function') {
                         this.handlePathRouting(window.location.pathname, false, true);
                     }
+                    hideInitLoader();
                 }).catch(err => {
                     console.error("Failed to force sync data after F5 restore:", err);
+                    hideInitLoader();
                 });
 
                 this.startBackgroundSessionChecker();
             }
         }).catch(err => {
             console.error("Lỗi kiểm tra phiên làm việc:", err);
+            hideInitLoader();
         });
     }
 
