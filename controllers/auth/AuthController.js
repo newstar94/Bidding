@@ -24,11 +24,11 @@ export function setupActivityTracker() {
     const updateActivity = () => {
         localStorage.setItem('bf_last_activity', Date.now().toString());
     };
-    
+
     ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(type => {
         document.addEventListener(type, updateActivity, { passive: true });
     });
-    
+
     // Initial set if user is already logged in
     const token = sessionStorage.getItem('bf_session_token');
     if (token && !localStorage.getItem('bf_last_activity')) {
@@ -47,11 +47,11 @@ export function checkInactivity() {
         const timeoutHours = storedTimeout ? parseInt(storedTimeout, 10) : 10;
         const inactivityLimit = timeoutHours * 60 * 60 * 1000;
         const idleTime = Date.now() - parseInt(lastActivity, 10);
-        
+
         if (idleTime > inactivityLimit) {
             if (this._sessionInterval) clearInterval(this._sessionInterval);
             this.model.clearSessionData();
-            
+
             // Show session expired notification using custom popup if available, else fallback to styled banner
             const showSessionExpired = async () => {
                 if (this.view && typeof this.view.customAlert === 'function') {
@@ -65,7 +65,7 @@ export function checkInactivity() {
                 }
             };
             showSessionExpired();
-            
+
             const overlay = document.getElementById('auth-overlay');
             if (overlay) {
                 overlay.style.display = 'flex';
@@ -87,7 +87,7 @@ export function checkInactivity() {
 
 export function startBackgroundSessionChecker() {
     if (this._sessionInterval) clearInterval(this._sessionInterval);
-    
+
     // Check every 30 seconds
     this._sessionInterval = setInterval(() => {
         const token = sessionStorage.getItem('bf_session_token');
@@ -127,7 +127,7 @@ export function startBackgroundSessionChecker() {
                     document.getElementById('login-username').value = '';
                     document.getElementById('login-password').value = '';
                 }
-                
+
                 if (data && data.reason === 'logged_in_elsewhere') {
                     this.view.customAlert('Tài khoản đăng nhập ở thiết bị khác', 'Tài khoản của bạn vừa được đăng nhập tại một thiết bị hoặc trình duyệt khác. Phiên làm việc hiện tại đã bị đóng.', 'warning');
                 } else {
@@ -146,7 +146,7 @@ export function startBackgroundSessionChecker() {
                     if (hasChanges) {
                         localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(activeuser));
                         this.view.updateActiveUserProfileDisplay();
-                        
+
                         let activeOrg = localStorage.getItem('bf_active_org');
                         const orgs = (activeuser.organization_name || '').split(',').map(o => o.trim()).filter(Boolean);
                         if (activeOrg && !orgs.includes(activeOrg)) {
@@ -158,7 +158,7 @@ export function startBackgroundSessionChecker() {
                             localStorage.setItem('bf_last_sync_timestamp', '0');
                             if (this.model.db && this.model.db.stores) {
                                 this.model.db.stores.forEach(storeName => {
-                                    this.model.db.putTableData(storeName, []).catch(() => {});
+                                    this.model.db.putTableData(storeName, []).catch(() => { });
                                     if (this.model.state[storeName]) {
                                         this.model.state[storeName] = [];
                                     }
@@ -167,7 +167,7 @@ export function startBackgroundSessionChecker() {
                             // Tải lại dữ liệu cho không gian làm việc mới ngay lập tức
                             this.forceSyncData().catch(err => console.error("Lỗi tự động tải lại dữ liệu:", err));
                         }
-                        
+
                         if (typeof this.renderWorkspaceSwitcher === 'function') {
                             this.renderWorkspaceSwitcher();
                         }
@@ -212,6 +212,7 @@ export function setupAuth() {
             setTimeout(() => initLoader.remove(), 400);
         }
     };
+    window.hideInitLoader = hideInitLoader;
 
     if (!token || !username) {
         overlay.style.display = 'flex';
@@ -221,11 +222,8 @@ export function setupAuth() {
         formForgot.style.display = 'none';
         hideInitLoader();
     } else {
-        // Ẩn màn hình loading ngay lập tức nếu đã có session để tải từ IndexedDB local lên hiển thị tức thời
-        hideInitLoader();
-
         const loaderText = document.getElementById('system-init-loader-text');
-        if (loaderText) loaderText.textContent = 'Đang xác thực phiên đăng nhập...';
+        if (loaderText) loaderText.textContent = 'Đang tải...';
 
         fetch('/api/auth/check-session', {
             method: 'POST',
@@ -248,7 +246,7 @@ export function setupAuth() {
                 document.getElementById('login-password').value = '';
                 hideInitLoader();
             } else {
-                if (loaderText) loaderText.textContent = 'Đang đồng bộ dữ liệu...';
+                if (loaderText) loaderText.textContent = 'Đang tải...';
 
                 // Update active user details dynamically to prevent cache issues
                 if (data.user) {
@@ -265,11 +263,11 @@ export function setupAuth() {
                     this.model.state.activeuser.dbRoles = data.user.effective_roles || [];
                     this.model.state.activeuser.package_id = data.user.package_id || 'none';
                     this.model.state.activeuser.organization_name = data.user.organization_name || '';
-                    
+
                     if (data.user.inactivity_timeout_hours) {
                         localStorage.setItem('bf_inactivity_timeout', data.user.inactivity_timeout_hours);
                     }
-                    
+
                     let title = 'Chuyên viên';
                     if (this.model.state.activerole === 'super_admin') title = 'Super Admin';
                     else if (this.model.state.activerole === 'manager') title = 'Quản lý';
@@ -345,12 +343,12 @@ export function setupAuth() {
 
         btnResend.style.display = 'none';
         timerSpan.style.display = 'inline';
-        
+
         let seconds = 60;
         countdownSpan.textContent = seconds;
-        
+
         if (countdownInterval) clearInterval(countdownInterval);
-        
+
         countdownInterval = setInterval(() => {
             seconds--;
             countdownSpan.textContent = seconds;
@@ -586,7 +584,7 @@ export function setupAuth() {
                     return;
                 }
 
-                successDiv.textContent = data.message || 'Xác thực thành công! Đang chuyển hướng đăng nhập...';
+                successDiv.textContent = data.message || 'Đang tải...';
                 successDiv.style.display = 'block';
                 if (countdownInterval) clearInterval(countdownInterval);
                 setTimeout(() => {

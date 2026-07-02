@@ -321,9 +321,9 @@ export class BiddingModel {
             } catch (e) {}
         }
 
-        // Initialize standard keys from IndexedDB / Native Tables
-        for (const key of Object.keys(this.STORAGE_KEYS)) {
-            if (key === 'THEME' || key === 'ACTIVEROLE' || key === 'ACTIVEUSER') continue;
+        // Initialize standard keys from IndexedDB / Native Tables in parallel to reduce startup latency
+        const loadPromises = Object.keys(this.STORAGE_KEYS).map(async (key) => {
+            if (key === 'THEME' || key === 'ACTIVEROLE' || key === 'ACTIVEUSER') return;
             const lowKey = key.toLowerCase();
             try {
                 let stored;
@@ -354,7 +354,8 @@ export class BiddingModel {
             } catch (e) {
                 this.state[lowKey] = [];
             }
-        }
+        });
+        await Promise.all(loadPromises);
 
         // Setup premium commercial packages
         if (!this.state.systempackages) {

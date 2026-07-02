@@ -286,6 +286,11 @@ export class BiddingController {
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
 
+        // Ẩn màn hình loading ngay sau khi giao diện đã được render xong từ dữ liệu cục bộ IndexedDB
+        if (typeof window.hideInitLoader === 'function') {
+            window.hideInitLoader();
+        }
+
 
         // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
         this.forceSyncData();

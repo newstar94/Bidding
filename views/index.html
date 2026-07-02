@@ -26,10 +26,23 @@
     <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 
-    <!-- Flatpickr CSS & JS CDN -->
+    <!-- flatpickr CSS & JS CDN -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/vn.js"></script>
+
+    <!-- Module Preloads for Fast Dev Loading (Flatten ES Module Waterfall) -->
+    <link rel="modulepreload" href="/controllers/app.js">
+    <link rel="modulepreload" href="/controllers/core/BiddingController.js">
+    <link rel="modulepreload" href="/models/BiddingModel.js">
+    <link rel="modulepreload" href="/views/core/BiddingView.js">
+    <link rel="modulepreload" href="/controllers/auth/AuthController.js">
+    <link rel="modulepreload" href="/controllers/admin/AdminUserController.js">
+    <link rel="modulepreload" href="/controllers/workflows/BiddingWorkflows.js">
+    <link rel="modulepreload" href="/controllers/workflows/PartnerWorkflows.js">
+    <link rel="modulepreload" href="/controllers/main_controller/BiddingControllerUI.js">
+    <link rel="modulepreload" href="/controllers/main_controller/BiddingControllerForms.js">
+    <link rel="modulepreload" href="/controllers/main_controller/BiddingControllerSync.js">
 
     <!-- Custom Style Sheet -->
     <link rel="stylesheet" href="/style.css?v=6.13">
@@ -38,40 +51,27 @@
 
 <body>
     <!-- System Initialization Loader Overlay -->
-    <div id="system-init-loader" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; transition: opacity 0.4s ease, visibility 0.4s ease; font-family: 'Plus Jakarta Sans', sans-serif;">
+    <div id="system-init-loader"
+        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; transition: opacity 0.4s ease, visibility 0.4s ease; font-family: 'Plus Jakarta Sans', sans-serif;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
-            <div style="width: 48px; height: 48px; border: 3.5px solid rgba(59, 130, 246, 0.1); border-radius: 50%; border-top-color: #3b82f6; animation: spin-loader 1s linear infinite;"></div>
+            <div
+                style="width: 48px; height: 48px; border: 3.5px solid rgba(59, 130, 246, 0.1); border-radius: 50%; border-top-color: #3b82f6; animation: spin-loader 1s linear infinite;">
+            </div>
             <style>
                 @keyframes spin-loader {
-                    to { transform: rotate(360deg); }
+                    to {
+                        transform: rotate(360deg);
+                    }
                 }
             </style>
-            <div style="color: #f8fafc; font-size: 1.25rem; font-weight: 800; letter-spacing: 0.05em; background: linear-gradient(135deg, #60a5fa, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">BiddingFlow</div>
-            <div style="color: #94a3b8; font-size: 0.85rem; font-weight: 500;" id="system-init-loader-text">Đang khởi tạo hệ thống...</div>
+            <div
+                style="color: #f8fafc; font-size: 1.25rem; font-weight: 800; letter-spacing: 0.05em; background: linear-gradient(135deg, #60a5fa, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                BiddingFlow</div>
+            <div style="color: #94a3b8; font-size: 0.85rem; font-weight: 500;" id="system-init-loader-text">Đang tải...
+            </div>
         </div>
     </div>
 
-    <script>
-        // Inline script to instantly hide loader if a session is already present
-        (function() {
-            try {
-                var token = sessionStorage.getItem('bf_session_token');
-                var username = sessionStorage.getItem('bf_username');
-                if (!token && localStorage.getItem('bf_remember_me') === 'true') {
-                    token = localStorage.getItem('bf_session_token');
-                    username = localStorage.getItem('bf_username');
-                }
-                if (token && username) {
-                    var loader = document.getElementById('system-init-loader');
-                    if (loader) {
-                        loader.style.display = 'none';
-                    }
-                }
-            } catch (e) {
-                console.error("Loader bypass error:", e);
-            }
-        })();
-    </script>
 
     <div class="app-container">
         <!-- INCLUDE: views/components/sidebar.html -->
