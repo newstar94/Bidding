@@ -268,12 +268,18 @@ export class BiddingController {
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
 
+
         // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
         this.forceSyncData();
 
-        // Always load real users from DB into model.state.employees for assignment dropdowns
+        // Song song hóa: tải users + system-packages cùng lúc thay vì tuần tự
         try {
-            const usersRes = await fetch('/api/auth/users');
+            const [usersRes, pkgsRes] = await Promise.all([
+                fetch('/api/auth/users'),
+                fetch('/api/system-packages')
+            ]);
+
+            // Xử lý danh sách nhân viên cho dropdown phân công
             if (usersRes.ok) {
                 const users = await usersRes.json();
                 const localEmployees = JSON.parse(localStorage.getItem('bf_employees') || '[]');
@@ -292,13 +298,8 @@ export class BiddingController {
                 this.model.persistData('employees');
                 this.view.populateNhanVienPhuTrachDropdowns();
             }
-        } catch (err) {
-            console.error("Failed to load users for assignment dropdowns:", err);
-        }
 
-        // Load dynamic registration packages from SQLite database
-        try {
-            const pkgsRes = await fetch('/api/system-packages');
+            // Xử lý gói dịch vụ hệ thống
             if (pkgsRes.ok) {
                 const pkgs = await pkgsRes.json();
                 const lockedPkgs = JSON.parse(localStorage.getItem('bf_locked_system_packages') || '[]');
@@ -309,12 +310,13 @@ export class BiddingController {
                 this.model.persistData('systempackages');
             }
         } catch (err) {
-            console.error("Failed to load system packages from SQLite:", err);
+            console.error("Failed to load init data (users/packages):", err);
         }
 
         // Initialize background sync
         this.setupAutoSyncBackground();
     }
+
 
     registerGlobals() {
         window.changePlanRowVersion = (root, selectedId) => {

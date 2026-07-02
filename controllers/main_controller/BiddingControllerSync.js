@@ -285,6 +285,8 @@ export function setupWebSocketConnection() {
 
     ws.onopen = () => {
         console.log("WebSocket connection established. Sending auth...");
+        // Reset backoff khi kết nối thành công
+        this._wsRetryDelay = 5000;
         ws.send(JSON.stringify({
             action: "auth",
             token: token,
@@ -308,8 +310,12 @@ export function setupWebSocketConnection() {
     };
 
     ws.onclose = () => {
-        console.log("WebSocket connection closed. Reconnecting in 5 seconds...");
-        setTimeout(() => this.setupWebSocketConnection(), 5000);
+        // Exponential backoff: 5s → 7.5s → 11.25s → ... tối đa 60s
+        const currentDelay = this._wsRetryDelay || 5000;
+        const nextDelay = Math.min(60000, Math.round(currentDelay * 1.5));
+        this._wsRetryDelay = nextDelay;
+        console.log(`WebSocket connection closed. Reconnecting in ${Math.round(nextDelay / 1000)}s...`);
+        setTimeout(() => this.setupWebSocketConnection(), nextDelay);
     };
 
     ws.onerror = (err) => {
@@ -317,3 +323,4 @@ export function setupWebSocketConnection() {
         ws.close();
     };
 }
+
