@@ -475,6 +475,7 @@ SCHEMA_DINH_NGHIA = {
             "ten_bien": "TEXT NOT NULL",
             "source_table": "TEXT NOT NULL",
             "source_column": "TEXT NOT NULL",
+            "mo_ta": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
