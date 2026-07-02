@@ -168,6 +168,11 @@ export function renderDictionary(group) {
                 'so_qd_phe_duyet_du_an': 'Số QĐ phê duyệt dự án',
                 'ngay_qd_phe_duyet_du_an': 'Ngày QĐ phê duyệt dự án',
                 'co_quan_phe_duyet_du_an': 'Cơ quan phê duyệt dự án',
+                'phe_duyet': 'Người phê duyệt',
+                'ngay_trinh_du_toan': 'Ngày trình dự toán',
+                'ngay_phe_duyet_du_toan': 'Ngày phê duyệt dự toán',
+                'so_qd_phe_duyet_du_toan': 'Số QĐ phê duyệt dự toán',
+                'ngay_trinh_ke_hoach': 'Ngày trình kế hoạch LCNT',
                 'phien_ban': 'Phiên bản'
             },
             'goi_thau': {
@@ -200,6 +205,11 @@ export function renderDictionary(group) {
                 'gia_han_list': 'Gia hạn thời gian mở thầu / đóng thầu',
                 'yeu_cau_lam_ro_list': 'Làm rõ hồ sơ mời thầu (Yêu cầu)',
                 'tra_loi_lam_ro_list': 'Trả lời làm rõ hồ sơ mời thầu',
+                'so_to_trinh_hsmt': 'Số tờ trình HSMT',
+                'ngay_trinh_hsmt': 'Ngày trình HSMT',
+                'yeu_cau_tham_dinh_hsmt': 'Yêu cầu thẩm định HSMT (Có/Không)',
+                'so_bao_cao_tham_dinh_hsmt': 'Số báo cáo thẩm định HSMT',
+                'ngay_bao_cao_tham_dinh_hsmt': 'Ngày báo cáo thẩm định HSMT',
                 'trang_thai': 'Trạng thái',
                 'phien_ban': 'Phiên bản'
             },
@@ -225,7 +235,11 @@ export function renderDictionary(group) {
                 'gia_tri': 'Giá trị hợp đồng',
                 'loai_hop_dong': 'Loại hợp đồng',
                 'thoi_gian_thuc_hien': 'Thời gian thực hiện',
-                'trang_thai_ho_so': 'Trạng thái hồ sơ'
+                'trang_thai_ho_so': 'Trạng thái hồ sơ',
+                'phan_loai': 'Phân loại (Tư vấn/Thẩm định)',
+                'co_qd_chi_dinh': 'Có QĐ chỉ định thầu không (0/1)',
+                'so_qd_chi_dinh': 'Số QĐ chỉ định',
+                'ngay_qd_chi_dinh': 'Ngày QĐ chỉ định'
             },
             'chuyen_gia': {
                 'ho_ten': 'Họ tên chuyên gia',

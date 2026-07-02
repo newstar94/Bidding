@@ -648,35 +648,141 @@ export async function handleExcelUpload(file) {
         const data = await res.json();
         if (res.ok && data.success) {
             const rawRows = data.rows || data.data || [];
+            const seenKeys = new Set();
             this._excelImportData = rawRows.map(row => {
+                const item = row.data || row;
                 let isValid = true;
                 let comment = 'Hợp lệ';
 
                 if (apiType === 'kehoach') {
-                    if (!row.maKeHoach) { isValid = false; comment = 'Mã kế hoạch không được để trống'; }
-                    else if (!row.tenKeHoach) { isValid = false; comment = 'Tên kế hoạch không được để trống'; }
+                    if (!item.maKeHoach) { isValid = false; comment = 'Mã kế hoạch không được để trống'; }
+                    else if (!item.tenKeHoach) { isValid = false; comment = 'Tên kế hoạch không được để trống'; }
                 } else if (apiType === 'goithau') {
-                    if (!row.maGoiThau) { isValid = false; comment = 'Mã gói thầu không được để trống'; }
-                    else if (!row.tenGoiThau) { isValid = false; comment = 'Tên gói thầu không được để trống'; }
+                    if (!item.maGoiThau) { isValid = false; comment = 'Mã gói thầu không được để trống'; }
+                    else if (!item.tenGoiThau) { isValid = false; comment = 'Tên gói thầu không được để trống'; }
                 } else if (apiType === 'chudautu') {
-                    if (!row.maChuDauTu) { isValid = false; comment = 'Mã chủ đầu tư không được để trống'; }
-                    else if (!row.tenChuDauTu) { isValid = false; comment = 'Tên chủ đầu tư không được để trống'; }
-                    else if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+                    if (!item.maChuDauTu) { isValid = false; comment = 'Mã chủ đầu tư không được để trống'; }
+                    else if (!item.tenChuDauTu) { isValid = false; comment = 'Tên chủ đầu tư không được để trống'; }
+                    else if (item.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
                 } else if (apiType === 'nhathau') {
-                    if (!row.maNhaThau) { isValid = false; comment = 'Mã nhà thầu không được để trống'; }
-                    else if (!row.tenNhaThau) { isValid = false; comment = 'Tên nhà thầu không được để trống'; }
-                    else if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+                    if (!item.maNhaThau) { isValid = false; comment = 'Mã nhà thầu không được để trống'; }
+                    else if (!item.tenNhaThau) { isValid = false; comment = 'Tên nhà thầu không được để trống'; }
+                    else if (item.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
                 } else if (apiType === 'chuyengia') {
-                    if (!row.hoTen) { isValid = false; comment = 'Họ tên không được để trống'; }
-                    else if (row.soCCCD && !/^\d{12}$/.test(String(row.soCCCD).trim())) { isValid = false; comment = 'Số CCCD phải gồm đúng 12 chữ số'; }
-                    else if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+                    if (!item.hoTen) { isValid = false; comment = 'Họ tên không được để trống'; }
+                    else if (item.soCCCD && !/^\d{12}$/.test(String(item.soCCCD).trim())) { isValid = false; comment = 'Số CCCD phải gồm đúng 12 chữ số'; }
+                    else if (item.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
                 } else if (apiType === 'hopdong') {
-                    if (!row.soHopDong) { isValid = false; comment = 'Số hợp đồng không được để trống'; }
-                    else if (!row.tenHopDong) { isValid = false; comment = 'Tên hợp đồng không được để trống'; }
+                    if (!item.soHopDong) { isValid = false; comment = 'Số hợp đồng không được để trống'; }
+                    else if (!item.tenHopDong) { isValid = false; comment = 'Tên hợp đồng không được để trống'; }
+                }
+
+                // Tiến hành kiểm tra trùng lặp nếu định dạng cơ bản đã hợp lệ
+                if (isValid) {
+                    let uniqueKey = '';
+                    let dbExists = false;
+                    let fileDuplicate = false;
+
+                    if (apiType === 'kehoach') {
+                        uniqueKey = String(item.maKeHoach || '').trim().toLowerCase();
+                        if (uniqueKey) {
+                            fileDuplicate = seenKeys.has('kehoach_' + uniqueKey);
+                            seenKeys.add('kehoach_' + uniqueKey);
+                            dbExists = (this.model.state.kehoach || []).some(k => 
+                                (k.isLatest === 1 || k.is_latest === 1) && 
+                                String(k.maKeHoach || '').trim().toLowerCase() === uniqueKey
+                            );
+                        }
+                    } else if (apiType === 'goithau') {
+                        uniqueKey = String(item.maGoiThau || '').trim().toLowerCase();
+                        if (uniqueKey) {
+                            fileDuplicate = seenKeys.has('goithau_' + uniqueKey);
+                            seenKeys.add('goithau_' + uniqueKey);
+                            dbExists = (this.model.state.goithau || []).some(g => 
+                                (g.isLatest === 1 || g.is_latest === 1) && 
+                                String(g.maGoiThau || '').trim().toLowerCase() === uniqueKey
+                            );
+                        }
+                    } else if (apiType === 'chudautu') {
+                        const maCDT = String(item.maChuDauTu || '').trim().toLowerCase();
+                        const mst = String(item.maSoThue || '').trim().toLowerCase();
+                        if (maCDT) {
+                            fileDuplicate = seenKeys.has('cdt_ma_' + maCDT);
+                            seenKeys.add('cdt_ma_' + maCDT);
+                            dbExists = (this.model.state.chudautu || []).some(c => 
+                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                String(c.maChuDauTu || '').trim().toLowerCase() === maCDT
+                            );
+                        }
+                        if (!fileDuplicate && !dbExists && mst) {
+                            fileDuplicate = seenKeys.has('cdt_mst_' + mst);
+                            seenKeys.add('cdt_mst_' + mst);
+                            dbExists = (this.model.state.chudautu || []).some(c => 
+                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                String(c.maSoThue || '').trim().toLowerCase() === mst
+                            );
+                        }
+                    } else if (apiType === 'nhathau') {
+                        const maNT = String(item.maNhaThau || '').trim().toLowerCase();
+                        const mst = String(item.maSoThue || '').trim().toLowerCase();
+                        if (maNT) {
+                            fileDuplicate = seenKeys.has('nt_ma_' + maNT);
+                            seenKeys.add('nt_ma_' + maNT);
+                            dbExists = (this.model.state.nhathau || []).some(n => 
+                                (n.isLatest === 1 || n.is_latest === 1) && 
+                                String(n.maNhaThau || '').trim().toLowerCase() === maNT
+                            );
+                        }
+                        if (!fileDuplicate && !dbExists && mst) {
+                            fileDuplicate = seenKeys.has('nt_mst_' + mst);
+                            seenKeys.add('nt_mst_' + mst);
+                            dbExists = (this.model.state.nhathau || []).some(n => 
+                                (n.isLatest === 1 || n.is_latest === 1) && 
+                                String(n.maSoThue || '').trim().toLowerCase() === mst
+                            );
+                        }
+                    } else if (apiType === 'chuyengia') {
+                        const cccd = String(item.soCCCD || '').trim().toLowerCase();
+                        const cc = String(item.soChungChi || '').trim().toLowerCase();
+                        if (cccd) {
+                            fileDuplicate = seenKeys.has('cg_cccd_' + cccd);
+                            seenKeys.add('cg_cccd_' + cccd);
+                            dbExists = (this.model.state.chuyengia || []).some(c => 
+                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                String(c.soCCCD || '').trim().toLowerCase() === cccd
+                            );
+                        }
+                        if (!fileDuplicate && !dbExists && cc) {
+                            fileDuplicate = seenKeys.has('cg_cc_' + cc);
+                            seenKeys.add('cg_cc_' + cc);
+                            dbExists = (this.model.state.chuyengia || []).some(c => 
+                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                String(c.soChungChi || '').trim().toLowerCase() === cc
+                            );
+                        }
+                    } else if (apiType === 'hopdong') {
+                        uniqueKey = String(item.soHopDong || '').trim().toLowerCase();
+                        if (uniqueKey) {
+                            fileDuplicate = seenKeys.has('hd_' + uniqueKey);
+                            seenKeys.add('hd_' + uniqueKey);
+                            dbExists = (this.model.state.hopdong || []).some(h => 
+                                (h.isLatest === 1 || h.is_latest === 1) && 
+                                String(h.soHopDong || '').trim().toLowerCase() === uniqueKey
+                            );
+                        }
+                    }
+
+                    if (fileDuplicate) {
+                        isValid = false;
+                        comment = 'Dòng trùng lặp trong file Excel đang nhập';
+                    } else if (dbExists) {
+                        isValid = false;
+                        comment = 'Dòng đã tồn tại trong hệ thống (trùng mã định danh/CCCD/số hợp đồng)';
+                    }
                 }
 
                 return {
-                    ...row,
+                    ...item,
                     _valid: isValid,
                     _comment: comment
                 };
@@ -719,6 +825,16 @@ export async function saveExcelImport() {
     if (validRows.length === 0 && ['plan', 'kehoach', 'package', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong'].includes(type)) {
         await this.view.customAlert('Thông báo', 'Không có dòng dữ liệu nào hợp lệ để lưu vào hệ thống!', 'warning');
         return;
+    }
+
+    const invalidCount = this._excelImportData.length - validRows.length;
+    if (invalidCount > 0 && validRows.length > 0) {
+        const proceed = await this.view.customConfirm(
+            'Phát hiện dòng lỗi / trùng lặp',
+            `Có ${invalidCount} dòng dữ liệu bị lỗi hoặc đã tồn tại trong hệ thống. Bạn có muốn bỏ qua các dòng này và tiếp tục lưu ${validRows.length} dòng hợp lệ không?`,
+            'alert-triangle'
+        );
+        if (!proceed) return;
     }
 
     if (type === 'plan' || type === 'kehoach') {
@@ -1350,4 +1466,146 @@ export function importPhatHanhPhanLoExcel(file) {
         }
     };
     reader.readAsBinaryString(file);
+}
+
+
+export function revalidateExcelImportData() {
+    const apiType = this._excelImportType;
+    if (!this._excelImportData || this._excelImportData.length === 0) return;
+
+    const seenKeys = new Set();
+    this._excelImportData.forEach(item => {
+        let isValid = true;
+        let comment = 'Hợp lệ';
+
+        if (apiType === 'kehoach') {
+            if (!item.maKeHoach) { isValid = false; comment = 'Mã kế hoạch không được để trống'; }
+            else if (!item.tenKeHoach) { isValid = false; comment = 'Tên kế hoạch không được để trống'; }
+        } else if (apiType === 'goithau') {
+            if (!item.maGoiThau) { isValid = false; comment = 'Mã gói thầu không được để trống'; }
+            else if (!item.tenGoiThau) { isValid = false; comment = 'Tên gói thầu không được để trống'; }
+        } else if (apiType === 'chudautu') {
+            if (!item.maChuDauTu) { isValid = false; comment = 'Mã chủ đầu tư không được để trống'; }
+            else if (!item.tenChuDauTu) { isValid = false; comment = 'Tên chủ đầu tư không được để trống'; }
+            else if (item.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+        } else if (apiType === 'nhathau') {
+            if (!item.maNhaThau) { isValid = false; comment = 'Mã nhà thầu không được để trống'; }
+            else if (!item.tenNhaThau) { isValid = false; comment = 'Tên nhà thầu không được để trống'; }
+            else if (item.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+        } else if (apiType === 'chuyengia') {
+            if (!item.hoTen) { isValid = false; comment = 'Họ tên không được để trống'; }
+            else if (item.soCCCD && !/^\d{12}$/.test(String(item.soCCCD).trim())) { isValid = false; comment = 'Số CCCD phải gồm đúng 12 chữ số'; }
+            else if (item.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email).trim())) { isValid = false; comment = 'Email không hợp lệ'; }
+        } else if (apiType === 'hopdong') {
+            if (!item.soHopDong) { isValid = false; comment = 'Số hợp đồng không được để trống'; }
+            else if (!item.tenHopDong) { isValid = false; comment = 'Tên hợp đồng không được để trống'; }
+        }
+
+        // Tiến hành kiểm tra trùng lặp nếu định dạng cơ bản đã hợp lệ
+        if (isValid) {
+            let uniqueKey = '';
+            let dbExists = false;
+            let fileDuplicate = false;
+
+            if (apiType === 'kehoach') {
+                uniqueKey = String(item.maKeHoach || '').trim().toLowerCase();
+                if (uniqueKey) {
+                    fileDuplicate = seenKeys.has('kehoach_' + uniqueKey);
+                    seenKeys.add('kehoach_' + uniqueKey);
+                    dbExists = (this.model.state.kehoach || []).some(k => 
+                        (k.isLatest === 1 || k.is_latest === 1) && 
+                        String(k.maKeHoach || '').trim().toLowerCase() === uniqueKey
+                    );
+                }
+            } else if (apiType === 'goithau') {
+                uniqueKey = String(item.maGoiThau || '').trim().toLowerCase();
+                if (uniqueKey) {
+                    fileDuplicate = seenKeys.has('goithau_' + uniqueKey);
+                    seenKeys.add('goithau_' + uniqueKey);
+                    dbExists = (this.model.state.goithau || []).some(g => 
+                        (g.isLatest === 1 || g.is_latest === 1) && 
+                        String(g.maGoiThau || '').trim().toLowerCase() === uniqueKey
+                    );
+                }
+            } else if (apiType === 'chudautu') {
+                const maCDT = String(item.maChuDauTu || '').trim().toLowerCase();
+                const mst = String(item.maSoThue || '').trim().toLowerCase();
+                if (maCDT) {
+                    fileDuplicate = seenKeys.has('cdt_ma_' + maCDT);
+                    seenKeys.add('cdt_ma_' + maCDT);
+                    dbExists = (this.model.state.chudautu || []).some(c => 
+                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        String(c.maChuDauTu || '').trim().toLowerCase() === maCDT
+                    );
+                }
+                if (!fileDuplicate && !dbExists && mst) {
+                    fileDuplicate = seenKeys.has('cdt_mst_' + mst);
+                    seenKeys.add('cdt_mst_' + mst);
+                    dbExists = (this.model.state.chudautu || []).some(c => 
+                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        String(c.maSoThue || '').trim().toLowerCase() === mst
+                    );
+                }
+            } else if (apiType === 'nhathau') {
+                const maNT = String(item.maNhaThau || '').trim().toLowerCase();
+                const mst = String(item.maSoThue || '').trim().toLowerCase();
+                if (maNT) {
+                    fileDuplicate = seenKeys.has('nt_ma_' + maNT);
+                    seenKeys.add('nt_ma_' + maNT);
+                    dbExists = (this.model.state.nhathau || []).some(n => 
+                        (n.isLatest === 1 || n.is_latest === 1) && 
+                        String(n.maNhaThau || '').trim().toLowerCase() === maNT
+                    );
+                }
+                if (!fileDuplicate && !dbExists && mst) {
+                    fileDuplicate = seenKeys.has('nt_mst_' + mst);
+                    seenKeys.add('nt_mst_' + mst);
+                    dbExists = (this.model.state.nhathau || []).some(n => 
+                        (n.isLatest === 1 || n.is_latest === 1) && 
+                        String(n.maSoThue || '').trim().toLowerCase() === mst
+                    );
+                }
+            } else if (apiType === 'chuyengia') {
+                const cccd = String(item.soCCCD || '').trim().toLowerCase();
+                const cc = String(item.soChungChi || '').trim().toLowerCase();
+                if (cccd) {
+                    fileDuplicate = seenKeys.has('cg_cccd_' + cccd);
+                    seenKeys.add('cg_cccd_' + cccd);
+                    dbExists = (this.model.state.chuyengia || []).some(c => 
+                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        String(c.soCCCD || '').trim().toLowerCase() === cccd
+                    );
+                }
+                if (!fileDuplicate && !dbExists && cc) {
+                    fileDuplicate = seenKeys.has('cg_cc_' + cc);
+                    seenKeys.add('cg_cc_' + cc);
+                    dbExists = (this.model.state.chuyengia || []).some(c => 
+                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        String(c.soChungChi || '').trim().toLowerCase() === cc
+                    );
+                }
+            } else if (apiType === 'hopdong') {
+                uniqueKey = String(item.soHopDong || '').trim().toLowerCase();
+                if (uniqueKey) {
+                    fileDuplicate = seenKeys.has('hd_' + uniqueKey);
+                    seenKeys.add('hd_' + uniqueKey);
+                    dbExists = (this.model.state.hopdong || []).some(h => 
+                        (h.isLatest === 1 || h.is_latest === 1) && 
+                        String(h.soHopDong || '').trim().toLowerCase() === uniqueKey
+                    );
+                }
+            }
+
+            if (fileDuplicate) {
+                isValid = false;
+                comment = 'Dòng trùng lặp trong file Excel đang nhập';
+            } else if (dbExists) {
+                isValid = false;
+                comment = 'Dòng đã tồn tại trong hệ thống (trùng mã định danh/CCCD/số hợp đồng)';
+            }
+        }
+
+        item._valid = isValid;
+        item._comment = comment;
+    });
 }

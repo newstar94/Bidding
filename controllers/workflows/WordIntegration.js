@@ -76,6 +76,11 @@ export function setupWordTemplatesEvents() {
             { value: 'so_qd_phe_duyet_du_an', label: 'Số QĐ phê duyệt dự án' },
             { value: 'ngay_qd_phe_duyet_du_an', label: 'Ngày QĐ phê duyệt dự án' },
             { value: 'co_quan_phe_duyet_du_an', label: 'Cơ quan phê duyệt dự án' },
+            { value: 'phe_duyet', label: 'Người phê duyệt' },
+            { value: 'ngay_trinh_du_toan', label: 'Ngày trình dự toán' },
+            { value: 'ngay_phe_duyet_du_toan', label: 'Ngày phê duyệt dự toán' },
+            { value: 'so_qd_phe_duyet_du_toan', label: 'Số QĐ phê duyệt dự toán' },
+            { value: 'ngay_trinh_ke_hoach', label: 'Ngày trình kế hoạch LCNT' },
             { value: 'phien_ban', label: 'Phiên bản' }
         ],
         'goi_thau': [
@@ -115,6 +120,11 @@ export function setupWordTemplatesEvents() {
             { value: 'ngay_moi_thuong_thao', label: 'Ngày mời thương thảo' },
             { value: 'ngay_thuong_thao', label: 'Ngày thương thảo' },
             { value: 'ngay_trinh_ket_qua', label: 'Ngày trình kết quả' },
+            { value: 'so_to_trinh_hsmt', label: 'Số tờ trình HSMT' },
+            { value: 'ngay_trinh_hsmt', label: 'Ngày trình HSMT' },
+            { value: 'yeu_cau_tham_dinh_hsmt', label: 'Yêu cầu thẩm định HSMT (Có/Không)' },
+            { value: 'so_bao_cao_tham_dinh_hsmt', label: 'Số báo cáo thẩm định HSMT' },
+            { value: 'ngay_bao_cao_tham_dinh_hsmt', label: 'Ngày báo cáo thẩm định HSMT' },
             { value: 'trang_thai', label: 'Trạng thái' },
             { value: 'phien_ban', label: 'Phiên bản' }
         ],
@@ -140,7 +150,11 @@ export function setupWordTemplatesEvents() {
             { value: 'gia_tri', label: 'Giá trị hợp đồng' },
             { value: 'loai_hop_dong', label: 'Loại hợp đồng' },
             { value: 'thoi_gian_thuc_hien', label: 'Thời gian thực hiện' },
-            { value: 'trang_thai_ho_so', label: 'Trạng thái hồ sơ' }
+            { value: 'trang_thai_ho_so', label: 'Trạng thái hồ sơ' },
+            { value: 'phan_loai', label: 'Phân loại (Tư vấn/Thẩm định)' },
+            { value: 'co_qd_chi_dinh', label: 'Có QĐ chỉ định thầu không (0/1)' },
+            { value: 'so_qd_chi_dinh', label: 'Số QĐ chỉ định' },
+            { value: 'ngay_qd_chi_dinh', label: 'Ngày QĐ chỉ định' }
         ],
         'chuyen_gia': [
             { value: 'ho_ten', label: 'Họ tên chuyên gia' },

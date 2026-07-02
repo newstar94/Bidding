@@ -9,8 +9,8 @@ function obfuscatorPlugin() {
     enforce: 'post',
     apply: 'build',
     renderChunk(code, chunk) {
-      // Chỉ obfuscate các chunk nghiệp vụ trong assets, KHÔNG làm rối app.bundle.js (core loader)
-      if (chunk.fileName.endsWith('.js') && !chunk.fileName.includes('app.bundle.js')) {
+      // Obfuscate all compiled JS files since everything is now bundled into app.bundle.js
+      if (chunk.fileName.endsWith('.js')) {
         const obfuscationResult = JavaScriptObfuscator.obfuscate(code, {
           compact: true,
           controlFlowFlattening: true, // Khôi phục làm rối luồng điều khiển cho nghiệp vụ
@@ -59,13 +59,7 @@ export default defineConfig({
         app: path.resolve(__dirname, 'controllers/app.js')
       },
       output: {
-        entryFileNames: 'controllers/app.bundle.js',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            return 'vendor';
-          }
-        }
+        entryFileNames: 'controllers/app.bundle.js'
       }
     }
   },

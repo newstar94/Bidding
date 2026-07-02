@@ -395,6 +395,9 @@ export class BiddingModel {
 
         // Session state (ACTIVEROLE, ACTIVEUSER) chỉ lưu trong localStorage (nhanh hơn và không cần offline persistence)
         // IDB fallback vẫn được giữ phía trên để tương thích ngược với user cũ
+
+        // Tự động quét dọn và tự chữa lành các bản ghi trùng lặp local tích tụ trước đây
+        this.selfHealLocalDuplicates();
     }
 
 
@@ -443,6 +446,58 @@ export class BiddingModel {
                 }
             }
         }
+    }
+
+    selfHealLocalDuplicates() {
+        const typesToKeys = {
+            chuyengia: ['soCCCD', 'soChungChi'],
+            kehoach: ['maKeHoach'],
+            goithau: ['maGoiThau'],
+            chudautu: ['maChuDauTu', 'maSoThue'],
+            nhathau: ['maNhaThau', 'maSoThue'],
+            hopdong: ['soHopDong']
+        };
+
+        Object.keys(typesToKeys).forEach(type => {
+            const list = this.state[type];
+            if (!Array.isArray(list) || list.length === 0) return;
+
+            const seen = new Set();
+            const uniqueList = [];
+            let hasDup = false;
+
+            list.forEach(item => {
+                let isDup = false;
+                for (const field of typesToKeys[type]) {
+                    const val = String(item[field] || '').trim().toLowerCase();
+                    if (val) {
+                        const key = `${type}_${field}_${val}`;
+                        if (seen.has(key)) {
+                            isDup = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (isDup) {
+                    hasDup = true;
+                } else {
+                    typesToKeys[type].forEach(field => {
+                        const val = String(item[field] || '').trim().toLowerCase();
+                        if (val) {
+                            seen.add(`${type}_${field}_${val}`);
+                        }
+                    });
+                    uniqueList.push(item);
+                }
+            });
+
+            if (hasDup) {
+                this.state[type] = uniqueList;
+                this.persistData(type);
+                console.info(`[Self-Heal] Đã tự động dọn dẹp các bản ghi trùng lặp cho bảng local: ${type}`);
+            }
+        });
     }
 
     async addRecord(type, record) {

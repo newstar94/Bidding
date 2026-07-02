@@ -26,7 +26,7 @@ async def import_excel_api(request):
 
         file_bytes = await file_obj.read()
         rows = parse_excel(file_bytes, import_type)
-        return JSONResponse(rows)
+        return JSONResponse({"success": True, "rows": rows})
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:

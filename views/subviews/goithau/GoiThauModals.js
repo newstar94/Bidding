@@ -256,6 +256,7 @@ export function renderExcelPreview(rows, importType) {
         lyDoTruot: 'Lý do trượt thầu'
     };
 
+    const firstRow = rows[0].data || rows[0];
     const keys = Object.keys(firstRow).filter(k => k !== '_valid' && k !== '_comment');
 
     let headerHtml = '<tr>';
@@ -273,13 +274,38 @@ export function renderExcelPreview(rows, importType) {
     tableBody.innerHTML = rows.map((r, rowIndex) => {
         const rowErrors = [];
         const fieldErrorMap = {};
+        
+        // Xác định dòng bị trùng lặp dữ liệu để bôi đỏ ô nhập liệu tương ứng
+        const isDuplicateRow = (r._valid === false || r._valid === 'false') && 
+                             (r._comment && (r._comment.includes('trùng lặp') || r._comment.includes('tồn tại')));
+
         keys.forEach(k => {
             const err = getFieldError(importType, k, r[k], r);
             if (err) {
                 rowErrors.push(err);
                 fieldErrorMap[k] = err;
             }
+
+            if (isDuplicateRow) {
+                const isDupField = 
+                    (importType === 'chuyengia' && (k === 'soCCCD' || k === 'soChungChi')) ||
+                    (importType === 'kehoach' && k === 'maKeHoach') ||
+                    (importType === 'goithau' && k === 'maGoiThau') ||
+                    (importType === 'chudautu' && (k === 'maChuDauTu' || k === 'maSoThue')) ||
+                    (importType === 'nhathau' && (k === 'maNhaThau' || k === 'maSoThue')) ||
+                    (importType === 'hopdong' && k === 'soHopDong');
+                
+                if (isDupField) {
+                    fieldErrorMap[k] = r._comment || 'Trùng lặp dữ liệu';
+                }
+            }
         });
+        // Bảo lưu lỗi đã kiểm tra trước đó (ví dụ như lỗi trùng lặp từ ExcelIntegration)
+        if (r._valid === false || r._valid === 'false') {
+            if (r._comment && r._comment !== 'Hợp lệ') {
+                rowErrors.push(r._comment);
+            }
+        }
         r._valid = (rowErrors.length === 0);
         r._comment = rowErrors.length > 0 ? rowErrors.join("; ") : "Hợp lệ";
 
@@ -370,46 +396,79 @@ export function renderExcelPreview(rows, importType) {
                 row[key] = val;
             }
 
-            const rowInputs = tr.querySelectorAll('input.excel-preview-input');
-            const rowErrors = [];
-            
-            rowInputs.forEach(inp => {
-                const k = inp.getAttribute('data-key');
-                const err = getFieldError(importType, k, row[k], row);
-                const td = inp.closest('td');
-                
-                const existingFeedback = td.querySelector('.invalid-feedback');
-                if (existingFeedback) existingFeedback.remove();
+            // Chạy lại bộ lọc trùng lặp cho toàn bộ dữ liệu Excel
+            window.appController.revalidateExcelImportData();
 
-                if (err) {
-                    rowErrors.push(err);
-                    inp.classList.add('is-invalid');
-                    const feedback = document.createElement('div');
-                    feedback.className = 'invalid-feedback';
-                    feedback.style.color = '#ef4444';
-                    feedback.style.fontSize = '0.7rem';
-                    feedback.style.marginTop = '2px';
-                    feedback.style.textAlign = 'left';
-                    feedback.style.fontWeight = '500';
-                    feedback.innerText = err;
-                    td.appendChild(feedback);
-                } else {
-                    inp.classList.remove('is-invalid');
+            // Duyệt và cập nhật lại giao diện (viền đỏ, ghi chú lỗi, badge trạng thái) cho TẤT CẢ các hàng
+            const trs = tableBody.querySelectorAll('tr[data-row-index]');
+            trs.forEach(rowTr => {
+                const rIndex = parseInt(rowTr.getAttribute('data-row-index'), 10);
+                const rData = window.appController._excelImportData[rIndex];
+                if (!rData) return;
+
+                const rInputs = rowTr.querySelectorAll('input.excel-preview-input');
+                const rErrors = [];
+                const isDup = (rData._valid === false || rData._valid === 'false') && 
+                             (rData._comment && (rData._comment.includes('trùng lặp') || rData._comment.includes('tồn tại')));
+
+                rInputs.forEach(inp => {
+                    const k = inp.getAttribute('data-key');
+                    let err = getFieldError(importType, k, rData[k], rData);
+                    const td = inp.closest('td');
+
+                    // Nếu không có lỗi định dạng riêng nhưng hàng bị lỗi trùng lặp, bôi đỏ trường định danh
+                    if (!err && isDup) {
+                        const isDupField = 
+                            (importType === 'chuyengia' && (k === 'soCCCD' || k === 'soChungChi')) ||
+                            (importType === 'kehoach' && k === 'maKeHoach') ||
+                            (importType === 'goithau' && k === 'maGoiThau') ||
+                            (importType === 'chudautu' && (k === 'maChuDauTu' || k === 'maSoThue')) ||
+                            (importType === 'nhathau' && (k === 'maNhaThau' || k === 'maSoThue')) ||
+                            (importType === 'hopdong' && k === 'soHopDong');
+                        
+                        if (isDupField) {
+                            err = rData._comment;
+                        }
+                    }
+
+                    const existingFeedback = td.querySelector('.invalid-feedback');
+                    if (existingFeedback) existingFeedback.remove();
+
+                    if (err) {
+                        rErrors.push(err);
+                        inp.classList.add('is-invalid');
+                        const feedback = document.createElement('div');
+                        feedback.className = 'invalid-feedback';
+                        feedback.style.color = '#ef4444';
+                        feedback.style.fontSize = '0.7rem';
+                        feedback.style.marginTop = '2px';
+                        feedback.style.textAlign = 'left';
+                        feedback.style.fontWeight = '500';
+                        feedback.innerText = err;
+                        td.appendChild(feedback);
+                    } else {
+                        inp.classList.remove('is-invalid');
+                    }
+                });
+
+                // Nếu có phát sinh lỗi định dạng ô bổ sung (ví dụ: họ tên trống), cập nhật lại trạng thái dòng
+                if (rErrors.length > 0) {
+                    rData._valid = false;
+                    rData._comment = rErrors.join("; ");
+                }
+
+                // Cập nhật lại cột Badge trạng thái cuối cùng của hàng
+                const statusTd = rowTr.querySelector('td:last-child');
+                if (statusTd) {
+                    statusTd.innerHTML = rData._valid
+                        ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>'
+                        : `<span class="badge badge-danger" title="${rData._comment}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`;
+                    
+                    if (window.lucide) {
+                        window.lucide.createIcons({ root: statusTd });
+                    }
                 }
             });
-
-            const isValid = (rowErrors.length === 0);
-            const comment = isValid ? 'Hợp lệ' : rowErrors.join("; ");
-            row._valid = isValid;
-            row._comment = comment;
-
-            const statusTd = tr.querySelector('td:last-child');
-            if (statusTd) {
-                statusTd.innerHTML = isValid
-                    ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>'
-                    : `<span class="badge badge-danger" title="${comment}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`;
-                if (window.lucide) window.lucide.createIcons({ root: statusTd });
-            }
         }
     };
 

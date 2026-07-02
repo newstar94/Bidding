@@ -6,17 +6,13 @@ import { BiddingModel } from '/models/BiddingModel.js';
 import { BiddingView } from '/views/core/BiddingView.js';
 import { BiddingController } from '/controllers/core/BiddingController.js';
 
-// Kick off all chunk downloads immediately at module-evaluation time
-// (parallel network requests start before DOM is even ready)
-const _modulesPromise = Promise.all([
-    import('/controllers/auth/AuthController.js'),
-    import('/controllers/admin/AdminUserController.js'),
-    import('/controllers/workflows/BiddingWorkflows.js'),
-    import('/controllers/workflows/PartnerWorkflows.js'),
-    import('/controllers/main_controller/BiddingControllerUI.js'),
-    import('/controllers/main_controller/BiddingControllerForms.js'),
-    import('/controllers/main_controller/BiddingControllerSync.js'),
-]);
+import * as Auth from '/controllers/auth/AuthController.js';
+import * as Admin from '/controllers/admin/AdminUserController.js';
+import * as Bidding from '/controllers/workflows/BiddingWorkflows.js';
+import * as Partner from '/controllers/workflows/PartnerWorkflows.js';
+import * as MainUI from '/controllers/main_controller/BiddingControllerUI.js';
+import * as MainForms from '/controllers/main_controller/BiddingControllerForms.js';
+import * as MainSync from '/controllers/main_controller/BiddingControllerSync.js';
 
 const syncSessionBetweenTabs = () => {
     return new Promise((resolve) => {
@@ -59,9 +55,6 @@ const syncSessionBetweenTabs = () => {
 window.addEventListener('DOMContentLoaded', async () => {
     // Sync session from other tabs first if possible
     await syncSessionBetweenTabs();
-
-    // Await modules (likely already resolved by the time DOM fires)
-    const [Auth, Admin, Bidding, Partner, MainUI, MainForms, MainSync] = await _modulesPromise;
 
     // Extend prototype ONCE before any instance is created
     Object.assign(BiddingController.prototype, {
