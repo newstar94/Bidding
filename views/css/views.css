@@ -804,9 +804,6 @@
     mix-blend-mode: multiply;
 }
 
-body.dark-mode .signature-display-frame {
-    filter: invert(0.9) hue-rotate(180deg);
-}
 
 .data-table th,
 table th {
@@ -1147,11 +1144,6 @@ table th {
     border: 1px solid rgba(100, 116, 139, 0.15);
 }
 
-body.dark-mode .pricing-card.silver-card .pricing-badge {
-    background: rgba(148, 163, 184, 0.15);
-    color: #cbd5e1;
-    border-color: rgba(148, 163, 184, 0.2);
-}
 
 .pricing-card.silver-card .package-features li i {
     color: #64748b;
@@ -1167,15 +1159,6 @@ body.dark-mode .pricing-card.silver-card .pricing-badge {
     box-shadow: 0 4px 20px rgba(251, 191, 36, 0.12);
 }
 
-body.dark-mode .pricing-card.gold-card {
-    border-color: #d97706;
-    box-shadow: 0 4px 20px rgba(217, 119, 6, 0.12);
-}
-
-body.dark-mode .pricing-card.gold-card.popular {
-    border-color: #d97706;
-    box-shadow: 0 4px 20px rgba(217, 119, 6, 0.2);
-}
 
 .pricing-card.gold-card .pricing-badge.badge-popular {
     background: rgba(245, 158, 11, 0.08) !important;
@@ -1184,11 +1167,6 @@ body.dark-mode .pricing-card.gold-card.popular {
     font-weight: 700;
 }
 
-body.dark-mode .pricing-card.gold-card .pricing-badge.badge-popular {
-    background: rgba(245, 158, 11, 0.18) !important;
-    color: #facc15 !important;
-    border-color: rgba(245, 158, 11, 0.3);
-}
 
 .pricing-card.gold-card .package-features li i {
     color: #d97706;
@@ -1199,10 +1177,6 @@ body.dark-mode .pricing-card.gold-card .pricing-badge.badge-popular {
     box-shadow: 0 4px 20px rgba(14, 165, 233, 0.06);
 }
 
-body.dark-mode .pricing-card.diamond-card {
-    border-color: #0284c7;
-    box-shadow: 0 4px 20px rgba(2, 132, 199, 0.12);
-}
 
 .pricing-card.diamond-card .pricing-badge {
     background: rgba(14, 165, 233, 0.08);
@@ -1211,11 +1185,6 @@ body.dark-mode .pricing-card.diamond-card {
     font-weight: 700;
 }
 
-body.dark-mode .pricing-card.diamond-card .pricing-badge {
-    background: rgba(14, 165, 233, 0.18);
-    color: #38bdf8;
-    border-color: rgba(14, 165, 233, 0.3);
-}
 
 .pricing-card.diamond-card .package-features li i {
     color: #0ea5e9;
@@ -1317,9 +1286,6 @@ body.dark-mode .pricing-card.diamond-card .pricing-badge {
     animation: fadeIn var(--transition-fast);
 }
 
-body.dark-mode .security-lock-overlay {
-    background: rgba(15, 23, 42, 0.8);
-}
 
 .security-lock-card {
     background: var(--bg-card);
@@ -1889,11 +1855,6 @@ body.dark-mode .security-lock-overlay {
     transition: all 0.15s ease;
 }
 
-body.dark-mode .btn-excel-action {
-    color: #e2e8f0;
-    background-color: #1e293b;
-    border: 1px dashed #475569;
-}
 
 .btn-excel-action:hover {
     background-color: #f1f5f9;
@@ -1901,7 +1862,3 @@ body.dark-mode .btn-excel-action {
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-body.dark-mode .btn-excel-action:hover {
-    background-color: #334155;
-    border-color: #64748b;
-}

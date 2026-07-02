@@ -25,9 +25,6 @@ export class BiddingView {
 
     initDOM() {
         this.elements = {
-            themeToggle: document.getElementById('theme-toggle'),
-            sunIcon: document.getElementById('sun-icon'),
-            moonIcon: document.getElementById('moon-icon'),
             sidebarToggle: document.getElementById('sidebar-toggle'),
             sidebar: document.getElementById('sidebar'),
             currentDateSpan: document.getElementById('current-date').querySelector('span'),

@@ -1,22 +1,6 @@
 export function setupTheme() {
-    const isDarkMode = localStorage.getItem(this.model.STORAGE_KEYS.THEME) === 'true';
-    if (isDarkMode) {
-        document.body.classList.add('dark-mode');
-        this.view.elements.sunIcon.style.display = 'none';
-        this.view.elements.moonIcon.style.display = 'block';
-    }
-
-    this.view.elements.themeToggle.addEventListener('click', () => {
-        const active = document.body.classList.toggle('dark-mode');
-        localStorage.setItem(this.model.STORAGE_KEYS.THEME, active);
-        if (active) {
-            this.view.elements.sunIcon.style.display = 'none';
-            this.view.elements.moonIcon.style.display = 'block';
-        } else {
-            this.view.elements.sunIcon.style.display = 'block';
-            this.view.elements.moonIcon.style.display = 'none';
-        }
-    });
+    document.body.classList.remove('dark-mode');
+    localStorage.removeItem(this.model.STORAGE_KEYS.THEME);
 }
 
 

@@ -388,29 +388,6 @@
     height: 16px;
 }
 
-.theme-toggle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 1px solid var(--border-color);
-    background-color: var(--bg-card);
-    color: var(--text-main);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all var(--transition-fast);
-}
-
-.theme-toggle:hover {
-    background-color: var(--neutral-soft);
-    border-color: var(--border-hover);
-}
-
-.theme-toggle i {
-    width: 20px;
-    height: 20px;
-}
 
 .content-viewport {
     flex: 1;
@@ -1526,18 +1503,10 @@ textarea[disabled] {
     cursor: pointer;
 }
 
-body.dark-mode .sort-icon-btn {
-    background: rgba(255, 255, 255, 0.08);
-}
-
 .sort-icon-btn:hover {
     opacity: 1;
     background: rgba(0, 0, 0, 0.1);
     color: var(--text-main);
-}
-
-body.dark-mode .sort-icon-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
 }
 
 .sort-icon-btn.active {
@@ -1729,10 +1698,19 @@ body.dark-mode .sort-icon-btn:hover {
     background: var(--bg-card) !important;
 }
 .flatpickr-time input {
+    font-family: var(--font-primary) !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
     color: var(--text-main) !important;
 }
 .flatpickr-time .flatpickr-time-separator {
+    font-family: var(--font-primary) !important;
+    font-weight: 700 !important;
+    font-size: 20px !important;
     color: var(--text-main) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 .flatpickr-time .numInputWrapper span.arrowUp::after {
     border-bottom-color: var(--text-main) !important;
