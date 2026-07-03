@@ -647,13 +647,13 @@ async def sync_api(request):
                                 if val is None and "NOT NULL" in col_type_upper:
                                     continue
                                     
-                        # Chuẩn hóa dữ liệu trước khi ghi
-                        # [BL-5] Normalize trang_thai: chấp nhận cả 'Huỷ thầu' (ý) và 'Hủy thầu' (ũ) — chuẩn hóa về một dạng
-                        if col == 'trang_thai' and val is not None:
-                            if str(val).strip() == 'Huỷ thầu':  # u+1ef7 → chuẩn hóa về u+1ee7
-                                val = 'Hủy thầu'
-                                
-                        db_row_data[col] = val
+                                # Chuẩn hóa dữ liệu trước khi ghi
+                                # [BL-5] Normalize trang_thai: chấp nhận cả 'Huỷ thầu' (ý) và 'Hủy thầu' (ũ) — chuẩn hóa về một dạng
+                                if col == 'trang_thai' and val is not None:
+                                    if str(val).strip() == 'Huỷ thầu':  # u+1ef7 → chuẩn hóa về u+1ee7
+                                        val = 'Hủy thầu'
+                                        
+                                db_row_data[col] = val
                         
                     # Để tránh lỗi UNIQUE constraint failed khi chèn/cập nhật phan_cong_nhan_su hoặc ma_tran_phan_quyen
                     # và xóa phân công cũ của mục tiêu này để tránh trùng lặp khi đổi chuyên viên phụ trách
