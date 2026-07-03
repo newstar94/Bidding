@@ -553,6 +553,8 @@ async def sync_api(request):
                         })
 
         if validation_errors:
+            log_error(f"Validation errors during sync: {validation_errors}", "SyncAPI")
+            print("Sync Validation Errors:", validation_errors)
             conn.rollback()
             conn.close()
             return JSONResponse({

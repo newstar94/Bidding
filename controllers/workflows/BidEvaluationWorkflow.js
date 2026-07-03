@@ -1321,20 +1321,33 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
         }
     } else {
         if (status === 'fixed_pass') {
-            cell.innerHTML = `<span class="badge badge-success" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block;">Đạt</span>`;
+            if (cell.textContent.trim() !== 'Đạt' || !cell.querySelector('.badge-success')) {
+                cell.innerHTML = `<span class="badge badge-success" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block;">Đạt</span>`;
+            }
         } else if (status === 'fixed_fail') {
-            cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${conclusion}</span>`;
+            if (cell.textContent.trim() !== conclusion || !cell.querySelector('.badge-danger')) {
+                cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${conclusion}</span>`;
+            }
         } else if (status === 'user_select') {
             // Dropdown to let user select
-            cell.innerHTML = `
-                <select class="form-control mt-dg-ketluan" style="padding: 4px 6px; font-size:0.8rem; font-weight:600; border-color:var(--primary); width: 100%;">
-                    <option value="">-- Chọn --</option>
-                    <option value="Đạt" ${conclusion === 'Đạt' ? 'selected' : ''}>Đạt</option>
-                    <option value="Không đạt" ${conclusion === 'Không đạt' ? 'selected' : ''}>Không đạt</option>
-                </select>
-            `;
+            const existingSelect = cell.querySelector('.mt-dg-ketluan');
+            if (existingSelect) {
+                if (existingSelect.value !== conclusion) {
+                    existingSelect.value = conclusion;
+                }
+            } else {
+                cell.innerHTML = `
+                    <select class="form-control mt-dg-ketluan" style="padding: 4px 6px; font-size:0.8rem; font-weight:600; border-color:var(--primary); width: 100%;">
+                        <option value="">-- Chọn --</option>
+                        <option value="Đạt" ${conclusion === 'Đạt' ? 'selected' : ''}>Đạt</option>
+                        <option value="Không đạt" ${conclusion === 'Không đạt' ? 'selected' : ''}>Không đạt</option>
+                    </select>
+                `;
+            }
         } else {
-            cell.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">Chờ đánh giá</span>`;
+            if (cell.textContent.trim() !== 'Chờ đánh giá') {
+                cell.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">Chờ đánh giá</span>`;
+            }
         }
     }
 }
