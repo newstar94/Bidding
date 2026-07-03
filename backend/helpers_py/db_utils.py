@@ -214,15 +214,7 @@ def khoi_tao_va_di_tru_he_thong():
             current_cols = {row[1]: row for row in cursor.fetchall()}
             expected_cols = table_spec["columns"]
             
-            if table_name == "hop_dong" and "thoi_gian_thuc_hien" not in current_cols and "so_ngay_thuc_hien" in current_cols:
-                print("Đồng bộ: Đổi tên cột 'so_ngay_thuc_hien' thành 'thoi_gian_thuc_hien' trong bảng 'hop_dong'")
-                try:
-                    cursor.execute("ALTER TABLE hop_dong RENAME COLUMN so_ngay_thuc_hien TO thoi_gian_thuc_hien")
-                    cursor.execute("PRAGMA table_info(hop_dong)")
-                    current_cols = {row[1]: row for row in cursor.fetchall()}
-                except Exception as ex:
-                    print(f"Lỗi khi đổi tên cột: {ex}")
-
+            
             rebuild_needed = False
             for col_name, col_def in expected_cols.items():
                 if col_name in current_cols:

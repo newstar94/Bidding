@@ -41,47 +41,7 @@ def optimized_get_connection(*args, **kwargs):
                 return raw_conn
 
             # Add missing columns if they don't exist
-            cursor.execute("PRAGMA table_info(goi_thau)")
-            existing_cols = [row[1] for row in cursor.fetchall()]
-            if "phuong_phap_danh_gia" not in existing_cols:
-                cursor.execute("ALTER TABLE goi_thau ADD COLUMN phuong_phap_danh_gia TEXT")
-            if "trong_so_ky_thuat" not in existing_cols:
-                cursor.execute("ALTER TABLE goi_thau ADD COLUMN trong_so_ky_thuat INTEGER")
-            if "ty_le_bao_dam_hop_dong" not in existing_cols:
-                cursor.execute("ALTER TABLE goi_thau ADD COLUMN ty_le_bao_dam_hop_dong REAL")
-            if "is_thuoc" not in existing_cols:
-                cursor.execute("ALTER TABLE goi_thau ADD COLUMN is_thuoc INTEGER DEFAULT 0")
-            if "so_to_trinh_hsmt" not in existing_cols:
-                cursor.execute("ALTER TABLE goi_thau ADD COLUMN so_to_trinh_hsmt TEXT")
-            if "ngay_trinh_hsmt" not in existing_cols:
-                cursor.execute("ALTER TABLE goi_thau ADD COLUMN ngay_trinh_hsmt TEXT")
-            
-            # Clean up corrupted status values in these columns if any exist
-            cursor.execute("""
-                UPDATE goi_thau 
-                SET so_to_trinh_hsmt = NULL 
-                WHERE so_to_trinh_hsmt IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu')
-            """)
-            cursor.execute("""
-                UPDATE goi_thau 
-                SET ngay_trinh_hsmt = NULL 
-                WHERE ngay_trinh_hsmt IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu')
-            """)
-            cursor.execute("""
-                UPDATE goi_thau 
-                SET yeu_cau_tham_dinh_hsmt = 'Không' 
-                WHERE yeu_cau_tham_dinh_hsmt IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu')
-            """)
-            
-            # Check and add missing columns for thong_tin_mo_thau
-            cursor.execute("PRAGMA table_info(thong_tin_mo_thau)")
-            existing_tt_cols = [row[1] for row in cursor.fetchall()]
-            if "nguyen_nhan_khong_dat_hop_le" not in existing_tt_cols:
-                cursor.execute("ALTER TABLE thong_tin_mo_thau ADD COLUMN nguyen_nhan_khong_dat_hop_le TEXT")
-            if "nguyen_nhan_khong_dat_nang_luc" not in existing_tt_cols:
-                cursor.execute("ALTER TABLE thong_tin_mo_thau ADD COLUMN nguyen_nhan_khong_dat_nang_luc TEXT")
-            if "nguyen_nhan_khong_dat_ky_thuat" not in existing_tt_cols:
-                cursor.execute("ALTER TABLE thong_tin_mo_thau ADD COLUMN nguyen_nhan_khong_dat_ky_thuat TEXT")
+            # (Deprecated: schema.py now handles table creation with these fields directly on fresh DB)
             
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goithau_kehoach ON goi_thau(ke_hoach_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_kehoach_chudautu ON ke_hoach_lcnt(chu_dau_tu_id)")
