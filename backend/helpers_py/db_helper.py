@@ -56,6 +56,23 @@ def optimized_get_connection(*args, **kwargs):
             if "ngay_trinh_hsmt" not in existing_cols:
                 cursor.execute("ALTER TABLE goi_thau ADD COLUMN ngay_trinh_hsmt TEXT")
             
+            # Clean up corrupted status values in these columns if any exist
+            cursor.execute("""
+                UPDATE goi_thau 
+                SET so_to_trinh_hsmt = NULL 
+                WHERE so_to_trinh_hsmt IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu')
+            """)
+            cursor.execute("""
+                UPDATE goi_thau 
+                SET ngay_trinh_hsmt = NULL 
+                WHERE ngay_trinh_hsmt IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu')
+            """)
+            cursor.execute("""
+                UPDATE goi_thau 
+                SET yeu_cau_tham_dinh_hsmt = 'Không' 
+                WHERE yeu_cau_tham_dinh_hsmt IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu')
+            """)
+            
             # Check and add missing columns for thong_tin_mo_thau
             cursor.execute("PRAGMA table_info(thong_tin_mo_thau)")
             existing_tt_cols = [row[1] for row in cursor.fetchall()]
