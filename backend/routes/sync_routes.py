@@ -434,9 +434,9 @@ async def sync_api(request):
                 if phone and not re.match(r"^[0-9\s+\-()]{9,15}$", str(phone).strip()):
                     item_errors.append("Số điện thoại không đúng định dạng (từ 9 đến 15 chữ số).")
 
-                mst = item.get("maSoThue") or item.get("ma_so_thue")
-                if mst and not re.match(r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$", str(mst).strip()):
-                    item_errors.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).")
+                # mst = item.get("maSoThue") or item.get("ma_so_thue")
+                # if mst and not re.match(r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$", str(mst).strip()):
+                #     item_errors.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).")
                 
                 for date_key in ["ngayQuyetDinh", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau", "ngayPheDuyet", "ngayKy"]:
                     val = item.get(date_key)
