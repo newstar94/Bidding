@@ -434,9 +434,19 @@ async def sync_api(request):
                 if phone and not re.match(r"^[0-9\s+\-()]{9,15}$", str(phone).strip()):
                     item_errors.append("Số điện thoại không đúng định dạng (từ 9 đến 15 chữ số).")
 
-                # mst = item.get("maSoThue") or item.get("ma_so_thue")
-                # if mst and not re.match(r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$", str(mst).strip()):
-                #     item_errors.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).")
+                mst = item.get("maSoThue") or item.get("ma_so_thue")
+                is_auto_created_nt = False
+                if table_name == "nha_thau":
+                    ma_nt = item.get("maNhaThau") or item.get("ma_nha_thau")
+                    dia_chi = item.get("diaChi") or item.get("dia_chi")
+                    sdt = item.get("soDienThoai") or item.get("so_dien_thoai")
+                    email_val = item.get("email")
+                    # Nhà thầu tự động tạo từ mở thầu có maSoThue trùng maNhaThau và các trường liên lạc để trống
+                    if mst and mst == ma_nt and not dia_chi and not sdt and not email_val:
+                        is_auto_created_nt = True
+
+                if mst and not is_auto_created_nt and not re.match(r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$", str(mst).strip()):
+                    item_errors.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).")
                 
                 for date_key in ["ngayQuyetDinh", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau", "ngayPheDuyet", "ngayKy"]:
                     val = item.get(date_key)
