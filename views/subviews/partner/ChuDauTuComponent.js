@@ -108,7 +108,7 @@ export async function renderChuDauTuTable() {
                     ${displayedCdt.coQuanChuQuan ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">CQ chủ quản: ${displayedCdt.coQuanChuQuan}</div>` : ''}
                 </td>
                 <td>${displayedCdt.maSoThue || '--'}</td>
-                <td><span class="fw-bold">${displayedCdt.danhXung || 'Ông'} ${displayedCdt.nguoiKyQuyetDinh || '--'}</span></td>
+                <td><span class="fw-bold">${displayedCdt.danhXung || 'Ông'} ${displayedCdt.daiDienCdt || '--'}</span></td>
                 <td style="min-width: 240px; max-width: 360px;" class="text-wrap">
                     <div style="font-size:0.85rem;" class="fw-bold">${(displayedCdt.diaChi || '').replace(/\s*\|\s*/g, ', ')}</div>
                     <div style="font-size:0.75rem; color:var(--text-light);">${displayedCdt.soDienThoai || ''}${displayedCdt.email ? ' | ' + displayedCdt.email : ''}</div>
@@ -208,12 +208,12 @@ export function renderChuDauTuVersionDetails(versionId) {
                     <div class="detail-value fw-bold">${cdt.maSoThue || '--'}</div>
                 </div>
                 <div class="detail-item">
-                    <div class="detail-label">Người ký quyết định</div>
-                    <div class="detail-value">${cdt.nguoiKyQuyetDinh ? cdt.danhXung + ' ' + cdt.nguoiKyQuyetDinh : '--'}</div>
+                    <div class="detail-label">Đại diện CĐT</div>
+                    <div class="detail-value">${cdt.daiDienCdt ? cdt.danhXung + ' ' + cdt.daiDienCdt : '--'}</div>
                 </div>
                 <div class="detail-item">
-                    <div class="detail-label">Chức vụ người ký</div>
-                    <div class="detail-value">${cdt.chucVuNguoiKy || '--'}</div>
+                    <div class="detail-label">Chức vụ người đại diện</div>
+                    <div class="detail-value">${cdt.chucVuDaiDien || '--'}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Chức vụ người đứng đầu</div>

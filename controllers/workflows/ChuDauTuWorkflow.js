@@ -36,8 +36,8 @@ export async function editChuDauTu(id) {
         document.getElementById('cdt-mst').value = cdt.maSoThue || '';
         document.getElementById('cdt-ten').value = cdt.tenChuDauTu;
         document.getElementById('cdt-chucvunguoidungdau').value = cdt.chucVuNguoiDungDau || '';
-        document.getElementById('cdt-nguoikyquyetdinh').value = cdt.nguoiKyQuyetDinh || '';
-        document.getElementById('cdt-chucvunguoiky').value = cdt.chucVuNguoiKy || '';
+        document.getElementById('cdt-daidiencdt').value = cdt.daiDienCdt || '';
+        document.getElementById('cdt-chucvudaidien').value = cdt.chucVuDaiDien || '';
         document.getElementById('cdt-danhxung').value = cdt.danhXung || 'Ông';
         
         // Split Address
@@ -110,8 +110,8 @@ export async function handleChuDauTuSubmit(e) {
         maSoThue: maSoThue,
         tenChuDauTu: document.getElementById('cdt-ten').value.trim(),
         chucVuNguoiDungDau: document.getElementById('cdt-chucvunguoidungdau').value.trim(),
-        nguoiKyQuyetDinh: document.getElementById('cdt-nguoikyquyetdinh').value.trim(),
-        chucVuNguoiKy: document.getElementById('cdt-chucvunguoiky').value.trim(),
+        daiDienCdt: document.getElementById('cdt-daidiencdt').value.trim(),
+        chucVuDaiDien: document.getElementById('cdt-chucvudaidien').value.trim(),
         danhXung: document.getElementById('cdt-danhxung').value,
         diaChi: diaChiCombined,
         soDienThoai: document.getElementById('cdt-sdt').value.trim(),

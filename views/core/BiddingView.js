@@ -189,7 +189,7 @@ export class BiddingView {
                 'phienban': 'phienBan',
                 'tenchudautu': 'tenChuDauTu',
                 'masothue': 'maSoThue',
-                'daidien': 'nguoiKyQuyetDinh',
+                'daidien': 'daiDienCdt',
                 'diachisdt': 'diaChi',
                 'sotaikhoan': 'soTaiKhoan'
             },
@@ -982,20 +982,20 @@ export class BiddingView {
 
             titleEl.textContent = title;
             // Hỗ trợ nội dung nhiều dòng: nếu message có ký tự xuống dòng thì dùng white-space:pre-wrap
-            if (message && message.includes('\n')) {
+            if (message && (message.includes('\n') || message.includes('<br>') || message.includes('<br/>'))) {
                 messageEl.style.whiteSpace = 'pre-wrap';
                 messageEl.style.textAlign = 'left';
                 messageEl.style.fontSize = '0.85rem';
                 messageEl.style.maxHeight = '340px';
                 messageEl.style.overflowY = 'auto';
-                messageEl.textContent = message;
+                messageEl.innerHTML = message;
             } else {
                 messageEl.style.whiteSpace = '';
                 messageEl.style.textAlign = '';
                 messageEl.style.fontSize = '';
                 messageEl.style.maxHeight = '';
                 messageEl.style.overflowY = '';
-                messageEl.textContent = message;
+                messageEl.innerHTML = message;
             }
             cancelBtn.style.display = 'none';
             if (closeBtn) closeBtn.style.display = 'block';

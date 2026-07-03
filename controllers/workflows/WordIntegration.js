@@ -48,8 +48,8 @@ export function setupWordTemplatesEvents() {
             { value: 'ten_chu_dau_tu', label: 'Tên chủ đầu tư' },
             { value: 'ma_so_thue', label: 'Mã số thuế' },
             { value: 'chuc_vu_nguoi_dung_dau', label: 'Chức vụ người đứng đầu' },
-            { value: 'nguoi_ky_quyet_dinh', label: 'Người ký QĐ' },
-            { value: 'chuc_vu_nguoi_ky', label: 'Chức vụ người ký' },
+            { value: 'nguoi_ky_quyet_dinh', label: 'Đại diện CĐT' },
+            { value: 'chuc_vu_dai_dien', label: 'Chức vụ người đại diện' },
             { value: 'danh_xung', label: 'Danh xưng' },
             { value: 'dia_chi', label: 'Địa chỉ đầy đủ' },
             { value: 'so_dien_thoai', label: 'Số điện thoại' },
@@ -281,6 +281,57 @@ export function setupWordTemplatesEvents() {
     if (columnSelect) makeSearchableSelect(columnSelect, 'Chọn hoặc tìm kiếm trường thông tin...');
     if (wmlTableSelect) makeSearchableSelect(wmlTableSelect, 'Tìm kiếm danh sách...');
 
+    const checkExistingMapping = () => {
+        const table = tableSelect?.value;
+        const column = columnSelect?.value;
+        const statusDiv = document.getElementById('wm-mapping-status');
+        const inputVar = document.getElementById('wm-ten-bien');
+        if (!statusDiv) return;
+
+        if (!table || !column) {
+            statusDiv.style.display = 'none';
+            return;
+        }
+
+        const mappings = this.model.state?.wordMappings || [];
+        const match = mappings.find(m => m.sourceTable === table && m.sourceColumn === column);
+
+        statusDiv.style.display = 'block';
+        if (match) {
+            statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success" style="background:var(--success); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Đã có {${match.tenBien}}</span>`;
+            if (inputVar && !document.getElementById('wm-id').value) {
+                inputVar.value = match.tenBien;
+            }
+        } else {
+            statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-warning" style="background:var(--warning); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Chưa có</span>`;
+        }
+    };
+
+    const checkExistingListMapping = () => {
+        const table = wmlTableSelect?.value;
+        const statusDiv = document.getElementById('wml-mapping-status');
+        const inputVar = document.getElementById('wml-ten-bien');
+        if (!statusDiv) return;
+
+        if (!table) {
+            statusDiv.style.display = 'none';
+            return;
+        }
+
+        const mappings = this.model.state?.wordMappings || [];
+        const match = mappings.find(m => m.sourceTable === table && (!m.sourceColumn || m.sourceColumn === '*'));
+
+        statusDiv.style.display = 'block';
+        if (match) {
+            statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success" style="background:var(--success); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Đã có {#${match.tenBien}}</span>`;
+            if (inputVar && !document.getElementById('wml-id').value) {
+                inputVar.value = match.tenBien;
+            }
+        } else {
+            statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-warning" style="background:var(--warning); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Chưa có</span>`;
+        }
+    };
+
     if (tableSelect && columnSelect) {
         tableSelect.addEventListener('change', (e) => {
             const table = e.target.value;
@@ -296,6 +347,44 @@ export function setupWordTemplatesEvents() {
             } else {
                 columnSelect.disabled = true;
             }
+            checkExistingMapping();
+            
+            // Automatically switch dictionary view to global (single variables) and update filter
+            const dictionarySelect = document.getElementById('dictionary-group-select');
+            if (dictionarySelect) {
+                dictionarySelect.value = 'global';
+            }
+            if (this.view && this.view.renderWordMappingsTable) {
+                this.view.renderWordMappingsTable();
+            }
+            this.setupCopyVariableEvents();
+        });
+
+        columnSelect.addEventListener('change', () => {
+            checkExistingMapping();
+            const dictionarySelect = document.getElementById('dictionary-group-select');
+            if (dictionarySelect) {
+                dictionarySelect.value = 'global';
+            }
+            if (this.view && this.view.renderWordMappingsTable) {
+                this.view.renderWordMappingsTable();
+            }
+            this.setupCopyVariableEvents();
+        });
+    }
+
+    if (wmlTableSelect) {
+        wmlTableSelect.addEventListener('change', () => {
+            checkExistingListMapping();
+            // Automatically switch dictionary view to custom_lists (list variables) and update filter
+            const dictionarySelect = document.getElementById('dictionary-group-select');
+            if (dictionarySelect) {
+                dictionarySelect.value = 'custom_lists';
+            }
+            if (this.view && this.view.renderWordMappingsTable) {
+                this.view.renderWordMappingsTable();
+            }
+            this.setupCopyVariableEvents();
         });
     }
 
@@ -305,11 +394,17 @@ export function setupWordTemplatesEvents() {
             document.getElementById('wm-id').value = '';
             if (columnSelect) columnSelect.disabled = true;
             if (cancelWmBtn) cancelWmBtn.style.display = 'none';
+            const statusDiv = document.getElementById('wm-mapping-status');
+            if (statusDiv) statusDiv.style.display = 'none';
             const submitBtn = formWm.querySelector('button[type="submit"]');
             if (submitBtn) {
                 submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Lưu biến';
                 lucide.createIcons({ root: submitBtn });
             }
+            if (this.view && this.view.renderWordMappingsTable) {
+                this.view.renderWordMappingsTable();
+            }
+            this.setupCopyVariableEvents();
         }
     };
 
@@ -318,11 +413,17 @@ export function setupWordTemplatesEvents() {
             formWml.reset();
             document.getElementById('wml-id').value = '';
             if (cancelWmlBtn) cancelWmlBtn.style.display = 'none';
+            const statusDiv = document.getElementById('wml-mapping-status');
+            if (statusDiv) statusDiv.style.display = 'none';
             const submitBtn = formWml.querySelector('button[type="submit"]');
             if (submitBtn) {
                 submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Lưu danh sách';
                 lucide.createIcons({ root: submitBtn });
             }
+            if (this.view && this.view.renderWordMappingsTable) {
+                this.view.renderWordMappingsTable();
+            }
+            this.setupCopyVariableEvents();
         }
     };
 
@@ -343,6 +444,48 @@ export function setupWordTemplatesEvents() {
 
             if (!tenBien || !sourceTable || !sourceColumn) return;
 
+            // Check for duplicate variable name
+            const duplicate = (this.model.state.wordMappings || []).find(m => m.tenBien.toLowerCase() === tenBien.toLowerCase() && m.id !== id);
+            if (duplicate) {
+                const tableNames = {
+                    'chu_dau_tu': 'Chủ đầu tư',
+                    'ke_hoach_lcnt': 'Kế hoạch LCNT',
+                    'goi_thau': 'Gói thầu',
+                    'nha_thau': 'Nhà thầu',
+                    'hop_dong': 'Hợp đồng',
+                    'chuyen_gia': 'Chuyên gia',
+                    'thong_tin_mo_thau': 'Thông tin mở thầu',
+                    'tai_khoan': 'Tài khoản cá nhân',
+                    'to_chuc': 'Tổ chức / Doanh nghiệp',
+                    'goi_dich_vu': 'Gói dịch vụ',
+                    'yeu_cau_lam_ro': 'Yêu cầu làm rõ',
+                    'yeu_cau_lam_ro_list': 'Yêu cầu làm rõ',
+                    'tra_loi_lam_ro': 'Trả lời làm rõ',
+                    'tra_loi_lam_ro_list': 'Trả lời làm rõ',
+                    'phan_lo': 'Phân lô',
+                    'phan_lo_list': 'Phân lô',
+                    'tuy_chon_mua_them': 'Tùy chọn mua thêm',
+                    'tuy_chon_mua_them_list': 'Tùy chọn mua thêm',
+                    'gia_han': 'Gia hạn',
+                    'gia_han_list': 'Gia hạn',
+                    'thanh_vien_lien_danh': 'Thành viên liên danh',
+                    'cv_da_thuc_hien': 'Công việc đã thực hiện',
+                    'cv_khong_ap_dung': 'Công việc không áp dụng LCNT',
+                    'cv_chua_du_dieu_kien': 'Công việc chưa đủ điều kiện LCNT',
+                    'awarded_phan_lo_list': 'Phần lô trúng thầu',
+                    'goi_thau_ids': 'Gói thầu liên kết',
+                    'nha_thau_trung_thau': 'Nhà thầu trúng thầu',
+                    'nha_thau_truot_thau': 'Nhà thầu trượt thầu',
+                    'to_chuyen_gia': 'Tổ chuyên gia',
+                    'to_tham_dinh': 'Tổ thẩm định'
+                };
+                const labelTable = tableNames[duplicate.sourceTable] || duplicate.sourceTable;
+                const isList = !duplicate.sourceColumn || duplicate.sourceColumn === '*';
+                const labelColumn = isList ? 'Biến danh sách (Vòng lặp)' : (duplicate.sourceColumn);
+                await this.view.customAlert('Trùng tên biến', `Tên biến <strong>{${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, 'alert-triangle');
+                return;
+            }
+
             try {
                 const res = await fetch('/api/word-mappings', {
                     method: 'POST',
@@ -353,6 +496,9 @@ export function setupWordTemplatesEvents() {
                 if (res.ok && data.success) {
                     resetWmForm();
                     await this.loadWordMappings();
+                    if (this.view.customAlert) {
+                        await this.view.customAlert('Thành công', 'Đã lưu biến ánh xạ thành công!', 'check-circle');
+                    }
                 } else {
                     await this.view.customAlert('Lỗi lưu biến', data.error || 'Lỗi khi lưu biến ánh xạ.', 'x-circle');
                 }
@@ -373,6 +519,48 @@ export function setupWordTemplatesEvents() {
 
             if (!tenBien || !sourceTable) return;
 
+            // Check for duplicate variable name
+            const duplicate = (this.model.state.wordMappings || []).find(m => m.tenBien.toLowerCase() === tenBien.toLowerCase() && m.id !== id);
+            if (duplicate) {
+                const tableNames = {
+                    'chu_dau_tu': 'Chủ đầu tư',
+                    'ke_hoach_lcnt': 'Kế hoạch LCNT',
+                    'goi_thau': 'Gói thầu',
+                    'nha_thau': 'Nhà thầu',
+                    'hop_dong': 'Hợp đồng',
+                    'chuyen_gia': 'Chuyên gia',
+                    'thong_tin_mo_thau': 'Thông tin mở thầu',
+                    'tai_khoan': 'Tài khoản cá nhân',
+                    'to_chuc': 'Tổ chức / Doanh nghiệp',
+                    'goi_dich_vu': 'Gói dịch vụ',
+                    'yeu_cau_lam_ro': 'Yêu cầu làm rõ',
+                    'yeu_cau_lam_ro_list': 'Yêu cầu làm rõ',
+                    'tra_loi_lam_ro': 'Trả lời làm rõ',
+                    'tra_loi_lam_ro_list': 'Trả lời làm rõ',
+                    'phan_lo': 'Phân lô',
+                    'phan_lo_list': 'Phân lô',
+                    'tuy_chon_mua_them': 'Tùy chọn mua thêm',
+                    'tuy_chon_mua_them_list': 'Tùy chọn mua thêm',
+                    'gia_han': 'Gia hạn',
+                    'gia_han_list': 'Gia hạn',
+                    'thanh_vien_lien_danh': 'Thành viên liên danh',
+                    'cv_da_thuc_hien': 'Công việc đã thực hiện',
+                    'cv_khong_ap_dung': 'Công việc không áp dụng LCNT',
+                    'cv_chua_du_dieu_kien': 'Công việc chưa đủ điều kiện LCNT',
+                    'awarded_phan_lo_list': 'Phần lô trúng thầu',
+                    'goi_thau_ids': 'Gói thầu liên kết',
+                    'nha_thau_trung_thau': 'Nhà thầu trúng thầu',
+                    'nha_thau_truot_thau': 'Nhà thầu trượt thầu',
+                    'to_chuyen_gia': 'Tổ chuyên gia',
+                    'to_tham_dinh': 'Tổ thẩm định'
+                };
+                const labelTable = tableNames[duplicate.sourceTable] || duplicate.sourceTable;
+                const isList = !duplicate.sourceColumn || duplicate.sourceColumn === '*';
+                const labelColumn = isList ? 'Biến danh sách (Vòng lặp)' : (duplicate.sourceColumn);
+                await this.view.customAlert('Trùng tên biến', `Tên biến <strong>{#${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, 'alert-triangle');
+                return;
+            }
+
             try {
                 const res = await fetch('/api/word-mappings', {
                     method: 'POST',
@@ -383,6 +571,9 @@ export function setupWordTemplatesEvents() {
                 if (res.ok && data.success) {
                     resetWmlForm();
                     await this.loadWordMappings();
+                    if (this.view.customAlert) {
+                        await this.view.customAlert('Thành công', 'Đã lưu cấu hình biến danh sách thành công!', 'check-circle');
+                    }
                 } else {
                     await this.view.customAlert('Lỗi lưu danh sách', data.error || 'Lỗi khi lưu biến danh sách.', 'x-circle');
                 }
@@ -403,6 +594,7 @@ export function setupWordTemplatesEvents() {
             document.getElementById('wml-id').value = m.id;
             document.getElementById('wml-ten-bien').value = m.tenBien;
             document.getElementById('wml-source-table').value = m.sourceTable;
+            if (wmlTableSelect) wmlTableSelect.dispatchEvent(new Event('change'));
             if (cancelWmlBtn) cancelWmlBtn.style.display = 'inline-block';
             
             const submitBtn = formWml.querySelector('button[type="submit"]');
@@ -420,6 +612,7 @@ export function setupWordTemplatesEvents() {
         tableSelect.dispatchEvent(new Event('change'));
 
         columnSelect.value = m.sourceColumn;
+        columnSelect.dispatchEvent(new Event('change'));
 
         if (cancelWmBtn) cancelWmBtn.style.display = 'inline-block';
 
@@ -439,6 +632,9 @@ export function setupWordTemplatesEvents() {
             });
             if (res.ok) {
                 await this.loadWordMappings();
+                if (this.view.customAlert) {
+                    await this.view.customAlert('Thành công', 'Đã xóa biến ánh xạ thành công!', 'check-circle');
+                }
             } else {
                 const data = await res.json();
                 await this.view.customAlert('Lỗi xóa', data.error || 'Có lỗi xảy ra khi xóa biến ánh xạ.', 'x-circle');

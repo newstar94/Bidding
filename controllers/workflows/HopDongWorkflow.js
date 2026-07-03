@@ -188,7 +188,7 @@ export function editHopDong(id) {
                             <strong>Mã:</strong> ${selectedVerCdt.maChuDauTu || '--'}<br>
                             <strong>Tên:</strong> ${selectedVerCdt.tenChuDauTu || '--'}<br>
                             <strong>MST:</strong> ${selectedVerCdt.maSoThue || '--'}<br>
-                            <strong>Người ký:</strong> ${selectedVerCdt.danhXung || 'Ông'} ${selectedVerCdt.nguoiKyQuyetDinh || '--'} (${selectedVerCdt.chucVuNguoiKy || '--'})<br>
+                            <strong>Người ký:</strong> ${selectedVerCdt.danhXung || 'Ông'} ${selectedVerCdt.daiDienCdt || '--'} (${selectedVerCdt.chucVuDaiDien || '--'})<br>
                             <strong>Địa chỉ:</strong> ${(selectedVerCdt.diaChi || '').replace(/\s*\|\s*/g, ', ')}<br>
                             <strong>Tài khoản:</strong> ${selectedVerCdt.soTaiKhoan || '--'} tại ${selectedVerCdt.noiMoTaiKhoan || '--'}
                         `;

@@ -82,21 +82,59 @@ export function renderDictionary(group) {
             'thong_tin_mo_thau': 'Thông tin mở thầu',
             'tai_khoan': 'Tài khoản cá nhân',
             'to_chuc': 'Tổ chức / Doanh nghiệp',
-            'goi_dich_vu': 'Gói dịch vụ'
+            'goi_dich_vu': 'Gói dịch vụ',
+            'yeu_cau_lam_ro': 'Yêu cầu làm rõ',
+            'yeu_cau_lam_ro_list': 'Yêu cầu làm rõ',
+            'tra_loi_lam_ro': 'Trả lời làm rõ',
+            'tra_loi_lam_ro_list': 'Trả lời làm rõ',
+            'phan_lo': 'Phân lô',
+            'phan_lo_list': 'Phân lô',
+            'tuy_chon_mua_them': 'Tùy chọn mua thêm',
+            'tuy_chon_mua_them_list': 'Tùy chọn mua thêm',
+            'gia_han': 'Gia hạn',
+            'gia_han_list': 'Gia hạn',
+            'thanh_vien_lien_danh': 'Thành viên liên danh',
+            'cv_da_thuc_hien': 'Công việc đã thực hiện',
+            'cv_khong_ap_dung': 'Công việc không áp dụng LCNT',
+            'cv_chua_du_dieu_kien': 'Công việc chưa đủ điều kiện LCNT',
+            'awarded_phan_lo_list': 'Phần lô trúng thầu',
+            'goi_thau_ids': 'Gói thầu liên kết',
+            'nha_thau_trung_thau': 'Nhà thầu trúng thầu',
+            'nha_thau_truot_thau': 'Nhà thầu trượt thầu',
+            'to_chuyen_gia': 'Tổ chuyên gia',
+            'to_tham_dinh': 'Tổ thẩm định'
         };
         return labels[tbl] || tbl;
     };
 
     const getColumnLabel = (tbl, col) => {
         if (!col || col === '*') return 'Toàn bộ bảng (Biến danh sách)';
+        
+        let normTbl = tbl || '';
+        if (normTbl.endsWith('_list')) {
+            normTbl = normTbl.substring(0, normTbl.length - 5);
+        }
+        if (normTbl.startsWith('awarded_')) {
+            normTbl = normTbl.substring(8);
+        }
+        if (normTbl === 'nha_thau_trung_thau' || normTbl === 'nha_thau_truot_thau') {
+            normTbl = 'nha_thau';
+        }
+        if (normTbl === 'to_chuyen_gia' || normTbl === 'to_tham_dinh') {
+            normTbl = 'chuyen_gia';
+        }
+        if (normTbl === 'user') {
+            normTbl = 'tai_khoan';
+        }
+
         const cols = {
             'chu_dau_tu': {
                 'ten_chu_dau_tu': 'Tên chủ đầu tư',
                 'ma_chu_dau_tu': 'Mã chủ đầu tư',
                 'ma_so_thue': 'Mã số thuế',
                 'chuc_vu_nguoi_dung_dau': 'Chức vụ người đứng đầu',
-                'nguoi_ky_quyet_dinh': 'Người ký QĐ',
-                'chuc_vu_nguoi_ky': 'Chức vụ người ký',
+                'dai_dien_cdt': 'Đại diện CĐT',
+                'chuc_vu_dai_dien': 'Chức vụ người đại diện',
                 'danh_xung': 'Danh xưng',
                 'dia_chi': 'Địa chỉ',
                 'so_dien_thoai': 'Số điện thoại',
@@ -104,6 +142,7 @@ export function renderDictionary(group) {
                 'so_tai_khoan': 'Số tài khoản',
                 'noi_mo_tai_khoan': 'Nơi mở tài khoản',
                 'ma_qhns': 'Mã QHNS',
+                'ma_ngan_hang': 'Mã ngân hàng',
                 'co_quan_chu_quan': 'Cơ quan chủ quan',
                 'phien_ban': 'Phiên bản'
             },
@@ -116,6 +155,8 @@ export function renderDictionary(group) {
                 'tong_muc_dau_tu': 'Tổng mức đầu tư',
                 'quyet_dinh_phe_duyet': 'QĐ phê duyệt',
                 'ngay_phe_duyet': 'Ngày phê duyệt',
+                'so_quyet_dinh': 'Số quyết định',
+                'ngay_quyet_dinh': 'Ngày quyết định',
                 'thoi_gian_dang_tai': 'Thời gian đăng tải',
                 'nguon_von': 'Nguồn vốn',
                 'thoi_gian_du_an': 'Thời gian dự án',
@@ -167,7 +208,15 @@ export function renderDictionary(group) {
                 'so_bao_cao_tham_dinh_hsmt': 'Số báo cáo thẩm định HSMT',
                 'ngay_bao_cao_tham_dinh_hsmt': 'Ngày báo cáo thẩm định HSMT',
                 'trang_thai': 'Trạng thái',
-                'phien_ban': 'Phiên bản'
+                'phien_ban': 'Phiên bản',
+                'hinh_thuc_lua_chon_nha_thau': 'Hình thức LCNT',
+                'phuong_thuc_lua_chon_nha_thau': 'Phương thức LCNT',
+                'ngay_yeu_cau_bao_gia': 'Ngày yêu cầu báo giá',
+                'ngay_gui_bao_gia': 'Ngày gửi báo giá',
+                'ngay_bao_cao_danh_gia_nha_thau': 'Ngày báo cáo đánh giá nhà thầu',
+                'ngay_moi_thuong_thao': 'Ngày mời thương thảo',
+                'ngay_thuong_thao': 'Ngày thương thảo',
+                'ngay_trinh_ket_qua': 'Ngày trình kết quả LCNT'
             },
             'nha_thau': {
                 'ten_nha_thau': 'Tên nhà thầu',
@@ -230,14 +279,20 @@ export function renderDictionary(group) {
                 'lam_ro_hop_le': 'Làm rõ hợp lệ',
                 'lam_ro_nang_luc': 'Làm rõ năng lực',
                 'lam_ro_ky_thuat': 'Làm rõ kỹ thuật',
-                'lam_ro_tai_chinh': 'Làm rõ tài chính'
+                'lam_ro_tai_chinh': 'Làm rõ tài chính',
+                'ma_phan_lo': 'Mã phân lô',
+                'ma_dinh_danh': 'Mã định danh'
             },
             'tai_khoan': {
                 'ten_dang_nhap': 'Tên đăng nhập',
                 'ho_ten': 'Họ và tên',
                 'email': 'Email',
                 'so_dien_thoai': 'Số điện thoại',
-                'chuc_vu': 'Chức vụ'
+                'chuc_vu': 'Chức vụ',
+                'vai_tro': 'Vai trò',
+                'ngay_bat_dau_goi': 'Ngày bắt đầu gói',
+                'ngay_het_han_goi': 'Ngày hết hạn gói',
+                'da_xac_minh': 'Đã xác minh'
             },
             'to_chuc': {
                 'ten_to_chuc': 'Tên tổ chức',
@@ -248,10 +303,65 @@ export function renderDictionary(group) {
             'goi_dich_vu': {
                 'ten_goi': 'Tên gói dịch vụ',
                 'gia_goi': 'Giá gói dịch vụ',
-                'thoi_han_thang': 'Thời hạn (tháng)'
+                'thoi_han_thang': 'Thời hạn (tháng)',
+                'gia_ca': 'Giá gói dịch vụ',
+                'han_muc_nhan_su': 'Hạn mức nhân sự tối đa',
+                'mo_ta': 'Mô tả chi tiết gói'
+            },
+            'yeu_cau_lam_ro': {
+                'thoi_gian_yeu_cau': 'Thời gian yêu cầu làm rõ',
+                'noi_dung_yeu_cau': 'Nội dung yêu cầu làm rõ'
+            },
+            'tra_loi_lam_ro': {
+                'thoi_gian_tra_loi': 'Thời gian trả lời làm rõ',
+                'noi_dung_tra_loi': 'Nội dung trả lời làm rõ'
+            },
+            'phan_lo': {
+                'ma_phan_lo': 'Mã phân lô',
+                'ten_phan_lo': 'Tên phân lô',
+                'gia_tri_phan_lo': 'Giá trị phân lô',
+                'nha_thau_trung': 'Nhà thầu trúng',
+                'thoi_gian_thuc_hien': 'Thời gian thực hiện'
+            },
+            'tuy_chon_mua_them': {
+                'hang_muc': 'Hạng mục',
+                'don_vi': 'Đơn vị',
+                'so_luong': 'Số lượng',
+                'ty_le': 'Tỷ lệ',
+                'gia_tri_uoc_tinh': 'Giá trị ước tính'
+            },
+            'gia_han': {
+                'thoi_gian_truoc': 'Thời gian trước',
+                'thoi_gian_sau': 'Thời gian sau',
+                'ngay_gia_han': 'Ngày gia hạn',
+                'ly_do': 'Lý do'
+            },
+            'thanh_vien_lien_danh': {
+                'ten_tv': 'Tên thành viên',
+                'mst_tv': 'Mã số thuế',
+                'vai_tro_tv': 'Vai trò',
+                'nguoi_dai_dien_tv': 'Người đại diện',
+                'dia_chi_tv': 'Địa chỉ',
+                'so_tai_khoan_tv': 'Số tài khoản',
+                'noi_mo_tai_khoan_tv': 'Nơi mở tài khoản'
+            },
+            'cv_da_thuc_hien': {
+                'ten_cong_viec': 'Tên công việc',
+                'gia_tri': 'Giá trị',
+                'don_vi_thuc_hien': 'Đơn vị thực hiện',
+                'van_ban_phe_duyet': 'Văn bản phê duyệt'
+            },
+            'cv_khong_ap_dung': {
+                'ten_cong_viec': 'Tên công việc',
+                'gia_tri': 'Giá trị',
+                'don_vi_thuc_hien': 'Đơn vị thực hiện'
+            },
+            'cv_chua_du_dieu_kien': {
+                'ten_cong_viec': 'Tên công việc',
+                'gia_tri': 'Giá trị'
             }
         };
-        return (cols[tbl] && cols[tbl][col]) || col;
+        return (cols[normTbl] && cols[normTbl][col]) || col;
     };
 
     let variables = DICTIONARY[group] || [];
@@ -275,6 +385,7 @@ export function renderDictionary(group) {
                 code: `{#${m.tenBien}}`,
                 desc: `Biến vòng lặp danh sách tự định nghĩa (Ánh xạ từ bảng: ${getTableLabel(m.sourceTable)})`,
                 isCustom: true,
+                isList: true,
                 id: m.id,
                 sourceTable: m.sourceTable,
                 sourceColumn: m.sourceColumn,
@@ -283,17 +394,53 @@ export function renderDictionary(group) {
         variables = [...variables, ...customLists];
     }
 
+    // Filter variables dynamically based on currently selected values in the mapping forms
+    const tableSelect = document.getElementById('wm-source-table');
+    const columnSelect = document.getElementById('wm-source-column');
+    const wmlTableSelect = document.getElementById('wml-source-table');
+
+    let filterTable = null;
+    let filterColumn = null;
+
+    if (group === 'global') {
+        if (tableSelect && tableSelect.value) {
+            filterTable = tableSelect.value;
+        }
+        if (columnSelect && columnSelect.value) {
+            filterColumn = columnSelect.value;
+        }
+    } else if (group === 'custom_lists') {
+        if (wmlTableSelect && wmlTableSelect.value) {
+            filterTable = wmlTableSelect.value;
+        }
+    }
+
+    if (filterTable) {
+        variables = variables.filter(v => v.sourceTable === filterTable);
+    }
+    if (filterColumn) {
+        variables = variables.filter(v => v.sourceColumn === filterColumn);
+    }
+
     if (variables.length === 0) {
         tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted" style="padding: 24px;">Chưa có biến nào trong nhóm này.</td></tr>`;
         return;
     }
 
     tbody.innerHTML = variables.map(v => {
+        let codeHTML = '';
         let actionHTML = '';
-        if (v.isCustom) {
+
+        if (v.isList) {
+            codeHTML = `
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                    <code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:3px 6px; border-radius:4px; margin-bottom: 2px;">{#${v.tenBien}}</code>
+                    <code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:3px 6px; border-radius:4px;">{/${v.tenBien}}</code>
+                </div>
+            `;
             actionHTML = `
                 <div class="action-btn-group" style="justify-content: flex-end; gap: 8px;">
-                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" title="Sao chép" style="padding: 4px 8px; font-size: 0.75rem;">
+                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="{#${v.tenBien}}&#10;&#10;{/${v.tenBien}}" title="Sao chép cả cặp tag" style="padding: 4px 8px; font-size: 0.75rem;">
                         <i data-lucide="copy" style="width:12px; height:12px;"></i>
                     </button>
                     <button class="action-btn btn-edit" onclick="window.editWordMapping('${v.id}')" title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
@@ -305,11 +452,28 @@ export function renderDictionary(group) {
                 </div>
             `;
         } else {
-            actionHTML = `
-                <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" style="padding: 4px 8px; font-size: 0.75rem;">
-                    <i data-lucide="copy" style="width:12px; height:12px;"></i> Sao chép
-                </button>
-            `;
+            codeHTML = `<code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:4px 8px; border-radius:4px;">${v.code}</code>`;
+            if (v.isCustom) {
+                actionHTML = `
+                    <div class="action-btn-group" style="justify-content: flex-end; gap: 8px;">
+                        <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" title="Sao chép" style="padding: 4px 8px; font-size: 0.75rem;">
+                            <i data-lucide="copy" style="width:12px; height:12px;"></i>
+                        </button>
+                        <button class="action-btn btn-edit" onclick="window.editWordMapping('${v.id}')" title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                            <i data-lucide="edit-2" style="width:12px; height:12px; color: var(--text-muted);"></i>
+                        </button>
+                        <button class="action-btn btn-delete" onclick="window.deleteWordMapping('${v.id}')" title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                            <i data-lucide="trash-2" style="width:12px; height:12px; color: var(--danger);"></i>
+                        </button>
+                    </div>
+                `;
+            } else {
+                actionHTML = `
+                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" style="padding: 4px 8px; font-size: 0.75rem;">
+                        <i data-lucide="copy" style="width:12px; height:12px;"></i> Sao chép
+                    </button>
+                `;
+            }
         }
 
         let descHTML = '';
@@ -333,7 +497,7 @@ export function renderDictionary(group) {
 
         return `
             <tr>
-                <td><code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:4px 8px; border-radius:4px;">${v.code}</code></td>
+                <td>${codeHTML}</td>
                 <td>${descHTML}</td>
                 <td class="text-right">${actionHTML}</td>
             </tr>

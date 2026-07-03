@@ -50,8 +50,8 @@ SCHEMA_DINH_NGHIA = {
             "ten_chu_dau_tu": "TEXT NOT NULL",
             "ma_so_thue": "TEXT",
             "chuc_vu_nguoi_dung_dau": "TEXT",
-            "nguoi_ky_quyet_dinh": "TEXT",
-            "chuc_vu_nguoi_ky": "TEXT",
+            "dai_dien_cdt": "TEXT",
+            "chuc_vu_dai_dien": "TEXT",
             "danh_xung": "TEXT DEFAULT 'Ông'",
             "dia_chi": "TEXT",
             "so_dien_thoai": "TEXT",
@@ -483,7 +483,8 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
-            "UNIQUE(owner_id, ten_bien)"
+            "UNIQUE(owner_id, ten_bien)",
+            "UNIQUE(owner_id, source_table, source_column)"
         ]
     },
     # Bảng ma_tran_phan_quyen: lưu phân quyền theo module của từng nhân viên trong tổ chức.
