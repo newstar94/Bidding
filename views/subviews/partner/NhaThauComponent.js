@@ -72,6 +72,7 @@ export async function renderNhaThauTable() {
         const pag = document.getElementById('nhathau-pagination');
         if (pag) pag.innerHTML = '';
     } else {
+        const esc = window.escapeHTML || ((value) => String(value ?? ''));
         tableBody.innerHTML = slicedData.map(n => {
             const root = n.rootId || n.id;
             const allVersions = n.allVersions || this.model.state.nhathau.filter(x => (x.rootId || x.id) === root)
@@ -86,7 +87,7 @@ export async function renderNhaThauTable() {
             const optionsHtml = allVersions.map(v => {
                 const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
                 const isSel = v.id === displayedNt.id ? 'selected' : '';
-                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+                return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
             }).join('');
 
             const dropdownHtml = `
@@ -98,22 +99,22 @@ export async function renderNhaThauTable() {
             const isJV = displayedNt.loaiNhaThau === 'Liên danh';
             if (isJV) {
                 const members = displayedNt.thanhVienLienDanh || [];
-                const names = members.map(m => m.tenNhaThau || '').join('<br>+ ');
-                const msts = members.map(m => m.maSoThue || '').join(', ');
-                const leaders = members.length > 0 ? `${members[0].danhXung || 'Ông'} ${members[0].nguoiDaiDien || '--'} (Trưởng LD)` : '--';
-                const contacts = members.length > 0 ? `<small>SĐT: ${members[0].soDienThoai || '--'}</small><br><small>Email: ${members[0].email || '--'}</small>` : '--';
-                const bankAccs = members.length > 0 ? `<div style="font-size:0.85rem;" class="fw-bold">${members[0].soTaiKhoan || '--'}</div><div style="font-size:0.75rem; color:var(--text-light);">${members[0].noiMoTaiKhoan || '--'} (+${members.length - 1} TV)</div>` : '--';
+                const names = members.map(m => esc(m.tenNhaThau || '')).join('<br>+ ');
+                const msts = members.map(m => esc(m.maSoThue || '')).join(', ');
+                const leaders = members.length > 0 ? `${esc(members[0].danhXung || 'Ông')} ${esc(members[0].nguoiDaiDien || '--')} (Trưởng LD)` : '--';
+                const contacts = members.length > 0 ? `<small>SĐT: ${esc(members[0].soDienThoai || '--')}</small><br><small>Email: ${esc(members[0].email || '--')}</small>` : '--';
+                const bankAccs = members.length > 0 ? `<div style="font-size:0.85rem;" class="fw-bold">${esc(members[0].soTaiKhoan || '--')}</div><div style="font-size:0.75rem; color:var(--text-light);">${esc(members[0].noiMoTaiKhoan || '--')} (+${members.length - 1} TV)</div>` : '--';
                 return `
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(displayedNt.id)}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || '')}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
-                            ${displayedNt.tenNhaThau || ''}
+                            ${esc(displayedNt.tenNhaThau || '')}
                             <div style="margin-top: 4px;"><span class="badge badge-info">Liên danh (${members.length} TV)</span></div>
                             <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--primary-soft); white-space: normal !important;">
                                 + ${names}
@@ -126,10 +127,10 @@ export async function renderNhaThauTable() {
                         <td class="text-right">
                             <div class="action-btn-group">
                                 ${displayedNt.id === n.id ? `
-                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
+                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${esc(displayedNt.id)}')" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
-                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${displayedNt.id}')" title="Xóa">
+                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${esc(displayedNt.id)}')" title="Xóa">
                                     <i data-lucide="trash-2"></i>
                                 </button>
                                 ` : ''}
@@ -138,32 +139,32 @@ export async function renderNhaThauTable() {
                     </tr>
                 `;
             } else {
-                const rep = `${displayedNt.danhXung || 'Ông'} ${displayedNt.nguoiDaiDien || '--'}`;
-                const contact = `<small>SĐT: ${displayedNt.soDienThoai || '--'}</small><br><small>Email: ${displayedNt.email || '--'}</small>`;
-                const bankAcc = `<div style="font-size:0.85rem;" class="fw-bold">${displayedNt.soTaiKhoan || '--'}</div><div style="font-size:0.75rem; color:var(--text-light);">${displayedNt.noiMoTaiKhoan || '--'}${displayedNt.maNganHang ? ' (' + displayedNt.maNganHang + ')' : ''}</div>`;
+                const rep = `${esc(displayedNt.danhXung || 'Ông')} ${esc(displayedNt.nguoiDaiDien || '--')}`;
+                const contact = `<small>SĐT: ${esc(displayedNt.soDienThoai || '--')}</small><br><small>Email: ${esc(displayedNt.email || '--')}</small>`;
+                const bankAcc = `<div style="font-size:0.85rem;" class="fw-bold">${esc(displayedNt.soTaiKhoan || '--')}</div><div style="font-size:0.75rem; color:var(--text-light);">${esc(displayedNt.noiMoTaiKhoan || '--')}${displayedNt.maNganHang ? ' (' + esc(displayedNt.maNganHang) + ')' : ''}</div>`;
                 return `
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${displayedNt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedNt.maNhaThau || ''}</span></a>
+                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(displayedNt.id)}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || '')}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
-                            ${displayedNt.tenNhaThau || ''}
+                            ${esc(displayedNt.tenNhaThau || '')}
                         </td>
-                        <td>${displayedNt.maSoThue || '--'}</td>
+                        <td>${esc(displayedNt.maSoThue || '--')}</td>
                         <td>${rep}</td>
                         <td>${contact}</td>
                         <td>${bankAcc}</td>
                         <td class="text-right">
                             <div class="action-btn-group">
                                 ${displayedNt.id === n.id ? `
-                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${displayedNt.id}')" title="Sửa">
+                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${esc(displayedNt.id)}')" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
-                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${displayedNt.id}')" title="Xóa">
+                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${esc(displayedNt.id)}')" title="Xóa">
                                     <i data-lucide="trash-2"></i>
                                 </button>
                                 ` : ''}

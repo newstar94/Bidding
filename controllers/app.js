@@ -20,6 +20,10 @@ const syncSessionBetweenTabs = () => {
             resolve();
             return;
         }
+        if (localStorage.getItem('bf_remember_me') === 'true' && localStorage.getItem('bf_session_token')) {
+            resolve();
+            return;
+        }
 
         const channel = new BroadcastChannel('bf_session_sync');
         let resolved = false;

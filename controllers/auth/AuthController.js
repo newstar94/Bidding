@@ -209,10 +209,75 @@ export function setupAuth() {
         if (initLoader) {
             initLoader.style.opacity = '0';
             initLoader.style.visibility = 'hidden';
-            setTimeout(() => initLoader.remove(), 400);
+            setTimeout(() => initLoader.remove(), 180);
         }
     };
     window.hideInitLoader = hideInitLoader;
+
+    const hasLocalWorkspaceData = () => {
+        const lastFetch = localStorage.getItem('bf_last_fetch_time') || localStorage.getItem('bf_last_sync_timestamp');
+        if (!lastFetch || lastFetch === '0') return false;
+        const keys = ['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'thongtinmothau'];
+        return keys.some(key => Array.isArray(this.model.state[key]) && this.model.state[key].length > 0);
+    };
+
+    const showLoginOverlay = () => {
+        this.model.clearSessionData();
+        overlay.style.display = 'flex';
+        document.querySelector('.app-container').style.filter = 'blur(10px)';
+        formLogin.style.display = 'block';
+        formRegister.style.display = 'none';
+        formForgot.style.display = 'none';
+        document.getElementById('login-username').value = '';
+        document.getElementById('login-password').value = '';
+        hideInitLoader();
+    };
+
+    const showCachedWorkspace = () => {
+        overlay.style.display = 'none';
+        document.querySelector('.app-container').style.filter = 'none';
+        this.view.updateActiveUserProfileDisplay();
+        if (typeof this.handlePathRouting === 'function') {
+            this.handlePathRouting(window.location.pathname, false, true);
+        } else {
+            this.switchTab(this.model.state.activerole === 'super_admin' ? 'superadmin-dashboard' : 'dashboard');
+        }
+        hideInitLoader();
+    };
+
+    const applySessionUser = (user) => {
+        if (!user) return;
+        if (!this.model.state.activeuser) this.model.state.activeuser = {};
+        if (!this.model.state.activerole) this.model.state.activerole = user.role || 'employee';
+        this.model.state.activeuser.name = user.name;
+        this.model.state.activeuser.avatar = user.avatar || '';
+        this.model.state.activeuser.email = user.email || '';
+        this.model.state.activeuser.dbRole = user.role || '';
+        this.model.state.activeuser.dbRoles = user.effective_roles || [];
+        this.model.state.activeuser.package_id = user.package_id || 'none';
+        this.model.state.activeuser.organization_name = user.organization_name || '';
+        if (user.inactivity_timeout_hours) {
+            localStorage.setItem('bf_inactivity_timeout', user.inactivity_timeout_hours);
+        }
+        let title = 'Chuyên viên';
+        if (this.model.state.activerole === 'super_admin') title = 'Super Admin';
+        else if (this.model.state.activerole === 'manager') title = 'Quản lý';
+        this.model.state.activeuser.title = title;
+        localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
+        this.view.updateActiveUserProfileDisplay();
+    };
+
+    const refreshWorkspaceInBackground = () => {
+        const syncPromise = this._initialSyncStarted ? Promise.resolve() : this.forceSyncData();
+        this._initialSyncStarted = true;
+        syncPromise.then(() => {
+            if (typeof this.handlePathRouting === 'function') {
+                this.handlePathRouting(window.location.pathname, false, true);
+            }
+        }).catch(err => {
+            console.error("Failed to force sync data after F5 restore:", err);
+        });
+    };
 
     if (!token || !username) {
         overlay.style.display = 'flex';
@@ -225,6 +290,11 @@ export function setupAuth() {
         const loaderText = document.getElementById('system-init-loader-text');
         if (loaderText) loaderText.textContent = 'Đang tải...';
 
+        const canShowLocalFirst = hasLocalWorkspaceData();
+        if (canShowLocalFirst) {
+            requestAnimationFrame(showCachedWorkspace);
+        }
+
         fetch('/api/auth/check-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -236,77 +306,18 @@ export function setupAuth() {
             throw new Error("Invalid session response");
         }).then(data => {
             if (!data || !data.valid) {
-                this.model.clearSessionData();
-                overlay.style.display = 'flex';
-                document.querySelector('.app-container').style.filter = 'blur(10px)';
-                formLogin.style.display = 'block';
-                formRegister.style.display = 'none';
-                formForgot.style.display = 'none';
-                document.getElementById('login-username').value = '';
-                document.getElementById('login-password').value = '';
-                hideInitLoader();
+                showLoginOverlay();
             } else {
                 if (loaderText) loaderText.textContent = 'Đang tải...';
 
                 // Update active user details dynamically to prevent cache issues
-                if (data.user) {
-                    if (!this.model.state.activeuser) {
-                        this.model.state.activeuser = {};
-                    }
-                    if (!this.model.state.activerole) {
-                        this.model.state.activerole = data.user.role || 'employee';
-                    }
-                    this.model.state.activeuser.name = data.user.name;
-                    this.model.state.activeuser.avatar = data.user.avatar || '';
-                    this.model.state.activeuser.email = data.user.email || '';
-                    this.model.state.activeuser.dbRole = data.user.role || '';
-                    this.model.state.activeuser.dbRoles = data.user.effective_roles || [];
-                    this.model.state.activeuser.package_id = data.user.package_id || 'none';
-                    this.model.state.activeuser.organization_name = data.user.organization_name || '';
+                applySessionUser(data.user);
 
-                    if (data.user.inactivity_timeout_hours) {
-                        localStorage.setItem('bf_inactivity_timeout', data.user.inactivity_timeout_hours);
-                    }
-
-                    let title = 'Chuyên viên';
-                    if (this.model.state.activerole === 'super_admin') title = 'Super Admin';
-                    else if (this.model.state.activerole === 'manager') title = 'Quản lý';
-                    this.model.state.activeuser.title = title;
-
-                    localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
+                if (!canShowLocalFirst) {
+                    showCachedWorkspace();
                 }
 
-                // Hide Auth overlay
-                overlay.style.display = 'none';
-                document.querySelector('.app-container').style.filter = 'none';
-
-                // Bootstrap visual profile and tab
-                this.view.updateActiveUserProfileDisplay();
-
-                // Khôi phục tab từ URL ngay lập tức (không đợi sync để tránh trễ)
-                if (typeof this.handlePathRouting === 'function') {
-                    this.handlePathRouting(window.location.pathname, false, true);
-                } else {
-                    const activeRole = this.model.state.activerole;
-                    if (activeRole === 'super_admin') {
-                        this.switchTab('superadmin-dashboard');
-                    } else {
-                        this.switchTab('dashboard');
-                    }
-                }
-
-                // Ẩn màn hình chờ ngay lập tức vì dữ liệu offline đã được load từ IndexedDB và render xong
-                hideInitLoader();
-
-                // Đồng bộ dữ liệu ngầm sau đó
-                this.forceSyncData().then(() => {
-                    // Re-route sau sync để đảm bảo các trang chi tiết cập nhật chính xác dữ liệu mới nhất
-                    if (typeof this.handlePathRouting === 'function') {
-                        this.handlePathRouting(window.location.pathname, false, true);
-                    }
-                }).catch(err => {
-                    console.error("Failed to force sync data after F5 restore:", err);
-                });
+                refreshWorkspaceInBackground();
 
                 this.startBackgroundSessionChecker();
             }

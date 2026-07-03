@@ -9,6 +9,7 @@ from helpers import (
     hash_password,
     gui_email,
     log_error,
+    _session_cache_invalidate_by_user_id,
 )
 from services.auth_service import (
     get_client_ip,
@@ -95,6 +96,10 @@ async def verify_email_api(request):
         
         if not username or not code:
             return JSONResponse({"error": "Thiếu thông tin xác thực!"}, status_code=400)
+
+        ip = get_client_ip(request)
+        if not check_rate_limit(f"verify:{ip}:{username.lower()}"):
+            return JSONResponse({"error": "Quá nhiều lần xác thực thất bại. Vui lòng thử lại sau 60 giây."}, status_code=429)
             
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -214,9 +219,13 @@ async def forgot_password_api(request):
         user = dict(row)
         user_id = user['id']
         name = user['ho_ten']
-        temp_pwd = secrets.token_hex(4)
-        cursor.execute("UPDATE tai_khoan SET mat_khau = ? WHERE id = ?", (hash_password(temp_pwd), user_id))
+        temp_pwd = secrets.token_urlsafe(12)
+        cursor.execute(
+            "UPDATE tai_khoan SET mat_khau = ?, token_phien = NULL, han_su_dung_token = NULL WHERE id = ?",
+            (hash_password(temp_pwd), user_id)
+        )
         conn.commit()
+        _session_cache_invalidate_by_user_id(user_id)
         
         tieu_de = "[BiddingFlow] Khôi phục mật khẩu tài khoản"
         noi_dung_html = f"""

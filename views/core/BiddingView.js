@@ -36,7 +36,11 @@ export class BiddingView {
         // Automatically observe DOM changes to enhance any rendered tables with sorting
         if (!this._tableObserver) {
             this._tableObserver = new MutationObserver(() => {
-                this.enhanceAllTables();
+                if (this._enhanceFrame) return;
+                this._enhanceFrame = requestAnimationFrame(() => {
+                    this._enhanceFrame = null;
+                    this.enhanceAllTables();
+                });
             });
             this._tableObserver.observe(document.body, { childList: true, subtree: true });
         }

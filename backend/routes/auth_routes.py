@@ -206,96 +206,96 @@ async def check_session_api(request):
         return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
 
 async def update_profile_api(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
             
         data = await request.json()
-        username = data.get('username', '').strip()
         name = data.get('name', '').strip()
         email = data.get('email', '').strip()
         avatar = data.get('avatar', '')
         
-        organization_name = data.get('organization_name', '').strip()
-        
-        if not username or not name or not email:
+        if not name or not email:
             return JSONResponse({"error": "Vui lòng điền đầy đủ Họ tên và Email!"}, status_code=400)
             
         conn = database.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT ten_dang_nhap FROM tai_khoan WHERE email = ? AND ten_dang_nhap != ?", (email, username))
+        cursor.execute("SELECT ten_dang_nhap FROM tai_khoan WHERE email = ? AND id != ?", (email, role_or_err.user_id))
         if cursor.fetchone():
-            conn.close()
             return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
             
         if avatar:
-            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ?, anh_dai_dien = ? WHERE ten_dang_nhap = ?", (name, email, avatar, username))
+            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ?, anh_dai_dien = ? WHERE id = ?", (name, email, avatar, role_or_err.user_id))
         else:
-            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ? WHERE ten_dang_nhap = ?", (name, email, username))
+            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ? WHERE id = ?", (name, email, role_or_err.user_id))
             
-        cursor.execute("SELECT id, vai_tro FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
-        u_row = cursor.fetchone()
-        if u_row:
-            update_user_organizations(cursor, u_row['id'], organization_name, u_row['vai_tro'])
-            _session_cache_invalidate_by_user_id(u_row['id'])
+        _session_cache_invalidate_by_user_id(role_or_err.user_id)
             
         conn.commit()
-        conn.close()
         
         return JSONResponse({"success": True, "message": "Cập nhật thông tin tài khoản thành công!"})
     except Exception as e:
         log_error(e, "update_profile_api")
         return JSONResponse({"error": "Đã xảy ra lỗi cập nhật hồ sơ."}, status_code=500)
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
 async def change_password_api(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
             
         data = await request.json()
-        username = data.get('username', '').strip()
         old_password = data.get('old_password', '').strip()
         new_password = data.get('new_password', '').strip()
         
-        if not username or not old_password or not new_password:
+        if not old_password or not new_password:
             return JSONResponse({"error": "Vui lòng nhập đầy đủ mật khẩu cũ và mới!"}, status_code=400)
             
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT mat_khau, id FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
+        cursor.execute("SELECT mat_khau, id FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
         row = cursor.fetchone()
         
         if not row:
-            conn.close()
             return JSONResponse({"error": "Người dùng không tồn tại!"}, status_code=400)
             
         user = dict(row)
         if not verify_password(user['mat_khau'], old_password):
-            conn.close()
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
             
-        old_token = request.headers.get('X-Session-Token')
+        old_token = request.cookies.get('session_token') or request.headers.get('X-Session-Token')
         new_token = str(uuid.uuid4())
+        token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         cursor.execute(
-            "UPDATE tai_khoan SET mat_khau = ?, token_phien = ? WHERE id = ?",
-            (hash_password(new_password), new_token, user['id'])
+            "UPDATE tai_khoan SET mat_khau = ?, token_phien = ?, han_su_dung_token = ? WHERE id = ?",
+            (hash_password(new_password), new_token, token_expiry, user['id'])
         )
         conn.commit()
-        conn.close()
         if old_token:
             _session_cache_invalidate(old_token)
         
-        return JSONResponse({
+        response = JSONResponse({
             "success": True, 
             "new_session_token": new_token,
             "message": "Thay đổi mật khẩu thành công! Các phiên đăng nhập trên thiết bị khác đã bị đăng xuất."
         })
+        response.set_cookie("session_token", new_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
+        return response
     except Exception as e:
         log_error(e, "change_password_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đổi mật khẩu."}, status_code=500)
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
 async def list_users_api(request):
     try:
@@ -319,16 +319,19 @@ async def list_users_api(request):
         
         sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, email, anh_dai_dien AS avatar, goi_dich_vu_id AS package_id, ngay_bat_dau_goi AS package_start_date, ngay_het_han_goi AS package_end_date FROM tai_khoan"
         
-        email_query = request.query_params.get('email')
-        if email_query:
-            cursor.execute(sql_base + " WHERE email = ?", (email_query.strip().lower(),))
-            users_raw = cursor.fetchall()
-        elif 'super_admin' in get_effective_roles(req_role):
-            cursor.execute(sql_base)
+        email_query = (request.query_params.get('email') or '').strip().lower()
+        email_filter_sql = " AND lower(email) = ?" if email_query else ""
+        email_filter_tk_sql = " AND lower(tk.email) = ?" if email_query else ""
+
+        if 'super_admin' in get_effective_roles(req_role):
+            if email_query:
+                cursor.execute(sql_base + " WHERE lower(email) = ?", (email_query,))
+            else:
+                cursor.execute(sql_base)
             users_raw = cursor.fetchall()
         else:
             if not req_org_ids:
-                cursor.execute(sql_base + " WHERE id = ?", (role_or_err.user_id,))
+                cursor.execute(sql_base + " WHERE id = ?" + email_filter_sql, tuple([role_or_err.user_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
             else:
                 active_org_id = get_active_org(request, role_or_err.user_id)
@@ -339,8 +342,8 @@ async def list_users_api(request):
                                         tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date 
                         FROM tai_khoan tk
                         JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                        WHERE tvtc.to_chuc_id = ?
-                    """, (active_org_id,))
+                        WHERE tvtc.to_chuc_id = ?{email_filter_tk_sql}
+                    """, tuple([active_org_id] + ([email_query] if email_query else [])))
                     users_raw = cursor.fetchall()
                 else:
                     placeholders = ",".join("?" for _ in req_org_ids)
@@ -350,8 +353,8 @@ async def list_users_api(request):
                                         tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date 
                         FROM tai_khoan tk
                         JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                        WHERE tvtc.to_chuc_id IN ({placeholders})
-                    """, req_org_ids)
+                        WHERE tvtc.to_chuc_id IN ({placeholders}){email_filter_tk_sql}
+                    """, tuple(req_org_ids + ([email_query] if email_query else [])))
                     users_raw = cursor.fetchall()
                 
         user_ids = [r['id'] for r in users_raw]

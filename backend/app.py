@@ -36,7 +36,7 @@ import contextlib
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
-from starlette.responses import JSONResponse, HTMLResponse, Response
+from starlette.responses import JSONResponse, HTMLResponse, Response, FileResponse
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -148,7 +148,10 @@ async def index(request):
 from helpers import (
     log_error,
     ErrorLoggingMiddleware,
-    OrgPermissionError
+    OrgPermissionError,
+    verify_session,
+    database,
+    get_active_org
 )
 
 import custom_exporter
@@ -236,6 +239,63 @@ class SafeStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
+async def protected_upload_api(request):
+    is_valid, role_or_err = verify_session(request)
+    if not is_valid:
+        return JSONResponse({"error": role_or_err}, status_code=403)
+
+    rel_path = request.path_params.get('file_path', '').replace('\\', '/')
+    if rel_path.startswith('/') or '..' in rel_path.split('/'):
+        return JSONResponse({"error": "Đường dẫn không hợp lệ"}, status_code=400)
+
+    uploads_root = os.path.realpath(os.path.join(project_root, 'templates', 'uploads'))
+    file_path = os.path.realpath(os.path.join(uploads_root, rel_path))
+    if not file_path.startswith(uploads_root + os.sep) or not os.path.isfile(file_path):
+        return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
+
+    if not rel_path.startswith('chuyen_gia/'):
+        return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
+
+    conn = None
+    try:
+        owner_id = get_active_org(request, role_or_err.user_id)
+        stored_path = 'uploads/' + rel_path
+        filename = os.path.basename(rel_path)
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT 1 FROM chuyen_gia
+            WHERE owner_id = ? AND (anh_chung_chi = ? OR anh_chu_ky = ?)
+            """,
+            (owner_id, stored_path, stored_path)
+        )
+        allowed = cursor.fetchone() is not None
+        if not allowed and '_opt_' in filename:
+            original_prefix = filename.split('_opt_', 1)[0]
+            cursor.execute(
+                """
+                SELECT 1 FROM chuyen_gia
+                WHERE owner_id = ? AND (anh_chung_chi LIKE ? OR anh_chu_ky LIKE ?)
+                """,
+                (owner_id, f'uploads/chuyen_gia/{original_prefix}.%', f'uploads/chuyen_gia/{original_prefix}.%')
+            )
+            allowed = cursor.fetchone() is not None
+        if not allowed:
+            return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
+    except OrgPermissionError as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+    except Exception as e:
+        log_error(e, "protected_upload_api")
+        return JSONResponse({"error": "Không thể kiểm tra quyền truy cập tệp"}, status_code=500)
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
+
+    return FileResponse(file_path)
+
+
 # Đảm bảo thư mục dist và templates/uploads tồn tại để tránh StaticFiles báo lỗi khi khởi chạy app
 dist_dir = os.path.join(project_root, 'dist')
 os.makedirs(dist_dir, exist_ok=True)
@@ -244,6 +304,7 @@ os.makedirs(os.path.join(project_root, 'templates', 'uploads'), exist_ok=True)
 routes = [
     Route("/", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),
+    Route("/uploads/{file_path:path}", protected_upload_api, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),
     Route("/api/paginate", paginate_api, methods=["GET"]),
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
@@ -325,7 +386,6 @@ routes = [
     Mount("/dist", app=SafeStaticFiles(directory=dist_dir), name="dist"),
     Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
     Mount("/models", app=SafeStaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
-    Mount("/uploads", app=StaticFiles(directory=os.path.join(project_root, 'templates', 'uploads')), name="uploads"),
     Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
     Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
 ]
@@ -385,9 +445,18 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             host = request.headers.get("host")
-            if origin and host not in origin:
+            from urllib.parse import urlparse
+
+            def _same_host(value):
+                try:
+                    parsed = urlparse(value)
+                    return parsed.netloc == host
+                except Exception:
+                    return False
+
+            if origin and not _same_host(origin):
                 return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Origin không khớp)"}, status_code=403)
-            if referer and host not in referer:
+            if referer and not _same_host(referer):
                 return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Referer không khớp)"}, status_code=403)
         return await call_next(request)
 

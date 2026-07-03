@@ -293,6 +293,7 @@ export class BiddingController {
 
 
         // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
+        this._initialSyncStarted = true;
         this.forceSyncData();
 
         // Song song hóa: tải users + system-packages cùng lúc thay vì tuần tự

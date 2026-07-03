@@ -155,6 +155,7 @@ export async function renderGoiThauTable() {
     } else {
         window._jvDataMap = window._jvDataMap || {};
 
+        const esc = window.escapeHTML || ((value) => String(value ?? ''));
         tableBody.innerHTML = slicedData.map(gt => {
             const root = gt.rootId || gt.id;
             const allRelated = this.model.state.goithau.filter(g => (g.rootId || g.id) === root);
@@ -200,11 +201,11 @@ export async function renderGoiThauTable() {
                     leadName,
                     leadCode
                 };
-                ntLink = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${ntDisplayName}</a>`;
+                ntLink = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${esc(displayedGt.id)}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(ntDisplayName)}</a>`;
             } else if (nt) {
-                ntLink = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${nt.id}')" class="text-blue fw-bold link-hover">${ntDisplayName}</a>`;
+                ntLink = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(nt.id)}')" class="text-blue fw-bold link-hover">${esc(ntDisplayName)}</a>`;
             } else {
-                ntLink = `<span class="fw-bold text-success">${ntDisplayName}</span>`;
+                ntLink = `<span class="fw-bold text-success">${esc(ntDisplayName)}</span>`;
             }
 
             let winnerInfoHtml = '--';
@@ -241,7 +242,7 @@ export async function renderGoiThauTable() {
                             };
                         });
                         const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
-                        winnerInfoHtml = `<a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${displayedGt.id}')" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
+                        winnerInfoHtml = `<a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${esc(displayedGt.id)}')" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
                     } else if (uniqueWinnerIds.length === 1) {
                         const singleWinnerId = uniqueWinnerIds[0];
                         const singleWinnerNt = this.model.state.nhathau.find(n => String(n.id) === String(singleWinnerId));
@@ -257,11 +258,11 @@ export async function renderGoiThauTable() {
                             const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || '';
                             const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
                             window._jvDataMap[displayedGt.id] = { members: subMembers, leadName, leadCode };
-                            link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${displayedGt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${name}</a>`;
+                            link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${esc(displayedGt.id)}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(name)}</a>`;
                         } else if (singleWinnerNt) {
-                            link = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${singleWinnerNt.id}')" class="text-blue fw-bold link-hover">${name}</a>`;
+                            link = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(singleWinnerNt.id)}')" class="text-blue fw-bold link-hover">${esc(name)}</a>`;
                         } else {
-                            link = `<span class="fw-bold text-success">${name}</span>`;
+                            link = `<span class="fw-bold text-success">${esc(name)}</span>`;
                         }
                         winnerInfoHtml = `${link}<br><small class="text-muted">Giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
                     } else {
@@ -277,7 +278,7 @@ export async function renderGoiThauTable() {
             const optionsHtml = uniqueVersions.map(v => {
                 const label = String(parseInt(v.phienBan || 0)).padStart(2, '0');
                 const isSel = v.id === displayedGt.id ? 'selected' : '';
-                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+                return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
             }).join('');
 
             const dropdownHtml = `
@@ -290,38 +291,38 @@ export async function renderGoiThauTable() {
             <tr class="${displayedGt.trangThai === 'Hủy thầu' ? 'cancelled-package' : ''}">
                 <td>
                     <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" onclick="event.preventDefault(); window.showPackageDetails('${displayedGt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPackageBaseCode(displayedGt.maGoiThau) || '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
+                        <a href="#" onclick="event.preventDefault(); window.showPackageDetails('${esc(displayedGt.id)}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPackageBaseCode(displayedGt.maGoiThau) ? esc(this.model.getPackageBaseCode(displayedGt.maGoiThau)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
                         <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                         ${dropdownHtml}
                     </div>
                 </td>
-                <td style="min-width: 240px; max-width: 320px;" class="text-wrap"><a href="#" onclick="event.preventDefault(); window.showPackageDetails('${displayedGt.id}')" class="text-blue fw-bold link-hover">${displayedGt.tenGoiThau}</a></td>
-                <td style="min-width: 240px; max-width: 320px;" class="text-wrap">${kh ? '<a href="#" onclick="event.preventDefault(); window.showKeHoachDetails(\'' + kh.id + '\')" class="text-blue fw-bold link-hover">' + kh.tenKeHoach + '</a>' : '<span class="text-danger">Không liên kết</span>'}</td>
+                <td style="min-width: 240px; max-width: 320px;" class="text-wrap"><a href="#" onclick="event.preventDefault(); window.showPackageDetails('${esc(displayedGt.id)}')" class="text-blue fw-bold link-hover">${esc(displayedGt.tenGoiThau)}</a></td>
+                <td style="min-width: 240px; max-width: 320px;" class="text-wrap">${kh ? '<a href="#" onclick="event.preventDefault(); window.showKeHoachDetails(\'' + esc(kh.id) + '\')" class="text-blue fw-bold link-hover">' + esc(kh.tenKeHoach) + '</a>' : '<span class="text-danger">Không liên kết</span>'}</td>
                 <td class="fw-bold">${this.model.formatCurrency(displayedGt.giaGoiThau)}</td>
-                <td>${displayedGt.hinhThucLuaChon || '--'}</td>
+                <td>${esc(displayedGt.hinhThucLuaChon || '--')}</td>
                 <td>${this.getStatusBadge(displayedGt.trangThai)}</td>
                 <td style="min-width: 200px; max-width: 300px;" class="text-wrap">${winnerInfoHtml}</td>
                 <td class="text-right">
                     <div class="action-btn-group">
                         ${displayedGt.id === gt.id ? (displayedGt.trangThai === 'Hủy thầu' ? `
-                            <button class="action-btn btn-restore" onclick="window.restoreCanceledPackage('${displayedGt.id}')" title="Khôi phục hủy thầu" style="color: var(--success, #10b981);">
+                            <button class="action-btn btn-restore" onclick="window.restoreCanceledPackage('${esc(displayedGt.id)}')" title="Khôi phục hủy thầu" style="color: var(--success, #10b981);">
                                 <i data-lucide="rotate-ccw"></i>
                             </button>
-                            <button class="action-btn btn-view" onclick="window.editGoiThau('${displayedGt.id}', true)" title="Xem chi tiết Gói thầu">
+                            <button class="action-btn btn-view" onclick="window.editGoiThau('${esc(displayedGt.id)}', true)" title="Xem chi tiết Gói thầu">
                                 <i data-lucide="eye"></i>
                             </button>
-                            <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${displayedGt.id}')" title="Xóa">
+                            <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${esc(displayedGt.id)}')" title="Xóa">
                                 <i data-lucide="trash-2"></i>
                             </button>
                         ` : `
-                            <button class="action-btn btn-edit" onclick="window.editGoiThau('${displayedGt.id}')" title="Sửa">
+                            <button class="action-btn btn-edit" onclick="window.editGoiThau('${esc(displayedGt.id)}')" title="Sửa">
                                 <i data-lucide="edit-2"></i>
                             </button>
-                            <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${displayedGt.id}')" title="Xóa">
+                            <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${esc(displayedGt.id)}')" title="Xóa">
                                 <i data-lucide="trash-2"></i>
                             </button>
                         `) : `
-                            <button class="action-btn btn-view" onclick="window.showPackageDetails('${displayedGt.id}')" title="Xem chi tiết Gói thầu">
+                            <button class="action-btn btn-view" onclick="window.showPackageDetails('${esc(displayedGt.id)}')" title="Xem chi tiết Gói thầu">
                                 <i data-lucide="eye"></i>
                             </button>
                         `}

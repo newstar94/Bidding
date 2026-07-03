@@ -146,6 +146,7 @@ export async function renderKeHoachTable() {
         const pag = document.getElementById('kehoach-pagination');
         if (pag) pag.innerHTML = '';
     } else {
+        const esc = window.escapeHTML || ((value) => String(value ?? ''));
         tableBody.innerHTML = slicedData.map(kh => {
             const root = kh.rootId || kh.id;
             const allVersions = kh.allVersions || this.model.state.kehoach.filter(k => (k.rootId || k.id) === root)
@@ -162,7 +163,7 @@ export async function renderKeHoachTable() {
             const optionsHtml = allVersions.map(v => {
                 const label = v.phienBan || '00';
                 const isSel = v.id === displayedKh.id ? 'selected' : '';
-                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+                return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
             }).join('');
 
             const dropdownHtml = `
@@ -182,18 +183,18 @@ export async function renderKeHoachTable() {
                 <tr>
                     <td>
                         <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                            <a href="#" onclick="event.preventDefault(); window.showKeHoachDetails('${displayedKh.id}')" class="text-blue fw-bold link-hover" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPlanBaseCode(displayedKh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
+                            <a href="#" onclick="event.preventDefault(); window.showKeHoachDetails('${esc(displayedKh.id)}')" class="text-blue fw-bold link-hover" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPlanBaseCode(displayedKh.maKeHoach) ? esc(this.model.getPlanBaseCode(displayedKh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
                             <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                             ${dropdownHtml}
                         </div>
                     </td>
-                    <td style="min-width: 240px; max-width: 320px;" class="fw-bold text-wrap">${displayedKh.tenKeHoach}</td>
-                    <td>${displayedKh.loaiHinhMuaSam ? `<span class="badge ${displayedKh.loaiHinhMuaSam === 'Dự án' ? 'badge-info' : 'badge-warning'}">${displayedKh.loaiHinhMuaSam}</span>` : '<span class="text-muted">--</span>'}</td>
-                    <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${displayedKh.tenDuAnDuToan || '--'}</td>
-                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${cdt ? cdt.tenChuDauTu : '<span class="text-danger">Không rõ</span>'}</td>
+                    <td style="min-width: 240px; max-width: 320px;" class="fw-bold text-wrap">${esc(displayedKh.tenKeHoach)}</td>
+                    <td>${displayedKh.loaiHinhMuaSam ? `<span class="badge ${displayedKh.loaiHinhMuaSam === 'Dự án' ? 'badge-info' : 'badge-warning'}">${esc(displayedKh.loaiHinhMuaSam)}</span>` : '<span class="text-muted">--</span>'}</td>
+                    <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${esc(displayedKh.tenDuAnDuToan || '--')}</td>
+                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${cdt ? esc(cdt.tenChuDauTu) : '<span class="text-danger">Không rõ</span>'}</td>
                     <td class="text-blue fw-bold">${formatCurrency(displayedKh.tongMucDauTu)}</td>
                     <td>${formatDate(displayedKh.ngayPheDuyet)}</td>
-                    <td>${displayedKh.quyetDinhPheDuyet}</td>
+                    <td>${esc(displayedKh.quyetDinhPheDuyet)}</td>
                     <td><span class="fw-bold text-muted">${displayedKh.thoiGianDangMa ? this.model.formatDateWithTime(displayedKh.thoiGianDangMa) : '--'}</span></td>
                     <td class="text-right">
                         <div class="action-btn-group">

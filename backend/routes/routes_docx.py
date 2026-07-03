@@ -1,6 +1,9 @@
 import os
 import json
+import re
+import zipfile
 from datetime import datetime
+from urllib.parse import quote
 from starlette.responses import StreamingResponse, JSONResponse
 
 from helpers import (
@@ -14,6 +17,55 @@ from helpers import (
 import custom_exporter
 import services.docx_service as docx_service
 import uuid
+
+SYSTEM_TEMPLATES = {'mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx'}
+MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _safe_filename(value, fallback='download.docx'):
+    name = os.path.basename(str(value or fallback)).strip()
+    name = re.sub(r'[^A-Za-z0-9_.-]+', '_', name)
+    name = name.strip('._')
+    return name or fallback
+
+
+def _content_disposition(filename):
+    safe_name = _safe_filename(filename)
+    return f"attachment; filename={safe_name}; filename*=UTF-8''{quote(safe_name)}"
+
+
+def _resolve_template_path(user_id, filename):
+    safe_name = _safe_filename(filename)
+    if safe_name in SYSTEM_TEMPLATES:
+        base_dir = os.path.realpath(custom_exporter.TEMPLATE_DIR)
+    else:
+        base_dir = os.path.realpath(custom_exporter.get_user_template_dir(user_id))
+    path = os.path.realpath(os.path.join(base_dir, safe_name))
+    if not path.startswith(base_dir + os.sep):
+        raise ValueError('Tên mẫu không hợp lệ')
+    if not os.path.exists(path):
+        raise FileNotFoundError('Không tìm thấy mẫu Word')
+    return path, safe_name
+
+
+def _validate_docx_upload(filename, content):
+    safe_name = _safe_filename(filename, f"template_{uuid.uuid4().hex[:8]}.docx")
+    root, ext = os.path.splitext(safe_name)
+    if ext.lower() != '.docx':
+        raise ValueError('Chỉ cho phép tải lên tệp .docx')
+    if not content:
+        raise ValueError('Tệp tải lên đang trống')
+    if len(content) > MAX_TEMPLATE_UPLOAD_BYTES:
+        raise ValueError('Tệp mẫu vượt quá giới hạn 10MB')
+    import io
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            names = set(zf.namelist())
+            if '[Content_Types].xml' not in names or 'word/document.xml' not in names:
+                raise ValueError('Tệp .docx không hợp lệ')
+    except zipfile.BadZipFile:
+        raise ValueError('Tệp .docx không hợp lệ')
+    return _safe_filename(f"{root[:80]}_{uuid.uuid4().hex[:8]}.docx")
 
 def enrich_context_with_filtered_bidders(context):
     bids = context.get('nha_thau', [])
@@ -250,11 +302,7 @@ async def export_plan_api(request):
         custom_vars_list = [row[0].lower() for row in mappings_rows]
 
         active_tpl = custom_exporter.get_active_template(user_id)
-        if active_tpl in ['mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx']:
-            tpl_path = os.path.join(custom_exporter.TEMPLATE_DIR, active_tpl)
-        else:
-            user_dir = custom_exporter.get_user_template_dir(user_id)
-            tpl_path = os.path.join(user_dir, active_tpl)
+        tpl_path, active_tpl = _resolve_template_path(user_id, active_tpl)
             
         docx_stream = custom_exporter.generate_report_from_custom_template(tpl_path, unified_context, custom_vars_list)
         
@@ -262,7 +310,7 @@ async def export_plan_api(request):
         return StreamingResponse(
             docx_stream,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": _content_disposition(filename)}
         )
     except OrgPermissionError as e:
         return JSONResponse({"error": str(e)}, status_code=403)
@@ -298,11 +346,7 @@ async def export_report_api(request):
             if active_tpl != 'mau_hop_dong_lcnt.docx':
                 active_tpl = 'mau_hop_dong_lcnt.docx'
                 
-        if active_tpl in ['mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx']:
-            tpl_path = os.path.join(custom_exporter.TEMPLATE_DIR, active_tpl)
-        else:
-            user_dir = custom_exporter.get_user_template_dir(user_id)
-            tpl_path = os.path.join(user_dir, active_tpl)
+        tpl_path, active_tpl = _resolve_template_path(user_id, active_tpl)
             
         docx_stream = custom_exporter.generate_report_from_custom_template(tpl_path, unified_context, custom_vars_list)
         
@@ -316,7 +360,7 @@ async def export_report_api(request):
         return StreamingResponse(
             docx_stream,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": _content_disposition(filename)}
         )
     except OrgPermissionError as e:
         return JSONResponse({"error": str(e)}, status_code=403)
@@ -343,14 +387,17 @@ async def set_active_template_api(request):
         user_id = role_or_err.user_id
         
         data = await request.json()
-        template_name = data.get('template_name')
+        template_name = data.get('template_name') or data.get('filename')
         if not template_name:
             return JSONResponse({"error": "Missing template_name parameter"}, status_code=400)
             
-        success = custom_exporter.set_active_template(user_id, template_name)
-        if success:
-            return JSONResponse({"success": True})
-        return JSONResponse({"error": "Failed to set active template"}, status_code=400)
+        _, safe_name = _resolve_template_path(user_id, template_name)
+        custom_exporter.set_active_template(safe_name, user_id)
+        return JSONResponse({"success": True})
+    except FileNotFoundError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -366,19 +413,21 @@ async def upload_template_api(request):
         if not file_obj:
             return JSONResponse({"success": False, "error": "Không tìm thấy tệp tin tải lên!"}, status_code=400)
             
-        filename = file_obj.filename
-        _, ext = os.path.splitext(filename)
-        if ext.lower() not in ['.docx', '.doc']:
-            return JSONResponse({"success": False, "error": "Chỉ cho phép tải lên tệp tin định dạng .docx hoặc .doc!"}, status_code=400)
-            
-        user_dir = custom_exporter.get_user_template_dir(user_id)
-        dest_path = os.path.join(user_dir, filename)
-        
         content = await file_obj.read()
+        try:
+            filename = _validate_docx_upload(file_obj.filename, content)
+        except ValueError as e:
+            return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+
+        user_dir = os.path.realpath(custom_exporter.get_user_template_dir(user_id))
+        dest_path = os.path.realpath(os.path.join(user_dir, filename))
+        if not dest_path.startswith(user_dir + os.sep):
+            return JSONResponse({"success": False, "error": "Tên tệp không hợp lệ"}, status_code=400)
+
         with open(dest_path, "wb") as f:
             f.write(content)
             
-        custom_exporter.set_active_template(user_id, filename)
+        custom_exporter.set_active_template(filename, user_id)
         return JSONResponse({"success": True, "filename": filename})
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
