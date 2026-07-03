@@ -129,9 +129,9 @@ export function startBackgroundSessionChecker() {
                 }
 
                 if (data && data.reason === 'logged_in_elsewhere') {
-                    this.view.customAlert('Tài khoản đăng nhập ở thiết bị khác', 'Tài khoản của bạn vừa được đăng nhập tại một thiết bị hoặc trình duyệt khác. Phiên làm việc hiện tại đã bị đóng.', 'warning');
+                    this.view.showToast('Tài khoản đăng nhập ở thiết bị khác', 'Tài khoản của bạn vừa được đăng nhập tại một thiết bị hoặc trình duyệt khác. Phiên làm việc hiện tại đã bị đóng.', 'warning');
                 } else {
-                    this.view.customAlert('Phiên đăng nhập hết hạn', 'Phiên đăng nhập của bạn đã hết hiệu lực hoặc không hợp lệ. Vui lòng đăng nhập lại.', 'warning');
+                    this.view.showToast('Phiên đăng nhập hết hạn', 'Phiên đăng nhập của bạn đã hết hiệu lực hoặc không hợp lệ. Vui lòng đăng nhập lại.', 'warning');
                 }
             } else {
                 if (data.user) {
