@@ -378,6 +378,10 @@ export function renderDanhGiaHsdtPanel() {
         // Set inputs editability
         const soBaocaoInput = this.view.getActiveElement('danhgiahsdt-so-baocao');
         const ngayBaocaoInput = this.view.getActiveElement('danhgiahsdt-ngay-baocao');
+        const ngayMoiDoichieuInput = this.view.getActiveElement('danhgiahsdt-ngay-moi-doichieu');
+        const ngayDoichieuInput = this.view.getActiveElement('danhgiahsdt-ngay-doichieu');
+        const extraFieldsContainer = this.view.getActiveElement('danhgiahsdt-extra-fields-container');
+
         const saveBtn = this.view.getActiveElement('btn-danhgiahsdt-save');
         const addCvLamroBtn = this.view.getActiveElement('btn-add-cv-lamro');
         const addCvTraloiBtn = this.view.getActiveElement('btn-add-cv-traloi');
@@ -390,6 +394,32 @@ export function renderDanhGiaHsdtPanel() {
         if (ngayBaocaoInput) {
             ngayBaocaoInput.value = activeMeta.ngayBaoCao ? this.model.formatForDateInput(activeMeta.ngayBaoCao) : '';
             ngayBaocaoInput.readOnly = isReadOnly;
+        }
+
+        const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+        const showExtraFields = !isDirectOrSpecial && (!is1G2T || this.currentDanhGiaTab === 'financial');
+
+        if (extraFieldsContainer) {
+            extraFieldsContainer.style.display = showExtraFields ? 'grid' : 'none';
+        }
+
+        if (ngayMoiDoichieuInput) {
+            ngayMoiDoichieuInput.value = activeMeta.ngayMoiDoiChieu ? this.model.formatForDateInput(activeMeta.ngayMoiDoiChieu) : '';
+            ngayMoiDoichieuInput.readOnly = isReadOnly;
+            if (isReadOnly) {
+                ngayMoiDoichieuInput.setAttribute('disabled', 'true');
+            } else {
+                ngayMoiDoichieuInput.removeAttribute('disabled');
+            }
+        }
+        if (ngayDoichieuInput) {
+            ngayDoichieuInput.value = activeMeta.ngayDoiChieu ? this.model.formatForDateInput(activeMeta.ngayDoiChieu) : '';
+            ngayDoichieuInput.readOnly = isReadOnly;
+            if (isReadOnly) {
+                ngayDoichieuInput.setAttribute('disabled', 'true');
+            } else {
+                ngayDoichieuInput.removeAttribute('disabled');
+            }
         }
         if (saveBtn) {
             if (isReadOnly) {
@@ -1317,9 +1347,17 @@ export async function saveDanhGiaHsdt() {
 
     const inpSo = this.view.getActiveElement('danhgiahsdt-so-baocao');
     const inpNgay = this.view.getActiveElement('danhgiahsdt-ngay-baocao');
+    const inpNgayMoiDoiChieu = this.view.getActiveElement('danhgiahsdt-ngay-moi-doichieu');
+    const inpNgayDoiChieu = this.view.getActiveElement('danhgiahsdt-ngay-doichieu');
+
     const soBaoCao = inpSo?.value.trim() || '';
     const ngayBaoCaoRaw = inpNgay?.value.trim() || '';
     const ngayBaoCao = this.model.convertDMYToYMD(ngayBaoCaoRaw);
+
+    const ngayMoiDoiChieuRaw = inpNgayMoiDoiChieu?.value.trim() || '';
+    const ngayDoiChieuRaw = inpNgayDoiChieu?.value.trim() || '';
+    const ngayMoiDoiChieu = ngayMoiDoiChieuRaw ? this.model.convertDMYToYMD(ngayMoiDoiChieuRaw) : '';
+    const ngayDoiChieu = ngayDoiChieuRaw ? this.model.convertDMYToYMD(ngayDoiChieuRaw) : '';
 
     let hasError = false;
     const errorInputs = [];
@@ -1385,6 +1423,9 @@ export async function saveDanhGiaHsdt() {
         }
     }
 
+    const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+    const hasExtraFields = !isDirectOrSpecial && (!is1G2T || this.currentDanhGiaTab === 'financial');
+
     const activeBlock = {
         soBaoCao,
         ngayBaoCao,
@@ -1394,6 +1435,11 @@ export async function saveDanhGiaHsdt() {
         quyTrinhDanhGia: gt.quyTrinhDanhGia || 'quytrinh1',
         saved: true
     };
+
+    if (hasExtraFields) {
+        activeBlock.ngayMoiDoiChieu = ngayMoiDoiChieu;
+        activeBlock.ngayDoiChieu = ngayDoiChieu;
+    }
 
     const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
     if (is1G2T) {

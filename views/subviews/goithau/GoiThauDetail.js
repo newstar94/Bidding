@@ -1138,6 +1138,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                     </div>
+                    <div id="danhgiahsdt-extra-fields-container" style="display: none; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
+                        <div class="form-group">
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày mời đối chiếu tài liệu/Thương thảo</label>
+                            <input type="text" id="danhgiahsdt-ngay-moi-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày đối chiếu tài liệu/Thương thảo</label>
+                            <input type="text" id="danhgiahsdt-ngay-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
+                        </div>
+                    </div>
                     <div id="danhgiahsdt-quytrinh-container" style="display:none; margin-bottom: 20px; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); align-items: center; gap: 24px; flex-wrap: wrap;">
                         <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Quy trình đánh giá:</span>
                         <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main);">
@@ -1197,6 +1207,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày báo cáo đánh giá <span class="required">*</span></label>
                             <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-date" required placeholder="dd/MM/yyyy">
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
+                        </div>
+                    </div>
+                    <div id="danhgiahsdt-extra-fields-container" style="display: none; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
+                        <div class="form-group">
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày mời đối chiếu tài liệu/Thương thảo</label>
+                            <input type="text" id="danhgiahsdt-ngay-moi-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày đối chiếu tài liệu/Thương thảo</label>
+                            <input type="text" id="danhgiahsdt-ngay-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
                     </div>
 

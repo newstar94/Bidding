@@ -478,6 +478,8 @@ async def list_word_mappings_api(request):
                 ('hieu_luc_dam_bao_du_thau', 'hieu_luc_dam_bao_du_thau', 'Hiệu lực bảo đảm dự thầu (ngày)'),
                 ('phuong_phap_danh_gia', 'phuong_phap_danh_gia', 'Phương pháp đánh giá hồ sơ dự thầu (HSDT)'),
                 ('trong_so_ky_thuat', 'trong_so_ky_thuat', 'Trọng số điểm kỹ thuật (%)'),
+                ('ngay_moi_doi_chieu', 'ngay_moi_doi_chieu', 'Ngày mời đối chiếu tài liệu/Thương thảo'),
+                ('ngay_doi_chieu', 'ngay_doi_chieu', 'Ngày đối chiếu tài liệu/Thương thảo'),
                 ('is_thuoc', 'is_thuoc_mua_sam_tap_trung', 'Thuộc danh mục mua sắm tập trung (0/1)'),
                 ('yeu_cau_tham_dinh_hsmt', 'yeu_cau_tham_dinh_hsmt', 'Yêu cầu thẩm định HSMT (Có/Không)'),
                 ('so_bao_cao_tham_dinh_hsmt', 'so_bao_cao_tham_dinh_hsmt', 'Số báo cáo thẩm định HSMT'),

@@ -42,6 +42,37 @@ def parse_json_fields(row_dict):
             row_dict[col] = [] if col != "thong_tin_thiet_bi_cuoi" else {}
     return row_dict
 
+def extract_evaluation_dates(pkg):
+    if not pkg:
+        return pkg
+    metadata_str = pkg.get('danh_gia_hsdt_metadata')
+    if metadata_str and isinstance(metadata_str, str):
+        try:
+            meta = json.loads(metadata_str)
+            if meta:
+                # If 1G2T, we get it from the financial sub-object
+                if meta.get('is1G2T') or 'financial' in meta:
+                    fin = meta.get('financial', {}) or {}
+                    ngay_moi_doichieu = fin.get('ngayMoiDoiChieu')
+                    ngay_doichieu = fin.get('ngayDoiChieu')
+                else:
+                    ngay_moi_doichieu = meta.get('ngayMoiDoiChieu')
+                    ngay_doichieu = meta.get('ngayDoiChieu')
+                
+                # Format to DD/MM/YYYY if YYYY-MM-DD
+                def format_date(d_str):
+                    if d_str and '-' in d_str:
+                        parts = d_str.split('-')
+                        if len(parts) == 3:
+                            return f"{parts[2]}/{parts[1]}/{parts[0]}"
+                    return d_str or ''
+                
+                pkg['ngay_moi_doi_chieu'] = format_date(ngay_moi_doichieu)
+                pkg['ngay_doi_chieu'] = format_date(ngay_doichieu)
+        except Exception:
+            pass
+    return pkg
+
 def build_plan_context(plan_id, user_id, org_name):
     """Truy vấn CSDL để xây dựng ngữ cảnh đầy đủ phục vụ xuất file Word Kế hoạch LCNT."""
     conn = database.get_connection()
@@ -82,6 +113,8 @@ def build_plan_context(plan_id, user_id, org_name):
 
     cursor.execute("SELECT * FROM goi_thau WHERE ke_hoach_id = ? AND owner_id = ?", (plan_id, org_name))
     goi_thau_list = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
+    for gt in goi_thau_list:
+        extract_evaluation_dates(gt)
     conn.close()
 
     unified_context = {
@@ -109,6 +142,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
         conn.close()
         raise ValueError(f"Package with id {package_id} not found")
     pkg = parse_json_fields(dict(row_pkg))
+    extract_evaluation_dates(pkg)
 
     plan = {}
     investor_name = '--'
@@ -150,6 +184,8 @@ def build_report_context(package_id, user_id, org_name, type_param):
     root_id = id_goc if (id_goc and id_goc.strip()) else package_id
     cursor.execute("SELECT * FROM goi_thau WHERE owner_id = ? AND (id_goc = ? OR id = ?) ORDER BY CAST(phien_ban AS INTEGER) ASC", (org_name, root_id, root_id))
     goi_thau_versions = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
+    for v in goi_thau_versions:
+        extract_evaluation_dates(v)
 
     contract_data = {}
     if type_param == 'contract':
