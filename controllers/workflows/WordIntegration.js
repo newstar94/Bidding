@@ -1,4 +1,6 @@
 import { authFetchDownload } from '../utils/workflow_helpers.js';
+import { makeSearchableSelect } from '../utils/PartnerHelpers.js';
+
 export function setupWordTemplatesEvents() {
     const templateInput = document.getElementById('word-file-input') || document.getElementById('word-template-file-input');
     if (templateInput) {
@@ -211,6 +213,58 @@ export function setupWordTemplatesEvents() {
             { value: 'gia_ca', label: 'Giá gói dịch vụ' },
             { value: 'han_muc_nhan_su', label: 'Hạn mức nhân sự tối đa' },
             { value: 'mo_ta', label: 'Mô tả chi tiết gói' }
+        ],
+        'yeu_cau_lam_ro': [
+            { value: 'thoi_gian_yeu_cau', label: 'Thời gian yêu cầu làm rõ' },
+            { value: 'noi_dung_yeu_cau', label: 'Nội dung yêu cầu làm rõ' }
+        ],
+        'tra_loi_lam_ro': [
+            { value: 'thoi_gian_tra_loi', label: 'Thời gian trả lời làm rõ' },
+            { value: 'noi_dung_tra_loi', label: 'Nội dung trả lời làm rõ' }
+        ],
+        'phan_lo': [
+            { value: 'ma_phan_lo', label: 'Mã phân lô' },
+            { value: 'ten_phan_lo', label: 'Tên phân lô' },
+            { value: 'gia_tri_phan_lo', label: 'Giá trị phân lô' },
+            { value: 'nha_thau_trung', label: 'Nhà thầu trúng thầu phân lô' },
+            { value: 'thoi_gian_thuc_hien', label: 'Thời gian thực hiện phân lô' }
+        ],
+        'tuy_chon_mua_them': [
+            { value: 'hang_muc', label: 'Hạng mục mua thêm' },
+            { value: 'don_vi', label: 'Đơn vị tính mua thêm' },
+            { value: 'so_luong', label: 'Số lượng mua thêm' },
+            { value: 'ty_le', label: 'Tỷ lệ mua thêm' },
+            { value: 'gia_tri_uoc_tinh', label: 'Giá trị ước tính mua thêm' }
+        ],
+        'gia_han': [
+            { value: 'thoi_gian_truoc', label: 'Thời gian trước gia hạn' },
+            { value: 'thoi_gian_sau', label: 'Thời gian sau gia hạn' },
+            { value: 'ngay_gia_han', label: 'Ngày quyết định gia hạn' },
+            { value: 'ly_do', label: 'Lý do gia hạn' }
+        ],
+        'thanh_vien_lien_danh': [
+            { value: 'ten_tv', label: 'Tên thành viên' },
+            { value: 'mst_tv', label: 'Mã số thuế thành viên' },
+            { value: 'vai_tro_tv', label: 'Vai trò thành viên' },
+            { value: 'nguoi_dai_dien_tv', label: 'Người đại diện thành viên' },
+            { value: 'dia_chi_tv', label: 'Địa chỉ thành viên' },
+            { value: 'so_tai_khoan_tv', label: 'Số tài khoản thành viên' },
+            { value: 'noi_mo_tai_khoan_tv', label: 'Nơi mở tài khoản thành viên' }
+        ],
+        'cv_da_thuc_hien': [
+            { value: 'ten_cong_viec', label: 'Tên công việc' },
+            { value: 'gia_tri', label: 'Giá trị công việc' },
+            { value: 'don_vi_thuc_hien', label: 'Đơn vị thực hiện' },
+            { value: 'van_ban_phe_duyet', label: 'Văn bản phê duyệt' }
+        ],
+        'cv_khong_ap_dung': [
+            { value: 'ten_cong_viec', label: 'Tên công việc' },
+            { value: 'gia_tri', label: 'Giá trị công việc' },
+            { value: 'don_vi_thuc_hien', label: 'Đơn vị thực hiện' }
+        ],
+        'cv_chua_du_dieu_kien': [
+            { value: 'ten_cong_viec', label: 'Tên công việc' },
+            { value: 'gia_tri', label: 'Giá trị công việc' }
         ]
     };
 
@@ -218,6 +272,14 @@ export function setupWordTemplatesEvents() {
     const columnSelect = document.getElementById('wm-source-column');
     const formWm = document.getElementById('form-word-mapping');
     const cancelWmBtn = document.getElementById('btn-wm-cancel');
+
+    const formWml = document.getElementById('form-word-list-mapping');
+    const cancelWmlBtn = document.getElementById('btn-wml-cancel');
+    const wmlTableSelect = document.getElementById('wml-source-table');
+
+    if (tableSelect) makeSearchableSelect(tableSelect, 'Tìm kiếm thực thể...');
+    if (columnSelect) makeSearchableSelect(columnSelect, 'Chọn hoặc tìm kiếm trường thông tin...');
+    if (wmlTableSelect) makeSearchableSelect(wmlTableSelect, 'Tìm kiếm danh sách...');
 
     if (tableSelect && columnSelect) {
         tableSelect.addEventListener('change', (e) => {
@@ -251,8 +313,24 @@ export function setupWordTemplatesEvents() {
         }
     };
 
+    const resetWmlForm = () => {
+        if (formWml) {
+            formWml.reset();
+            document.getElementById('wml-id').value = '';
+            if (cancelWmlBtn) cancelWmlBtn.style.display = 'none';
+            const submitBtn = formWml.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Lưu danh sách';
+                lucide.createIcons({ root: submitBtn });
+            }
+        }
+    };
+
     if (cancelWmBtn) {
         cancelWmBtn.addEventListener('click', resetWmForm);
+    }
+    if (cancelWmlBtn) {
+        cancelWmlBtn.addEventListener('click', resetWmlForm);
     }
 
     if (formWm) {
@@ -285,10 +363,55 @@ export function setupWordTemplatesEvents() {
         });
     }
 
+    if (formWml) {
+        formWml.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('wml-id').value;
+            const tenBien = document.getElementById('wml-ten-bien').value.trim();
+            const sourceTable = document.getElementById('wml-source-table').value;
+            const sourceColumn = ""; // Empty indicates a list mapping
+
+            if (!tenBien || !sourceTable) return;
+
+            try {
+                const res = await fetch('/api/word-mappings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, tenBien, sourceTable, sourceColumn })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    resetWmlForm();
+                    await this.loadWordMappings();
+                } else {
+                    await this.view.customAlert('Lỗi lưu danh sách', data.error || 'Lỗi khi lưu biến danh sách.', 'x-circle');
+                }
+            } catch (err) {
+                console.error(err);
+                await this.view.customAlert('Lỗi kết nối', 'Không thể kết nối máy chủ.', 'x-circle');
+            }
+        });
+    }
+
     // Register global edit/delete handlers on window for HTML onclick compatibility
     window.editWordMapping = (id) => {
         const m = (this.model.state.wordMappings || []).find(x => x.id === id);
         if (!m) return;
+
+        // Check if it is a list mapping
+        if (!m.sourceColumn || m.sourceColumn === '*') {
+            document.getElementById('wml-id').value = m.id;
+            document.getElementById('wml-ten-bien').value = m.tenBien;
+            document.getElementById('wml-source-table').value = m.sourceTable;
+            if (cancelWmlBtn) cancelWmlBtn.style.display = 'inline-block';
+            
+            const submitBtn = formWml.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Cập nhật';
+                lucide.createIcons({ root: submitBtn });
+            }
+            return;
+        }
 
         document.getElementById('wm-id').value = m.id;
         document.getElementById('wm-ten-bien').value = m.tenBien;

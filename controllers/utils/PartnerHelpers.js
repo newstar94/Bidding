@@ -143,6 +143,7 @@ export function makeSearchableSelect(select, placeholder) {
     // Create options container
     const optionsList = document.createElement('ul');
     optionsList.className = 'custom-select-options';
+    optionsList.setAttribute('data-parent', select.id);
 
     wrapper.appendChild(input);
     wrapper.appendChild(arrow);
@@ -154,20 +155,55 @@ export function makeSearchableSelect(select, placeholder) {
     // Toggle dropdown visibility
     const toggleDropdown = (show) => {
         if (input.disabled) return;
+        
+        const wasOpen = wrapper.classList.contains('open');
+        let nextOpen = wasOpen;
         if (show === undefined) {
-            wrapper.classList.toggle('open');
-        } else if (show) {
-            wrapper.classList.add('open');
+            nextOpen = !wasOpen;
         } else {
-            wrapper.classList.remove('open');
+            nextOpen = show;
         }
 
-        if (wrapper.classList.contains('open')) {
+        if (nextOpen === wasOpen) return;
+
+        if (nextOpen) {
+            // Close other open custom selects
+            document.dispatchEvent(new Event('click'));
+            
+            wrapper.classList.add('open');
+            document.body.appendChild(optionsList);
+            optionsList.style.display = 'block';
+            optionsList.style.zIndex = '999999';
+
+            // Absolute positioning relative to input trigger
+            const rect = input.getBoundingClientRect();
+            const scrollX = window.scrollX || window.pageXOffset;
+            const scrollY = window.scrollY || window.pageYOffset;
+
+            optionsList.style.position = 'absolute';
+            optionsList.style.minWidth = rect.width + 'px';
+            optionsList.style.left = (rect.left + scrollX) + 'px';
+
+            const dropdownHeight = optionsList.offsetHeight || 200;
+            const spaceBelow = window.innerHeight - rect.bottom;
+
+            if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
+                wrapper.classList.add('drop-up');
+                optionsList.style.top = (rect.top + scrollY - dropdownHeight - 4) + 'px';
+            } else {
+                wrapper.classList.remove('drop-up');
+                optionsList.style.top = (rect.bottom + scrollY + 4) + 'px';
+            }
+
             // Scroll to the selected item if any
             const selectedItem = optionsList.querySelector('.selected');
             if (selectedItem) {
                 selectedItem.scrollIntoView({ block: 'nearest' });
             }
+        } else {
+            wrapper.classList.remove('open');
+            optionsList.style.display = 'none';
+            wrapper.appendChild(optionsList);
         }
     };
 
@@ -220,7 +256,7 @@ export function makeSearchableSelect(select, placeholder) {
 
     // Close dropdown when clicking outside
     document.addEventListener('click', (e) => {
-        if (!wrapper.contains(e.target)) {
+        if (!wrapper.contains(e.target) && !optionsList.contains(e.target)) {
             toggleDropdown(false);
             // Reset input text to current selection name
             const selectedOpt = select.options[select.selectedIndex];
@@ -231,6 +267,17 @@ export function makeSearchableSelect(select, placeholder) {
             if (noResultsMsg) noResultsMsg.remove();
         }
     });
+
+    // Close on scroll to prevent floating dropdowns
+    document.addEventListener('scroll', (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('custom-select-options')) return;
+        if (wrapper.classList.contains('open')) {
+            toggleDropdown(false);
+            const selectedOpt = select.options[select.selectedIndex];
+            input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : '';
+            optionsList.querySelectorAll('li').forEach(item => item.style.display = '');
+        }
+    }, { capture: true, passive: true });
 
     // Keep custom input & selection highlighted state in sync with programmatic value modifications
     select.addEventListener('change', () => {
@@ -273,8 +320,9 @@ export function makeSearchableSelect(select, placeholder) {
 
 function refreshCustomOptions(select, wrapper) {
     const input = wrapper.querySelector('.custom-select-search');
-    const optionsList = wrapper.querySelector('.custom-select-options');
+    const optionsList = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`) || wrapper.querySelector('.custom-select-options');
 
+    if (!optionsList) return;
     input.disabled = select.disabled;
 
     // Clear options
@@ -303,6 +351,8 @@ function refreshCustomOptions(select, wrapper) {
             input.value = opt.value ? opt.text : '';
 
             wrapper.classList.remove('open');
+            optionsList.style.display = 'none';
+            wrapper.appendChild(optionsList);
         });
 
         optionsList.appendChild(li);

@@ -1,0 +1,28 @@
+HƯỚNG DẪN THỰC HIỆN THỐNG KÊ ĐỘNG TRONG BIỂU MẪU WORD (.DOCX)
+
+1. Tên phương pháp thực hiện
+Phương pháp: Sử dụng Cú pháp lập trình động Jinja2 kết hợp với cấu trúc Đối tượng Namespace (Namespace Object) và Từ điển (Dictionary) của Python trực tiếp trong biểu mẫu Word.
+2. Nguyên lý hoạt động
+Khi xuất báo cáo, hệ thống sẽ đẩy dữ liệu thô dưới dạng danh sách (ví dụ: Danh_Sach_Phan_Lo). Cú pháp Jinja2 cho phép chúng ta duyệt qua danh sách này, gom nhóm theo tên nhà thầu, và cộng dồn các giá trị số thô (chưa định dạng) để hiển thị kết quả tổng hợp mà không cần lập trình cứng trên cơ sở dữ liệu.
+3. Mã cú pháp mẫu (Sao chép trực tiếp vào file Word)
+Đặt đoạn mã sau đây tại vị trí bạn muốn tính toán và hiển thị bảng thống kê:
+{% set ns = namespace(thong_ke={}) %}
+{% for pl in Danh_Sach_Phan_Lo %}
+    {% set nt = pl.Nha_Thau_Trung %}
+    {% set gia_tri = pl.Gia_Tri_So | float %}
+    
+    {% if nt not in ns.thong_ke %}
+        {% set _ = ns.thong_ke.update({nt: gia_tri}) %}
+    {% else %}
+        {% set _ = ns.thong_ke.update({nt: ns.thong_ke[nt] + gia_tri}) %}
+    {% endif %}
+{% endfor %}
+
+BẢNG TỔNG HỢP GIÁ TRỊ TRÚNG THẦU THEO TỪNG NHÀ THẦU:
+{% for nha_thau, tong_gia_tri in ns.thong_ke.items() %}
+- Nhà thầu: {{ nha_thau }} -> Tổng giá trị trúng thầu: {{ tong_gia_tri }} VND
+{% endfor %}
+4. Các lưu ý quan trọng để thực hiện thành công
+Định dạng dữ liệu số: Phép tính cộng (+) chỉ thực hiện được với số nguyên/số thực (ví dụ: 1500000000), không cộng được với chuỗi có chữ (ví dụ: '1.500.000.000 VND'). Hãy đảm bảo biến sử dụng (như Gia_Tri_So) là số nguyên thô.
+Ký hiệu thẻ Jinja2: Các lệnh logic dùng thẻ {% ... %}, các thẻ in giá trị ra văn bản dùng thẻ {{ ... }}.
+Dấu gạch dưới {% set _ = ... %}: Đây là cú pháp đặc biệt để thực hiện lệnh cập nhật từ điển (dict.update) mà không hiển thị kết quả thừa ra ngoài giao diện văn bản Word.

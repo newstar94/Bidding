@@ -38,28 +38,37 @@
                             </div>
                             <div class="form-group">
                                 <label
-                                    style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Bảng
-                                    dữ liệu nguồn</label>
+                                    style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Thực
+                                    thể</label>
                                 <select id="wm-source-table" class="form-control" required>
-                                    <option value="">-- Chọn bảng --</option>
+                                    <option value="">-- Chọn thực thể --</option>
                                     <option value="chu_dau_tu">Chủ đầu tư</option>
                                     <option value="ke_hoach_lcnt">Kế hoạch LCNT</option>
                                     <option value="goi_thau">Gói thầu</option>
-                                    <option value="nha_thau">Nhà thầu trúng thầu</option>
+                                    <option value="nha_thau">Nhà thầu</option>
                                     <option value="hop_dong">Hợp đồng</option>
                                     <option value="chuyen_gia">Chuyên gia</option>
                                     <option value="thong_tin_mo_thau">Thông tin mở thầu</option>
                                     <option value="tai_khoan">Tài khoản cá nhân</option>
                                     <option value="to_chuc">Tổ chức / Doanh nghiệp</option>
                                     <option value="goi_dich_vu">Gói dịch vụ</option>
+                                    <option value="yeu_cau_lam_ro">Yêu cầu làm rõ</option>
+                                    <option value="tra_loi_lam_ro">Trả lời làm rõ</option>
+                                    <option value="phan_lo">Phân lô</option>
+                                    <option value="tuy_chon_mua_them">Tùy chọn mua thêm</option>
+                                    <option value="gia_han">Gia hạn gói thầu</option>
+                                    <option value="thanh_vien_lien_danh">Thành viên liên danh</option>
+                                    <option value="cv_da_thuc_hien">Công việc đã thực hiện</option>
+                                    <option value="cv_khong_ap_dung">Công việc không áp dụng LCNT</option>
+                                    <option value="cv_chua_du_dieu_kien">Công việc chưa đủ điều kiện LCNT</option>
                                 </select>
                             </div>
                             <div class="form-group">
                                 <label
-                                    style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Cột
-                                    dữ liệu lấy giá trị</label>
+                                    style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Trường
+                                    thông tin</label>
                                 <select id="wm-source-column" class="form-control" required disabled>
-                                    <option value="">-- Chọn cột --</option>
+                                    <option value="">-- Chọn trường --</option>
                                 </select>
                             </div>
                             <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
@@ -73,7 +82,127 @@
                 </div>
             </div>
 
-            <!-- Top Right: Word Template Card -->
+            <!-- Top Right: Custom List Variable Mappings Form -->
+            <div class="dashboard-card" style="height: 100%;">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="card-title">Cấu hình biến danh sách</h3>
+                    <i data-lucide="layers" class="text-muted"></i>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3" style="font-size: 0.85rem; margin-bottom: 12px;">
+                        Thiết lập vòng lặp dạng danh sách <code>{#danh_sách}</code> ... <code>{/danh_sách}</code> trong
+                        Word.
+                    </p>
+
+                    <form id="form-word-list-mapping"
+                        style="padding: 16px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                        <h5 style="margin: 0 0 12px 0; font-size: 0.88rem; font-weight: 700; color: var(--text-main);">
+                            Thêm / Cập nhật vòng lặp danh sách</h5>
+                        <input type="hidden" id="wml-id">
+                        <div class="form-grid" style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                            <div class="form-group">
+                                <label
+                                    style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Tên
+                                    biến danh sách (Ví dụ: ds_goi_thau)</label>
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <span
+                                        style="position: absolute; left: 8px; font-weight: bold; color: var(--primary);">{#</span>
+                                    <input type="text" id="wml-ten-bien" class="form-control" placeholder="ds_goi_thau"
+                                        style="padding-left: 26px; padding-right: 18px; font-weight: 600;" required>
+                                    <span
+                                        style="position: absolute; right: 8px; font-weight: bold; color: var(--primary);">}</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label
+                                    style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Danh
+                                    sách nguồn</label>
+                                <select id="wml-source-table" class="form-control" required>
+                                    <option value="">-- Chọn danh sách --</option>
+                                    <option value="goi_thau">Gói thầu / Phiên bản gói thầu</option>
+                                    <option value="nha_thau">Nhà thầu tham dự</option>
+                                    <option value="nha_thau_trung_thau">Nhà thầu trúng thầu</option>
+                                    <option value="nha_thau_truot_thau">Nhà thầu trượt thầu</option>
+                                    <option value="chuyen_gia">Danh sách chuyên gia (toàn hệ thống)</option>
+                                    <option value="to_chuyen_gia">Tổ chuyên gia (của Gói thầu)</option>
+                                    <option value="to_tham_dinh">Tổ thẩm định (của Gói thầu)</option>
+                                    <option value="thong_tin_mo_thau">Thông tin mở thầu</option>
+                                    <option value="ke_hoach_lcnt">Kế hoạch LCNT</option>
+                                    <option value="hop_dong">Hợp đồng</option>
+                                    <option value="chu_dau_tu">Chủ đầu tư / Bên mời thầu</option>
+                                    <option value="tai_khoan">Tài khoản / Nhân sự</option>
+                                    <option value="to_chuc">Tổ chức / Doanh nghiệp</option>
+                                    <option value="goi_dich_vu">Gói dịch vụ</option>
+                                    <option value="phan_lo_list">Danh sách phân lô (trong Gói thầu)</option>
+                                    <option value="tuy_chon_mua_them_list">Tùy chọn mua thêm (trong Gói thầu)</option>
+                                    <option value="gia_han_list">Danh sách gia hạn (trong Gói thầu)</option>
+                                    <option value="yeu_cau_lam_ro_list">Danh sách yêu cầu làm rõ (trong Gói thầu)
+                                    </option>
+                                    <option value="tra_loi_lam_ro_list">Danh sách trả lời làm rõ (trong Gói thầu)
+                                    </option>
+                                    <option value="awarded_phan_lo_list">Danh sách trúng thầu theo phân lô (trong Gói
+                                        thầu)</option>
+                                    <option value="thanh_vien_lien_danh">Thành viên liên danh (trong Nhà thầu)</option>
+                                    <option value="cv_da_thuc_hien">Công việc đã thực hiện (trong Kế hoạch LCNT)
+                                    </option>
+                                    <option value="cv_khong_ap_dung">Công việc không áp dụng (trong Kế hoạch LCNT)
+                                    </option>
+                                    <option value="cv_chua_du_dieu_kien">Công việc chưa đủ điều kiện (trong Kế hoạch
+                                        LCNT)</option>
+                                    <option value="goi_thau_ids">Danh sách ID gói thầu liên kết (trong Hợp đồng)
+                                    </option>
+                                </select>
+                            </div>
+                            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+                                <button type="button" id="btn-wml-cancel" class="btn btn-outline"
+                                    style="display: none;">Hủy</button>
+                                <button type="submit" class="btn btn-primary"><i data-lucide="save"
+                                        style="width: 14px; height: 14px;"></i> Lưu danh sách</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row: 2 Columns Grid Layout -->
+        <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; align-items: start;">
+            <!-- Bottom Left: Merged Data Dictionary & Mapped Variables -->
+            <div class="dashboard-card" style="height: 100%;">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="card-title">Từ điển dữ liệu & Danh sách biến đã ánh xạ</h3>
+                    <i data-lucide="book-open" class="text-muted"></i>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3" style="font-size: 0.82rem; margin-bottom: 12px;">
+                        Chọn nhóm biến bên dưới để xem danh sách biến hệ thống hoặc quản lý các biến đã được ánh xạ tùy
+                        chỉnh.
+                    </p>
+
+                    <div class="select-wrapper mb-3" style="max-width: 350px; margin-bottom: 12px;">
+                        <select id="dictionary-group-select" class="form-control">
+                            <option value="global">1. Các biến đơn lẻ</option>
+                            <option value="custom_lists">2. Các biến danh sách</option>
+                        </select>
+                    </div>
+
+                    <div class="table-container"
+                        style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; max-height: 400px;">
+                        <table class="data-table" id="dictionary-table" style="min-width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 30%;">Mã biến</th>
+                                    <th style="width: 50%;">Ý nghĩa / Nguồn ánh xạ</th>
+                                    <th class="text-right" style="width: 20%;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dictionary-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Right: Word Template Card -->
             <div class="dashboard-card" style="height: 100%;">
                 <div class="card-header">
                     <h3 class="card-title">Quản lý biểu mẫu Word (.docx)</h3>
@@ -96,7 +225,7 @@
                     <h4 style="font-size: 0.88rem; font-weight: 700; margin-bottom: 8px;">Danh sách biểu mẫu hệ thống
                     </h4>
                     <div class="table-container"
-                        style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-height: 160px; overflow-y: auto;">
+                        style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); max-height: 200px; overflow-y: auto;">
                         <table class="data-table" id="word-templates-table" style="font-size: 0.8rem;">
                             <thead>
                                 <tr>
@@ -114,45 +243,6 @@
                             </tbody>
                         </table>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Bottom Row: 1 Column Layout (Merged Data Dictionary & Mapped Variables) -->
-        <div class="dashboard-card" style="width: 100%;">
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <h3 class="card-title">Từ điển dữ liệu & Danh sách biến đã ánh xạ (Data Dictionary & Mapped Variables)
-                </h3>
-                <i data-lucide="book-open" class="text-muted"></i>
-            </div>
-            <div class="card-body">
-                <p class="text-muted mb-3" style="font-size: 0.82rem; margin-bottom: 12px;">
-                    Chọn nhóm biến bên dưới để xem danh sách biến hệ thống hoặc quản lý các biến đã được ánh xạ tùy
-                    chỉnh.
-                </p>
-
-                <div class="select-wrapper mb-3" style="max-width: 350px; margin-bottom: 12px;">
-                    <select id="dictionary-group-select" class="form-control">
-                        <option value="global">1. Các biến đơn lẻ (1-1) - Đã ánh xạ</option>
-                        <option value="experts">2. Vòng lặp Chuyên gia (1-N)</option>
-                        <option value="contractors">3. Vòng lặp Nhà thầu (1-N)</option>
-                        <option value="phanlo">4. Vòng lặp Phân lô (1-N)</option>
-                        <option value="tuychonmuathem">5. Vòng lặp Mua thêm (1-N)</option>
-                    </select>
-                </div>
-
-                <div class="table-container"
-                    style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; max-height: 400px;">
-                    <table class="data-table" id="dictionary-table" style="min-width: 100%;">
-                        <thead>
-                            <tr>
-                                <th style="width: 30%;">Mã biến</th>
-                                <th style="width: 50%;">Ý nghĩa / Nguồn ánh xạ</th>
-                                <th class="text-right" style="width: 20%;">Thao tác</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dictionary-table-body"></tbody>
-                    </table>
                 </div>
             </div>
         </div>

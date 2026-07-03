@@ -13,6 +13,218 @@ from helpers import (
 )
 import custom_exporter
 import services.docx_service as docx_service
+import uuid
+
+def enrich_context_with_filtered_bidders(context):
+    bids = context.get('nha_thau', [])
+    if not isinstance(bids, list):
+        bids = []
+        
+    pkg = context.get('goi_thau', {})
+    nha_thau_trung_thau_id = pkg.get('nha_thau_trung_thau_id') if isinstance(pkg, dict) else None
+    
+    winning_bids = []
+    failed_bids = []
+    for b in bids:
+        if not isinstance(b, dict):
+            continue
+        is_winner = False
+        if nha_thau_trung_thau_id and b.get('nha_thau_id') == nha_thau_trung_thau_id:
+            is_winner = True
+        elif b.get('danh_gia_ket_luan') in ('Trúng thầu', 'Đề nghị trúng thầu', 'Đạt'):
+            is_winner = True
+            
+        if is_winner:
+            winning_bids.append(b)
+        else:
+            failed_bids.append(b)
+            
+    context['nha_thau_trung_thau'] = winning_bids
+    context['nha_thau_truot_thau'] = failed_bids
+
+def apply_custom_mappings(context, mappings_rows):
+    from helpers import VietnameseFloat
+    # Mapping table name to context keys
+    table_to_context = {
+        'ke_hoach_lcnt': ['ke_hoach'],
+        'goi_thau': ['goi_thau', 'goi_thau_versions', 'goi_thau'],
+        'nha_thau': ['nha_thau'],
+        'nha_thau_trung_thau': ['nha_thau_trung_thau'],
+        'nha_thau_truot_thau': ['nha_thau_truot_thau'],
+        'chu_dau_tu': ['chu_dau_tu'],
+        'hop_dong': ['hop_dong'],
+        'tai_khoan': ['user'],
+        'to_chuc': ['to_chuc'],
+        'goi_dich_vu': ['goi_dich_vu']
+    }
+    
+    # helper to format values
+    def format_mapped_value(val, col_name):
+        if val is None:
+            return '--'
+        if isinstance(val, (int, float)) and ('gia' in col_name or 'tong_muc' in col_name or 'gia_tri' in col_name or 'tong_tien' in col_name):
+            try:
+                return f'{VietnameseFloat(val)}'
+            except Exception:
+                pass
+        return val
+
+    # 1. First pass: Handle custom list mappings (where source_column is empty/null or '*')
+    for ten_bien, src_table, src_column in mappings_rows:
+        ten_bien = ten_bien.lower()
+        if not src_column or src_column == '*' or src_column == '':
+            ctx_keys = table_to_context.get(src_table, [])
+            if ctx_keys:
+                for key in ctx_keys:
+                    if key in context and isinstance(context[key], list):
+                        context[ten_bien] = [dict(item) for item in context[key]]
+                        break
+                    elif key in context and isinstance(context[key], dict):
+                        context[ten_bien] = [dict(context[key])]
+                        break
+            else:
+                # Handle sub-lists or nested attributes (e.g. phan_lo_list, thanh_vien_lien_danh)
+                found = False
+                if src_table in context and isinstance(context[src_table], list):
+                    context[ten_bien] = list(context[src_table])
+                    found = True
+                if not found:
+                    for ctx_val in context.values():
+                        if isinstance(ctx_val, dict) and src_table in ctx_val:
+                            val = ctx_val[src_table]
+                            if isinstance(val, list):
+                                context[ten_bien] = list(val)
+                                found = True
+                                break
+                        elif isinstance(ctx_val, list):
+                            for item in ctx_val:
+                                if isinstance(item, dict) and src_table in item:
+                                    val = item[src_table]
+                                    if isinstance(val, list):
+                                        context[ten_bien] = list(val)
+                                        found = True
+                                        break
+                            if found:
+                                break
+
+    # 2. Second pass: Handle custom field mappings (where source_column is specified)
+    for ten_bien, src_table, src_column in mappings_rows:
+        ten_bien = ten_bien.lower()
+        if src_column and src_column != '*' and src_column != '':
+            # Group related contractor/bid tables to self-identify contractor type
+            entity_keys = {
+                'ke_hoach_lcnt': ['ke_hoach'],
+                'goi_thau': ['goi_thau', 'goi_thau_versions'],
+                'nha_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
+                'thong_tin_mo_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
+                'nha_thau_trung_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
+                'nha_thau_truot_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
+                'chuyen_gia': ['chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'],
+                'to_chuyen_gia': ['chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'],
+                'to_tham_dinh': ['chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'],
+                'yeu_cau_lam_ro': ['yeu_cau_lam_ro_list'],
+                'yeu_cau_lam_ro_list': ['yeu_cau_lam_ro_list'],
+                'tra_loi_lam_ro': ['tra_loi_lam_ro_list'],
+                'tra_loi_lam_ro_list': ['tra_loi_lam_ro_list'],
+                'phan_lo': ['phan_lo_list', 'awarded_phan_lo_list'],
+                'phan_lo_list': ['phan_lo_list', 'awarded_phan_lo_list'],
+                'awarded_phan_lo_list': ['phan_lo_list', 'awarded_phan_lo_list'],
+                'tuy_chon_mua_them': ['tuy_chon_mua_them_list'],
+                'tuy_chon_mua_them_list': ['tuy_chon_mua_them_list'],
+                'gia_han': ['gia_han_list'],
+                'gia_han_list': ['gia_han_list'],
+                'thanh_vien_lien_danh': ['thanh_vien_lien_danh'],
+                'cv_da_thuc_hien': ['cv_da_thuc_hien'],
+                'cv_da_thuc_hien_list': ['cv_da_thuc_hien'],
+                'cv_khong_ap_dung': ['cv_khong_ap_dung'],
+                'cv_khong_ap_dung_list': ['cv_khong_ap_dung'],
+                'cv_chua_du_dieu_kien': ['cv_chua_du_dieu_kien'],
+                'cv_chua_du_dieu_kien_list': ['cv_chua_du_dieu_kien'],
+                'chu_dau_tu': ['chu_dau_tu'],
+                'hop_dong': ['hop_dong'],
+                'tai_khoan': ['user'],
+                'to_chuc': ['to_chuc'],
+                'goi_dich_vu': ['goi_dich_vu']
+            }
+            
+            primary_keys = entity_keys.get(src_table, [])
+            if src_table in ('nha_thau', 'thong_tin_mo_thau', 'nha_thau_trung_thau', 'nha_thau_truot_thau'):
+                primary_keys = list(set(entity_keys['nha_thau'] + entity_keys['thong_tin_mo_thau']))
+            elif src_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'):
+                primary_keys = list(set(entity_keys['chuyen_gia']))
+            elif src_table in ('yeu_cau_lam_ro', 'yeu_cau_lam_ro_list'):
+                primary_keys = ['yeu_cau_lam_ro_list']
+            elif src_table in ('tra_loi_lam_ro', 'tra_loi_lam_ro_list'):
+                primary_keys = ['tra_loi_lam_ro_list']
+            elif src_table in ('phan_lo', 'phan_lo_list', 'awarded_phan_lo_list'):
+                primary_keys = list(set(entity_keys['phan_lo']))
+            elif src_table in ('tuy_chon_mua_them', 'tuy_chon_mua_them_list'):
+                primary_keys = ['tuy_chon_mua_them_list']
+            elif src_table in ('gia_han', 'gia_han_list'):
+                primary_keys = ['gia_han_list']
+            elif src_table == 'thanh_vien_lien_danh':
+                primary_keys = ['thanh_vien_lien_danh']
+            elif src_table in ('cv_da_thuc_hien', 'cv_da_thuc_hien_list'):
+                primary_keys = ['cv_da_thuc_hien']
+            elif src_table in ('cv_khong_ap_dung', 'cv_khong_ap_dung_list'):
+                primary_keys = ['cv_khong_ap_dung']
+            elif src_table in ('cv_chua_du_dieu_kien', 'cv_chua_du_dieu_kien_list'):
+                primary_keys = ['cv_chua_du_dieu_kien']
+            
+            custom_lists = []
+            for l_bien, l_table, l_col in mappings_rows:
+                if not l_col or l_col == '*' or l_col == '':
+                    is_match = (
+                        (l_table == src_table)
+                        or (src_table in ('nha_thau', 'thong_tin_mo_thau', 'nha_thau_trung_thau', 'nha_thau_truot_thau') and l_table in ('nha_thau', 'thong_tin_mo_thau', 'nha_thau_trung_thau', 'nha_thau_truot_thau'))
+                        or (src_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh') and l_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'))
+                        or (src_table in ('yeu_cau_lam_ro', 'yeu_cau_lam_ro_list') and l_table in ('yeu_cau_lam_ro', 'yeu_cau_lam_ro_list'))
+                        or (src_table in ('tra_loi_lam_ro', 'tra_loi_lam_ro_list') and l_table in ('tra_loi_lam_ro', 'tra_loi_lam_ro_list'))
+                        or (src_table in ('phan_lo', 'phan_lo_list', 'awarded_phan_lo_list') and l_table in ('phan_lo', 'phan_lo_list', 'awarded_phan_lo_list'))
+                        or (src_table in ('tuy_chon_mua_them', 'tuy_chon_mua_them_list') and l_table in ('tuy_chon_mua_them', 'tuy_chon_mua_them_list'))
+                        or (src_table in ('gia_han', 'gia_han_list') and l_table in ('gia_han', 'gia_han_list'))
+                        or (src_table == 'thanh_vien_lien_danh' and l_table == 'thanh_vien_lien_danh')
+                        or (src_table in ('cv_da_thuc_hien', 'cv_da_thuc_hien_list') and l_table in ('cv_da_thuc_hien', 'cv_da_thuc_hien_list'))
+                        or (src_table in ('cv_khong_ap_dung', 'cv_khong_ap_dung_list') and l_table in ('cv_khong_ap_dung', 'cv_khong_ap_dung_list'))
+                        or (src_table in ('cv_chua_du_dieu_kien', 'cv_chua_du_dieu_kien_list') and l_table in ('cv_chua_du_dieu_kien', 'cv_chua_du_dieu_kien_list'))
+                    )
+                    if is_match:
+                        custom_lists.append(l_bien.lower())
+            
+            all_keys = list(set(primary_keys + custom_lists))
+            
+            val_found = False
+            resolved_val = None
+            
+            for key in all_keys:
+                if key in context:
+                    target = context[key]
+                    if isinstance(target, list):
+                        for item in target:
+                            if isinstance(item, dict):
+                                val = item.get(src_column)
+                                if val is not None:
+                                    formatted = format_mapped_value(val, src_column)
+                                    item[ten_bien] = formatted
+                                    resolved_val = formatted
+                                    val_found = True
+                    elif isinstance(target, dict):
+                        val = target.get(src_column)
+                        if val is not None:
+                            formatted = format_mapped_value(val, src_column)
+                            target[ten_bien] = formatted
+                            resolved_val = formatted
+                            val_found = True
+                            
+            if val_found:
+                context[ten_bien] = resolved_val
+            else:
+                # Fallback for investor
+                if src_table == 'chu_dau_tu':
+                    if src_column == 'ten_chu_dau_tu':
+                        context[ten_bien] = context.get('investor_name', '--')
+                    elif src_column == 'dia_chi':
+                        context[ten_bien] = context.get('investor_address', '--')
 
 async def export_plan_api(request):
     plan_id = clean_id(request.path_params.get('plan_id'))
@@ -25,49 +237,17 @@ async def export_plan_api(request):
 
         # Build context from service
         unified_context = docx_service.build_plan_context(plan_id, user_id, org_name)
+        enrich_context_with_filtered_bidders(unified_context)
         
         # Load mappings
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE owner_id = ?", (org_name,))
         mappings_rows = cursor.fetchall()
-        
-        row_by_table = {
-            'chu_dau_tu': {'ten_chu_dau_tu': unified_context['investor_name'], 'dia_chi': unified_context['investor_address']},
-            'ke_hoach_lcnt': unified_context['ke_hoach'],
-            'goi_thau': {},
-            'nha_thau': {},
-            'hop_dong': {},
-            'chuyen_gia': {},
-            'thong_tin_mo_thau': {},
-            'mo_thau': {},
-            'tai_khoan': unified_context['user'],
-            'to_chuc': unified_context['to_chuc'],
-            'goi_dich_vu': unified_context['goi_dich_vu']
-        }
-        
-        custom_vars_list = []
-        custom_evaluated_values = {}
-        for m_row in mappings_rows:
-            ten_bien = m_row[0].lower()
-            src_table = m_row[1]
-            src_column = m_row[2]
-            custom_vars_list.append(ten_bien)
-            tbl_data = row_by_table.get(src_table, {})
-            val = tbl_data.get(src_column)
-            if val is None:
-                val = '--'
-            elif isinstance(val, (int, float)) and ('gia' in src_column or 'tong_muc' in src_column or 'gia_tri' in src_column):
-                val = f'{VietnameseFloat(val)}'
-            elif isinstance(val, (int, float)):
-                val = str(val)
-            else:
-                val = str(val)
-            custom_evaluated_values[ten_bien] = val
         conn.close()
-
-        for k, v in custom_evaluated_values.items():
-            unified_context[k] = v
+        
+        apply_custom_mappings(unified_context, mappings_rows)
+        custom_vars_list = [row[0].lower() for row in mappings_rows]
 
         active_tpl = custom_exporter.get_active_template(user_id)
         if active_tpl in ['mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx']:
@@ -101,49 +281,17 @@ async def export_report_api(request):
 
         # Build context from service
         unified_context = docx_service.build_report_context(package_id, user_id, org_name, type_param)
+        enrich_context_with_filtered_bidders(unified_context)
         
         # Load mappings
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE owner_id = ?", (org_name,))
         mappings_rows = cursor.fetchall()
-        
-        row_by_table = {
-            'chu_dau_tu': {'ten_chu_dau_tu': unified_context['investor_name'], 'dia_chi': unified_context['investor_address']},
-            'ke_hoach_lcnt': unified_context['ke_hoach'],
-            'goi_thau': unified_context['goi_thau'],
-            'nha_thau': unified_context['nha_thau'][0] if unified_context['nha_thau'] else {},
-            'hop_dong': unified_context['hop_dong'],
-            'chuyen_gia': {},
-            'thong_tin_mo_thau': {},
-            'mo_thau': {},
-            'tai_khoan': unified_context['user'],
-            'to_chuc': unified_context['to_chuc'],
-            'goi_dich_vu': unified_context['goi_dich_vu']
-        }
-        
-        custom_vars_list = []
-        custom_evaluated_values = {}
-        for m_row in mappings_rows:
-            ten_bien = m_row[0].lower()
-            src_table = m_row[1]
-            src_column = m_row[2]
-            custom_vars_list.append(ten_bien)
-            tbl_data = row_by_table.get(src_table, {})
-            val = tbl_data.get(src_column)
-            if val is None:
-                val = '--'
-            elif isinstance(val, (int, float)) and ('gia' in src_column or 'tong_muc' in src_column or 'gia_tri' in src_column):
-                val = f'{VietnameseFloat(val)}'
-            elif isinstance(val, (int, float)):
-                val = str(val)
-            else:
-                val = str(val)
-            custom_evaluated_values[ten_bien] = val
         conn.close()
-
-        for k, v in custom_evaluated_values.items():
-            unified_context[k] = v
+        
+        apply_custom_mappings(unified_context, mappings_rows)
+        custom_vars_list = [row[0].lower() for row in mappings_rows]
 
         active_tpl = custom_exporter.get_active_template(user_id)
         if type_param == 'contract':
@@ -249,7 +397,14 @@ async def list_word_mappings_api(request):
         rows = cursor.fetchall()
         conn.close()
         
-        mappings = [dict(row) for row in rows]
+        mappings = []
+        for row in rows:
+            r = dict(row)
+            r['tenBien'] = r.get('ten_bien')
+            r['sourceTable'] = r.get('source_table')
+            r['sourceColumn'] = r.get('source_column')
+            r['moTa'] = r.get('mo_ta')
+            mappings.append(r)
         return JSONResponse(mappings)
     except OrgPermissionError as e:
         return JSONResponse({"error": str(e)}, status_code=403)
@@ -265,12 +420,15 @@ async def save_word_mapping_api(request):
         org_name = get_active_org(request, user_id)
         
         data = await request.json()
-        ten_bien = data.get('ten_bien', '').strip().lower()
-        source_table = data.get('source_table', '').strip()
-        source_column = data.get('source_column', '').strip()
-        mo_ta = data.get('mo_ta', '').strip()
+        ten_bien = (data.get('ten_bien') or data.get('tenBien') or '').strip().lower()
+        source_table = (data.get('source_table') or data.get('sourceTable') or '').strip()
+        source_column = (data.get('source_column') or data.get('sourceColumn') or '').strip()
+        mo_ta = (data.get('mo_ta') or data.get('moTa') or '').strip()
         
-        if not ten_bien or not source_table or not source_column:
+        if not source_column:
+            source_column = ""
+            
+        if not ten_bien or not source_table:
             return JSONResponse({"error": "Vui lòng nhập đầy đủ thông tin!"}, status_code=400)
             
         conn = database.get_connection()

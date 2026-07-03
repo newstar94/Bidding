@@ -68,52 +68,7 @@ export function renderDictionary(group) {
 
     const DICTIONARY = {
         global: [],
-        experts: [
-            { code: '{#Danh_Sach_Chuyen_Gia}', desc: 'Bắt đầu vòng lặp tổ chuyên gia' },
-            { code: '{STT}', desc: 'Số thứ tự chuyên gia' },
-            { code: '{/Danh_Sach_Chuyen_Gia}', desc: 'Kết thúc vòng lặp tổ chuyên gia' },
-            { code: '{#Danh_Sach_Tham_Dinh}', desc: 'Bắt đầu vòng lặp tổ thẩm định' },
-            { code: '{STT}', desc: 'Số thứ tự thẩm định viên' },
-            { code: '{/Danh_Sach_Tham_Dinh}', desc: 'Kết thúc vòng lặp tổ thẩm định' }
-        ],
-        contractors: [
-            { code: '{#Danh_Sach_Nha_Thau}', desc: 'Bắt đầu vòng lặp danh sách nhà thầu tham dự' },
-            { code: '{STT}', desc: 'Số thứ tự nhà thầu tham dự' },
-            { code: '{#Thanh_Vien_Lien_Danh}', desc: '(Liên danh) Bắt đầu vòng lặp thành viên liên danh của nhà thầu trúng' },
-            { code: '{Ten_TV}', desc: '(Liên danh) Tên thành viên liên danh' },
-            { code: '{MST_TV}', desc: '(Liên danh) Mã số thuế thành viên liên danh' },
-            { code: '{Vai_Tro_TV}', desc: '(Liên danh) Vai trò thành viên (Liên danh chính / liên danh phụ)' },
-            { code: '{Nguoi_Dai_Dien_TV}', desc: '(Liên danh) Người đại diện thành viên liên danh' },
-            { code: '{Dia_Chi_TV}', desc: '(Liên danh) Địa chỉ thành viên liên danh' },
-            { code: '{So_Tai_Khoan_TV}', desc: '(Liên danh) Số tài khoản thành viên liên danh' },
-            { code: '{Noi_Mo_Tai_Khoan_TV}', desc: '(Liên danh) Nơi mở tài khoản thành viên liên danh' },
-            { code: '{/Thanh_Vien_Lien_Danh}', desc: '(Liên danh) Kết thúc vòng lặp thành viên liên danh' },
-            { code: '{/Danh_Sach_Nha_Thau}', desc: 'Kết thúc vòng lặp nhà thầu' },
-            { code: '{#Danh_Sach_Nha_Thau_Truot}', desc: 'Bắt đầu vòng lặp danh sách nhà thầu trượt thầu' },
-            { code: '{Ten_Nha_Thau}', desc: 'Tên nhà thầu trượt thầu' },
-            { code: '{Ma_Nha_Thau}', desc: 'Mã định danh/MST nhà thầu trượt' },
-            { code: '{Ly_Do_Truot}', desc: 'Lý do trượt thầu (phân tích tự động hoặc người dùng tự gõ)' },
-            { code: '{/Danh_Sach_Nha_Thau_Truot}', desc: 'Kết thúc vòng lặp danh sách nhà thầu trượt' }
-        ],
-        phanlo: [
-            { code: '{#Danh_Sach_Phan_Lo}', desc: 'Bắt đầu vòng lặp danh sách phân lô gói thầu' },
-            { code: '{STT}', desc: 'Số thứ tự phân lô' },
-            { code: '{Ten_Phan_Lo}', desc: 'Tên phân lô' },
-            { code: '{Gia_Tri_Phan_Lo}', desc: 'Giá trúng thầu phân lô' },
-            { code: '{Nha_Thau_Trung}', desc: 'Tên nhà thầu trúng thầu phân lô tương ứng' },
-            { code: '{Thoi_Gian_Thuc_Hien}', desc: 'Thời gian thực hiện hợp đồng phân lô' },
-            { code: '{/Danh_Sach_Phan_Lo}', desc: 'Kết thúc vòng lặp phân lô' }
-        ],
-        tuychonmuathem: [
-            { code: '{#Danh_Sach_Tuy_Chon_Mua_Them}', desc: 'Bắt đầu vòng lặp tùy chọn mua thêm' },
-            { code: '{STT}', desc: 'Số thứ tự tùy chọn mua thêm' },
-            { code: '{Hang_Muc}', desc: 'Tên hạng mục tùy chọn mua thêm' },
-            { code: '{Don_Vi}', desc: 'Đơn vị tính' },
-            { code: '{So_Luong}', desc: 'Số lượng mua thêm' },
-            { code: '{Ty_Le}', desc: 'Tỷ lệ % mua thêm' },
-            { code: '{Gia_Tri_Uoc_Tinh}', desc: 'Giá trị ước tính mua thêm' },
-            { code: '{/Danh_Sach_Tuy_Chon_Mua_Them}', desc: 'Kết thúc vòng lặp mua thêm' }
-        ]
+        custom_lists: []
     };
 
     const getTableLabel = (tbl) => {
@@ -133,6 +88,7 @@ export function renderDictionary(group) {
     };
 
     const getColumnLabel = (tbl, col) => {
+        if (!col || col === '*') return 'Toàn bộ bảng (Biến danh sách)';
         const cols = {
             'chu_dau_tu': {
                 'ten_chu_dau_tu': 'Tên chủ đầu tư',
@@ -148,7 +104,7 @@ export function renderDictionary(group) {
                 'so_tai_khoan': 'Số tài khoản',
                 'noi_mo_tai_khoan': 'Nơi mở tài khoản',
                 'ma_qhns': 'Mã QHNS',
-                'co_quan_chu_quan': 'Cơ quan chủ quản',
+                'co_quan_chu_quan': 'Cơ quan chủ quan',
                 'phien_ban': 'Phiên bản'
             },
             'ke_hoach_lcnt': {
@@ -248,7 +204,7 @@ export function renderDictionary(group) {
                 'noi_cap_cccd': 'Nơi cấp CCCD',
                 'so_chung_chi': 'Số chứng chỉ',
                 'ngay_cap_chung_chi': 'Ngày cấp chứng chỉ',
-                'don_vi_cap_chung_chi': 'Đơn vị cấp chứng chỉ',
+                'don_vi_cap_chung_chi': 'Don vị cấp chứng chỉ',
                 'chuc_vu': 'Chức vụ trong tổ',
                 'cong_viec': 'Nhiệm vụ phân công'
             },
@@ -300,16 +256,31 @@ export function renderDictionary(group) {
 
     let variables = DICTIONARY[group] || [];
     if (group === 'global' && this.model.state && this.model.state.wordMappings) {
-        const customVars = this.model.state.wordMappings.map(m => ({
-            code: `{${m.tenBien}}`,
-            desc: `Biến tự định nghĩa (Ánh xạ: Bảng ${getTableLabel(m.sourceTable)} -> ${getColumnLabel(m.sourceTable, m.sourceColumn)})`,
-            isCustom: true,
-            id: m.id,
-            sourceTable: m.sourceTable,
-            sourceColumn: m.sourceColumn,
-            tenBien: m.tenBien
-        }));
+        const customVars = this.model.state.wordMappings
+            .filter(m => m.sourceColumn && m.sourceColumn !== '*')
+            .map(m => ({
+                code: `{${m.tenBien}}`,
+                desc: `Biến tự định nghĩa (Ánh xạ: Bảng ${getTableLabel(m.sourceTable)} -> ${getColumnLabel(m.sourceTable, m.sourceColumn)})`,
+                isCustom: true,
+                id: m.id,
+                sourceTable: m.sourceTable,
+                sourceColumn: m.sourceColumn,
+                tenBien: m.tenBien
+            }));
         variables = [...variables, ...customVars];
+    } else if (group === 'custom_lists' && this.model.state && this.model.state.wordMappings) {
+        const customLists = this.model.state.wordMappings
+            .filter(m => !m.sourceColumn || m.sourceColumn === '*')
+            .map(m => ({
+                code: `{#${m.tenBien}}`,
+                desc: `Biến vòng lặp danh sách tự định nghĩa (Ánh xạ từ bảng: ${getTableLabel(m.sourceTable)})`,
+                isCustom: true,
+                id: m.id,
+                sourceTable: m.sourceTable,
+                sourceColumn: m.sourceColumn,
+                tenBien: m.tenBien
+            }));
+        variables = [...variables, ...customLists];
     }
 
     if (variables.length === 0) {
@@ -343,11 +314,19 @@ export function renderDictionary(group) {
 
         let descHTML = '';
         if (v.isCustom) {
-            descHTML = `
-                <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">${getTableLabel(v.sourceTable)}</span>
-                <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
-                <span class="fw-bold" style="font-size: 0.8rem;">${getColumnLabel(v.sourceTable, v.sourceColumn)}</span>
-            `;
+            if (!v.sourceColumn || v.sourceColumn === '*') {
+                descHTML = `
+                    <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">Vòng lặp danh sách</span>
+                    <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
+                    <span class="fw-bold" style="font-size: 0.8rem;">Bảng ${getTableLabel(v.sourceTable)}</span>
+                `;
+            } else {
+                descHTML = `
+                    <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">${getTableLabel(v.sourceTable)}</span>
+                    <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
+                    <span class="fw-bold" style="font-size: 0.8rem;">${getColumnLabel(v.sourceTable, v.sourceColumn)}</span>
+                `;
+            }
         } else {
             descHTML = `<span style="font-size: 0.8rem; color: var(--text-muted);">${v.desc}</span>`;
         }
