@@ -380,7 +380,7 @@ export function renderDanhGiaHsdtPanel() {
         const ngayBaocaoInput = this.view.getActiveElement('danhgiahsdt-ngay-baocao');
         const ngayMoiDoichieuInput = this.view.getActiveElement('danhgiahsdt-ngay-moi-doichieu');
         const ngayDoichieuInput = this.view.getActiveElement('danhgiahsdt-ngay-doichieu');
-        const extraFieldsContainer = this.view.getActiveElement('danhgiahsdt-extra-fields-container');
+        const fieldsRow = this.view.getActiveElement('danhgiahsdt-fields-row');
 
         const saveBtn = this.view.getActiveElement('btn-danhgiahsdt-save');
         const addCvLamroBtn = this.view.getActiveElement('btn-add-cv-lamro');
@@ -399,8 +399,11 @@ export function renderDanhGiaHsdtPanel() {
         const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
         const showExtraFields = !isDirectOrSpecial && (!is1G2T || this.currentDanhGiaTab === 'financial');
 
-        if (extraFieldsContainer) {
-            extraFieldsContainer.style.display = showExtraFields ? 'grid' : 'none';
+        if (fieldsRow) {
+            fieldsRow.style.gridTemplateColumns = showExtraFields ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)';
+            fieldsRow.querySelectorAll('.evaluation-extra-field').forEach(el => {
+                el.style.display = showExtraFields ? 'block' : 'none';
+            });
         }
 
         if (ngayMoiDoichieuInput) {
@@ -1424,6 +1427,7 @@ export async function saveDanhGiaHsdt() {
     }
 
     const isDirectOrSpecial = (gt.hinhThucLuaChon === 'Chỉ định thầu rút gọn' || gt.hinhThucLuaChon === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+    const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
     const hasExtraFields = !isDirectOrSpecial && (!is1G2T || this.currentDanhGiaTab === 'financial');
 
     const activeBlock = {
@@ -1441,7 +1445,6 @@ export async function saveDanhGiaHsdt() {
         activeBlock.ngayDoiChieu = ngayDoiChieu;
     }
 
-    const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
     if (is1G2T) {
         let currentMetadata = { is1G2T: true, technical: { saved: false }, financial: { saved: false } };
         if (gt.danhGiaHsdtMetadata) {

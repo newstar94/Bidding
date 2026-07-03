@@ -1126,7 +1126,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <button type="button" id="tab-btn-hsdxt-kt" class="active">KT</button>
                         <button type="button" id="tab-btn-hsdxt-tc">TC</button>
                     </div>
-                    <div class="form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:20px;">
+                    <div id="danhgiahsdt-fields-row" class="form-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:20px; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:20px;">
                         <div class="form-group">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Số báo cáo đánh giá <span class="required">*</span></label>
                             <input type="text" id="danhgiahsdt-so-baocao" class="form-control" required placeholder="Ví dụ: 12/BC-TCD">
@@ -1137,13 +1137,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-date" required placeholder="dd/MM/yyyy">
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
-                    </div>
-                    <div id="danhgiahsdt-extra-fields-container" style="display: none; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
-                        <div class="form-group">
+                        <div class="form-group evaluation-extra-field" style="display: none;">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày mời đối chiếu tài liệu/Thương thảo</label>
                             <input type="text" id="danhgiahsdt-ngay-moi-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group evaluation-extra-field" style="display: none;">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày đối chiếu tài liệu/Thương thảo</label>
                             <input type="text" id="danhgiahsdt-ngay-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
@@ -1197,7 +1195,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <button type="button" id="tab-btn-hsdxt-kt">KT</button>
                         <button type="button" id="tab-btn-hsdxt-tc" class="active">TC</button>
                     </div>
-                    <div class="form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:20px;">
+                    <div id="danhgiahsdt-fields-row" class="form-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:20px; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:20px;">
                         <div class="form-group">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Số báo cáo đánh giá <span class="required">*</span></label>
                             <input type="text" id="danhgiahsdt-so-baocao" class="form-control" required placeholder="Ví dụ: 12/BC-TCD">
@@ -1208,13 +1206,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-date" required placeholder="dd/MM/yyyy">
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
-                    </div>
-                    <div id="danhgiahsdt-extra-fields-container" style="display: none; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
-                        <div class="form-group">
+                        <div class="form-group evaluation-extra-field" style="display: none;">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày mời đối chiếu tài liệu/Thương thảo</label>
                             <input type="text" id="danhgiahsdt-ngay-moi-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group evaluation-extra-field" style="display: none;">
                             <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày đối chiếu tài liệu/Thương thảo</label>
                             <input type="text" id="danhgiahsdt-ngay-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>

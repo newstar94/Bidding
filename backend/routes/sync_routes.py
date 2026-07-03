@@ -472,18 +472,11 @@ async def sync_api(request):
                             
                 elif table_name == "ke_hoach_lcnt":
                     is_auto = item.get("isTongMucTuDong") or item.get("is_tong_muc_tu_dong")
-                    is_auto_val = 1 if (is_auto is True or str(is_auto) in ('1', 'true')) else 0
+                    is_auto_val = 1 if (is_auto is True or str(is_auto) in ('1', 'true', 'True')) else 0
                     
-                    tong_muc = item.get("tongMucDauTu") or item.get("tong_muc_dau_tu")
-                    tm_val = safe_float(tong_muc) if tong_muc is not None else 0
+                    item["isTongMucTuDong"] = is_auto_val
+                    item["is_tong_muc_tu_dong"] = is_auto_val
                     
-                    if tm_val and tm_val > 0:
-                        item["isTongMucTuDong"] = 0
-                        item["is_tong_muc_tu_dong"] = 0
-                    elif is_auto_val == 1:
-                        item["tongMucDauTu"] = 0
-                        item["tong_muc_dau_tu"] = 0
-                        
                     tong_muc = item.get("tongMucDauTu") or item.get("tong_muc_dau_tu")
                     if tong_muc is not None:
                         tm_val = safe_float(tong_muc)
