@@ -116,6 +116,7 @@ export function setupWordTemplatesEvents() {
             { value: 'trong_so_ky_thuat', label: 'Trọng số điểm kỹ thuật (%)' },
             { value: 'ngay_moi_doi_chieu', label: 'Ngày mời đối chiếu tài liệu/Thương thảo' },
             { value: 'ngay_doi_chieu', label: 'Ngày đối chiếu tài liệu/Thương thảo' },
+            { value: 'ty_le_bao_dam_hop_dong', label: 'Tỷ lệ bảo đảm thực hiện hợp đồng (%)' },
             { value: 'is_thuoc', label: 'Thuộc danh mục mua sắm tập trung (0: Không, 1: Có)' },
             { value: 'yeu_cau_tham_dinh_hsmt', label: 'Yêu cầu thẩm định HSMT (Có/Không)' },
             { value: 'so_bao_cao_tham_dinh_hsmt', label: 'Số báo cáo thẩm định HSMT' },

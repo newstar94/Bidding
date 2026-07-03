@@ -1162,12 +1162,28 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     const containerBaoDam = document.getElementById('gt-giatribaomothau-container');
     const containerHsdt = document.getElementById('gt-hieuluchsdt-container');
     const containerHlBaoDam = document.getElementById('gt-hieuluchbaomothau-container');
+    const containerTyleBaoDamHd = document.getElementById('gt-tylebaodamhopdong-container');
+    const tyleBaoDamHdInput = document.getElementById('gt-tylebaodamhopdong');
 
     const thBaoDam = document.getElementById('th-baodam-phanlo');
 
     // Lĩnh vực tư vấn không yêu cầu bảo đảm dự thầu, tất cả lĩnh vực khác đều yêu cầu (hiển thị để nhập)
     const ht = document.getElementById('gt-hinhthuc')?.value || '';
     const noBidSecurity = (linhVuc === 'Tư vấn' || ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt');
+
+    // Tỷ lệ bảo đảm hợp đồng (%) - chỉ hiện khi không phải chỉ định thầu rút gọn, lựa chọn đặc biệt và Tư vấn
+    const showTyleBaoDamHd = (ht !== 'Chỉ định thầu rút gọn' && ht !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt' && linhVuc !== 'Tư vấn');
+    if (containerTyleBaoDamHd) {
+        containerTyleBaoDamHd.style.display = showTyleBaoDamHd ? 'flex' : 'none';
+    }
+    if (tyleBaoDamHdInput) {
+        if (showTyleBaoDamHd) {
+            tyleBaoDamHdInput.disabled = isReadOnly;
+        } else {
+            tyleBaoDamHdInput.disabled = true;
+            tyleBaoDamHdInput.value = '';
+        }
+    }
     if (noBidSecurity) {
         if (containerBaoDam) containerBaoDam.style.display = 'none';
         if (containerHlBaoDam) containerHlBaoDam.style.display = 'none';

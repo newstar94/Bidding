@@ -712,6 +712,7 @@ export function getGoiThauFormInputValues(model) {
         giaTriDamBaoDuThau: getVal('gt-giatribaomothau'),
         hieuLucHsdt: getVal('gt-hieuluchsdt') !== '' ? parseInt(getVal('gt-hieuluchsdt')) : null,
         hieuLucDamBaoDuThau: getVal('gt-hieuluchbaomothau') !== '' ? parseInt(getVal('gt-hieuluchbaomothau')) : null,
+        tyLeBaoDamHopDong: getVal('gt-tylebaodamhopdong') !== '' ? parseFloat(getVal('gt-tylebaodamhopdong')) : null,
         nhaThauTrungThauId: getRawVal('gt-nhathautrungthauid'),
         giaTrungThau: model.parseVND(getVal('gt-giatrungthau')),
         thoiGianGoiThau: getVal('gt-thoigian-goithau'),

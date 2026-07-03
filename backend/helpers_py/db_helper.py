@@ -47,6 +47,8 @@ def optimized_get_connection(*args, **kwargs):
                 cursor.execute("ALTER TABLE goi_thau ADD COLUMN phuong_phap_danh_gia TEXT")
             if "trong_so_ky_thuat" not in existing_cols:
                 cursor.execute("ALTER TABLE goi_thau ADD COLUMN trong_so_ky_thuat INTEGER")
+            if "ty_le_bao_dam_hop_dong" not in existing_cols:
+                cursor.execute("ALTER TABLE goi_thau ADD COLUMN ty_le_bao_dam_hop_dong REAL")
             if "is_thuoc" not in existing_cols:
                 cursor.execute("ALTER TABLE goi_thau ADD COLUMN is_thuoc INTEGER DEFAULT 0")
             if "so_to_trinh_hsmt" not in existing_cols:

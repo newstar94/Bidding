@@ -381,6 +381,7 @@ export function editGoiThau(id, isReadOnly = false) {
         document.getElementById('gt-giatribaomothau').value = gt.giaTriDamBaoDuThau ? this.model.formatVND(gt.giaTriDamBaoDuThau) : '';
         document.getElementById('gt-hieuluchsdt').value = gt.hieuLucHsdt || '';
         document.getElementById('gt-hieuluchbaomothau').value = gt.hieuLucDamBaoDuThau || '';
+        document.getElementById('gt-tylebaodamhopdong').value = gt.tyLeBaoDamHopDong !== undefined && gt.tyLeBaoDamHopDong !== null ? gt.tyLeBaoDamHopDong : '';
 
         this.updatePackageFieldsVisibility(isReadOnly);
 
@@ -518,6 +519,7 @@ export function editGoiThau(id, isReadOnly = false) {
         document.getElementById('gt-giatribaomothau').value = '';
         document.getElementById('gt-hieuluchsdt').value = '';
         document.getElementById('gt-hieuluchbaomothau').value = '';
+        document.getElementById('gt-tylebaodamhopdong').value = '';
 
         // Explicitly reset status dropdown to 'Chuẩn bị' and clear all disabled options
         const statusSelectReset = document.getElementById('gt-trangthai');
@@ -1090,7 +1092,8 @@ export async function handleGoiThauSubmit(e) {
         toThamDinh: toThamDinh,
         giaTriDamBaoDuThau: (linhVuc === 'Tư vấn') ? 0 : (isPhanLo ? collectedPhanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0) : this.model.parseVND(formVals.giaTriDamBaoDuThau || '0')),
         hieuLucHsdt: formVals.hieuLucHsdt,
-        hieuLucDamBaoDuThau: formVals.hieuLucDamBaoDuThau
+        hieuLucDamBaoDuThau: formVals.hieuLucDamBaoDuThau,
+        tyLeBaoDamHopDong: formVals.tyLeBaoDamHopDong
     };
 
     if (gtData.trangThai === 'Đã có kết quả') {
