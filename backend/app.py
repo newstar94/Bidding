@@ -402,6 +402,14 @@ routes = [
     Route("/ke-hoach-chi-tiet/{action}", index, methods=["GET"]),
     Route("/hop-dong-chi-tiet", index, methods=["GET"]),
     Route("/hop-dong-chi-tiet/{action}", index, methods=["GET"]),
+    Route("/chu-dau-tu-chi-tiet", index, methods=["GET"]),
+    Route("/chu-dau-tu-chi-tiet/{action}", index, methods=["GET"]),
+    Route("/nha-thau-chi-tiet", index, methods=["GET"]),
+    Route("/nha-thau-chi-tiet/{action}", index, methods=["GET"]),
+    Route("/chudautu-detail", index, methods=["GET"]),
+    Route("/chudautu-detail/{action}", index, methods=["GET"]),
+    Route("/nhathau-detail", index, methods=["GET"]),
+    Route("/nhathau-detail/{action}", index, methods=["GET"]),
 
     # Mount gốc views cho tệp index.html và style.css (Dùng SafeStaticFiles cho /controllers và /models để chỉ serve file tĩnh JS/CSS)
     Mount("/dist", app=SafeStaticFiles(directory=dist_dir), name="dist"),

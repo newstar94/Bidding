@@ -93,7 +93,13 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
         }
     }
     if (!tabName) {
-        tabName = this.model.state.activerole === 'super_admin' ? 'superadmin-dashboard' : 'dashboard';
+        if (urlTab === 'chudautu-detail') {
+            tabName = 'chudautu-detail';
+        } else if (urlTab === 'nhathau-detail') {
+            tabName = 'nhathau-detail';
+        } else {
+            tabName = this.model.state.activerole === 'super_admin' ? 'superadmin-dashboard' : 'dashboard';
+        }
     }
 
     let action = parts[1] || null;
@@ -102,7 +108,51 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
         action = urlAction;
     }
 
-    // Map package code/plan code/contract number back to internal ID
+    // Map investor/contractor/package code/plan code/contract number back to internal ID
+    if (tabName === 'chudautu-detail' && action) {
+        let targetId = null;
+        if (action.includes('_')) {
+            const parts = action.split('_');
+            const idSuffix = parts[parts.length - 1].toLowerCase();
+            const cdt = (this.model.state.chudautu || []).find(c => c.id.toLowerCase().startsWith(idSuffix));
+            if (cdt) targetId = cdt.id;
+        }
+        if (!targetId) {
+            const cdt = (this.model.state.chudautu || []).find(c =>
+                (c.maChuDauTu && c.maChuDauTu.toLowerCase() === action.toLowerCase()) ||
+                (c.id && c.id.toLowerCase() === action.toLowerCase())
+            );
+            if (cdt) targetId = cdt.id;
+        }
+        if (targetId) {
+            const cdt = (this.model.state.chudautu || []).find(c => c.id === targetId);
+            const root = cdt ? (cdt.rootId || cdt.id) : targetId;
+            const latest = (this.model.state.chudautu || []).find(c => (c.rootId === root || c.id === root) && c.isLatest == 1);
+            action = latest ? latest.id : targetId;
+        }
+    }
+    if (tabName === 'nhathau-detail' && action) {
+        let targetId = null;
+        if (action.includes('_')) {
+            const parts = action.split('_');
+            const idSuffix = parts[parts.length - 1].toLowerCase();
+            const nt = (this.model.state.nhathau || []).find(n => n.id.toLowerCase().startsWith(idSuffix));
+            if (nt) targetId = nt.id;
+        }
+        if (!targetId) {
+            const nt = (this.model.state.nhathau || []).find(n =>
+                (n.maNhaThau && n.maNhaThau.toLowerCase() === action.toLowerCase()) ||
+                (n.id && n.id.toLowerCase() === action.toLowerCase())
+            );
+            if (nt) targetId = nt.id;
+        }
+        if (targetId) {
+            const nt = (this.model.state.nhathau || []).find(n => n.id === targetId);
+            const root = nt ? (nt.rootId || nt.id) : targetId;
+            const latest = (this.model.state.nhathau || []).find(n => (n.rootId === root || n.id === root) && n.isLatest == 1);
+            action = latest ? latest.id : targetId;
+        }
+    }
     if (tabName === 'goithau-detail' && action) {
         const gt = this.model.state.goithau.find(g =>
             (g.maGoiThau && g.maGoiThau.toLowerCase() === action.toLowerCase()) ||
@@ -178,6 +228,22 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
                 const duplicates = this.model.state.hopdong.filter(h => h.soHopDong === hd.soHopDong);
                 const isUnique = duplicates.length <= 1;
                 finalUrlAction = encodeURIComponent(hd.soHopDong.replace(/\//g, '-')) + (isUnique ? '' : '_' + hd.id.substring(0, 8));
+            }
+        }
+        if (tabName === 'chudautu-detail' && action) {
+            const cdt = this.model.state.chudautu.find(c => c.id === action);
+            if (cdt && cdt.maChuDauTu) {
+                const duplicates = this.model.state.chudautu.filter(c => c.maChuDauTu === cdt.maChuDauTu);
+                const isUnique = duplicates.length <= 1;
+                finalUrlAction = encodeURIComponent(cdt.maChuDauTu) + (isUnique ? '' : '_' + cdt.id.substring(0, 8));
+            }
+        }
+        if (tabName === 'nhathau-detail' && action) {
+            const nt = this.model.state.nhathau.find(n => n.id === action);
+            if (nt && nt.maNhaThau) {
+                const duplicates = this.model.state.nhathau.filter(n => n.maNhaThau === nt.maNhaThau);
+                const isUnique = duplicates.length <= 1;
+                finalUrlAction = encodeURIComponent(nt.maNhaThau) + (isUnique ? '' : '_' + nt.id.substring(0, 8));
             }
         }
         const path = '/' + finalUrlTab + (finalUrlAction ? '/' + finalUrlAction : '');

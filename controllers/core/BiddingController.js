@@ -40,7 +40,9 @@ export class BiddingController {
             'profile': 'trang-ca-nhan',
             'goithau-detail': 'goi-thau-chi-tiet',
             'kehoach-detail': 'ke-hoach-chi-tiet',
-            'hopdong-detail': 'hop-dong-chi-tiet'
+            'hopdong-detail': 'hop-dong-chi-tiet',
+            'chudautu-detail': 'chu-dau-tu-chi-tiet',
+            'nhathau-detail': 'nha-thau-chi-tiet'
         };
 
         this.actionMap = {
