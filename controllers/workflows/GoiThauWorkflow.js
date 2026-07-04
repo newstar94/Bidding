@@ -895,6 +895,23 @@ export async function handleGoiThauSubmit(e) {
     const formattedDate4 = valueDate4 ? this.model.convertDMYToYMD(valueDate4) : '';
     const formattedDate5 = valueDate5 ? this.model.convertDMYHMSToYMDHMS(valueDate5) : '';
 
+    if (formattedDate1 && formattedDate2) {
+        const dangTai = new Date(formattedDate1);
+        const dongThau = new Date(formattedDate2);
+        if (!isNaN(dangTai.getTime()) && !isNaN(dongThau.getTime()) && dongThau <= dangTai) {
+            await this.view.customAlert('Dữ liệu không hợp lệ', 'Thời gian đóng thầu phải sau thời gian đăng tải.', 'alert-triangle', document.getElementById('gt-thoigiandongthau'));
+            return;
+        }
+    }
+    if (formattedDate2 && formattedDate3) {
+        const dongThau = new Date(formattedDate2);
+        const moThau = new Date(formattedDate3);
+        if (!isNaN(dongThau.getTime()) && !isNaN(moThau.getTime()) && moThau < dongThau) {
+            await this.view.customAlert('Dữ liệu không hợp lệ', 'Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu.', 'alert-triangle', document.getElementById('gt-thoigianmothau'));
+            return;
+        }
+    }
+
 
     const toChuyenGia = [];
     document.querySelectorAll('#to-chuyengia-tbody tr').forEach(row => {
@@ -1334,6 +1351,8 @@ export async function handleGoiThauSubmit(e) {
             this.packageWizard.currentCount = 0;
             await this.view.customAlert("Thành công", "Đã thêm toàn bộ các gói thầu theo kế hoạch thành công!", "check-circle");
         }
+    } else {
+        await this.view.customAlert("Thành công", "Đã lưu thông tin gói thầu thành công!", "check-circle");
     }
 }
 

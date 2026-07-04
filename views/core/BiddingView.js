@@ -1109,7 +1109,7 @@ export class BiddingView {
 
 
 
-    customPrompt(title, message, defaultValue = '', placeholder = '', isDatePicker = false) {
+    customPrompt(title, message, defaultValue = '', placeholder = '', isDatePicker = false, validateFn = null) {
         return new Promise((resolve) => {
             const modal = document.getElementById('modal-custom-dialog');
             const titleEl = document.getElementById('dialog-title');
@@ -1173,10 +1173,35 @@ export class BiddingView {
 
             lucide.createIcons();
 
-            const onOk = () => {
+            const onOk = async () => {
                 let val = inputEl.value;
                 if (isDatePicker && val) {
                     val = this.model.formatDate(val);
+                }
+                if (validateFn) {
+                    const errorMsg = await validateFn(val);
+                    if (errorMsg) {
+                        let errEl = document.getElementById('dialog-prompt-error');
+                        if (!errEl) {
+                            errEl = document.createElement('div');
+                            errEl.id = 'dialog-prompt-error';
+                            errEl.style.color = 'var(--danger)';
+                            errEl.style.fontSize = '0.78rem';
+                            errEl.style.marginTop = '6px';
+                            errEl.style.fontWeight = '600';
+                            inputEl.parentNode.appendChild(errEl);
+                        }
+                        errEl.textContent = errorMsg;
+                        errEl.style.display = 'block';
+                        inputEl.style.borderColor = 'var(--danger)';
+                        const clearError = () => {
+                            errEl.style.display = 'none';
+                            inputEl.style.borderColor = '';
+                        };
+                        inputEl.addEventListener('input', clearError, { once: true });
+                        inputEl.addEventListener('change', clearError, { once: true });
+                        return; // Block modal closing
+                    }
                 }
                 cleanup();
                 resolve(val);

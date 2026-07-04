@@ -7,7 +7,44 @@ export async function moThauGoiThau(id) {
         `Chọn Thời gian mở thầu cho gói thầu "${gt.tenGoiThau}":`,
         '',
         'Chọn ngày và giờ...',
-        true  // kích hoạt date/time picker
+        true,  // kích hoạt date/time picker
+        (val) => {
+            if (!val || !val.trim()) {
+                return 'Vui lòng chọn thời gian mở thầu!';
+            }
+            const cleanVal = val.trim();
+            let d, m, y, hh = 0, mm = 0;
+            const formatMatch = cleanVal.match(/^(\d{2}):(\d{2})\s+ngày\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+            if (formatMatch) {
+                hh = parseInt(formatMatch[1], 10);
+                mm = parseInt(formatMatch[2], 10);
+                d = parseInt(formatMatch[3], 10);
+                m = parseInt(formatMatch[4], 10);
+                y = parseInt(formatMatch[5], 10);
+            } else {
+                const parts = cleanVal.split(' ');
+                if (parts.length >= 2) {
+                    const dateParts = parts[0].split('/');
+                    const timeParts = parts[1].split(':');
+                    d = parseInt(dateParts[0], 10);
+                    m = parseInt(dateParts[1], 10);
+                    y = parseInt(dateParts[2], 10);
+                    hh = parseInt(timeParts[0] || 0, 10);
+                    mm = parseInt(timeParts[1] || 0, 10);
+                }
+            }
+            if (isNaN(d) || isNaN(m) || isNaN(y) || isNaN(hh) || isNaN(mm)) {
+                return 'Thời gian mở thầu không hợp lệ. Vui lòng chọn lại!';
+            }
+            if (gt.thoiGianDongThau) {
+                const dongThauDate = new Date(gt.thoiGianDongThau);
+                const moThauDate = new Date(y, m - 1, d, hh, mm);
+                if (!isNaN(dongThauDate.getTime()) && !isNaN(moThauDate.getTime()) && moThauDate < dongThauDate) {
+                    return `Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu (${this.model.formatDateWithTime(gt.thoiGianDongThau)})!`;
+                }
+            }
+            return null;
+        }
     );
     if (thoiGianMoThauStr === null) {
         return; // User canceled the prompt
@@ -48,27 +85,20 @@ export async function moThauGoiThau(id) {
     }
 
 
-    const confirmed = await this.view.customConfirm(
-        'Mở thầu gói thầu',
-        `Bạn có chắc chắn muốn tiến hành mở thầu cho gói thầu "${gt.tenGoiThau}" lúc ${cleanStr}? Trạng thái sẽ được chuyển sang "Đã mở thầu".`,
-        'unlock'
-    );
 
-    if (confirmed) {
-        // Convert dd/MM/yyyy HH:mm to ISO date string format
-        const ymdStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
-        gt.thoiGianMoThau = ymdStr;
-        gt.trangThai = 'Đã mở thầu';
-        this.model.persistData('goithau');
-        this.view.renderGoiThauTable();
-        this.autoSync();
-        await this.view.customAlert(
-            'Thành công',
-            `Đã tiến hành mở thầu thành công cho gói thầu "${gt.tenGoiThau}". Trạng thái hiện tại: Đã mở thầu. Hãy tiến hành điền thông tin mở thầu và lưu lại!`,
-            'check-circle'
-        );
-        this.switchTab('goithau-detail', id);
-    }
+    // Convert dd/MM/yyyy HH:mm to ISO date string format
+    const ymdStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
+    gt.thoiGianMoThau = ymdStr;
+    gt.trangThai = 'Đã mở thầu';
+    this.model.persistData('goithau');
+    this.view.renderGoiThauTable();
+    this.autoSync();
+    await this.view.customAlert(
+        'Thành công',
+        `Đã tiến hành mở thầu thành công cho gói thầu "${gt.tenGoiThau}". Trạng thái hiện tại: Đã mở thầu. Hãy tiến hành điền thông tin mở thầu và lưu lại!`,
+        'check-circle'
+    );
+    this.switchTab('goithau-detail', id);
 }
 
 
@@ -294,12 +324,15 @@ export function renderMoThauPanel() {
                 <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
                 ${!isDirectOrSpecial ? `
                 <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                <div style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> 
-                    ${isEditable ? `
-                        <input type="text" id="op-thoigianmothau" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: left; display: inline-block; vertical-align: middle; margin-left: 4px;" value="${gt.thoiGianMoThau ? this.model.formatDate(gt.thoiGianMoThau) : ''}" placeholder="dd/MM/yyyy HH:mm">
-                    ` : `
-                        <span class="text-dark fw-bold" style="margin-left: 4px;">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span>
-                    `}
+                <div style="display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; vertical-align: middle;">
+                    <div style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> 
+                        ${isEditable ? `
+                            <input type="text" id="op-thoigianmothau" class="form-control flatpickr-datetime" style="width: 160px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: left; display: inline-block; vertical-align: middle; margin-left: 4px;" value="${gt.thoiGianMoThau ? this.model.formatDate(gt.thoiGianMoThau) : ''}" placeholder="dd/MM/yyyy HH:mm">
+                        ` : `
+                            <span class="text-dark fw-bold" style="margin-left: 4px;">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : 'Chưa mở'}</span>
+                        `}
+                    </div>
+                    <div id="op-thoigianmothau-error" style="color: var(--danger); font-size: 0.72rem; margin-left: 10px; display: none; font-weight: 600; white-space: normal; max-width: 250px; margin-top: 2px;"></div>
                 </div>
                 ` : ''}
             </div>
@@ -1323,6 +1356,29 @@ export async function saveThongTinMoThau() {
             gt.thoiGianMoThau = this.model.convertDMYHMSToYMDHMS(inputOpTime.value);
         } else if (!gt.thoiGianMoThau) {
             gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
+        }
+    }
+
+    if (gt.thoiGianDongThau && gt.thoiGianMoThau) {
+        const dongThauDate = new Date(gt.thoiGianDongThau);
+        const moThauDate = new Date(gt.thoiGianMoThau);
+        if (!isNaN(dongThauDate.getTime()) && !isNaN(moThauDate.getTime()) && moThauDate < dongThauDate) {
+            const inputOpTime = document.getElementById('op-thoigianmothau');
+            const errorEl = document.getElementById('op-thoigianmothau-error');
+            if (errorEl) {
+                errorEl.textContent = `Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu (${this.model.formatDateWithTime(gt.thoiGianDongThau)})!`;
+                errorEl.style.display = 'block';
+                if (inputOpTime) {
+                    inputOpTime.style.borderColor = 'var(--danger)';
+                    const clearError = () => {
+                        errorEl.style.display = 'none';
+                        inputOpTime.style.borderColor = '';
+                    };
+                    inputOpTime.addEventListener('input', clearError, { once: true });
+                    inputOpTime.addEventListener('change', clearError, { once: true });
+                }
+            }
+            return;
         }
     }
 
