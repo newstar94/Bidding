@@ -1,4 +1,6 @@
 import { initCustomSelect } from '../view_helpers.js';
+import { sortRecords } from '../tableDataUtils.js';
+import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
 export async function renderNhaThauTable() {
     const tableBody = document.getElementById('nhathau-table').querySelector('tbody');
@@ -36,17 +38,7 @@ export async function renderNhaThauTable() {
             (n.loaiNhaThau === 'Liên danh' && n.thanhVienLienDanh && n.thanhVienLienDanh.some(m => (m.tenNhaThau || '').toLowerCase().includes(searchVal) || (m.maSoThue || '').includes(searchVal)))
         );
 
-        if (sortBy) {
-            filtered.sort((a, b) => {
-                let valA = a[sortBy] || '';
-                let valB = b[sortBy] || '';
-                if (typeof valA === 'string') valA = valA.toLowerCase();
-                if (typeof valB === 'string') valB = valB.toLowerCase();
-                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
+        sortRecords(filtered, sortBy, sortOrder);
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -54,6 +46,7 @@ export async function renderNhaThauTable() {
     }
 
     if (totalItems === 0) {
+        clearVirtualTable(tableBody);
         tableBody.innerHTML = `
             <tr>
                 <td colspan="8">
@@ -68,7 +61,7 @@ export async function renderNhaThauTable() {
         if (pag) pag.innerHTML = '';
     } else {
         const esc = window.escapeHTML || ((value) => String(value ?? ''));
-        tableBody.innerHTML = slicedData.map(n => {
+        renderVirtualTable(tableBody, slicedData, n => {
             const root = n.rootId || n.id;
             const allVersions = n.allVersions || this.model.state.nhathau.filter(x => (x.rootId || x.id) === root)
                 .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
@@ -168,7 +161,7 @@ export async function renderNhaThauTable() {
                     </tr>
                 `;
             }
-        }).join('');
+        }, { colSpan: 7, rowHeight: 92, onRender: () => lucide.createIcons({ root: tableBody }) });
 
         if (window.renderTablePagination) {
             window.renderTablePagination('nhathau-pagination', totalItems, currentPage, pageSize);

@@ -1,6 +1,36 @@
+import { applySyncPayload } from './syncMergeUtils.js';
+
+export function scheduleBackgroundSync(delay = 500) {
+    if (this._backgroundSyncTimer) {
+        this._backgroundSyncQueued = true;
+        return;
+    }
+
+    this._backgroundSyncTimer = setTimeout(async () => {
+        this._backgroundSyncTimer = null;
+        if (this._backgroundSyncRunning) {
+            this._backgroundSyncQueued = true;
+            return;
+        }
+
+        this._backgroundSyncRunning = true;
+        try {
+            await this.forceSyncData(true);
+        } catch (err) {
+            console.error("Background sync failed:", err);
+        } finally {
+            this._backgroundSyncRunning = false;
+            if (this._backgroundSyncQueued) {
+                this._backgroundSyncQueued = false;
+                this.scheduleBackgroundSync(delay);
+            }
+        }
+    }, delay);
+}
+
 export function setupAutoSyncBackground() {
     const checkAndSync = () => {
-        this.forceSyncData(true).catch(err => console.error("Auto sync failed:", err));
+        this.scheduleBackgroundSync(500);
     };
 
     // Check on window focus (user switches tab or returns to app)
@@ -167,92 +197,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         if (response.ok) {
             const dbData = await response.json();
 
-            const metadataKeys = new Set(['deletions', 'useServerSidePagination', 'timestamp', 'paginatedKeys', 'syncVersion']);
-            const paginatedKeys = new Set(dbData.paginatedKeys || []);
-            const useServerSidePagination = !!dbData.useServerSidePagination;
-            this.model.useServerSidePagination = useServerSidePagination;
-            const changedKeys = new Set();
-            const normalizeIncoming = (key, records) => {
-                if (this.model && typeof this.model.normalizeRecords === 'function') {
-                    return (records || []).map(record => this.model.normalizeRecordKeys(record));
-                }
-                return records || [];
-            };
-
-            const mergeIncomingRecords = (key, incoming) => {
-                if (!Array.isArray(this.model.state[key])) {
-                    this.model.state[key] = [];
-                }
-
-                incoming.forEach(item => {
-                    const idx = this.model.state[key].findIndex(x => String(x.id) === String(item.id));
-                    if (idx !== -1) {
-                        this.model.state[key][idx] = item;
-                    } else {
-                        this.model.state[key].push(item);
-                    }
-                });
-            };
-
-            const shouldSkipEmptyPaginatedStore = (key, incoming) => {
-                return useServerSidePagination
-                    && paginatedKeys.has(key)
-                    && Array.isArray(incoming)
-                    && incoming.length === 0
-                    && Array.isArray(this.model.state[key])
-                    && this.model.state[key].length > 0;
-            };
-
-            if (!useVersionDelta && since === '0') {
-                Object.keys(dbData).forEach(key => {
-                    if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
-
-                    const incoming = normalizeIncoming(key, dbData[key]);
-                    if (shouldSkipEmptyPaginatedStore(key, incoming)) {
-                        console.info(`[Sync] Skipped empty paginated store "${key}" to preserve local cache.`);
-                        return;
-                    }
-
-                    this.model.state[key] = incoming;
-                    changedKeys.add(key);
-                    this.model.persistData(key);
-                });
-            } else {
-                Object.keys(dbData).forEach(key => {
-                    if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
-
-                    const incoming = normalizeIncoming(key, dbData[key]);
-                    if (incoming.length === 0) return;
-
-                    mergeIncomingRecords(key, incoming);
-                    changedKeys.add(key);
-                    if (this.model.db && typeof this.model.db.putRecords === 'function') {
-                        this.model.db.putRecords(key, incoming).catch(e => console.error("Error storing records", e));
-                    } else {
-                        this.model.persistData(key);
-                    }
-                });
-
-                const deletions = dbData.deletions || [];
-                const deletionsByTable = {};
-                deletions.forEach(del => {
-                    const key = del.table;
-                    const id = del.id;
-                    if (this.model.state[key]) {
-                        this.model.state[key] = this.model.state[key].filter(x => String(x.id) !== String(id));
-                        changedKeys.add(key);
-                        if (!deletionsByTable[key]) {
-                            deletionsByTable[key] = [];
-                        }
-                        deletionsByTable[key].push(id);
-                    }
-                });
-                Object.keys(deletionsByTable).forEach(key => {
-                    if (deletionsByTable[key].length > 0) {
-                        this.model.db.deleteRecords(key, deletionsByTable[key]).catch(e => console.error("Error deleting records", e));
-                    }
-                });
-            }
+            const { changedKeys } = applySyncPayload(this.model, dbData, { useVersionDelta, since });
 
             if (dbData.syncVersion !== undefined && dbData.syncVersion !== null) {
                 localStorage.setItem('bf_last_sync_version', dbData.syncVersion.toString());
@@ -354,7 +299,7 @@ export function setupWebSocketConnection() {
             const msg = JSON.parse(event.data);
             if (msg.event === "db_changed") {
                 if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
-                this.forceSyncData(true).catch(err => console.error("Real-time sync failed:", err));
+                this.scheduleBackgroundSync(300);
             }
         } catch (e) {
             console.error("Error handling WebSocket message:", e);

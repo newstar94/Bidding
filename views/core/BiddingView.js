@@ -1331,15 +1331,6 @@ export class BiddingView {
         return document.getElementById(id);
     }
 
-    debounce(func, wait) {
-        let timeout;
-        return function (...args) {
-            const context = this;
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(context, args), wait);
-        };
-    }
-
     formatCurrencyInput(input) {
         let value = input.value.replace(/[^0-9]/g, '');
         if (value === '') {

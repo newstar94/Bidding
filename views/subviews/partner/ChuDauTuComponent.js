@@ -1,4 +1,6 @@
 import { initCustomSelect } from '../view_helpers.js';
+import { sortRecords } from '../tableDataUtils.js';
+import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
 export async function renderChuDauTuTable() {
     const tableBody = document.getElementById('chudautu-table').querySelector('tbody');
@@ -35,17 +37,7 @@ export async function renderChuDauTuTable() {
             (c.maSoThue && c.maSoThue.includes(searchVal))
         );
 
-        if (sortBy) {
-            filtered.sort((a, b) => {
-                let valA = a[sortBy] || '';
-                let valB = b[sortBy] || '';
-                if (typeof valA === 'string') valA = valA.toLowerCase();
-                if (typeof valB === 'string') valB = valB.toLowerCase();
-                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
+        sortRecords(filtered, sortBy, sortOrder);
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -53,6 +45,7 @@ export async function renderChuDauTuTable() {
     }
 
     if (totalItems === 0) {
+        clearVirtualTable(tableBody);
         tableBody.innerHTML = `
             <tr>
                 <td colspan="8">
@@ -66,7 +59,7 @@ export async function renderChuDauTuTable() {
         const pag = document.getElementById('chudautu-pagination');
         if (pag) pag.innerHTML = '';
     } else {
-        tableBody.innerHTML = slicedData.map(c => {
+        renderVirtualTable(tableBody, slicedData, c => {
             const root = c.rootId || c.id;
             const allVersions = c.allVersions || this.model.state.chudautu.filter(x => (x.rootId || x.id) === root)
                 .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
@@ -126,7 +119,7 @@ export async function renderChuDauTuTable() {
                 </td>
             </tr>
             `;
-        }).join('');
+        }, { colSpan: 7, rowHeight: 82, onRender: () => lucide.createIcons({ root: tableBody }) });
 
         if (window.renderTablePagination) {
             window.renderTablePagination('chudautu-pagination', totalItems, currentPage, pageSize);

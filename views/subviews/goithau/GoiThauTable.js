@@ -1,27 +1,6 @@
 import { initCustomSelect } from '../view_helpers.js';
-
-export function parseYearMonth(dateStr) {
-    if (!dateStr) return { year: null, month: null };
-    let cleaned = String(dateStr).replace(/\s*-\s*/, ' ').trim();
-    if (cleaned.match(/^\d{4}-\d{2}-\d{2}/)) {
-        const y = cleaned.substring(0, 4);
-        const m = parseInt(cleaned.substring(5, 7), 10).toString();
-        return { year: y, month: m };
-    } else if (cleaned.match(/^\d{2}\/\d{2}\/\d{4}/)) {
-        const parts = cleaned.split(' ')[0].split('/');
-        const y = parts[2];
-        const m = parseInt(parts[1], 10).toString();
-        return { year: y, month: m };
-    }
-    const d = new Date(cleaned);
-    if (!isNaN(d.getTime())) {
-        return {
-            year: d.getFullYear().toString(),
-            month: (d.getMonth() + 1).toString()
-        };
-    }
-    return { year: null, month: null };
-}
+import { parseYearMonth, sortRecords } from '../tableDataUtils.js';
+import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
 export async function renderGoiThauTable() {
     const tableBody = document.getElementById('goithau-table').querySelector('tbody');
@@ -117,17 +96,7 @@ export async function renderGoiThauTable() {
             return matchesSearch && matchesTrangThai && matchesHinhThuc && matchesYear && matchesMonth;
         });
 
-        if (sortBy) {
-            filtered.sort((a, b) => {
-                let valA = a[sortBy] || '';
-                let valB = b[sortBy] || '';
-                if (typeof valA === 'string') valA = valA.toLowerCase();
-                if (typeof valB === 'string') valB = valB.toLowerCase();
-                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
+        sortRecords(filtered, sortBy, sortOrder);
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -135,6 +104,7 @@ export async function renderGoiThauTable() {
     }
 
     if (totalItems === 0) {
+        clearVirtualTable(tableBody);
         tableBody.innerHTML = `
             <tr>
                 <td colspan="8">
@@ -151,7 +121,7 @@ export async function renderGoiThauTable() {
         window._jvDataMap = window._jvDataMap || {};
 
         const esc = window.escapeHTML || ((value) => String(value ?? ''));
-        tableBody.innerHTML = slicedData.map(gt => {
+        renderVirtualTable(tableBody, slicedData, gt => {
             const root = gt.rootId || gt.id;
             const allRelated = this.model.state.goithau.filter(g => (g.rootId || g.id) === root);
 
@@ -328,7 +298,7 @@ export async function renderGoiThauTable() {
                 </td>
             </tr>
             `;
-        }).join('');
+        }, { colSpan: 8, rowHeight: 88, onRender: () => lucide.createIcons({ root: tableBody }) });
 
         if (window.renderTablePagination) {
             window.renderTablePagination('goithau-pagination', totalItems, currentPage, pageSize);

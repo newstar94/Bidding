@@ -8,7 +8,6 @@ export class BiddingController {
     constructor(model, view) {
         this.model = model;
         this.view = view;
-        window.appController = this;
 
         this.tempChuyenGiaImageBase64 = '';
         this.tempChuyenGiaSignatureBase64 = '';
@@ -50,23 +49,6 @@ export class BiddingController {
             'chinhsua': 'chinh-sua'
         };
 
-        window.toggleSortTable = (tableKey, field) => {
-            const current = this.model.sortState[tableKey] || { field: '', order: 'asc' };
-            if (current.field === field) {
-                current.order = current.order === 'asc' ? 'desc' : 'asc';
-            } else {
-                current.field = field;
-                current.order = 'asc';
-            }
-            this.model.sortState[tableKey] = current;
-
-            if (tableKey === 'kehoach') this.view.renderKeHoachTable();
-            else if (tableKey === 'goithau') this.view.renderGoiThauTable();
-            else if (tableKey === 'chudautu') this.view.renderChuDauTuTable();
-            else if (tableKey === 'nhathau') this.view.renderNhaThauTable();
-            else if (tableKey === 'chuyengia') this.view.renderChuyenGiaTable();
-            else if (tableKey === 'hopdong') this.view.renderHopDongTable();
-        };
     }
 
     hasLocalWorkspaceData() {
@@ -406,7 +388,7 @@ export class BiddingController {
         // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
         if (!this._initialSyncStarted) {
             this._initialSyncStarted = true;
-            const startBackgroundSync = () => this.forceSyncData(true);
+            const startBackgroundSync = () => this.scheduleBackgroundSync ? this.scheduleBackgroundSync(500) : this.forceSyncData(true);
             if ('requestIdleCallback' in window) {
                 requestIdleCallback(startBackgroundSync, { timeout: 2000 });
             } else {
@@ -461,6 +443,26 @@ export class BiddingController {
 
 
     registerGlobals() {
+        window.appController = this;
+
+        window.toggleSortTable = (tableKey, field) => {
+            const current = this.model.sortState[tableKey] || { field: '', order: 'asc' };
+            if (current.field === field) {
+                current.order = current.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                current.field = field;
+                current.order = 'asc';
+            }
+            this.model.sortState[tableKey] = current;
+
+            if (tableKey === 'kehoach') this.view.renderKeHoachTable();
+            else if (tableKey === 'goithau') this.view.renderGoiThauTable();
+            else if (tableKey === 'chudautu') this.view.renderChuDauTuTable();
+            else if (tableKey === 'nhathau') this.view.renderNhaThauTable();
+            else if (tableKey === 'chuyengia') this.view.renderChuyenGiaTable();
+            else if (tableKey === 'hopdong') this.view.renderHopDongTable();
+        };
+
         window.changePlanRowVersion = (root, selectedId) => {
             if (!this.model.state.selectedPlanVersion) {
                 this.model.state.selectedPlanVersion = {};
@@ -522,7 +524,7 @@ export class BiddingController {
 
             const lightbox = document.createElement('div');
             lightbox.className = 'certificate-lightbox';
-            lightbox.innerHTML = `<img src="${cg.anhChungChi}" alt="Chứng chỉ Zoom">`;
+            lightbox.innerHTML = `<img src="${cg.anhChungChi}" alt="Chứng chỉ Zoom" loading="lazy" decoding="async">`;
             lightbox.onclick = () => lightbox.remove();
             document.body.appendChild(lightbox);
         };
@@ -533,7 +535,7 @@ export class BiddingController {
 
             const lightbox = document.createElement('div');
             lightbox.className = 'certificate-lightbox';
-            lightbox.innerHTML = `<img src="${cg.anhChuKy}" alt="Chữ ký Zoom" style="max-height:60vh; background:#fff; padding:24px; border-radius:12px;">`;
+            lightbox.innerHTML = `<img src="${cg.anhChuKy}" alt="Chữ ký Zoom" loading="lazy" decoding="async" style="max-height:60vh; background:#fff; padding:24px; border-radius:12px;">`;
             lightbox.onclick = () => lightbox.remove();
             document.body.appendChild(lightbox);
         };

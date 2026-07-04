@@ -1,3 +1,5 @@
+import { getAppController } from '../main_controller/controllerRef.js';
+
 export async function moThauGoiThau(id) {
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
@@ -582,7 +584,8 @@ window.openMoThauJVManager = (tr) => {
     body.style.padding = '20px';
 
     // Tự động tra cứu tên thành viên đứng đầu từ CSDL theo mã
-    const latestNhaThauListJV = window.appController.model.getLatestNhaThau();
+    const controller = getAppController();
+    const latestNhaThauListJV = controller?.model?.getLatestNhaThau?.() || [];
     const foundLeadNt = leadCode
         ? latestNhaThauListJV.find(n => n.maNhaThau && n.maNhaThau.trim().toLowerCase() === leadCode.trim().toLowerCase())
         : null;
@@ -688,7 +691,7 @@ window.openMoThauJVManager = (tr) => {
     document.getElementById('btn-save-mothau-jv').onclick = () => {
         const leadNameInput = document.getElementById('jv-input-lead-name').value.trim();
         if (!leadNameInput) {
-            window.appController.view.customAlert('Thiếu thông tin', 'Vui lòng nhập tên thành viên đứng đầu liên danh!', 'alert-triangle', '#jv-input-lead-name');
+            controller?.view?.customAlert?.('Thiếu thông tin', 'Vui lòng nhập tên thành viên đứng đầu liên danh!', 'alert-triangle', '#jv-input-lead-name');
             return;
         }
 
@@ -713,7 +716,7 @@ window.openMoThauJVManager = (tr) => {
         });
 
         if (!valid) {
-            window.appController.view.customAlert('Thiếu thông tin', 'Vui lòng điền đầy đủ cả Tên nhà thầu và Mã số thuế của Thành viên liên danh!', 'alert-triangle', invalidInputs);
+            controller?.view?.customAlert?.('Thiếu thông tin', 'Vui lòng điền đầy đủ cả Tên nhà thầu và Mã số thuế của Thành viên liên danh!', 'alert-triangle', invalidInputs);
             return;
         }
 
@@ -772,7 +775,7 @@ window.openMoThauJVViewModal = (members, leadName, leadCode) => {
 
     // Helper function to resolve contractor ID
     const findNhaThauId = (code, name) => {
-        const list = window.appController?.model?.state?.nhathau || [];
+        const list = getAppController()?.model?.state?.nhathau || [];
         let found = null;
         if (code && code !== 'Chưa cập nhật') {
             found = list.find(n => (n.maNhaThau && n.maNhaThau.trim().toLowerCase() === code.trim().toLowerCase()) ||

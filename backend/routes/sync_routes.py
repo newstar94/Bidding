@@ -29,6 +29,7 @@ from helpers_py.sync_mapper import (
     json_key_for_column,
     map_db_to_json,
 )
+from helpers_py.sync_validation import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
 
 # Global dictionary to store active WebSocket connections
 active_connections = {}  # owner_id -> set of websocket instances
@@ -49,12 +50,6 @@ TABLE_KEYS = {
 SYNCED_TABLES = set(TABLE_KEYS.values())
 
 OWNER_TYPES = {"organization", "user"}
-PACKAGE_STATUSES = {"Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"}
-LEGACY_PACKAGE_STATUS_ALIASES = {
-    "Huỷ thầu": "Hủy thầu"
-}
-DEFAULT_PAPER_STATUS_COLOR = "#64748b"
-
 DELETED_RECORD_UPSERT_SQL = """
     INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version)
     VALUES (?, ?, ?, ?, ?)
@@ -383,43 +378,7 @@ async def sync_api(request):
             if isinstance(item, dict) and str(item.get("name") or item.get("tenTrangThai") or "").strip()
         }
         paper_statuses_to_seed = set()
-        
-        def is_valid_date_format(val):
-            if not val:
-                return True
-            for fmt in (
-                "%Y-%m-%d",
-                "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%d %H:%M:%S",
-                "%Y-%m-%dT%H:%M",
-                "%Y-%m-%d %H:%M",
-                "%d/%m/%Y",
-                "%d/%m/%Y %H:%M:%S",
-                "%d/%m/%Y %H:%M"
-            ):
-                try:
-                    datetime.strptime(val, fmt)
-                    return True
-                except ValueError:
-                    pass
-            return False
-            
-        def parse_date(val):
-            for fmt in (
-                "%Y-%m-%d",
-                "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%d %H:%M:%S",
-                "%Y-%m-%dT%H:%M",
-                "%Y-%m-%d %H:%M",
-                "%d/%m/%Y",
-                "%d/%m/%Y %H:%M:%S",
-                "%d/%m/%Y %H:%M"
-            ):
-                try:
-                    return datetime.strptime(val, fmt)
-                except ValueError:
-                    pass
-            return None
+
 
         for payload_key, table_name in TABLE_KEYS.items():
             if payload_key not in data:
@@ -433,159 +392,19 @@ async def sync_api(request):
                 item_errors = []
                 c_id = get_clean_id(table_name, item.get('id'))
                 c_root_id = get_clean_id(table_name, item.get('rootId')) or c_id
-                
-                # 1. Required fields
-                if table_name == "chu_dau_tu":
-                    ten = item.get("tenChuDauTu")
-                    if not ten or not str(ten).strip():
-                        item_errors.append("Tên chủ đầu tư không được để trống.")
-                elif table_name == "ke_hoach_lcnt":
-                    ten = item.get("tenKeHoach")
-                    if not ten or not str(ten).strip():
-                        item_errors.append("Tên kế hoạch LCNT không được để trống.")
-                elif table_name == "goi_thau":
-                    ten = item.get("tenGoiThau")
-                    if not ten or not str(ten).strip():
-                        item_errors.append("Tên gói thầu không được để trống.")
-                elif table_name == "nha_thau":
-                    ten = item.get("tenNhaThau")
-                    if not ten or not str(ten).strip():
-                        item_errors.append("Tên nhà thầu không được để trống.")
-                elif table_name == "chuyen_gia":
-                    ten = item.get("hoTen")
-                    if not ten or not str(ten).strip():
-                        item_errors.append("Họ và tên chuyên gia không được để trống.")
-                    cccd = item.get("soCCCD")
-                    if cccd and not re.match(r"^\d{12}$", str(cccd).strip()):
-                        item_errors.append("Số Căn cước công dân phải gồm đúng 12 chữ số.")
-                elif table_name == "hop_dong":
-                    ten = item.get("tenHopDong")
-                    so_hd = item.get("soHopDong")
-                    if not ten or not str(ten).strip():
-                        item_errors.append("Tên hợp đồng không được để trống.")
-                    if not so_hd or not str(so_hd).strip():
-                        item_errors.append("Số hợp đồng không được để trống.")
-
-                # 2. Format validation
-                table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
-                explicit_json_fields = set(table_spec.get("json_fields", []))
-                for col in table_spec.get("columns", {}).keys():
-                    is_json_field = col in explicit_json_fields or col.endswith("_list") or col.startswith("cv_")
-                    if not is_json_field:
-                        continue
-                    json_key = json_key_for_column(table_name, col)
-                    if json_key not in item:
-                        continue
-                    raw_json_value = item.get(json_key)
-                    if raw_json_value in (None, "") or isinstance(raw_json_value, (list, dict)):
-                        continue
-                    if isinstance(raw_json_value, str):
-                        try:
-                            parsed_json_value = json.loads(raw_json_value)
-                            if not isinstance(parsed_json_value, (list, dict)):
-                                item_errors.append(f"Truong JSON '{json_key}' phai la mang hoac object.")
-                        except Exception:
-                            item_errors.append(f"Truong JSON '{json_key}' khong dung dinh dang JSON.")
-                    else:
-                        item_errors.append(f"Truong JSON '{json_key}' phai la mang, object hoac chuoi JSON hop le.")
-
-                email = item.get("email")
-                if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", str(email).strip()):
-                    item_errors.append("Email không đúng định dạng.")
-                    
-                phone = item.get("soDienThoai")
-                if phone and not re.match(r"^[0-9\s+\-()]{9,15}$", str(phone).strip()):
-                    item_errors.append("Số điện thoại không đúng định dạng (từ 9 đến 15 chữ số).")
-
-                mst = item.get("maSoThue")
-                is_auto_created_nt = False
-                if table_name == "nha_thau":
-                    ma_nt = item.get("maNhaThau")
-                    dia_chi = item.get("diaChi")
-                    sdt = item.get("soDienThoai")
-                    email_val = item.get("email")
-                    # Nhà thầu tự động tạo từ mở thầu có maSoThue trùng maNhaThau và các trường liên lạc để trống
-                    if mst and mst == ma_nt and not dia_chi and not sdt and not email_val:
-                        is_auto_created_nt = True
-
-                if mst and not is_auto_created_nt and not re.match(r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$", str(mst).strip()):
-                    item_errors.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).")
-                
-                for date_key in ["ngayQuyetDinh", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau", "ngayPheDuyet", "ngayKy"]:
-                    val = item.get(date_key)
-                    if val and not is_valid_date_format(str(val).strip()):
-                        item_errors.append(f"Trường ngày/giờ '{date_key}' không đúng định dạng.")
-
-                # 3. Logic validation
-                if table_name == "goi_thau":
-                    raw_status = item.get("trangThai")
-                    if raw_status:
-                        normalized_status = LEGACY_PACKAGE_STATUS_ALIASES.get(str(raw_status).strip(), str(raw_status).strip())
-                        item["trangThai"] = normalized_status
-                        if normalized_status not in PACKAGE_STATUSES:
-                            item_errors.append(f"Trạng thái gói thầu '{raw_status}' không hợp lệ.")
-
-                    dang_tai_str = item.get("thoiGianDangTai")
-                    dong_thau_str = item.get("thoiGianDongThau")
-                    mo_thau_str = item.get("thoiGianMoThau")
-                    
-                    dang_tai = parse_date(dang_tai_str) if dang_tai_str else None
-                    dong_thau = parse_date(dong_thau_str) if dong_thau_str else None
-                    mo_thau = parse_date(mo_thau_str) if mo_thau_str else None
-                    
-                    if dang_tai and dong_thau and dong_thau <= dang_tai:
-                        item_errors.append("Thời gian đóng thầu phải sau thời gian đăng tải.")
-                    if dong_thau and mo_thau and mo_thau < dong_thau:
-                        item_errors.append("Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu.")
-                        
-                    trong_so = item.get("trongSoKyThuat")
-                    if trong_so is not None:
-                        ts_val = safe_int(trong_so)
-                        if ts_val is not None and (ts_val < 0 or ts_val > 100):
-                            item_errors.append("Trọng số kỹ thuật phải nằm trong khoảng từ 0% đến 100%.")
-                            
-                    gia = item.get("giaGoiThau")
-                    if gia is not None:
-                        gia_val = safe_float(gia)
-                        if gia_val is not None and gia_val < 0:
-                            item_errors.append("Giá gói thầu không được nhỏ hơn 0.")
-                            
-                elif table_name == "ke_hoach_lcnt":
-                    is_auto = item.get("isTongMucTuDong")
-                    is_auto_val = 1 if (is_auto is True or str(is_auto) in ('1', 'true', 'True')) else 0
-                    
-                    item["isTongMucTuDong"] = is_auto_val
-                    
-                    tong_muc = item.get("tongMucDauTu")
-                    if tong_muc is not None:
-                        tm_val = safe_float(tong_muc)
-                        if tm_val is not None and tm_val < 0:
-                            item_errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
-                            
-                elif table_name == "hop_dong":
-                    gia_tri = item.get("giaTri")
-                    if gia_tri is not None:
-                        gt_val = safe_float(gia_tri)
-                        if gt_val is not None and gt_val < 0:
-                            item_errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
-                    trang_thai_hs = item.get("trangThaiHoSo")
-                    if trang_thai_hs:
-                        trang_thai_hs = str(trang_thai_hs).strip()
-                        if trang_thai_hs not in incoming_paper_status_names:
-                            cursor.execute(
-                                "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ?",
-                                (org_name, trang_thai_hs)
-                            )
-                            if not cursor.fetchone():
-                                paper_statuses_to_seed.add(trang_thai_hs)
-
-                elif table_name == "trang_thai_ho_so_giay":
-                    status_name = item.get("name") or item.get("tenTrangThai")
-                    status_color = item.get("color") or item.get("mauSac") or DEFAULT_PAPER_STATUS_COLOR
-                    if not status_name or not str(status_name).strip():
-                        item_errors.append("Tên trạng thái hồ sơ giấy không được để trống.")
-                    if status_color and not re.match(r"^#[0-9a-fA-F]{6}$", str(status_color).strip()):
-                        item_errors.append("Màu trạng thái hồ sơ giấy phải ở dạng HEX, ví dụ #64748b.")
+                item, pure_errors, requested_paper_statuses = validate_sync_item(
+                    table_name,
+                    item,
+                    incoming_paper_status_names
+                )
+                item_errors.extend(pure_errors)
+                for status_name in requested_paper_statuses:
+                    cursor.execute(
+                        "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ?",
+                        (org_name, status_name)
+                    )
+                    if not cursor.fetchone():
+                        paper_statuses_to_seed.add(status_name)
 
                 # 4. Duplicate checks
                 if table_name == "chu_dau_tu":

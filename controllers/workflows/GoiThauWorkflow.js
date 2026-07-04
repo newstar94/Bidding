@@ -1,3 +1,5 @@
+import { parseBidDateTime } from './dateParseUtils.js';
+
 export function openPackageWizardStep() {
     if (!this.packageWizard.active) return;
 
@@ -769,28 +771,7 @@ export async function handleGoiThauSubmit(e) {
     // Custom validation for extensions
     const mainDongThauStr = formVals.thoiGianDongThau;
 
-    // Helper function to parse Date from Vietnamese dd/MM/yyyy HH:mm or ISO format
-    const parseDMYHM = (str) => {
-        if (!str) return null;
-        let cleaned = str.trim();
-        if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(cleaned)) {
-            return new Date(cleaned.replace(' ', 'T'));
-        }
-        const parts = cleaned.split(/\s+/);
-        if (parts.length < 2) return null;
-        const dateParts = parts[0].split('/');
-        const timeParts = parts[1].split(':');
-        if (dateParts.length < 3 || timeParts.length < 2) return null;
-        return new Date(
-            parseInt(dateParts[2]),
-            parseInt(dateParts[1]) - 1,
-            parseInt(dateParts[0]),
-            parseInt(timeParts[0]),
-            parseInt(timeParts[1])
-        );
-    };
-
-    const mainDongThauDate = parseDMYHM(mainDongThauStr);
+    const mainDongThauDate = parseBidDateTime(mainDongThauStr);
     const ghRows = [];
     let validationError = null;
 
@@ -804,7 +785,7 @@ export async function handleGoiThauSubmit(e) {
             return;
         }
 
-        const currentGiaHanDate = parseDMYHM(timeInput);
+        const currentGiaHanDate = parseBidDateTime(timeInput);
         if (!currentGiaHanDate) {
             validationError = `Thời gian gia hạn Lần ${index + 1} không hợp lệ!`;
             return;
@@ -816,7 +797,7 @@ export async function handleGoiThauSubmit(e) {
             }
         } else {
             const prevTimeStr = ghRows[index - 1].timeStr;
-            const prevGiaHanDate = parseDMYHM(prevTimeStr);
+            const prevGiaHanDate = parseBidDateTime(prevTimeStr);
             if (prevGiaHanDate && currentGiaHanDate <= prevGiaHanDate) {
                 validationError = `Thời gian gia hạn Lần ${index + 1} (${timeInput}) phải lớn hơn thời gian gia hạn Lần ${index} (${prevTimeStr})!`;
             }

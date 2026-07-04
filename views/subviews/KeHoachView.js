@@ -1,31 +1,9 @@
 import { formatCurrency, formatDate, initCustomSelect } from './view_helpers.js';
+import { parseYearMonth, sortRecords } from './tableDataUtils.js';
+import { clearVirtualTable, renderVirtualTable } from './virtualTable.js';
 export async function renderKeHoachTable() {
     const tableBody = document.getElementById('kehoach-table').querySelector('tbody');
     const searchVal = document.getElementById('search-kehoach').value.toLowerCase();
-
-    // Helper function to extract year and month safely from various date formats
-    const parseYearMonth = (dateStr) => {
-        if (!dateStr) return { year: null, month: null };
-        let cleaned = String(dateStr).replace(/\s*-\s*/, ' ').trim();
-        if (cleaned.match(/^\d{4}-\d{2}-\d{2}/)) {
-            const y = cleaned.substring(0, 4);
-            const m = parseInt(cleaned.substring(5, 7), 10).toString();
-            return { year: y, month: m };
-        } else if (cleaned.match(/^\d{2}\/\d{2}\/\d{4}/)) {
-            const parts = cleaned.split(' ')[0].split('/');
-            const y = parts[2];
-            const m = parseInt(parts[1], 10).toString();
-            return { year: y, month: m };
-        }
-        const d = new Date(cleaned);
-        if (!isNaN(d.getTime())) {
-            return {
-                year: d.getFullYear().toString(),
-                month: (d.getMonth() + 1).toString()
-            };
-        }
-        return { year: null, month: null };
-    };
 
     // Populate Year and Month dropdowns dynamically
     const yearSelect = document.getElementById('filter-kehoach-nam');
@@ -110,17 +88,7 @@ export async function renderKeHoachTable() {
             return matchesSearch && matchesYear && matchesMonth;
         });
 
-        if (sortBy) {
-            filtered.sort((a, b) => {
-                let valA = a[sortBy] || '';
-                let valB = b[sortBy] || '';
-                if (typeof valA === 'string') valA = valA.toLowerCase();
-                if (typeof valB === 'string') valB = valB.toLowerCase();
-                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
+        sortRecords(filtered, sortBy, sortOrder);
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -128,6 +96,7 @@ export async function renderKeHoachTable() {
     }
 
     if (totalItems === 0) {
+        clearVirtualTable(tableBody);
         tableBody.innerHTML = `
             <tr>
                 <td colspan="10">
@@ -142,7 +111,7 @@ export async function renderKeHoachTable() {
         if (pag) pag.innerHTML = '';
     } else {
         const esc = window.escapeHTML || ((value) => String(value ?? ''));
-        tableBody.innerHTML = slicedData.map(kh => {
+        renderVirtualTable(tableBody, slicedData, kh => {
             const root = kh.rootId || kh.id;
             const allVersions = kh.allVersions || this.model.state.kehoach.filter(k => (k.rootId || k.id) === root)
                 .sort((a, b) => parseInt(b.phienBan) - parseInt(a.phienBan));
@@ -201,7 +170,7 @@ export async function renderKeHoachTable() {
                     </td>
                 </tr>
             `;
-        }).join('');
+        }, { colSpan: 10, rowHeight: 82, onRender: () => lucide.createIcons({ root: tableBody }) });
 
         if (window.renderTablePagination) {
             window.renderTablePagination('kehoach-pagination', totalItems, currentPage, pageSize);

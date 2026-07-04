@@ -1,3 +1,6 @@
+import { getAppController } from '/controllers/main_controller/controllerRef.js';
+import { getExcelPreviewFieldError } from './excelPreviewValidation.js';
+
 export function renderExcelPreview(rows, importType) {
     const formatDateToDMY = (str) => {
         if (!str) return '';
@@ -17,81 +20,6 @@ export function renderExcelPreview(rows, importType) {
         }
         return str;
     };
-
-    const getFieldError = (type, key, val, row) => {
-        let apiType = type;
-        if (apiType === 'plan') apiType = 'kehoach';
-        if (apiType === 'package') apiType = 'goithau';
-
-        const email_pattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-        const cccd_pattern = /^\d{12}$/;
-        const tax_pattern = /^\d{10}$|^\d{13}$|^\d{10}-\d{3}$/;
-        const phone_pattern = /^[0-9\s+\-()]{9,15}$/;
-
-        const strVal = (val !== undefined && val !== null) ? String(val).trim() : '';
-
-        if (apiType === 'kehoach') {
-            if (key === 'maKeHoach' && !strVal) return 'Mã kế hoạch không được để trống';
-            if (key === 'tenKeHoach' && !strVal) return 'Tên kế hoạch không được để trống';
-            if (key === 'tongMucDauTu' && val !== undefined && val !== null && val !== '') {
-                const num = parseFloat(val);
-                if (isNaN(num)) return 'Tổng mức đầu tư phải là số';
-                if (num < 0) return 'Tổng mức đầu tư không được nhỏ hơn 0';
-            }
-        } else if (apiType === 'goithau') {
-            if (key === 'maGoiThau' && !strVal) return 'Mã gói thầu không được để trống';
-            if (key === 'tenGoiThau' && !strVal) return 'Tên gói thầu không được để trống';
-            if (key === 'giaGoiThau' && val !== undefined && val !== null && val !== '') {
-                const num = parseFloat(val);
-                if (isNaN(num)) return 'Giá gói thầu phải là số';
-                if (num < 0) return 'Giá gói thầu không được nhỏ hơn 0';
-            }
-            if (key === 'thoiGianThucHien' && val !== undefined && val !== null && val !== '') {
-                const num = parseInt(val);
-                if (isNaN(num)) return 'Thời gian thực hiện phải là số nguyên';
-                if (num <= 0) return 'Thời gian thực hiện phải lớn hơn 0';
-            }
-        } else if (apiType === 'chudautu') {
-            if (key === 'maChuDauTu' && !strVal) return 'Mã chủ đầu tư không được để trống';
-            if (key === 'tenChuDauTu' && !strVal) return 'Tên chủ đầu tư không được để trống';
-            if (key === 'maSoThue' && strVal && !tax_pattern.test(strVal)) return 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số)';
-            if (key === 'email' && strVal && !email_pattern.test(strVal)) return 'Email không đúng định dạng';
-            if (key === 'soDienThoai' && strVal && !phone_pattern.test(strVal)) return 'Số điện thoại không hợp lệ';
-        } else if (apiType === 'nhathau') {
-            if (key === 'maNhaThau' && !strVal) return 'Mã nhà thầu không được để trống';
-            if (key === 'tenNhaThau' && !strVal) return 'Tên nhà thầu không được để trống';
-            if (key === 'maSoThue') {
-                if (!strVal) return 'Mã số thuế không được để trống';
-                if (!tax_pattern.test(strVal)) return 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số)';
-            }
-            if (key === 'email' && strVal && !email_pattern.test(strVal)) return 'Email không đúng định dạng';
-            if (key === 'soDienThoai' && strVal && !phone_pattern.test(strVal)) return 'Số điện thoại không hợp lệ';
-        } else if (apiType === 'chuyengia') {
-            if (key === 'hoTen' && !strVal) return 'Họ và tên không được để trống';
-            if (key === 'soChungChi' && !strVal) return 'Số chứng chỉ không được để trống';
-            if (key === 'soCCCD') {
-                if (!strVal) return 'Số CCCD không được để trống';
-                if (!cccd_pattern.test(strVal)) return 'Số Căn cước công dân phải gồm đúng 12 chữ số';
-            }
-            if (key === 'email' && strVal && !email_pattern.test(strVal)) return 'Email không đúng định dạng';
-        } else if (apiType === 'hopdong') {
-            if (key === 'soHopDong' && !strVal) return 'Số hợp đồng không được để trống';
-            if (key === 'tenHopDong' && !strVal) return 'Tên hợp đồng không được để trống';
-            if (key === 'giaTri' && val !== undefined && val !== null && val !== '') {
-                const num = parseFloat(val);
-                if (isNaN(num)) return 'Giá trị hợp đồng phải là số';
-                if (num < 0) return 'Giá trị hợp đồng không được nhỏ hơn 0';
-            }
-        } else if (apiType === 'phanlo') {
-            if (key === 'tenPhanLo' && !strVal) return 'Tên phần lô không được để trống';
-        } else if (apiType === 'tuychonmuathem') {
-            if (key === 'hangMuc' && !strVal) return 'Hạng mục không được để trống';
-        } else if (['mothau', 'opening_fin', 'danhgiahsdt', 'ketquaqd'].includes(apiType)) {
-            if (key === 'id' && !strVal) return 'Không tìm thấy nhà thầu tương ứng!';
-        }
-        return null;
-    };
-
     let modal = document.getElementById('modal-excel-preview');
     if (!modal) {
         modal = document.createElement('div');
@@ -152,9 +80,7 @@ export function renderExcelPreview(rows, importType) {
         const saveBtn = modal.querySelector('#btn-save-excel-import');
         if (saveBtn) {
             saveBtn.onclick = () => {
-                if (window.appController && typeof window.appController.saveExcelImport === 'function') {
-                    window.appController.saveExcelImport();
-                }
+                getAppController()?.saveExcelImport?.();
             };
         }
     }
@@ -280,7 +206,7 @@ export function renderExcelPreview(rows, importType) {
                              (r._comment && (r._comment.includes('trùng lặp') || r._comment.includes('tồn tại')));
 
         keys.forEach(k => {
-            const err = getFieldError(importType, k, r[k], r);
+            const err = getExcelPreviewFieldError(importType, k, r[k], r);
             if (err) {
                 rowErrors.push(err);
                 fieldErrorMap[k] = err;
@@ -339,7 +265,7 @@ export function renderExcelPreview(rows, importType) {
                 inputClass += ' flatpickr-datetime';
                 val = formatDatetimeToDMYHM(val);
             } else if (k === 'nhaThauId') {
-                const matchedNt = window.appController.model.state.nhathau.find(n => n.id === val);
+                const matchedNt = getAppController()?.model?.state?.nhathau?.find(n => n.id === val);
                 if (matchedNt) val = matchedNt.tenNhaThau;
             }
 
@@ -366,9 +292,10 @@ export function renderExcelPreview(rows, importType) {
         const key = input.getAttribute('data-key');
         let val = input.value.trim();
 
-        if (window.appController && window.appController._excelImportData) {
-            const importType = window.appController._excelImportType;
-            const row = window.appController._excelImportData[rowIndex];
+        const controller = getAppController();
+        if (controller && controller._excelImportData) {
+            const importType = controller._excelImportType;
+            const row = controller._excelImportData[rowIndex];
             
             const dateKeys = ['ngayPheDuyet', 'ngayQuyetDinh', 'ngayKy', 'ngayQdChiDinh', 'ngayTrinhDuToan', 'ngayPheDuyetDuToan', 'ngayCapCCCD', 'ngayCapChungChi'];
             const datetimeKeys = ['thoiGianDangMa', 'thoiGianDangTai', 'thoiGianDongThau', 'thoiGianMoThau'];
@@ -397,13 +324,13 @@ export function renderExcelPreview(rows, importType) {
             }
 
             // Chạy lại bộ lọc trùng lặp cho toàn bộ dữ liệu Excel
-            window.appController.revalidateExcelImportData();
+            controller.revalidateExcelImportData();
 
             // Duyệt và cập nhật lại giao diện (viền đỏ, ghi chú lỗi, badge trạng thái) cho TẤT CẢ các hàng
             const trs = tableBody.querySelectorAll('tr[data-row-index]');
             trs.forEach(rowTr => {
                 const rIndex = parseInt(rowTr.getAttribute('data-row-index'), 10);
-                const rData = window.appController._excelImportData[rIndex];
+                const rData = controller._excelImportData[rIndex];
                 if (!rData) return;
 
                 const rInputs = rowTr.querySelectorAll('input.excel-preview-input');
@@ -413,7 +340,7 @@ export function renderExcelPreview(rows, importType) {
 
                 rInputs.forEach(inp => {
                     const k = inp.getAttribute('data-key');
-                    let err = getFieldError(importType, k, rData[k], rData);
+                    let err = getExcelPreviewFieldError(importType, k, rData[k], rData);
                     const td = inp.closest('td');
 
                     // Nếu không có lỗi định dạng riêng nhưng hàng bị lỗi trùng lặp, bôi đỏ trường định danh
@@ -479,9 +406,7 @@ export function renderExcelPreview(rows, importType) {
 
     previewContainer.style.display = 'block';
     
-    if (window.appController && typeof window.appController.initFlatpickr === 'function') {
-        window.appController.initFlatpickr(tableBody);
-    }
+    getAppController()?.initFlatpickr?.(tableBody);
     
     lucide.createIcons();
 }

@@ -1,31 +1,10 @@
 import { formatDate, formatCurrency, initCustomSelect } from '../view_helpers.js';
+import { parseYearMonth, sortRecords } from '../tableDataUtils.js';
+import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
 export async function renderHopDongTable() {
     const tableBody = document.getElementById('hopdong-table').querySelector('tbody');
     const searchVal = document.getElementById('search-hopdong').value.toLowerCase();
-
-    const parseYearMonth = (dateStr) => {
-        if (!dateStr) return { year: null, month: null };
-        let cleaned = String(dateStr).replace(/\s*-\s*/, ' ').trim();
-        if (cleaned.match(/^\d{4}-\d{2}-\d{2}/)) {
-            const y = cleaned.substring(0, 4);
-            const m = parseInt(cleaned.substring(5, 7), 10).toString();
-            return { year: y, month: m };
-        } else if (cleaned.match(/^\d{2}\/\d{2}\/\d{4}/)) {
-            const parts = cleaned.split(' ')[0].split('/');
-            const y = parts[2];
-            const m = parseInt(parts[1], 10).toString();
-            return { year: y, month: m };
-        }
-        const d = new Date(cleaned);
-        if (!isNaN(d.getTime())) {
-            return {
-                year: d.getFullYear().toString(),
-                month: (d.getMonth() + 1).toString()
-            };
-        }
-        return { year: null, month: null };
-    };
 
     const yearSelect = document.getElementById('filter-hopdong-nam');
     const monthSelect = document.getElementById('filter-hopdong-thang');
@@ -108,17 +87,7 @@ export async function renderHopDongTable() {
             return matchesSearch && matchesYear && matchesMonth;
         });
 
-        if (sortBy) {
-            filtered.sort((a, b) => {
-                let valA = a[sortBy] || '';
-                let valB = b[sortBy] || '';
-                if (typeof valA === 'string') valA = valA.toLowerCase();
-                if (typeof valB === 'string') valB = valB.toLowerCase();
-                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
+        sortRecords(filtered, sortBy, sortOrder);
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -126,6 +95,7 @@ export async function renderHopDongTable() {
     }
 
     if (totalItems === 0) {
+        clearVirtualTable(tableBody);
         tableBody.innerHTML = `
             <tr>
                 <td colspan="13">
@@ -139,7 +109,7 @@ export async function renderHopDongTable() {
         const pag = document.getElementById('hopdong-pagination');
         if (pag) pag.innerHTML = '';
     } else {
-        tableBody.innerHTML = slicedData.map(h => {
+        renderVirtualTable(tableBody, slicedData, h => {
             const root = h.rootId || h.id;
             const allVersions = h.allVersions || this.model.state.hopdong.filter(x => (x.rootId || x.id) === root)
                 .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
@@ -221,7 +191,7 @@ export async function renderHopDongTable() {
                     </td>
                 </tr>
             `;
-        }).join('');
+        }, { colSpan: 11, rowHeight: 86, onRender: () => lucide.createIcons({ root: tableBody }) });
 
         if (window.renderTablePagination) {
             window.renderTablePagination('hopdong-pagination', totalItems, currentPage, pageSize);

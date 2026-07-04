@@ -1,4 +1,6 @@
 import { formatDate } from '../view_helpers.js';
+import { sortRecords } from '../tableDataUtils.js';
+import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
 export async function renderChuyenGiaTable() {
     const tableBody = document.getElementById('chuyengia-table').querySelector('tbody');
@@ -41,17 +43,7 @@ export async function renderChuyenGiaTable() {
             (cg.soChungChi || '').toLowerCase().includes(searchVal)
         );
 
-        if (sortBy) {
-            filtered.sort((a, b) => {
-                let valA = a[sortBy] || '';
-                let valB = b[sortBy] || '';
-                if (typeof valA === 'string') valA = valA.toLowerCase();
-                if (typeof valB === 'string') valB = valB.toLowerCase();
-                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
+        sortRecords(filtered, sortBy, sortOrder);
 
         totalItems = filtered.length;
         const startIndex = (currentPage - 1) * pageSize;
@@ -59,6 +51,7 @@ export async function renderChuyenGiaTable() {
     }
 
     if (totalItems === 0) {
+        clearVirtualTable(tableBody);
         tableBody.innerHTML = `
             <tr>
                 <td colspan="7">
@@ -72,7 +65,7 @@ export async function renderChuyenGiaTable() {
         const pag = document.getElementById('chuyengia-pagination');
         if (pag) pag.innerHTML = '';
     } else {
-        tableBody.innerHTML = slicedData.map(cg => {
+        renderVirtualTable(tableBody, slicedData, cg => {
             const root = cg.rootId || cg.id;
             const allVersions = cg.allVersions || this.model.state.chuyengia.filter(x => (x.rootId || x.id) === root)
                 .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
@@ -124,7 +117,7 @@ export async function renderChuyenGiaTable() {
                 </td>
             </tr>
             `;
-        }).join('');
+        }, { colSpan: 7, rowHeight: 76, onRender: () => lucide.createIcons({ root: tableBody }) });
 
         if (window.renderTablePagination) {
             window.renderTablePagination('chuyengia-pagination', totalItems, currentPage, pageSize);
@@ -167,7 +160,7 @@ export function showChuyenGiaDetails(id) {
                     <div class="passport-detail-label" style="margin-bottom: 6px;">Ảnh chữ ký chuyên gia</div>
                     <div class="signature-display-frame" data-bf-action="zoom-signature" data-id="${cg.id}" title="Bấm để phóng to">
                         ${cg.anhChuKy
-            ? `<img src="${cg.anhChuKy}" alt="Chữ ký" style="max-height:80px; max-width:100%; object-fit:contain;">`
+            ? `<img src="${cg.anhChuKy}" alt="Chữ ký" loading="lazy" decoding="async" style="max-height:80px; max-width:100%; object-fit:contain;">`
             : `<span class="text-muted" style="font-size:0.78rem;">Chưa có ảnh chữ ký</span>`
         }
                     </div>
@@ -200,7 +193,7 @@ export function showChuyenGiaDetails(id) {
                     <div class="passport-detail-label" style="margin-bottom: 6px;">Ảnh chụp chứng chỉ thực tế</div>
                     <div class="cert-image-frame" data-bf-action="zoom-certificate" data-id="${cg.id}">
                         ${cg.anhChungChi
-            ? `<img src="${cg.anhChungChi}" alt="Ảnh chứng chỉ">`
+            ? `<img src="${cg.anhChungChi}" alt="Ảnh chứng chỉ" loading="lazy" decoding="async">`
             : `<div style="display:flex;align-items:center;justify-content:center;height:120px;color:var(--text-light);">Chưa có ảnh chứng chỉ</div>`
         }
                         ${cg.anhChungChi ? `<div class="cert-zoom-overlay"><i data-lucide="zoom-in"></i> Phóng to</div>` : ''}

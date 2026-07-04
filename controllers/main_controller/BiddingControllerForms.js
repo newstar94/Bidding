@@ -1,3 +1,5 @@
+import { debounce } from './domUtils.js';
+
 export function updateNguonVonFieldState(planId) {
     const gtNguonVon = document.getElementById('gt-nguonvon');
     if (!gtNguonVon) return;
@@ -218,12 +220,6 @@ export function setupFileUploads() {
 
 
 export function setupActionListeners() {
-    // Debounce helper — tránh re-render bảng mỗi lần gõ phím, chỉ render sau 300ms dừng gõ
-    const debounce = (fn, ms = 300) => {
-        let timer;
-        return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
-    };
-
     document.getElementById('search-kehoach').addEventListener('input', debounce(() => {
         this.model.currentPage.kehoach = 1;
         this.view.renderKeHoachTable();

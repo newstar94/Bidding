@@ -1,3 +1,5 @@
+import { parseBidDateTime } from './dateParseUtils.js';
+
 export function addPhanLoRow(data = {}) {
     const tbody = document.getElementById('phanlo-tbody');
     if (!tbody) return;
@@ -192,40 +194,7 @@ export function updateGiaHanIndices() {
 export function validateGiaHanRealtime() {
     const mainDongThauStr = document.getElementById('gt-thoigiandongthau')?.value || '';
 
-    const parseDMYHM = (str) => {
-        if (!str) return null;
-        let cleaned = str.replace('T', ' ').trim();
-        if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(:\d{2})?$/.test(cleaned)) {
-            const parts = cleaned.split(' ');
-            const dateParts = parts[0].split('-');
-            const timeParts = parts[1].split(':');
-            return new Date(
-                parseInt(dateParts[0]),
-                parseInt(dateParts[1]) - 1,
-                parseInt(dateParts[2]),
-                parseInt(timeParts[0]),
-                parseInt(timeParts[1])
-            );
-        }
-        const parts = cleaned.split(/\s+/);
-        if (parts.length >= 2) {
-            const dateParts = parts[0].split('/');
-            const timeParts = parts[1].split(':');
-            if (dateParts.length >= 3 && timeParts.length >= 2) {
-                return new Date(
-                    parseInt(dateParts[2]),
-                    parseInt(dateParts[1]) - 1,
-                    parseInt(dateParts[0]),
-                    parseInt(timeParts[0]),
-                    parseInt(timeParts[1])
-                );
-            }
-        }
-        const d = new Date(str);
-        return isNaN(d.getTime()) ? null : d;
-    };
-
-    const mainDongThauDate = parseDMYHM(mainDongThauStr);
+    const mainDongThauDate = parseBidDateTime(mainDongThauStr);
     const rows = document.querySelectorAll('#gt-giahan-tbody tr');
     const ghRowsData = [];
 
@@ -241,7 +210,7 @@ export function validateGiaHanRealtime() {
         const timeStr = timeInput.value.trim();
         if (!timeStr) return;
 
-        const currentGiaHanDate = parseDMYHM(timeStr);
+        const currentGiaHanDate = parseBidDateTime(timeStr);
         if (!currentGiaHanDate) {
             showRowError(tr, timeInput, 'Thời gian không hợp lệ');
             return;
@@ -253,7 +222,7 @@ export function validateGiaHanRealtime() {
             }
         } else {
             const prevTimeStr = ghRowsData[index - 1]?.timeStr;
-            const prevGiaHanDate = parseDMYHM(prevTimeStr);
+            const prevGiaHanDate = parseBidDateTime(prevTimeStr);
             if (prevGiaHanDate && currentGiaHanDate <= prevGiaHanDate) {
                 showRowError(tr, timeInput, `Phải lớn hơn lần trước (${prevTimeStr})`);
             }
