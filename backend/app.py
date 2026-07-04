@@ -120,10 +120,16 @@ def compile_html(file_path):
 
     if not APP_DEBUG:
         compiled = re.sub(
+            r'\s*<link\s+rel="modulepreload"\s+href="/(?:controllers|models|views)/[^"]+">\s*',
+            '\n',
+            compiled
+        )
+        compiled = re.sub(
             r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
             '<script type="module" src="/dist/controllers/app.bundle.js"></script>',
             compiled
         )
+        compiled = compiled.replace("window.__BF_APP_DEBUG__ = true;", "window.__BF_APP_DEBUG__ = false;")
         with _compiled_html_lock:
             if not _compiled_html_cache:
                 _compiled_html_cache = compiled
@@ -235,6 +241,19 @@ class SafeStaticFiles(StaticFiles):
         # Chỉ cho phép các file tĩnh phục vụ Frontend (.js, .css), từ chối mã nguồn Python và file nhạy cảm
         blocked_exts = (".py", ".pyc", ".pyo", ".db", ".sqlite", ".docx")
         if path.lower().endswith(blocked_exts) or "__pycache__" in path:
+            return Response("Access Denied", status_code=403)
+        return await super().get_response(path, scope)
+
+
+class ProductionViewStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        normalized = path.replace("\\", "/").lstrip("/")
+        allowed = (
+            normalized == "style.css"
+            or normalized == "service-worker.js"
+            or (normalized.startswith("css/") and normalized.endswith(".css"))
+        )
+        if not allowed:
             return Response("Access Denied", status_code=403)
         return await super().get_response(path, scope)
 
@@ -384,11 +403,19 @@ routes = [
 
     # Mount gốc views cho tệp index.html và style.css (Dùng SafeStaticFiles cho /controllers và /models để chỉ serve file tĩnh JS/CSS)
     Mount("/dist", app=SafeStaticFiles(directory=dist_dir), name="dist"),
-    Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
-    Mount("/models", app=SafeStaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
-    Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
-    Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
 ]
+
+if APP_DEBUG:
+    routes.extend([
+        Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
+        Mount("/models", app=SafeStaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
+        Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
+        Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
+    ])
+else:
+    routes.append(
+        Mount("/", app=ProductionViewStaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
+    )
 
 # CORS: Mặc định chỉ cho phép localhost + 127.0.0.1.
 # Để mở rộng, set CORS_ORIGINS trong .env (VD: CORS_ORIGINS=https://yourdomain.com)
@@ -482,7 +509,7 @@ async def lifespan(app):
         from helpers import khoi_tao_va_di_tru_he_thong
         khoi_tao_va_di_tru_he_thong()
     except Exception as db_err:
-        print("Lỗi khởi tạo cơ sở dữ liệu tại startup:", db_err)
+        log_error(db_err, "startup_database_init")
 
     import threading
     threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()

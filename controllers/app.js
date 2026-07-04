@@ -57,6 +57,10 @@ const syncSessionBetweenTabs = () => {
 };
 
 window.addEventListener('DOMContentLoaded', async () => {
+    if ('serviceWorker' in navigator && window.__BF_APP_DEBUG__ === false) {
+        navigator.serviceWorker.register('/service-worker.js').catch(() => { });
+    }
+
     // Sync session from other tabs first if possible
     await syncSessionBetweenTabs();
 

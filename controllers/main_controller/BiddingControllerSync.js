@@ -282,13 +282,14 @@ export function setupWebSocketConnection() {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/sync`;
+    const debug = window.__BF_APP_DEBUG__ === true;
 
-    console.log("Connecting to WebSocket sync server:", wsUrl);
+    if (debug) console.log("Connecting to WebSocket sync server:", wsUrl);
     const ws = new WebSocket(wsUrl);
     this.ws = ws;
 
     ws.onopen = () => {
-        console.log("WebSocket connection established. Sending auth...");
+        if (debug) console.log("WebSocket connection established. Sending auth...");
         // Reset backoff khi kết nối thành công
         this._wsRetryDelay = 5000;
         ws.send(JSON.stringify({
@@ -305,7 +306,7 @@ export function setupWebSocketConnection() {
                 if (msg.sender_session === token) {
                     return;
                 }
-                console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
+                if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
                 this.forceSyncData(true).catch(err => console.error("Real-time sync failed:", err));
             }
         } catch (e) {
@@ -318,7 +319,7 @@ export function setupWebSocketConnection() {
         const currentDelay = this._wsRetryDelay || 5000;
         const nextDelay = Math.min(60000, Math.round(currentDelay * 1.5));
         this._wsRetryDelay = nextDelay;
-        console.log(`WebSocket connection closed. Reconnecting in ${Math.round(nextDelay / 1000)}s...`);
+        if (debug) console.log(`WebSocket connection closed. Reconnecting in ${Math.round(nextDelay / 1000)}s...`);
         setTimeout(() => this.setupWebSocketConnection(), nextDelay);
     };
 
