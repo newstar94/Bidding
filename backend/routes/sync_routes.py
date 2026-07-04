@@ -12,7 +12,6 @@ from helpers import (
     database,
     verify_session,
     SCHEMA_DINH_NGHIA,
-    to_camel_case,
     clean_id,
     save_base64_image,
     load_base64_image,
@@ -22,6 +21,13 @@ from helpers import (
     recalculate_tong_muc_dau_tu,
     OrgPermissionError,
     _assert_safe_table  # [SEC-1] Guard tường minh chống SQL Injection do thiếu whitelist
+)
+from helpers_py.sync_mapper import (
+    canonicalize_payload_item,
+    db_column_for_json_key,
+    get_payload_value,
+    json_key_for_column,
+    map_db_to_json,
 )
 
 # Global dictionary to store active WebSocket connections
@@ -122,38 +128,6 @@ def safe_int(val):
         return int(float(val))
     except Exception:
         return None
-
-def map_db_to_json(table_name, row_dict):
-    item = {}
-    table_spec = SCHEMA_DINH_NGHIA[table_name]
-    # Priority 6 (C7): Lấy json_fields tường minh từ schema (thiếu convention _list/cv_)
-    explicit_json_fields = set(table_spec.get("json_fields", []))
-    field_map = table_spec.get("field_map", {})
-    for col in table_spec["columns"].keys():
-        # Priority 6: field_map > id_goc > to_camel_case
-        json_key = field_map.get(col)
-        if not json_key:
-            if col == "id_goc":
-                json_key = "rootId"
-            else:
-                json_key = to_camel_case(col)
-        val = row_dict.get(col)
-        # Priority 4: JSON field detection: explicit (schema) + convention suffix/prefix
-        is_json_field = (
-            col in explicit_json_fields        # Khai báo tường minh trong schema json_fields
-            or col.endswith("_list")           # Convention: danh sách
-            or col.startswith("cv_")           # Convention: CV fields
-        )
-        if is_json_field:
-            if val:
-                try:
-                    val = json.loads(val)
-                except Exception:
-                    val = []
-            else:
-                val = []
-        item[json_key] = val
-    return item
 
 def _get_expert_relations_for_packages(cursor, gt_ids):
     if not gt_ids:
@@ -365,7 +339,7 @@ async def sync_api(request):
         org_name = get_active_org(request, role_or_err.user_id)
         owner_type = get_owner_type(cursor, org_name)
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        client_mutation_id = (data.get("clientMutationId") or data.get("client_mutation_id") or "").strip()
+        client_mutation_id = (data.get("clientMutationId") or "").strip()
         if client_mutation_id:
             client_mutation_id = client_mutation_id[:128]
             cursor.execute(
@@ -455,37 +429,38 @@ async def sync_api(request):
                 continue
                 
             for item in items:
+                item = canonicalize_payload_item(table_name, item)
                 item_errors = []
                 c_id = get_clean_id(table_name, item.get('id'))
                 c_root_id = get_clean_id(table_name, item.get('rootId')) or c_id
                 
                 # 1. Required fields
                 if table_name == "chu_dau_tu":
-                    ten = item.get("tenChuDauTu") or item.get("ten_chu_dau_tu")
+                    ten = item.get("tenChuDauTu")
                     if not ten or not str(ten).strip():
                         item_errors.append("Tên chủ đầu tư không được để trống.")
                 elif table_name == "ke_hoach_lcnt":
-                    ten = item.get("tenKeHoach") or item.get("ten_ke_hoach")
+                    ten = item.get("tenKeHoach")
                     if not ten or not str(ten).strip():
                         item_errors.append("Tên kế hoạch LCNT không được để trống.")
                 elif table_name == "goi_thau":
-                    ten = item.get("tenGoiThau") or item.get("ten_goi_thau")
+                    ten = item.get("tenGoiThau")
                     if not ten or not str(ten).strip():
                         item_errors.append("Tên gói thầu không được để trống.")
                 elif table_name == "nha_thau":
-                    ten = item.get("tenNhaThau") or item.get("ten_nha_thau")
+                    ten = item.get("tenNhaThau")
                     if not ten or not str(ten).strip():
                         item_errors.append("Tên nhà thầu không được để trống.")
                 elif table_name == "chuyen_gia":
-                    ten = item.get("hoTen") or item.get("ho_ten")
+                    ten = item.get("hoTen")
                     if not ten or not str(ten).strip():
                         item_errors.append("Họ và tên chuyên gia không được để trống.")
-                    cccd = item.get("soCCCD") or item.get("so_cccd")
+                    cccd = item.get("soCCCD")
                     if cccd and not re.match(r"^\d{12}$", str(cccd).strip()):
                         item_errors.append("Số Căn cước công dân phải gồm đúng 12 chữ số.")
                 elif table_name == "hop_dong":
-                    ten = item.get("tenHopDong") or item.get("ten_hop_dong")
-                    so_hd = item.get("soHopDong") or item.get("so_hop_dong")
+                    ten = item.get("tenHopDong")
+                    so_hd = item.get("soHopDong")
                     if not ten or not str(ten).strip():
                         item_errors.append("Tên hợp đồng không được để trống.")
                     if not so_hd or not str(so_hd).strip():
@@ -494,15 +469,14 @@ async def sync_api(request):
                 # 2. Format validation
                 table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
                 explicit_json_fields = set(table_spec.get("json_fields", []))
-                field_map = table_spec.get("field_map", {})
                 for col in table_spec.get("columns", {}).keys():
                     is_json_field = col in explicit_json_fields or col.endswith("_list") or col.startswith("cv_")
                     if not is_json_field:
                         continue
-                    json_key = field_map.get(col) or ("rootId" if col == "id_goc" else to_camel_case(col))
-                    if json_key not in item and col not in item:
+                    json_key = json_key_for_column(table_name, col)
+                    if json_key not in item:
                         continue
-                    raw_json_value = item.get(json_key) if json_key in item else item.get(col)
+                    raw_json_value = item.get(json_key)
                     if raw_json_value in (None, "") or isinstance(raw_json_value, (list, dict)):
                         continue
                     if isinstance(raw_json_value, str):
@@ -519,16 +493,16 @@ async def sync_api(request):
                 if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", str(email).strip()):
                     item_errors.append("Email không đúng định dạng.")
                     
-                phone = item.get("soDienThoai") or item.get("so_dien_thoai")
+                phone = item.get("soDienThoai")
                 if phone and not re.match(r"^[0-9\s+\-()]{9,15}$", str(phone).strip()):
                     item_errors.append("Số điện thoại không đúng định dạng (từ 9 đến 15 chữ số).")
 
-                mst = item.get("maSoThue") or item.get("ma_so_thue")
+                mst = item.get("maSoThue")
                 is_auto_created_nt = False
                 if table_name == "nha_thau":
-                    ma_nt = item.get("maNhaThau") or item.get("ma_nha_thau")
-                    dia_chi = item.get("diaChi") or item.get("dia_chi")
-                    sdt = item.get("soDienThoai") or item.get("so_dien_thoai")
+                    ma_nt = item.get("maNhaThau")
+                    dia_chi = item.get("diaChi")
+                    sdt = item.get("soDienThoai")
                     email_val = item.get("email")
                     # Nhà thầu tự động tạo từ mở thầu có maSoThue trùng maNhaThau và các trường liên lạc để trống
                     if mst and mst == ma_nt and not dia_chi and not sdt and not email_val:
@@ -544,17 +518,16 @@ async def sync_api(request):
 
                 # 3. Logic validation
                 if table_name == "goi_thau":
-                    raw_status = item.get("trangThai") or item.get("trang_thai")
+                    raw_status = item.get("trangThai")
                     if raw_status:
                         normalized_status = LEGACY_PACKAGE_STATUS_ALIASES.get(str(raw_status).strip(), str(raw_status).strip())
                         item["trangThai"] = normalized_status
-                        item["trang_thai"] = normalized_status
                         if normalized_status not in PACKAGE_STATUSES:
                             item_errors.append(f"Trạng thái gói thầu '{raw_status}' không hợp lệ.")
 
-                    dang_tai_str = item.get("thoiGianDangTai") or item.get("thoi_gian_dang_tai")
-                    dong_thau_str = item.get("thoiGianDongThau") or item.get("thoi_gian_dong_thau")
-                    mo_thau_str = item.get("thoiGianMoThau") or item.get("thoi_gian_mo_thau")
+                    dang_tai_str = item.get("thoiGianDangTai")
+                    dong_thau_str = item.get("thoiGianDongThau")
+                    mo_thau_str = item.get("thoiGianMoThau")
                     
                     dang_tai = parse_date(dang_tai_str) if dang_tai_str else None
                     dong_thau = parse_date(dong_thau_str) if dong_thau_str else None
@@ -565,38 +538,37 @@ async def sync_api(request):
                     if dong_thau and mo_thau and mo_thau < dong_thau:
                         item_errors.append("Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu.")
                         
-                    trong_so = item.get("trongSoKyThuat") or item.get("trong_so_ky_thuat")
+                    trong_so = item.get("trongSoKyThuat")
                     if trong_so is not None:
                         ts_val = safe_int(trong_so)
                         if ts_val is not None and (ts_val < 0 or ts_val > 100):
                             item_errors.append("Trọng số kỹ thuật phải nằm trong khoảng từ 0% đến 100%.")
                             
-                    gia = item.get("giaGoiThau") or item.get("gia_goi_thau")
+                    gia = item.get("giaGoiThau")
                     if gia is not None:
                         gia_val = safe_float(gia)
                         if gia_val is not None and gia_val < 0:
                             item_errors.append("Giá gói thầu không được nhỏ hơn 0.")
                             
                 elif table_name == "ke_hoach_lcnt":
-                    is_auto = item.get("isTongMucTuDong") or item.get("is_tong_muc_tu_dong")
+                    is_auto = item.get("isTongMucTuDong")
                     is_auto_val = 1 if (is_auto is True or str(is_auto) in ('1', 'true', 'True')) else 0
                     
                     item["isTongMucTuDong"] = is_auto_val
-                    item["is_tong_muc_tu_dong"] = is_auto_val
                     
-                    tong_muc = item.get("tongMucDauTu") or item.get("tong_muc_dau_tu")
+                    tong_muc = item.get("tongMucDauTu")
                     if tong_muc is not None:
                         tm_val = safe_float(tong_muc)
                         if tm_val is not None and tm_val < 0:
                             item_errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
                             
                 elif table_name == "hop_dong":
-                    gia_tri = item.get("giaTri") or item.get("gia_tri")
+                    gia_tri = item.get("giaTri")
                     if gia_tri is not None:
                         gt_val = safe_float(gia_tri)
                         if gt_val is not None and gt_val < 0:
                             item_errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
-                    trang_thai_hs = item.get("trangThaiHoSo") or item.get("trang_thai_ho_so")
+                    trang_thai_hs = item.get("trangThaiHoSo")
                     if trang_thai_hs:
                         trang_thai_hs = str(trang_thai_hs).strip()
                         if trang_thai_hs not in incoming_paper_status_names:
@@ -617,8 +589,8 @@ async def sync_api(request):
 
                 # 4. Duplicate checks
                 if table_name == "chu_dau_tu":
-                    ma = item.get("maChuDauTu") or item.get("ma_chu_dau_tu")
-                    mst = item.get("maSoThue") or item.get("ma_so_thue")
+                    ma = item.get("maChuDauTu")
+                    mst = item.get("maSoThue")
                     if ma and str(ma).strip():
                         cursor.execute("SELECT 1 FROM chu_dau_tu WHERE owner_id = ? AND ma_chu_dau_tu = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
@@ -629,22 +601,22 @@ async def sync_api(request):
                             item_errors.append(f"Mã số thuế '{mst}' đã tồn tại.")
                             
                 elif table_name == "ke_hoach_lcnt":
-                    ma = item.get("maKeHoach") or item.get("ma_ke_hoach")
+                    ma = item.get("maKeHoach")
                     if ma and str(ma).strip():
                         cursor.execute("SELECT 1 FROM ke_hoach_lcnt WHERE owner_id = ? AND ma_ke_hoach = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Mã kế hoạch '{ma}' đã tồn tại.")
                             
                 elif table_name == "goi_thau":
-                    ma = item.get("maGoiThau") or item.get("ma_goi_thau")
+                    ma = item.get("maGoiThau")
                     if ma and str(ma).strip():
                         cursor.execute("SELECT 1 FROM goi_thau WHERE owner_id = ? AND ma_goi_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Mã gói thầu '{ma}' đã tồn tại.")
                             
                 elif table_name == "nha_thau":
-                    ma = item.get("maNhaThau") or item.get("ma_nha_thau")
-                    mst = item.get("maSoThue") or item.get("ma_so_thue")
+                    ma = item.get("maNhaThau")
+                    mst = item.get("maSoThue")
                     if ma and str(ma).strip():
                         cursor.execute("SELECT 1 FROM nha_thau WHERE owner_id = ? AND ma_nha_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
@@ -655,14 +627,14 @@ async def sync_api(request):
                             item_errors.append(f"Mã số thuế '{mst}' đã tồn tại.")
                             
                 elif table_name == "chuyen_gia":
-                    cccd = item.get("soCCCD") or item.get("so_cccd")
+                    cccd = item.get("soCCCD")
                     if cccd and str(cccd).strip():
                         cursor.execute("SELECT 1 FROM chuyen_gia WHERE owner_id = ? AND so_cccd = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(cccd).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Số CCCD chuyên gia '{cccd}' đã tồn tại.")
                             
                 elif table_name == "hop_dong":
-                    so_hd = item.get("soHopDong") or item.get("so_hop_dong")
+                    so_hd = item.get("soHopDong")
                     if so_hd and str(so_hd).strip():
                         cursor.execute("SELECT 1 FROM hop_dong WHERE owner_id = ? AND so_hop_dong = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(so_hd).strip(), c_id, c_root_id))
                         if cursor.fetchone():
@@ -735,6 +707,7 @@ async def sync_api(request):
             
             # 2. Thêm hoặc cập nhật (INSERT OR REPLACE) các bản ghi
             for item in items:
+                item = canonicalize_payload_item(table_name, item)
                 try:
                     db_row_data = {}
                     for col in columns:
@@ -752,21 +725,11 @@ async def sync_api(request):
                             continue
                         else:
                             # Rút trích key JSON tương ứng từ trường DB
-                            field_map = SCHEMA_DINH_NGHIA.get(table_name, {}).get("field_map", {})
-                            json_key = field_map.get(col)
-                            if not json_key:
-                                if col == "id_goc":
-                                    json_key = "rootId"
-                                else:
-                                    json_key = to_camel_case(col)
+                            json_key = json_key_for_column(table_name, col)
                                     
                             # Chỉ xử lý/cập nhật nếu trường được truyền lên từ client
-                            if (json_key in item) or (col in item):
-                                val = item.get(json_key)
-                                
-                                # Fallback nếu client gửi key ở dạng raw/snake_case
-                                if val is None:
-                                    val = item.get(col)
+                            if json_key in item:
+                                val = get_payload_value(table_name, item, col)
                                     
                                 # Làm sạch tiền tố ID
                                 if col == "id" or col.endswith("_id") or col == "id_goc":
@@ -887,8 +850,8 @@ async def sync_api(request):
                                         cg_id = cg_item.get('chuyenGiaId') or cg_item.get('id')
                                         if cg_id:
                                             clean_cg_id = clean_id(cg_id)
-                                            chuc_vu = cg_item.get('chucVu') or cg_item.get('chuc_vu') or 'Tổ viên'
-                                            cong_viec = cg_item.get('congViec') or cg_item.get('cong_viec') or ''
+                                            chuc_vu = cg_item.get('chucVu') or 'Tổ viên'
+                                            cong_viec = cg_item.get('congViec') or ''
                                             cursor.execute("""
                                                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, 'chuyen_gia', ?, ?)
@@ -909,8 +872,8 @@ async def sync_api(request):
                                         td_id = td_item.get('chuyenGiaId') or td_item.get('id')
                                         if td_id:
                                             clean_td_id = clean_id(td_id)
-                                            chuc_vu = td_item.get('chucVu') or td_item.get('chuc_vu') or 'Tổ viên'
-                                            cong_viec = td_item.get('congViec') or td_item.get('cong_viec') or ''
+                                            chuc_vu = td_item.get('chucVu') or 'Tổ viên'
+                                            cong_viec = td_item.get('congViec') or ''
                                             cursor.execute("""
                                                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, 'tham_dinh', ?, ?)
@@ -1352,11 +1315,7 @@ async def paginate_api(request):
             
         db_column = ""
         if sort_by:
-            field_map = SCHEMA_DINH_NGHIA.get(table_name, {}).get("field_map", {})
-            inverted_map = {v: k for k, v in field_map.items()}
-            import re
-            camel_to_snake = lambda s: re.sub(r'(?<!^)(?=[A-Z])', '_', s).lower()
-            db_column = inverted_map.get(sort_by, camel_to_snake(sort_by))
+            db_column = db_column_for_json_key(table_name, sort_by)
             
         valid_columns = SCHEMA_DINH_NGHIA.get(table_name, {}).get("columns", {})
         if db_column and db_column in valid_columns:

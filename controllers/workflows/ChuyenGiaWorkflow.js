@@ -237,40 +237,30 @@ export async function handleChuyenGiaSubmit(e) {
         const currentCg = this.model.state.chuyengia.find(c => c.id === id);
         const rootId = currentCg.rootId || currentCg.id;
         const versions = this.model.state.chuyengia.filter(c => c.rootId === rootId || c.id === rootId);
-        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || v.phien_ban || 0)));
+        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || 0)));
         const nextVerStr = String(maxVerNum + 1).padStart(2, '0');
 
         const isNewVersion = await this.view.customConfirm(
             'Lưu Chuyên gia',
-            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCg.phienBan || currentCg.phien_ban || 0)})`,
+            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCg.phienBan || 0)})`,
             'save'
         );
 
         if (isNewVersion) {
-            versions.forEach(c => { c.isLatest = 0; c.is_latest = 0; });
+            versions.forEach(c => { c.isLatest = 0; });
             data.id = window.generateUUID();
             data.rootId = rootId;
             data.phienBan = nextVerStr;
-            data.phien_ban = nextVerStr;
+            data.phienBan = nextVerStr;
             data.isLatest = 1;
-            data.is_latest = 1;
-            data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
-            data.created_at = data.createdAt;
-            data.updatedAt = this.model.getCurrentDateTimeString();
-            data.updated_at = data.updatedAt;
-            this.model.state.chuyengia.push(data);
+            data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            this.model.state.chuyengia.push(data);
         } else {
             data.id = id;
             data.rootId = currentCg.rootId || currentCg.id;
-            data.phienBan = currentCg.phienBan || currentCg.phien_ban || '00';
-            data.phien_ban = currentCg.phienBan || currentCg.phien_ban || '00';
+            data.phienBan = currentCg.phienBan || '00';
+            data.phienBan = currentCg.phienBan || '00';
             data.isLatest = currentCg.isLatest !== undefined ? currentCg.isLatest : 1;
-            data.is_latest = currentCg.is_latest !== undefined ? currentCg.is_latest : 1;
-            data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
-            data.created_at = data.createdAt;
-            data.updatedAt = this.model.getCurrentDateTimeString();
-            data.updated_at = data.updatedAt;
-            const idx = this.model.state.chuyengia.findIndex(c => c.id === id);
+            data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            const idx = this.model.state.chuyengia.findIndex(c => c.id === id);
             this.model.state.chuyengia[idx] = data;
         }
     } else {
@@ -278,14 +268,9 @@ export async function handleChuyenGiaSubmit(e) {
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';
-        data.phien_ban = '00';
+        data.phienBan = '00';
         data.isLatest = 1;
-        data.is_latest = 1;
-        data.createdAt = this.model.getCurrentDateTimeString();
-        data.created_at = data.createdAt;
-        data.updatedAt = this.model.getCurrentDateTimeString();
-        data.updated_at = data.updatedAt;
-        this.model.state.chuyengia.push(data);
+        data.createdAt = this.model.getCurrentDateTimeString();        data.updatedAt = this.model.getCurrentDateTimeString();        this.model.state.chuyengia.push(data);
     }
 
     this.model.persistData('chuyengia');

@@ -41,11 +41,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
             pwd_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt.encode('utf-8'), iterations)
             return secrets.compare_digest(stored_hash, pwd_hash.hex())
 
-        if ":" not in stored_password:
-            return False
-        salt, stored_hash = stored_password.split(":", 1)
-        pwd_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt.encode('utf-8'), 100000)
-        return secrets.compare_digest(stored_hash, pwd_hash.hex())
+        return False
     except Exception:
         return False
 

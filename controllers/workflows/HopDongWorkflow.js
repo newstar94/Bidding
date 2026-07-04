@@ -28,8 +28,8 @@ export async function deleteHopDong(id) {
     }
 
     if (deleteChoice === 1) {
-        const maxVer = Math.max(...relatedHds.map(h => parseInt(h.phienBan || h.phien_ban) || 0));
-        const latestHd = relatedHds.find(h => (parseInt(h.phienBan || h.phien_ban) || 0) === maxVer);
+        const maxVer = Math.max(...relatedHds.map(h => parseInt(h.phienBan) || 0));
+        const latestHd = relatedHds.find(h => (parseInt(h.phienBan) || 0) === maxVer);
         if (!latestHd) return;
 
         this.model.state.hopdong = this.model.state.hopdong.filter(h => h.id !== latestHd.id);
@@ -37,14 +37,12 @@ export async function deleteHopDong(id) {
 
         const remainingRelated = relatedHds.filter(h => h.id !== latestHd.id);
         if (remainingRelated.length > 0) {
-            const nextMaxVer = Math.max(...remainingRelated.map(h => parseInt(h.phienBan || h.phien_ban) || 0));
+            const nextMaxVer = Math.max(...remainingRelated.map(h => parseInt(h.phienBan) || 0));
             remainingRelated.forEach(h => {
-                if ((parseInt(h.phienBan || h.phien_ban) || 0) === nextMaxVer) {
+                if ((parseInt(h.phienBan) || 0) === nextMaxVer) {
                     h.isLatest = 1;
-                    h.is_latest = 1;
                 } else {
                     h.isLatest = 0;
-                    h.is_latest = 0;
                 }
             });
         }
@@ -173,11 +171,11 @@ export function editHopDong(id) {
 
             const rootId = cdt.rootId || cdt.id;
             const versions = this.model.state.chudautu.filter(c => c.rootId === rootId || c.id === rootId);
-            versions.sort((a, b) => (parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0)));
+            versions.sort((a, b) => (parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0)));
 
             if (versionSelect && versionGroup) {
                 versionSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
+                    const label = this.model.getVersionLabel(v.phienBan || '00');
                     return `<option value="${v.id}">${label}</option>`;
                 }).join('');
                 versionGroup.style.display = 'flex';
@@ -223,11 +221,11 @@ export function editHopDong(id) {
 
             const rootId = nt.rootId || nt.id;
             const versions = this.model.state.nhathau.filter(n => n.rootId === rootId || n.id === rootId);
-            versions.sort((a, b) => (parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0)));
+            versions.sort((a, b) => (parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0)));
 
             if (versionSelect && versionGroup) {
                 versionSelect.innerHTML = versions.map(v => {
-                    const label = this.model.getVersionLabel(v.phienBan || v.phien_ban || '00');
+                    const label = this.model.getVersionLabel(v.phienBan || '00');
                     return `<option value="${v.id}">${label}</option>`;
                 }).join('');
                 versionGroup.style.display = 'flex';
@@ -540,41 +538,31 @@ export async function handleHopDongSubmit(e) {
         const currentHd = this.model.state.hopdong.find(h => h.id === id);
         const rootId = currentHd.rootId || currentHd.id;
         const versions = this.model.state.hopdong.filter(h => h.rootId === rootId || h.id === rootId);
-        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || v.phien_ban || 0)));
+        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || 0)));
         const nextVerStr = String(maxVerNum + 1).padStart(2, '0');
 
         const isNewVersion = await this.view.customConfirm(
             'Lưu Hợp đồng',
-            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentHd.phienBan || currentHd.phien_ban || 0)})`,
+            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentHd.phienBan || 0)})`,
             'save'
         );
 
         if (isNewVersion) {
-            versions.forEach(h => { h.isLatest = 0; h.is_latest = 0; });
+            versions.forEach(h => { h.isLatest = 0; });
             data.id = window.generateUUID();
             data.rootId = rootId;
             data.phienBan = nextVerStr;
-            data.phien_ban = nextVerStr;
+            data.phienBan = nextVerStr;
             data.isLatest = 1;
-            data.is_latest = 1;
-            data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();
-            data.created_at = data.createdAt;
-            data.updatedAt = this.model.getCurrentDateTimeString();
-            data.updated_at = data.updatedAt;
-            this.model.state.hopdong.push(data);
+            data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            this.model.state.hopdong.push(data);
             finalHdId = data.id;
         } else {
             data.id = id;
             data.rootId = currentHd.rootId || currentHd.id;
-            data.phienBan = currentHd.phienBan || currentHd.phien_ban || '00';
-            data.phien_ban = currentHd.phienBan || currentHd.phien_ban || '00';
+            data.phienBan = currentHd.phienBan || '00';
+            data.phienBan = currentHd.phienBan || '00';
             data.isLatest = currentHd.isLatest !== undefined ? currentHd.isLatest : 1;
-            data.is_latest = currentHd.is_latest !== undefined ? currentHd.is_latest : 1;
-            data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();
-            data.created_at = data.createdAt;
-            data.updatedAt = this.model.getCurrentDateTimeString();
-            data.updated_at = data.updatedAt;
-            const idx = this.model.state.hopdong.findIndex(h => h.id === id);
+            data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            const idx = this.model.state.hopdong.findIndex(h => h.id === id);
             this.model.state.hopdong[idx] = data;
         }
     } else {
@@ -582,14 +570,9 @@ export async function handleHopDongSubmit(e) {
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';
-        data.phien_ban = '00';
+        data.phienBan = '00';
         data.isLatest = 1;
-        data.is_latest = 1;
-        data.createdAt = this.model.getCurrentDateTimeString();
-        data.created_at = data.createdAt;
-        data.updatedAt = this.model.getCurrentDateTimeString();
-        data.updated_at = data.updatedAt;
-        this.model.state.hopdong.push(data);
+        data.createdAt = this.model.getCurrentDateTimeString();        data.updatedAt = this.model.getCurrentDateTimeString();        this.model.state.hopdong.push(data);
         finalHdId = newId;
     }
 

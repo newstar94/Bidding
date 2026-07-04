@@ -142,7 +142,7 @@ export async function renderHopDongTable() {
         tableBody.innerHTML = slicedData.map(h => {
             const root = h.rootId || h.id;
             const allVersions = h.allVersions || this.model.state.hopdong.filter(x => (x.rootId || x.id) === root)
-                .sort((a, b) => parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0));
+                .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
 
             if (!this.model.state.selectedHopDongVersion) {
                 this.model.state.selectedHopDongVersion = {};
@@ -151,7 +151,7 @@ export async function renderHopDongTable() {
             const displayedHd = this.model.state.hopdong.find(x => x.id === selectedId) || h;
 
             const optionsHtml = allVersions.map(v => {
-                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+                const label = String(parseInt(v.phienBan || 0)).padStart(2, '0');
                 const isSel = v.id === displayedHd.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;
             }).join('');
@@ -290,20 +290,20 @@ export function renderContractVersionDetails(versionId) {
     const allRelated = this.model.state.hopdong.filter(h => (h.rootId || h.id) === rootId);
     const verMap = {};
     allRelated.forEach(h => {
-        const ver = h.phienBan || h.phien_ban || '00';
-        if (!verMap[ver] || h.isLatest == 1 || h.is_latest == 1) {
+        const ver = h.phienBan || '00';
+        if (!verMap[ver] || h.isLatest == 1) {
             verMap[ver] = h;
         }
     });
     const allVersions = Object.values(verMap);
     allVersions.sort((a, b) => {
-        const valA = parseInt(a.phienBan || a.phien_ban || 0);
-        const valB = parseInt(b.phienBan || b.phien_ban || 0);
+        const valA = parseInt(a.phienBan || 0);
+        const valB = parseInt(b.phienBan || 0);
         return valB - valA;
     });
 
     const selectOptionsHtml = allVersions.map(h => {
-        const ver = h.phienBan || h.phien_ban || '00';
+        const ver = h.phienBan || '00';
         const label = String(parseInt(ver)).padStart(2, '0');
         return `<option value="${h.id}" ${h.id === versionId ? 'selected' : ''}>${label}</option>`;
     }).join('');

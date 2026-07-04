@@ -75,7 +75,7 @@ export async function renderChuyenGiaTable() {
         tableBody.innerHTML = slicedData.map(cg => {
             const root = cg.rootId || cg.id;
             const allVersions = cg.allVersions || this.model.state.chuyengia.filter(x => (x.rootId || x.id) === root)
-                .sort((a, b) => parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0));
+                .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
 
             if (!this.model.state.selectedChuyenGiaVersion) {
                 this.model.state.selectedChuyenGiaVersion = {};
@@ -84,7 +84,7 @@ export async function renderChuyenGiaTable() {
             const displayedCg = this.model.state.chuyengia.find(x => x.id === selectedId) || cg;
 
             const optionsHtml = allVersions.map(v => {
-                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+                const label = String(parseInt(v.phienBan || 0)).padStart(2, '0');
                 const isSel = v.id === displayedCg.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;
             }).join('');

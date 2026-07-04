@@ -69,7 +69,7 @@ export async function renderChuDauTuTable() {
         tableBody.innerHTML = slicedData.map(c => {
             const root = c.rootId || c.id;
             const allVersions = c.allVersions || this.model.state.chudautu.filter(x => (x.rootId || x.id) === root)
-                .sort((a, b) => parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0));
+                .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
 
             if (!this.model.state.selectedChuDauTuVersion) {
                 this.model.state.selectedChuDauTuVersion = {};
@@ -78,7 +78,7 @@ export async function renderChuDauTuTable() {
             const displayedCdt = this.model.state.chudautu.find(x => x.id === selectedId) || c;
 
             const optionsHtml = allVersions.map(v => {
-                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+                const label = String(parseInt(v.phienBan || 0)).padStart(2, '0');
                 const isSel = v.id === displayedCdt.id ? 'selected' : '';
                 return `<option value="${v.id}" ${isSel}>${label}</option>`;
             }).join('');
@@ -155,7 +155,7 @@ export function renderChuDauTuVersionDetails(versionId) {
 
     const root = cdt.rootId || cdt.id;
     const allRelated = (this.model.state.chudautu || []).filter(c => c.rootId === root || c.id === root);
-    allRelated.sort((a, b) => (parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0)));
+    allRelated.sort((a, b) => (parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0)));
     const isLatest = allRelated[0] && allRelated[0].id === versionId;
 
     const editBtn = document.getElementById('btn-edit-chudautu-fullpage');
@@ -171,7 +171,7 @@ export function renderChuDauTuVersionDetails(versionId) {
     }
 
     const selectOptionsHtml = allRelated.map(v => {
-        const ver = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+        const ver = String(parseInt(v.phienBan || 0)).padStart(2, '0');
         return `<option value="${v.id}" ${v.id === versionId ? 'selected' : ''}>${ver}</option>`;
     }).join('');
 

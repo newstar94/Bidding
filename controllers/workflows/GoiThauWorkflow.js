@@ -71,10 +71,8 @@ export async function deleteGoiThau(id) {
                 planRemaining.forEach(gt => {
                     if ((parseInt(gt.phienBan) || 0) === nextMaxVer) {
                         gt.isLatest = 1;
-                        gt.is_latest = 1;
                     } else {
                         gt.isLatest = 0;
-                        gt.is_latest = 0;
                     }
                 });
             }
@@ -1220,7 +1218,7 @@ export async function handleGoiThauSubmit(e) {
             const maxVersion = Math.max(...relatedGts.map(g => parseInt(g.phienBan) || 0));
             const nextVersion = String(maxVersion + 1).padStart(2, '0');
 
-            relatedGts.forEach(g => { g.isLatest = 0; g.is_latest = 0; });
+            relatedGts.forEach(g => { g.isLatest = 0; });
             const newGtId = window.generateUUID();
             finalGtId = newGtId;
 
@@ -1233,14 +1231,8 @@ export async function handleGoiThauSubmit(e) {
                 id: newGtId,
                 maGoiThau: inputCode,
                 phienBan: nextVersion,
-                isLatest: 1,
-                is_latest: 1,
-                rootId: rootId,
-                createdAt: oldGt.createdAt || this.model.getCurrentDateTimeString(),
-                created_at: oldGt.created_at || this.model.getCurrentDateTimeString(),
-                updatedAt: this.model.getCurrentDateTimeString(),
-                updated_at: this.model.getCurrentDateTimeString(),
-                ...gtData
+                isLatest: 1,                rootId: rootId,
+                createdAt: oldGt.createdAt || this.model.getCurrentDateTimeString(),                updatedAt: this.model.getCurrentDateTimeString(),                ...gtData
             });
 
             // Thêm liên kết hợp đồng mới bên cạnh liên kết cũ thay vì thay thế
@@ -1280,9 +1272,7 @@ export async function handleGoiThauSubmit(e) {
         } else {
             oldGt.maGoiThau = inputCode;
             Object.assign(oldGt, gtData);
-            oldGt.updatedAt = this.model.getCurrentDateTimeString();
-            oldGt.updated_at = oldGt.updatedAt;
-
+            oldGt.updatedAt = this.model.getCurrentDateTimeString();
             // Cập nhật/Xóa phân công chuyên viên cho gói thầu hiện tại khi ghi đè
             const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
             const oldAssignments = this.model.state.assignments.filter(a => a.targetId === id && a.type === 'goithau');
@@ -1302,14 +1292,8 @@ export async function handleGoiThauSubmit(e) {
             id: newGtId,
             maGoiThau: inputCode,
             phienBan: '00',
-            isLatest: 1,
-            is_latest: 1,
-            rootId: newGtId,
-            createdAt: this.model.getCurrentDateTimeString(),
-            created_at: this.model.getCurrentDateTimeString(),
-            updatedAt: this.model.getCurrentDateTimeString(),
-            updated_at: this.model.getCurrentDateTimeString(),
-            isRebid: !!rebidFrom,
+            isLatest: 1,            rootId: newGtId,
+            createdAt: this.model.getCurrentDateTimeString(),            updatedAt: this.model.getCurrentDateTimeString(),            isRebid: !!rebidFrom,
             rebidFromPackageId: rebidFrom || null,
             ...gtData
         });

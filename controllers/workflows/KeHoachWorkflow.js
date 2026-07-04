@@ -39,10 +39,8 @@ export async function deleteKeHoach(id) {
                 remainingRelated.forEach(kh => {
                     if ((parseInt(kh.phienBan) || 0) === nextMaxVer) {
                         kh.isLatest = 1;
-                        kh.is_latest = 1;
                     } else {
                         kh.isLatest = 0;
-                        kh.is_latest = 0;
                     }
                 });
             }
@@ -472,9 +470,7 @@ export async function handleKeHoachSubmit(e) {
         const oldKh = this.model.state.kehoach.find(k => k.id === id);
         if (oldKh) {
             Object.assign(oldKh, this.tempPlanData);
-            oldKh.updatedAt = this.model.getCurrentDateTimeString();
-            oldKh.updated_at = oldKh.updatedAt;
-        }
+            oldKh.updatedAt = this.model.getCurrentDateTimeString();        }
     } else {
         this.tempPlanAction = 'create';
         const planId = window.generateUUID();
@@ -485,14 +481,8 @@ export async function handleKeHoachSubmit(e) {
         this.model.state.kehoach.push({
             id: planId,
             phienBan: '00',
-            isLatest: 1,
-            is_latest: 1,
-            rootId: planId,
-            createdAt: this.model.getCurrentDateTimeString(),
-            created_at: this.model.getCurrentDateTimeString(),
-            updatedAt: this.model.getCurrentDateTimeString(),
-            updated_at: this.model.getCurrentDateTimeString(),
-            ...this.tempPlanData
+            isLatest: 1,            rootId: planId,
+            createdAt: this.model.getCurrentDateTimeString(),            updatedAt: this.model.getCurrentDateTimeString(),            ...this.tempPlanData
         });
     }
 
@@ -840,7 +830,7 @@ export async function savePlanBreakdown() {
             const newId = window.generateUUID();
             finalPlanId = newId;
 
-            relatedPlans.forEach(k => { k.isLatest = 0; k.is_latest = 0; });
+            relatedPlans.forEach(k => { k.isLatest = 0; });
 
             if (!this.model.state.selectedPlanVersion) {
                 this.model.state.selectedPlanVersion = {};
@@ -851,14 +841,8 @@ export async function savePlanBreakdown() {
                 ...this.tempPlanData,
                 id: newId,
                 phienBan: nextVersion,
-                isLatest: 1,
-                is_latest: 1,
-                rootId: rootId,
-                createdAt: oldKh.createdAt || this.model.getCurrentDateTimeString(),
-                created_at: oldKh.created_at || this.model.getCurrentDateTimeString(),
-                updatedAt: this.model.getCurrentDateTimeString(),
-                updated_at: this.model.getCurrentDateTimeString(),
-                cvDaThucHienList: cvDaThucHien,
+                isLatest: 1,                rootId: rootId,
+                createdAt: oldKh.createdAt || this.model.getCurrentDateTimeString(),                updatedAt: this.model.getCurrentDateTimeString(),                cvDaThucHienList: cvDaThucHien,
                 cvKhongApDungList: cvKhongApDung,
                 cvChuaDuDieuKienList: cvChuaDuDieuKien
             });

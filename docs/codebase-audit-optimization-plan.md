@@ -26,7 +26,7 @@ File nay chi giu cac viec chua thuc hien hoac chua duoc manual test day du.
 
 ## Giai doan 4 - DB/schema con lai
 
-- [ ] Manual test migration/schema tren DB hien tai va DB moi tao.
+- [ ] Manual test DB schema sync: fresh install, them cot moi, bo cot cu, tao admin/goi dich vu/to chuc mac dinh, index/trigger sync.
 
 ## Giai doan 5 - Font/encoding
 
@@ -44,18 +44,6 @@ File nay chi giu cac viec chua thuc hien hoac chua duoc manual test day du.
 
 ## Giai doan 7 - Chuan hoa field va mapper du lieu
 
-- [ ] Lap danh sach field canonical cho tung entity:
-  - `chu_dau_tu`.
-  - `ke_hoach_lcnt`.
-  - `goi_thau`.
-  - `nha_thau`.
-  - `chuyen_gia`.
-  - `hop_dong`.
-  - `thong_tin_mo_thau`.
-- [ ] Frontend chi dung camelCase.
-- [ ] Backend/DB chi dung snake_case.
-- [ ] Mapper API la noi duy nhat chuyen camelCase/snake_case.
-- [ ] Loai bo dan cac fallback trung lap nhu `isLatest/is_latest`, `updatedAt/updated_at`.
 - [ ] Kiem tra tao/sua/xoa mot entity khong sinh field trung lap.
 - [ ] Kiem tra export/import khong lam doi ten field.
 - [ ] Kiem tra sync server-client giu nguyen du lieu.
@@ -79,7 +67,7 @@ File nay chi giu cac viec chua thuc hien hoac chua duoc manual test day du.
 - [ ] Dua validate nghiep vu thanh pure functions.
 - [ ] Loai bo helper trung lap giua cac workflow.
 - [ ] Giam side effect trong constructor/init.
-- [ ] Them test cho mapper, validation va sync merge.
+- [ ] Them test cho validation va sync merge.
 - [ ] Refactor cac file uu tien:
   - `controllers/workflows/BidProcessWorkflow.js`.
   - `controllers/workflows/BidEvaluationWorkflow.js`.
@@ -93,5 +81,5 @@ File nay chi giu cac viec chua thuc hien hoac chua duoc manual test day du.
 1. Manual test F5/local-first va snapshot goi thau theo phien ban ke hoach.
 2. Manual test CSRF, login/check-session/logout va WebSocket + `sync_version`.
 3. Chuan hoa owner model va enum trang thai.
-4. Chuan hoa mapper camelCase/snake_case.
+4. Kiem tra mapper camelCase/snake_case voi tao/sua/xoa, export/import va sync.
 5. Toi uu loader/local-first va render cac bang lon.

@@ -733,7 +733,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 const maxVersion = Math.max(...relatedGts.map(g => parseInt(g.phienBan) || 0));
                                 const nextVersion = String(maxVersion + 1).padStart(2, '0');
 
-                                relatedGts.forEach(g => { g.isLatest = 0; g.is_latest = 0; });
+                                relatedGts.forEach(g => { g.isLatest = 0; });
                                 const newGtId = window.generateUUID();
                                 finalId = newGtId;
 
@@ -751,14 +751,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     keHoachId: latestPlanId,
                                     id: newGtId,
                                     phienBan: nextVersion,
-                                    isLatest: 1,
-                                    is_latest: 1,
-                                    rootId: rootId,
-                                    createdAt: gt.createdAt || this.model.getCurrentDateTimeString(),
-                                    created_at: gt.created_at || this.model.getCurrentDateTimeString(),
-                                    updatedAt: this.model.getCurrentDateTimeString(),
-                                    updated_at: this.model.getCurrentDateTimeString()
-                                });
+                                    isLatest: 1,                                    rootId: rootId,
+                                    createdAt: gt.createdAt || this.model.getCurrentDateTimeString(),                                    updatedAt: this.model.getCurrentDateTimeString(),                                });
 
                                 // Duplicate related contracts (hopdong)
                                 if (Array.isArray(this.model.state.hopdong)) {
@@ -796,9 +790,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     gt.keHoachId = latestPlan.id;
                                 }
                                 Object.assign(gt, gtData);
-                                gt.updatedAt = this.model.getCurrentDateTimeString();
-                                gt.updated_at = gt.updatedAt;
-                            }
+                                gt.updatedAt = this.model.getCurrentDateTimeString();                            }
 
                             await this.model.persistData('goithau');
                             if (window.appController && typeof window.appController.autoSync === 'function') {

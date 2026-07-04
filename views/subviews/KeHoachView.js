@@ -302,7 +302,7 @@ export async function renderPlanVersionDetails(versionId) {
     const verMap = {};
     allRelated.forEach(k => {
         const ver = k.phienBan || '00';
-        if (!verMap[ver] || k.isLatest == 1 || k.is_latest == 1) {
+        if (!verMap[ver] || k.isLatest == 1) {
             verMap[ver] = k;
         }
     });

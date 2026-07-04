@@ -116,7 +116,6 @@ export function autoSync() {
                     const tableToStateKey = {
                         'thong_tin_mo_thau': 'thongtinmothau',
                         'phan_cong_nhan_su': 'assignments',
-                        'hop_dong_goi_thau': null, // junction table, no direct state key
                     };
                     const stateKey = tableToStateKey.hasOwnProperty(table) ? tableToStateKey[table] : table;
                     if (stateKey && Array.isArray(this.model.state[stateKey])) {
@@ -173,6 +172,12 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
             const useServerSidePagination = !!dbData.useServerSidePagination;
             this.model.useServerSidePagination = useServerSidePagination;
             const changedKeys = new Set();
+            const normalizeIncoming = (key, records) => {
+                if (this.model && typeof this.model.normalizeRecords === 'function') {
+                    return (records || []).map(record => this.model.normalizeRecordKeys(record));
+                }
+                return records || [];
+            };
 
             const mergeIncomingRecords = (key, incoming) => {
                 if (!Array.isArray(this.model.state[key])) {
@@ -202,7 +207,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 Object.keys(dbData).forEach(key => {
                     if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
 
-                    const incoming = dbData[key];
+                    const incoming = normalizeIncoming(key, dbData[key]);
                     if (shouldSkipEmptyPaginatedStore(key, incoming)) {
                         console.info(`[Sync] Skipped empty paginated store "${key}" to preserve local cache.`);
                         return;
@@ -216,7 +221,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 Object.keys(dbData).forEach(key => {
                     if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
 
-                    const incoming = dbData[key];
+                    const incoming = normalizeIncoming(key, dbData[key]);
                     if (incoming.length === 0) return;
 
                     mergeIncomingRecords(key, incoming);
@@ -234,7 +239,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                     const key = del.table;
                     const id = del.id;
                     if (this.model.state[key]) {
-                        this.model.state[key] = this.model.state[key].filter(x => x.id !== id);
+                        this.model.state[key] = this.model.state[key].filter(x => String(x.id) !== String(id));
                         changedKeys.add(key);
                         if (!deletionsByTable[key]) {
                             deletionsByTable[key] = [];
@@ -256,11 +261,6 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 localStorage.setItem('bf_last_sync_timestamp', dbData.timestamp.toString());
             }
             localStorage.setItem('bf_last_fetch_time', Date.now().toString());
-            if (since === '0' && localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true') {
-                localStorage.setItem('bf_force_full_resync_versions_v3', 'true');
-                localStorage.removeItem('bf_pending_full_resync_versions_v3');
-            }
-
             if (!isBackground) {
                 const renderIfChanged = (keys, renderFn) => {
                     if (keys.some(key => changedKeys.has(key)) && typeof renderFn === 'function') {

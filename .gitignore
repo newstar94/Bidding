@@ -30,6 +30,8 @@ scratch/
 # Test files and caches
 backend/tests/
 **/tests/
+!backend/tests/
+!backend/tests/*.py
 .pytest_cache/
 
 # Node.js

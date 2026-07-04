@@ -211,40 +211,30 @@ export async function handleChuDauTuSubmit(e) {
         const currentCdt = this.model.state.chudautu.find(c => c.id === id);
         const rootId = currentCdt.rootId || currentCdt.id;
         const versions = this.model.state.chudautu.filter(c => c.rootId === rootId || c.id === rootId);
-        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || v.phien_ban || 0)));
+        const maxVerNum = Math.max(...versions.map(v => parseInt(v.phienBan || 0)));
         const nextVerStr = String(maxVerNum + 1).padStart(2, '0');
 
         const isNewVersion = await this.view.customConfirm(
             'Lưu Chủ đầu tư',
-            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCdt.phienBan || currentCdt.phien_ban || 0)})`,
+            `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCdt.phienBan || 0)})`,
             'save'
         );
 
         if (isNewVersion) {
-            versions.forEach(c => { c.isLatest = 0; c.is_latest = 0; });
+            versions.forEach(c => { c.isLatest = 0; });
             data.id = window.generateUUID();
             data.rootId = rootId;
             data.phienBan = nextVerStr;
-            data.phien_ban = nextVerStr;
+            data.phienBan = nextVerStr;
             data.isLatest = 1;
-            data.is_latest = 1;
-            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
-            data.created_at = data.createdAt;
-            data.updatedAt = this.model.getCurrentDateTimeString();
-            data.updated_at = data.updatedAt;
-            this.model.state.chudautu.push(data);
+            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            this.model.state.chudautu.push(data);
         } else {
             data.id = id;
             data.rootId = currentCdt.rootId || currentCdt.id;
-            data.phienBan = currentCdt.phienBan || currentCdt.phien_ban || '00';
-            data.phien_ban = currentCdt.phienBan || currentCdt.phien_ban || '00';
+            data.phienBan = currentCdt.phienBan || '00';
+            data.phienBan = currentCdt.phienBan || '00';
             data.isLatest = currentCdt.isLatest !== undefined ? currentCdt.isLatest : 1;
-            data.is_latest = currentCdt.is_latest !== undefined ? currentCdt.is_latest : 1;
-            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
-            data.created_at = data.createdAt;
-            data.updatedAt = this.model.getCurrentDateTimeString();
-            data.updated_at = data.updatedAt;
-            const idx = this.model.state.chudautu.findIndex(c => c.id === id);
+            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            const idx = this.model.state.chudautu.findIndex(c => c.id === id);
             this.model.state.chudautu[idx] = data;
         }
     } else {
@@ -252,14 +242,9 @@ export async function handleChuDauTuSubmit(e) {
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';
-        data.phien_ban = '00';
+        data.phienBan = '00';
         data.isLatest = 1;
-        data.is_latest = 1;
-        data.createdAt = this.model.getCurrentDateTimeString();
-        data.created_at = data.createdAt;
-        data.updatedAt = this.model.getCurrentDateTimeString();
-        data.updated_at = data.updatedAt;
-        this.model.state.chudautu.push(data);
+        data.createdAt = this.model.getCurrentDateTimeString();        data.updatedAt = this.model.getCurrentDateTimeString();        this.model.state.chudautu.push(data);
     }
 
     this.model.persistData('chudautu');

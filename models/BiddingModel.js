@@ -209,6 +209,31 @@ class BrowserDB {
     }
 }
 
+const FIELD_NAME_OVERRIDES = {
+    id_goc: 'rootId',
+    root_id: 'rootId',
+    so_cccd: 'soCCCD',
+    ma_qhns: 'maQHNS',
+    thoi_gian_dang_tai: 'thoiGianDangTai',
+    thoi_gian_dang_ma: 'thoiGianDangMa',
+    thoi_gian_mo_ehsdxtc: 'thoiGianMoEhsdxtc',
+    hieu_luc_hsdt: 'hieuLucHsdt',
+    hieu_luc_hsdxt: 'hieuLucHsdxt',
+    ty_le_bao_dam_hop_dong: 'tyLeBaoDamHopDong',
+    yeu_cau_tham_dinh_hsmt: 'yeuCauThamDinhHsmt',
+    so_bao_cao_tham_dinh_hsmt: 'soBaoCaoThamDinhHsmt',
+    ngay_bao_cao_tham_dinh_hsmt: 'ngayBaoCaoThamDinhHsmt',
+    so_to_trinh_hsmt: 'soToTrinhHsmt',
+    ngay_trinh_hsmt: 'ngayTrinhHsmt',
+    emp_id: 'empId'
+};
+
+const snakeToCamel = (key) => {
+    if (!key || !key.includes('_')) return key;
+    if (FIELD_NAME_OVERRIDES[key]) return FIELD_NAME_OVERRIDES[key];
+    return key.replace(/_([a-z0-9])/g, (_, ch) => ch.toUpperCase());
+};
+
 export class BiddingModel {
     constructor() {
         Object.assign(this, formatters);
@@ -280,6 +305,28 @@ export class BiddingModel {
         this._allDataLoadPromise = null;
     }
 
+    normalizeRecordKeys(record) {
+        if (!record || typeof record !== 'object' || Array.isArray(record)) {
+            return record;
+        }
+
+        const normalized = {};
+        Object.entries(record).forEach(([key, value]) => {
+            const canonicalKey = snakeToCamel(key);
+            if (!(canonicalKey in normalized) || normalized[canonicalKey] === undefined || normalized[canonicalKey] === null || normalized[canonicalKey] === '') {
+                normalized[canonicalKey] = value;
+            }
+        });
+        return normalized;
+    }
+
+    normalizeRecords(type, records) {
+        if (!Array.isArray(records)) return records;
+        const normalized = records.map(record => this.normalizeRecordKeys(record));
+        this.state[type] = normalized;
+        return normalized;
+    }
+
     /** Lưu trang hiện tại vào sessionStorage để F5 không mất trang */
     savePage(table) {
         try {
@@ -300,19 +347,12 @@ export class BiddingModel {
                 let stored;
                 if (this.db.stores.includes(lowKey)) {
                     stored = await this.db.getTableData(lowKey);
-                    if (!stored || stored.length === 0) {
-                        const legacyData = await this.db.get(this.STORAGE_KEYS[key]);
-                        if (legacyData && legacyData.length > 0) {
-                            stored = legacyData;
-                            await this.db.putTableData(lowKey, stored);
-                        }
-                    }
                 } else {
                     stored = await this.db.get(this.STORAGE_KEYS[key]);
                 }
 
                 if (stored) {
-                    this.state[lowKey] = stored;
+                    this.state[lowKey] = Array.isArray(stored) ? this.normalizeRecords(lowKey, stored) : stored;
                 } else {
                     this.state[lowKey] = [];
                     if (this.db.stores.includes(lowKey)) {
@@ -332,12 +372,7 @@ export class BiddingModel {
 
     ensureAllDataLoaded() {
         if (!this._allDataLoadPromise) {
-            this._allDataLoadPromise = this.loadStorageKeys(Object.keys(this.STORAGE_KEYS)).then(() => {
-                if (localStorage.getItem('bf_self_heal_duplicates_v1') !== 'true') {
-                    this.selfHealLocalDuplicates();
-                    localStorage.setItem('bf_self_heal_duplicates_v1', 'true');
-                }
-            });
+            this._allDataLoadPromise = this.loadStorageKeys(Object.keys(this.STORAGE_KEYS));
         }
         return this._allDataLoadPromise;
     }
@@ -353,31 +388,6 @@ export class BiddingModel {
         this._loadedStorageKeys = new Set();
         this._allDataLoadPromise = null;
         await this.db.init();
-
-        // 1. One-time clear / migration of legacy LocalStorage keys to IndexedDB
-        let clearedV5 = false;
-        try {
-            clearedV5 = localStorage.getItem('bf_migrated_v5_clean') === 'true';
-        } catch (e) {}
-
-        if (!clearedV5) {
-            // Read all existing localStorage keys, save them to IndexedDB
-            for (const key of Object.keys(this.STORAGE_KEYS)) {
-                if (key === 'THEME') continue;
-                try {
-                    const stored = localStorage.getItem(this.STORAGE_KEYS[key]);
-                    if (stored) {
-                        const parsed = JSON.parse(stored);
-                        await this.db.set(this.STORAGE_KEYS[key], parsed);
-                    }
-                } catch (e) {
-                    console.error("Failed to migrate key during startup:", key, e);
-                }
-            }
-            try {
-                localStorage.setItem('bf_migrated_v5_clean', 'true');
-            } catch (e) {}
-        }
 
         await this.loadStorageKeys(options.priorityKeys || Object.keys(this.STORAGE_KEYS));
 
@@ -417,13 +427,6 @@ export class BiddingModel {
             this.state.activeuser = { name: 'Admin', title: 'Hệ thống', id: 'sa-1' };
         }
 
-        // Session state stays in localStorage; IndexedDB fallback above keeps backward compatibility.
-
-        // Duplicate cleanup is a migration, not a per-startup task.
-        if (!options.priorityKeys && localStorage.getItem('bf_self_heal_duplicates_v1') !== 'true') {
-            this.selfHealLocalDuplicates();
-            localStorage.setItem('bf_self_heal_duplicates_v1', 'true');
-        }
     }
 
 
@@ -473,6 +476,9 @@ export class BiddingModel {
     async persistData(type) {
         const key = type.toUpperCase();
         if (this.STORAGE_KEYS[key]) {
+            if (Array.isArray(this.state[type])) {
+                this.normalizeRecords(type, this.state[type]);
+            }
             if (this.db.stores.includes(type)) {
                 try {
                     await this.db.putTableData(type, this.state[type]);
@@ -489,75 +495,14 @@ export class BiddingModel {
         }
     }
 
-    selfHealLocalDuplicates() {
-        const typesToKeys = {
-            chuyengia: ['soCCCD', 'soChungChi'],
-            kehoach: ['maKeHoach'],
-            goithau: ['maGoiThau'],
-            chudautu: ['maChuDauTu', 'maSoThue'],
-            nhathau: ['maNhaThau', 'maSoThue'],
-            hopdong: ['soHopDong']
-        };
-        const versionedTypes = new Set(['chuyengia', 'kehoach', 'goithau', 'chudautu', 'nhathau', 'hopdong']);
-        const buildDuplicateKey = (type, field, value, item) => {
-            const baseKey = `${type}_${field}_${value}`;
-            if (!versionedTypes.has(type)) {
-                return baseKey;
-            }
-            const root = String(item.rootId || item.root_id || item.id || '').trim().toLowerCase();
-            const version = String(item.phienBan || item.phien_ban || '00').trim().toLowerCase();
-            return `${baseKey}_root_${root}_version_${version}`;
-        };
-
-        Object.keys(typesToKeys).forEach(type => {
-            const list = this.state[type];
-            if (!Array.isArray(list) || list.length === 0) return;
-
-            const seen = new Set();
-            const uniqueList = [];
-            let hasDup = false;
-
-            list.forEach(item => {
-                let isDup = false;
-                for (const field of typesToKeys[type]) {
-                    const val = String(item[field] || '').trim().toLowerCase();
-                    if (val) {
-                        const key = buildDuplicateKey(type, field, val, item);
-                        if (seen.has(key)) {
-                            isDup = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (isDup) {
-                    hasDup = true;
-                } else {
-                    typesToKeys[type].forEach(field => {
-                        const val = String(item[field] || '').trim().toLowerCase();
-                        if (val) {
-                            seen.add(buildDuplicateKey(type, field, val, item));
-                        }
-                    });
-                    uniqueList.push(item);
-                }
-            });
-
-            if (hasDup) {
-                this.state[type] = uniqueList;
-                this.persistData(type);
-                console.info(`[Self-Heal] Đã tự động dọn dẹp các bản ghi trùng lặp cho bảng local: ${type}`);
-            }
-        });
-    }
-
     async addRecord(type, record) {
         if (!this.state[type]) {
             this.state[type] = [];
         }
-        this.state[type].push(record);
+        const normalizedRecord = this.normalizeRecordKeys(record);
+        this.state[type].push(normalizedRecord);
         if (this.db.stores.includes(type)) {
-            await this.db.putRecord(type, record);
+            await this.db.putRecord(type, normalizedRecord);
         } else {
             this.persistData(type);
         }
@@ -567,14 +512,15 @@ export class BiddingModel {
         if (!this.state[type]) {
             this.state[type] = [];
         }
-        const index = this.state[type].findIndex(x => x.id === record.id);
+        const normalizedRecord = this.normalizeRecordKeys(record);
+        const index = this.state[type].findIndex(x => x.id === normalizedRecord.id);
         if (index !== -1) {
-            this.state[type][index] = record;
+            this.state[type][index] = normalizedRecord;
         } else {
-            this.state[type].push(record);
+            this.state[type].push(normalizedRecord);
         }
         if (this.db.stores.includes(type)) {
-            await this.db.putRecord(type, record);
+            await this.db.putRecord(type, normalizedRecord);
         } else {
             this.persistData(type);
         }
@@ -843,7 +789,7 @@ export class BiddingModel {
         (this.state.goithau || [])
             .filter(gt => String(gt.keHoachId) === String(planId))
             .forEach(gt => {
-                const root = gt.rootId || gt.root_id || gt.id;
+                const root = gt.rootId || gt.id;
                 if (!rootMap[root]) rootMap[root] = [];
                 rootMap[root].push(gt);
             });
@@ -852,8 +798,8 @@ export class BiddingModel {
             const explicitLatest = candidates.find(g => g.isLatest == 1);
             if (explicitLatest) return explicitLatest;
             return candidates.reduce((best, current) => {
-                const currentVer = parseInt(current.phienBan || current.phien_ban || 0);
-                const bestVer = parseInt(best.phienBan || best.phien_ban || 0);
+                const currentVer = parseInt(current.phienBan || 0);
+                const bestVer = parseInt(best.phienBan || 0);
                 return currentVer > bestVer ? current : best;
             }, candidates[0]);
         }).filter(Boolean);
@@ -973,8 +919,8 @@ export class BiddingModel {
             return linkedIds.some(id => {
                 const pkg = (this.state.goithau || []).find(g => g.id === id);
                 if (!pkg) return false;
-                const root = pkg.rootId || pkg.root_id || pkg.id;
-                return latestPkgs.some(g => (g.rootId === root || g.root_id === root || g.id === root));
+                const root = pkg.rootId || pkg.id;
+                return latestPkgs.some(g => (g.rootId === root || g.id === root));
             });
         });
 
@@ -1014,10 +960,10 @@ export class BiddingModel {
         if (!packageId) return null;
         const pkg = (this.state.goithau || []).find(g => g.id === packageId);
         if (!pkg) return null;
-        const root = pkg.rootId || pkg.root_id || pkg.id;
+        const root = pkg.rootId || pkg.id;
 
         // Get ALL packages sharing this rootId
-        const all = (this.state.goithau || []).filter(g => (g.rootId === root || g.root_id === root || g.id === root));
+        const all = (this.state.goithau || []).filter(g => (g.rootId === root || g.id === root));
         if (all.length === 0) return pkg;
         if (all.length === 1) return all[0];
 

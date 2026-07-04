@@ -71,7 +71,7 @@ export async function renderNhaThauTable() {
         tableBody.innerHTML = slicedData.map(n => {
             const root = n.rootId || n.id;
             const allVersions = n.allVersions || this.model.state.nhathau.filter(x => (x.rootId || x.id) === root)
-                .sort((a, b) => parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0));
+                .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
 
             if (!this.model.state.selectedNhaThauVersion) {
                 this.model.state.selectedNhaThauVersion = {};
@@ -80,7 +80,7 @@ export async function renderNhaThauTable() {
             const displayedNt = this.model.state.nhathau.find(x => x.id === selectedId) || n;
 
             const optionsHtml = allVersions.map(v => {
-                const label = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+                const label = String(parseInt(v.phienBan || 0)).padStart(2, '0');
                 const isSel = v.id === displayedNt.id ? 'selected' : '';
                 return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
             }).join('');
@@ -197,7 +197,7 @@ export function renderNhaThauVersionDetails(versionId) {
 
     const root = nt.rootId || nt.id;
     const allRelated = (this.model.state.nhathau || []).filter(n => n.rootId === root || n.id === root);
-    allRelated.sort((a, b) => (parseInt(b.phienBan || b.phien_ban || 0) - parseInt(a.phienBan || a.phien_ban || 0)));
+    allRelated.sort((a, b) => (parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0)));
     const isLatest = allRelated[0] && allRelated[0].id === versionId;
 
     const editBtn = document.getElementById('btn-edit-nhathau-fullpage');
@@ -213,7 +213,7 @@ export function renderNhaThauVersionDetails(versionId) {
     }
 
     const selectOptionsHtml = allRelated.map(v => {
-        const ver = String(parseInt(v.phienBan || v.phien_ban || 0)).padStart(2, '0');
+        const ver = String(parseInt(v.phienBan || 0)).padStart(2, '0');
         return `<option value="${v.id}" ${v.id === versionId ? 'selected' : ''}>${ver}</option>`;
     }).join('');
 

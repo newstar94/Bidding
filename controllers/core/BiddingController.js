@@ -335,36 +335,11 @@ export class BiddingController {
         updateOnlineStatus(); // initial check
         // #endregion
 
-        if (localStorage.getItem('bf_id_prefix_cleaned_v2') !== 'true') {
-            if (!this.hasLocalWorkspaceData()) {
-                localStorage.setItem('bf_last_sync_timestamp', '0');
-                localStorage.removeItem('bf_last_sync_version');
-                if (this.model.db && this.model.db.stores) {
-                    this.model.db.stores.forEach(storeName => {
-                        this.model.db.putTableData(storeName, []).catch(() => { });
-                    });
-                }
-            }
-            localStorage.setItem('bf_id_prefix_cleaned_v2', 'true');
-        }
-
-        if (localStorage.getItem('bf_clear_inferred_deletions_v1') !== 'true') {
-            localStorage.removeItem('bf_local_deletions');
-            localStorage.setItem('bf_clear_inferred_deletions_v1', 'true');
-        }
-
         const hasLocalWorkspaceSnapshot = this.hasLocalWorkspaceData();
-        const hasCompletedVersionResync = localStorage.getItem('bf_force_full_resync_versions_v3') === 'true';
-        const hasPendingVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true';
-
-        if (!hasCompletedVersionResync && !hasPendingVersionResync && !hasLocalWorkspaceSnapshot) {
+        if (!hasLocalWorkspaceSnapshot) {
             localStorage.setItem('bf_last_sync_timestamp', '0');
             localStorage.removeItem('bf_last_sync_version');
             localStorage.removeItem('bf_last_fetch_time');
-            localStorage.setItem('bf_pending_full_resync_versions_v3', 'true');
-        } else if (hasLocalWorkspaceSnapshot) {
-            localStorage.removeItem('bf_pending_full_resync_versions_v3');
-            localStorage.setItem('bf_force_full_resync_versions_v3', 'true');
         }
 
         this.view.initDOM();
@@ -403,7 +378,6 @@ export class BiddingController {
         });
 
         const hasUsableLocalData = this.hasLocalDataForRoute(window.location.pathname);
-        const shouldWaitForVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true' && !hasLocalWorkspaceSnapshot;
         const initialPath = window.location.pathname;
         const initialParts = initialPath.startsWith('/') ? initialPath.substring(1).split('/').filter(Boolean) : [];
         const detailRoutePaths = [
@@ -415,7 +389,7 @@ export class BiddingController {
         ].filter(Boolean);
         const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasLocalWorkspaceSnapshot;
 
-        if ((shouldWaitForVersionResync || shouldWaitForDetailData) && !this._initialSyncStarted) {
+        if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
             this._initialSyncStarted = true;
             await this.forceSyncData(false, true);
         }

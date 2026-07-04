@@ -62,7 +62,6 @@ from helpers_py.db_utils import (
     recalculate_tong_muc_dau_tu,
     khoi_tao_va_di_tru_he_thong,
     _build_create_table_sql,
-    _normalize_sqlite_type,
     _assert_safe_table
 )
 

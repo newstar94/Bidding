@@ -689,7 +689,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('kehoach_' + uniqueKey);
                             seenKeys.add('kehoach_' + uniqueKey);
                             dbExists = (this.model.state.kehoach || []).some(k => 
-                                (k.isLatest === 1 || k.is_latest === 1) && 
+                                (k.isLatest === 1) && 
                                 String(k.maKeHoach || '').trim().toLowerCase() === uniqueKey
                             );
                         }
@@ -699,7 +699,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('goithau_' + uniqueKey);
                             seenKeys.add('goithau_' + uniqueKey);
                             dbExists = (this.model.state.goithau || []).some(g => 
-                                (g.isLatest === 1 || g.is_latest === 1) && 
+                                (g.isLatest === 1) && 
                                 String(g.maGoiThau || '').trim().toLowerCase() === uniqueKey
                             );
                         }
@@ -710,7 +710,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('cdt_ma_' + maCDT);
                             seenKeys.add('cdt_ma_' + maCDT);
                             dbExists = (this.model.state.chudautu || []).some(c => 
-                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                (c.isLatest === 1) && 
                                 String(c.maChuDauTu || '').trim().toLowerCase() === maCDT
                             );
                         }
@@ -718,7 +718,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('cdt_mst_' + mst);
                             seenKeys.add('cdt_mst_' + mst);
                             dbExists = (this.model.state.chudautu || []).some(c => 
-                                (c.isLatest === 1 || c.is_latest === 1) && 
+                                (c.isLatest === 1) && 
                                 String(c.maSoThue || '').trim().toLowerCase() === mst
                             );
                         }
@@ -729,7 +729,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('nt_ma_' + maNT);
                             seenKeys.add('nt_ma_' + maNT);
                             dbExists = (this.model.state.nhathau || []).some(n => 
-                                (n.isLatest === 1 || n.is_latest === 1) && 
+                                (n.isLatest === 1) && 
                                 String(n.maNhaThau || '').trim().toLowerCase() === maNT
                             );
                         }
@@ -737,7 +737,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('nt_mst_' + mst);
                             seenKeys.add('nt_mst_' + mst);
                             dbExists = (this.model.state.nhathau || []).some(n => 
-                                (n.isLatest === 1 || n.is_latest === 1) && 
+                                (n.isLatest === 1) && 
                                 String(n.maSoThue || '').trim().toLowerCase() === mst
                             );
                         }
@@ -748,7 +748,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('cg_cccd_' + cccd);
                             seenKeys.add('cg_cccd_' + cccd);
                             dbExists = (this.model.state.chuyengia || []).some(c => 
-                                (c.isLatest == 1 || c.is_latest == 1 || c.isLatest === true || c.is_latest === true) &&
+                                (c.isLatest == 1 || c.isLatest === true) &&
                                 String(c.soCCCD || '').trim().toLowerCase() === cccd
                             );
                         }
@@ -756,7 +756,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('cg_cc_' + cc);
                             seenKeys.add('cg_cc_' + cc);
                             dbExists = (this.model.state.chuyengia || []).some(c => 
-                                (c.isLatest == 1 || c.is_latest == 1 || c.isLatest === true || c.is_latest === true) &&
+                                (c.isLatest == 1 || c.isLatest === true) &&
                                 String(c.soChungChi || '').trim().toLowerCase() === cc
                             );
                         }
@@ -766,7 +766,7 @@ export async function handleExcelUpload(file) {
                             fileDuplicate = seenKeys.has('hd_' + uniqueKey);
                             seenKeys.add('hd_' + uniqueKey);
                             dbExists = (this.model.state.hopdong || []).some(h => 
-                                (h.isLatest === 1 || h.is_latest === 1) && 
+                                (h.isLatest === 1) && 
                                 String(h.soHopDong || '').trim().toLowerCase() === uniqueKey
                             );
                         }
@@ -844,9 +844,7 @@ export async function saveExcelImport() {
                 id: planId,
                 maKeHoach: row.maKeHoach || '',
                 phienBan: '00',
-                isLatest: 1,
-                is_latest: 1,
-                rootId: planId,
+                isLatest: 1,                rootId: planId,
                 tenKeHoach: row.tenKeHoach || '',
                 tenDuAnDuToan: row.tenDuAnDuToan || '',
                 chuDauTuId: '',
@@ -869,9 +867,7 @@ export async function saveExcelImport() {
                 id: gtId,
                 maGoiThau: row.maGoiThau || '',
                 phienBan: '00',
-                isLatest: 1,
-                is_latest: 1,
-                rootId: gtId,
+                isLatest: 1,                rootId: gtId,
                 keHoachId: matchedPlan ? matchedPlan.id : '',
                 tenGoiThau: row.tenGoiThau || '',
                 giaGoiThau: isNaN(parseFloat(row.giaGoiThau)) ? null : parseFloat(row.giaGoiThau),
@@ -921,10 +917,8 @@ export async function saveExcelImport() {
                 id: targetId,
                 rootId: targetId,
                 phienBan: '00',
-                phien_ban: '00',
-                isLatest: 1,
-                is_latest: 1,
-                maChuDauTu: row.maChuDauTu || '',
+                phienBan: '00',
+                isLatest: 1,                maChuDauTu: row.maChuDauTu || '',
                 maSoThue: row.maSoThue || '',
                 tenChuDauTu: row.tenChuDauTu || '',
                 chucVuNguoiDungDau: row.chucVuNguoiDungDau || '',
@@ -963,10 +957,8 @@ export async function saveExcelImport() {
                 id: targetId,
                 rootId: targetId,
                 phienBan: '00',
-                phien_ban: '00',
-                isLatest: 1,
-                is_latest: 1,
-                maNhaThau: row.maNhaThau || '',
+                phienBan: '00',
+                isLatest: 1,                maNhaThau: row.maNhaThau || '',
                 tenNhaThau: row.tenNhaThau || '',
                 loaiNhaThau: row.loaiNhaThau || 'Độc lập',
                 maSoThue: row.maSoThue || '',
@@ -1005,10 +997,8 @@ export async function saveExcelImport() {
                 id: targetId,
                 rootId: targetId,
                 phienBan: '00',
-                phien_ban: '00',
-                isLatest: 1,
-                is_latest: 1,
-                hoTen: row.hoTen || '',
+                phienBan: '00',
+                isLatest: 1,                hoTen: row.hoTen || '',
                 soCCCD: row.soCCCD || '',
                 ngayCapCCCD: ensureYMD(row.ngayCapCCCD),
                 noiCapCCCD: row.noiCapCCCD || '',
@@ -1043,10 +1033,8 @@ export async function saveExcelImport() {
                 id: targetId,
                 rootId: targetId,
                 phienBan: '00',
-                phien_ban: '00',
-                isLatest: 1,
-                is_latest: 1,
-                tenHopDong: row.tenHopDong || '',
+                phienBan: '00',
+                isLatest: 1,                tenHopDong: row.tenHopDong || '',
                 soHopDong: row.soHopDong || '',
                 ngayKy: ensureYMD(row.ngayKy),
                 chuDauTuId: cdt ? cdt.id : '',
@@ -1093,10 +1081,8 @@ export async function saveExcelImport() {
                         id: newId,
                         rootId: newId,
                         phienBan: '00',
-                        phien_ban: '00',
-                        isLatest: 1,
-                        is_latest: 1,
-                        maNhaThau: row.maNhaThau || 'NT-' + window.generateUUID().toString().substr(8),
+                        phienBan: '00',
+                        isLatest: 1,                        maNhaThau: row.maNhaThau || 'NT-' + window.generateUUID().toString().substr(8),
                         tenNhaThau: row.tenNhaThau,
                         loaiNhaThau: row.loaiNhaThau || 'Độc lập',
                         maSoThue: '',
@@ -1554,7 +1540,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('kehoach_' + uniqueKey);
                     seenKeys.add('kehoach_' + uniqueKey);
                     dbExists = (this.model.state.kehoach || []).some(k => 
-                        (k.isLatest === 1 || k.is_latest === 1) && 
+                        (k.isLatest === 1) && 
                         String(k.maKeHoach || '').trim().toLowerCase() === uniqueKey
                     );
                 }
@@ -1564,7 +1550,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('goithau_' + uniqueKey);
                     seenKeys.add('goithau_' + uniqueKey);
                     dbExists = (this.model.state.goithau || []).some(g => 
-                        (g.isLatest === 1 || g.is_latest === 1) && 
+                        (g.isLatest === 1) && 
                         String(g.maGoiThau || '').trim().toLowerCase() === uniqueKey
                     );
                 }
@@ -1575,7 +1561,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('cdt_ma_' + maCDT);
                     seenKeys.add('cdt_ma_' + maCDT);
                     dbExists = (this.model.state.chudautu || []).some(c => 
-                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        (c.isLatest === 1) && 
                         String(c.maChuDauTu || '').trim().toLowerCase() === maCDT
                     );
                 }
@@ -1583,7 +1569,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('cdt_mst_' + mst);
                     seenKeys.add('cdt_mst_' + mst);
                     dbExists = (this.model.state.chudautu || []).some(c => 
-                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        (c.isLatest === 1) && 
                         String(c.maSoThue || '').trim().toLowerCase() === mst
                     );
                 }
@@ -1594,7 +1580,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('nt_ma_' + maNT);
                     seenKeys.add('nt_ma_' + maNT);
                     dbExists = (this.model.state.nhathau || []).some(n => 
-                        (n.isLatest === 1 || n.is_latest === 1) && 
+                        (n.isLatest === 1) && 
                         String(n.maNhaThau || '').trim().toLowerCase() === maNT
                     );
                 }
@@ -1602,7 +1588,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('nt_mst_' + mst);
                     seenKeys.add('nt_mst_' + mst);
                     dbExists = (this.model.state.nhathau || []).some(n => 
-                        (n.isLatest === 1 || n.is_latest === 1) && 
+                        (n.isLatest === 1) && 
                         String(n.maSoThue || '').trim().toLowerCase() === mst
                     );
                 }
@@ -1613,7 +1599,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('cg_cccd_' + cccd);
                     seenKeys.add('cg_cccd_' + cccd);
                     dbExists = (this.model.state.chuyengia || []).some(c => 
-                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        (c.isLatest === 1) && 
                         String(c.soCCCD || '').trim().toLowerCase() === cccd
                     );
                 }
@@ -1621,7 +1607,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('cg_cc_' + cc);
                     seenKeys.add('cg_cc_' + cc);
                     dbExists = (this.model.state.chuyengia || []).some(c => 
-                        (c.isLatest === 1 || c.is_latest === 1) && 
+                        (c.isLatest === 1) && 
                         String(c.soChungChi || '').trim().toLowerCase() === cc
                     );
                 }
@@ -1631,7 +1617,7 @@ export function revalidateExcelImportData() {
                     fileDuplicate = seenKeys.has('hd_' + uniqueKey);
                     seenKeys.add('hd_' + uniqueKey);
                     dbExists = (this.model.state.hopdong || []).some(h => 
-                        (h.isLatest === 1 || h.is_latest === 1) && 
+                        (h.isLatest === 1) && 
                         String(h.soHopDong || '').trim().toLowerCase() === uniqueKey
                     );
                 }
