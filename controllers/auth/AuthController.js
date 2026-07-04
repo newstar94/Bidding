@@ -248,7 +248,18 @@ export function setupAuth() {
         const loaderText = document.getElementById('system-init-loader-text');
         if (loaderText) loaderText.textContent = 'Đang tải...';
 
-        const canShowLocalFirst = hasLocalWorkspaceData();
+        const initialPath = window.location.pathname;
+        const initialParts = initialPath.startsWith('/') ? initialPath.substring(1).split('/').filter(Boolean) : [];
+        const detailRoutePaths = [
+            this.routeMap['goithau-detail'],
+            this.routeMap['kehoach-detail'],
+            this.routeMap['hopdong-detail'],
+            this.routeMap['chudautu-detail'],
+            this.routeMap['nhathau-detail']
+        ].filter(Boolean);
+        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
+
+        const canShowLocalFirst = hasLocalWorkspaceData() && !shouldWaitForDetailData;
         if (canShowLocalFirst) {
             requestAnimationFrame(showCachedWorkspace);
         }
@@ -275,7 +286,7 @@ export function setupAuth() {
                     await this.model.init();
                 }
 
-                if (!canShowLocalFirst) {
+                if (!canShowLocalFirst && !shouldWaitForDetailData) {
                     showCachedWorkspace();
                 }
 
