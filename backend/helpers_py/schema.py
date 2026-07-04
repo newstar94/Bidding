@@ -317,7 +317,7 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
-            "UNIQUE(id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
+            "UNIQUE(owner_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
         ],
         "foreign_keys": [
             "FOREIGN KEY (id_nhan_vien) REFERENCES tai_khoan(id) ON DELETE CASCADE"

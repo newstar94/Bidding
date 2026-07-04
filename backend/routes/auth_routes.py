@@ -442,7 +442,7 @@ async def update_user_role_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
             
-        effective_roles = get_effective_roles(role_or_err)
+        effective_roles = get_effective_roles(str(role_or_err))
         if 'manager' not in effective_roles:
             return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
             

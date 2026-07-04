@@ -152,30 +152,60 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         if (response.ok) {
             const dbData = await response.json();
 
-            this.model.useServerSidePagination = !!dbData.useServerSidePagination;
+            const metadataKeys = new Set(['deletions', 'useServerSidePagination', 'timestamp', 'paginatedKeys']);
+            const paginatedKeys = new Set(dbData.paginatedKeys || []);
+            const useServerSidePagination = !!dbData.useServerSidePagination;
+            this.model.useServerSidePagination = useServerSidePagination;
 
-            if (since === '0' || dbData.useServerSidePagination) {
-                Object.keys(dbData).forEach(key => {
-                    if (key !== 'deletions' && key !== 'useServerSidePagination' && key !== 'timestamp') {
-                        this.model.state[key] = dbData[key];
-                        this.model.persistData(key);
+            const mergeIncomingRecords = (key, incoming) => {
+                if (!Array.isArray(this.model.state[key])) {
+                    this.model.state[key] = [];
+                }
+
+                incoming.forEach(item => {
+                    const idx = this.model.state[key].findIndex(x => String(x.id) === String(item.id));
+                    if (idx !== -1) {
+                        this.model.state[key][idx] = item;
+                    } else {
+                        this.model.state[key].push(item);
                     }
+                });
+            };
+
+            const shouldSkipEmptyPaginatedStore = (key, incoming) => {
+                return useServerSidePagination
+                    && paginatedKeys.has(key)
+                    && Array.isArray(incoming)
+                    && incoming.length === 0
+                    && Array.isArray(this.model.state[key])
+                    && this.model.state[key].length > 0;
+            };
+
+            if (since === '0') {
+                Object.keys(dbData).forEach(key => {
+                    if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
+
+                    const incoming = dbData[key];
+                    if (shouldSkipEmptyPaginatedStore(key, incoming)) {
+                        console.info(`[Sync] Skipped empty paginated store "${key}" to preserve local cache.`);
+                        return;
+                    }
+
+                    this.model.state[key] = incoming;
+                    this.model.persistData(key);
                 });
             } else {
                 Object.keys(dbData).forEach(key => {
-                    if (key !== 'deletions' && key !== 'useServerSidePagination' && key !== 'timestamp' && Array.isArray(dbData[key])) {
-                        const incoming = dbData[key];
-                        incoming.forEach(item => {
-                            const idx = this.model.state[key].findIndex(x => x.id === item.id);
-                            if (idx !== -1) {
-                                this.model.state[key][idx] = item;
-                            } else {
-                                this.model.state[key].push(item);
-                            }
-                        });
-                        if (incoming.length > 0) {
-                            this.model.db.putRecords(key, incoming).catch(e => console.error("Error storing records", e));
-                        }
+                    if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
+
+                    const incoming = dbData[key];
+                    if (incoming.length === 0) return;
+
+                    mergeIncomingRecords(key, incoming);
+                    if (this.model.db && typeof this.model.db.putRecords === 'function') {
+                        this.model.db.putRecords(key, incoming).catch(e => console.error("Error storing records", e));
+                    } else {
+                        this.model.persistData(key);
                     }
                 });
 

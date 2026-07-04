@@ -61,6 +61,61 @@ def _build_create_table_sql(table_name: str, table_spec: dict) -> str:
     return f"CREATE TABLE {table_name} ({', '.join(cols_def)})"
 
 
+def _ensure_runtime_indexes(cursor):
+    """Create safe indexes that do not change business data or table shape."""
+    versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
+    for table in versioned_tables:
+        _assert_safe_table(table)
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_updated ON {table} (owner_id, updated_at)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_latest ON {table} (owner_id, is_latest)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_root ON {table} (owner_id, id_goc)")
+
+    for table in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "chuyen_gia", "hop_dong"]:
+        _assert_safe_table(table)
+        cursor.execute(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_unique_version
+            ON {table} (owner_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)
+        """)
+        cursor.execute(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_unique_latest
+            ON {table} (owner_id, COALESCE(NULLIF(id_goc, ''), id))
+            WHERE is_latest = 1
+        """)
+
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_unique_plan_snapshot_version
+        ON goi_thau (owner_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban, ke_hoach_id)
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_unique_latest
+        ON goi_thau (owner_id, COALESCE(NULLIF(id_goc, ''), id))
+        WHERE is_latest = 1
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_ke_hoach ON goi_thau (ke_hoach_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_nha_thau_trung ON goi_thau (nha_thau_trung_thau_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_ke_hoach ON hop_dong (ke_hoach_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_chu_dau_tu ON hop_dong (chu_dau_tu_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau ON hop_dong (nha_thau_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_goi_thau ON thong_tin_mo_thau (goi_thau_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_nha_thau ON thong_tin_mo_thau (nha_thau_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (owner_id, id_muc_tieu, loai_doi_tuong)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (owner_id, deleted_at)")
+
+    cursor.execute("""
+        DELETE FROM deleted_records
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM deleted_records
+            GROUP BY owner_id, table_name, record_id
+        )
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record
+        ON deleted_records (owner_id, table_name, record_id)
+    """)
+
+
 def recalculate_is_latest(cursor, table_name, owner_id=None):
     """
     Tính lại cờ is_latest cho bảng versioned (chu_dau_tu, ke_hoach_lcnt, goi_thau, nha_thau).
@@ -76,36 +131,33 @@ def recalculate_is_latest(cursor, table_name, owner_id=None):
         cursor.execute(f"UPDATE {table_name} SET is_latest = 0 WHERE owner_id = ?", (owner_id,))
         cursor.execute(f"""
             UPDATE {table_name} SET is_latest = 1 WHERE owner_id = ? AND id IN (
-                SELECT t1.id FROM {table_name} t1
-                INNER JOIN (
+                SELECT id FROM (
                     SELECT
-                        CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END as grp,
-                        MAX(CAST(phien_ban AS INTEGER)) as max_ver
+                        id,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
+                            ORDER BY CAST(phien_ban AS INTEGER) DESC, updated_at DESC, id DESC
+                        ) AS rn
                     FROM {table_name}
                     WHERE owner_id = ?
-                    GROUP BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
-                ) t2 ON (
-                    CASE WHEN t1.id_goc IS NOT NULL AND t1.id_goc != '' THEN t1.id_goc ELSE t1.id END
-                ) = t2.grp
-                AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
-                WHERE t1.owner_id = ?
+                )
+                WHERE rn = 1
             )
-        """, (owner_id, owner_id, owner_id))
+        """, (owner_id, owner_id))
     else:
         cursor.execute(f"UPDATE {table_name} SET is_latest = 0")
         cursor.execute(f"""
             UPDATE {table_name} SET is_latest = 1 WHERE id IN (
-                SELECT t1.id FROM {table_name} t1
-                INNER JOIN (
+                SELECT id FROM (
                     SELECT
-                        CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END as grp,
-                        MAX(CAST(phien_ban AS INTEGER)) as max_ver
+                        id,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
+                            ORDER BY CAST(phien_ban AS INTEGER) DESC, updated_at DESC, id DESC
+                        ) AS rn
                     FROM {table_name}
-                    GROUP BY CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END
-                ) t2 ON (
-                    CASE WHEN t1.id_goc IS NOT NULL AND t1.id_goc != '' THEN t1.id_goc ELSE t1.id END
-                ) = t2.grp
-                AND CAST(t1.phien_ban AS INTEGER) = t2.max_ver
+                )
+                WHERE rn = 1
             )
         """)
 
@@ -371,6 +423,8 @@ def khoi_tao_va_di_tru_he_thong():
         # Tính lại is_latest bằng hàm chung recalculate_is_latest() (tránh duplicate logic)
         for tbl in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau", "hop_dong", "chuyen_gia"]:
             recalculate_is_latest(cursor, tbl)
+
+        _ensure_runtime_indexes(cursor)
 
         # Tính lại tổng mức tự động cho các kế hoạch hiện có
         try:

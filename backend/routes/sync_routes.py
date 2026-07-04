@@ -885,6 +885,7 @@ async def get_all_data_api(request):
         # Check scale for Server-side Pagination flag
         # Calculate total records across versionable/heavy tables
         heavy_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
+        paginated_payload_keys = [key for key, table in TABLE_KEYS.items() if table in heavy_tables]
         total_records = 0
         for tbl in heavy_tables:
             cursor.execute(f"SELECT COUNT(*) FROM {tbl} WHERE owner_id = ?", (org_name,))
@@ -894,10 +895,11 @@ async def get_all_data_api(request):
         
         # Helper query function
         def query_table(tbl):
-            if use_server_pagination:
-                # If using server pagination, do not fetch all data, client will fetch paginated
+            is_full_fetch = since == '1970-01-01 00:00:00' or since == '0'
+            if use_server_pagination and tbl in heavy_tables and is_full_fetch:
+                # Heavy full payloads are fetched through /api/paginate when pagination is active.
                 return []
-            if since != '1970-01-01 00:00:00' and since != '0':
+            if not is_full_fetch:
                 cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ? AND updated_at > ?", (org_name, since))
             else:
                 cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ?", (org_name,))
@@ -1034,6 +1036,7 @@ async def get_all_data_api(request):
             "permissionmatrix": permissionmatrix,  # [MỚI] Phân quyền nhân viên
             "deletions": deletions,
             "useServerSidePagination": use_server_pagination,
+            "paginatedKeys": paginated_payload_keys if use_server_pagination else [],
             "timestamp": current_time
         })
     except OrgPermissionError as e:
