@@ -147,16 +147,16 @@ export class BiddingController {
             [this.routeMap.kehoach]: ['KEHOACH', 'GOITHAU', 'CHUDAUTU'],
             [this.routeMap['kehoach-detail']]: ['KEHOACH', 'GOITHAU', 'CHUDAUTU'],
             [this.routeMap.goithau]: ['GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU', 'THONGTINMOTHAU', 'ASSIGNMENTS'],
-            [this.routeMap['goithau-detail']]: ['GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU', 'THONGTINMOTHAU', 'ASSIGNMENTS'],
+            [this.routeMap['goithau-detail']]: ['GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU', 'HOPDONG', 'THONGTINMOTHAU'],
             [this.routeMap.mothau]: ['GOITHAU', 'KEHOACH', 'NHATHAU', 'THONGTINMOTHAU'],
             [this.routeMap.danhgiahsdt]: ['GOITHAU', 'KEHOACH', 'NHATHAU', 'THONGTINMOTHAU'],
-            [this.routeMap.hopdong]: ['HOPDONG', 'GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU'],
+            [this.routeMap.hopdong]: ['HOPDONG', 'GOITHAU', 'NHATHAU', 'CHUDAUTU'],
             [this.routeMap['hopdong-detail']]: ['HOPDONG', 'GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU'],
             [this.routeMap.chudautu]: ['CHUDAUTU', 'KEHOACH'],
             [this.routeMap['chudautu-detail']]: ['CHUDAUTU', 'KEHOACH'],
             [this.routeMap.nhathau]: ['NHATHAU', 'GOITHAU', 'HOPDONG', 'THONGTINMOTHAU'],
             [this.routeMap['nhathau-detail']]: ['NHATHAU', 'GOITHAU', 'HOPDONG', 'THONGTINMOTHAU'],
-            [this.routeMap.chuyengia]: ['CHUYENGIA', 'GOITHAU', 'ASSIGNMENTS'],
+            [this.routeMap.chuyengia]: ['CHUYENGIA'],
             [this.routeMap.bieumau]: ['GOITHAU', 'KEHOACH', 'HOPDONG', 'CHUDAUTU', 'NHATHAU']
         };
         return Array.from(new Set([...(byRoute[tab] || byRoute[this.routeMap.dashboard]), 'SYSTEMPACKAGES']));

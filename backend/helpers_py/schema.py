@@ -43,6 +43,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
@@ -72,6 +73,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "id_goc": "TEXT",
             "ma_ke_hoach": "TEXT",
             "ma_du_an": "TEXT",
@@ -123,6 +125,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
@@ -148,6 +151,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "id_goc": "TEXT",
             "ma_goi_thau": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
@@ -191,7 +195,7 @@ SCHEMA_DINH_NGHIA = {
             "trong_so_ky_thuat": "INTEGER",
             "ty_le_bao_dam_hop_dong": "REAL",
             "is_thuoc": "INTEGER DEFAULT 0",
-            "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Huỷ thầu', 'Hủy thầu') OR trang_thai IS NULL)",
+            "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Hủy thầu') OR trang_thai IS NULL)",
             "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không'",
             "so_bao_cao_tham_dinh_hsmt": "TEXT",
             "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
@@ -239,6 +243,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
@@ -267,6 +272,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
@@ -291,8 +297,7 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
             "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL",
-            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE SET NULL",
-            "FOREIGN KEY (owner_id) REFERENCES to_chuc(id) ON DELETE CASCADE"
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE SET NULL"
         ],
         "field_map": {
             "thoi_gian_thuc_hien": "soNgayThucHien",
@@ -316,6 +321,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "id_nhan_vien": "TEXT NOT NULL",
             "id_muc_tieu": "TEXT NOT NULL",
             "loai_doi_tuong": "TEXT NOT NULL",
@@ -342,9 +348,10 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "org_id": "TEXT",
-            "name": "TEXT",
-            "color": "TEXT",
+            "name": "TEXT NOT NULL",
+            "color": "TEXT NOT NULL DEFAULT '#64748b'",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
@@ -361,6 +368,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "goi_thau_id": "TEXT",
             "nha_thau_id": "TEXT",
             "ma_phan_lo": "TEXT",
@@ -487,6 +495,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "ten_bien": "TEXT NOT NULL",
             "source_table": "TEXT NOT NULL",
             "source_column": "TEXT NOT NULL",
@@ -506,6 +515,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT NOT NULL",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "emp_id": "TEXT NOT NULL",
             "kehoach": "TEXT",
             "goithau": "TEXT",

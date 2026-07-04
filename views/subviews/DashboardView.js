@@ -3,7 +3,51 @@
    ========================================================================== */
 
 export function renderDashboard() {
-    const latestPackages = this.model.getFilteredGoiThau();
+    const listSignature = (items, fields) => (items || [])
+        .map(item => fields.map(field => item[field] ?? '').join(':'))
+        .join('|');
+    const dashboardSignature = [
+        localStorage.getItem('bf_last_sync_version') || '',
+        listSignature(this.model.state.goithau, ['id', 'updatedAt', 'syncVersion', 'trangThai', 'giaGoiThau']),
+        listSignature(this.model.state.hopdong, ['id', 'updatedAt', 'syncVersion', 'giaTri'])
+    ].join('|');
+    let latestPackages;
+    let filteredContracts;
+    let totalContractValue;
+    let activePackages;
+    let statusCounts;
+    const cachedAggregate = this._dashboardAggregateCache;
+
+    if (cachedAggregate && cachedAggregate.signature === dashboardSignature) {
+        ({ latestPackages, filteredContracts, totalContractValue, activePackages, statusCounts } = cachedAggregate);
+    } else {
+        latestPackages = this.model.getFilteredGoiThau();
+        filteredContracts = this.model.getFilteredHopDong();
+        totalContractValue = 0;
+        filteredContracts.forEach(hd => {
+            totalContractValue += (hd.giaTri || 0);
+        });
+        activePackages = 0;
+        latestPackages.forEach(gt => {
+            if (gt.trangThai === 'Đang mời thầu') {
+                activePackages++;
+            }
+        });
+        statusCounts = {
+            'Chuẩn bị': 0,
+            'Đang mời thầu': 0,
+            'Đã mở thầu': 0,
+            'Đang chấm thầu': 0,
+            'Đã có kết quả': 0,
+            'Hủy thầu': 0
+        };
+        latestPackages.forEach(gt => {
+            if (statusCounts[gt.trangThai] !== undefined) {
+                statusCounts[gt.trangThai]++;
+            }
+        });
+        this._dashboardAggregateCache = { signature: dashboardSignature, latestPackages, filteredContracts, totalContractValue, activePackages, statusCounts };
+    }
 
     document.getElementById('stat-count-kehoach').textContent = this.model.getFilteredKeHoach().length;
     document.getElementById('stat-count-goithau').textContent = latestPackages.length;
@@ -12,41 +56,13 @@ export function renderDashboard() {
     document.getElementById('stat-count-chuyengia').textContent = this.model.state.chuyengia.length;
     const statCountHopDong = document.getElementById('stat-count-hopdong');
     if (statCountHopDong) {
-        statCountHopDong.textContent = this.model.getFilteredHopDong().length;
+        statCountHopDong.textContent = filteredContracts.length;
     }
-
-    // Calculate contract statistics
-    const filteredContracts = this.model.getFilteredHopDong();
-    let totalContractValue = 0;
-    filteredContracts.forEach(hd => {
-        totalContractValue += (hd.giaTri || 0);
-    });
-
-    let activePackages = 0;
-    latestPackages.forEach(gt => {
-        if (gt.trangThai === 'Đang mời thầu') {
-            activePackages++;
-        }
-    });
 
     document.getElementById('stat-active-goithau').textContent = `${activePackages} gói đang mời thầu`;
     document.getElementById('stat-total-budget').textContent = this.model.formatCurrency(totalContractValue);
     document.getElementById('stat-savings-value').textContent = `${filteredContracts.length} Hợp đồng`;
     document.getElementById('stat-savings-percent').textContent = `Đang thực hiện`;
-
-    const statusCounts = {
-        'Chuẩn bị': 0,
-        'Đang mời thầu': 0,
-        'Đã mở thầu': 0,
-        'Đang chấm thầu': 0,
-        'Đã có kết quả': 0,
-        'Hủy thầu': 0
-    };
-    latestPackages.forEach(gt => {
-        if (statusCounts[gt.trangThai] !== undefined) {
-            statusCounts[gt.trangThai]++;
-        }
-    });
 
     const total = latestPackages.length || 1;
     document.getElementById('donut-total-count').textContent = latestPackages.length;

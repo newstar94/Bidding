@@ -65,6 +65,11 @@ def _ensure_runtime_indexes(cursor):
     """Create safe indexes that do not change business data or table shape."""
     versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
     synced_tables = versioned_tables + ["phan_cong_nhan_su", "trang_thai_ho_so_giay", "thong_tin_mo_thau", "ma_tran_phan_quyen"]
+    owner_typed_tables = synced_tables + ["cau_hinh_bien_word"]
+    _backfill_owner_type(cursor, owner_typed_tables)
+    cursor.execute("UPDATE goi_thau SET trang_thai = 'Hủy thầu' WHERE trang_thai = 'Huỷ thầu'")
+    _seed_contract_paper_statuses(cursor)
+
     for table in versioned_tables:
         _assert_safe_table(table)
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_updated ON {table} (owner_id, updated_at)")
@@ -73,7 +78,12 @@ def _ensure_runtime_indexes(cursor):
 
     for table in synced_tables:
         _assert_safe_table(table)
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_type_owner ON {table} (owner_type, owner_id)")
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_sync_version ON {table} (owner_id, sync_version)")
+
+    for table in owner_typed_tables:
+        _assert_safe_table(table)
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_type_owner ON {table} (owner_type, owner_id)")
 
     for table in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "chuyen_gia", "hop_dong"]:
         _assert_safe_table(table)
@@ -146,6 +156,125 @@ def _ensure_runtime_indexes(cursor):
         WHERE delete_version IS NULL OR delete_version = 0
     """)
     cursor.execute("DELETE FROM sync_mutations WHERE created_at < datetime('now', 'localtime', '-7 days')")
+
+    _ensure_delta_sync_triggers(cursor, synced_tables)
+
+
+def _backfill_owner_type(cursor, tables):
+    """Infer owner_type for legacy rows after the owner_type column is added."""
+    for table in tables:
+        _assert_safe_table(table)
+        cursor.execute(f"""
+            UPDATE {table}
+            SET owner_type = CASE
+                WHEN owner_id IN (SELECT id FROM to_chuc) THEN 'organization'
+                ELSE 'user'
+            END
+            WHERE owner_id IS NOT NULL
+              AND owner_id != ''
+              AND COALESCE(owner_type, '') != CASE
+                  WHEN owner_id IN (SELECT id FROM to_chuc) THEN 'organization'
+                  ELSE 'user'
+              END
+        """)
+
+
+def _seed_contract_paper_statuses(cursor):
+    """Ensure legacy contract paper-status strings exist in the status lookup table."""
+    cursor.execute("""
+        INSERT INTO trang_thai_ho_so_giay (id, owner_id, owner_type, org_id, name, color, sync_version)
+        SELECT
+            lower(hex(randomblob(16))),
+            hd.owner_id,
+            CASE
+                WHEN hd.owner_id IN (SELECT id FROM to_chuc) THEN 'organization'
+                ELSE 'user'
+            END,
+            hd.owner_id,
+            hd.trang_thai_ho_so,
+            '#64748b',
+            COALESCE(MAX(hd.sync_version), 1)
+        FROM hop_dong hd
+        WHERE hd.owner_id IS NOT NULL
+          AND hd.owner_id != ''
+          AND hd.trang_thai_ho_so IS NOT NULL
+          AND trim(hd.trang_thai_ho_so) != ''
+          AND NOT EXISTS (
+              SELECT 1
+              FROM trang_thai_ho_so_giay ps
+              WHERE ps.owner_id = hd.owner_id
+                AND ps.name = hd.trang_thai_ho_so
+          )
+        GROUP BY hd.owner_id, hd.trang_thai_ho_so
+    """)
+
+
+def _ensure_delta_sync_triggers(cursor, synced_tables):
+    """Keep version-based delta sync working for direct SQLite edits outside the API."""
+    for table in synced_tables:
+        _assert_safe_table(table)
+        cursor.execute(f"DROP TRIGGER IF EXISTS trg_{table}_updated_at")
+        cursor.execute(f"DROP TRIGGER IF EXISTS trg_{table}_deleted_log")
+
+        cursor.execute(f"""
+            CREATE TRIGGER trg_{table}_updated_at
+            AFTER UPDATE ON {table}
+            FOR EACH ROW
+            WHEN OLD.updated_at = NEW.updated_at
+             AND COALESCE(OLD.sync_version, 0) = COALESCE(NEW.sync_version, 0)
+             AND NEW.owner_id IS NOT NULL
+             AND NEW.owner_id != ''
+            BEGIN
+                INSERT OR IGNORE INTO sync_metadata (owner_id, current_version)
+                VALUES (NEW.owner_id, 0);
+
+                UPDATE sync_metadata
+                SET current_version = current_version + 1,
+                    updated_at = datetime('now', 'localtime')
+                WHERE owner_id = NEW.owner_id;
+
+                UPDATE {table}
+                SET updated_at = datetime('now', 'localtime'),
+                    sync_version = (
+                        SELECT current_version
+                        FROM sync_metadata
+                        WHERE owner_id = NEW.owner_id
+                    )
+                WHERE id = NEW.id;
+            END
+        """)
+
+        cursor.execute(f"""
+            CREATE TRIGGER trg_{table}_deleted_log
+            AFTER DELETE ON {table}
+            FOR EACH ROW
+            WHEN OLD.owner_id IS NOT NULL
+             AND OLD.owner_id != ''
+            BEGIN
+                INSERT OR IGNORE INTO sync_metadata (owner_id, current_version)
+                VALUES (OLD.owner_id, 0);
+
+                UPDATE sync_metadata
+                SET current_version = current_version + 1,
+                    updated_at = datetime('now', 'localtime')
+                WHERE owner_id = OLD.owner_id;
+
+                INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version)
+                VALUES (
+                    '{table}',
+                    OLD.id,
+                    OLD.owner_id,
+                    datetime('now', 'localtime'),
+                    (SELECT current_version FROM sync_metadata WHERE owner_id = OLD.owner_id)
+                )
+                ON CONFLICT(owner_id, table_name, record_id) DO UPDATE SET
+                    deleted_at = excluded.deleted_at,
+                    delete_version = MAX(
+                        COALESCE(deleted_records.delete_version, 0),
+                        COALESCE(excluded.delete_version, 0)
+                    );
+            END
+        """)
 
 
 def recalculate_is_latest(cursor, table_name, owner_id=None):
@@ -264,6 +393,11 @@ def khoi_tao_va_di_tru_he_thong():
         # Tự động loại bỏ mọi bảng không được định nghĩa trong SCHEMA_DINH_NGHIA và không phải bảng hệ thống
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         db_tables = [row[0] for row in cursor.fetchall()]
+        if "goi_thau" in db_tables:
+            try:
+                cursor.execute("UPDATE goi_thau SET trang_thai = 'Hủy thầu' WHERE trang_thai = 'Huỷ thầu'")
+            except Exception:
+                pass
         for tbl in db_tables:
             if tbl not in SCHEMA_DINH_NGHIA and tbl not in ['sqlite_sequence']:
                 # Skip dropping tables that look like backups/temp tables

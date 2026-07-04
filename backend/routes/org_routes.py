@@ -11,7 +11,12 @@ from helpers import (
     log_error,
     OrgPermissionError
 )
-from .sync_routes import disconnect_user_websockets
+from .sync_routes import (
+    DELETED_RECORD_UPSERT_SQL,
+    broadcast_websocket_event,
+    disconnect_user_websockets,
+    next_sync_version
+)
 
 async def add_user_to_org_api(request):
     try:
@@ -100,9 +105,11 @@ async def remove_user_from_org_api(request):
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
             
         org_id = get_active_org(request, role_or_err.user_id)
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         conn = database.get_connection()
         cursor = conn.cursor()
+        sync_version = next_sync_version(cursor, org_id)
         
         cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
         
@@ -112,8 +119,8 @@ async def remove_user_from_org_api(request):
             pq_id = row['id']
             cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE id = ?", (pq_id,))
             cursor.execute(
-                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
-                ("ma_tran_phan_quyen", pq_id, org_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                DELETED_RECORD_UPSERT_SQL,
+                ("ma_tran_phan_quyen", pq_id, org_id, current_time, sync_version)
             )
             
         cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id_nhan_vien = ? AND owner_id = ?", (user_id, org_id))
@@ -124,6 +131,7 @@ async def remove_user_from_org_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
+        broadcast_websocket_event(org_id, {"event": "db_changed"})
         
         return JSONResponse({"success": True, "message": "Gỡ nhân sự khỏi tổ chức thành công!"})
     except OrgPermissionError as e:

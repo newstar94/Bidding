@@ -17,31 +17,15 @@ File nay chi giu cac viec chua thuc hien hoac chua duoc manual test day du.
 
 ## Giai doan 2 - Local-first va loader
 
-- [ ] Kiem tra route nao can load store nao ngay luc khoi dong.
-- [ ] Hoan thien priority loading theo route:
-  - Chi tiet goi thau: `goithau`, `kehoach`, `chudautu`, `nhathau`, `hopdong`, `thongtinmothau`.
-  - Danh sach chuyen gia: `chuyengia`.
-  - Hop dong: `hopdong`, `goithau`, `nhathau`, `chudautu`.
-- [ ] Dam bao loader toan trang chi hien khi khong co du lieu local.
-- [ ] Khi co du lieu local, hien UI ngay va chi hien sync status nho.
-- [ ] Dam bao background sync khong re-render toan bo app neu chi co vai record thay doi.
 - [ ] Xac nhan F5 khi co local data dat muc tieu loader duoi 500ms voi du lieu vua.
 - [ ] Kiem tra khong con man hinh placeholder bi nhay sau khi loader bien mat.
 
 ## Giai doan 3 - Delta sync bang version/cursor
 
 - [ ] Manual test WebSocket + `sync_version`: server thay doi thi client nhan event va keo delta bang `after_version`.
-- [ ] Kiem tra nhieu update trong cung mot giay khong bi bo sot.
-- [ ] Kiem tra xoa tren server duoc dong bo day du ve client.
-- [ ] Kiem tra gui lai cung mot mutation khong tao ban ghi trung.
 
 ## Giai doan 4 - DB/schema con lai
 
-- [ ] Chuan hoa mo hinh so huu du lieu:
-  - Phuong an A: tat ca du lieu nghiep vu thuoc `to_chuc`.
-  - Phuong an B: them `owner_type` va `owner_id`.
-- [ ] Chuan hoa enum trang thai goi thau, hop dong, ho so giay.
-- [ ] Ra soat FK `owner_id` cua `hop_dong` dang tham chieu `to_chuc(id)` trong khi cac bang khac de `owner_id TEXT`.
 - [ ] Manual test migration/schema tren DB hien tai va DB moi tao.
 
 ## Giai doan 5 - Font/encoding
@@ -72,7 +56,6 @@ File nay chi giu cac viec chua thuc hien hoac chua duoc manual test day du.
 - [ ] Backend/DB chi dung snake_case.
 - [ ] Mapper API la noi duy nhat chuyen camelCase/snake_case.
 - [ ] Loai bo dan cac fallback trung lap nhu `isLatest/is_latest`, `updatedAt/updated_at`.
-- [ ] Validate JSON fields truoc khi ghi DB.
 - [ ] Kiem tra tao/sua/xoa mot entity khong sinh field trung lap.
 - [ ] Kiem tra export/import khong lam doi ten field.
 - [ ] Kiem tra sync server-client giu nguyen du lieu.
@@ -81,11 +64,6 @@ File nay chi giu cac viec chua thuc hien hoac chua duoc manual test day du.
 
 - [ ] Manual test voi DB lon de xac nhan man chi tiet ke hoach cu hien dung snapshot goi thau.
 - [ ] Virtualize cac bang lon.
-- [ ] Debounce search/filter.
-- [ ] Cache dashboard aggregate.
-- [ ] Chi render lai component co thay doi sau sync.
-- [ ] Tai anh/chung chi/chu ky theo nhu cau, khong dua vao list payload.
-- [ ] Hien sync status tinh te thay vi loader toan trang.
 - [ ] Kiem tra bang 5.000 records van scroll/filter muot.
 - [ ] Kiem tra sync ngam khong lam giat UI.
 - [ ] Kiem tra anh chi load khi mo detail/modal.

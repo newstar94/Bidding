@@ -42,6 +42,21 @@ TABLE_KEYS = {
 
 SYNCED_TABLES = set(TABLE_KEYS.values())
 
+OWNER_TYPES = {"organization", "user"}
+PACKAGE_STATUSES = {"Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"}
+LEGACY_PACKAGE_STATUS_ALIASES = {
+    "Huỷ thầu": "Hủy thầu"
+}
+DEFAULT_PAPER_STATUS_COLOR = "#64748b"
+
+DELETED_RECORD_UPSERT_SQL = """
+    INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(owner_id, table_name, record_id) DO UPDATE SET
+        deleted_at = excluded.deleted_at,
+        delete_version = MAX(COALESCE(deleted_records.delete_version, 0), COALESCE(excluded.delete_version, 0))
+"""
+
 def next_sync_version(cursor, owner_id):
     cursor.execute(
         "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, 0)",
@@ -59,6 +74,12 @@ def get_current_sync_version(cursor, owner_id):
     cursor.execute("SELECT current_version FROM sync_metadata WHERE owner_id = ?", (owner_id,))
     row = cursor.fetchone()
     return int(row[0] if row else 0)
+
+def get_owner_type(cursor, owner_id):
+    cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (owner_id,))
+    if cursor.fetchone():
+        return "organization"
+    return "user"
 
 # ==========================================
 # CÁC HÀM TRỢ GIÚP CHO ĐỒNG BỘ DỮ LIỆU
@@ -342,6 +363,7 @@ async def sync_api(request):
         cursor = conn.cursor()
         
         org_name = get_active_org(request, role_or_err.user_id)
+        owner_type = get_owner_type(cursor, org_name)
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         client_mutation_id = (data.get("clientMutationId") or data.get("client_mutation_id") or "").strip()
         if client_mutation_id:
@@ -359,8 +381,7 @@ async def sync_api(request):
                     return JSONResponse({"status": "success"})
         
         # LG-5: Validate org_name (owner_id) to ensure it exists in to_chuc or tai_khoan
-        cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (org_name,))
-        if not cursor.fetchone():
+        if owner_type != "organization":
             cursor.execute("SELECT 1 FROM tai_khoan WHERE id = ?", (org_name,))
             if not cursor.fetchone():
                 log_sync_error(f"owner_id không hợp lệ: {org_name}")
@@ -382,6 +403,12 @@ async def sync_api(request):
         
         # Pass 1: Validation
         validation_errors = []
+        incoming_paper_status_names = {
+            str(item.get("name") or item.get("tenTrangThai") or "").strip()
+            for item in data.get("custompaperstatuses", [])
+            if isinstance(item, dict) and str(item.get("name") or item.get("tenTrangThai") or "").strip()
+        }
+        paper_statuses_to_seed = set()
         
         def is_valid_date_format(val):
             if not val:
@@ -465,6 +492,29 @@ async def sync_api(request):
                         item_errors.append("Số hợp đồng không được để trống.")
 
                 # 2. Format validation
+                table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
+                explicit_json_fields = set(table_spec.get("json_fields", []))
+                field_map = table_spec.get("field_map", {})
+                for col in table_spec.get("columns", {}).keys():
+                    is_json_field = col in explicit_json_fields or col.endswith("_list") or col.startswith("cv_")
+                    if not is_json_field:
+                        continue
+                    json_key = field_map.get(col) or ("rootId" if col == "id_goc" else to_camel_case(col))
+                    if json_key not in item and col not in item:
+                        continue
+                    raw_json_value = item.get(json_key) if json_key in item else item.get(col)
+                    if raw_json_value in (None, "") or isinstance(raw_json_value, (list, dict)):
+                        continue
+                    if isinstance(raw_json_value, str):
+                        try:
+                            parsed_json_value = json.loads(raw_json_value)
+                            if not isinstance(parsed_json_value, (list, dict)):
+                                item_errors.append(f"Truong JSON '{json_key}' phai la mang hoac object.")
+                        except Exception:
+                            item_errors.append(f"Truong JSON '{json_key}' khong dung dinh dang JSON.")
+                    else:
+                        item_errors.append(f"Truong JSON '{json_key}' phai la mang, object hoac chuoi JSON hop le.")
+
                 email = item.get("email")
                 if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", str(email).strip()):
                     item_errors.append("Email không đúng định dạng.")
@@ -494,6 +544,14 @@ async def sync_api(request):
 
                 # 3. Logic validation
                 if table_name == "goi_thau":
+                    raw_status = item.get("trangThai") or item.get("trang_thai")
+                    if raw_status:
+                        normalized_status = LEGACY_PACKAGE_STATUS_ALIASES.get(str(raw_status).strip(), str(raw_status).strip())
+                        item["trangThai"] = normalized_status
+                        item["trang_thai"] = normalized_status
+                        if normalized_status not in PACKAGE_STATUSES:
+                            item_errors.append(f"Trạng thái gói thầu '{raw_status}' không hợp lệ.")
+
                     dang_tai_str = item.get("thoiGianDangTai") or item.get("thoi_gian_dang_tai")
                     dong_thau_str = item.get("thoiGianDongThau") or item.get("thoi_gian_dong_thau")
                     mo_thau_str = item.get("thoiGianMoThau") or item.get("thoi_gian_mo_thau")
@@ -538,6 +596,24 @@ async def sync_api(request):
                         gt_val = safe_float(gia_tri)
                         if gt_val is not None and gt_val < 0:
                             item_errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
+                    trang_thai_hs = item.get("trangThaiHoSo") or item.get("trang_thai_ho_so")
+                    if trang_thai_hs:
+                        trang_thai_hs = str(trang_thai_hs).strip()
+                        if trang_thai_hs not in incoming_paper_status_names:
+                            cursor.execute(
+                                "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ?",
+                                (org_name, trang_thai_hs)
+                            )
+                            if not cursor.fetchone():
+                                paper_statuses_to_seed.add(trang_thai_hs)
+
+                elif table_name == "trang_thai_ho_so_giay":
+                    status_name = item.get("name") or item.get("tenTrangThai")
+                    status_color = item.get("color") or item.get("mauSac") or DEFAULT_PAPER_STATUS_COLOR
+                    if not status_name or not str(status_name).strip():
+                        item_errors.append("Tên trạng thái hồ sơ giấy không được để trống.")
+                    if status_color and not re.match(r"^#[0-9a-fA-F]{6}$", str(status_color).strip()):
+                        item_errors.append("Màu trạng thái hồ sơ giấy phải ở dạng HEX, ví dụ #64748b.")
 
                 # 4. Duplicate checks
                 if table_name == "chu_dau_tu":
@@ -592,6 +668,16 @@ async def sync_api(request):
                         if cursor.fetchone():
                             item_errors.append(f"Số hợp đồng '{so_hd}' đã tồn tại.")
 
+                elif table_name == "trang_thai_ho_so_giay":
+                    status_name = item.get("name") or item.get("tenTrangThai")
+                    if status_name and str(status_name).strip():
+                        cursor.execute(
+                            "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ? AND id != ?",
+                            (org_name, str(status_name).strip(), c_id)
+                        )
+                        if cursor.fetchone():
+                            item_errors.append(f"Trạng thái hồ sơ giấy '{status_name}' đã tồn tại.")
+
                 if item_errors:
                     display_name = item.get("tenChuDauTu") or item.get("tenKeHoach") or item.get("tenGoiThau") or item.get("tenNhaThau") or item.get("hoTen") or item.get("tenHopDong") or item.get("id")
                     for err in item_errors:
@@ -611,6 +697,27 @@ async def sync_api(request):
                 "message": "Không thể lưu dữ liệu do phát hiện lỗi:",
                 "errors": validation_errors
             }, status_code=400)
+
+        for status_name in paper_statuses_to_seed:
+            cursor.execute(
+                "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ?",
+                (org_name, status_name)
+            )
+            if not cursor.fetchone():
+                cursor.execute("""
+                    INSERT INTO trang_thai_ho_so_giay
+                        (id, owner_id, owner_type, org_id, name, color, sync_version, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    str(uuid.uuid4()),
+                    org_name,
+                    owner_type,
+                    org_name,
+                    status_name,
+                    DEFAULT_PAPER_STATUS_COLOR,
+                    batch_sync_version,
+                    current_time
+                ))
 
         for payload_key, table_name in TABLE_KEYS.items():
             if payload_key not in data:
@@ -633,6 +740,9 @@ async def sync_api(request):
                     for col in columns:
                         if col == "owner_id":
                             db_row_data[col] = org_name
+                            continue
+                        elif col == "owner_type":
+                            db_row_data[col] = owner_type
                             continue
                         elif col == "updated_at":
                             db_row_data[col] = current_time
@@ -812,7 +922,7 @@ async def sync_api(request):
                     if "FOREIGN KEY constraint failed" in err_str and item_id:
                         try:
                             cursor.execute(
-                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version) VALUES (?, ?, ?, ?, ?)",
+                                DELETED_RECORD_UPSERT_SQL,
                                 (table_name, item_id, org_name, current_time, batch_sync_version)
                             )
                             orphaned_ids.append({"table": table_name, "id": item_id})
@@ -845,7 +955,7 @@ async def sync_api(request):
                                 cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
 
                             cursor.execute(
-                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version) VALUES (?, ?, ?, ?, ?)",
+                                DELETED_RECORD_UPSERT_SQL,
                                 (table_name, c_id, org_name, current_time, batch_sync_version)
                             )
                             # Ghi Audit Log cho DELETE
@@ -861,12 +971,8 @@ async def sync_api(request):
         if "ke_hoach_lcnt" in updated_versioned_tables or "goi_thau" in updated_versioned_tables:
             recalculate_tong_muc_dau_tu(cursor, owner_id=org_name)
                                  
-        conn.commit()
-        
-        # Broadcast WebSocket update
-        broadcast_websocket_event(org_name, {"event": "db_changed"})
-        
-        response_data = {"status": "success", "timestamp": current_time, "syncVersion": batch_sync_version}
+        current_sync_version = get_current_sync_version(cursor, org_name)
+        response_data = {"status": "success", "timestamp": current_time, "syncVersion": current_sync_version}
         if orphaned_ids:
             response_data["orphanedIds"] = orphaned_ids  # Client sẽ xóa các record này khỏi IndexedDB
         if client_mutation_id:
@@ -874,7 +980,10 @@ async def sync_api(request):
                 "INSERT OR REPLACE INTO sync_mutations (owner_id, client_mutation_id, response_json) VALUES (?, ?, ?)",
                 (org_name, client_mutation_id, json.dumps(response_data))
             )
-            conn.commit()
+        conn.commit()
+        
+        # Broadcast WebSocket update
+        broadcast_websocket_event(org_name, {"event": "db_changed"})
         return JSONResponse(response_data)
     except OrgPermissionError as e:
         if conn:

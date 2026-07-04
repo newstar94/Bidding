@@ -144,7 +144,11 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
 
     if (syncIcon) syncIcon.classList.add('anim-spin');
     if (syncStatusText) syncStatusText.textContent = 'Đang đồng bộ...';
-    if (!isBackground && this.view && this.view.showLoader) this.view.showLoader();
+    const hasLocalDataForCurrentRoute = typeof this.hasLocalDataForRoute === 'function'
+        ? this.hasLocalDataForRoute(window.location.pathname)
+        : (typeof this.hasLocalWorkspaceData === 'function' ? this.hasLocalWorkspaceData() : false);
+    const shouldShowFullLoader = !isBackground && !hasLocalDataForCurrentRoute && this.view && this.view.showLoader;
+    if (shouldShowFullLoader) this.view.showLoader();
 
     try {
         if (isBackground && this.model && typeof this.model.ensureAllDataLoaded === 'function') {
@@ -168,6 +172,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
             const paginatedKeys = new Set(dbData.paginatedKeys || []);
             const useServerSidePagination = !!dbData.useServerSidePagination;
             this.model.useServerSidePagination = useServerSidePagination;
+            const changedKeys = new Set();
 
             const mergeIncomingRecords = (key, incoming) => {
                 if (!Array.isArray(this.model.state[key])) {
@@ -204,6 +209,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                     }
 
                     this.model.state[key] = incoming;
+                    changedKeys.add(key);
                     this.model.persistData(key);
                 });
             } else {
@@ -214,6 +220,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                     if (incoming.length === 0) return;
 
                     mergeIncomingRecords(key, incoming);
+                    changedKeys.add(key);
                     if (this.model.db && typeof this.model.db.putRecords === 'function') {
                         this.model.db.putRecords(key, incoming).catch(e => console.error("Error storing records", e));
                     } else {
@@ -228,6 +235,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                     const id = del.id;
                     if (this.model.state[key]) {
                         this.model.state[key] = this.model.state[key].filter(x => x.id !== id);
+                        changedKeys.add(key);
                         if (!deletionsByTable[key]) {
                             deletionsByTable[key] = [];
                         }
@@ -254,14 +262,18 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
             }
 
             if (!isBackground) {
-                // Trigger immediate UI updates
-                this.view.renderDashboard();
-                this.view.renderKeHoachTable();
-                this.view.renderGoiThauTable();
-                this.view.renderChuDauTuTable();
-                this.view.renderNhaThauTable();
-                this.view.renderChuyenGiaTable();
-                this.view.renderHopDongTable();
+                const renderIfChanged = (keys, renderFn) => {
+                    if (keys.some(key => changedKeys.has(key)) && typeof renderFn === 'function') {
+                        renderFn.call(this.view);
+                    }
+                };
+                renderIfChanged(['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'assignments', 'thongtinmothau'], this.view.renderDashboard);
+                renderIfChanged(['kehoach', 'chudautu', 'goithau'], this.view.renderKeHoachTable);
+                renderIfChanged(['goithau', 'kehoach', 'chudautu', 'nhathau', 'thongtinmothau', 'assignments'], this.view.renderGoiThauTable);
+                renderIfChanged(['chudautu', 'kehoach'], this.view.renderChuDauTuTable);
+                renderIfChanged(['nhathau', 'goithau', 'hopdong', 'thongtinmothau'], this.view.renderNhaThauTable);
+                renderIfChanged(['chuyengia', 'assignments'], this.view.renderChuyenGiaTable);
+                renderIfChanged(['hopdong', 'goithau', 'nhathau', 'chudautu'], this.view.renderHopDongTable);
             }
 
             this.updateSyncStatusDisplay(Date.now());
@@ -302,7 +314,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         }
     } finally {
         if (syncIcon) syncIcon.classList.remove('anim-spin');
-        if (!isBackground && this.view && this.view.hideLoader) this.view.hideLoader();
+        if (shouldShowFullLoader && this.view && this.view.hideLoader) this.view.hideLoader();
     }
 }
 
