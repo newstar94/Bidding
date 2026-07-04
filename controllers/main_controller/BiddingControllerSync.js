@@ -349,12 +349,12 @@ export function setupWebSocketConnection() {
         }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
         // Exponential backoff: 5s → 7.5s → 11.25s → ... tối đa 60s
         const currentDelay = this._wsRetryDelay || 5000;
         const nextDelay = Math.min(60000, Math.round(currentDelay * 1.5));
         this._wsRetryDelay = nextDelay;
-        if (debug) console.log(`WebSocket connection closed. Reconnecting in ${Math.round(nextDelay / 1000)}s...`);
+        if (debug) console.log(`WebSocket connection closed (code: ${event.code || 'unknown'}, reason: ${event.reason || 'none'}). Reconnecting in ${Math.round(nextDelay / 1000)}s...`);
         setTimeout(() => this.setupWebSocketConnection(), nextDelay);
     };
 

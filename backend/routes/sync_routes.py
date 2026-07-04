@@ -186,20 +186,23 @@ async def sync_websocket_endpoint(websocket):
     await websocket.accept()
     
     owner_id = None
+    user_id = None
     try:
         data = await websocket.receive_text()
         msg = json.loads(data)
         if msg.get("action") == "auth":
-            token = websocket.cookies.get("session_token")
-            username = websocket.cookies.get("username")
+            token = (websocket.cookies.get("session_token") or "").strip()
             
             conn = database.get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT id, vai_tro, token_phien, han_su_dung_token FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
+            cursor.execute(
+                "SELECT id, vai_tro, token_phien, han_su_dung_token FROM tai_khoan WHERE token_phien = ?",
+                (token,)
+            )
             row = cursor.fetchone()
             conn.close()
             
-            if row and row['token_phien'] == token:
+            if row:
                 # BE-5: Kiểm tra token expiry trước khi cho phép kết nối WebSocket
                 if row['han_su_dung_token']:
                     try:
