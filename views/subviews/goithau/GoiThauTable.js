@@ -79,12 +79,7 @@ export async function renderGoiThauTable() {
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=goithau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&trangThai=${encodeURIComponent(filterTrangThai)}&hinhThuc=${encodeURIComponent(filterHinhThuc)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`, {
-                headers: {
-                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                    'X-Username': sessionStorage.getItem('bf_username') || ''
-                }
-            });
+            const res = await fetch(`/api/paginate?table=goithau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&trangThai=${encodeURIComponent(filterTrangThai)}&hinhThuc=${encodeURIComponent(filterHinhThuc)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`);
             if (res.ok) {
                 const data = await res.json();
                 slicedData = data.items;
@@ -201,9 +196,9 @@ export async function renderGoiThauTable() {
                     leadName,
                     leadCode
                 };
-                ntLink = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${esc(displayedGt.id)}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(ntDisplayName)}</a>`;
+                ntLink = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(ntDisplayName)}</a>`;
             } else if (nt) {
-                ntLink = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(nt.id)}')" class="text-blue fw-bold link-hover">${esc(ntDisplayName)}</a>`;
+                ntLink = `<a href="#" data-bf-action="show-contractor" data-id="${esc(nt.id)}" class="text-blue fw-bold link-hover">${esc(ntDisplayName)}</a>`;
             } else {
                 ntLink = `<span class="fw-bold text-success">${esc(ntDisplayName)}</span>`;
             }
@@ -242,7 +237,7 @@ export async function renderGoiThauTable() {
                             };
                         });
                         const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
-                        winnerInfoHtml = `<a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${esc(displayedGt.id)}')" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
+                        winnerInfoHtml = `<a href="#" data-bf-action="show-lot-winners" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
                     } else if (uniqueWinnerIds.length === 1) {
                         const singleWinnerId = uniqueWinnerIds[0];
                         const singleWinnerNt = this.model.state.nhathau.find(n => String(n.id) === String(singleWinnerId));
@@ -258,9 +253,9 @@ export async function renderGoiThauTable() {
                             const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || '';
                             const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
                             window._jvDataMap[displayedGt.id] = { members: subMembers, leadName, leadCode };
-                            link = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${esc(displayedGt.id)}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(name)}</a>`;
+                            link = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(name)}</a>`;
                         } else if (singleWinnerNt) {
-                            link = `<a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(singleWinnerNt.id)}')" class="text-blue fw-bold link-hover">${esc(name)}</a>`;
+                            link = `<a href="#" data-bf-action="show-contractor" data-id="${esc(singleWinnerNt.id)}" class="text-blue fw-bold link-hover">${esc(name)}</a>`;
                         } else {
                             link = `<span class="fw-bold text-success">${esc(name)}</span>`;
                         }
@@ -282,47 +277,50 @@ export async function renderGoiThauTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changePackageRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist" data-bf-change="change-package-version" data-root="${esc(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
 
+            const isCanceledPackage = displayedGt.trangThai === '\u0048\u1ee7\u0079\u0020\u0074\u0068\u1ea7\u0075';
+            const isCompletedPackage = displayedGt.trangThai === '\u0110\u00e3\u0020\u0063\u00f3\u0020\u006b\u1ebf\u0074\u0020\u0071\u0075\u1ea3';
+
             return `
-            <tr class="${displayedGt.trangThai === 'Hủy thầu' ? 'cancelled-package' : ''}">
+            <tr class="${isCanceledPackage ? 'cancelled-package' : ''}">
                 <td>
                     <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" onclick="event.preventDefault(); window.showPackageDetails('${esc(displayedGt.id)}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPackageBaseCode(displayedGt.maGoiThau) ? esc(this.model.getPackageBaseCode(displayedGt.maGoiThau)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
+                        <a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPackageBaseCode(displayedGt.maGoiThau) ? esc(this.model.getPackageBaseCode(displayedGt.maGoiThau)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
                         <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                         ${dropdownHtml}
                     </div>
                 </td>
-                <td style="min-width: 240px; max-width: 320px;" class="text-wrap"><a href="#" onclick="event.preventDefault(); window.showPackageDetails('${esc(displayedGt.id)}')" class="text-blue fw-bold link-hover">${esc(displayedGt.tenGoiThau)}</a></td>
-                <td style="min-width: 240px; max-width: 320px;" class="text-wrap">${kh ? '<a href="#" onclick="event.preventDefault(); window.showKeHoachDetails(\'' + esc(kh.id) + '\')" class="text-blue fw-bold link-hover">' + esc(kh.tenKeHoach) + '</a>' : '<span class="text-danger">Không liên kết</span>'}</td>
+                <td style="min-width: 240px; max-width: 320px;" class="text-wrap"><a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover">${esc(displayedGt.tenGoiThau)}</a></td>
+                <td style="min-width: 240px; max-width: 320px;" class="text-wrap">${kh ? '<a href="#" data-bf-action="show-plan" data-id="' + esc(kh.id) + '" class="text-blue fw-bold link-hover">' + esc(kh.tenKeHoach) + '</a>' : '<span class="text-danger">Không liên kết</span>'}</td>
                 <td class="fw-bold">${this.model.formatCurrency(displayedGt.giaGoiThau)}</td>
                 <td>${esc(displayedGt.hinhThucLuaChon || '--')}</td>
                 <td>${this.getStatusBadge(displayedGt.trangThai)}</td>
                 <td style="min-width: 200px; max-width: 300px;" class="text-wrap">${winnerInfoHtml}</td>
                 <td class="text-right">
                     <div class="action-btn-group">
-                        ${displayedGt.id === gt.id ? (displayedGt.trangThai === 'Hủy thầu' ? `
-                            <button class="action-btn btn-restore" onclick="window.restoreCanceledPackage('${esc(displayedGt.id)}')" title="Khôi phục hủy thầu" style="color: var(--success, #10b981);">
+                        ${displayedGt.id === gt.id ? ((isCanceledPackage || isCompletedPackage) ? `
+                            ${isCanceledPackage ? `<button class="action-btn btn-restore" data-bf-action="restore-package" data-id="${esc(displayedGt.id)}" title="Khôi phục hủy thầu" style="color: var(--success, #10b981);">
                                 <i data-lucide="rotate-ccw"></i>
-                            </button>
-                            <button class="action-btn btn-view" onclick="window.editGoiThau('${esc(displayedGt.id)}', true)" title="Xem chi tiết Gói thầu">
+                            </button>` : ''}
+                            <button class="action-btn btn-view" data-bf-action="view-package" data-id="${esc(displayedGt.id)}" title="Xem chi tiết Gói thầu">
                                 <i data-lucide="eye"></i>
                             </button>
-                            <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${esc(displayedGt.id)}')" title="Xóa">
+                            <button class="action-btn btn-delete" data-bf-action="delete-package" data-id="${esc(displayedGt.id)}" title="Xóa">
                                 <i data-lucide="trash-2"></i>
                             </button>
                         ` : `
-                            <button class="action-btn btn-edit" onclick="window.editGoiThau('${esc(displayedGt.id)}')" title="Sửa">
+                            <button class="action-btn btn-edit" data-bf-action="edit-package" data-id="${esc(displayedGt.id)}" title="Sửa">
                                 <i data-lucide="edit-2"></i>
                             </button>
-                            <button class="action-btn btn-delete" onclick="window.deleteGoiThau('${esc(displayedGt.id)}')" title="Xóa">
+                            <button class="action-btn btn-delete" data-bf-action="delete-package" data-id="${esc(displayedGt.id)}" title="Xóa">
                                 <i data-lucide="trash-2"></i>
                             </button>
                         `) : `
-                            <button class="action-btn btn-view" onclick="window.showPackageDetails('${esc(displayedGt.id)}')" title="Xem chi tiết Gói thầu">
+                            <button class="action-btn btn-view" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" title="Xem chi tiết Gói thầu">
                                 <i data-lucide="eye"></i>
                             </button>
                         `}

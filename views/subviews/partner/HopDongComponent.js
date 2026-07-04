@@ -74,12 +74,7 @@ export async function renderHopDongTable() {
             tableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`, {
-                headers: {
-                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                    'X-Username': sessionStorage.getItem('bf_username') || ''
-                }
-            });
+            const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`);
             if (res.ok) {
                 const data = await res.json();
                 slicedData = data.items;
@@ -162,7 +157,7 @@ export async function renderHopDongTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changeHopDongRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist" data-bf-change="change-contract-version" data-root="${root}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
@@ -179,7 +174,7 @@ export async function renderHopDongTable() {
             const linkedPkgs = (displayedHd.goiThauIds || []).map(gtId => {
                 const gt = goithauList.find(g => g.id === gtId);
                 if (!gt) return '';
-                return `<a href="#" onclick="event.preventDefault(); window.showPackageDetails('${gt.id}')" style="margin:2px; display:inline-block;" title="${gt.tenGoiThau || ''}"><span class="detail-code link-hover">${gt.maGoiThau || 'Gói'}</span></a>`;
+                return `<a href="#" data-bf-action="show-package" data-id="${gt.id}" style="margin:2px; display:inline-block;" title="${gt.tenGoiThau || ''}"><span class="detail-code link-hover">${gt.maGoiThau || 'Gói'}</span></a>`;
             }).filter(Boolean).join(' ');
 
             const custompaperstatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses : [];
@@ -193,7 +188,7 @@ export async function renderHopDongTable() {
                 <tr>
                     <td>
                         <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                            <a href="#" onclick="event.preventDefault(); window.showHopDongDetails('${displayedHd.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Hợp đồng" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code link-hover" style="margin: 0; line-height: 1;">${displayedHd.soHopDong}</span></a>
+                            <a href="#" data-bf-action="show-contract" data-id="${displayedHd.id}" class="text-blue fw-bold link-hover" title="Xem chi tiết Hợp đồng" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code link-hover" style="margin: 0; line-height: 1;">${displayedHd.soHopDong}</span></a>
                             <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                             ${dropdownHtml}
                         </div>
@@ -211,14 +206,14 @@ export async function renderHopDongTable() {
                         <div class="action-btn-group">
                             ${displayedHd.id === h.id ? `
                                 ${(displayedHd.goiThauIds && displayedHd.goiThauIds.length > 0) ? `
-                                <button class="action-btn btn-export" onclick="window.exportContractFromHopDong('${displayedHd.goiThauIds[0]}', '${displayedHd.soHopDong}')" title="Xuất hợp đồng" style="color: var(--emerald);">
+                                <button class="action-btn btn-export" data-bf-action="export-contract" data-id="${displayedHd.goiThauIds[0]}" data-contract-no="${displayedHd.soHopDong}" title="Xuất hợp đồng" style="color: var(--emerald);">
                                     <i data-lucide="file-text"></i>
                                 </button>
                                 ` : ''}
-                                <button class="action-btn btn-edit" onclick="window.editHopDong('${displayedHd.id}')" title="Sửa">
+                                <button class="action-btn btn-edit" data-bf-action="edit-contract" data-id="${displayedHd.id}" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
-                                <button class="action-btn btn-delete" onclick="window.deleteHopDong('${displayedHd.id}')" title="Xóa">
+                                <button class="action-btn btn-delete" data-bf-action="delete-contract" data-id="${displayedHd.id}" title="Xóa">
                                     <i data-lucide="trash-2"></i>
                                 </button>
                             ` : ''}
@@ -408,7 +403,7 @@ export function renderContractVersionDetails(versionId) {
             ${kh ? `
                 <div class="detail-sub-section" style="margin-top: 24px;">
                     <h5 class="detail-sub-title">Kế hoạch lựa chọn nhà thầu liên kết</h5>
-                    <div class="associated-item" style="cursor: pointer;" onclick="window.showKeHoachDetails('${kh.id}')">
+                    <div class="associated-item" style="cursor: pointer;" data-bf-action="show-plan" data-id="${kh.id}">
                         <div>
                             <strong style="font-size: 0.9rem; color: var(--primary);">${kh.tenKeHoach}</strong><br>
                             <small class="text-muted">Mã KH: ${kh.maKeHoach} | Tổng mức: ${formatCurrency(kh.tongMucDauTu)}</small>
@@ -421,7 +416,7 @@ export function renderContractVersionDetails(versionId) {
                 <h5 class="detail-sub-title" style="color: var(--primary);">Các gói thầu thuộc hợp đồng (${linkedPkgs.length})</h5>
                 <div class="associated-list">
                     ${linkedPkgs.length > 0 ? linkedPkgs.map(gt => `
-                        <div class="associated-item" style="cursor: pointer;" onclick="window.showPackageDetails('${gt.id}')">
+                        <div class="associated-item" style="cursor: pointer;" data-bf-action="show-package" data-id="${gt.id}">
                             <div class="associated-info">
                                 <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
                                 <span><strong>${gt.maGoiThau}</strong> - ${gt.tenGoiThau}</span>

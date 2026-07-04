@@ -31,6 +31,7 @@ export async function deleteChuyenGia(id) {
     );
     if (confirmed) {
         this.model.state.chuyengia = this.model.state.chuyengia.filter(cg => cg.id !== id);
+        this.model.markDeleted('chuyengia', id);
         await this.model.persistData('chuyengia');
         this.view.renderChuyenGiaTable();
         await this.autoSync();

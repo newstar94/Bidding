@@ -89,8 +89,8 @@ class SessionRole(str):
         return instance
 
 def verify_session(request, required_role=None):
-    token = request.cookies.get('session_token') or request.headers.get('X-Session-Token')
-    username = request.cookies.get('username') or request.headers.get('X-Username')
+    token = request.cookies.get('session_token')
+    username = request.cookies.get('username')
     
     if not token or not username:
         return False, "Thiếu thông tin xác thực phiên làm việc!"

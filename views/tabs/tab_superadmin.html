@@ -57,9 +57,9 @@
                                     </ul>
                                     <div class="package-action-btn-group">
                                         <button class="btn btn-outline btn-full-width mb-2"
-                                            onclick="window.editPackageQuota('silver', 5)">Chỉnh sửa hạn mức</button>
+                                            data-bf-action="call" data-fn="editPackageQuota" data-args='["silver",5]'>Chỉnh sửa hạn mức</button>
                                         <button class="btn btn-emerald btn-full-width" id="btn-lock-silver"
-                                            onclick="window.togglePackageLock('silver')">Hoạt động</button>
+                                            data-bf-action="call" data-fn="togglePackageLock" data-args='["silver"]'>Hoạt động</button>
                                     </div>
                                 </div>
 
@@ -78,9 +78,9 @@
                                     </ul>
                                     <div class="package-action-btn-group">
                                         <button class="btn btn-outline btn-full-width mb-2"
-                                            onclick="window.editPackageQuota('gold', 15)">Chỉnh sửa hạn mức</button>
+                                            data-bf-action="call" data-fn="editPackageQuota" data-args='["gold",15]'>Chỉnh sửa hạn mức</button>
                                         <button class="btn btn-emerald btn-full-width" id="btn-lock-gold"
-                                            onclick="window.togglePackageLock('gold')">Hoạt động</button>
+                                            data-bf-action="call" data-fn="togglePackageLock" data-args='["gold"]'>Hoạt động</button>
                                     </div>
                                 </div>
 
@@ -98,9 +98,9 @@
                                     </ul>
                                     <div class="package-action-btn-group">
                                         <button class="btn btn-outline btn-full-width mb-2"
-                                            onclick="window.editPackageQuota('diamond', 999)">Chỉnh sửa hạn mức</button>
+                                            data-bf-action="call" data-fn="editPackageQuota" data-args='["diamond",999]'>Chỉnh sửa hạn mức</button>
                                         <button class="btn btn-emerald btn-full-width" id="btn-lock-diamond"
-                                            onclick="window.togglePackageLock('diamond')">Hoạt động</button>
+                                            data-bf-action="call" data-fn="togglePackageLock" data-args='["diamond"]'>Hoạt động</button>
                                     </div>
                                 </div>
                             </div>

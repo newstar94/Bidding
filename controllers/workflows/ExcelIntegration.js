@@ -1332,9 +1332,7 @@ export function exportPhatHanhPhanLoExcel(gt) {
     });
 
     const headers = {
-        'Content-Type': 'application/json',
-        'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-        'X-Username': sessionStorage.getItem('bf_username') || ''
+        'Content-Type': 'application/json'
     };
 
     fetch('/api/export-phanlo-excel', {
@@ -1370,9 +1368,7 @@ export function exportEditPhanLoExcel() {
     const finalName = packageCode || 'GoiThau';
 
     const headers = {
-        'Content-Type': 'application/json',
-        'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-        'X-Username': sessionStorage.getItem('bf_username') || ''
+        'Content-Type': 'application/json'
     };
 
     fetch('/api/export-phanlo-excel', {
@@ -1408,9 +1404,7 @@ export function exportEditTuyChonMuaThemExcel() {
     const finalName = packageCode || 'GoiThau';
 
     const headers = {
-        'Content-Type': 'application/json',
-        'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-        'X-Username': sessionStorage.getItem('bf_username') || ''
+        'Content-Type': 'application/json'
     };
 
     fetch('/api/export-tuychonmuathem-excel', {

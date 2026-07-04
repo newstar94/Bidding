@@ -102,7 +102,7 @@ export function renderDashboard() {
     } else {
         recentTableBody.innerHTML = recentList.map(gt => `
             <tr>
-                <td><a href="#" onclick="event.preventDefault(); window.showPackageDetails('${gt.id}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu"><span class="detail-code">${gt.maGoiThau}</span></a></td>
+                <td><a href="#" data-bf-action="show-package" data-id="${gt.id}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu"><span class="detail-code">${gt.maGoiThau}</span></a></td>
                 <td><a href="#" class="view-package-link" data-id="${gt.id}">${gt.tenGoiThau}</a></td>
                 <td>${this.model.formatCurrency(gt.giaGoiThau)}</td>
                 <td>${gt.hinhThucLuaChon}</td>
@@ -197,7 +197,7 @@ export function renderSuperAdminDashboard() {
                                 <td style="font-weight:700; text-align:center;">${org.userCount}</td>
                                 <td class="text-right">
                                     <div class="actions-group">
-                                        <button class="btn btn-icon btn-neutral" onclick="window.switchTab('superadmin')" title="Quản lý chi tiết"><i data-lucide="edit"></i></button>
+                                        <button class="btn btn-icon btn-neutral" data-bf-action="switch-tab" data-tab="superadmin" title="Quản lý chi tiết"><i data-lucide="edit"></i></button>
                                     </div>
                                 </td>
                             </tr>

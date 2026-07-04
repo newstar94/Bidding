@@ -71,29 +71,16 @@ export class BiddingController {
         // Intercept native fetch to automatically append security headers & handle auth errors globally
         const originalFetch = window.fetch;
         window.fetch = async (url, options = {}) => {
-            let token = sessionStorage.getItem('bf_session_token');
-            let username = sessionStorage.getItem('bf_username');
-            
-            if (!token && localStorage.getItem('bf_remember_me') === 'true') {
-                token = localStorage.getItem('bf_session_token');
-                username = localStorage.getItem('bf_username');
-                const userId = localStorage.getItem('bf_user_id');
-                if (token && username) {
-                    sessionStorage.setItem('bf_session_token', token);
-                    sessionStorage.setItem('bf_username', username);
-                    if (userId) sessionStorage.setItem('bf_user_id', userId);
-                }
-            }
-
             const activeOrg = localStorage.getItem('bf_active_org');
 
-            if (typeof url === 'string' && url.startsWith('/api/') && token && username) {
-                options.headers = {
-                    ...options.headers,
-                    'X-Session-Token': token,
-                    'X-Username': username,
-                    ...(activeOrg && { 'X-Active-Org': encodeURIComponent(activeOrg) })
-                };
+            if (typeof url === 'string' && url.startsWith('/api/')) {
+                const headers = new Headers(options.headers || {});
+                headers.delete('X-Session-Token');
+                headers.delete('X-Username');
+                if (activeOrg) {
+                    headers.set('X-Active-Org', encodeURIComponent(activeOrg));
+                }
+                options.headers = headers;
             }
 
             if (typeof url === 'string' && url.includes('/api/sync') && options.method === 'POST') {
@@ -195,18 +182,15 @@ export class BiddingController {
             return response;
         };
 
-        // Restore session from localStorage if remember-me is active BEFORE model.init() to ensure correct DB name resolution
-        let token = sessionStorage.getItem('bf_session_token');
-        let username = sessionStorage.getItem('bf_username');
-        if (!token && localStorage.getItem('bf_remember_me') === 'true') {
-            token = localStorage.getItem('bf_session_token');
-            username = localStorage.getItem('bf_username');
-            const userId = localStorage.getItem('bf_user_id');
-            if (token && username) {
-                sessionStorage.setItem('bf_session_token', token);
-                sessionStorage.setItem('bf_username', username);
-                if (userId) sessionStorage.setItem('bf_user_id', userId);
-            }
+        sessionStorage.removeItem('bf_session_token');
+        localStorage.removeItem('bf_session_token');
+        const rememberedUserId = localStorage.getItem('bf_user_id');
+        const rememberedUsername = localStorage.getItem('bf_username');
+        if (rememberedUserId && !sessionStorage.getItem('bf_user_id')) {
+            sessionStorage.setItem('bf_user_id', rememberedUserId);
+        }
+        if (rememberedUsername && !sessionStorage.getItem('bf_username')) {
+            sessionStorage.setItem('bf_username', rememberedUsername);
         }
 
         await this.model.init();
@@ -249,6 +233,20 @@ export class BiddingController {
             localStorage.setItem('bf_id_prefix_cleaned_v2', 'true');
         }
 
+        if (localStorage.getItem('bf_clear_inferred_deletions_v1') !== 'true') {
+            localStorage.removeItem('bf_local_deletions');
+            localStorage.setItem('bf_clear_inferred_deletions_v1', 'true');
+        }
+
+        if (
+            localStorage.getItem('bf_force_full_resync_versions_v3') !== 'true' &&
+            localStorage.getItem('bf_pending_full_resync_versions_v3') !== 'true'
+        ) {
+            localStorage.setItem('bf_last_sync_timestamp', '0');
+            localStorage.removeItem('bf_last_fetch_time');
+            localStorage.setItem('bf_pending_full_resync_versions_v3', 'true');
+        }
+
         this.view.initDOM();
         this.setupAuth();
         this.setupActivityTracker();
@@ -269,6 +267,7 @@ export class BiddingController {
         this.setupSidebar();
         this.setupTabs();
         this.setupActionListeners();
+        this.setupDelegatedActions();
         this.setupConditionalUI();
         this.setupFileUploads();
         this.setupWordTemplatesEvents();
@@ -282,6 +281,23 @@ export class BiddingController {
         window.addEventListener('popstate', (e) => {
             this.handlePathRouting(window.location.pathname, false);
         });
+
+        const shouldWaitForVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true';
+        const initialPath = window.location.pathname;
+        const initialParts = initialPath.startsWith('/') ? initialPath.substring(1).split('/').filter(Boolean) : [];
+        const detailRoutePaths = [
+            this.routeMap['goithau-detail'],
+            this.routeMap['kehoach-detail'],
+            this.routeMap['hopdong-detail'],
+            this.routeMap['chudautu-detail'],
+            this.routeMap['nhathau-detail']
+        ].filter(Boolean);
+        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
+
+        if ((shouldWaitForVersionResync || shouldWaitForDetailData) && !this._initialSyncStarted) {
+            this._initialSyncStarted = true;
+            await this.forceSyncData(false, true);
+        }
 
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
@@ -536,10 +552,10 @@ export class BiddingController {
                     Hiển thị <strong>${startIdx}-${endIdx}</strong> trên tổng số <strong>${totalItems}</strong> bản ghi
                 </div>
                 <div class="pagination-buttons">
-                    <button class="pagination-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="window.handlePageChange('${containerId}', 1)" title="Trang đầu">
+                    <button class="pagination-btn" ${currentPage === 1 ? 'disabled' : ''} data-bf-action="page" data-container-id="${containerId}" data-page="1" title="Trang đầu">
                         <i data-lucide="chevrons-left" style="width:14px; height:14px;"></i>
                     </button>
-                    <button class="pagination-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="window.handlePageChange('${containerId}', ${currentPage - 1})" title="Trang trước">
+                    <button class="pagination-btn" ${currentPage === 1 ? 'disabled' : ''} data-bf-action="page" data-container-id="${containerId}" data-page="${currentPage - 1}" title="Trang trước">
                         <i data-lucide="chevron-left" style="width:14px; height:14px;"></i>
                     </button>
             `;
@@ -554,17 +570,17 @@ export class BiddingController {
 
             for (let i = startPage; i <= endPage; i++) {
                 html += `
-                    <button class="pagination-btn ${i === currentPage ? 'active' : ''}" onclick="window.handlePageChange('${containerId}', ${i})">
+                    <button class="pagination-btn ${i === currentPage ? 'active' : ''}" data-bf-action="page" data-container-id="${containerId}" data-page="${i}">
                         ${i}
                     </button>
                 `;
             }
 
             html += `
-                    <button class="pagination-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="window.handlePageChange('${containerId}', ${currentPage + 1})" title="Trang sau">
+                    <button class="pagination-btn" ${currentPage === totalPages ? 'disabled' : ''} data-bf-action="page" data-container-id="${containerId}" data-page="${currentPage + 1}" title="Trang sau">
                         <i data-lucide="chevron-right" style="width:14px; height:14px;"></i>
                     </button>
-                    <button class="pagination-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="window.handlePageChange('${containerId}', ${totalPages})" title="Trang cuối">
+                    <button class="pagination-btn" ${currentPage === totalPages ? 'disabled' : ''} data-bf-action="page" data-container-id="${containerId}" data-page="${totalPages}" title="Trang cuối">
                         <i data-lucide="chevrons-right" style="width:14px; height:14px;"></i>
                     </button>
                 </div>
@@ -586,5 +602,160 @@ export class BiddingController {
             else if (tabKey === 'chuyengia') this.view.renderChuyenGiaTable();
             else if (tabKey === 'hopdong') this.view.renderHopDongTable();
         };
+    }
+
+    setupDelegatedActions() {
+        if (this._delegatedActionsReady) return;
+        this._delegatedActionsReady = true;
+
+        document.addEventListener('click', (event) => {
+            if (event.target.closest('[data-bf-stop]') && !event.target.closest('[data-bf-stop] [data-bf-action]')) {
+                return;
+            }
+            const target = event.target.closest('[data-bf-action]');
+            if (!target) return;
+
+            const action = target.dataset.bfAction;
+            const id = target.dataset.id;
+            const root = target.dataset.root;
+            const value = target.dataset.value;
+
+            const call = (fn, ...args) => {
+                if (typeof window[fn] === 'function') {
+                    event.preventDefault();
+                    window[fn](...args);
+                }
+            };
+
+            switch (action) {
+                case 'call': {
+                    const fn = target.dataset.fn;
+                    if (fn && typeof window[fn] === 'function') {
+                        event.preventDefault();
+                        let args = [];
+                        try {
+                            args = JSON.parse(target.dataset.args || '[]');
+                        } catch (e) {
+                            args = [];
+                        }
+                        args = args.map(arg => arg === null ? target : arg);
+                        window[fn](...args);
+                    }
+                    return;
+                }
+                case 'remove-closest': {
+                    const selector = target.dataset.selector;
+                    if (selector) {
+                        event.preventDefault();
+                        const node = target.closest(selector);
+                        if (node) node.remove();
+                    }
+                    return;
+                }
+                case 'page':
+                    if (typeof window.handlePageChange === 'function') {
+                        event.preventDefault();
+                        window.handlePageChange(target.dataset.containerId, parseInt(target.dataset.page, 10));
+                    }
+                    return;
+                case 'switch-tab':
+                    return call('switchTab', target.dataset.tab);
+                case 'close-modal':
+                    if (target.dataset.modalId) {
+                        event.preventDefault();
+                        const modal = document.getElementById(target.dataset.modalId);
+                        if (modal) modal.classList.remove('active');
+                    }
+                    return;
+                case 'show-package':
+                    return call('showPackageDetails', id);
+                case 'edit-package':
+                    return call('editGoiThau', id);
+                case 'view-package':
+                    return call('editGoiThau', id, true);
+                case 'delete-package':
+                    return call('deleteGoiThau', id);
+                case 'restore-package':
+                    return call('restoreCanceledPackage', id);
+                case 'show-plan':
+                    return call('showKeHoachDetails', id);
+                case 'edit-plan':
+                    return call('editKeHoach', id);
+                case 'delete-plan':
+                    return call('deleteKeHoach', id);
+                case 'show-investor':
+                    return call('showChuDauTuDetails', id);
+                case 'edit-investor':
+                    return call('editChuDauTu', id);
+                case 'delete-investor':
+                    return call('deleteChuDauTu', id);
+                case 'show-contractor':
+                    return call('showNhaThauDetails', id);
+                case 'show-contractor-close-jv':
+                    return call('showNhaThauDetailsAndCloseJV', id);
+                case 'show-jv':
+                    if (window._jvDataMap && window._jvDataMap[id] && typeof window.openMoThauJVViewModal === 'function') {
+                        event.preventDefault();
+                        const data = window._jvDataMap[id];
+                        window.openMoThauJVViewModal(data.members, data.leadName, data.leadCode);
+                    }
+                    return;
+                case 'show-lot-winners':
+                    return call('showLotWinnersModal', id);
+                case 'edit-contractor':
+                    return call('editNhaThau', id);
+                case 'delete-contractor':
+                    return call('deleteNhaThau', id);
+                case 'show-expert':
+                    return call('showChuyenGiaDetails', id);
+                case 'edit-expert':
+                    return call('editChuyenGia', id);
+                case 'delete-expert':
+                    return call('deleteChuyenGia', id);
+                case 'zoom-signature':
+                    return call('zoomSignatureImage', id);
+                case 'zoom-certificate':
+                    return call('zoomCertificateImage', id);
+                case 'show-contract':
+                    return call('showHopDongDetails', id);
+                case 'edit-contract':
+                    return call('editHopDong', id);
+                case 'delete-contract':
+                    return call('deleteHopDong', id);
+                case 'export-contract':
+                    return call('exportContractFromHopDong', id, target.dataset.contractNo || '');
+                case 'change-plan-version':
+                    return call('changePlanRowVersion', root, value);
+                case 'change-package-version':
+                    return call('changePackageRowVersion', root, value);
+                default:
+                    return;
+            }
+        });
+
+        document.addEventListener('change', (event) => {
+            const target = event.target.closest('[data-bf-change]');
+            if (!target) return;
+            const action = target.dataset.bfChange;
+            const root = target.dataset.root;
+            if (action === 'change-plan-version' && typeof window.changePlanRowVersion === 'function') {
+                window.changePlanRowVersion(root, target.value);
+            }
+            if (action === 'change-package-version' && typeof window.changePackageRowVersion === 'function') {
+                window.changePackageRowVersion(root, target.value);
+            }
+            if (action === 'change-investor-version' && typeof window.changeChuDauTuRowVersion === 'function') {
+                window.changeChuDauTuRowVersion(root, target.value);
+            }
+            if (action === 'change-contractor-version' && typeof window.changeNhaThauRowVersion === 'function') {
+                window.changeNhaThauRowVersion(root, target.value);
+            }
+            if (action === 'change-expert-version' && typeof window.changeChuyenGiaRowVersion === 'function') {
+                window.changeChuyenGiaRowVersion(root, target.value);
+            }
+            if (action === 'change-contract-version' && typeof window.changeHopDongRowVersion === 'function') {
+                window.changeHopDongRowVersion(root, target.value);
+            }
+        }, true);
     }
 }

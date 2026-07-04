@@ -54,7 +54,12 @@ export async function deleteGoiThau(id) {
         const latestIds = latestGts.map(g => g.id);
 
         this.model.state.goithau = this.model.state.goithau.filter(gt => !latestIds.includes(gt.id));
+        this.model.markDeleted('goithau', latestIds);
+        const latestBidIds = (this.model.state.thongtinmothau || [])
+            .filter(b => latestIds.includes(String(b.goiThauId)))
+            .map(b => b.id);
         this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !latestIds.includes(String(b.goiThauId)));
+        this.model.markDeleted('thongtinmothau', latestBidIds);
 
         // Update isLatest for remaining versions in each plan version
         const remainingRelated = allRelatedGts.filter(gt => !latestIds.includes(gt.id));
@@ -103,7 +108,12 @@ export async function deleteGoiThau(id) {
         await this.view.customAlert('Thành công', 'Đã xóa phiên bản gói thầu gần nhất!', 'check-circle');
     } else if (deleteChoice === 2 || deleteConfirmed) {
         this.model.state.goithau = this.model.state.goithau.filter(gt => (gt.rootId || gt.id) !== rootId);
+        this.model.markDeleted('goithau', allRelatedIds);
+        const relatedBidIds = (this.model.state.thongtinmothau || [])
+            .filter(b => allRelatedIds.includes(String(b.goiThauId)))
+            .map(b => b.id);
         this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !allRelatedIds.includes(String(b.goiThauId)));
+        this.model.markDeleted('thongtinmothau', relatedBidIds);
 
         await this.model.persistData('goithau');
         await this.model.persistData('thongtinmothau');
@@ -155,9 +165,37 @@ export function editGoiThau(id, isReadOnly = false) {
     });
     form.querySelectorAll('button').forEach(btn => {
         btn.disabled = false;
+        btn.style.display = '';
     });
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) submitBtn.style.display = '';
+
+    const setSubTableActionVisibility = (visible) => {
+        const display = visible ? '' : 'none';
+        [
+            'btn-them-giahan',
+            'btn-them-yeucaulamro',
+            'btn-them-traloilamro'
+        ].forEach(btnId => {
+            const btn = document.getElementById(btnId);
+            if (btn) btn.style.display = display;
+        });
+
+        document.querySelectorAll(
+            '#giahan-table .col-action, #yeucaulamro-table .col-action, #traloilamro-table .col-action'
+        ).forEach(cell => {
+            cell.style.display = display;
+        });
+
+        document.querySelectorAll(
+            '#gt-giahan-tbody .remove-gh-row-btn, #gt-yeucaulamro-tbody .remove-yc-row-btn, #gt-traloilamro-tbody .remove-tl-row-btn'
+        ).forEach(btn => {
+            const cell = btn.closest('td');
+            if (cell) cell.style.display = display;
+            btn.style.display = display;
+        });
+    };
+    setSubTableActionVisibility(true);
 
     const khSelect = document.getElementById('gt-kehoachid');
     khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' +
@@ -707,8 +745,12 @@ export function editGoiThau(id, isReadOnly = false) {
         ];
         addButtons.forEach(btnId => {
             const btn = document.getElementById(btnId);
-            if (btn) btn.disabled = true;
+            if (btn) {
+                btn.disabled = true;
+                btn.style.display = 'none';
+            }
         });
+        setSubTableActionVisibility(false);
     }
 
     lucide.createIcons();

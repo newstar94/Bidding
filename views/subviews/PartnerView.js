@@ -447,10 +447,10 @@ export function renderDictionary(group) {
                     <button class="btn btn-outline btn-sm btn-copy-var" data-copy="{#${v.tenBien}}&#10;&#10;{/${v.tenBien}}" title="Sao chép cả cặp tag" style="padding: 4px 8px; font-size: 0.75rem;">
                         <i data-lucide="copy" style="width:12px; height:12px;"></i>
                     </button>
-                    <button class="action-btn btn-edit" onclick="window.editWordMapping('${v.id}')" title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                    <button class="action-btn btn-edit" data-bf-action="call" data-fn="editWordMapping" data-args='["${v.id}"]' title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                         <i data-lucide="edit-2" style="width:12px; height:12px; color: var(--text-muted);"></i>
                     </button>
-                    <button class="action-btn btn-delete" onclick="window.deleteWordMapping('${v.id}')" title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                    <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteWordMapping" data-args='["${v.id}"]' title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                         <i data-lucide="trash-2" style="width:12px; height:12px; color: var(--danger);"></i>
                     </button>
                 </div>
@@ -463,10 +463,10 @@ export function renderDictionary(group) {
                         <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" title="Sao chép" style="padding: 4px 8px; font-size: 0.75rem;">
                             <i data-lucide="copy" style="width:12px; height:12px;"></i>
                         </button>
-                        <button class="action-btn btn-edit" onclick="window.editWordMapping('${v.id}')" title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                        <button class="action-btn btn-edit" data-bf-action="call" data-fn="editWordMapping" data-args='["${v.id}"]' title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                             <i data-lucide="edit-2" style="width:12px; height:12px; color: var(--text-muted);"></i>
                         </button>
-                        <button class="action-btn btn-delete" onclick="window.deleteWordMapping('${v.id}')" title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                        <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteWordMapping" data-args='["${v.id}"]' title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                             <i data-lucide="trash-2" style="width:12px; height:12px; color: var(--danger);"></i>
                         </button>
                     </div>
@@ -522,7 +522,7 @@ export function renderWordTemplates(templatesList = []) {
 
 export function getJointVentureMemberHTML(cardId, memberData = null) {
     return `
-        <button type="button" class="btn-remove-member" onclick="window.removeJointVentureMemberCard('${cardId}')" style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.25rem; color: var(--danger); cursor: pointer;">&times;</button>
+        <button type="button" class="btn-remove-member" data-bf-action="call" data-fn="removeJointVentureMemberCard" data-args='["${cardId}"]' style="position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 1.25rem; color: var(--danger); cursor: pointer;">&times;</button>
         <h5 style="margin: 0 0 12px 0; font-size: 0.85rem; font-weight: 700; color: var(--text-muted);">Thành viên liên danh</h5>
         <div class="form-grid">
             <div class="form-group col-span-2" style="margin-bottom: 12px;">

@@ -18,12 +18,7 @@ export async function renderNhaThauTable() {
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`, {
-                headers: {
-                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                    'X-Username': sessionStorage.getItem('bf_username') || ''
-                }
-            });
+            const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
             if (res.ok) {
                 const data = await res.json();
                 slicedData = data.items;
@@ -91,7 +86,7 @@ export async function renderNhaThauTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changeNhaThauRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist" data-bf-change="change-contractor-version" data-root="${esc(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
@@ -108,7 +103,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(displayedNt.id)}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || '')}</span></a>
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || '')}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -127,10 +122,10 @@ export async function renderNhaThauTable() {
                         <td class="text-right">
                             <div class="action-btn-group">
                                 ${displayedNt.id === n.id ? `
-                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${esc(displayedNt.id)}')" title="Sửa">
+                                <button class="action-btn btn-edit" data-bf-action="edit-contractor" data-id="${esc(displayedNt.id)}" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
-                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${esc(displayedNt.id)}')" title="Xóa">
+                                <button class="action-btn btn-delete" data-bf-action="delete-contractor" data-id="${esc(displayedNt.id)}" title="Xóa">
                                     <i data-lucide="trash-2"></i>
                                 </button>
                                 ` : ''}
@@ -146,7 +141,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${esc(displayedNt.id)}')" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || '')}</span></a>
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || '')}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -161,10 +156,10 @@ export async function renderNhaThauTable() {
                         <td class="text-right">
                             <div class="action-btn-group">
                                 ${displayedNt.id === n.id ? `
-                                <button class="action-btn btn-edit" onclick="window.editNhaThau('${esc(displayedNt.id)}')" title="Sửa">
+                                <button class="action-btn btn-edit" data-bf-action="edit-contractor" data-id="${esc(displayedNt.id)}" title="Sửa">
                                     <i data-lucide="edit-2"></i>
                                 </button>
-                                <button class="action-btn btn-delete" onclick="window.deleteNhaThau('${esc(displayedNt.id)}')" title="Xóa">
+                                <button class="action-btn btn-delete" data-bf-action="delete-contractor" data-id="${esc(displayedNt.id)}" title="Xóa">
                                     <i data-lucide="trash-2"></i>
                                 </button>
                                 ` : ''}

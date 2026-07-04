@@ -427,12 +427,26 @@ export class BiddingModel {
         }
     }
 
+    markDeleted(type, recordIds) {
+        const ids = Array.isArray(recordIds) ? recordIds : [recordIds];
+        let localDeletions = [];
+        try {
+            localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
+        } catch (e) {
+            localDeletions = [];
+        }
+        ids.filter(Boolean).forEach(id => {
+            if (!localDeletions.some(d => d.id === id && d.table === type)) {
+                localDeletions.push({ table: type, id });
+            }
+        });
+        localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
+    }
+
     async persistData(type) {
         const key = type.toUpperCase();
         if (this.STORAGE_KEYS[key]) {
             if (this.db.stores.includes(type)) {
-                await this.trackDeletions(type);
-                
                 try {
                     await this.db.putTableData(type, this.state[type]);
                 } catch (err) {
@@ -457,6 +471,16 @@ export class BiddingModel {
             nhathau: ['maNhaThau', 'maSoThue'],
             hopdong: ['soHopDong']
         };
+        const versionedTypes = new Set(['chuyengia', 'kehoach', 'goithau', 'chudautu', 'nhathau', 'hopdong']);
+        const buildDuplicateKey = (type, field, value, item) => {
+            const baseKey = `${type}_${field}_${value}`;
+            if (!versionedTypes.has(type)) {
+                return baseKey;
+            }
+            const root = String(item.rootId || item.root_id || item.id || '').trim().toLowerCase();
+            const version = String(item.phienBan || item.phien_ban || '00').trim().toLowerCase();
+            return `${baseKey}_root_${root}_version_${version}`;
+        };
 
         Object.keys(typesToKeys).forEach(type => {
             const list = this.state[type];
@@ -471,7 +495,7 @@ export class BiddingModel {
                 for (const field of typesToKeys[type]) {
                     const val = String(item[field] || '').trim().toLowerCase();
                     if (val) {
-                        const key = `${type}_${field}_${val}`;
+                        const key = buildDuplicateKey(type, field, val, item);
                         if (seen.has(key)) {
                             isDup = true;
                             break;
@@ -485,7 +509,7 @@ export class BiddingModel {
                     typesToKeys[type].forEach(field => {
                         const val = String(item[field] || '').trim().toLowerCase();
                         if (val) {
-                            seen.add(`${type}_${field}_${val}`);
+                            seen.add(buildDuplicateKey(type, field, val, item));
                         }
                     });
                     uniqueList.push(item);
@@ -534,16 +558,7 @@ export class BiddingModel {
             this.state[type] = this.state[type].filter(x => x.id !== recordId);
         }
         
-        let localDeletions = [];
-        try {
-            localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
-        } catch (e) {
-            localDeletions = [];
-        }
-        if (!localDeletions.some(d => d.id === recordId && d.table === type)) {
-            localDeletions.push({ table: type, id: recordId });
-            localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
-        }
+        this.markDeleted(type, recordId);
 
         if (this.db.stores.includes(type)) {
             await this.db.deleteRecord(type, recordId);
@@ -784,6 +799,28 @@ export class BiddingModel {
             if (best) result.push(best);
         });
         return result;
+    }
+
+    getLatestPackagesForPlan(planId) {
+        if (!planId) return [];
+        const rootMap = {};
+        (this.state.goithau || [])
+            .filter(gt => String(gt.keHoachId) === String(planId))
+            .forEach(gt => {
+                const root = gt.rootId || gt.root_id || gt.id;
+                if (!rootMap[root]) rootMap[root] = [];
+                rootMap[root].push(gt);
+            });
+
+        return Object.values(rootMap).map(candidates => {
+            const explicitLatest = candidates.find(g => g.isLatest == 1);
+            if (explicitLatest) return explicitLatest;
+            return candidates.reduce((best, current) => {
+                const currentVer = parseInt(current.phienBan || current.phien_ban || 0);
+                const bestVer = parseInt(best.phienBan || best.phien_ban || 0);
+                return currentVer > bestVer ? current : best;
+            }, candidates[0]);
+        }).filter(Boolean);
     }
 
     formatCurrency(value) {

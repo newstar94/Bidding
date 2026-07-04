@@ -54,6 +54,7 @@ export async function deleteNhaThau(id) {
     );
     if (confirmed) {
         this.model.state.nhathau = this.model.state.nhathau.filter(n => n.id !== id);
+        this.model.markDeleted('nhathau', id);
         await this.model.persistData('nhathau');
         this.view.renderNhaThauTable();
         await this.autoSync();

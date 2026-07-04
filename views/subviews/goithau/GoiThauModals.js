@@ -129,7 +129,7 @@ export function renderExcelPreview(rows, importType) {
             <div class="modal-card" style="max-width: 95%; width: 1300px;">
                 <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                     <h3 style="margin: 0;">Xem trước dữ liệu nhập từ Excel</h3>
-                    <button type="button" class="modal-close" onclick="document.getElementById('modal-excel-preview').classList.remove('active')">&times;</button>
+                    <button type="button" class="modal-close" data-bf-action="close-modal" data-modal-id="modal-excel-preview">&times;</button>
                 </div>
                 <div class="modal-body" style="max-height: 70vh; overflow-y: auto; padding: 20px;">
                     <div id="excel-preview-container" style="display: none;">
@@ -142,7 +142,7 @@ export function renderExcelPreview(rows, importType) {
                     </div>
                 </div>
                 <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid var(--border-color);">
-                    <button type="button" class="btn btn-outline" id="btn-cancel-excel-import" onclick="document.getElementById('modal-excel-preview').classList.remove('active')">Hủy bỏ</button>
+                    <button type="button" class="btn btn-outline" id="btn-cancel-excel-import" data-bf-action="close-modal" data-modal-id="modal-excel-preview">Hủy bỏ</button>
                     <button type="button" class="btn btn-primary" id="btn-save-excel-import" style="display: none;">Lưu dữ liệu</button>
                 </div>
             </div>

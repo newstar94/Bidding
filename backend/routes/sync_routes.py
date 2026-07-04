@@ -170,8 +170,8 @@ async def sync_websocket_endpoint(websocket):
         data = await websocket.receive_text()
         msg = json.loads(data)
         if msg.get("action") == "auth":
-            token = msg.get("token")
-            username = msg.get("username")
+            token = websocket.cookies.get("session_token")
+            username = websocket.cookies.get("username")
             
             conn = database.get_connection()
             cursor = conn.cursor()
@@ -790,15 +790,15 @@ async def sync_api(request):
                         table_name = TABLE_KEYS[tbl_key]
                         c_id = get_clean_id(table_name, rec_id)
                         if c_id:
-                            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
+                            if False:
                                 # Tìm id_goc của bản ghi trước khi xóa để xóa sạch toàn bộ lịch sử các phiên bản
                                 cursor.execute(f"SELECT id_goc FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
                                 row = cursor.fetchone()
                                 id_goc = row[0] if row else None
                                 if id_goc:
-                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND (id = ? OR id_goc = ?)", (org_name, id_goc, id_goc))
+                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
                                 else:
-                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND (id = ? OR id_goc = ?)", (org_name, c_id, c_id))
+                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
                             else:
                                 cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
 
@@ -822,7 +822,7 @@ async def sync_api(request):
         conn.commit()
         
         # Broadcast WebSocket update
-        broadcast_websocket_event(org_name, {"event": "db_changed", "sender_session": request.headers.get('X-Session-Token')})
+        broadcast_websocket_event(org_name, {"event": "db_changed"})
         
         response_data = {"status": "success", "timestamp": current_time}
         if orphaned_ids:

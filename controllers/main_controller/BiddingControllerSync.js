@@ -1,9 +1,5 @@
 export function setupAutoSyncBackground() {
     const checkAndSync = () => {
-        const token = sessionStorage.getItem('bf_session_token');
-        const username = sessionStorage.getItem('bf_username');
-        if (!token || !username) return; // Only sync if logged in
-
         this.forceSyncData(true).catch(err => console.error("Auto sync failed:", err));
     };
 
@@ -25,8 +21,6 @@ export function autoSync() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-            'X-Username': sessionStorage.getItem('bf_username') || '',
             'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
         },
         body: JSON.stringify(payload)
@@ -149,8 +143,6 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         const since = forceFull ? '0' : (localStorage.getItem('bf_last_sync_timestamp') || '0');
         const response = await fetch('/api/get-all-data?since=' + since, {
             headers: {
-                'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                'X-Username': sessionStorage.getItem('bf_username') || '',
                 'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
             }
         });
@@ -208,6 +200,10 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 localStorage.setItem('bf_last_sync_timestamp', dbData.timestamp.toString());
             }
             localStorage.setItem('bf_last_fetch_time', Date.now().toString());
+            if (since === '0' && localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true') {
+                localStorage.setItem('bf_force_full_resync_versions_v3', 'true');
+                localStorage.removeItem('bf_pending_full_resync_versions_v3');
+            }
 
             if (!isBackground) {
                 // Trigger immediate UI updates
@@ -272,10 +268,6 @@ export function updateSyncStatusDisplay(timestamp) {
 
 
 export function setupWebSocketConnection() {
-    const token = sessionStorage.getItem('bf_session_token');
-    const username = sessionStorage.getItem('bf_username');
-    if (!token || !username) return;
-
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
         return;
     }
@@ -293,9 +285,7 @@ export function setupWebSocketConnection() {
         // Reset backoff khi kết nối thành công
         this._wsRetryDelay = 5000;
         ws.send(JSON.stringify({
-            action: "auth",
-            token: token,
-            username: username
+            action: "auth"
         }));
     };
 
@@ -303,9 +293,6 @@ export function setupWebSocketConnection() {
         try {
             const msg = JSON.parse(event.data);
             if (msg.event === "db_changed") {
-                if (msg.sender_session === token) {
-                    return;
-                }
                 if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
                 this.forceSyncData(true).catch(err => console.error("Real-time sync failed:", err));
             }

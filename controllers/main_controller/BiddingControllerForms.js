@@ -816,12 +816,7 @@ export function setupActionListeners() {
         const originalText = btn.innerHTML;
         btn.innerHTML = 'Đang tải...';
 
-        fetch(`/api/export-excel-template/${type}`, {
-            headers: {
-                'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                'X-Username': sessionStorage.getItem('bf_username') || ''
-            }
-        })
+        fetch(`/api/export-excel-template/${type}`)
             .then(res => {
                 if (!res.ok) throw new Error('Không thể tải tệp mẫu');
                 return res.blob();

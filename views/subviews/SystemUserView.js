@@ -186,9 +186,9 @@ export function renderSuperAdminPanel() {
                     </ul>
                     <div class="package-action-btn-group">
                         <button class="btn btn-outline btn-full-width mb-2"
-                            onclick="window.editSystemPackage('${pkg.id}')">Chỉnh sửa Gói</button>
+                            data-bf-action="call" data-fn="editSystemPackage" data-args='["${pkg.id}"]'>Chỉnh sửa Gói</button>
                         <button class="btn ${lockBtnClass} btn-full-width" id="btn-lock-${pkg.id}"
-                            onclick="window.togglePackageLock('${pkg.id}')">${lockBtnText}</button>
+                            data-bf-action="call" data-fn="togglePackageLock" data-args='["${pkg.id}"]'>${lockBtnText}</button>
                     </div>
                 </div>
             `;
@@ -280,8 +280,8 @@ export function renderSuperAdminPanel() {
                         '<span class="badge badge-danger"><i data-lucide="lock"></i> Đã khóa</span>';
                         
                     const toggleLockBtn = org.status === 'Hoạt động' ?
-                        `<button class="action-btn btn-delete" onclick="window.toggleOrgLock('${org.id}')" title="Khóa Đơn vị"><i data-lucide="lock"></i></button>` :
-                        `<button class="action-btn btn-edit" style="color:var(--success); background:rgba(16,185,129,0.1);" onclick="window.toggleOrgLock('${org.id}')" title="Mở khóa Đơn vị"><i data-lucide="unlock"></i></button>`;
+                        `<button class="action-btn btn-delete" data-bf-action="call" data-fn="toggleOrgLock" data-args='["${org.id}"]' title="Khóa Đơn vị"><i data-lucide="lock"></i></button>` :
+                        `<button class="action-btn btn-edit" style="color:var(--success); background:rgba(16,185,129,0.1);" data-bf-action="call" data-fn="toggleOrgLock" data-args='["${org.id}"]' title="Mở khóa Đơn vị"><i data-lucide="unlock"></i></button>`;
 
                     return `
                         <tr>
@@ -294,7 +294,7 @@ export function renderSuperAdminPanel() {
                             <td>${statusBadge}</td>
                             <td class="text-right">
                                 <div class="action-btn-group" style="justify-content: flex-end;">
-                                    <button class="action-btn btn-view" onclick="window.renewOrgSubscription('${org.id}')" title="Gia hạn 1 năm"><i data-lucide="calendar-plus"></i></button>
+                                    <button class="action-btn btn-view" data-bf-action="call" data-fn="renewOrgSubscription" data-args='["${org.id}"]' title="Gia hạn 1 năm"><i data-lucide="calendar-plus"></i></button>
                                     ${toggleLockBtn}
                                 </div>
                             </td>
@@ -375,8 +375,8 @@ export function renderManagerNhanVienPanel() {
                     <td style="max-width: 250px; text-align: center; vertical-align: middle;">${assignedTasks || '<span class="text-muted">Chưa giao thầu</span>'}</td>
                     <td style="text-align: center; vertical-align: middle;">
                         <div class="action-btn-group" style="justify-content: center; display: inline-flex;">
-                            <button class="action-btn btn-edit" onclick="window.editEmployee('${emp.id}')" title="Sửa"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn btn-delete" onclick="window.deleteEmployee('${emp.id}')" title="Xóa"><i data-lucide="trash-2"></i></button>
+                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editEmployee" data-args='["${emp.id}"]' title="Sửa"><i data-lucide="edit-2"></i></button>
+                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteEmployee" data-args='["${emp.id}"]' title="Xóa"><i data-lucide="trash-2"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -436,8 +436,8 @@ export function renderManagerHoSoGiayPanel() {
                     <td><span class="status-pill" style="background-color: ${status.color};">${status.name}</span></td>
                     <td class="text-right">
                         <div class="action-btn-group">
-                            <button class="action-btn btn-edit" onclick="window.editHoSoGiayStatus('${status.id}')" title="Sửa"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn btn-delete" onclick="window.deleteHoSoGiayStatus('${status.id}')" title="Xóa"><i data-lucide="trash-2"></i></button>
+                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editHoSoGiayStatus" data-args='["${status.id}"]' title="Sửa"><i data-lucide="edit-2"></i></button>
+                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteHoSoGiayStatus" data-args='["${status.id}"]' title="Xóa"><i data-lucide="trash-2"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -545,19 +545,19 @@ export function renderSystemUsersTable(usersList, currentUsername) {
         const isSelf = user.username === currentUsername;
         const deleteBtn = isSelf ? 
             `<span class="text-muted" style="font-size:0.8rem; font-style:italic;">(Tài khoản hiện tại)</span>` : 
-            `<button class="action-btn btn-delete" onclick="window.deleteSystemUser('${user.id}', '${user.username}')" title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
+            `<button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteSystemUser" data-args='["${user.id}","${user.username}"]' title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
         
-        const detailBtn = `<button class="action-btn btn-edit" onclick="window.showSystemUserDetail('${user.id}')" title="Xem chi tiết & Cấu hình"><i data-lucide="user-cog"></i></button>`;
+        const detailBtn = `<button class="action-btn btn-edit" data-bf-action="call" data-fn="showSystemUserDetail" data-args='["${user.id}"]' title="Xem chi tiết & Cấu hình"><i data-lucide="user-cog"></i></button>`;
 
         return `
-            <tr style="cursor: pointer;" onclick="window.showSystemUserDetail('${user.id}')">
+            <tr style="cursor: pointer;" data-bf-action="call" data-fn="showSystemUserDetail" data-args='["${user.id}"]'>
                 <td class="fw-bold" style="color: var(--text-main);">${escapeHTML(user.username)}</td>
                 <td style="font-weight: 600;">${escapeHTML(user.name)}</td>
                 <td>${escapeHTML(user.email) || '--'}</td>
                 <td>${getRoleBadge(user.role)}</td>
                 <td>${getPackageBadge(user.package_id)}</td>
                 <td>${calculateRemainingDays(user.package_end_date)}</td>
-                <td class="text-right" onclick="event.stopPropagation()">
+                <td class="text-right" data-bf-stop>
                     <div class="action-btn-group" style="justify-content: flex-end;">
                         ${detailBtn}
                         ${deleteBtn}

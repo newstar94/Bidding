@@ -180,7 +180,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
     const actionsEl = document.getElementById('detail-workflow-actions');
     if (actionsEl) {
         let actionsHtml = `
-            <button class="btn btn-outline" onclick="window.switchTab('goithau')"
+            <button class="btn btn-outline" data-bf-action="switch-tab" data-tab="goithau"
                 style="padding: 10px 20px; font-weight: 600; display: flex; align-items: center; gap: 6px; height: 38px;">
                 <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Quay lại danh sách
             </button>
@@ -308,7 +308,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <p style="font-size: 0.85rem; margin-bottom: 24px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.5; color: var(--text-muted);">
                             Gói thầu này hiện đang trong giai đoạn Chuẩn bị và chưa phát hành hồ sơ mời thầu. Vui lòng phát hành HSMT để bắt đầu quá trình mời thầu và nhận hồ sơ thầu.
                         </p>
-                        <button class="btn btn-primary" onclick="window.phatHanhHsmtGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md); margin: 0 auto;">
+                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-args='["${gt.id}"]' style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md); margin: 0 auto;">
                             <i data-lucide="send"></i> Phát hành HSMT & Mời thầu
                         </button>
                     `;
@@ -836,7 +836,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <p style="font-size: 0.85rem; margin-bottom: 24px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.5; color: var(--text-muted);">
                             Gói thầu này hiện đang trong giai đoạn Chuẩn bị và chưa phát hành hồ sơ mời thầu. Vui lòng phát hành HSMT để bắt đầu quá trình mời thầu và nhận hồ sơ thầu.
                         </p>
-                        <button class="btn btn-primary" onclick="window.phatHanhHsmtGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md); margin: 0 auto;">
+                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-args='["${gt.id}"]' style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md); margin: 0 auto;">
                             <i data-lucide="send"></i> Phát hành HSMT & Mời thầu
                         </button>
                     `;
@@ -898,7 +898,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <p style="font-size: 0.85rem; margin-bottom: 24px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.5; color: var(--text-muted);">
                             Gói thầu này hiện đang trong giai đoạn Chuẩn bị và chưa phát hành hồ sơ mời thầu. Vui lòng phát hành HSMT để bắt đầu quá trình mời thầu và nhận hồ sơ thầu.
                         </p>
-                        <button class="btn btn-primary" onclick="window.phatHanhHsmtGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
+                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-args='["${gt.id}"]' style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
                             <i data-lucide="send"></i> Phát hành HSMT & Mời thầu
                         </button>
                     </div>
@@ -1000,7 +1000,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                     <!-- Action Buttons -->
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-                        <button class="btn btn-primary" onclick="window.moThauGoiThau('${gt.id}')" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
+                        <button class="btn btn-primary" data-bf-action="call" data-fn="moThauGoiThau" data-args='["${gt.id}"]' style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
                             <i data-lucide="unlock"></i> Tiến hành Mở thầu
                         </button>
                         <button class="btn btn-primary" id="btn-luu-thongtinmoithau" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; background: ${this._biddingInfoEditMode ? '#10b981' : 'var(--primary)'}; border-color: ${this._biddingInfoEditMode ? '#10b981' : 'var(--primary)'};">
@@ -1823,7 +1823,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     });
                     winnerDisplayHtml = `
                         <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                            <a href="#" onclick="event.preventDefault(); window.showLotWinnersModal('${gt.id}')" class="link-hover" style="color:var(--primary); text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a>
+                            <a href="#" data-bf-action="show-lot-winners" data-id="${gt.id}" class="link-hover" style="color:var(--primary); text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a>
                         </h5>
                     `;
                 } else {
@@ -1846,7 +1846,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             winnerDisplayHtml = `
                                 <div style="display: flex; flex-direction: column; gap: 4px;">
                                     <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                        <a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${gt.id}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="link-hover" title="Xem chi tiết liên danh" style="color:var(--primary);">👥 ${currentWinnerBid.tenNhaThau}</a>
+                                        <a href="#" data-bf-action="show-jv" data-id="${gt.id}" class="link-hover" title="Xem chi tiết liên danh" style="color:var(--primary);">👥 ${currentWinnerBid.tenNhaThau}</a>
                                     </h5>
                                 </div>
                             `;
@@ -1855,7 +1855,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const winnerMst = winnerNt ? (winnerNt.maSoThue || winnerNt.maNhaThau) : (currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau);
                             winnerDisplayHtml = `
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                    <a href="#" onclick="event.preventDefault(); window.showNhaThauDetails('${currentWinnerBid.nhaThauId}')" class="link-hover" style="color:var(--primary);">${currentWinnerBid.tenNhaThau}</a>
+                                    <a href="#" data-bf-action="show-contractor" data-id="${currentWinnerBid.nhaThauId}" class="link-hover" style="color:var(--primary);">${currentWinnerBid.tenNhaThau}</a>
                                 </h5>
                                 <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
                                     MST: <strong>${winnerMst || 'Chưa có'}</strong>
@@ -1972,7 +1972,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             leadName,
                             leadCode
                         };
-                        contractorHtml = `<a href="#" onclick="event.preventDefault(); var d=window._jvDataMap['${jvKey}']; d && window.openMoThauJVViewModal(d.members, d.leadName, d.leadCode)" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${b.tenNhaThau || '--'}</a>`;
+                        contractorHtml = `<a href="#" data-bf-action="show-jv" data-id="${jvKey}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${b.tenNhaThau || '--'}</a>`;
                     } else {
                         contractorHtml = `<span class="fw-bold">${b.tenNhaThau || '--'}</span>`;
                     }
@@ -2143,10 +2143,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         // Gọi thẳng API xuất Word, không cần sync lại toàn bộ state
                         // Dữ liệu đã được đồng bộ tự động khi người dùng lưu
                         const dbId = id;
-                        const headers = {
-                            'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                            'X-Username': sessionStorage.getItem('bf_username') || ''
-                        };
+                        const headers = {};
                         fetch(`/api/export-report/${dbId}`, { headers })
                             .then(r => {
                                 if (!r.ok) throw new Error('Không thể xuất báo cáo');

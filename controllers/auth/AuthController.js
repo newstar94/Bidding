@@ -2,24 +2,6 @@
    BiddingFlow - AuthController (Part of Controller split)
    ========================================================================== */
 
-// Setup BroadcastChannel to respond to session requests from other tabs of the same browser
-const sessionSyncChannel = new BroadcastChannel('bf_session_sync');
-sessionSyncChannel.onmessage = (event) => {
-    if (event.data && event.data.type === 'REQUEST_SESSION') {
-        const token = sessionStorage.getItem('bf_session_token');
-        const username = sessionStorage.getItem('bf_username');
-        const userId = sessionStorage.getItem('bf_user_id');
-        if (token && username) {
-            sessionSyncChannel.postMessage({
-                type: 'PROVIDE_SESSION',
-                token,
-                username,
-                userId
-            });
-        }
-    }
-};
-
 export function setupActivityTracker() {
     const updateActivity = () => {
         localStorage.setItem('bf_last_activity', Date.now().toString());
@@ -30,16 +12,14 @@ export function setupActivityTracker() {
     });
 
     // Initial set if user is already logged in
-    const token = sessionStorage.getItem('bf_session_token');
-    if (token && !localStorage.getItem('bf_last_activity')) {
+    if (!localStorage.getItem('bf_last_activity')) {
         updateActivity();
     }
 }
 
 export function checkInactivity() {
-    const token = sessionStorage.getItem('bf_session_token');
-    const username = sessionStorage.getItem('bf_username');
-    if (!token || !username) return false;
+    const activeUser = this.model?.state?.activeuser;
+    if (!activeUser || !activeUser.name) return false;
 
     const lastActivity = localStorage.getItem('bf_last_activity');
     if (lastActivity) {
@@ -90,13 +70,6 @@ export function startBackgroundSessionChecker() {
 
     // Check every 30 seconds
     this._sessionInterval = setInterval(() => {
-        const token = sessionStorage.getItem('bf_session_token');
-        const username = sessionStorage.getItem('bf_username');
-        if (!token || !username) {
-            clearInterval(this._sessionInterval);
-            return;
-        }
-
         // Check if the user is idle first
         if (this.checkInactivity()) {
             clearInterval(this._sessionInterval);
@@ -106,7 +79,7 @@ export function startBackgroundSessionChecker() {
         fetch('/api/auth/check-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, session_token: token, remember: localStorage.getItem('bf_remember_me') === 'true' })
+            body: JSON.stringify({ remember: localStorage.getItem('bf_remember_me') === 'true' })
         }).then(res => {
             if (res.ok) return res.json();
             throw new Error("Invalid session");
@@ -190,20 +163,6 @@ export function setupAuth() {
     const formForgot = document.getElementById('form-auth-forgot');
     const formVerify = document.getElementById('form-auth-verify');
 
-    let token = sessionStorage.getItem('bf_session_token');
-    let username = sessionStorage.getItem('bf_username');
-
-    if (!token && localStorage.getItem('bf_remember_me') === 'true') {
-        token = localStorage.getItem('bf_session_token');
-        username = localStorage.getItem('bf_username');
-        const userId = localStorage.getItem('bf_user_id');
-        if (token && username) {
-            sessionStorage.setItem('bf_session_token', token);
-            sessionStorage.setItem('bf_username', username);
-            if (userId) sessionStorage.setItem('bf_user_id', userId);
-        }
-    }
-
     const hideInitLoader = () => {
         const initLoader = document.getElementById('system-init-loader');
         if (initLoader) {
@@ -247,6 +206,12 @@ export function setupAuth() {
 
     const applySessionUser = (user) => {
         if (!user) return;
+        if (user.id) {
+            sessionStorage.setItem('bf_user_id', user.id);
+        }
+        if (user.username) {
+            sessionStorage.setItem('bf_username', user.username);
+        }
         if (!this.model.state.activeuser) this.model.state.activeuser = {};
         if (!this.model.state.activerole) this.model.state.activerole = user.role || 'employee';
         this.model.state.activeuser.name = user.name;
@@ -279,14 +244,7 @@ export function setupAuth() {
         });
     };
 
-    if (!token || !username) {
-        overlay.style.display = 'flex';
-        document.querySelector('.app-container').style.filter = 'blur(10px)';
-        formLogin.style.display = 'block';
-        formRegister.style.display = 'none';
-        formForgot.style.display = 'none';
-        hideInitLoader();
-    } else {
+    {
         const loaderText = document.getElementById('system-init-loader-text');
         if (loaderText) loaderText.textContent = 'Đang tải...';
 
@@ -298,20 +256,24 @@ export function setupAuth() {
         fetch('/api/auth/check-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, session_token: token, remember: localStorage.getItem('bf_remember_me') === 'true' })
+            body: JSON.stringify({ remember: localStorage.getItem('bf_remember_me') === 'true' })
         }).then(res => {
             if (res.ok) {
                 return res.json();
             }
             throw new Error("Invalid session response");
-        }).then(data => {
+        }).then(async data => {
             if (!data || !data.valid) {
                 showLoginOverlay();
             } else {
                 if (loaderText) loaderText.textContent = 'Đang tải...';
 
                 // Update active user details dynamically to prevent cache issues
+                const previousUserId = sessionStorage.getItem('bf_user_id');
                 applySessionUser(data.user);
+                if (data.user?.id && previousUserId !== String(data.user.id)) {
+                    await this.model.init();
+                }
 
                 if (!canShowLocalFirst) {
                     showCachedWorkspace();
@@ -323,7 +285,7 @@ export function setupAuth() {
             }
         }).catch(err => {
             console.error("Lỗi kiểm tra phiên làm việc:", err);
-            hideInitLoader();
+            showLoginOverlay();
         });
     }
 
@@ -391,6 +353,16 @@ export function setupAuth() {
                     console.error("Failed final sync during logout:", e);
                 }
 
+                try {
+                    await fetch('/api/auth/logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: '{}'
+                    });
+                } catch (e) {
+                    console.error("Failed to clear server session during logout:", e);
+                }
+
                 this.model.clearSessionData();
                 if (this._sessionInterval) clearInterval(this._sessionInterval);
 
@@ -434,19 +406,18 @@ export function setupAuth() {
                 return;
             }
 
-            // Save to localStorage/sessionStorage
-            sessionStorage.setItem('bf_session_token', data.session_token);
+            // Save non-sensitive profile/cache metadata. Session token lives only in HttpOnly cookies.
+            sessionStorage.removeItem('bf_session_token');
+            localStorage.removeItem('bf_session_token');
             sessionStorage.setItem('bf_username', data.username);
             sessionStorage.setItem('bf_user_id', data.id);
 
             if (remember) {
                 localStorage.setItem('bf_remember_me', 'true');
-                localStorage.setItem('bf_session_token', data.session_token);
                 localStorage.setItem('bf_username', data.username);
                 localStorage.setItem('bf_user_id', data.id);
             } else {
                 localStorage.removeItem('bf_remember_me');
-                localStorage.removeItem('bf_session_token');
                 localStorage.removeItem('bf_username');
                 localStorage.removeItem('bf_user_id');
             }

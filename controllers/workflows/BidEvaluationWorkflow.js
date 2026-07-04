@@ -49,7 +49,7 @@ export function renderDanhGiaHsdtPanel() {
         ` : `
             <input type="text" class="form-control letter-so-cv" placeholder="Số công văn" value="${letter.soCv || ''}" style="padding: 4px 8px; font-size: 0.8rem;" required>
             <input type="date" class="form-control letter-ngay-cv" value="${ngayFormattedInput}" style="padding: 4px 8px; font-size: 0.8rem;" required>
-            <button type="button" class="btn-delete-row" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;" onclick="this.closest('.letter-row').remove()">&times;</button>
+            <button type="button" class="btn-delete-row" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;" data-bf-action="remove-closest" data-selector=".letter-row">&times;</button>
         `;
         container.appendChild(div);
     };

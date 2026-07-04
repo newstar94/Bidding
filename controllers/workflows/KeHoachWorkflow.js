@@ -31,6 +31,7 @@ export async function deleteKeHoach(id) {
             }
 
             this.model.state.kehoach = this.model.state.kehoach.filter(kh => kh.id !== latestKh.id);
+            this.model.markDeleted('kehoach', latestKh.id);
 
             const remainingRelated = relatedPlans.filter(kh => kh.id !== latestKh.id);
             if (remainingRelated.length > 0) {
@@ -63,6 +64,7 @@ export async function deleteKeHoach(id) {
             }
 
             this.model.state.kehoach = this.model.state.kehoach.filter(kh => (kh.rootId || kh.id) !== rootId);
+            this.model.markDeleted('kehoach', relatedIds);
             await this.model.persistData('kehoach');
             this.view.renderKeHoachTable();
             await this.autoSync();
@@ -87,6 +89,7 @@ export async function deleteKeHoach(id) {
         );
         if (confirmed) {
             this.model.state.kehoach = this.model.state.kehoach.filter(kh => kh.id !== id);
+            this.model.markDeleted('kehoach', id);
             await this.model.persistData('kehoach');
             this.view.renderKeHoachTable();
             await this.autoSync();
@@ -599,8 +602,7 @@ export function renderBreakdownPackagesList(planId) {
     const tbody = document.getElementById('tbody-breakdown-goithau');
     if (!tbody) return;
 
-    const latestPackages = this.model.getLatestPackages();
-    const pkgs = latestPackages.filter(g => g.keHoachId === planId);
+    const pkgs = this.model.getLatestPackagesForPlan(planId);
 
     if (pkgs.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;"><small>Chưa có gói thầu nào được tạo cho kế hoạch này.</small></td></tr>`;
@@ -619,8 +621,8 @@ export function renderBreakdownPackagesList(planId) {
                 <td style="padding: 10px 14px;">${trangThaiBadge}</td>
                 <td style="padding: 10px 14px; text-align: center;">
                     ${(gt.trangThai === 'Đã có kết quả' || gt.trangThai === 'Hủy thầu')
-                ? `<button type="button" class="btn btn-outline btn-sm" onclick="window.showPackageDetails('${gt.id}')" style="padding: 4px 8px; font-size: 0.78rem;">Xem</button>`
-                : `<button type="button" class="btn btn-outline btn-sm" onclick="window.editGoiThau('${gt.id}')" style="padding: 4px 8px; font-size: 0.78rem;">Sửa</button>`
+                ? `<button type="button" class="btn btn-outline btn-sm" data-bf-action="show-package" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Xem</button>`
+                : `<button type="button" class="btn btn-outline btn-sm" data-bf-action="edit-package" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Sửa</button>`
             }
                 </td>
             </tr>
@@ -643,20 +645,20 @@ export function addBreakdownRow(type, data = null) {
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ''}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${data?.donViThucHien || ''}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-doc" value="${data?.vanBanPheDuyet || ''}" placeholder="Văn bản phê duyệt..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" onclick="window.removeBreakdownRow(this, 'dathuchien')" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
+            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"dathuchien"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
         `;
     } else if (type === 'khongapdung') {
         row.innerHTML = `
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${data?.tenCongViec || ''}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ''}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${data?.donViThucHien || ''}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" onclick="window.removeBreakdownRow(this, 'khongapdung')" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
+            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"khongapdung"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
         `;
     } else if (type === 'chuadudieuKien') {
         row.innerHTML = `
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${data?.tenCongViec || ''}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ''}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
-            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" onclick="window.removeBreakdownRow(this, 'chuadudieuKien')" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
+            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"chuadudieuKien"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
         `;
     }
 
@@ -710,8 +712,7 @@ export function updateBreakdownTotal(planId) {
     const sumIII = parseInputsVal('chuadudieuKien');
 
     // Sum IV: Các gói thầu
-    const latestPackages = this.model.getLatestPackages();
-    const pkgs = latestPackages.filter(g => g.keHoachId === planId);
+    const pkgs = this.model.getLatestPackagesForPlan(planId);
     const sumIV = pkgs.reduce((acc, curr) => {
         if (curr.isRebid) return acc;
         return acc + (curr.giaGoiThau || 0);
@@ -752,13 +753,7 @@ export function recalculatePlanTotal(planId) {
     const sumII = (kh.cvKhongApDungList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
     const sumIII = (kh.cvChuaDuDieuKienList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
 
-    const latestPackages = this.model.getLatestPackages();
-    const rootId = kh.rootId || kh.id;
-    const planVersionIds = this.model.state.kehoach
-        .filter(k => k.rootId === rootId || k.id === rootId)
-        .map(k => k.id);
-
-    const pkgs = latestPackages.filter(g => planVersionIds.includes(g.keHoachId));
+    const pkgs = this.model.getLatestPackagesForPlan(planId);
     const sumIV = pkgs.reduce((acc, curr) => {
         if (curr.isRebid) return acc;
         return acc + (curr.giaGoiThau || 0);

@@ -118,13 +118,13 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
     """
     if owner_id:
         cursor.execute("""
-            SELECT id, id_goc, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
+            SELECT id, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
             FROM ke_hoach_lcnt
             WHERE owner_id = ? AND is_tong_muc_tu_dong = 1
         """, (owner_id,))
     else:
         cursor.execute("""
-            SELECT id, id_goc, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
+            SELECT id, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
             FROM ke_hoach_lcnt
             WHERE is_tong_muc_tu_dong = 1
         """)
@@ -132,28 +132,17 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
     
     for row in plans:
         plan_id = row[0]
-        id_goc = row[1]
-        loai_hinh = row[2]
-        cv_da_thuc_hien_str = row[3]
-        cv_khong_ap_dung_str = row[4]
-        cv_chua_du_dieu_kien_str = row[5]
+        loai_hinh = row[1]
+        cv_da_thuc_hien_str = row[2]
+        cv_khong_ap_dung_str = row[3]
+        cv_chua_du_dieu_kien_str = row[4]
         
-        root_id = id_goc if (id_goc and id_goc.strip()) else plan_id
         cursor.execute("""
-            SELECT id FROM ke_hoach_lcnt
-            WHERE (id_goc = ? OR id = ?)
-        """, (root_id, root_id))
-        version_ids = [r[0] for r in cursor.fetchall()]
-        
-        sum_iv = 0
-        if version_ids:
-            placeholders = ",".join(["?"] * len(version_ids))
-            cursor.execute(f"""
-                SELECT COALESCE(SUM(gia_goi_thau), 0)
-                FROM goi_thau
-                WHERE ke_hoach_id IN ({placeholders}) AND is_latest = 1
-            """, tuple(version_ids))
-            sum_iv = cursor.fetchone()[0] or 0
+            SELECT COALESCE(SUM(gia_goi_thau), 0)
+            FROM goi_thau
+            WHERE ke_hoach_id = ? AND is_latest = 1
+        """, (plan_id,))
+        sum_iv = cursor.fetchone()[0] or 0
             
         def sum_cv_list(cv_str):
             if not cv_str:

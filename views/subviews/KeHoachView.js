@@ -75,12 +75,7 @@ export async function renderKeHoachTable() {
             tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
         }
         try {
-            const res = await fetch(`/api/paginate?table=kehoach&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`, {
-                headers: {
-                    'X-Session-Token': sessionStorage.getItem('bf_session_token') || '',
-                    'X-Username': sessionStorage.getItem('bf_username') || ''
-                }
-            });
+            const res = await fetch(`/api/paginate?table=kehoach&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`);
             if (res.ok) {
                 const data = await res.json();
                 slicedData = data.items;
@@ -167,14 +162,14 @@ export async function renderKeHoachTable() {
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" onchange="window.changePlanRowVersion('${root}', this.value)" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist" data-bf-change="change-plan-version" data-root="${esc(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
 
             const isLatest = displayedKh.id === kh.id;
             const editBtnHtml = isLatest ? `
-                            <button class="action-btn btn-edit" onclick="window.editKeHoach('${displayedKh.id}')" title="Sửa">
+                            <button class="action-btn btn-edit" data-bf-action="edit-plan" data-id="${esc(displayedKh.id)}" title="Sửa">
                                 <i data-lucide="edit-2"></i>
                             </button>
             ` : ``;
@@ -183,7 +178,7 @@ export async function renderKeHoachTable() {
                 <tr>
                     <td>
                         <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                            <a href="#" onclick="event.preventDefault(); window.showKeHoachDetails('${esc(displayedKh.id)}')" class="text-blue fw-bold link-hover" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPlanBaseCode(displayedKh.maKeHoach) ? esc(this.model.getPlanBaseCode(displayedKh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
+                            <a href="#" data-bf-action="show-plan" data-id="${esc(displayedKh.id)}" class="text-blue fw-bold link-hover" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPlanBaseCode(displayedKh.maKeHoach) ? esc(this.model.getPlanBaseCode(displayedKh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
                             <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                             ${dropdownHtml}
                         </div>
@@ -199,7 +194,7 @@ export async function renderKeHoachTable() {
                     <td class="text-right">
                         <div class="action-btn-group">
                             ${editBtnHtml}
-                            <button class="action-btn btn-delete" onclick="window.deleteKeHoach('${displayedKh.id}')" title="Xóa">
+                            <button class="action-btn btn-delete" data-bf-action="delete-plan" data-id="${esc(displayedKh.id)}" title="Xóa">
                                 <i data-lucide="trash-2"></i>
                             </button>
                         </div>
@@ -274,8 +269,7 @@ export function renderPlanVersionDetails(versionId) {
     });
 
     const cdt = this.model.state.chudautu.find(c => c.id === kh.chuDauTuId);
-    const latestPackages = this.model.getLatestPackages();
-    const linkedPackages = latestPackages.filter(gt => gt.keHoachId === kh.id);
+    const linkedPackages = this.model.getLatestPackagesForPlan(kh.id);
 
     // Group by rootId, code, or name to guarantee absolute uniqueness of each package root in the display list
     const uniqueLinkedPackages = [];
@@ -501,7 +495,7 @@ export function renderPlanVersionDetails(versionId) {
                 <h5 class="detail-sub-title" style="color: var(--primary);">IV. Phần công việc thuộc kế hoạch lựa chọn nhà thầu (Các gói thầu - ${uniqueLinkedPackages.length})</h5>
                 <div class="associated-list">
                     ${uniqueLinkedPackages.length > 0 ? uniqueLinkedPackages.map(gt => `
-                        <div class="associated-item" style="cursor: pointer;" onclick="window.showPackageDetails('${gt.id}')" title="Xem chi tiết Gói thầu">
+                        <div class="associated-item" style="cursor: pointer;" data-bf-action="show-package" data-id="${gt.id}" title="Xem chi tiết Gói thầu">
                             <div class="associated-info">
                                 <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
                                 <span><strong>${gt.maGoiThau}</strong> - ${gt.tenGoiThau}</span>

@@ -33,6 +33,7 @@ export async function deleteHopDong(id) {
         if (!latestHd) return;
 
         this.model.state.hopdong = this.model.state.hopdong.filter(h => h.id !== latestHd.id);
+        this.model.markDeleted('hopdong', latestHd.id);
 
         const remainingRelated = relatedHds.filter(h => h.id !== latestHd.id);
         if (remainingRelated.length > 0) {
@@ -58,6 +59,7 @@ export async function deleteHopDong(id) {
         await this.view.customAlert('Thành công', 'Đã xóa phiên bản hợp đồng gần nhất!', 'check-circle');
     } else if (deleteChoice === 2 || deleteConfirmed) {
         this.model.state.hopdong = this.model.state.hopdong.filter(h => (h.rootId || h.id) !== rootId);
+        this.model.markDeleted('hopdong', relatedIds);
 
         await this.model.persistData('hopdong');
         this.view.renderHopDongTable();

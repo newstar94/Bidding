@@ -16,6 +16,7 @@ export async function deleteChuDauTu(id) {
     );
     if (confirmed) {
         this.model.state.chudautu = this.model.state.chudautu.filter(c => c.id !== id);
+        this.model.markDeleted('chudautu', id);
         await this.model.persistData('chudautu');
         this.view.renderChuDauTuTable();
         await this.autoSync();

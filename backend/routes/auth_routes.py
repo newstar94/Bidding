@@ -93,7 +93,6 @@ async def login_api(request):
         response = JSONResponse({
             "success": True,
             "id": user['id'],
-            "session_token": session_token,
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
             "role": user['vai_tro'],
@@ -118,9 +117,12 @@ async def login_api(request):
 
 async def check_session_api(request):
     try:
-        data = await request.json()
-        username = data.get('username', '').strip()
-        session_token = data.get('session_token', '').strip()
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        username = (request.cookies.get('username') or '').strip()
+        session_token = (request.cookies.get('session_token') or '').strip()
         remember = data.get('remember', False)
         
         if not username or not session_token:
@@ -271,7 +273,7 @@ async def change_password_api(request):
         if not verify_password(user['mat_khau'], old_password):
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
             
-        old_token = request.cookies.get('session_token') or request.headers.get('X-Session-Token')
+        old_token = request.cookies.get('session_token')
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         cursor.execute(
@@ -284,7 +286,6 @@ async def change_password_api(request):
         
         response = JSONResponse({
             "success": True, 
-            "new_session_token": new_token,
             "message": "Thay đổi mật khẩu thành công! Các phiên đăng nhập trên thiết bị khác đã bị đăng xuất."
         })
         response.set_cookie("session_token", new_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
@@ -292,6 +293,36 @@ async def change_password_api(request):
     except Exception as e:
         log_error(e, "change_password_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đổi mật khẩu."}, status_code=500)
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
+
+async def logout_api(request):
+    conn = None
+    try:
+        token = request.cookies.get('session_token')
+        username = request.cookies.get('username')
+        if token:
+            _session_cache_invalidate(token)
+        if token and username:
+            conn = database.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE tai_khoan SET token_phien = NULL, han_su_dung_token = NULL WHERE token_phien = ? AND ten_dang_nhap = ?",
+                (token, username)
+            )
+            conn.commit()
+        response = JSONResponse({"success": True})
+        response.delete_cookie("session_token", path="/")
+        response.delete_cookie("username", path="/")
+        return response
+    except Exception as e:
+        log_error(e, "logout_api")
+        response = JSONResponse({"success": True})
+        response.delete_cookie("session_token", path="/")
+        response.delete_cookie("username", path="/")
+        return response
     finally:
         if conn:
             try: conn.close()

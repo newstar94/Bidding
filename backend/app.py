@@ -129,7 +129,7 @@ def compile_html(file_path):
             '<script type="module" src="/dist/controllers/app.bundle.js"></script>',
             compiled
         )
-        compiled = compiled.replace("window.__BF_APP_DEBUG__ = true;", "window.__BF_APP_DEBUG__ = false;")
+        compiled = compiled.replace('<meta name="bf-app-debug" content="true">', '<meta name="bf-app-debug" content="false">')
         with _compiled_html_lock:
             if not _compiled_html_cache:
                 _compiled_html_cache = compiled
@@ -178,6 +178,7 @@ from routes.auth_routes import (
     check_session_api,
     update_profile_api,
     change_password_api,
+    logout_api,
     list_users_api,
     delete_user_api,
     update_user_role_api,
@@ -357,6 +358,7 @@ routes = [
     Route("/api/auth/resend-code", resend_code_api, methods=["POST"]),
     Route("/api/auth/login", login_api, methods=["POST"]),
     Route("/api/auth/check-session", check_session_api, methods=["POST"]),
+    Route("/api/auth/logout", logout_api, methods=["POST"]),
     Route("/api/auth/forgot-password", forgot_password_api, methods=["POST"]),
     Route("/api/auth/update-profile", update_profile_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
@@ -433,10 +435,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # Thêm CSP hỗ trợ tải tài nguyên tự host và các CDN cần thiết
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "default-src 'self'; "
+            "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
             "img-src 'self' data: blob:; "
             f"connect-src 'self' https://unpkg.com https://cdn.jsdelivr.net ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT}; "
-            "font-src 'self' https://fonts.gstatic.com https://unpkg.com https://cdn.jsdelivr.net;"
+            "font-src 'self' https://fonts.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; "
+            "worker-src 'self'; "
+            "base-uri 'self'; "
+            "object-src 'none';"
         )
         path = request.url.path
         # Priority 11: HSTS khi chạy sau reverse proxy HTTPS
@@ -492,7 +499,7 @@ middleware = [
     Middleware(CORSMiddleware,
                allow_origins=cors_origins,
                allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-               allow_headers=['Content-Type', 'X-Session-Token', 'X-Username', 'X-Active-Org'],
+               allow_headers=['Content-Type', 'X-Active-Org'],
                allow_credentials=False),
     Middleware(BodySizeLimitMiddleware),
     Middleware(CSRFMiddleware),
