@@ -251,6 +251,7 @@ export class BiddingModel {
             permissionmatrix: [],
             custompaperstatuses: [],
             assignments: [],
+            thongtinmothau: [],
         };
 
         this.sortState = {
@@ -275,6 +276,8 @@ export class BiddingModel {
             hopdong:   savedPages.hopdong   || 1
         };
         this.pageSize = 10;
+        this._loadedStorageKeys = new Set();
+        this._allDataLoadPromise = null;
     }
 
     /** Lưu trang hiện tại vào sessionStorage để F5 không mất trang */
@@ -286,7 +289,60 @@ export class BiddingModel {
         } catch (e) {}
     }
 
-    async init() {
+
+    async loadStorageKeys(keysToLoad) {
+        const requested = new Set(keysToLoad || Object.keys(this.STORAGE_KEYS));
+        const loadPromises = Object.keys(this.STORAGE_KEYS).map(async (key) => {
+            if (!requested.has(key) || this._loadedStorageKeys.has(key)) return;
+            if (key === 'THEME' || key === 'ACTIVEROLE' || key === 'ACTIVEUSER') return;
+            const lowKey = key.toLowerCase();
+            try {
+                let stored;
+                if (this.db.stores.includes(lowKey)) {
+                    stored = await this.db.getTableData(lowKey);
+                    if (!stored || stored.length === 0) {
+                        const legacyData = await this.db.get(this.STORAGE_KEYS[key]);
+                        if (legacyData && legacyData.length > 0) {
+                            stored = legacyData;
+                            await this.db.putTableData(lowKey, stored);
+                        }
+                    }
+                } else {
+                    stored = await this.db.get(this.STORAGE_KEYS[key]);
+                }
+
+                if (stored) {
+                    this.state[lowKey] = stored;
+                } else {
+                    this.state[lowKey] = [];
+                    if (this.db.stores.includes(lowKey)) {
+                        await this.db.putTableData(lowKey, []);
+                    } else {
+                        await this.db.set(this.STORAGE_KEYS[key], []);
+                    }
+                }
+            } catch (e) {
+                this.state[lowKey] = [];
+            } finally {
+                this._loadedStorageKeys.add(key);
+            }
+        });
+        await Promise.all(loadPromises);
+    }
+
+    ensureAllDataLoaded() {
+        if (!this._allDataLoadPromise) {
+            this._allDataLoadPromise = this.loadStorageKeys(Object.keys(this.STORAGE_KEYS)).then(() => {
+                if (localStorage.getItem('bf_self_heal_duplicates_v1') !== 'true') {
+                    this.selfHealLocalDuplicates();
+                    localStorage.setItem('bf_self_heal_duplicates_v1', 'true');
+                }
+            });
+        }
+        return this._allDataLoadPromise;
+    }
+
+    async init(options = {}) {
         const userId = sessionStorage.getItem('bf_user_id');
         if (userId) {
             const cleanUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '');
@@ -294,6 +350,8 @@ export class BiddingModel {
         } else {
             this.db = new BrowserDB();
         }
+        this._loadedStorageKeys = new Set();
+        this._allDataLoadPromise = null;
         await this.db.init();
 
         // 1. One-time clear / migration of legacy LocalStorage keys to IndexedDB
@@ -321,41 +379,7 @@ export class BiddingModel {
             } catch (e) {}
         }
 
-        // Initialize standard keys from IndexedDB / Native Tables in parallel to reduce startup latency
-        const loadPromises = Object.keys(this.STORAGE_KEYS).map(async (key) => {
-            if (key === 'THEME' || key === 'ACTIVEROLE' || key === 'ACTIVEUSER') return;
-            const lowKey = key.toLowerCase();
-            try {
-                let stored;
-                if (this.db.stores.includes(lowKey)) {
-                    stored = await this.db.getTableData(lowKey);
-                    // Nếu bảng IndexedDB trống, thử đọc từ kv_store cũ để di trú
-                    if (!stored || stored.length === 0) {
-                        const legacyData = await this.db.get(this.STORAGE_KEYS[key]);
-                        if (legacyData && legacyData.length > 0) {
-                            stored = legacyData;
-                            await this.db.putTableData(lowKey, stored);
-                        }
-                    }
-                } else {
-                    stored = await this.db.get(this.STORAGE_KEYS[key]);
-                }
-
-                if (stored) {
-                    this.state[lowKey] = stored;
-                } else {
-                    this.state[lowKey] = [];
-                    if (this.db.stores.includes(lowKey)) {
-                        await this.db.putTableData(lowKey, []);
-                    } else {
-                        await this.db.set(this.STORAGE_KEYS[key], []);
-                    }
-                }
-            } catch (e) {
-                this.state[lowKey] = [];
-            }
-        });
-        await Promise.all(loadPromises);
+        await this.loadStorageKeys(options.priorityKeys || Object.keys(this.STORAGE_KEYS));
 
         // Setup premium commercial packages
         if (!this.state.systempackages) {
@@ -371,7 +395,7 @@ export class BiddingModel {
             if (localRole) storedRole = JSON.parse(localRole);
             if (localUser) storedUser = JSON.parse(localUser);
         } catch (e) {
-            console.error("Lỗi đọc active role/user từ localStorage:", e);
+            console.error("Failed to read active role/user from localStorage:", e);
         }
 
         if (!storedRole || !storedUser) {
@@ -393,12 +417,15 @@ export class BiddingModel {
             this.state.activeuser = { name: 'Admin', title: 'Hệ thống', id: 'sa-1' };
         }
 
-        // Session state (ACTIVEROLE, ACTIVEUSER) chỉ lưu trong localStorage (nhanh hơn và không cần offline persistence)
-        // IDB fallback vẫn được giữ phía trên để tương thích ngược với user cũ
+        // Session state stays in localStorage; IndexedDB fallback above keeps backward compatibility.
 
-        // Tự động quét dọn và tự chữa lành các bản ghi trùng lặp local tích tụ trước đây
-        this.selfHealLocalDuplicates();
+        // Duplicate cleanup is a migration, not a per-startup task.
+        if (!options.priorityKeys && localStorage.getItem('bf_self_heal_duplicates_v1') !== 'true') {
+            this.selfHealLocalDuplicates();
+            localStorage.setItem('bf_self_heal_duplicates_v1', 'true');
+        }
     }
+
 
 
     async trackDeletions(type) {
@@ -698,7 +725,10 @@ export class BiddingModel {
             return allPlans;
         }
 
-        const empId = this.state.activeuser.id;
+        const empId = this.state.activeuser?.id;
+        if (!empId) {
+            return [];
+        }
         const cleanEmpId = String(empId).replace(/^(emp-|user-|sa-|mgr-)+/, '');
         
         // A plan is visible to an employee if:
@@ -727,7 +757,10 @@ export class BiddingModel {
             return allPackages;
         }
 
-        const empId = this.state.activeuser.id;
+        const empId = this.state.activeuser?.id;
+        if (!empId) {
+            return [];
+        }
         return allPackages.filter(gt => this.isAssigned(empId, gt.id, 'goithau'));
     }
 
@@ -737,7 +770,10 @@ export class BiddingModel {
             return allContracts;
         }
 
-        const empId = this.state.activeuser.id;
+        const empId = this.state.activeuser?.id;
+        if (!empId) {
+            return [];
+        }
         return allContracts.filter(hd => this.isAssigned(empId, hd.id, 'hopdong'));
     }
 

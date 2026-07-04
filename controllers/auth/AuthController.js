@@ -234,15 +234,22 @@ export function setupAuth() {
     };
 
     const refreshWorkspaceInBackground = () => {
-        const syncPromise = this._initialSyncStarted ? Promise.resolve() : this.forceSyncData(true);
-        this._initialSyncStarted = true;
-        syncPromise.then(() => {
-            if (typeof this.handlePathRouting === 'function') {
-                this.handlePathRouting(window.location.pathname, false, true);
-            }
-        }).catch(err => {
-            console.error("Failed to force sync data after F5 restore:", err);
-        });
+        const runSync = () => {
+            const syncPromise = this._initialSyncStarted ? Promise.resolve() : this.forceSyncData(true);
+            this._initialSyncStarted = true;
+            syncPromise.then(() => {
+                if (typeof this.handlePathRouting === 'function') {
+                    this.handlePathRouting(window.location.pathname, false, true);
+                }
+            }).catch(err => {
+                console.error("Failed to force sync data after F5 restore:", err);
+            });
+        };
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(runSync, { timeout: 2000 });
+        } else {
+            setTimeout(runSync, 500);
+        }
     };
 
     {
@@ -260,10 +267,7 @@ export function setupAuth() {
         ].filter(Boolean);
         const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
 
-        const hasUsableLocalRouteData = typeof this.hasLocalDataForRoute === 'function'
-            ? this.hasLocalDataForRoute(window.location.pathname)
-            : hasLocalWorkspaceData();
-        const canShowLocalFirst = hasLocalWorkspaceData() && (!shouldWaitForDetailData || hasUsableLocalRouteData);
+        const canShowLocalFirst = hasLocalWorkspaceData();
         if (canShowLocalFirst) {
             requestAnimationFrame(showCachedWorkspace);
         }

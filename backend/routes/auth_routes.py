@@ -126,7 +126,7 @@ async def check_session_api(request):
         remember = data.get('remember', False)
         
         if not username or not session_token:
-            return JSONResponse({"valid": False, "error": "Thiếu thông tin xác thực"}, status_code=400)
+            return JSONResponse({"valid": False, "reason": "missing_auth"})
             
         user = None
         cached = _session_cache_get(session_token)

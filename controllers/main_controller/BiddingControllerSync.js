@@ -140,6 +140,9 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
     if (!isBackground && this.view && this.view.showLoader) this.view.showLoader();
 
     try {
+        if (isBackground && this.model && typeof this.model.ensureAllDataLoaded === 'function') {
+            await this.model.ensureAllDataLoaded();
+        }
         const since = forceFull ? '0' : (localStorage.getItem('bf_last_sync_timestamp') || '0');
         const response = await fetch('/api/get-all-data?since=' + since, {
             headers: {

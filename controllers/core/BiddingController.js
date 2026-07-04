@@ -79,42 +79,46 @@ export class BiddingController {
         const parts = cleanPath.split('/').filter(Boolean);
         const urlTab = parts[0] || '';
         const action = parts[1] ? decodeURIComponent(parts[1]) : '';
+        const normalize = value => String(value || '').trim().toLowerCase();
+        const normalizedAction = normalize(action);
+        const actionSuffix = action.includes('_') ? normalize(action.split('_').pop()) : '';
 
         const detailRouteToState = {
             [this.routeMap['goithau-detail']]: {
                 key: 'goithau',
                 match: item => (
-                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
-                    String(item.maGoiThau || '').toLowerCase() === action.toLowerCase()
+                    normalize(item.id) === normalizedAction ||
+                    normalize(item.maGoiThau) === normalizedAction ||
+                    normalize(this.model.getPackageBaseCode?.(item.maGoiThau)) === normalizedAction
                 )
             },
             [this.routeMap['kehoach-detail']]: {
                 key: 'kehoach',
                 match: item => (
-                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
-                    encodeURIComponent(String(item.maKeHoach || '')).toLowerCase() === action.toLowerCase()
+                    normalize(item.id) === normalizedAction ||
+                    normalize(encodeURIComponent(String(item.maKeHoach || ''))) === normalizedAction
                 )
             },
             [this.routeMap['hopdong-detail']]: {
                 key: 'hopdong',
                 match: item => {
-                    const cleanAction = action.toLowerCase().replace(/[\/-]/g, '');
+                    const cleanAction = normalizedAction.replace(/[\/-]/g, '');
                     const cleanNumber = String(item.soHopDong || '').toLowerCase().replace(/[\/-]/g, '');
-                    return String(item.id || '').toLowerCase() === action.toLowerCase() || cleanNumber === cleanAction;
+                    return normalize(item.id) === normalizedAction || cleanNumber === cleanAction;
                 }
             },
             [this.routeMap['chudautu-detail']]: {
                 key: 'chudautu',
                 match: item => (
-                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
-                    String(item.maChuDauTu || '').toLowerCase() === action.toLowerCase()
+                    normalize(item.id) === normalizedAction ||
+                    normalize(item.maChuDauTu) === normalizedAction
                 )
             },
             [this.routeMap['nhathau-detail']]: {
                 key: 'nhathau',
                 match: item => (
-                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
-                    String(item.maNhaThau || '').toLowerCase() === action.toLowerCase()
+                    normalize(item.id) === normalizedAction ||
+                    normalize(item.maNhaThau) === normalizedAction
                 )
             }
         };
@@ -125,11 +129,37 @@ export class BiddingController {
         }
 
         const list = this.model.state[detailRoute.key] || [];
-        const actionSuffix = action.includes('_') ? action.split('_').pop().toLowerCase() : '';
         return list.some(item => {
-            const id = String(item.id || '').toLowerCase();
+            const id = normalize(item.id);
             return detailRoute.match(item) || (actionSuffix && id.startsWith(actionSuffix));
         });
+    }
+
+    getStartupPriorityKeys(pathname = window.location.pathname) {
+        const cleanPath = pathname.startsWith('/') ? pathname.substring(1) : pathname;
+        const tab = cleanPath.split('/').filter(Boolean)[0] || this.routeMap.dashboard;
+        const byRoute = {
+            [this.routeMap.dashboard]: ['KEHOACH', 'GOITHAU', 'HOPDONG', 'CHUDAUTU', 'NHATHAU', 'ASSIGNMENTS'],
+            [this.routeMap['superadmin-dashboard']]: ['SYSTEMPACKAGES', 'ORGANIZATIONS', 'EMPLOYEES', 'PERMISSIONMATRIX'],
+            [this.routeMap.superadmin]: ['SYSTEMPACKAGES', 'ORGANIZATIONS', 'EMPLOYEES', 'PERMISSIONMATRIX'],
+            [this.routeMap.managernhanvien]: ['EMPLOYEES', 'PERMISSIONMATRIX', 'ORGANIZATIONS'],
+            [this.routeMap.managerhosogiay]: ['CUSTOMPAPERSTATUSES'],
+            [this.routeMap.kehoach]: ['KEHOACH', 'GOITHAU', 'CHUDAUTU'],
+            [this.routeMap['kehoach-detail']]: ['KEHOACH', 'GOITHAU', 'CHUDAUTU'],
+            [this.routeMap.goithau]: ['GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU', 'THONGTINMOTHAU', 'ASSIGNMENTS'],
+            [this.routeMap['goithau-detail']]: ['GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU', 'THONGTINMOTHAU', 'ASSIGNMENTS'],
+            [this.routeMap.mothau]: ['GOITHAU', 'KEHOACH', 'NHATHAU', 'THONGTINMOTHAU'],
+            [this.routeMap.danhgiahsdt]: ['GOITHAU', 'KEHOACH', 'NHATHAU', 'THONGTINMOTHAU'],
+            [this.routeMap.hopdong]: ['HOPDONG', 'GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU'],
+            [this.routeMap['hopdong-detail']]: ['HOPDONG', 'GOITHAU', 'KEHOACH', 'CHUDAUTU', 'NHATHAU'],
+            [this.routeMap.chudautu]: ['CHUDAUTU', 'KEHOACH'],
+            [this.routeMap['chudautu-detail']]: ['CHUDAUTU', 'KEHOACH'],
+            [this.routeMap.nhathau]: ['NHATHAU', 'GOITHAU', 'HOPDONG', 'THONGTINMOTHAU'],
+            [this.routeMap['nhathau-detail']]: ['NHATHAU', 'GOITHAU', 'HOPDONG', 'THONGTINMOTHAU'],
+            [this.routeMap.chuyengia]: ['CHUYENGIA', 'GOITHAU', 'ASSIGNMENTS'],
+            [this.routeMap.bieumau]: ['GOITHAU', 'KEHOACH', 'HOPDONG', 'CHUDAUTU', 'NHATHAU']
+        };
+        return Array.from(new Set([...(byRoute[tab] || byRoute[this.routeMap.dashboard]), 'SYSTEMPACKAGES']));
     }
 
     async init() {
@@ -258,7 +288,8 @@ export class BiddingController {
             sessionStorage.setItem('bf_username', rememberedUsername);
         }
 
-        await this.model.init();
+        const startupPriorityKeys = this.getStartupPriorityKeys(window.location.pathname);
+        await this.model.init({ priorityKeys: startupPriorityKeys });
 
         // #region UI Setup / Offline Banner
         // Create offline banner dynamically
@@ -354,7 +385,7 @@ export class BiddingController {
         });
 
         const hasUsableLocalData = this.hasLocalDataForRoute(window.location.pathname);
-        const shouldWaitForVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true' && !hasUsableLocalData;
+        const shouldWaitForVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true' && !hasLocalWorkspaceSnapshot;
         const initialPath = window.location.pathname;
         const initialParts = initialPath.startsWith('/') ? initialPath.substring(1).split('/').filter(Boolean) : [];
         const detailRoutePaths = [
@@ -364,7 +395,7 @@ export class BiddingController {
             this.routeMap['chudautu-detail'],
             this.routeMap['nhathau-detail']
         ].filter(Boolean);
-        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
+        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasLocalWorkspaceSnapshot;
 
         if ((shouldWaitForVersionResync || shouldWaitForDetailData) && !this._initialSyncStarted) {
             this._initialSyncStarted = true;
@@ -383,7 +414,12 @@ export class BiddingController {
         // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
         if (!this._initialSyncStarted) {
             this._initialSyncStarted = true;
-            this.forceSyncData(true);
+            const startBackgroundSync = () => this.forceSyncData(true);
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(startBackgroundSync, { timeout: 2000 });
+            } else {
+                setTimeout(startBackgroundSync, 500);
+            }
         }
 
         // Song song hóa: tải users + system-packages cùng lúc thay vì tuần tự
