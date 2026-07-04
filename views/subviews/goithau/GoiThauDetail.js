@@ -60,6 +60,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
+    const detailCard = document.getElementById('detail-workflow-card');
+    if (detailCard) detailCard.style.visibility = 'visible';
 
     // Calculate tabs & select current active tab first to ensure correct button visibility checks
     const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';

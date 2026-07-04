@@ -69,6 +69,69 @@ export class BiddingController {
         };
     }
 
+    hasLocalWorkspaceData() {
+        const keys = ['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'thongtinmothau'];
+        return keys.some(key => Array.isArray(this.model.state[key]) && this.model.state[key].length > 0);
+    }
+
+    hasLocalDataForRoute(pathname = window.location.pathname) {
+        const cleanPath = pathname.startsWith('/') ? pathname.substring(1) : pathname;
+        const parts = cleanPath.split('/').filter(Boolean);
+        const urlTab = parts[0] || '';
+        const action = parts[1] ? decodeURIComponent(parts[1]) : '';
+
+        const detailRouteToState = {
+            [this.routeMap['goithau-detail']]: {
+                key: 'goithau',
+                match: item => (
+                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
+                    String(item.maGoiThau || '').toLowerCase() === action.toLowerCase()
+                )
+            },
+            [this.routeMap['kehoach-detail']]: {
+                key: 'kehoach',
+                match: item => (
+                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
+                    encodeURIComponent(String(item.maKeHoach || '')).toLowerCase() === action.toLowerCase()
+                )
+            },
+            [this.routeMap['hopdong-detail']]: {
+                key: 'hopdong',
+                match: item => {
+                    const cleanAction = action.toLowerCase().replace(/[\/-]/g, '');
+                    const cleanNumber = String(item.soHopDong || '').toLowerCase().replace(/[\/-]/g, '');
+                    return String(item.id || '').toLowerCase() === action.toLowerCase() || cleanNumber === cleanAction;
+                }
+            },
+            [this.routeMap['chudautu-detail']]: {
+                key: 'chudautu',
+                match: item => (
+                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
+                    String(item.maChuDauTu || '').toLowerCase() === action.toLowerCase()
+                )
+            },
+            [this.routeMap['nhathau-detail']]: {
+                key: 'nhathau',
+                match: item => (
+                    String(item.id || '').toLowerCase() === action.toLowerCase() ||
+                    String(item.maNhaThau || '').toLowerCase() === action.toLowerCase()
+                )
+            }
+        };
+
+        const detailRoute = detailRouteToState[urlTab];
+        if (!detailRoute || !action) {
+            return this.hasLocalWorkspaceData();
+        }
+
+        const list = this.model.state[detailRoute.key] || [];
+        const actionSuffix = action.includes('_') ? action.split('_').pop().toLowerCase() : '';
+        return list.some(item => {
+            const id = String(item.id || '').toLowerCase();
+            return detailRoute.match(item) || (actionSuffix && id.startsWith(actionSuffix));
+        });
+    }
+
     async init() {
         // Intercept native fetch to automatically append security headers & handle auth errors globally
         const originalFetch = window.fetch;
@@ -226,11 +289,13 @@ export class BiddingController {
         // #endregion
 
         if (localStorage.getItem('bf_id_prefix_cleaned_v2') !== 'true') {
-            localStorage.setItem('bf_last_sync_timestamp', '0');
-            if (this.model.db && this.model.db.stores) {
-                this.model.db.stores.forEach(storeName => {
-                    this.model.db.putTableData(storeName, []).catch(() => { });
-                });
+            if (!this.hasLocalWorkspaceData()) {
+                localStorage.setItem('bf_last_sync_timestamp', '0');
+                if (this.model.db && this.model.db.stores) {
+                    this.model.db.stores.forEach(storeName => {
+                        this.model.db.putTableData(storeName, []).catch(() => { });
+                    });
+                }
             }
             localStorage.setItem('bf_id_prefix_cleaned_v2', 'true');
         }
@@ -240,13 +305,17 @@ export class BiddingController {
             localStorage.setItem('bf_clear_inferred_deletions_v1', 'true');
         }
 
-        if (
-            localStorage.getItem('bf_force_full_resync_versions_v3') !== 'true' &&
-            localStorage.getItem('bf_pending_full_resync_versions_v3') !== 'true'
-        ) {
+        const hasLocalWorkspaceSnapshot = this.hasLocalWorkspaceData();
+        const hasCompletedVersionResync = localStorage.getItem('bf_force_full_resync_versions_v3') === 'true';
+        const hasPendingVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true';
+
+        if (!hasCompletedVersionResync && !hasPendingVersionResync && !hasLocalWorkspaceSnapshot) {
             localStorage.setItem('bf_last_sync_timestamp', '0');
             localStorage.removeItem('bf_last_fetch_time');
             localStorage.setItem('bf_pending_full_resync_versions_v3', 'true');
+        } else if (hasLocalWorkspaceSnapshot) {
+            localStorage.removeItem('bf_pending_full_resync_versions_v3');
+            localStorage.setItem('bf_force_full_resync_versions_v3', 'true');
         }
 
         this.view.initDOM();
@@ -284,7 +353,8 @@ export class BiddingController {
             this.handlePathRouting(window.location.pathname, false);
         });
 
-        const shouldWaitForVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true';
+        const hasUsableLocalData = this.hasLocalDataForRoute(window.location.pathname);
+        const shouldWaitForVersionResync = localStorage.getItem('bf_pending_full_resync_versions_v3') === 'true' && !hasUsableLocalData;
         const initialPath = window.location.pathname;
         const initialParts = initialPath.startsWith('/') ? initialPath.substring(1).split('/').filter(Boolean) : [];
         const detailRoutePaths = [
@@ -294,7 +364,7 @@ export class BiddingController {
             this.routeMap['chudautu-detail'],
             this.routeMap['nhathau-detail']
         ].filter(Boolean);
-        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
+        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
 
         if ((shouldWaitForVersionResync || shouldWaitForDetailData) && !this._initialSyncStarted) {
             this._initialSyncStarted = true;
@@ -313,7 +383,7 @@ export class BiddingController {
         // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
         if (!this._initialSyncStarted) {
             this._initialSyncStarted = true;
-            this.forceSyncData();
+            this.forceSyncData(true);
         }
 
         // Song song hóa: tải users + system-packages cùng lúc thay vì tuần tự

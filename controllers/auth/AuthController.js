@@ -174,8 +174,9 @@ export function setupAuth() {
     window.hideInitLoader = hideInitLoader;
 
     const hasLocalWorkspaceData = () => {
-        const lastFetch = localStorage.getItem('bf_last_fetch_time') || localStorage.getItem('bf_last_sync_timestamp');
-        if (!lastFetch || lastFetch === '0') return false;
+        if (typeof this.hasLocalWorkspaceData === 'function') {
+            return this.hasLocalWorkspaceData();
+        }
         const keys = ['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'thongtinmothau'];
         return keys.some(key => Array.isArray(this.model.state[key]) && this.model.state[key].length > 0);
     };
@@ -233,7 +234,7 @@ export function setupAuth() {
     };
 
     const refreshWorkspaceInBackground = () => {
-        const syncPromise = this._initialSyncStarted ? Promise.resolve() : this.forceSyncData();
+        const syncPromise = this._initialSyncStarted ? Promise.resolve() : this.forceSyncData(true);
         this._initialSyncStarted = true;
         syncPromise.then(() => {
             if (typeof this.handlePathRouting === 'function') {
@@ -259,7 +260,10 @@ export function setupAuth() {
         ].filter(Boolean);
         const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
 
-        const canShowLocalFirst = hasLocalWorkspaceData() && !shouldWaitForDetailData;
+        const hasUsableLocalRouteData = typeof this.hasLocalDataForRoute === 'function'
+            ? this.hasLocalDataForRoute(window.location.pathname)
+            : hasLocalWorkspaceData();
+        const canShowLocalFirst = hasLocalWorkspaceData() && (!shouldWaitForDetailData || hasUsableLocalRouteData);
         if (canShowLocalFirst) {
             requestAnimationFrame(showCachedWorkspace);
         }
