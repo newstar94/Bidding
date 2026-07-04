@@ -764,6 +764,10 @@ export async function handleGoiThauSubmit(e) {
     if (!this.view.validateForm(form)) return;
 
     const formVals = this.view.getGoiThauFormInputValues(this.model);
+    if (formVals.giaGoiThau < 0) {
+        await this.view.customAlert('Dữ liệu không hợp lệ', 'Giá gói thầu không được nhỏ hơn 0.', 'alert-triangle', document.getElementById('gt-giagoithau'));
+        return;
+    }
     // Custom validation for extensions
     const mainDongThauStr = formVals.thoiGianDongThau;
 

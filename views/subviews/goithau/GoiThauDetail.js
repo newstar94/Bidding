@@ -641,43 +641,43 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const valYeuCauThamDinh = checkedRadio ? checkedRadio.value : 'Không';
                             const valSoBaoCao = document.getElementById('ip-sobaocaothamdinh')?.value || '';
                             const valNgayBaoCao = document.getElementById('ip-ngaybaocaothamdinh')?.value || '';
-                             if (valYeuCauThamDinh === 'Có') {
-                                 let hasErr = false;
-                                 const inpSo = document.getElementById('ip-sobaocaothamdinh');
-                                 const inpNgay = document.getElementById('ip-ngaybaocaothamdinh');
-                                 
-                                 if (inpSo) {
-                                     const errEl = document.getElementById('err-sobaocao');
-                                     if (!valSoBaoCao.trim()) {
-                                         inpSo.style.setProperty('border', '1px solid #ef4444', 'important');
-                                         if (errEl) errEl.style.display = 'block';
-                                         hasErr = true;
-                                     } else {
-                                         inpSo.style.removeProperty('border');
-                                         if (errEl) errEl.style.display = 'none';
-                                     }
-                                     inpSo.oninput = () => {
-                                         inpSo.style.removeProperty('border');
-                                         if (errEl) errEl.style.display = 'none';
-                                     };
-                                 }
-                                 if (inpNgay) {
-                                     const errEl = document.getElementById('err-ngaybaocao');
-                                     if (!valNgayBaoCao.trim()) {
-                                         inpNgay.style.setProperty('border', '1px solid #ef4444', 'important');
-                                         if (errEl) errEl.style.display = 'block';
-                                         hasErr = true;
-                                     } else {
-                                         inpNgay.style.removeProperty('border');
-                                         if (errEl) errEl.style.display = 'none';
-                                     }
-                                     inpNgay.onchange = () => {
-                                         inpNgay.style.removeProperty('border');
-                                         if (errEl) errEl.style.display = 'none';
-                                     };
-                                 }
-                                 if (hasErr) return;
-                             }
+                            if (valYeuCauThamDinh === 'Có') {
+                                let hasErr = false;
+                                const inpSo = document.getElementById('ip-sobaocaothamdinh');
+                                const inpNgay = document.getElementById('ip-ngaybaocaothamdinh');
+
+                                if (inpSo) {
+                                    const errEl = document.getElementById('err-sobaocao');
+                                    if (!valSoBaoCao.trim()) {
+                                        inpSo.style.setProperty('border', '1px solid #ef4444', 'important');
+                                        if (errEl) errEl.style.display = 'block';
+                                        hasErr = true;
+                                    } else {
+                                        inpSo.style.removeProperty('border');
+                                        if (errEl) errEl.style.display = 'none';
+                                    }
+                                    inpSo.oninput = () => {
+                                        inpSo.style.removeProperty('border');
+                                        if (errEl) errEl.style.display = 'none';
+                                    };
+                                }
+                                if (inpNgay) {
+                                    const errEl = document.getElementById('err-ngaybaocao');
+                                    if (!valNgayBaoCao.trim()) {
+                                        inpNgay.style.setProperty('border', '1px solid #ef4444', 'important');
+                                        if (errEl) errEl.style.display = 'block';
+                                        hasErr = true;
+                                    } else {
+                                        inpNgay.style.removeProperty('border');
+                                        if (errEl) errEl.style.display = 'none';
+                                    }
+                                    inpNgay.onchange = () => {
+                                        inpNgay.style.removeProperty('border');
+                                        if (errEl) errEl.style.display = 'none';
+                                    };
+                                }
+                                if (hasErr) return;
+                            }
 
                             const gtData = {
                                 thoiGianDangTai: valDangTai ? this.model.convertDMYHMSToYMDHMS(valDangTai) : '',
@@ -2814,7 +2814,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <td><input type="text" class="form-control cdtrug-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
                         <td><input type="text" class="form-control cdtrug-gia-du-thau cdtrug-format-vnd" value="${bidData.giaDuThau ? this.model.formatVND(bidData.giaDuThau) : ''}" placeholder="Giá dự thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
                         <td><input type="text" class="form-control cdtrug-ty-le-giam-gia" value="${bidData.tyLeGiamGia !== undefined ? (bidData.tyLeGiamGia || 0).toString().replace('.', ',') : '0'}" style="padding:4px 6px;font-size:0.8rem;text-align:right;"></td>
-                        <td><input type="text" class="form-control cdtrug-gia-sau-giam-gia cdtrug-format-vnd" value="${bidData.giaSauGiamGia ? this.model.formatVND(bidData.giaSauGiamGia) : ''}" readonly placeholder="Tự tính" style="padding:4px 6px;font-size:0.8rem;background:var(--bg-input-disabled,#f1f5f9);cursor:not-allowed;"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-sau-giam-gia cdtrug-format-vnd" value="${bidData.giaSauGiamGia ? this.model.formatVND(bidData.giaSauGiamGia) : ''}" readonly placeholder="..." style="padding:4px 6px;font-size:0.8rem;background:var(--bg-input-disabled,#f1f5f9);cursor:not-allowed;"></td>
                         <td><input type="text" class="form-control cdtrug-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + ' ngày' : (gt.hieuLucHsdt ? gt.hieuLucHsdt + ' ngày' : '90 ngày')}" style="padding:4px 6px;font-size:0.8rem;"></td>
                         <td><input type="text" class="form-control cdtrug-gia-tri-dam-bao cdtrug-format-vnd" value="${bidData.giaTriDamBao ? this.model.formatVND(bidData.giaTriDamBao) : ''}" placeholder="Giá trị ĐB" style="padding:4px 6px;font-size:0.8rem;"></td>
                         <td><input type="text" class="form-control cdtrug-hieu-luc-bao-dam-ngay" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + ' ngày' : (gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + ' ngày' : '120 ngày')}" style="padding:4px 6px;font-size:0.8rem;"></td>

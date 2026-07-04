@@ -467,6 +467,10 @@ export async function handleHopDongSubmit(e) {
     const nhaThauId = document.getElementById('hd-nhathau-version-select').value || document.getElementById('hd-nhathauid').value;
     const keHoachId = document.getElementById('hd-kehoachid').value;
     const giaTri = this.model.parseVND(document.getElementById('hd-giatri').value);
+    if (giaTri < 0) {
+        await this.view.customAlert('Dữ liệu không hợp lệ', 'Giá trị hợp đồng không được nhỏ hơn 0.', 'alert-triangle', document.getElementById('hd-giatri'));
+        return;
+    }
     const loaiHopDong = document.getElementById('hd-loai').value;
     const phanLoai = document.getElementById('hd-phanloai').value;
     

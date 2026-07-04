@@ -427,6 +427,12 @@ export async function handleKeHoachSubmit(e) {
         isTongMucTuDong = true;
     }
 
+    const parsedTongMuc = isTongMucTuDong ? 0 : this.model.parseVND(currentVal);
+    if (parsedTongMuc < 0) {
+        await this.view.customAlert('Dữ liệu không hợp lệ', 'Tổng mức đầu tư không được nhỏ hơn 0.', 'alert-triangle', tmInput);
+        return;
+    }
+
     // Capture state backups for potential rollback on close/cancel
     this.backupKeHoachState = JSON.parse(JSON.stringify(this.model.state.kehoach));
     this.backupGoiThauState = JSON.parse(JSON.stringify(this.model.state.goithau));

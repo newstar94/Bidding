@@ -74,9 +74,53 @@ export async function handleChuDauTuSubmit(e) {
     if (!this.view.validateForm(form)) return;
 
     const id = document.getElementById('form-chudautu-id').value;
+    const maChuDauTu = document.getElementById('cdt-ma').value.trim();
     const maSoThue = document.getElementById('cdt-mst').value.trim();
 
+    if (maChuDauTu) {
+        const latestChuDauTu = this.model.getLatestChuDauTu();
+        const isDuplicate = latestChuDauTu.some(c => c.maChuDauTu === maChuDauTu && (c.id !== id && c.rootId !== id && (c.rootId || c.id) !== (this.model.state.chudautu.find(orig => orig.id === id)?.rootId || id)));
+        if (isDuplicate) {
+            const inputEl = document.getElementById('cdt-ma');
+            const formGroup = inputEl.closest('.form-group');
+            if (formGroup) {
+                formGroup.classList.add('invalid');
+                const errText = formGroup.querySelector('.error-text');
+                if (errText) {
+                    const originalErr = errText.textContent;
+                    errText.textContent = 'Mã chủ đầu tư này đã tồn tại trong hệ thống. Vui lòng nhập mã khác!';
+                    inputEl.addEventListener('input', () => {
+                        formGroup.classList.remove('invalid');
+                        errText.textContent = originalErr;
+                    }, { once: true });
+                }
+            }
+            inputEl.focus();
+            return;
+        }
+    }
+
     if (maSoThue) {
+        const mstRegex = /^\d{10}$|^\d{13}$|^\d{10}-\d{3}$/;
+        if (!mstRegex.test(maSoThue)) {
+            const inputEl = document.getElementById('cdt-mst');
+            const formGroup = inputEl.closest('.form-group');
+            if (formGroup) {
+                formGroup.classList.add('invalid');
+                const errText = formGroup.querySelector('.error-text');
+                if (errText) {
+                    const originalErr = errText.textContent;
+                    errText.textContent = 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).';
+                    inputEl.addEventListener('input', () => {
+                        formGroup.classList.remove('invalid');
+                        errText.textContent = originalErr;
+                    }, { once: true });
+                }
+            }
+            inputEl.focus();
+            return;
+        }
+
         const latestChuDauTu = this.model.getLatestChuDauTu();
         const isDuplicate = latestChuDauTu.some(c => c.maSoThue === maSoThue && (c.id !== id && c.rootId !== id && (c.rootId || c.id) !== (this.model.state.chudautu.find(orig => orig.id === id)?.rootId || id)));
         if (isDuplicate) {
@@ -97,6 +141,46 @@ export async function handleChuDauTuSubmit(e) {
             inputEl.focus();
             return;
         }
+    }
+
+    const phone = document.getElementById('cdt-sdt').value.trim();
+    if (phone && !/^[0-9\s+\-()]{9,15}$/.test(phone)) {
+        const inputEl = document.getElementById('cdt-sdt');
+        const formGroup = inputEl.closest('.form-group');
+        if (formGroup) {
+            formGroup.classList.add('invalid');
+            const errText = formGroup.querySelector('.error-text');
+            if (errText) {
+                const originalErr = errText.textContent;
+                errText.textContent = 'Số điện thoại không đúng định dạng (từ 9 đến 15 chữ số).';
+                inputEl.addEventListener('input', () => {
+                    formGroup.classList.remove('invalid');
+                    errText.textContent = originalErr;
+                }, { once: true });
+            }
+        }
+        inputEl.focus();
+        return;
+    }
+
+    const email = document.getElementById('cdt-email').value.trim();
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        const inputEl = document.getElementById('cdt-email');
+        const formGroup = inputEl.closest('.form-group');
+        if (formGroup) {
+            formGroup.classList.add('invalid');
+            const errText = formGroup.querySelector('.error-text');
+            if (errText) {
+                const originalErr = errText.textContent;
+                errText.textContent = 'Email không đúng định dạng.';
+                inputEl.addEventListener('input', () => {
+                    formGroup.classList.remove('invalid');
+                    errText.textContent = originalErr;
+                }, { once: true });
+            }
+        }
+        inputEl.focus();
+        return;
     }
 
     const tinhSelect = document.getElementById('cdt-tinh');

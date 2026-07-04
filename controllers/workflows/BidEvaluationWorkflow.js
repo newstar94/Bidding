@@ -152,14 +152,14 @@ export function renderDanhGiaHsdtPanel() {
                 let meta = {};
                 try {
                     meta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-                } catch (e) {}
+                } catch (e) { }
 
                 const updateQuyTrinh2Eligibility = () => {
                     if (!radio1 || !radio2) return;
                     let currentMeta = {};
                     try {
                         currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-                    } catch (e) {}
+                    } catch (e) { }
 
                     const bids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(gt.id));
                     let eligible = true;
@@ -220,7 +220,7 @@ export function renderDanhGiaHsdtPanel() {
                         let currentMeta = {};
                         try {
                             currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-                        } catch (e) {}
+                        } catch (e) { }
                         currentMeta.coUuDai = checkboxUuDai.checked;
                         gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
                         this.model.persistData('goithau');
@@ -246,7 +246,7 @@ export function renderDanhGiaHsdtPanel() {
                         let currentMeta = {};
                         try {
                             currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-                        } catch (e) {}
+                        } catch (e) { }
                         currentMeta.quyTrinhDanhGia = 'quytrinh1';
                         gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
                         this.model.persistData('goithau');
@@ -257,7 +257,7 @@ export function renderDanhGiaHsdtPanel() {
                         let currentMeta = {};
                         try {
                             currentMeta = gt.danhGiaHsdtMetadata ? JSON.parse(gt.danhGiaHsdtMetadata) : {};
-                        } catch (e) {}
+                        } catch (e) { }
                         currentMeta.quyTrinhDanhGia = 'quytrinh2';
                         gt.danhGiaHsdtMetadata = JSON.stringify(currentMeta);
                         this.model.persistData('goithau');
@@ -681,23 +681,23 @@ export function renderDanhGiaHsdtPanel() {
                 const inpHopLe = tr.querySelector('.mt-dg-hop-le');
                 const inpNangLuc = tr.querySelector('.mt-dg-nang-luc');
                 const inpKyThuat = tr.querySelector('.mt-dg-ky-thuat');
-                
+
                 const valHopLe = inpHopLe ? (inpHopLe.value || inpHopLe.textContent || '').trim() : '';
                 const valNangLuc = inpNangLuc ? (inpNangLuc.value || inpNangLuc.textContent || '').trim() : '';
                 const valKyThuat = inpKyThuat ? (inpKyThuat.value || inpKyThuat.textContent || '').trim() : '';
-                
+
                 const reasonHopLe = tr.querySelector('.mt-reason-fail-hople');
                 if (reasonHopLe) {
                     reasonHopLe.style.display = (valHopLe === 'Không đạt') ? 'block' : 'none';
                     if (valHopLe !== 'Không đạt') reasonHopLe.value = '';
                 }
-                
+
                 const reasonNangLuc = tr.querySelector('.mt-reason-fail-nangluc');
                 if (reasonNangLuc) {
                     reasonNangLuc.style.display = (valNangLuc === 'Không đạt') ? 'block' : 'none';
                     if (valNangLuc !== 'Không đạt') reasonNangLuc.value = '';
                 }
-                
+
                 const reasonKyThuat = tr.querySelector('.mt-reason-fail-kythuat');
                 if (reasonKyThuat) {
                     let shouldShowKyThuatFail = false;
@@ -759,9 +759,9 @@ export function renderDanhGiaHsdtPanel() {
                         this.updateRowConclusion(tr, savedConclusion, isReadOnly || forceRowDisabled);
                     }
 
-                     const valHopLe = (inpHopLe?.value || inpHopLe?.textContent || bid.danhGiaHopLe || '').trim();
-                     const valNangLuc = (inpNangLuc?.value || inpNangLuc?.textContent || bid.danhGiaNangLuc || '').trim();
-                     const valKyThuat = (inpKyThuat?.value || inpKyThuat?.textContent || bid.danhGiaKyThuat || '').trim();
+                    const valHopLe = (inpHopLe?.value || inpHopLe?.textContent || bid.danhGiaHopLe || '').trim();
+                    const valNangLuc = (inpNangLuc?.value || inpNangLuc?.textContent || bid.danhGiaNangLuc || '').trim();
+                    const valKyThuat = (inpKyThuat?.value || inpKyThuat?.textContent || bid.danhGiaKyThuat || '').trim();
 
                     let valKetLuan = '';
                     const conclusionCell = tr.querySelector('.mt-ketluan-cell');
@@ -896,7 +896,7 @@ export function renderDanhGiaHsdtPanel() {
                         finalHieuLucDamBao = String(bid.hieuLucDamBao);
                     }
                 }
-                
+
                 if (finalHieuLucDamBao && !finalHieuLucDamBao.includes('ngày')) {
                     finalHieuLucDamBao = finalHieuLucDamBao + ' ngày';
                 }
@@ -976,7 +976,7 @@ export function renderDanhGiaHsdtPanel() {
                         cellHtml += `
                             <td><input type="text" class="form-control mt-gia-du-thau" value="${valGiaDuThau}" readonly placeholder="Ví dụ: 1.000.000.000" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-ty-le-giam-gia" value="${valTyLeGiam}" readonly placeholder="0" style="background:#f1f5f9; text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
-                            <td><input type="text" class="form-control mt-gia-sau-giam-gia" value="${valGiaSauGiam}" readonly placeholder="Tự tính..." style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control mt-gia-sau-giam-gia" value="${valGiaSauGiam}" readonly placeholder="......" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             ${isTuVan ? `<td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + ' ngày' : ''}" readonly placeholder="Ví dụ: 90 ngày" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>` : ''}
                             <td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${valLamRoTaiChinh}" placeholder="Nhập làm rõ tài chính..." style="padding: 4px 6px; font-size:0.8rem;"></td>
                             ${showCombinedScore ? `

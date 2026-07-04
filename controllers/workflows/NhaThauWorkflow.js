@@ -200,6 +200,26 @@ export async function handleNhaThauSubmit(e) {
 
     // Kiểm tra trùng Mã số thuế (maSoThue)
     if (maSoThue) {
+        const mstRegex = /^\d{10}$|^\d{13}$|^\d{10}-\d{3}$/;
+        if (!mstRegex.test(maSoThue)) {
+            const inputEl = document.getElementById('nt-mst');
+            const formGroup = inputEl.closest('.form-group');
+            if (formGroup) {
+                formGroup.classList.add('invalid');
+                const errText = formGroup.querySelector('.error-text');
+                if (errText) {
+                    const originalErr = errText.textContent;
+                    errText.textContent = 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).';
+                    inputEl.addEventListener('input', () => {
+                        formGroup.classList.remove('invalid');
+                        errText.textContent = originalErr;
+                    }, { once: true });
+                }
+            }
+            inputEl.focus();
+            return;
+        }
+
         const latestNhaThau = this.model.getLatestNhaThau();
         const dupMST = latestNhaThau.some(n =>
             n.id !== id &&
@@ -226,6 +246,46 @@ export async function handleNhaThauSubmit(e) {
             inputEl.focus();
             return;
         }
+    }
+
+    const phone = document.getElementById('nt-sdt').value.trim();
+    if (phone && !/^[0-9\s+\-()]{9,15}$/.test(phone)) {
+        const inputEl = document.getElementById('nt-sdt');
+        const formGroup = inputEl.closest('.form-group');
+        if (formGroup) {
+            formGroup.classList.add('invalid');
+            const errText = formGroup.querySelector('.error-text');
+            if (errText) {
+                const originalErr = errText.textContent;
+                errText.textContent = 'Số điện thoại không đúng định dạng (từ 9 đến 15 chữ số).';
+                inputEl.addEventListener('input', () => {
+                    formGroup.classList.remove('invalid');
+                    errText.textContent = originalErr;
+                }, { once: true });
+            }
+        }
+        inputEl.focus();
+        return;
+    }
+
+    const email = document.getElementById('nt-email').value.trim();
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        const inputEl = document.getElementById('nt-email');
+        const formGroup = inputEl.closest('.form-group');
+        if (formGroup) {
+            formGroup.classList.add('invalid');
+            const errText = formGroup.querySelector('.error-text');
+            if (errText) {
+                const originalErr = errText.textContent;
+                errText.textContent = 'Email không đúng định dạng.';
+                inputEl.addEventListener('input', () => {
+                    formGroup.classList.remove('invalid');
+                    errText.textContent = originalErr;
+                }, { once: true });
+            }
+        }
+        inputEl.focus();
+        return;
     }
 
     const tinhSelect = document.getElementById('nt-tinh');
