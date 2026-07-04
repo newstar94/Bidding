@@ -1,4 +1,5 @@
 import hashlib
+import os
 import secrets
 import threading
 import time
@@ -11,6 +12,8 @@ ROLE_HIERARCHY = {
     'employee':    ['employee'],
 }
 
+PASSWORD_HASH_ITERATIONS = int(os.environ.get("PASSWORD_HASH_ITERATIONS", "310000"))
+
 def get_effective_roles(role_str):
     roles = [r.strip() for r in (role_str or '').split(',') if r.strip()]
     effective = set()
@@ -21,13 +24,23 @@ def get_effective_roles(role_str):
 def hash_password(password: str, salt: str = None) -> str:
     if salt is None:
         salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), 100000)
-    return f"{salt}:{pwd_hash.hex()}"
+    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), PASSWORD_HASH_ITERATIONS)
+    return f"pbkdf2_sha256${PASSWORD_HASH_ITERATIONS}${salt}${pwd_hash.hex()}"
 
 def verify_password(stored_password: str, provided_password: str) -> bool:
     try:
         if not stored_password:
             return False
+
+        if stored_password.startswith("pbkdf2_sha256$"):
+            parts = stored_password.split("$", 3)
+            if len(parts) != 4:
+                return False
+            _, iterations_raw, salt, stored_hash = parts
+            iterations = int(iterations_raw)
+            pwd_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt.encode('utf-8'), iterations)
+            return secrets.compare_digest(stored_hash, pwd_hash.hex())
+
         if ":" not in stored_password:
             return False
         salt, stored_hash = stored_password.split(":", 1)
@@ -35,6 +48,22 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
         return secrets.compare_digest(stored_hash, pwd_hash.hex())
     except Exception:
         return False
+
+def password_needs_rehash(stored_password: str) -> bool:
+    try:
+        if not stored_password:
+            return True
+
+        if stored_password.startswith("pbkdf2_sha256$"):
+            parts = stored_password.split("$", 3)
+            if len(parts) != 4:
+                return True
+            iterations = int(parts[1])
+            return iterations < PASSWORD_HASH_ITERATIONS
+
+        return True
+    except Exception:
+        return True
 
 # ==========================================
 # SESSION CACHE (In-memory, TTL 60 giây)
@@ -90,9 +119,8 @@ class SessionRole(str):
 
 def verify_session(request, required_role=None):
     token = request.cookies.get('session_token')
-    username = request.cookies.get('username')
     
-    if not token or not username:
+    if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
     if required_role == 'super_admin':
@@ -121,7 +149,7 @@ def verify_session(request, required_role=None):
     
     conn = database.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
+    cursor.execute("SELECT * FROM tai_khoan WHERE token_phien = ?", (token,))
     row = cursor.fetchone()
     conn.close()
     

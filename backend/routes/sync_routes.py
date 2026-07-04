@@ -40,6 +40,26 @@ TABLE_KEYS = {
     "permissionmatrix": "ma_tran_phan_quyen"
 }
 
+SYNCED_TABLES = set(TABLE_KEYS.values())
+
+def next_sync_version(cursor, owner_id):
+    cursor.execute(
+        "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, 0)",
+        (owner_id,)
+    )
+    cursor.execute(
+        "UPDATE sync_metadata SET current_version = current_version + 1, updated_at = datetime('now', 'localtime') WHERE owner_id = ?",
+        (owner_id,)
+    )
+    cursor.execute("SELECT current_version FROM sync_metadata WHERE owner_id = ?", (owner_id,))
+    row = cursor.fetchone()
+    return int(row[0] if row else 0)
+
+def get_current_sync_version(cursor, owner_id):
+    cursor.execute("SELECT current_version FROM sync_metadata WHERE owner_id = ?", (owner_id,))
+    row = cursor.fetchone()
+    return int(row[0] if row else 0)
+
 # ==========================================
 # CÁC HÀM TRỢ GIÚP CHO ĐỒNG BỘ DỮ LIỆU
 # ==========================================
@@ -320,6 +340,20 @@ async def sync_api(request):
         
         org_name = get_active_org(request, role_or_err.user_id)
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        client_mutation_id = (data.get("clientMutationId") or data.get("client_mutation_id") or "").strip()
+        if client_mutation_id:
+            client_mutation_id = client_mutation_id[:128]
+            cursor.execute(
+                "SELECT response_json FROM sync_mutations WHERE owner_id = ? AND client_mutation_id = ?",
+                (org_name, client_mutation_id)
+            )
+            existing_mutation = cursor.fetchone()
+            if existing_mutation:
+                conn.commit()
+                try:
+                    return JSONResponse(json.loads(existing_mutation[0] or "{}"))
+                except Exception:
+                    return JSONResponse({"status": "success"})
         
         # LG-5: Validate org_name (owner_id) to ensure it exists in to_chuc or tai_khoan
         cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (org_name,))
@@ -331,6 +365,8 @@ async def sync_api(request):
         
         # Sử dụng hằng số TABLE_KEYS toàn cục
         
+        batch_sync_version = next_sync_version(cursor, org_name)
+
         def get_clean_id(tbl, raw_id):
             if raw_id is None:
                 return None
@@ -598,6 +634,9 @@ async def sync_api(request):
                         elif col == "updated_at":
                             db_row_data[col] = current_time
                             continue
+                        elif col == "sync_version":
+                            db_row_data[col] = batch_sync_version
+                            continue
                         else:
                             # Rút trích key JSON tương ứng từ trường DB
                             field_map = SCHEMA_DINH_NGHIA.get(table_name, {}).get("field_map", {})
@@ -770,8 +809,8 @@ async def sync_api(request):
                     if "FOREIGN KEY constraint failed" in err_str and item_id:
                         try:
                             cursor.execute(
-                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
-                                (table_name, item_id, org_name, current_time)
+                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version) VALUES (?, ?, ?, ?, ?)",
+                                (table_name, item_id, org_name, current_time, batch_sync_version)
                             )
                             orphaned_ids.append({"table": table_name, "id": item_id})
                         except Exception:
@@ -803,8 +842,8 @@ async def sync_api(request):
                                 cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
 
                             cursor.execute(
-                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at) VALUES (?, ?, ?, ?)",
-                                (table_name, c_id, org_name, current_time)
+                                "INSERT OR IGNORE INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version) VALUES (?, ?, ?, ?, ?)",
+                                (table_name, c_id, org_name, current_time, batch_sync_version)
                             )
                             # Ghi Audit Log cho DELETE
                             # Cần cập nhật lại is_latest nếu bảng bị xóa là bảng versioning
@@ -824,9 +863,15 @@ async def sync_api(request):
         # Broadcast WebSocket update
         broadcast_websocket_event(org_name, {"event": "db_changed"})
         
-        response_data = {"status": "success", "timestamp": current_time}
+        response_data = {"status": "success", "timestamp": current_time, "syncVersion": batch_sync_version}
         if orphaned_ids:
             response_data["orphanedIds"] = orphaned_ids  # Client sẽ xóa các record này khỏi IndexedDB
+        if client_mutation_id:
+            cursor.execute(
+                "INSERT OR REPLACE INTO sync_mutations (owner_id, client_mutation_id, response_json) VALUES (?, ?, ?)",
+                (org_name, client_mutation_id, json.dumps(response_data))
+            )
+            conn.commit()
         return JSONResponse(response_data)
     except OrgPermissionError as e:
         if conn:
@@ -875,6 +920,12 @@ async def get_all_data_api(request):
         else:
             since = since_val
 
+        after_version_raw = request.query_params.get('after_version')
+        try:
+            after_version = int(after_version_raw) if after_version_raw not in (None, '') else None
+        except (TypeError, ValueError):
+            after_version = None
+
         conn = database.get_connection()
         cursor = conn.cursor()
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -895,11 +946,13 @@ async def get_all_data_api(request):
         
         # Helper query function
         def query_table(tbl):
-            is_full_fetch = since == '1970-01-01 00:00:00' or since == '0'
+            is_full_fetch = after_version is None and (since == '1970-01-01 00:00:00' or since == '0')
             if use_server_pagination and tbl in heavy_tables and is_full_fetch:
                 # Heavy full payloads are fetched through /api/paginate when pagination is active.
                 return []
-            if not is_full_fetch:
+            if after_version is not None:
+                cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+            elif not is_full_fetch:
                 cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ? AND updated_at > ?", (org_name, since))
             else:
                 cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ?", (org_name,))
@@ -971,7 +1024,9 @@ async def get_all_data_api(request):
             
         # 7. Assignments
         assignments = []
-        if since != '1970-01-01 00:00:00' and since != '0':
+        if after_version is not None:
+            cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+        elif since != '1970-01-01 00:00:00' and since != '0':
             cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND updated_at > ?", (org_name, since))
         else:
             cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ?", (org_name,))
@@ -980,7 +1035,9 @@ async def get_all_data_api(request):
             
         # 8. Custom Paper Statuses
         custompaperstatuses = []
-        if since != '1970-01-01 00:00:00' and since != '0':
+        if after_version is not None:
+            cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+        elif since != '1970-01-01 00:00:00' and since != '0':
             cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND updated_at > ?", (org_name, since))
         else:
             cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ?", (org_name,))
@@ -995,7 +1052,9 @@ async def get_all_data_api(request):
         # 10. Permission Matrix - [MỚI] Đồng bộ phân quyền nhân viên từ server
         permissionmatrix = []
         try:
-            if since != '1970-01-01 00:00:00' and since != '0':
+            if after_version is not None:
+                cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+            elif since != '1970-01-01 00:00:00' and since != '0':
                 cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND updated_at > ?", (org_name, since))
             else:
                 cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ?", (org_name,))
@@ -1006,7 +1065,19 @@ async def get_all_data_api(request):
             
         # 11. Deletions
         deletions = []
-        if since != '1970-01-01 00:00:00' and since != '0':
+        if after_version is not None:
+            cursor.execute(
+                "SELECT table_name, record_id FROM deleted_records "
+                "WHERE owner_id = ? AND delete_version > ? "
+                "ORDER BY delete_version ASC, deleted_at ASC",
+                (org_name, after_version)
+            )
+            TABLE_KEYS_INV = {v: k for k, v in TABLE_KEYS.items()}
+            for row in cursor.fetchall():
+                tbl_key = TABLE_KEYS_INV.get(row[0])
+                if tbl_key:
+                    deletions.append({"table": tbl_key, "id": row[1]})
+        elif since != '1970-01-01 00:00:00' and since != '0':
             # LIMIT 1000 phòng trường hợp có quá nhiều deletion log — tránh trả payload khổng
             cursor.execute(
                 "SELECT table_name, record_id FROM deleted_records "
@@ -1021,6 +1092,7 @@ async def get_all_data_api(request):
                     deletions.append({"table": tbl_key, "id": row[1]})
                     
         conn.commit()
+        current_sync_version = get_current_sync_version(cursor, org_name)
         conn.close()
         
         return JSONResponse({
@@ -1037,7 +1109,8 @@ async def get_all_data_api(request):
             "deletions": deletions,
             "useServerSidePagination": use_server_pagination,
             "paginatedKeys": paginated_payload_keys if use_server_pagination else [],
-            "timestamp": current_time
+            "timestamp": current_time,
+            "syncVersion": current_sync_version
         })
     except OrgPermissionError as e:
         if conn:
@@ -1086,9 +1159,15 @@ async def paginate_api(request):
         query_parts = ["owner_id = ?"]
         query_params = [org_name]
         
-        # Apply versioning filter for tables that support it
+        # Apply versioning filter for tables that support it.
+        # goi_thau is a plan-version snapshot: when keHoachId is provided,
+        # return packages belonging to that plan version instead of only global latest rows.
         versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "hop_dong", "chuyen_gia"]
-        if table_name in versioned_tables:
+        plan_snapshot_id = params.get("keHoachId", "").strip() if table_name == "goi_thau" else ""
+        if table_name == "goi_thau" and plan_snapshot_id:
+            query_parts.append("ke_hoach_id = ?")
+            query_params.append(plan_snapshot_id)
+        elif table_name in versioned_tables:
             query_parts.append("is_latest = 1")
             
         # Apply search filter
@@ -1208,14 +1287,23 @@ async def paginate_api(request):
         if table_name in versioned_tables and rows:
             all_root_vals = list({(r["id_goc"] or r["id"]) for r in rows})
             v_placeholders = ", ".join(["?"] * len(all_root_vals))
-            cursor.execute(f"""
-                SELECT id, id_goc, phien_ban FROM {table_name}
-                WHERE owner_id = ? AND (
+            version_query_parts = [
+                "owner_id = ?",
+                f"""(
                     (id_goc IS NOT NULL AND id_goc != '' AND id_goc IN ({v_placeholders})) OR
                     ((id_goc IS NULL OR id_goc = '') AND id IN ({v_placeholders}))
-                )
+                )"""
+            ]
+            version_query_params = [org_name] + all_root_vals + all_root_vals
+            if table_name == "goi_thau" and plan_snapshot_id:
+                version_query_parts.append("ke_hoach_id = ?")
+                version_query_params.append(plan_snapshot_id)
+
+            cursor.execute(f"""
+                SELECT id, id_goc, phien_ban FROM {table_name}
+                WHERE {" AND ".join(version_query_parts)}
                 ORDER BY CAST(phien_ban AS INTEGER) DESC
-            """, [org_name] + all_root_vals + all_root_vals)
+            """, version_query_params)
             for v_row in cursor.fetchall():
                 v_root = v_row[1] or v_row[0]  # id_goc nếu có, fallback về id
                 if v_root not in versions_by_root:

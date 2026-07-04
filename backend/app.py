@@ -32,6 +32,7 @@ import re
 import threading
 import hashlib
 import contextlib
+import secrets
 
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
@@ -73,6 +74,7 @@ if os.path.exists(env_path):
 
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
+APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"  # Mặc định TẮt debug trên production
 
 # ==========================================
@@ -481,9 +483,23 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 class CSRFMiddleware(BaseHTTPMiddleware):
-    """Bảo vệ ứng dụng khỏi tấn công CSRF bằng cách so khớp tiêu đề Origin/Referer."""
+    """Bảo vệ request đã đăng nhập bằng Origin/Referer và double-submit CSRF token."""
+
+    MUTATING_METHODS = {"POST", "PUT", "DELETE"}
+    EXEMPT_PATHS = {
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/check-session",
+        "/api/auth/verify",
+        "/api/auth/resend-code",
+        "/api/auth/forgot-password",
+    }
+
     async def dispatch(self, request, call_next):
-        if request.method in ["POST", "PUT", "DELETE"]:
+        csrf_cookie = request.cookies.get("csrf_token")
+        csrf_token = csrf_cookie or secrets.token_urlsafe(32)
+
+        if request.method in self.MUTATING_METHODS:
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             host = request.headers.get("host")
@@ -500,14 +516,35 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Origin không khớp)"}, status_code=403)
             if referer and not _same_host(referer):
                 return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Referer không khớp)"}, status_code=403)
-        return await call_next(request)
+
+            requires_token = (
+                request.url.path.startswith("/api/")
+                and request.url.path not in self.EXEMPT_PATHS
+                and bool(request.cookies.get("session_token"))
+            )
+            if requires_token:
+                header_token = request.headers.get("x-csrf-token", "")
+                if not csrf_cookie or not header_token or not secrets.compare_digest(csrf_cookie, header_token):
+                    return JSONResponse({"error": "Yêu cầu bị từ chối do thiếu hoặc sai CSRF token!"}, status_code=403)
+
+        response = await call_next(request)
+        if not csrf_cookie:
+            response.set_cookie(
+                "csrf_token",
+                csrf_token,
+                httponly=False,
+                secure=APP_SECURE_COOKIES,
+                samesite="lax",
+                path="/",
+            )
+        return response
 
 
 middleware = [
     Middleware(CORSMiddleware,
                allow_origins=cors_origins,
                allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-               allow_headers=['Content-Type', 'X-Active-Org'],
+               allow_headers=['Content-Type', 'X-Active-Org', 'X-CSRF-Token'],
                allow_credentials=False),
     Middleware(BodySizeLimitMiddleware),
     Middleware(CSRFMiddleware),

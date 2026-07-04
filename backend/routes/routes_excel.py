@@ -1,4 +1,5 @@
 from io import BytesIO
+import os
 from starlette.responses import StreamingResponse, JSONResponse
 
 from helpers import (
@@ -10,6 +11,36 @@ from helpers import (
 
 from helpers_py.excel_handler import parse_excel
 import services.excel_service as excel_service
+
+MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
+ALLOWED_EXCEL_EXTENSIONS = {'.xlsx', '.xls'}
+ALLOWED_EXCEL_MIME_TYPES = {
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/octet-stream',
+}
+
+
+def _validate_excel_upload(file_obj, file_bytes):
+    filename = os.path.basename(str(getattr(file_obj, 'filename', '') or ''))
+    _, ext = os.path.splitext(filename)
+    if ext.lower() not in ALLOWED_EXCEL_EXTENSIONS:
+        raise ValueError('Chỉ cho phép tải lên tệp Excel .xlsx hoặc .xls')
+    if not file_bytes:
+        raise ValueError('Tệp Excel tải lên đang trống')
+    if len(file_bytes) > MAX_EXCEL_UPLOAD_BYTES:
+        raise ValueError('Tệp Excel vượt quá giới hạn 10MB')
+
+    content_type = (getattr(file_obj, 'content_type', '') or '').lower()
+    if content_type and content_type not in ALLOWED_EXCEL_MIME_TYPES:
+        raise ValueError('MIME type của tệp Excel không hợp lệ')
+
+    is_xlsx = file_bytes.startswith(b'PK\x03\x04')
+    is_xls = file_bytes.startswith(b'\xD0\xCF\x11\xE0')
+    if ext.lower() == '.xlsx' and not is_xlsx:
+        raise ValueError('Nội dung tệp .xlsx không hợp lệ')
+    if ext.lower() == '.xls' and not is_xls:
+        raise ValueError('Nội dung tệp .xls không hợp lệ')
 
 async def import_excel_api(request):
     try:
@@ -25,6 +56,7 @@ async def import_excel_api(request):
             return JSONResponse({"error": "Missing file or type parameter"}, status_code=400)
 
         file_bytes = await file_obj.read()
+        _validate_excel_upload(file_obj, file_bytes)
         rows = parse_excel(file_bytes, import_type)
         return JSONResponse({"success": True, "rows": rows})
     except ValueError as e:

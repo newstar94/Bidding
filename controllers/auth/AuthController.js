@@ -129,6 +129,7 @@ export function startBackgroundSessionChecker() {
                                 localStorage.removeItem('bf_active_org');
                             }
                             localStorage.setItem('bf_last_sync_timestamp', '0');
+                            localStorage.removeItem('bf_last_sync_version');
                             if (this.model.db && this.model.db.stores) {
                                 this.model.db.stores.forEach(storeName => {
                                     this.model.db.putTableData(storeName, []).catch(() => { });

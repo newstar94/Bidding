@@ -26,8 +26,12 @@ def get_client_ip(request) -> str:
         return forwarded.split(',')[0].strip()
     return getattr(request.client, 'host', 'unknown')
 
-def check_rate_limit(ip: str) -> bool:
-    """Kiểm tra giới hạn rate limit, kết hợp in-memory + DB persist."""
+def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
+    """Kiểm tra giới hạn rate limit, kết hợp in-memory + DB persist.
+
+    Mac dinh van ghi nhan attempt de giu tuong thich voi cac flow OTP.
+    Login dung consume_attempt=False de chi ghi nhan khi xac thuc that bai.
+    """
     now = time.time()
     window_start = now - RATE_LIMIT_WINDOW
     
@@ -55,7 +59,13 @@ def check_rate_limit(ip: str) -> bool:
         
         if len(all_timestamps) >= RATE_LIMIT_MAX:
             conn.close()
+            _rate_limit_store[ip] = all_timestamps
             return False
+
+        if not consume_attempt:
+            conn.close()
+            _rate_limit_store[ip] = all_timestamps
+            return True
         
         all_timestamps.append(now)
         cur.execute(
@@ -70,9 +80,14 @@ def check_rate_limit(ip: str) -> bool:
         # Fallback
         if len(_rate_limit_store[ip]) >= RATE_LIMIT_MAX:
             return False
-        _rate_limit_store[ip].append(now)
+        if consume_attempt:
+            _rate_limit_store[ip].append(now)
     
     return True
+
+def record_rate_limit_failure(ip: str) -> bool:
+    """Ghi nhan mot lan that bai vao rate limiter."""
+    return check_rate_limit(ip, consume_attempt=True)
 
 def generate_otp() -> str:
     """Tạo OTP cryptographically secure."""

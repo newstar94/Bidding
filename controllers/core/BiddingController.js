@@ -165,15 +165,30 @@ export class BiddingController {
     async init() {
         // Intercept native fetch to automatically append security headers & handle auth errors globally
         const originalFetch = window.fetch;
+        const readCookie = (name) => {
+            const prefix = `${name}=`;
+            const raw = document.cookie
+                .split(';')
+                .map(part => part.trim())
+                .find(part => part.startsWith(prefix));
+            return raw ? decodeURIComponent(raw.slice(prefix.length)) : '';
+        };
         window.fetch = async (url, options = {}) => {
             const activeOrg = localStorage.getItem('bf_active_org');
 
             if (typeof url === 'string' && url.startsWith('/api/')) {
                 const headers = new Headers(options.headers || {});
+                const method = (options.method || 'GET').toUpperCase();
                 headers.delete('X-Session-Token');
                 headers.delete('X-Username');
                 if (activeOrg) {
                     headers.set('X-Active-Org', encodeURIComponent(activeOrg));
+                }
+                if (['POST', 'PUT', 'DELETE'].includes(method)) {
+                    const csrfToken = readCookie('csrf_token');
+                    if (csrfToken) {
+                        headers.set('X-CSRF-Token', csrfToken);
+                    }
                 }
                 options.headers = headers;
             }
@@ -211,6 +226,7 @@ export class BiddingController {
                     if (errorMsg === "Không có quyền truy cập tổ chức này!") {
                         localStorage.removeItem('bf_active_org');
                         localStorage.setItem('bf_last_sync_timestamp', '0');
+                        localStorage.removeItem('bf_last_sync_version');
                         if (this.model.db && this.model.db.stores) {
                             this.model.db.stores.forEach(storeName => {
                                 this.model.db.putTableData(storeName, []).catch(() => { });
@@ -322,6 +338,7 @@ export class BiddingController {
         if (localStorage.getItem('bf_id_prefix_cleaned_v2') !== 'true') {
             if (!this.hasLocalWorkspaceData()) {
                 localStorage.setItem('bf_last_sync_timestamp', '0');
+                localStorage.removeItem('bf_last_sync_version');
                 if (this.model.db && this.model.db.stores) {
                     this.model.db.stores.forEach(storeName => {
                         this.model.db.putTableData(storeName, []).catch(() => { });
@@ -342,6 +359,7 @@ export class BiddingController {
 
         if (!hasCompletedVersionResync && !hasPendingVersionResync && !hasLocalWorkspaceSnapshot) {
             localStorage.setItem('bf_last_sync_timestamp', '0');
+            localStorage.removeItem('bf_last_sync_version');
             localStorage.removeItem('bf_last_fetch_time');
             localStorage.setItem('bf_pending_full_resync_versions_v3', 'true');
         } else if (hasLocalWorkspaceSnapshot) {

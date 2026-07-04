@@ -1,5 +1,6 @@
 import os
 import traceback
+import json
 from datetime import datetime
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -36,6 +37,40 @@ def log_error(e_or_msg, context="System", level="ERROR"):
         pass
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
         print(f"[{context}] [{level}] {e_or_msg}")
+
+
+def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, target_id=None, request=None, metadata=None):
+    """Ghi audit log best-effort cho thao tac quan trong."""
+    try:
+        ip_address = None
+        if request is not None:
+            forwarded = request.headers.get("X-Forwarded-For")
+            ip_address = forwarded.split(",")[0].strip() if forwarded else getattr(request.client, "host", None)
+
+        metadata_json = None
+        if metadata is not None:
+            metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
+
+        from helpers import database as _db
+        conn = _db.get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO audit_log (
+                actor_user_id, owner_id, action, target_type, target_id, ip_address, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            actor_user_id,
+            owner_id,
+            action,
+            target_type,
+            target_id,
+            ip_address,
+            metadata_json,
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as audit_err:
+        log_error(audit_err, "audit_log", level="WARN")
 
 
 

@@ -234,7 +234,52 @@ export function showKeHoachDetails(id, isSwitchingVersion = false) {
 }
 
 
-export function renderPlanVersionDetails(versionId) {
+async function fetchPlanPackageSnapshots(planId) {
+    if (!planId) return [];
+
+    const pageSize = 200;
+    let page = 1;
+    let totalItems = 0;
+    const items = [];
+
+    do {
+        const res = await fetch(`/api/paginate?table=goithau&page=${page}&pageSize=${pageSize}&keHoachId=${encodeURIComponent(planId)}`);
+        if (!res.ok) break;
+
+        const data = await res.json();
+        const pageItems = Array.isArray(data.items) ? data.items : [];
+        totalItems = Number(data.totalItems || pageItems.length || 0);
+        items.push(...pageItems);
+
+        if (pageItems.length === 0) break;
+        page += 1;
+    } while (items.length < totalItems);
+
+    if (items.length > 0 && this.model) {
+        if (!Array.isArray(this.model.state.goithau)) {
+            this.model.state.goithau = [];
+        }
+
+        items.forEach(item => {
+            const idx = this.model.state.goithau.findIndex(existing => String(existing.id) === String(item.id));
+            if (idx !== -1) {
+                this.model.state.goithau[idx] = item;
+            } else {
+                this.model.state.goithau.push(item);
+            }
+        });
+
+        if (this.model.db && typeof this.model.db.putRecords === 'function') {
+            this.model.db.putRecords('goithau', items).catch(e => console.error("Error storing plan package snapshots", e));
+        } else if (typeof this.model.persistData === 'function') {
+            this.model.persistData('goithau');
+        }
+    }
+
+    return items;
+}
+
+export async function renderPlanVersionDetails(versionId) {
     const kh = this.model.state.kehoach.find(k => k.id === versionId);
     if (!kh) return;
 
@@ -269,7 +314,11 @@ export function renderPlanVersionDetails(versionId) {
     });
 
     const cdt = this.model.state.chudautu.find(c => c.id === kh.chuDauTuId);
-    const linkedPackages = this.model.getLatestPackagesForPlan(kh.id);
+    let linkedPackages = this.model.getLatestPackagesForPlan(kh.id);
+    if (this.model.useServerSidePagination && linkedPackages.length === 0) {
+        await fetchPlanPackageSnapshots.call(this, kh.id);
+        linkedPackages = this.model.getLatestPackagesForPlan(kh.id);
+    }
 
     // Group by rootId, code, or name to guarantee absolute uniqueness of each package root in the display list
     const uniqueLinkedPackages = [];

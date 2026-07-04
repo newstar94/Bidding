@@ -1,11 +1,25 @@
 import os
 import base64
+import re
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
 
 # Dict dùng cho image cache (hoạt động như LRU thủ công)
 _load_image_cache: dict = {}
+MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+ALLOWED_IMAGE_SUBFOLDERS = {"chuyen_gia"}
+ALLOWED_IMAGE_MIME_TO_EXT = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+}
+
+
+def _safe_file_part(value: str, fallback: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or fallback))
+    safe = safe.strip("._")
+    return safe or fallback
 
 def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> str:
     if not base64_str:
@@ -16,6 +30,8 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         raise ValueError("Dung lượng ảnh vượt quá giới hạn 5MB cho phép!")
     if not (base64_str.startswith("data:image") or len(base64_str) > 100):
         return base64_str
+    if subfolder not in ALLOWED_IMAGE_SUBFOLDERS:
+        raise ValueError("Thư mục lưu ảnh không hợp lệ")
         
     header = ""
     data_str = base64_str
@@ -27,26 +43,32 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         except Exception:
             return base64_str
             
-    ext = "png"
-    if "jpeg" in header or "jpg" in header:
-        ext = "jpg"
-    elif "webp" in header:
-        ext = "webp"
-    elif "gif" in header:
-        ext = "gif"
+    mime = header.replace("data:", "").lower() if header else "image/png"
+    ext = ALLOWED_IMAGE_MIME_TO_EXT.get(mime)
+    if not ext:
+        raise ValueError("Chỉ cho phép ảnh PNG, JPG hoặc WebP")
         
     try:
-        upload_dir = os.path.join(project_root, "templates", "uploads", subfolder)
+        uploads_root = os.path.realpath(os.path.join(project_root, "templates", "uploads"))
+        upload_dir = os.path.realpath(os.path.join(uploads_root, subfolder))
+        if not upload_dir.startswith(uploads_root + os.sep):
+            raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
         os.makedirs(upload_dir, exist_ok=True)
         
-        file_data = base64.b64decode(data_str)
-        filename = f"{filename_prefix}.{ext}"
-        filepath = os.path.join(upload_dir, filename)
+        file_data = base64.b64decode(data_str, validate=True)
+        if len(file_data) > MAX_IMAGE_UPLOAD_BYTES:
+            raise ValueError("Dung lượng ảnh vượt quá giới hạn 5MB cho phép!")
+        filename = f"{_safe_file_part(filename_prefix, 'image')}.{ext}"
+        filepath = os.path.realpath(os.path.join(upload_dir, filename))
+        if not filepath.startswith(upload_dir + os.sep):
+            raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
         
         try:
             from PIL import Image
             import io
             
+            img = Image.open(io.BytesIO(file_data))
+            img.verify()
             img = Image.open(io.BytesIO(file_data))
             max_size = 1200
             if "sig" in filename_prefix:
@@ -55,7 +77,7 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
             if img.width > max_size or img.height > max_size:
                 img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
                 
-            save_format = "PNG" if ext == "png" else ("JPEG" if ext in ["jpg", "jpeg"] else img.format)
+            save_format = "PNG" if ext == "png" else ("JPEG" if ext in ["jpg", "jpeg"] else "WEBP")
             save_kwargs = {}
             if save_format == "JPEG":
                 save_kwargs["quality"] = 85  # 85 = cân bằng tối ưu giữa chất lượng & dung lượng (tiết kiệm ~50%)
@@ -64,12 +86,12 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
                     img = img.convert("RGB")
             elif save_format == "PNG":
                 save_kwargs["optimize"] = True
+            elif save_format == "WEBP":
+                save_kwargs["quality"] = 85
                 
             img.save(filepath, format=save_format, **save_kwargs)
         except Exception as pil_err:
-            print(f"Pillow optimization failed, falling back to raw save: {pil_err}")
-            with open(filepath, "wb") as f:
-                f.write(file_data)
+            raise ValueError("Nội dung ảnh không hợp lệ") from pil_err
                 
         return f"uploads/{subfolder}/{filename}"
     except Exception as e:

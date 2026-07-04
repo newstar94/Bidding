@@ -13,8 +13,12 @@ export function setupAutoSyncBackground() {
 
 export function autoSync() {
     const deletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
+    const clientMutationId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+        ? window.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const payload = {
         ...this.model.state,
+        clientMutationId,
         deletions: deletions
     };
     return fetch('/api/sync', {
@@ -100,6 +104,9 @@ export function autoSync() {
                 localStorage.setItem('bf_last_sync_timestamp', data.timestamp);
                 localStorage.removeItem('bf_local_deletions');
             }
+            if (data.syncVersion !== undefined && data.syncVersion !== null) {
+                localStorage.setItem('bf_last_sync_version', data.syncVersion.toString());
+            }
             // Xóa các record mồ côi (parent đã bị xóa trên server) khỏi local state
             if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
                 let stateChanged = false;
@@ -143,8 +150,13 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         if (isBackground && this.model && typeof this.model.ensureAllDataLoaded === 'function') {
             await this.model.ensureAllDataLoaded();
         }
+        const lastSyncVersion = localStorage.getItem('bf_last_sync_version');
+        const useVersionDelta = !forceFull && lastSyncVersion !== null && lastSyncVersion !== '';
         const since = forceFull ? '0' : (localStorage.getItem('bf_last_sync_timestamp') || '0');
-        const response = await fetch('/api/get-all-data?since=' + since, {
+        const syncQuery = useVersionDelta
+            ? `after_version=${encodeURIComponent(lastSyncVersion)}`
+            : `since=${encodeURIComponent(since)}`;
+        const response = await fetch('/api/get-all-data?' + syncQuery, {
             headers: {
                 'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
             }
@@ -152,7 +164,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         if (response.ok) {
             const dbData = await response.json();
 
-            const metadataKeys = new Set(['deletions', 'useServerSidePagination', 'timestamp', 'paginatedKeys']);
+            const metadataKeys = new Set(['deletions', 'useServerSidePagination', 'timestamp', 'paginatedKeys', 'syncVersion']);
             const paginatedKeys = new Set(dbData.paginatedKeys || []);
             const useServerSidePagination = !!dbData.useServerSidePagination;
             this.model.useServerSidePagination = useServerSidePagination;
@@ -181,7 +193,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                     && this.model.state[key].length > 0;
             };
 
-            if (since === '0') {
+            if (!useVersionDelta && since === '0') {
                 Object.keys(dbData).forEach(key => {
                     if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
 
@@ -229,6 +241,9 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 });
             }
 
+            if (dbData.syncVersion !== undefined && dbData.syncVersion !== null) {
+                localStorage.setItem('bf_last_sync_version', dbData.syncVersion.toString());
+            }
             if (dbData.timestamp) {
                 localStorage.setItem('bf_last_sync_timestamp', dbData.timestamp.toString());
             }

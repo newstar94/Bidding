@@ -38,6 +38,7 @@ from helpers_py.auth_helper import (
     get_effective_roles,
     hash_password,
     verify_password,
+    password_needs_rehash,
     SessionRole,
     verify_session,
     _session_cache_invalidate,
@@ -78,5 +79,6 @@ from helpers_py.session_utils import (
 
 from helpers_py.logging_utils import (
     log_error,
+    log_audit,
     ErrorLoggingMiddleware
 )

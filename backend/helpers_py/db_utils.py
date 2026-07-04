@@ -64,11 +64,16 @@ def _build_create_table_sql(table_name: str, table_spec: dict) -> str:
 def _ensure_runtime_indexes(cursor):
     """Create safe indexes that do not change business data or table shape."""
     versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
+    synced_tables = versioned_tables + ["phan_cong_nhan_su", "trang_thai_ho_so_giay", "thong_tin_mo_thau", "ma_tran_phan_quyen"]
     for table in versioned_tables:
         _assert_safe_table(table)
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_updated ON {table} (owner_id, updated_at)")
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_latest ON {table} (owner_id, is_latest)")
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_root ON {table} (owner_id, id_goc)")
+
+    for table in synced_tables:
+        _assert_safe_table(table)
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_sync_version ON {table} (owner_id, sync_version)")
 
     for table in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "chuyen_gia", "hop_dong"]:
         _assert_safe_table(table)
@@ -101,6 +106,11 @@ def _ensure_runtime_indexes(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_nha_thau ON thong_tin_mo_thau (nha_thau_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (owner_id, id_muc_tieu, loai_doi_tuong)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (owner_id, deleted_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (owner_id, delete_version)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_mutations_owner_created ON sync_mutations (owner_id, created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (owner_id, created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log (actor_user_id, created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_action_created ON audit_log (action, created_at)")
 
     cursor.execute("""
         DELETE FROM deleted_records
@@ -114,6 +124,28 @@ def _ensure_runtime_indexes(cursor):
         CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record
         ON deleted_records (owner_id, table_name, record_id)
     """)
+
+    cursor.execute("INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) SELECT DISTINCT owner_id, 1 FROM deleted_records WHERE owner_id IS NOT NULL AND owner_id != ''")
+    for table in synced_tables:
+        _assert_safe_table(table)
+        cursor.execute(f"""
+            INSERT OR IGNORE INTO sync_metadata (owner_id, current_version)
+            SELECT DISTINCT owner_id, 1 FROM {table}
+            WHERE owner_id IS NOT NULL AND owner_id != ''
+        """)
+        cursor.execute(f"""
+            UPDATE {table}
+            SET sync_version = 1
+            WHERE (sync_version IS NULL OR sync_version = 0)
+              AND owner_id IS NOT NULL
+              AND owner_id != ''
+        """)
+    cursor.execute("""
+        UPDATE deleted_records
+        SET delete_version = 1
+        WHERE delete_version IS NULL OR delete_version = 0
+    """)
+    cursor.execute("DELETE FROM sync_mutations WHERE created_at < datetime('now', 'localtime', '-7 days')")
 
 
 def recalculate_is_latest(cursor, table_name, owner_id=None):

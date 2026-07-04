@@ -3,6 +3,7 @@ import sys
 import json
 import uuid
 import time
+import hashlib
 from datetime import datetime
 from collections import defaultdict
 
@@ -13,8 +14,10 @@ from helpers import (
     verify_session,
     verify_password,
     hash_password,
+    password_needs_rehash,
     get_effective_roles,
     log_error,
+    log_audit,
     _session_cache_invalidate,
     _session_cache_invalidate_by_user_id,
     get_active_org,
@@ -28,6 +31,7 @@ from .sync_routes import disconnect_user_websockets
 from services.auth_service import (
     get_client_ip,
     check_rate_limit,
+    record_rate_limit_failure,
     get_user_org_names,
     update_user_organizations,
     _SECURE_COOKIES,
@@ -40,15 +44,32 @@ async def login_api(request):
     conn = None
     try:
         ip = get_client_ip(request)
-        if not check_rate_limit(f"login:{ip}"):
+        ip_rate_key = f"login:{ip}"
+        if not check_rate_limit(ip_rate_key, consume_attempt=False):
             return JSONResponse({"error": "Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau 60 giây."}, status_code=429)
 
         data = await request.json()
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
         remember = data.get('remember', False)
+
+        username_rate_key = hashlib.sha256(username.lower().encode('utf-8')).hexdigest()
+        user_rate_key = f"login_user:{username_rate_key}" if username else None
+        if user_rate_key and not check_rate_limit(user_rate_key, consume_attempt=False):
+            return JSONResponse({"error": "Quá nhiều lần đăng nhập cho tài khoản này. Vui lòng thử lại sau 60 giây."}, status_code=429)
+
+        def record_failed_login():
+            record_rate_limit_failure(ip_rate_key)
+            if user_rate_key:
+                record_rate_limit_failure(user_rate_key)
+            log_audit(
+                "auth.login_failed",
+                request=request,
+                metadata={"username": username}
+            )
         
         if not username or not password:
+            record_failed_login()
             return JSONResponse({"error": "Vui lòng nhập tài khoản và mật khẩu!"}, status_code=400)
             
         conn = database.get_connection()
@@ -60,11 +81,16 @@ async def login_api(request):
         row = cursor.fetchone()
 
         if not row:
+            record_failed_login()
             return JSONResponse({"error": "Tên đăng nhập hoặc mật khẩu không đúng"}, status_code=400)
             
         user = dict(row)
         if not verify_password(user['mat_khau'], password):
+            record_failed_login()
             return JSONResponse({"error": "Tên đăng nhập hoặc mật khẩu không đúng"}, status_code=400)
+
+        if password_needs_rehash(user.get('mat_khau')):
+            cursor.execute("UPDATE tai_khoan SET mat_khau = ? WHERE id = ?", (hash_password(password), user['id']))
             
         if not user.get('da_xac_minh'):
             return JSONResponse({
@@ -88,6 +114,15 @@ async def login_api(request):
         _session_cache_invalidate_by_user_id(user['id'])
         org_names = get_user_org_names(cursor, user['id'])
         conn.commit()
+        log_audit(
+            "auth.login_success",
+            actor_user_id=user['id'],
+            owner_id=org_names,
+            target_type="tai_khoan",
+            target_id=user['id'],
+            request=request,
+            metadata={"remember": remember}
+        )
         
         effective_roles = list(get_effective_roles(user['vai_tro']))
         response = JSONResponse({
@@ -105,7 +140,7 @@ async def login_api(request):
         })
         cookie_max_age = SESSION_REMEMBER_EXPIRY_HOURS * 3600 if remember else None
         response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
-        response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
+        response.delete_cookie("username", path="/")
         return response
     except Exception as e:
         log_error(e, "login_api")
@@ -121,11 +156,10 @@ async def check_session_api(request):
             data = await request.json()
         except Exception:
             data = {}
-        username = (request.cookies.get('username') or '').strip()
         session_token = (request.cookies.get('session_token') or '').strip()
         remember = data.get('remember', False)
         
-        if not username or not session_token:
+        if not session_token:
             return JSONResponse({"valid": False, "reason": "missing_auth"})
             
         user = None
@@ -135,7 +169,7 @@ async def check_session_api(request):
         else:
             conn = database.get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien, goi_dich_vu_id, token_phien, han_su_dung_token, thong_tin_thiet_bi_cuoi FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)", (username, username))
+            cursor.execute("SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien, goi_dich_vu_id, token_phien, han_su_dung_token, thong_tin_thiet_bi_cuoi FROM tai_khoan WHERE token_phien = ?", (session_token,))
             row = cursor.fetchone()
             if row:
                 user = dict(row)
@@ -200,7 +234,7 @@ async def check_session_api(request):
         if new_expiry_set:
             cookie_max_age = expiry_hours * 3600 if remember else None
             response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
-            response.set_cookie("username", user['ten_dang_nhap'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
+            response.delete_cookie("username", path="/")
             
         return response
     except Exception as e:
@@ -283,6 +317,13 @@ async def change_password_api(request):
         conn.commit()
         if old_token:
             _session_cache_invalidate(old_token)
+        log_audit(
+            "auth.password_changed",
+            actor_user_id=role_or_err.user_id,
+            target_type="tai_khoan",
+            target_id=user['id'],
+            request=request
+        )
         
         response = JSONResponse({
             "success": True, 
@@ -302,17 +343,22 @@ async def logout_api(request):
     conn = None
     try:
         token = request.cookies.get('session_token')
-        username = request.cookies.get('username')
         if token:
             _session_cache_invalidate(token)
-        if token and username:
+        if token:
             conn = database.get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE tai_khoan SET token_phien = NULL, han_su_dung_token = NULL WHERE token_phien = ? AND ten_dang_nhap = ?",
-                (token, username)
+                "UPDATE tai_khoan SET token_phien = NULL, han_su_dung_token = NULL WHERE token_phien = ?",
+                (token,)
             )
             conn.commit()
+        log_audit(
+            "auth.logout",
+            actor_user_id=None,
+            target_type="session",
+            request=request
+        )
         response = JSONResponse({"success": True})
         response.delete_cookie("session_token", path="/")
         response.delete_cookie("username", path="/")
@@ -430,6 +476,13 @@ async def delete_user_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
+        log_audit(
+            "admin.user_deleted",
+            actor_user_id=role_or_err.user_id,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request
+        )
         
         return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
     except Exception as e:
@@ -487,6 +540,14 @@ async def update_user_role_api(request):
         conn.commit()
         conn.close()
         _session_cache_invalidate_by_user_id(user_id)
+        log_audit(
+            "admin.user_role_updated",
+            actor_user_id=role_or_err.user_id,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request,
+            metadata={"role": normalized_role}
+        )
         return JSONResponse({"success": True, "message": "Cập nhật vai trò người dùng thành công!"})
     except Exception as e:
         log_error(e, "update_user_role_api")
@@ -519,6 +580,14 @@ async def update_user_package_api(request):
         conn.commit()
         conn.close()
         _session_cache_invalidate_by_user_id(user_id)
+        log_audit(
+            "admin.user_package_updated",
+            actor_user_id=role_or_err.user_id,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request,
+            metadata={"package_id": db_package}
+        )
         return JSONResponse({"success": True, "message": "Cập nhật gói đăng ký thành công!"})
     except Exception as e:
         log_error(e, "update_user_package_api")
@@ -562,6 +631,16 @@ async def update_user_metadata_api(request):
             
         conn.commit()
         conn.close()
+        _session_cache_invalidate_by_user_id(user_id)
+        _org_cache_invalidate_by_user_id(user_id)
+        log_audit(
+            "admin.user_metadata_updated",
+            actor_user_id=role_or_err.user_id,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request,
+            metadata={"field": field}
+        )
         return JSONResponse({"success": True, "message": "Cập nhật thông tin thành công!"})
     except Exception as e:
         log_error(e, "update_user_metadata_api")
@@ -604,6 +683,14 @@ async def update_system_package_api(request):
         """, (name, price, quota, description, pkg_id))
         conn.commit()
         conn.close()
+        log_audit(
+            "admin.system_package_updated",
+            actor_user_id=role_or_err.user_id,
+            target_type="goi_dich_vu",
+            target_id=pkg_id,
+            request=request,
+            metadata={"name": name, "price": price, "quota": quota}
+        )
         return JSONResponse({"success": True, "message": "Cập nhật gói dịch vụ thành công!"})
     except Exception as e:
         log_error(e, "update_system_package_api")

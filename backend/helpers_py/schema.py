@@ -60,6 +60,7 @@ SCHEMA_DINH_NGHIA = {
             "email": "TEXT",
             "ma_qhns": "TEXT",
             "co_quan_chu_quan": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -100,6 +101,7 @@ SCHEMA_DINH_NGHIA = {
             "ngay_phe_duyet_du_toan": "TEXT",
             "so_qd_phe_duyet_du_toan": "TEXT",
             "ngay_trinh_ke_hoach": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -137,6 +139,7 @@ SCHEMA_DINH_NGHIA = {
             "so_tai_khoan": "TEXT",
             "noi_mo_tai_khoan": "TEXT",
             "ma_ngan_hang": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
@@ -194,6 +197,7 @@ SCHEMA_DINH_NGHIA = {
             "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
             "so_to_trinh_hsmt": "TEXT",
             "ngay_trinh_hsmt": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
@@ -249,6 +253,7 @@ SCHEMA_DINH_NGHIA = {
             "ten_anh_chung_chi": "TEXT",
             "anh_chu_ky": "TEXT",
             "ten_anh_chu_ky": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -279,6 +284,7 @@ SCHEMA_DINH_NGHIA = {
             "co_qd_chi_dinh": "INTEGER DEFAULT 0",
             "so_qd_chi_dinh": "TEXT",
             "ngay_qd_chi_dinh": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -313,6 +319,7 @@ SCHEMA_DINH_NGHIA = {
             "id_nhan_vien": "TEXT NOT NULL",
             "id_muc_tieu": "TEXT NOT NULL",
             "loai_doi_tuong": "TEXT NOT NULL",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -338,6 +345,7 @@ SCHEMA_DINH_NGHIA = {
             "org_id": "TEXT",
             "name": "TEXT",
             "color": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
@@ -384,6 +392,7 @@ SCHEMA_DINH_NGHIA = {
             "nguyen_nhan_khong_dat_hop_le": "TEXT",
             "nguyen_nhan_khong_dat_nang_luc": "TEXT",
             "nguyen_nhan_khong_dat_ky_thuat": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -470,6 +479,7 @@ SCHEMA_DINH_NGHIA = {
             "table_name": "TEXT NOT NULL",
             "record_id": "TEXT NOT NULL",
             "owner_id": "TEXT NOT NULL",
+            "delete_version": "INTEGER DEFAULT 0",
             "deleted_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
     },
@@ -504,12 +514,42 @@ SCHEMA_DINH_NGHIA = {
             "chuyengia": "TEXT",
             "hopdong": "TEXT",
             "thongtinmothau": "TEXT",
+            "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
             "UNIQUE(owner_id, emp_id)"
         ]
+    },
+    "sync_metadata": {
+        "columns": {
+            "owner_id": "TEXT PRIMARY KEY",
+            "current_version": "INTEGER NOT NULL DEFAULT 0",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
+        }
+    },
+    "sync_mutations": {
+        "columns": {
+            "owner_id": "TEXT NOT NULL",
+            "client_mutation_id": "TEXT NOT NULL",
+            "response_json": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
+        },
+        "primary_keys": ["owner_id", "client_mutation_id"]
+    },
+    "audit_log": {
+        "columns": {
+            "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+            "actor_user_id": "TEXT",
+            "owner_id": "TEXT",
+            "action": "TEXT NOT NULL",
+            "target_type": "TEXT",
+            "target_id": "TEXT",
+            "ip_address": "TEXT",
+            "metadata_json": "TEXT",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
+        }
     }
 }
 
