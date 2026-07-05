@@ -419,7 +419,7 @@ export class BiddingController {
             this.routeMap['chudautu-detail'],
             this.routeMap['nhathau-detail']
         ].filter(Boolean);
-        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasLocalWorkspaceSnapshot;
+        const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
 
         if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
             this._initialSyncStarted = true;

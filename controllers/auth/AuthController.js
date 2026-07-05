@@ -266,7 +266,9 @@ export function setupAuth() {
         ].filter(Boolean);
         const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
 
-        const canShowLocalFirst = hasLocalWorkspaceData();
+        const canShowLocalFirst = typeof this.hasLocalDataForRoute === 'function'
+            ? this.hasLocalDataForRoute(initialPath)
+            : hasLocalWorkspaceData();
         if (canShowLocalFirst) {
             requestAnimationFrame(showCachedWorkspace);
         }
