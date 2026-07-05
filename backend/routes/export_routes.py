@@ -7,7 +7,8 @@ from .routes_docx import (
     upload_template_api,
     list_word_mappings_api,
     save_word_mapping_api,
-    delete_word_mapping_api
+    delete_word_mapping_api,
+    ensure_default_word_mappings_for_all_orgs
 )
 
 from .routes_excel import (
@@ -20,4 +21,3 @@ from .routes_excel import (
     export_tuychonmuathem_excel_api,
     export_opening_fin_template_api
 )
-
