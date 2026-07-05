@@ -142,7 +142,55 @@ export class BiddingController {
             [this.routeMap.chuyengia]: ['CHUYENGIA'],
             [this.routeMap.bieumau]: ['GOITHAU', 'KEHOACH', 'HOPDONG', 'CHUDAUTU', 'NHATHAU']
         };
-        return Array.from(new Set([...(byRoute[tab] || byRoute[this.routeMap.dashboard]), 'SYSTEMPACKAGES']));
+        return Array.from(new Set(byRoute[tab] || byRoute[this.routeMap.dashboard]));
+    }
+
+    loadInitDataInBackground() {
+        const load = async () => {
+            try {
+                const [usersRes, pkgsRes] = await Promise.all([
+                    fetch('/api/auth/users'),
+                    fetch('/api/system-packages')
+                ]);
+
+                if (usersRes.ok) {
+                    const users = await usersRes.json();
+                    const localEmployees = JSON.parse(localStorage.getItem('bf_employees') || '[]');
+                    this.model.state.employees = users.map(u => {
+                        const localEmp = localEmployees.find(le => le.email && le.email.trim().toLowerCase() === (u.email || '').trim().toLowerCase());
+                        return {
+                            id: u.id,
+                            username: u.username,
+                            name: localEmp ? localEmp.name : u.name,
+                            email: u.email || '',
+                            phone: localEmp ? localEmp.phone : '',
+                            role: u.role,
+                            package_id: u.package_id
+                        };
+                    });
+                    this.model.persistData('employees');
+                    this.view.populateNhanVienPhuTrachDropdowns();
+                }
+
+                if (pkgsRes.ok) {
+                    const pkgs = await pkgsRes.json();
+                    const lockedPkgs = JSON.parse(localStorage.getItem('bf_locked_system_packages') || '[]');
+                    pkgs.forEach(p => {
+                        p.isLocked = lockedPkgs.includes(p.id);
+                    });
+                    this.model.state.systempackages = pkgs;
+                    this.model.persistData('systempackages');
+                }
+            } catch (err) {
+                console.error("Failed to load init data (users/packages):", err);
+            }
+        };
+
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(load, { timeout: 2500 });
+        } else {
+            setTimeout(load, 1000);
+        }
     }
 
     async init() {
@@ -397,49 +445,9 @@ export class BiddingController {
             }
         }
 
-        // Song song hóa: tải users + system-packages cùng lúc thay vì tuần tự
-        try {
-            const [usersRes, pkgsRes] = await Promise.all([
-                fetch('/api/auth/users'),
-                fetch('/api/system-packages')
-            ]);
-
-            // Xử lý danh sách nhân viên cho dropdown phân công
-            if (usersRes.ok) {
-                const users = await usersRes.json();
-                const localEmployees = JSON.parse(localStorage.getItem('bf_employees') || '[]');
-                this.model.state.employees = users.map(u => {
-                    const localEmp = localEmployees.find(le => le.email && le.email.trim().toLowerCase() === (u.email || '').trim().toLowerCase());
-                    return {
-                        id: u.id,
-                        username: u.username,
-                        name: localEmp ? localEmp.name : u.name,
-                        email: u.email || '',
-                        phone: localEmp ? localEmp.phone : '',
-                        role: u.role,
-                        package_id: u.package_id
-                    };
-                });
-                this.model.persistData('employees');
-                this.view.populateNhanVienPhuTrachDropdowns();
-            }
-
-            // Xử lý gói dịch vụ hệ thống
-            if (pkgsRes.ok) {
-                const pkgs = await pkgsRes.json();
-                const lockedPkgs = JSON.parse(localStorage.getItem('bf_locked_system_packages') || '[]');
-                pkgs.forEach(p => {
-                    p.isLocked = lockedPkgs.includes(p.id);
-                });
-                this.model.state.systempackages = pkgs;
-                this.model.persistData('systempackages');
-            }
-        } catch (err) {
-            console.error("Failed to load init data (users/packages):", err);
-        }
-
         // Initialize background sync
         this.setupAutoSyncBackground();
+        this.loadInitDataInBackground();
     }
 
 
