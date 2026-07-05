@@ -54,7 +54,8 @@ export class BiddingController {
 
     hasLocalWorkspaceData() {
         const keys = ['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'thongtinmothau'];
-        return keys.some(key => Array.isArray(this.model.state[key]) && this.model.state[key].length > 0);
+        return keys.some(key => Array.isArray(this.model.state[key]) && this.model.state[key].length > 0)
+            || this.model?._hasPersistedWorkspaceData === true;
     }
 
     hasLocalDataForRoute(pathname = window.location.pathname) {
@@ -431,6 +432,10 @@ export class BiddingController {
         // Ẩn màn hình loading ngay sau khi giao diện đã được render xong từ dữ liệu cục bộ IndexedDB
         if (typeof window.hideInitLoader === 'function') {
             window.hideInitLoader();
+        }
+
+        if (this.model && typeof this.model.hydrateRemainingStorageKeysIdle === 'function') {
+            this.model.hydrateRemainingStorageKeysIdle();
         }
 
 

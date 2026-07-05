@@ -236,13 +236,11 @@ export function setupAuth() {
 
     const refreshWorkspaceInBackground = () => {
         const runSync = () => {
-            const syncPromise = this._initialSyncStarted ? Promise.resolve() : this.forceSyncData(true);
+            const syncPromise = typeof this.scheduleBackgroundSync === 'function'
+                ? (this.scheduleBackgroundSync(300), Promise.resolve())
+                : this.forceSyncData(true);
             this._initialSyncStarted = true;
-            syncPromise.then(() => {
-                if (typeof this.handlePathRouting === 'function') {
-                    this.handlePathRouting(window.location.pathname, false, true);
-                }
-            }).catch(err => {
+            syncPromise.catch(err => {
                 console.error("Failed to force sync data after F5 restore:", err);
             });
         };
@@ -292,7 +290,7 @@ export function setupAuth() {
                 const previousUserId = sessionStorage.getItem('bf_user_id');
                 applySessionUser(data.user);
                 if (data.user?.id && previousUserId !== String(data.user.id)) {
-                    await this.model.init();
+                    await this.model.init({ priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname) });
                 }
 
                 if (!canShowLocalFirst && !shouldWaitForDetailData) {

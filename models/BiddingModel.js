@@ -113,6 +113,27 @@ class BrowserDB {
         });
     }
 
+    countTableData(tableName) {
+        return new Promise((resolve) => {
+            if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve(0);
+            try {
+                const transaction = this.db.transaction(tableName, "readonly");
+                const store = transaction.objectStore(tableName);
+                const request = store.count();
+                request.onsuccess = () => resolve(request.result || 0);
+                request.onerror = () => resolve(0);
+            } catch (e) {
+                resolve(0);
+            }
+        });
+    }
+
+    async hasAnyTableData(tableNames) {
+        const names = Array.isArray(tableNames) ? tableNames : [];
+        const counts = await Promise.all(names.map(name => this.countTableData(name)));
+        return counts.some(count => count > 0);
+    }
+
     putTableData(tableName, dataArray) {
         return new Promise((resolve, reject) => {
             if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve();
@@ -303,6 +324,7 @@ export class BiddingModel {
         this.pageSize = 10;
         this._loadedStorageKeys = new Set();
         this._allDataLoadPromise = null;
+        this._hasPersistedWorkspaceData = false;
     }
 
     normalizeRecordKeys(record) {
@@ -377,6 +399,25 @@ export class BiddingModel {
         return this._allDataLoadPromise;
     }
 
+    hydrateRemainingStorageKeysIdle(timeout = 2500) {
+        if (this._remainingHydrationScheduled) return;
+        this._remainingHydrationScheduled = true;
+
+        const hydrate = () => {
+            this.ensureAllDataLoaded()
+                .catch(err => console.error("Failed to hydrate remaining local data:", err))
+                .finally(() => {
+                    this._remainingHydrationScheduled = false;
+                });
+        };
+
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+            requestIdleCallback(hydrate, { timeout });
+        } else {
+            setTimeout(hydrate, Math.min(timeout, 1000));
+        }
+    }
+
     async init(options = {}) {
         const userId = sessionStorage.getItem('bf_user_id');
         if (userId) {
@@ -388,6 +429,17 @@ export class BiddingModel {
         this._loadedStorageKeys = new Set();
         this._allDataLoadPromise = null;
         await this.db.init();
+
+        this._hasPersistedWorkspaceData = await this.db.hasAnyTableData([
+            'kehoach',
+            'goithau',
+            'chudautu',
+            'nhathau',
+            'chuyengia',
+            'hopdong',
+            'thongtinmothau',
+            'assignments'
+        ]);
 
         await this.loadStorageKeys(options.priorityKeys || Object.keys(this.STORAGE_KEYS));
 

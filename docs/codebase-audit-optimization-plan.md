@@ -1,16 +1,17 @@
 # Backlog còn lại - BiddingFlow
 
-File này chỉ giữ các việc chưa thực hiện hoặc chưa được manual test đầy đủ. Các unit test JS/Python hiện có cho validation, mapper, delta merge, schema constraint và Excel preview đã chạy pass nên không liệt kê lại ở đây.
+File này chỉ giữ các việc chưa thực hiện hoặc chưa được manual test đầy đủ.
 
-Ghi chú mới nhất: với `APP_DEBUG=False`, server đã phục vụ `dist/controllers/app.bundle.js`. F5 production trên dữ liệu hiện tại không mất dữ liệu và phần loader sau khi reload còn khoảng 0.10-0.40 giây; tổng thời gian reload trang khoảng 0.62-0.68 giây. Cần kiểm tra lại với bộ dữ liệu vừa/lớn trước khi đóng hẳn mục hiệu năng tải nặng.
+Ghi chú mới nhất: đã triển khai hướng app shell + local-first + sync nền. Startup hiện đọc dữ liệu ưu tiên theo route, kiểm tra nhanh IndexedDB bằng `count()` để tránh hiểu nhầm là không có cache, tắt loader sau khi render dữ liệu local, sau đó chạy delta sync nền và cập nhật UI nếu có thay đổi. Cần build production và đo lại trên Chrome với dữ liệu thực tế trước khi đóng mục hiệu năng.
 
 ## Giai đoạn 0 - Baseline và kiểm chứng hiệu năng
 
 - [ ] Ghi lại dung lượng IndexedDB/localStorage sau khi đăng nhập admin.
-- [ ] Ghi lại số request API khi F5.
+- [ ] Ghi lại số request API khi F5 bằng Chrome DevTools hoặc script đo có quyền truy cập `performance`.
 
 ## Giai đoạn 2 - Local-first và loader
 
+- [ ] Build production rồi đo lại F5 trên Chrome sau thay đổi local-first.
 - [ ] Xác nhận F5 khi có local data đạt mục tiêu loader dưới 500ms với dữ liệu vừa/lớn.
 - [ ] Kiểm tra không còn màn hình placeholder bị nháy sau khi loader biến mất.
 
@@ -49,8 +50,8 @@ Ghi chú mới nhất: với `APP_DEBUG=False`, server đã phục vụ `dist/co
 
 ## Ưu tiên tiếp theo
 
-1. Ghi lại request count/dung lượng local storage và kiểm tra F5 với dữ liệu vừa/lớn.
-2. Manual test snapshot gói thầu theo phiên bản kế hoạch.
-3. Manual test login/check-session/logout, throttle và cấu hình security production.
-4. Manual test tạo/sửa/xóa, export/import và sync end-to-end.
-5. Manual test workflow chính còn lại trong Giai đoạn 9.
+1. Build production và đo lại F5 bằng Chrome sau triển khai local-first.
+2. Ghi lại request count/dung lượng local storage.
+3. Manual test snapshot gói thầu theo phiên bản kế hoạch.
+4. Manual test login/check-session/logout, throttle và cấu hình security production.
+5. Manual test tạo/sửa/xóa, export/import và sync end-to-end.

@@ -40,6 +40,30 @@ export function setupAutoSyncBackground() {
     this.setupWebSocketConnection();
 }
 
+function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
+    if (!changedKeys || changedKeys.size === 0 || !controller.view) return;
+
+    const renderIfChanged = (keys, renderFn) => {
+        if (keys.some(key => changedKeys.has(key)) && typeof renderFn === 'function') {
+            renderFn.call(controller.view);
+        }
+    };
+
+    renderIfChanged(['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'assignments', 'thongtinmothau'], controller.view.renderDashboard);
+    renderIfChanged(['kehoach', 'chudautu', 'goithau'], controller.view.renderKeHoachTable);
+    renderIfChanged(['goithau', 'kehoach', 'chudautu', 'nhathau', 'thongtinmothau', 'assignments'], controller.view.renderGoiThauTable);
+    renderIfChanged(['chudautu', 'kehoach'], controller.view.renderChuDauTuTable);
+    renderIfChanged(['nhathau', 'goithau', 'hopdong', 'thongtinmothau'], controller.view.renderNhaThauTable);
+    renderIfChanged(['chuyengia', 'assignments'], controller.view.renderChuyenGiaTable);
+    renderIfChanged(['hopdong', 'goithau', 'nhathau', 'chudautu'], controller.view.renderHopDongTable);
+
+    if (isBackground && typeof controller.handlePathRouting === 'function') {
+        requestAnimationFrame(() => {
+            controller.handlePathRouting(window.location.pathname, false, true);
+        });
+    }
+}
+
 
 export function autoSync() {
     const deletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
@@ -180,9 +204,6 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
     if (shouldShowFullLoader) this.view.showLoader();
 
     try {
-        if (isBackground && this.model && typeof this.model.ensureAllDataLoaded === 'function') {
-            await this.model.ensureAllDataLoaded();
-        }
         const lastSyncVersion = localStorage.getItem('bf_last_sync_version');
         const useVersionDelta = !forceFull && lastSyncVersion !== null && lastSyncVersion !== '';
         const since = forceFull ? '0' : (localStorage.getItem('bf_last_sync_timestamp') || '0');
@@ -231,20 +252,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 localStorage.setItem('bf_last_sync_timestamp', dbData.timestamp.toString());
             }
             localStorage.setItem('bf_last_fetch_time', Date.now().toString());
-            if (!isBackground) {
-                const renderIfChanged = (keys, renderFn) => {
-                    if (keys.some(key => changedKeys.has(key)) && typeof renderFn === 'function') {
-                        renderFn.call(this.view);
-                    }
-                };
-                renderIfChanged(['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'assignments', 'thongtinmothau'], this.view.renderDashboard);
-                renderIfChanged(['kehoach', 'chudautu', 'goithau'], this.view.renderKeHoachTable);
-                renderIfChanged(['goithau', 'kehoach', 'chudautu', 'nhathau', 'thongtinmothau', 'assignments'], this.view.renderGoiThauTable);
-                renderIfChanged(['chudautu', 'kehoach'], this.view.renderChuDauTuTable);
-                renderIfChanged(['nhathau', 'goithau', 'hopdong', 'thongtinmothau'], this.view.renderNhaThauTable);
-                renderIfChanged(['chuyengia', 'assignments'], this.view.renderChuyenGiaTable);
-                renderIfChanged(['hopdong', 'goithau', 'nhathau', 'chudautu'], this.view.renderHopDongTable);
-            }
+            renderChangedState(this, changedKeys, { isBackground });
 
             this.updateSyncStatusDisplay(Date.now());
 
@@ -258,6 +266,10 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 if (isDetailTab && parts[1]) {
                     this.handlePathRouting(window.location.pathname, false, true);
                 }
+            }
+
+            if (isBackground && this.model && typeof this.model.hydrateRemainingStorageKeysIdle === 'function') {
+                this.model.hydrateRemainingStorageKeysIdle();
             }
         }
     } catch (err) {
