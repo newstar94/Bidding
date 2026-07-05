@@ -21,7 +21,7 @@ export function setupSidebar() {
             appContainer.classList.toggle('sidebar-collapsed');
             const collapsed = appContainer.classList.contains('sidebar-collapsed');
             localStorage.setItem('bf_sidebar_collapsed', collapsed);
-            lucide.createIcons();
+            this.view.createIconsScoped(sidebar);
         });
     }
 
@@ -32,7 +32,7 @@ export function setupSidebar() {
             if (appContainer.classList.contains('sidebar-collapsed')) {
                 appContainer.classList.remove('sidebar-collapsed');
                 localStorage.setItem('bf_sidebar_collapsed', 'false');
-                lucide.createIcons();
+                this.view.createIconsScoped(sidebar);
             }
         });
     }
@@ -383,7 +383,6 @@ export function switchTab(tabName, action = null, updateState = true) {
 
 
 export function renderTabData(tabName, action = null) {
-    lucide.createIcons();
     switch (tabName) {
         case 'dashboard':
             this.view.renderDashboard();
@@ -477,6 +476,12 @@ export function renderTabData(tabName, action = null) {
             }
             break;
     }
+
+    const activePane = document.getElementById(`tab-${tabName}`) || this.view.getActiveEnhancementRoot();
+    this.view.createIconsScoped(document.getElementById('sidebar'));
+    this.view.createIconsScoped(document.querySelector('.top-header') || document.querySelector('.app-header') || document.querySelector('header'));
+    this.view.createIconsScoped(activePane);
+    this.view.enhanceVisibleContent(activePane);
 }
 
 

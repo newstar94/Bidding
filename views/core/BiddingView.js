@@ -33,43 +33,82 @@ export class BiddingView {
             tabPanes: document.querySelectorAll('.tab-pane')
         };
 
-        // Automatically observe DOM changes to enhance any rendered tables with sorting
+        // Automatically observe DOM changes and enhance only the active UI area.
         if (!this._tableObserver) {
             this._tableObserver = new MutationObserver(() => {
                 if (this._enhanceFrame) return;
                 this._enhanceFrame = requestAnimationFrame(() => {
                     this._enhanceFrame = null;
-                    this.enhanceAllTables();
+                    this.enhanceVisibleContent();
                 });
             });
             this._tableObserver.observe(document.body, { childList: true, subtree: true });
         }
         // Run initial enhancement
-        setTimeout(() => this.enhanceAllTables(), 100);
+        setTimeout(() => this.enhanceVisibleContent(), 100);
     }
 
-    enhanceAllTables() {
+    getActiveEnhancementRoot() {
+        const activeModal = document.querySelector('.modal-overlay.active:not(#modal-custom-dialog)');
+        if (activeModal) return activeModal;
+
+        return document.querySelector('.tab-pane.active')
+            || document.querySelector('.content-viewport')
+            || document;
+    }
+
+    isEnhancementTargetActive(element) {
+        if (!element || typeof element.closest !== 'function') return false;
+
+        const inactiveModal = element.closest('.modal-overlay:not(.active)');
+        if (inactiveModal) return false;
+
+        const tabPane = element.closest('.tab-pane');
+        return !tabPane || tabPane.classList.contains('active');
+    }
+
+    createIconsScoped(root = document) {
+        const iconLibrary = window.lucide;
+        if (!iconLibrary || typeof iconLibrary.createIcons !== 'function') return;
+
+        try {
+            iconLibrary.createIcons({ root });
+        } catch (error) {
+            iconLibrary.createIcons();
+        }
+    }
+
+    enhanceVisibleContent(container = null) {
+        this.enhanceAllTables(container || this.getActiveEnhancementRoot());
+    }
+
+    enhanceAllTables(container = null) {
         if (this._tableObserver) {
             this._tableObserver.disconnect();
         }
 
-        const tables = document.querySelectorAll('table');
+        const root = container || this.getActiveEnhancementRoot();
+        const tables = root && typeof root.querySelectorAll === 'function'
+            ? root.querySelectorAll('table')
+            : document.querySelectorAll('table');
+
         tables.forEach(table => {
+            if (!this.isEnhancementTargetActive(table)) return;
             this.enhanceTableHeaders(table);
         });
 
-        // Auto-upgrade all eligible native selects in the DOM to the custom style
-        this.upgradeAllSelects();
+        // Auto-upgrade eligible native selects only in the rendered area.
+        this.upgradeAllSelects(root);
 
-        // Auto-initialize Flatpickr for date/datetime inputs
-        this.initFlatpickr(document);
+        // Auto-initialize Flatpickr for date/datetime inputs only in the rendered area.
+        this.initFlatpickr(root);
 
         if (this._tableObserver) {
             this._tableObserver.observe(document.body, { childList: true, subtree: true });
         }
     }
 
-    upgradeAllSelects() {
+    upgradeAllSelects(container = document) {
         // Garbage collection for any orphaned/hidden custom dropdowns currently on body
         document.querySelectorAll('body > .custom-select-dropdown').forEach(dropdown => {
             const targetId = dropdown.getAttribute('data-target');
@@ -80,7 +119,14 @@ export class BiddingView {
             }
         });
 
-        document.querySelectorAll('select').forEach(select => {
+        const root = container || document;
+        const selects = root && typeof root.querySelectorAll === 'function'
+            ? root.querySelectorAll('select')
+            : document.querySelectorAll('select');
+
+        selects.forEach(select => {
+            if (!this.isEnhancementTargetActive(select)) return;
+
             // Exclude package selection dropdowns when inside package detail view tab to prevent rendering them
             const isPackageSelectInDetail = ['mothau-goithau-select', 'danhgiahsdt-goithau-select', 'result-goithau-select'].includes(select.id) && document.getElementById('tab-goithau-detail');
             if (isPackageSelectInDetail) {
@@ -363,7 +409,8 @@ export class BiddingView {
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.add('active');
-            this.initFlatpickr(modal);
+            this.enhanceVisibleContent(modal);
+            this.createIconsScoped(modal);
         }
     }
 

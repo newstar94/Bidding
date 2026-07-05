@@ -2,7 +2,10 @@
 
 File này chỉ giữ các việc chưa thực hiện hoặc chưa được manual test đầy đủ.
 
-Ghi chú mới nhất: đã triển khai hướng app shell + local-first + sync nền. Startup hiện đọc dữ liệu ưu tiên theo route, kiểm tra nhanh IndexedDB bằng `count()` để tránh hiểu nhầm là không có cache, tắt loader sau khi render dữ liệu local, sau đó chạy delta sync nền và cập nhật UI nếu có thay đổi. Cần build production và đo lại trên Chrome với dữ liệu thực tế trước khi đóng mục hiệu năng.
+Ghi chú mới nhất:
+- Đã triển khai hướng app shell + local-first + sync nền: startup đọc dữ liệu ưu tiên theo route, kiểm tra nhanh IndexedDB bằng `count()`, tắt loader sau khi render dữ liệu local, sau đó chạy delta sync nền và cập nhật UI nếu có thay đổi.
+- Đã tối ưu bước khởi tạo UI sau reload: chỉ enhance table/select/datepicker/icon trong tab hoặc modal đang mở, không quét toàn bộ DOM ẩn ở startup.
+- Đã đo lại trên Chrome với bundle `app.bundle.js?v=1783229863`: F5 không phát sinh API request và không có console error, nhưng first content vẫn khoảng 1.0-1.8 giây; route chi tiết kế hoạch ổn định khoảng 1.1-1.8 giây. Mục tiêu dưới 500ms chưa đạt.
 
 ## Giai đoạn 0 - Baseline và kiểm chứng hiệu năng
 
@@ -11,8 +14,7 @@ Ghi chú mới nhất: đã triển khai hướng app shell + local-first + sync
 
 ## Giai đoạn 2 - Local-first và loader
 
-- [ ] Build production rồi đo lại F5 trên Chrome sau thay đổi local-first.
-- [ ] Xác nhận F5 khi có local data đạt mục tiêu loader dưới 500ms với dữ liệu vừa/lớn.
+- [ ] Tối ưu tiếp để F5 khi có local data đạt mục tiêu loader/first content dưới 500ms với dữ liệu vừa/lớn.
 - [ ] Kiểm tra không còn màn hình placeholder bị nháy sau khi loader biến mất.
 
 ## Giai đoạn 4 - DB/schema
@@ -50,8 +52,8 @@ Ghi chú mới nhất: đã triển khai hướng app shell + local-first + sync
 
 ## Ưu tiên tiếp theo
 
-1. Build production và đo lại F5 bằng Chrome sau triển khai local-first.
-2. Ghi lại request count/dung lượng local storage.
+1. Tách shell render khỏi render dữ liệu nghiệp vụ để first content không chờ đọc/hydrate toàn bộ state.
+2. Ghi lại dung lượng local storage.
 3. Manual test snapshot gói thầu theo phiên bản kế hoạch.
 4. Manual test login/check-session/logout, throttle và cấu hình security production.
 5. Manual test tạo/sửa/xóa, export/import và sync end-to-end.
