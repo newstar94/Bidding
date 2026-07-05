@@ -1,4 +1,5 @@
 import { parseBidDateTime } from './dateParseUtils.js';
+import { bindCurrencyElement } from '../main_controller/domUtils.js';
 
 export function addPhanLoRow(data = {}) {
     const tbody = document.getElementById('phanlo-tbody');
@@ -32,25 +33,12 @@ export function addPhanLoRow(data = {}) {
     `;
 
     const priceInput = tr.querySelector('.pl-price-input');
-    priceInput.addEventListener('input', (e) => {
-        const parsed = this.model.parseVND(e.target.value);
-        e.target.value = this.model.formatVND(parsed);
-    });
+    bindCurrencyElement(priceInput, value => this.model.formatVND(this.model.parseVND(value)));
 
     const baodamInput = tr.querySelector('.pl-baodam-input');
     if (baodamInput) {
-        baodamInput.addEventListener('input', (e) => {
-            const cursorPosition = e.target.selectionStart;
-            const originalLength = e.target.value.length;
-
-            const parsed = this.model.parseVND(e.target.value);
-            e.target.value = this.model.formatVND(parsed);
-
-            const newLength = e.target.value.length;
-            e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
-
-            this.recalculateTotalLotSecurities();
-        });
+        bindCurrencyElement(baodamInput, value => this.model.formatVND(this.model.parseVND(value)));
+        baodamInput.addEventListener('input', () => this.recalculateTotalLotSecurities());
     }
 
     tr.querySelector('.remove-pl-row-btn').addEventListener('click', () => {
@@ -126,10 +114,7 @@ export function addTuyChonMuaThemRow(data = {}) {
     `;
 
     const priceInput = tr.querySelector('.tc-price-input');
-    priceInput.addEventListener('input', (e) => {
-        const parsed = this.model.parseVND(e.target.value);
-        e.target.value = this.model.formatVND(parsed);
-    });
+    bindCurrencyElement(priceInput, value => this.model.formatVND(this.model.parseVND(value)));
 
     tr.querySelector('.remove-tc-row-btn').addEventListener('click', () => {
         tr.remove();

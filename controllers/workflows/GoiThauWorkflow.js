@@ -1,4 +1,7 @@
-import { parseBidDateTime } from './dateParseUtils.js';
+import { validateExtensionRows } from './packageValidation.js';
+import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from '../main_controller/modalReturnState.js';
+import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from './packageDeleteHelpers.js';
+import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from './packageFormState.js';
 
 export function openPackageWizardStep() {
     if (!this.packageWizard.active) return;
@@ -20,22 +23,16 @@ export function openPackageWizardStep() {
 
 
 export async function deleteGoiThau(id) {
-    const targetPackage = this.model.state.goithau.find(g => g.id === id);
-    if (!targetPackage) return;
-    const rootId = targetPackage.rootId || targetPackage.id;
-
-    // Get all related packages sharing the same rootId across ALL plan versions
-    const allRelatedGts = this.model.state.goithau.filter(gt => (gt.rootId || gt.id) === rootId);
-    const uniqueVersionsCount = new Set(allRelatedGts.map(g => g.phienBan || '00')).size;
-    const allRelatedIds = allRelatedGts.map(gt => gt.id);
+    const deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
+    if (!deleteContext) return;
 
     let deleteConfirmed = false;
     let deleteChoice = null;
 
-    if (uniqueVersionsCount >= 2) {
+    if (deleteContext.versionCount >= 2) {
         deleteChoice = await this.view.customVersionDeleteChoice(
             'Xác nhận xóa',
-            `Gói thầu "${targetPackage.tenGoiThau}" có ${uniqueVersionsCount} phiên bản. Vui lòng chọn cách thức xóa:`,
+            `Gói thầu "${deleteContext.targetPackage.tenGoiThau}" có ${deleteContext.versionCount} phiên bản. Vui lòng chọn cách thức xóa:`,
             'Xóa phiên bản gần nhất',
             'Xóa toàn bộ'
         );
@@ -51,40 +48,13 @@ export async function deleteGoiThau(id) {
     }
 
     if (deleteChoice === 1) {
-        const maxVer = Math.max(...allRelatedGts.map(g => parseInt(g.phienBan) || 0));
-        const latestGts = allRelatedGts.filter(g => (parseInt(g.phienBan) || 0) === maxVer);
-        const latestIds = latestGts.map(g => g.id);
-
-        this.model.state.goithau = this.model.state.goithau.filter(gt => !latestIds.includes(gt.id));
-        this.model.markDeleted('goithau', latestIds);
-        const latestBidIds = (this.model.state.thongtinmothau || [])
-            .filter(b => latestIds.includes(String(b.goiThauId)))
-            .map(b => b.id);
-        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !latestIds.includes(String(b.goiThauId)));
-        this.model.markDeleted('thongtinmothau', latestBidIds);
-
-        // Update isLatest for remaining versions in each plan version
-        const remainingRelated = allRelatedGts.filter(gt => !latestIds.includes(gt.id));
-        const planIds = [...new Set(allRelatedGts.map(gt => gt.keHoachId))];
-        planIds.forEach(pId => {
-            const planRemaining = remainingRelated.filter(gt => gt.keHoachId === pId);
-            if (planRemaining.length > 0) {
-                const nextMaxVer = Math.max(...planRemaining.map(g => parseInt(g.phienBan) || 0));
-                planRemaining.forEach(gt => {
-                    if ((parseInt(gt.phienBan) || 0) === nextMaxVer) {
-                        gt.isLatest = 1;
-                    } else {
-                        gt.isLatest = 0;
-                    }
-                });
-            }
-        });
+        deleteLatestPackageVersion(this.model, deleteContext);
 
         await this.model.persistData('goithau');
         await this.model.persistData('thongtinmothau');
 
         // Recalculate plan totals for all affected plan versions
-        planIds.forEach(pId => {
+        deleteContext.planIds.forEach(pId => {
             if (pId) {
                 this.recalculatePlanTotal(pId);
             }
@@ -107,19 +77,12 @@ export async function deleteGoiThau(id) {
 
         await this.view.customAlert('Thành công', 'Đã xóa phiên bản gói thầu gần nhất!', 'check-circle');
     } else if (deleteChoice === 2 || deleteConfirmed) {
-        this.model.state.goithau = this.model.state.goithau.filter(gt => (gt.rootId || gt.id) !== rootId);
-        this.model.markDeleted('goithau', allRelatedIds);
-        const relatedBidIds = (this.model.state.thongtinmothau || [])
-            .filter(b => allRelatedIds.includes(String(b.goiThauId)))
-            .map(b => b.id);
-        this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter(b => !allRelatedIds.includes(String(b.goiThauId)));
-        this.model.markDeleted('thongtinmothau', relatedBidIds);
+        deleteAllPackageVersions(this.model, deleteContext);
 
         await this.model.persistData('goithau');
         await this.model.persistData('thongtinmothau');
 
-        const planIds = [...new Set(allRelatedGts.map(gt => gt.keHoachId))];
-        planIds.forEach(pId => {
+        deleteContext.planIds.forEach(pId => {
             if (pId) {
                 this.recalculatePlanTotal(pId);
             }
@@ -152,50 +115,8 @@ export function editGoiThau(id, isReadOnly = false) {
     const form = document.getElementById('form-goithau');
     const gt = id ? this.model.state.goithau.find(g => String(g.id) === String(id)) : null;
 
-    form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
-
-    // Reset editable state first
-    form.querySelectorAll('input, select, textarea').forEach(el => {
-        el.disabled = false;
-        const wrapper = el.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${el.id}"]`);
-        if (wrapper) {
-            const searchInput = wrapper.querySelector('.custom-select-search');
-            if (searchInput) searchInput.disabled = false;
-        }
-    });
-    form.querySelectorAll('button').forEach(btn => {
-        btn.disabled = false;
-        btn.style.display = '';
-    });
-    const submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) submitBtn.style.display = '';
-
-    const setSubTableActionVisibility = (visible) => {
-        const display = visible ? '' : 'none';
-        [
-            'btn-them-giahan',
-            'btn-them-yeucaulamro',
-            'btn-them-traloilamro'
-        ].forEach(btnId => {
-            const btn = document.getElementById(btnId);
-            if (btn) btn.style.display = display;
-        });
-
-        document.querySelectorAll(
-            '#giahan-table .col-action, #yeucaulamro-table .col-action, #traloilamro-table .col-action'
-        ).forEach(cell => {
-            cell.style.display = display;
-        });
-
-        document.querySelectorAll(
-            '#gt-giahan-tbody .remove-gh-row-btn, #gt-yeucaulamro-tbody .remove-yc-row-btn, #gt-traloilamro-tbody .remove-tl-row-btn'
-        ).forEach(btn => {
-            const cell = btn.closest('td');
-            if (cell) cell.style.display = display;
-            btn.style.display = display;
-        });
-    };
-    setSubTableActionVisibility(true);
+    resetPackageFormEditableState(form);
+    setPackageSubTableActionsVisible(true);
 
     const khSelect = document.getElementById('gt-kehoachid');
     khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' +
@@ -371,10 +292,7 @@ export function editGoiThau(id, isReadOnly = false) {
     setupCheckboxListeners('to-thamdinh-tbody', 'tothamdinh-select', 'tothamdinh-chucvu', 'tothamdinh-congviec', 'to-chuyengia-tbody');
 
     if (id) {
-        if (!window._preModalTab) {
-            window._preModalTab = this.model.state.activetab || 'goithau';
-            window._preModalAction = this.model.state.activeaction || null;
-        }
+        captureModalReturnState(this.model.state.activetab || 'goithau', this.model.state.activeaction || null);
         this.switchTab('goithau', 'chinhsua', true);
         document.getElementById('modal-goithau-title').textContent = isReadOnly ? 'Chi tiết Gói thầu' : 'Cập nhật Gói thầu';
         // Using the gt variable declared at the top of the function
@@ -517,10 +435,7 @@ export function editGoiThau(id, isReadOnly = false) {
         }
         document.getElementById('gt-trongsokythuat').value = (gt.trongSoKyThuat !== undefined && gt.trongSoKyThuat !== null) ? gt.trongSoKyThuat : '';
     } else {
-        if (!window._preModalTab) {
-            window._preModalTab = this.model.state.activetab || 'goithau';
-            window._preModalAction = this.model.state.activeaction || null;
-        }
+        captureModalReturnState(this.model.state.activetab || 'goithau', this.model.state.activeaction || null);
         this.switchTab('goithau', 'taomoi', true);
         document.getElementById('gt-ngayquyetdinh').value = '';
         document.getElementById('gt-thoigiandangtai').value = '';
@@ -750,7 +665,7 @@ export function editGoiThau(id, isReadOnly = false) {
                 btn.style.display = 'none';
             }
         });
-        setSubTableActionVisibility(false);
+        setPackageSubTableActionsVisible(false);
     }
 
     lucide.createIcons();
@@ -771,45 +686,18 @@ export async function handleGoiThauSubmit(e) {
     // Custom validation for extensions
     const mainDongThauStr = formVals.thoiGianDongThau;
 
-    const mainDongThauDate = parseBidDateTime(mainDongThauStr);
-    const ghRows = [];
-    let validationError = null;
-
-    document.querySelectorAll('#gt-giahan-tbody tr').forEach((tr, index) => {
-        if (validationError) return;
+    const extensionInputRows = Array.from(document.querySelectorAll('#gt-giahan-tbody tr')).map((tr) => {
         const timeInput = tr.querySelector('.gh-time-input').value.trim();
         const reasonInput = tr.querySelector('.gh-reason-input').value.trim();
-
-        if (!timeInput || !reasonInput) {
-            validationError = `Vui lòng nhập đầy đủ thông tin gia hạn ở dòng Lần ${index + 1}!`;
-            return;
-        }
-
-        const currentGiaHanDate = parseBidDateTime(timeInput);
-        if (!currentGiaHanDate) {
-            validationError = `Thời gian gia hạn Lần ${index + 1} không hợp lệ!`;
-            return;
-        }
-
-        if (index === 0) {
-            if (mainDongThauDate && currentGiaHanDate <= mainDongThauDate) {
-                validationError = `Thời gian gia hạn Lần 1 (${timeInput}) phải lớn hơn thời gian đóng thầu gốc (${mainDongThauStr})!`;
-            }
-        } else {
-            const prevTimeStr = ghRows[index - 1].timeStr;
-            const prevGiaHanDate = parseBidDateTime(prevTimeStr);
-            if (prevGiaHanDate && currentGiaHanDate <= prevGiaHanDate) {
-                validationError = `Thời gian gia hạn Lần ${index + 1} (${timeInput}) phải lớn hơn thời gian gia hạn Lần ${index} (${prevTimeStr})!`;
-            }
-        }
-
-        ghRows.push({ timeStr: timeInput, reason: reasonInput });
+        return { timeStr: timeInput, reason: reasonInput };
     });
 
-    if (validationError) {
-        await this.view.customAlert('Dữ liệu không hợp lệ', validationError, 'alert-triangle');
+    const extensionValidation = validateExtensionRows(mainDongThauStr, extensionInputRows);
+    if (!extensionValidation.valid) {
+        await this.view.customAlert('Dữ liệu không hợp lệ', extensionValidation.error, 'alert-triangle');
         return;
     }
+    const ghRows = extensionValidation.rows;
 
     const id = formVals.id;
     let finalGtId = id;
@@ -1302,8 +1190,8 @@ export async function handleGoiThauSubmit(e) {
         this.updateBreakdownTotal(breakdownPlanId);
     }
 
-    if (window._preModalTab === 'goithau-detail' && finalGtId) {
-        window._preModalAction = finalGtId;
+    if (hasModalReturnState('goithau-detail') && finalGtId) {
+        updateModalReturnAction(finalGtId);
     }
     this.closeModal('modal-goithau');
     this.view.renderGoiThauTable();

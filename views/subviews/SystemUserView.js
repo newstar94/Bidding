@@ -2,6 +2,8 @@
    BiddingFlow - SystemUserView (Part of View split)
    ========================================================================== */
 
+import { getAppController } from '../../controllers/main_controller/controllerRef.js';
+
 export function updateActiveUserProfileDisplay() {
     const avatar = document.getElementById('header-profile-avatar');
     const h4 = document.getElementById('header-profile-name');
@@ -34,8 +36,9 @@ export function updateActiveUserProfileDisplay() {
             }
         }
 
-        if (window.appController && typeof window.appController.renderWorkspaceSwitcher === 'function') {
-            window.appController.renderWorkspaceSwitcher();
+        const appController = getAppController();
+        if (typeof appController?.renderWorkspaceSwitcher === 'function') {
+            appController.renderWorkspaceSwitcher();
         }
 
         if (user.avatar) {

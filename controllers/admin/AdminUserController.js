@@ -2,6 +2,8 @@
    BiddingFlow - AdminUserController (Part of Controller split)
    ========================================================================== */
 
+import { bindCurrencyElement } from '../main_controller/domUtils.js';
+
 export async function triggerUpgradePrompt() {
     await this.view.customAlert(
         'Hạn mức Đạt giới hạn!',
@@ -533,13 +535,7 @@ export function setupRBACEvents() {
     // Dynamic formatting for Package Edit Price input
     const editPkgPriceInput = document.getElementById('edit-pkg-price');
     if (editPkgPriceInput) {
-        editPkgPriceInput.addEventListener('input', (e) => {
-            const cursorPosition = e.target.selectionStart;
-            const originalLength = e.target.value.length;
-            e.target.value = this.model.formatVND(e.target.value);
-            const newLength = e.target.value.length;
-            e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
-        });
+        bindCurrencyElement(editPkgPriceInput, value => this.model.formatVND(value));
     }
 
     // Handle Edit System Package Form Submit

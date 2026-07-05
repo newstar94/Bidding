@@ -1,3 +1,6 @@
+import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from '../main_controller/modalReturnState.js';
+import { bindCurrencyElement } from '../main_controller/domUtils.js';
+
 export async function deleteKeHoach(id) {
     const targetPlan = this.model.state.kehoach.find(k => k.id === id);
     if (!targetPlan) return;
@@ -154,10 +157,7 @@ export function editKeHoach(id) {
     pheDuyetSelect.onchange = togglePheDuyetFields;
 
     if (id) {
-        if (!window._preModalTab) {
-            window._preModalTab = this.model.state.activetab || 'kehoach';
-            window._preModalAction = this.model.state.activeaction || null;
-        }
+        captureModalReturnState(this.model.state.activetab || 'kehoach', this.model.state.activeaction || null);
         this.switchTab('kehoach', 'chinhsua', true);
         document.getElementById('modal-kehoach-title').textContent = 'Cập nhật Kế hoạch LCNT';
         const kh = this.model.state.kehoach.find(k => String(k.id) === String(id));
@@ -211,10 +211,7 @@ export function editKeHoach(id) {
         document.getElementById('kh-thoigiandang').value = kh.thoiGianDangMa ? this.model.formatForDatetimeLocal(kh.thoiGianDangMa) : '';
 
     } else {
-        if (!window._preModalTab) {
-            window._preModalTab = this.model.state.activetab || 'kehoach';
-            window._preModalAction = this.model.state.activeaction || null;
-        }
+        captureModalReturnState(this.model.state.activetab || 'kehoach', this.model.state.activeaction || null);
         this.switchTab('kehoach', 'taomoi', true);
         document.getElementById('modal-kehoach-title').textContent = 'Thêm Kế hoạch LCNT mới';
         form.reset();
@@ -660,13 +657,8 @@ export function addBreakdownRow(type, data = null) {
 
     const priceInput = row.querySelector('.breakdown-value');
     if (priceInput) {
-        priceInput.addEventListener('input', (e) => {
-            const cursorPosition = e.target.selectionStart;
-            const originalLength = e.target.value.length;
-            e.target.value = this.model.formatVND(e.target.value);
-            const newLength = e.target.value.length;
-            e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
-
+        bindCurrencyElement(priceInput, value => this.model.formatVND(value));
+        priceInput.addEventListener('input', () => {
             if (planId) {
                 this.updateBreakdownTotal(planId);
             }
@@ -929,8 +921,8 @@ export async function savePlanBreakdown() {
     this.tempPlanData = null;
     this.tempPlanAction = null;
 
-    if (window._preModalTab === 'kehoach-detail' && finalPlanId) {
-        window._preModalAction = finalPlanId;
+    if (hasModalReturnState('kehoach-detail') && finalPlanId) {
+        updateModalReturnAction(finalPlanId);
     }
     this.closeModal('modal-plan-breakdown');
     this.view.renderKeHoachTable();

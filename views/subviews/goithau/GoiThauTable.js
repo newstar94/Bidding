@@ -1,6 +1,7 @@
 import { initCustomSelect } from '../view_helpers.js';
 import { parseYearMonth, sortRecords } from '../tableDataUtils.js';
 import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
+import { setJvData } from './jvDataStore.js';
 
 export async function renderGoiThauTable() {
     const tableBody = document.getElementById('goithau-table').querySelector('tbody');
@@ -118,8 +119,6 @@ export async function renderGoiThauTable() {
         const pag = document.getElementById('goithau-pagination');
         if (pag) pag.innerHTML = '';
     } else {
-        window._jvDataMap = window._jvDataMap || {};
-
         const esc = window.escapeHTML || ((value) => String(value ?? ''));
         renderVirtualTable(tableBody, slicedData, gt => {
             const root = gt.rootId || gt.id;
@@ -161,11 +160,11 @@ export async function renderGoiThauTable() {
                 const leadName = leadMember?.tenNhaThau || ntDisplayName;
                 const leadCode = leadMember?.maSoThue || nt?.maSoThue || nt?.maNhaThau || matchBid.maDinhDanh || matchBid.maNhaThau || '';
                 const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
-                window._jvDataMap[displayedGt.id] = {
+                setJvData(displayedGt.id, {
                     members: subMembers,
                     leadName,
                     leadCode
-                };
+                });
                 ntLink = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(ntDisplayName)}</a>`;
             } else if (nt) {
                 ntLink = `<a href="#" data-bf-action="show-contractor" data-id="${esc(nt.id)}" class="text-blue fw-bold link-hover">${esc(ntDisplayName)}</a>`;
@@ -222,7 +221,7 @@ export async function renderGoiThauTable() {
                             const leadName = leadMember?.tenNhaThau || name;
                             const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || '';
                             const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
-                            window._jvDataMap[displayedGt.id] = { members: subMembers, leadName, leadCode };
+                            setJvData(displayedGt.id, { members: subMembers, leadName, leadCode });
                             link = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(name)}</a>`;
                         } else if (singleWinnerNt) {
                             link = `<a href="#" data-bf-action="show-contractor" data-id="${esc(singleWinnerNt.id)}" class="text-blue fw-bold link-hover">${esc(name)}</a>`;

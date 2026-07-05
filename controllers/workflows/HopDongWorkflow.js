@@ -1,3 +1,5 @@
+import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from '../main_controller/modalReturnState.js';
+
 export async function deleteHopDong(id) {
     const targetHd = this.model.state.hopdong.find(h => h.id === id);
     if (!targetHd) return;
@@ -331,10 +333,7 @@ export function editHopDong(id) {
         }
 
         if (id) {
-            if (!window._preModalTab) {
-                window._preModalTab = this.model.state.activetab || 'hopdong';
-                window._preModalAction = this.model.state.activeaction || null;
-            }
+            captureModalReturnState(this.model.state.activetab || 'hopdong', this.model.state.activeaction || null);
             this.switchTab('hopdong', 'chinhsua', true);
             document.getElementById('modal-hopdong-title').textContent = 'Cập nhật Hợp đồng';
             const hd = this.model.state.hopdong.find(h => h.id === id);
@@ -400,10 +399,7 @@ export function editHopDong(id) {
                 renderPackagesForPlan('', []);
             }
         } else {
-            if (!window._preModalTab) {
-                window._preModalTab = this.model.state.activetab || 'hopdong';
-                window._preModalAction = this.model.state.activeaction || null;
-            }
+            captureModalReturnState(this.model.state.activetab || 'hopdong', this.model.state.activeaction || null);
             this.switchTab('hopdong', 'taomoi', true);
             document.getElementById('modal-hopdong-title').textContent = 'Thêm Hợp đồng mới';
             form.reset();
@@ -587,8 +583,8 @@ export async function handleHopDongSubmit(e) {
     }
 
     this.model.persistData('hopdong');
-    if (window._preModalTab === 'hopdong-detail' && finalHdId) {
-        window._preModalAction = finalHdId;
+    if (hasModalReturnState('hopdong-detail') && finalHdId) {
+        updateModalReturnAction(finalHdId);
     }
     this.closeModal('modal-hopdong');
     this.view.renderHopDongTable();

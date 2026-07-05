@@ -1,6 +1,6 @@
 # Backlog còn lại - BiddingFlow
 
-File này chỉ giữ các việc chưa thực hiện hoặc chưa được manual test đầy đủ.
+File này chỉ giữ các việc chưa thực hiện hoặc chưa được manual test đầy đủ. Các mục đã refactor xong như helper format tiền, helper feedback field, inline Excel controls của form gói thầu, modal return state, package validation, JV data store và file upload helper đã được loại khỏi backlog.
 
 ## Giai đoạn 0 - Baseline và kiểm chứng hiệu năng
 
@@ -24,7 +24,7 @@ File này chỉ giữ các việc chưa thực hiện hoặc chưa được manu
 
 - [ ] Manual test WebSocket + `sync_version`: server thay đổi thì client nhận event và kéo delta bằng `after_version`.
 
-## Giai đoạn 4 - DB/schema còn lại
+## Giai đoạn 4 - DB/schema
 
 - [ ] Manual test DB schema sync: fresh install, thêm cột mới, bỏ cột cũ, tạo admin/gói dịch vụ/tổ chức mặc định, index/trigger sync.
 
@@ -32,7 +32,7 @@ File này chỉ giữ các việc chưa thực hiện hoặc chưa được manu
 
 - [ ] Manual test login/logout/change password trả message tiếng Việt đúng trên browser.
 
-## Giai đoạn 6 - Bảo mật còn lại
+## Giai đoạn 6 - Bảo mật
 
 - [ ] Manual test POST/PUT/DELETE thiếu hoặc sai CSRF token bị từ chối.
 - [ ] Manual test login/check-session/logout trên browser đã có cookie `username` cũ.
@@ -57,26 +57,12 @@ File này chỉ giữ các việc chưa thực hiện hoặc chưa được manu
 
 ## Giai đoạn 9 - Dọn dẹp code và tách module
 
-- [ ] Tách workflow lớn thành các module còn lại:
-  - Render.
-  - Form state.
-  - Validation.
-  - Import/export còn lại.
-  - API/sync adapter.
-- [ ] Loại bỏ helper trùng lặp còn lại giữa các workflow.
-- [ ] Giảm side effect còn lại trong `init()` và các global handler.
-- [ ] Refactor các file ưu tiên:
-  - `controllers/workflows/BidProcessWorkflow.js`.
-  - `controllers/workflows/BidEvaluationWorkflow.js`.
-  - `controllers/workflows/ExcelIntegration.js`.
-  - `controllers/workflows/GoiThauWorkflow.js`.
-  - `controllers/main_controller/BiddingControllerForms.js`.
-- [ ] Kiểm tra workflow chính tạo/sửa/xóa/export vẫn hoạt động.
+- [ ] Manual test workflow chính: tạo/sửa/xóa gói thầu, mở thầu, đánh giá, import/export Excel, phát hành HSMT.
 
 ## Ưu tiên tiếp theo
 
 1. Manual test F5/local-first và snapshot gói thầu theo phiên bản kế hoạch.
 2. Manual test CSRF, login/check-session/logout và WebSocket + `sync_version`.
-3. Chuẩn hóa owner model và enum trạng thái.
-4. Kiểm tra mapper camelCase/snake_case với tạo/sửa/xóa, export/import và sync.
-5. Tối ưu loader/local-first và kiểm chứng render các bảng lớn.
+3. Kiểm tra mapper camelCase/snake_case với tạo/sửa/xóa, export/import và sync.
+4. Tối ưu loader/local-first và kiểm chứng render các bảng lớn.
+5. Manual test workflow chính còn lại trong Giai đoạn 9.

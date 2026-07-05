@@ -2,6 +2,12 @@
    BiddingFlow - BidEvaluationController (Part of Controller split)
    ========================================================================== */
 
+import { setJvData } from '../../views/subviews/goithau/jvDataStore.js';
+import { bindCurrencyElement } from '../main_controller/domUtils.js';
+import { setVisible } from '../main_controller/formStateUtils.js';
+import { validateRequiredEvaluationReportFields } from './bidEvaluationValidation.js';
+import { addEvaluationLetterRow, renderEvaluationSummary } from './bidEvaluationRender.js';
+
 export function renderDanhGiaHsdtPanel() {
     const select = this.view.getActiveElement('danhgiahsdt-goithau-select');
     if (!select) return;
@@ -29,29 +35,7 @@ export function renderDanhGiaHsdtPanel() {
     const tbody = this.view.getActiveElement('danhgiahsdt-table-tbody');
 
     const addLetterRow = (containerId, letter = { soCv: '', ngayCv: '' }, readOnly = false) => {
-        const container = this.view.getActiveElement(containerId);
-        if (!container) return;
-        const div = document.createElement('div');
-        div.className = 'letter-row';
-        div.style.display = 'grid';
-        div.style.gridTemplateColumns = '1fr 1fr auto';
-        div.style.gap = '6px';
-        div.style.alignItems = 'center';
-        div.style.marginBottom = '6px';
-
-        const ngayFormattedDisplay = letter.ngayCv ? this.model.formatDate(letter.ngayCv) : '';
-        const ngayFormattedInput = letter.ngayCv ? this.model.formatForDateInput(letter.ngayCv) : '';
-
-        div.innerHTML = readOnly ? `
-            <div style="font-size: 0.8rem; font-weight: 600; padding: 6px; background: rgba(0,0,0,0.02); border-radius: 4px;">${letter.soCv || '--'}</div>
-            <div style="font-size: 0.8rem; padding: 6px; background: rgba(0,0,0,0.02); border-radius: 4px;">${ngayFormattedDisplay || '--'}</div>
-            <div></div>
-        ` : `
-            <input type="text" class="form-control letter-so-cv" placeholder="Số công văn" value="${letter.soCv || ''}" style="padding: 4px 8px; font-size: 0.8rem;" required>
-            <input type="date" class="form-control letter-ngay-cv" value="${ngayFormattedInput}" style="padding: 4px 8px; font-size: 0.8rem;" required>
-            <button type="button" class="btn-delete-row" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;" data-bf-action="remove-closest" data-selector=".letter-row">&times;</button>
-        `;
-        container.appendChild(div);
+        addEvaluationLetterRow({ view: this.view, model: this.model, containerId, letter, readOnly });
     };
 
     const handlePackageSelection = () => {
@@ -105,31 +89,16 @@ export function renderDanhGiaHsdtPanel() {
         const isReadOnly = isTabLocked || (isCompleted && !isEditingThisStep);
         const isEditable = !isReadOnly;
 
-        // 2. Render Summary Card
-        summaryContainer.style.display = 'block';
-        summaryContainer.innerHTML = `
-            <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem; margin-bottom: 12px;">
-                <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
-                <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
-                <div>• <strong>Lĩnh vực:</strong> ${gt.linhVuc || 'Hàng hóa'}</div>
-                <div>• <strong>Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || 'Một giai đoạn một túi hồ sơ'}</div>
-                <div>• <strong>Phân lô:</strong> ${gt.phanLo === 'Có' ? 'Có chia phần lô' : 'Không chia phần lô'}</div>
-                <div>• <strong>Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
-                <div>• <strong>Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || '--'}</div>
-                ${gt.phuongPhapDanhGia ? `<div>• <strong>Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá' && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ''}</div>` : ''}
-                <div>• <strong>Loại hợp đồng:</strong> ${gt.loaiHopDong || '--'}</div>
-                <div>• <strong>Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || '--'}</div>
-                <div>• <strong>Nguồn vốn:</strong> ${gt.nguonVon || '--'}</div>
-                <div>• <strong>Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : '--'}</div>
-                <div>• <strong>${is1G2T ? 'Thời gian mở E-HSĐXKT' : 'Thời gian mở thầu'}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : '--'}</div>
-                ${is1G2T ? `<div>• <strong>Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : 'Chưa mở'}</div>` : ''}
-            </div>
-            ${isReadOnly ? `<div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:6px; color:#dc2626; font-weight:600; font-size:0.82rem; display:flex; align-items:center; gap:6px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                ${is1G2T ? (this.currentDanhGiaTab === 'technical' ? 'Báo cáo đánh giá kỹ thuật đã được khóa' : 'Báo cáo đánh giá tài chính đã được khóa') : 'Báo cáo đánh giá E-HSDT đã được khóa'}
-            </div>` : ''}
-        `;
+        renderEvaluationSummary({
+            container: summaryContainer,
+            gt,
+            tenCdt,
+            tenKhStr,
+            model: this.model,
+            is1G2T,
+            isReadOnly,
+            currentTab: this.currentDanhGiaTab
+        });
 
         emptyState.style.display = 'none';
         evaluationContainer.style.display = 'block';
@@ -427,9 +396,9 @@ export function renderDanhGiaHsdtPanel() {
         if (saveBtn) {
             if (isReadOnly) {
                 if (isTabLocked) {
-                    saveBtn.style.display = 'none';
+                    setVisible(saveBtn, false);
                 } else {
-                    saveBtn.style.display = '';
+                    setVisible(saveBtn, true, '');
                     saveBtn.innerHTML = '<i data-lucide="edit"></i> Chỉnh sửa';
                     saveBtn.className = 'btn btn-primary';
                     saveBtn.onclick = () => {
@@ -439,29 +408,29 @@ export function renderDanhGiaHsdtPanel() {
                     };
                 }
             } else {
-                saveBtn.style.display = '';
+                setVisible(saveBtn, true, '');
                 saveBtn.innerHTML = '<i data-lucide="save"></i> Lưu thông tin đánh giá';
                 saveBtn.className = 'btn btn-primary';
                 saveBtn.onclick = () => this.saveDanhGiaHsdt();
             }
         }
         if (addCvLamroBtn) {
-            addCvLamroBtn.style.display = isReadOnly ? 'none' : 'block';
+            setVisible(addCvLamroBtn, !isReadOnly, 'block');
             addCvLamroBtn.onclick = () => addLetterRow('list-cv-lamro', { soCv: '', ngayCv: '' }, false);
         }
         if (addCvTraloiBtn) {
-            addCvTraloiBtn.style.display = isReadOnly ? 'none' : 'block';
+            setVisible(addCvTraloiBtn, !isReadOnly, 'block');
             addCvTraloiBtn.onclick = () => addLetterRow('list-cv-traloi', { soCv: '', ngayCv: '' }, false);
         }
         if (addCvGuicdtBtn) {
-            addCvGuicdtBtn.style.display = isReadOnly ? 'none' : 'block';
+            setVisible(addCvGuicdtBtn, !isReadOnly, 'block');
             addCvGuicdtBtn.onclick = () => addLetterRow('list-cv-guicdt', { soCv: '', ngayCv: '' }, false);
         }
 
         const importExcelBtn = this.view.getActiveElement('btn-danhgiahsdt-import-excel');
-        if (importExcelBtn) importExcelBtn.style.display = isReadOnly ? 'none' : 'inline-flex';
+        setVisible(importExcelBtn, !isReadOnly, 'inline-flex');
         const downloadExcelBtn = this.view.getActiveElement('btn-danhgiahsdt-download-excel');
-        if (downloadExcelBtn) downloadExcelBtn.style.display = isReadOnly ? 'none' : 'inline-flex';
+        setVisible(downloadExcelBtn, !isReadOnly, 'inline-flex');
 
         // Render dynamic CV fields if elements exist
         const listCvLamro = this.view.getActiveElement('list-cv-lamro');
@@ -925,12 +894,11 @@ export function renderDanhGiaHsdtPanel() {
                 let contractorDisplayHtml = '';
                 if (isJVBid) {
                     const jvKey = `${gtId}_eval_bidder_${bid.id}`;
-                    window._jvDataMap = window._jvDataMap || {};
-                    window._jvDataMap[jvKey] = {
+                    setJvData(jvKey, {
                         members: bid.thanhVienLienDanh || [],
                         leadName: tenNhaThauHienThi,
                         leadCode: maNhaThauHienThi
-                    };
+                    });
                     contractorDisplayHtml = `<a href="#" class="mt-jv-view-link text-success fw-bold link-hover" data-jv-key="${jvKey}" title="Xem thành viên liên danh">👥 ${tenNhaThauHienThi}</a>`;
                 } else {
                     contractorDisplayHtml = `<span class="fw-bold">${tenNhaThauHienThi}</span>`;
@@ -1152,28 +1120,15 @@ export function renderDanhGiaHsdtPanel() {
                         updateAllRankings();
                     };
 
-                    const setupAutoFormatOnInput = (el) => {
-                        if (!el) return;
-                        el.addEventListener('input', (e) => {
-                            const cursorPosition = e.target.selectionStart;
-                            const originalLength = e.target.value.length;
-                            const formatted = this.model.formatVND(e.target.value);
-                            e.target.value = formatted;
-                            const newLength = formatted.length;
-                            const newPosition = cursorPosition + (newLength - originalLength);
-                            e.target.setSelectionRange(newPosition, newPosition);
-                        });
-                    };
-
                     if (inpGiaDuThau) {
-                        setupAutoFormatOnInput(inpGiaDuThau);
+                        bindCurrencyElement(inpGiaDuThau, value => this.model.formatVND(value));
                         inpGiaDuThau.addEventListener('input', reCalc);
                     }
                     if (inpTyLeGiam) {
                         inpTyLeGiam.addEventListener('input', reCalc);
                     }
                     if (inpGiaTriDb) {
-                        setupAutoFormatOnInput(inpGiaTriDb);
+                        bindCurrencyElement(inpGiaTriDb, value => this.model.formatVND(value));
                     }
                 }
 
@@ -1375,39 +1330,14 @@ export async function saveDanhGiaHsdt() {
     const ngayMoiDoiChieu = ngayMoiDoiChieuRaw ? this.model.convertDMYToYMD(ngayMoiDoiChieuRaw) : '';
     const ngayDoiChieu = ngayDoiChieuRaw ? this.model.convertDMYToYMD(ngayDoiChieuRaw) : '';
 
-    let hasError = false;
-    const errorInputs = [];
-    if (!soBaoCao) {
-        hasError = true;
-        if (inpSo) {
-            errorInputs.push(inpSo);
-            inpSo.closest('.form-group')?.classList.add('invalid');
-            const clearInvalid = () => {
-                inpSo.closest('.form-group')?.classList.remove('invalid');
-                inpSo.removeEventListener('input', clearInvalid);
-            };
-            inpSo.addEventListener('input', clearInvalid);
-        }
-    }
-    if (!ngayBaoCaoRaw) {
-        hasError = true;
-        if (inpNgay) {
-            errorInputs.push(inpNgay);
-            inpNgay.closest('.form-group')?.classList.add('invalid');
-            const clearInvalid = () => {
-                inpNgay.closest('.form-group')?.classList.remove('invalid');
-                inpNgay.removeEventListener('change', clearInvalid);
-            };
-            inpNgay.addEventListener('change', clearInvalid);
-        }
-    }
-
-    if (hasError) {
-        if (errorInputs.length > 0) {
-            const first = errorInputs[0];
-            first.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-            setTimeout(() => first.focus({ preventScroll: true }), 300);
-        }
+    const reportValidation = validateRequiredEvaluationReportFields({
+        reportNumberInput: inpSo,
+        reportDateInput: inpNgay
+    });
+    if (!reportValidation.valid) {
+        const first = reportValidation.errorInputs[0];
+        first.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        setTimeout(() => first.focus({ preventScroll: true }), 300);
         return;
     }
 

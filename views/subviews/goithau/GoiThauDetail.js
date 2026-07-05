@@ -1,4 +1,8 @@
 import { authFetchDownload, initCustomSelect } from '../view_helpers.js';
+import { bindCurrencyElement } from '../../../controllers/main_controller/domUtils.js';
+import { getAppController } from '../../../controllers/main_controller/controllerRef.js';
+import { setFieldFeedback } from '../../../controllers/main_controller/formStateUtils.js';
+import { setJvData } from './jvDataStore.js';
 
 export function checkBidQualified(b) {
     if (!b) return false;
@@ -14,6 +18,8 @@ export function checkBidQualified(b) {
 
 
 export function showPackageDetails(id, isSwitchingVersion = false) {
+    const appController = getAppController();
+
     if (!window._vietnameseHolidays) {
         fetch('/api/holidays')
             .then(r => r.json())
@@ -793,9 +799,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 gt.updatedAt = this.model.getCurrentDateTimeString();                            }
 
                             await this.model.persistData('goithau');
-                            if (window.appController && typeof window.appController.autoSync === 'function') {
+                            if (appController && typeof appController.autoSync === 'function') {
                                 try {
-                                    await window.appController.autoSync();
+                                    await appController.autoSync();
                                 } catch (e) {
                                     console.error("Sync failed:", e);
                                 }
@@ -1004,10 +1010,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 `;
 
                 // Load existing sub-table rows
-                if (window.appController) {
-                    window.appController._loadGiaHanRows(gt.giaHanList || []);
-                    window.appController._loadYeuCauLamRoRows(gt.yeuCauLamRoList || []);
-                    window.appController._loadTraLoiLamRoRows(gt.traLoiLamRoList || []);
+                if (appController) {
+                    appController._loadGiaHanRows(gt.giaHanList || []);
+                    appController._loadYeuCauLamRoRows(gt.yeuCauLamRoList || []);
+                    appController._loadTraLoiLamRoRows(gt.traLoiLamRoList || []);
                 }
 
                 // If in read-only mode, disable inputs and hide last column (delete action column)
@@ -1025,15 +1031,15 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 // Bind events to buttons
                 const btnThemGiaHan = document.getElementById('btn-them-giahan');
                 if (btnThemGiaHan) {
-                    btnThemGiaHan.onclick = () => window.appController.addGiaHanRow();
+                    btnThemGiaHan.onclick = () => appController?.addGiaHanRow();
                 }
                 const btnThemYeuCau = document.getElementById('btn-them-yeucaulamro');
                 if (btnThemYeuCau) {
-                    btnThemYeuCau.onclick = () => window.appController.addYeuCauLamRoRow();
+                    btnThemYeuCau.onclick = () => appController?.addYeuCauLamRoRow();
                 }
                 const btnThemTraLoi = document.getElementById('btn-them-traloilamro');
                 if (btnThemTraLoi) {
-                    btnThemTraLoi.onclick = () => window.appController.addTraLoiLamRoRow();
+                    btnThemTraLoi.onclick = () => appController?.addTraLoiLamRoRow();
                 }
 
                 // Bind Save/Edit button event
@@ -1047,9 +1053,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             return;
                         }
 
-                        const giaHanList = window.appController._collectGiaHanRows();
-                        const yeuCauLamRoList = window.appController._collectYeuCauLamRoRows();
-                        const traLoiLamRoList = window.appController._collectTraLoiLamRoRows();
+                        const giaHanList = appController?._collectGiaHanRows() || [];
+                        const yeuCauLamRoList = appController?._collectYeuCauLamRoRows() || [];
+                        const traLoiLamRoList = appController?._collectTraLoiLamRoRows() || [];
 
                         gt.giaHanList = giaHanList;
                         gt.yeuCauLamRoList = yeuCauLamRoList;
@@ -1066,9 +1072,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         }
 
                         await this.model.persistData('goithau');
-                        if (window.appController && typeof window.appController.autoSync === 'function') {
+                        if (appController && typeof appController.autoSync === 'function') {
                             try {
-                                await window.appController.autoSync();
+                                await appController.autoSync();
                             } catch (e) {
                                 console.error("Sync failed:", e);
                             }
@@ -1106,7 +1112,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     </div>
                     <div id="mothau-empty-state" style="display:none;"></div>
                 `;
-                window.appController.renderMoThauPanel();
+                appController?.renderMoThauPanel();
             }
         }
             break;
@@ -1176,8 +1182,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 </div>
                 <div id="danhgiahsdt-empty-state" style="display:none;"></div>
             `;
-            window.appController.currentDanhGiaTab = 'technical';
-            window.appController.renderDanhGiaHsdtPanel();
+            if (appController) {
+                appController.currentDanhGiaTab = 'technical';
+                appController.renderDanhGiaHsdtPanel();
+            }
             break;
 
         case 'eval_fin':
@@ -1229,8 +1237,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 </div>
                 <div id="danhgiahsdt-empty-state" style="display:none;"></div>
             `;
-            window.appController.currentDanhGiaTab = 'financial';
-            window.appController.renderDanhGiaHsdtPanel();
+            if (appController) {
+                appController.currentDanhGiaTab = 'financial';
+                appController.renderDanhGiaHsdtPanel();
+            }
             break;
 
         case 'qualified': {
@@ -1418,41 +1428,33 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             let hasErr = false;
                             if (!valSo) {
                                 hasErr = true;
-                                inpSo.closest('.form-group').querySelector('.error-text').style.display = 'block';
-                                inpSo.closest('.form-group').classList.add('invalid');
+                                setFieldFeedback(inpSo, { state: 'invalid', message: inpSo.closest('.form-group')?.querySelector('.error-text')?.textContent || '' });
                             } else {
-                                inpSo.closest('.form-group').querySelector('.error-text').style.display = 'none';
-                                inpSo.closest('.form-group').classList.remove('invalid');
+                                setFieldFeedback(inpSo);
                             }
 
                             if (!valNgayRaw) {
                                 hasErr = true;
-                                inpNgay.closest('.form-group').querySelector('.error-text').style.display = 'block';
-                                inpNgay.closest('.form-group').classList.add('invalid');
+                                setFieldFeedback(inpNgay, { state: 'invalid', message: inpNgay.closest('.form-group')?.querySelector('.error-text')?.textContent || '' });
                             } else {
-                                inpNgay.closest('.form-group').querySelector('.error-text').style.display = 'none';
-                                inpNgay.closest('.form-group').classList.remove('invalid');
+                                setFieldFeedback(inpNgay);
                             }
 
                             if (inpSoBctd) {
                                 if (!valSoBctd) {
                                     hasErr = true;
-                                    inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
-                                    inpSoBctd.closest('.form-group').classList.add('invalid');
+                                    setFieldFeedback(inpSoBctd, { state: 'invalid', message: inpSoBctd.closest('.form-group')?.querySelector('.error-text')?.textContent || '' });
                                 } else {
-                                    inpSoBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
-                                    inpSoBctd.closest('.form-group').classList.remove('invalid');
+                                    setFieldFeedback(inpSoBctd);
                                 }
                             }
 
                             if (inpNgayBctd) {
                                 if (!valNgayBctdRaw) {
                                     hasErr = true;
-                                    inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'block';
-                                    inpNgayBctd.closest('.form-group').classList.add('invalid');
+                                    setFieldFeedback(inpNgayBctd, { state: 'invalid', message: inpNgayBctd.closest('.form-group')?.querySelector('.error-text')?.textContent || '' });
                                 } else {
-                                    inpNgayBctd.closest('.form-group').querySelector('.error-text').style.display = 'none';
-                                    inpNgayBctd.closest('.form-group').classList.remove('invalid');
+                                    setFieldFeedback(inpNgayBctd);
                                 }
                             }
 
@@ -1466,7 +1468,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                             gt.danhGiaHsdtMetadata = JSON.stringify(metadata);
                             this.model.persistData('goithau');
-                            window.appController.autoSync();
+                            appController?.autoSync();
 
                             if (this._editingState) {
                                 this._editingState[this._currentWorkflowTab] = false;
@@ -1661,20 +1663,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             inpGiaSauGiam.value = this.model.formatVND(final) || '';
                         };
 
-                        const setupAutoFormatOnInput = (el) => {
-                            if (!el) return;
-                            el.addEventListener('input', (e) => {
-                                const cursorPosition = e.target.selectionStart;
-                                const originalLength = e.target.value.length;
-                                const formatted = this.model.formatVND(e.target.value);
-                                e.target.value = formatted;
-                                const newLength = formatted.length;
-                                const newPosition = cursorPosition + (newLength - originalLength);
-                                e.target.setSelectionRange(newPosition, newPosition);
-                            });
-                        };
-
-                        setupAutoFormatOnInput(inpGia);
+                        bindCurrencyElement(inpGia, value => this.model.formatVND(value));
                         if (inpGia) inpGia.addEventListener('input', reCalc);
                         if (inpTyLe) inpTyLe.addEventListener('input', reCalc);
                     });
@@ -1682,7 +1671,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     const importBtn = document.getElementById('btn-opening-fin-import-excel');
                     if (importBtn) {
                         importBtn.onclick = () => {
-                            window.appController.triggerExcelImport('opening_fin');
+                            appController?.triggerExcelImport('opening_fin');
                         };
                     }
 
@@ -1713,7 +1702,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 gt.thoiGianMoEhsdxtc = this.model.getCurrentDateTimeString();
                             }
                             this.model.persistData('goithau');
-                            window.appController.autoSync();
+                            appController?.autoSync();
                             if (this._editingState) {
                                 this._editingState[this._currentWorkflowTab] = false;
                             }
@@ -1830,12 +1819,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
 
                             const winnerNt = this.model.state.nhathau.find(n => String(n.id) === String(currentWinnerBid.nhaThauId));
-                            window._jvDataMap = window._jvDataMap || {};
-                            window._jvDataMap[gt.id] = {
+                            setJvData(gt.id, {
                                 members: subMembers,
                                 leadName: leadMember?.tenNhaThau || currentWinnerBid.tenNhaThau,
                                 leadCode: leadMember?.maSoThue || winnerNt?.maSoThue || winnerNt?.maNhaThau || currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau || ''
-                            };
+                            });
 
                             winnerDisplayHtml = `
                                 <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -1960,12 +1948,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         const subMembers = allJvMembers.filter(m => m.vaiTro !== 'Đứng đầu liên danh');
 
                         const jvKey = `${gt.id}_result_bidder_${idx}`;
-                        window._jvDataMap = window._jvDataMap || {};
-                        window._jvDataMap[jvKey] = {
+                        setJvData(jvKey, {
                             members: subMembers,
                             leadName,
                             leadCode
-                        };
+                        });
                         contractorHtml = `<a href="#" data-bf-action="show-jv" data-id="${jvKey}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${b.tenNhaThau || '--'}</a>`;
                     } else {
                         contractorHtml = `<span class="fw-bold">${b.tenNhaThau || '--'}</span>`;
@@ -2121,7 +2108,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                         this.model.persistData('thongtinmothau');
                         this.model.persistData('goithau');
-                        window.appController.autoSync();
+                        appController?.autoSync();
                         this.showPackageDetails(id);
                     };
                 }
@@ -2241,7 +2228,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 const ngayThuongThao = metadata.result.ngayThuongThao ? this.model.formatForDateInput(metadata.result.ngayThuongThao) : (defaultTt ? this.model.formatForDateInput(defaultTt) : '');
                 const ngayTrinhKetQua = metadata.result.ngayTrinhKetQua ? this.model.formatForDateInput(metadata.result.ngayTrinhKetQua) : (defaultTkq ? this.model.formatForDateInput(defaultTkq) : '');
                 const defaultDecDate = gt.ngayQuyetDinhKetQua ? this.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : (defaultPdkq ? this.model.formatForDateInput(defaultPdkq) : '');
-                const { rankings, scores } = window.appController.calculateRankings(gt, allBids);
+                const { rankings, scores } = appController.calculateRankings(gt, allBids);
                 const isCombinedMethod = gt.phuongPhapDanhGia === 'Kết hợp giữa kỹ thuật và giá';
                 const getIsQualified = (bidItem) => {
                     return checkBidQualified(bidItem);
@@ -2608,10 +2595,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     // Format VND currency input
                     const initRowListeners = (tr) => {
                         tr.querySelectorAll('.row-gia-trung').forEach(inp => {
-                            inp.addEventListener('input', (e) => {
-                                const formatted = this.model.formatVND(e.target.value);
-                                e.target.value = formatted;
-                            });
+                            bindCurrencyElement(inp, value => this.model.formatVND(value));
                         });
 
                         tr.querySelectorAll('.row-tg-goithau').forEach(inp => {
@@ -2832,6 +2816,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     };
                     if (inpGia) inpGia.addEventListener('input', calcGSG);
                     if (inpTL) inpTL.addEventListener('input', calcGSG);
+                    bindCurrencyElement(inpGia, value => this.model.formatVND(value));
+                    bindCurrencyElement(tr.querySelector('.cdtrug-gia-tri-dam-bao'), value => this.model.formatVND(value));
 
                     // Format VND
                     ['.cdtrug-gia-du-thau', '.cdtrug-gia-tri-dam-bao'].forEach(cls => {
@@ -2912,11 +2898,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 hasError = true;
                                 if (f.el) {
                                     errorInputs.push(f.el);
-                                    f.el.closest('.form-group')?.querySelector('.error-text') ? (f.el.closest('.form-group').querySelector('.error-text').style.display = 'block') : null;
-                                    f.el.closest('.form-group')?.classList.add('invalid');
+                                    setFieldFeedback(f.el, { state: 'invalid', message: f.el.closest('.form-group')?.querySelector('.error-text')?.textContent || '' });
                                     const clearInvalid = () => {
-                                        f.el.closest('.form-group')?.querySelector('.error-text') ? (f.el.closest('.form-group').querySelector('.error-text').style.display = 'none') : null;
-                                        f.el.closest('.form-group')?.classList.remove('invalid');
+                                        setFieldFeedback(f.el);
                                     };
                                     f.el.addEventListener('input', clearInvalid);
                                     f.el.addEventListener('change', clearInvalid);
@@ -3202,7 +3186,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             this.model.persistData('goithau');
                             this.model.persistData('thongtinmothau');
                             this.renderGoiThauTable();
-                            window.appController.autoSync();
+                            appController?.autoSync();
 
                             this._currentWorkflowTab = 'cancel';
                             await this.customAlert('Không có nhà thầu trúng thầu', 'Không có nhà thầu nào đạt yêu cầu. Hệ thống đã tự động điền các thông tin hủy thầu tương ứng và chuyển bạn sang tab Hủy thầu để xem lại hoặc điều chỉnh trước khi xác nhận hủy thầu chính thức.', 'info');
@@ -3219,7 +3203,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         this.model.persistData('goithau');
                         this.model.persistData('thongtinmothau');
                         this.renderGoiThauTable();
-                        window.appController.autoSync();
+                        appController?.autoSync();
 
                         await this.customAlert('Chúc mừng', `Đã phê duyệt kết quả trúng thầu cho gói thầu "${gt.tenGoiThau}" thành công!`, 'check-circle');
                         this.showPackageDetails(id);
@@ -3238,8 +3222,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             const resultImportBtn = document.getElementById('btn-result-import-excel');
             if (resultImportBtn) {
                 resultImportBtn.onclick = () => {
-                    window.appController._currentResultPackageId = gt.id;
-                    window.appController.triggerExcelImport('ketquaqd');
+                    if (appController) {
+                        appController._currentResultPackageId = gt.id;
+                        appController.triggerExcelImport('ketquaqd');
+                    }
                 };
             }
 
@@ -3403,7 +3389,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
                     this.model.persistData('goithau');
                     this.renderGoiThauTable();
-                    window.appController.autoSync();
+                    appController?.autoSync();
 
                     await this.customAlert('Thành công', 'Đã lưu quyết định hủy thầu và cập nhật trạng thái gói thầu.', 'check-circle');
                     this.showPackageDetails(gt.id);
@@ -3413,8 +3399,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         }
     }
     lucide.createIcons();
-    if (window.appController && window.appController.setupExcelImportEvents) {
-        window.appController.setupExcelImportEvents();
+    if (appController?.setupExcelImportEvents) {
+        appController.setupExcelImportEvents();
     }
 
     // Programmatically remove redundant package selection custom dropdown elements from DOM in detail view
@@ -3424,8 +3410,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         const container = document.querySelector(`.custom-select-container[data-target="${selectId}"]`);
         if (container) container.remove();
     });
-    if (window.appController && typeof window.appController.unifyTableInputsHeight === 'function') {
-        window.appController.unifyTableInputsHeight(document);
+    if (typeof appController?.unifyTableInputsHeight === 'function') {
+        appController.unifyTableInputsHeight(document);
     }
 }
 

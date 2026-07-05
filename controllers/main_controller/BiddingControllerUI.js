@@ -1,3 +1,5 @@
+import { consumeModalReturnState } from './modalReturnState.js';
+
 export function setupTheme() {
     document.body.classList.remove('dark-mode');
     localStorage.removeItem(this.model.STORAGE_KEYS.THEME);
@@ -517,10 +519,7 @@ export async function closeModal(modalId) {
 
     // Sync URL when modal closes
     if (modalId === 'modal-kehoach') {
-        const destTab = window._preModalTab || 'kehoach';
-        const destAction = window._preModalAction || null;
-        window._preModalTab = null;
-        window._preModalAction = null;
+        const { tab: destTab, action: destAction } = consumeModalReturnState('kehoach');
         this.switchTab(destTab, destAction, true);
     } else if (modalId === 'modal-goithau') {
         const modalBreakdown = document.getElementById('modal-plan-breakdown');
@@ -528,10 +527,7 @@ export async function closeModal(modalId) {
         const isParentModalActive = (modalBreakdown && modalBreakdown.classList.contains('active')) || 
                                      (modalKeHoach && modalKeHoach.classList.contains('active'));
         if (!isParentModalActive) {
-            const destTab = window._preModalTab || 'goithau';
-            const destAction = window._preModalAction || null;
-            window._preModalTab = null;
-            window._preModalAction = null;
+            const { tab: destTab, action: destAction } = consumeModalReturnState('goithau');
             this.switchTab(destTab, destAction, true);
         }
     } else if (modalId === 'modal-chudautu') {
@@ -545,16 +541,10 @@ export async function closeModal(modalId) {
     } else if (modalId === 'modal-chuyengia') {
         this.switchTab('chuyengia', null, true);
     } else if (modalId === 'modal-hopdong') {
-        const destTab = window._preModalTab || 'hopdong';
-        const destAction = window._preModalAction || null;
-        window._preModalTab = null;
-        window._preModalAction = null;
+        const { tab: destTab, action: destAction } = consumeModalReturnState('hopdong');
         this.switchTab(destTab, destAction, true);
     } else if (modalId === 'modal-plan-breakdown') {
-        const destTab = window._preModalTab || 'kehoach';
-        const destAction = window._preModalAction || null;
-        window._preModalTab = null;
-        window._preModalAction = null;
+        const { tab: destTab, action: destAction } = consumeModalReturnState('kehoach');
         this.switchTab(destTab, destAction, true);
     }
 }

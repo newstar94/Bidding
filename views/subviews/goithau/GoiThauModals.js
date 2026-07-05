@@ -1,4 +1,5 @@
 import { getAppController } from '/controllers/main_controller/controllerRef.js';
+import { bindCurrencyElement } from '/controllers/main_controller/domUtils.js';
 import { getExcelPreviewFieldError } from './excelPreviewValidation.js';
 
 export function renderExcelPreview(rows, importType) {
@@ -505,19 +506,8 @@ export function populatePhathanhHsmtForm(gt, model) {
                     `;
                     phanloBaodamTbody.appendChild(tr);
 
-                    const setupInputFormat = (inp) => {
-                        if (!inp) return;
-                        inp.addEventListener('input', (e) => {
-                            const cursorPosition = e.target.selectionStart;
-                            const originalLength = e.target.value.length;
-                            const parsed = model.parseVND(e.target.value);
-                            e.target.value = model.formatVND(parsed);
-                            const newLength = e.target.value.length;
-                            e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
-                        });
-                    };
-                    setupInputFormat(tr.querySelector('.phathanh-pl-price-input'));
-                    setupInputFormat(tr.querySelector('.phathanh-pl-baodam-input'));
+                    bindCurrencyElement(tr.querySelector('.phathanh-pl-price-input'), value => model.formatVND(model.parseVND(value)));
+                    bindCurrencyElement(tr.querySelector('.phathanh-pl-baodam-input'), value => model.formatVND(model.parseVND(value)));
                 });
             } else {
                 baodamContainer.style.display = 'block';

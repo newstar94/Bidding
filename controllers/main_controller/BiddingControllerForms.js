@@ -1,4 +1,7 @@
-import { debounce } from './domUtils.js';
+import { bindCurrencyElement, bindCurrencyInput, debounce, onAll, onById } from './domUtils.js';
+import { bindImageUploadPreview } from './fileUploadUtils.js';
+import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisible } from './formStateUtils.js';
+import { setupInlineExcelControls } from './inlineExcelControls.js';
 
 export function updateNguonVonFieldState(planId) {
     const gtNguonVon = document.getElementById('gt-nguonvon');
@@ -10,17 +13,11 @@ export function updateNguonVonFieldState(planId) {
             if (kh.nguonVon) {
                 gtNguonVon.value = kh.nguonVon;
             }
-            gtNguonVon.setAttribute('readonly', 'true');
-            gtNguonVon.style.pointerEvents = 'none';
-            gtNguonVon.style.background = 'var(--neutral-soft)';
-            gtNguonVon.style.cursor = 'not-allowed';
+            setReadonlyVisual(gtNguonVon, true);
             return;
         }
     }
-    gtNguonVon.removeAttribute('readonly');
-    gtNguonVon.style.pointerEvents = 'auto';
-    gtNguonVon.style.background = '';
-    gtNguonVon.style.cursor = 'auto';
+    setReadonlyVisual(gtNguonVon, false);
 }
 
 
@@ -84,16 +81,16 @@ export function setupConditionalUI() {
             const singleSection = document.getElementById('nt-single-details');
             const jvSection = document.getElementById('nt-joint-venture-details');
             if (ntLoaiSelect.value === 'Liên danh') {
-                singleSection.style.display = 'none';
-                jvSection.style.display = 'block';
+                setVisible(singleSection, false);
+                setVisible(jvSection, true, 'block');
                 const membersList = document.getElementById('nt-joint-venture-members-list');
                 if (membersList && membersList.children.length === 0) {
                     this.addJointVentureMemberCard();
                     this.addJointVentureMemberCard();
                 }
             } else {
-                singleSection.style.display = 'grid';
-                jvSection.style.display = 'none';
+                setVisible(singleSection, true, 'grid');
+                setVisible(jvSection, false);
             }
         });
     }
@@ -101,223 +98,117 @@ export function setupConditionalUI() {
 
 
 export function setupFileUploads() {
-    const handleChuyenGiaFile = (file, type) => {
-        if (!file) return;
-        if (!file.type.startsWith('image/')) {
-            this.view.customAlert('Tệp không hợp lệ', 'Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).', 'alert-triangle');
-            return;
-        }
-        if (file.size > 3 * 1024 * 1024) {
-            this.view.customAlert('Tệp quá lớn', 'Dung lượng ảnh quá lớn. Vui lòng tải lên ảnh dưới 3MB để hệ thống lưu trữ tối ưu.', 'alert-triangle');
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            if (type === 'cert') {
-                this.tempChuyenGiaImageBase64 = e.target.result;
-                const previewContainer = document.getElementById('cg-preview-container');
-                const previewImg = document.getElementById('cg-anh-preview');
-                const uploadZone = document.getElementById('cg-upload-zone');
-
-                previewImg.src = e.target.result;
-                previewContainer.style.display = 'flex';
-                uploadZone.style.display = 'none';
-            } else if (type === 'signature') {
-                this.tempChuyenGiaSignatureBase64 = e.target.result;
-                const previewContainer = document.getElementById('cg-preview-container-chuky');
-                const previewImg = document.getElementById('cg-anh-preview-chuky');
-                const uploadZone = document.getElementById('cg-upload-zone-chuky');
-
-                previewImg.src = e.target.result;
-                previewContainer.style.display = 'flex';
-                uploadZone.style.display = 'none';
-            }
-        };
-        reader.readAsDataURL(file);
+    const alertInvalidImage = () => {
+        this.view.customAlert('Tệp không hợp lệ', 'Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP).', 'alert-triangle');
+    };
+    const alertTooLarge = () => {
+        this.view.customAlert('Tệp quá lớn', 'Dung lượng ảnh quá lớn. Vui lòng tải lên ảnh dưới 3MB để hệ thống lưu trữ tối ưu.', 'alert-triangle');
     };
 
-    const uploadZone = document.getElementById('cg-upload-zone');
-    const fileInput = document.getElementById('cg-anhchungchi');
-    const previewContainer = document.getElementById('cg-preview-container');
-    const previewImg = document.getElementById('cg-anh-preview');
-    const removeBtn = document.getElementById('btn-cg-remove-file');
+    bindImageUploadPreview({
+        uploadZone: document.getElementById('cg-upload-zone'),
+        fileInput: document.getElementById('cg-anhchungchi'),
+        previewContainer: document.getElementById('cg-preview-container'),
+        previewImg: document.getElementById('cg-anh-preview'),
+        removeBtn: document.getElementById('btn-cg-remove-file'),
+        onLoad: (dataUrl) => { this.tempChuyenGiaImageBase64 = dataUrl; },
+        onRemove: () => { this.tempChuyenGiaImageBase64 = ''; },
+        alertInvalid: alertInvalidImage,
+        alertTooLarge
+    });
 
-    if (uploadZone && fileInput) {
-        uploadZone.addEventListener('click', () => fileInput.click());
-        uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZone.classList.add('dragover');
-        });
-        uploadZone.addEventListener('dragleave', () => {
-            uploadZone.classList.remove('dragover');
-        });
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) {
-                handleChuyenGiaFile(e.dataTransfer.files[0], 'cert');
-            }
-        });
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleChuyenGiaFile(e.target.files[0], 'cert');
-            }
-        });
-    }
-
-    if (removeBtn) {
-        removeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.tempChuyenGiaImageBase64 = '';
-            fileInput.value = '';
-            previewImg.src = '';
-            previewContainer.style.display = 'none';
-            uploadZone.style.display = 'flex';
-        });
-    }
-
-    const uploadZoneChuky = document.getElementById('cg-upload-zone-chuky');
-    const fileInputChuky = document.getElementById('cg-anhchuky');
-    const previewContainerChuky = document.getElementById('cg-preview-container-chuky');
-    const previewImgChuky = document.getElementById('cg-anh-preview-chuky');
-    const removeBtnChuky = document.getElementById('btn-cg-remove-file-chuky');
-
-    if (uploadZoneChuky && fileInputChuky) {
-        uploadZoneChuky.addEventListener('click', () => fileInputChuky.click());
-        uploadZoneChuky.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZoneChuky.classList.add('dragover');
-        });
-        uploadZoneChuky.addEventListener('dragleave', () => {
-            uploadZoneChuky.classList.remove('dragover');
-        });
-        uploadZoneChuky.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZoneChuky.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) {
-                handleChuyenGiaFile(e.dataTransfer.files[0], 'signature');
-            }
-        });
-        fileInputChuky.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleChuyenGiaFile(e.target.files[0], 'signature');
-            }
-        });
-    }
-
-    if (removeBtnChuky) {
-        removeBtnChuky.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.tempChuyenGiaSignatureBase64 = '';
-            fileInputChuky.value = '';
-            previewImgChuky.src = '';
-            previewContainerChuky.style.display = 'none';
-            uploadZoneChuky.style.display = 'flex';
-        });
-    }
+    bindImageUploadPreview({
+        uploadZone: document.getElementById('cg-upload-zone-chuky'),
+        fileInput: document.getElementById('cg-anhchuky'),
+        previewContainer: document.getElementById('cg-preview-container-chuky'),
+        previewImg: document.getElementById('cg-anh-preview-chuky'),
+        removeBtn: document.getElementById('btn-cg-remove-file-chuky'),
+        onLoad: (dataUrl) => { this.tempChuyenGiaSignatureBase64 = dataUrl; },
+        onRemove: () => { this.tempChuyenGiaSignatureBase64 = ''; },
+        alertInvalid: alertInvalidImage,
+        alertTooLarge
+    });
 }
 
 
 export function setupActionListeners() {
-    document.getElementById('search-kehoach').addEventListener('input', debounce(() => {
+    onById('search-kehoach', 'input', debounce(() => {
         this.model.currentPage.kehoach = 1;
         this.view.renderKeHoachTable();
     }));
-    document.getElementById('search-goithau').addEventListener('input', debounce(() => {
+    onById('search-goithau', 'input', debounce(() => {
         this.model.currentPage.goithau = 1;
         this.view.renderGoiThauTable();
     }));
-    document.getElementById('search-chudautu').addEventListener('input', debounce(() => {
+    onById('search-chudautu', 'input', debounce(() => {
         this.model.currentPage.chudautu = 1;
         this.view.renderChuDauTuTable();
     }));
-    document.getElementById('search-nhathau').addEventListener('input', debounce(() => {
+    onById('search-nhathau', 'input', debounce(() => {
         this.model.currentPage.nhathau = 1;
         this.view.renderNhaThauTable();
     }));
-    document.getElementById('search-chuyengia').addEventListener('input', debounce(() => {
+    onById('search-chuyengia', 'input', debounce(() => {
         this.model.currentPage.chuyengia = 1;
         this.view.renderChuyenGiaTable();
     }));
-    const searchHopdong = document.getElementById('search-hopdong');
-    if (searchHopdong) searchHopdong.addEventListener('input', debounce(() => {
+    onById('search-hopdong', 'input', debounce(() => {
         this.model.currentPage.hopdong = 1;
         this.view.renderHopDongTable();
     }));
 
-    document.getElementById('filter-goithau-trangthai').addEventListener('change', () => {
+    onById('filter-goithau-trangthai', 'change', () => {
         this.model.currentPage.goithau = 1;
         this.view.renderGoiThauTable();
     });
-    document.getElementById('filter-goithau-hinhthuc').addEventListener('change', () => {
+    onById('filter-goithau-hinhthuc', 'change', () => {
         this.model.currentPage.goithau = 1;
         this.view.renderGoiThauTable();
     });
-    document.getElementById('filter-goithau-nam').addEventListener('change', () => {
+    onById('filter-goithau-nam', 'change', () => {
         this.model.currentPage.goithau = 1;
         this.view.renderGoiThauTable();
     });
-    document.getElementById('filter-goithau-thang').addEventListener('change', () => {
+    onById('filter-goithau-thang', 'change', () => {
         this.model.currentPage.goithau = 1;
         this.view.renderGoiThauTable();
     });
 
-    const filterKehoachNam = document.getElementById('filter-kehoach-nam');
-    if (filterKehoachNam) filterKehoachNam.addEventListener('change', () => {
+    onById('filter-kehoach-nam', 'change', () => {
         this.model.currentPage.kehoach = 1;
         this.view.renderKeHoachTable();
     });
-    const filterKehoachThang = document.getElementById('filter-kehoach-thang');
-    if (filterKehoachThang) filterKehoachThang.addEventListener('change', () => {
+    onById('filter-kehoach-thang', 'change', () => {
         this.model.currentPage.kehoach = 1;
         this.view.renderKeHoachTable();
     });
 
-    const filterHopdongNam = document.getElementById('filter-hopdong-nam');
-    if (filterHopdongNam) filterHopdongNam.addEventListener('change', () => {
+    onById('filter-hopdong-nam', 'change', () => {
         this.model.currentPage.hopdong = 1;
         this.view.renderHopDongTable();
     });
-    const filterHopdongThang = document.getElementById('filter-hopdong-thang');
-    if (filterHopdongThang) filterHopdongThang.addEventListener('change', () => {
+    onById('filter-hopdong-thang', 'change', () => {
         this.model.currentPage.hopdong = 1;
         this.view.renderHopDongTable();
     });
 
 
 
-    document.getElementById('btn-add-kehoach').addEventListener('click', () => this.editKeHoach(null));
-    document.getElementById('btn-add-goithau').addEventListener('click', () => this.editGoiThau(null));
-    document.getElementById('btn-add-chudautu').addEventListener('click', () => this.editChuDauTu(null));
-    document.getElementById('btn-add-nhathau').addEventListener('click', () => this.editNhaThau(null));
-    document.getElementById('btn-add-chuyengia').addEventListener('click', () => this.editChuyenGia(null));
+    onById('btn-add-kehoach', 'click', () => this.editKeHoach(null));
+    onById('btn-add-goithau', 'click', () => this.editGoiThau(null));
+    onById('btn-add-chudautu', 'click', () => this.editChuDauTu(null));
+    onById('btn-add-nhathau', 'click', () => this.editNhaThau(null));
+    onById('btn-add-chuyengia', 'click', () => this.editChuyenGia(null));
+    onById('btn-add-hopdong', 'click', () => this.editHopDong(null));
 
-    const btnAddHopdong = document.getElementById('btn-add-hopdong');
-    if (btnAddHopdong) btnAddHopdong.addEventListener('click', () => this.editHopDong(null));
-
-    const setupNumberAutoFormat = (inputId) => {
-        const el = document.getElementById(inputId);
-        if (!el) return;
-        el.addEventListener('input', (e) => {
-            const cursorPosition = e.target.selectionStart;
-            const originalLength = e.target.value.length;
-
-            const formatted = this.model.formatVND(e.target.value);
-            e.target.value = formatted;
-
-            const newLength = formatted.length;
-            const newPosition = cursorPosition + (newLength - originalLength);
-            e.target.setSelectionRange(newPosition, newPosition);
-        });
-    };
-
-    setupNumberAutoFormat('kh-tongmuc');
-    setupNumberAutoFormat('gt-gia');
-    setupNumberAutoFormat('gt-giatrungthau');
-    setupNumberAutoFormat('gt-giatribaomothau');
-    setupNumberAutoFormat('hd-giatri');
-    setupNumberAutoFormat('edit-pkg-price');
+    [
+        'kh-tongmuc',
+        'gt-gia',
+        'gt-giatrungthau',
+        'gt-giatribaomothau',
+        'hd-giatri',
+        'edit-pkg-price'
+    ].forEach(inputId => bindCurrencyInput(inputId, value => this.model.formatVND(value)));
 
     const hsdthInput = document.getElementById('gt-hieuluchsdt');
     if (hsdthInput) {
@@ -336,20 +227,16 @@ export function setupActionListeners() {
         gtThoiGianDongThau.addEventListener('input', () => this.validateGiaHanRealtime());
     }
 
-    document.querySelectorAll('[data-close]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const modalId = btn.getAttribute('data-close');
-            this.closeModal(modalId);
-        });
+    onAll('[data-close]', 'click', (event) => {
+        const btn = event.currentTarget;
+        const modalId = btn.getAttribute('data-close');
+        this.closeModal(modalId);
     });
 
     // Set up forms submits
-    document.getElementById('form-kehoach').addEventListener('submit', (e) => this.handleKeHoachSubmit(e));
-    document.getElementById('form-goithau').addEventListener('submit', (e) => this.handleGoiThauSubmit(e));
-    const formPhathanh = document.getElementById('form-phathanh-hsmt');
-    if (formPhathanh) {
-        formPhathanh.addEventListener('submit', (e) => this.handlePhatHanhHsmtSubmit(e));
-    }
+    onById('form-kehoach', 'submit', (e) => this.handleKeHoachSubmit(e));
+    onById('form-goithau', 'submit', (e) => this.handleGoiThauSubmit(e));
+    onById('form-phathanh-hsmt', 'submit', (e) => this.handlePhatHanhHsmtSubmit(e));
 
     const btnPhathanhExport = document.getElementById('btn-phathanh-export-excel');
     const btnPhathanhImport = document.getElementById('btn-phathanh-import-excel');
@@ -377,13 +264,7 @@ export function setupActionListeners() {
 
     const phathanhGiatribaomothau = document.getElementById('phathanh-giatribaomothau');
     if (phathanhGiatribaomothau) {
-        phathanhGiatribaomothau.addEventListener('input', (e) => {
-            const cursorPosition = e.target.selectionStart;
-            const originalLength = e.target.value.length;
-            e.target.value = this.model.formatVND(e.target.value);
-            const newLength = e.target.value.length;
-            e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
-        });
+        bindCurrencyElement(phathanhGiatribaomothau, value => this.model.formatVND(value));
     }
 
     document.querySelectorAll('input[name="phathanh-yeucauthamdinh"]').forEach(radio => {
@@ -394,19 +275,16 @@ export function setupActionListeners() {
             const soBaoCaoInp = document.getElementById('phathanh-sobaocaothamdinh');
             const ngayBaoCaoInp = document.getElementById('phathanh-ngaybaocaothamdinh');
             
-            if (soBaoCaoContainer) soBaoCaoContainer.style.display = show ? 'block' : 'none';
-            if (ngayBaoCaoContainer) ngayBaoCaoContainer.style.display = show ? 'block' : 'none';
-            
-            if (show) {
-                if (soBaoCaoInp) soBaoCaoInp.setAttribute('required', 'true');
-                if (ngayBaoCaoInp) ngayBaoCaoInp.setAttribute('required', 'true');
-            } else {
+            setVisible(soBaoCaoContainer, show, 'block');
+            setVisible(ngayBaoCaoContainer, show, 'block');
+            setRequired(soBaoCaoInp, show);
+            setRequired(ngayBaoCaoInp, show);
+
+            if (!show) {
                 if (soBaoCaoInp) {
-                    soBaoCaoInp.removeAttribute('required');
                     soBaoCaoInp.value = '';
                 }
                 if (ngayBaoCaoInp) {
-                    ngayBaoCaoInp.removeAttribute('required');
                     ngayBaoCaoInp.value = '';
                     if (ngayBaoCaoInp._flatpickr) {
                         ngayBaoCaoInp._flatpickr.clear();
@@ -429,28 +307,23 @@ export function setupActionListeners() {
         if (!gtTrongSoKyThuatInput || !gtTrongSoKyThuatContainer) return true;
 
         const valRaw = gtTrongSoKyThuatInput.value;
-        const fg = gtTrongSoKyThuatInput.closest('.form-group');
-        const errorEl = document.getElementById('gt-trongsokythuat-error');
+        const clearFeedback = () => setFieldFeedback(gtTrongSoKyThuatInput);
+        const invalidFeedback = (message) => setFieldFeedback(gtTrongSoKyThuatInput, {
+            state: 'invalid',
+            message,
+            color: 'var(--danger)'
+        });
 
         if (gtPhuongPhapDanhGiaSelect.value !== 'Kết hợp giữa kỹ thuật và giá') {
-            if (fg) fg.classList.remove('invalid', 'warning');
+            clearFeedback();
             return true;
         }
 
         if (valRaw === '') {
             if (showEmptyError) {
-                if (fg) fg.classList.add('invalid');
-                if (errorEl) {
-                    errorEl.textContent = 'Vui lòng nhập trọng số kỹ thuật';
-                    errorEl.style.color = 'var(--danger)';
-                    errorEl.style.display = 'block';
-                }
+                invalidFeedback('Vui lòng nhập trọng số kỹ thuật');
             } else {
-                if (fg) fg.classList.remove('invalid', 'warning');
-                if (errorEl) {
-                    errorEl.textContent = '';
-                    errorEl.style.display = '';
-                }
+                clearFeedback();
             }
             return false;
         }
@@ -461,72 +334,44 @@ export function setupActionListeners() {
 
         if (linhVucVal === 'Tư vấn') {
             if (val < 70 || val > 80) {
-                if (fg) fg.classList.add('invalid');
-                if (errorEl) {
-                    errorEl.textContent = 'Đối với gói thầu tư vấn, trọng số kỹ thuật phải nằm trong khoảng 70% - 80%';
-                    errorEl.style.color = 'var(--danger)';
-                    errorEl.style.display = 'block';
-                }
+                invalidFeedback('Đối với gói thầu tư vấn, trọng số kỹ thuật phải nằm trong khoảng 70% - 80%');
                 return false;
             }
         } else {
             if (phuongThucVal === 'Một giai đoạn hai túi hồ sơ') {
                 if (val < 10) {
-                    if (fg) fg.classList.add('invalid');
-                    if (errorEl) {
-                        errorEl.textContent = 'Trọng số kỹ thuật tối thiểu là 10%';
-                        errorEl.style.color = 'var(--danger)';
-                        errorEl.style.display = 'block';
-                    }
+                    invalidFeedback('Trọng số kỹ thuật tối thiểu là 10%');
                     return false;
                 }
                 if (val > 50) {
-                    if (fg) fg.classList.add('invalid');
-                    if (errorEl) {
-                        errorEl.textContent = 'Không cho phép nhập trọng số kỹ thuật lớn hơn 50%';
-                        errorEl.style.color = 'var(--danger)';
-                        errorEl.style.display = 'block';
-                    }
+                    invalidFeedback('Không cho phép nhập trọng số kỹ thuật lớn hơn 50%');
                     return false;
                 }
                 if (val > 30 && val <= 50) {
-                    if (fg) fg.classList.remove('invalid');
-                    if (errorEl) {
-                        errorEl.textContent = 'Lưu ý: Trọng số kỹ thuật lớn hơn 30% (mức khuyến nghị thông thường là 10% - 30%)';
-                        errorEl.style.color = '#d97706';
-                        errorEl.style.display = 'block';
-                    }
+                    setFieldFeedback(gtTrongSoKyThuatInput, {
+                        state: 'warning',
+                        message: 'Lưu ý: Trọng số kỹ thuật lớn hơn 30% (mức khuyến nghị thông thường là 10% - 30%)',
+                        color: '#d97706'
+                    });
                     return true;
                 }
             }
         }
 
-        if (fg) fg.classList.remove('invalid');
-        if (errorEl) {
-            errorEl.textContent = '';
-            errorEl.style.display = '';
-        }
+        clearFeedback();
         return true;
     };
 
     const updateTrongSoKyThuatVisibility = () => {
         if (!gtTrongSoKyThuatContainer || !gtPhuongPhapDanhGiaSelect) return;
         if (gtPhuongPhapDanhGiaSelect.value === 'Kết hợp giữa kỹ thuật và giá') {
-            gtTrongSoKyThuatContainer.style.display = 'flex';
-            if (gtTrongSoKyThuatInput) gtTrongSoKyThuatInput.setAttribute('required', 'true');
+            setVisible(gtTrongSoKyThuatContainer, true);
+            setRequired(gtTrongSoKyThuatInput, true);
             validateTrongSoKyThuat();
         } else {
-            gtTrongSoKyThuatContainer.style.display = 'none';
-            if (gtTrongSoKyThuatInput) {
-                gtTrongSoKyThuatInput.removeAttribute('required');
-            }
-            const fg = gtTrongSoKyThuatInput?.closest('.form-group');
-            if (fg) fg.classList.remove('invalid');
-            const errorEl = document.getElementById('gt-trongsokythuat-error');
-            if (errorEl) {
-                errorEl.textContent = '';
-                errorEl.style.display = '';
-            }
+            setVisible(gtTrongSoKyThuatContainer, false);
+            setRequired(gtTrongSoKyThuatInput, false);
+            setFieldFeedback(gtTrongSoKyThuatInput);
         }
     };
 
@@ -538,15 +383,15 @@ export function setupActionListeners() {
         const hinhThucVal = gtHinhThucSelect ? gtHinhThucSelect.value : '';
 
         if (!hinhThucVal || hinhThucVal === 'Chỉ định thầu rút gọn' || hinhThucVal === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
-            gtPhuongPhapDanhGiaContainer.style.display = 'none';
-            gtPhuongPhapDanhGiaSelect.removeAttribute('required');
+            setVisible(gtPhuongPhapDanhGiaContainer, false);
+            setRequired(gtPhuongPhapDanhGiaSelect, false);
             gtPhuongPhapDanhGiaSelect.value = '';
-            gtTrongSoKyThuatContainer.style.display = 'none';
+            setVisible(gtTrongSoKyThuatContainer, false);
             return;
         }
 
-        gtPhuongPhapDanhGiaContainer.style.display = 'flex';
-        gtPhuongPhapDanhGiaSelect.setAttribute('required', 'true');
+        setVisible(gtPhuongPhapDanhGiaContainer, true);
+        setRequired(gtPhuongPhapDanhGiaSelect, true);
 
         const currentVal = gtPhuongPhapDanhGiaSelect.value;
         let optionsHtml = '';
@@ -614,29 +459,29 @@ export function setupActionListeners() {
             const gtQuaMangSelect = document.getElementById('gt-quatmang');
 
             if (!val) {
-                gtPhuongThucContainer.style.display = 'none';
-                gtPhuongThucSelect.removeAttribute('required');
+                setVisible(gtPhuongThucContainer, false);
+                setRequired(gtPhuongThucSelect, false);
             } else {
-                gtPhuongThucContainer.style.display = 'flex';
-                gtPhuongThucSelect.setAttribute('required', 'true');
+                setVisible(gtPhuongThucContainer, true);
+                setRequired(gtPhuongThucSelect, true);
 
                 if (linhVucVal === 'Tư vấn') {
                     if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                         gtPhuongThucSelect.value = 'Không có';
-                        gtPhuongThucSelect.disabled = true;
+                        setDisabled(gtPhuongThucSelect, true);
                     } else {
                         gtPhuongThucSelect.value = 'Một giai đoạn hai túi hồ sơ';
-                        gtPhuongThucSelect.disabled = true;
+                        setDisabled(gtPhuongThucSelect, true);
                     }
                 } else {
                     if (val === 'Chào hàng cạnh tranh') {
                         gtPhuongThucSelect.value = 'Một giai đoạn một túi hồ sơ';
-                        gtPhuongThucSelect.disabled = true;
+                        setDisabled(gtPhuongThucSelect, true);
                     } else if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                         gtPhuongThucSelect.value = 'Không có';
-                        gtPhuongThucSelect.disabled = true;
+                        setDisabled(gtPhuongThucSelect, true);
                     } else {
-                        gtPhuongThucSelect.disabled = false;
+                        setDisabled(gtPhuongThucSelect, false);
                     }
                 }
             }
@@ -644,9 +489,9 @@ export function setupActionListeners() {
             if (gtQuaMangSelect) {
                 if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
                     gtQuaMangSelect.value = 'Không qua mạng';
-                    gtQuaMangSelect.disabled = true;
+                    setDisabled(gtQuaMangSelect, true);
                 } else {
-                    gtQuaMangSelect.disabled = false;
+                    setDisabled(gtQuaMangSelect, false);
                 }
                 if (this.handleQuaMangChange) {
                     this.handleQuaMangChange();
@@ -666,17 +511,17 @@ export function setupActionListeners() {
             const toThamDinhSection = document.getElementById('to-thamdinh-section');
             if (toChuyenGiaSection && toThamDinhSection) {
                 if (val === 'Chào hàng cạnh tranh') {
-                    toChuyenGiaSection.style.display = 'flex';
-                    toThamDinhSection.style.display = 'none';
+                    setVisible(toChuyenGiaSection, true);
+                    setVisible(toThamDinhSection, false);
                 } else if (val === 'Đấu thầu rộng rãi' || val === 'Đấu thầu hạn chế' || val === 'Chỉ định thầu') {
-                    toChuyenGiaSection.style.display = 'flex';
-                    toThamDinhSection.style.display = 'flex';
+                    setVisible(toChuyenGiaSection, true);
+                    setVisible(toThamDinhSection, true);
                 } else if (val === 'Chỉ định thầu rút gọn' || val === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
-                    toChuyenGiaSection.style.display = 'none';
-                    toThamDinhSection.style.display = 'none';
+                    setVisible(toChuyenGiaSection, false);
+                    setVisible(toThamDinhSection, false);
                 } else {
-                    toChuyenGiaSection.style.display = 'flex';
-                    toThamDinhSection.style.display = 'none';
+                    setVisible(toChuyenGiaSection, true);
+                    setVisible(toThamDinhSection, false);
                 }
             }
         };
@@ -705,10 +550,10 @@ export function setupActionListeners() {
                 if (gtHinhThucSelect.value !== 'Đấu thầu rộng rãi' && gtHinhThucSelect.value !== 'Chỉ định thầu' && gtHinhThucSelect.value !== 'Chỉ định thầu rút gọn') {
                     gtHinhThucSelect.value = 'Đấu thầu rộng rãi';
                 }
-                gtHinhThucSelect.disabled = false;
+                setDisabled(gtHinhThucSelect, false);
             } else {
                 options.forEach(opt => opt.style.display = '');
-                gtHinhThucSelect.disabled = false;
+                setDisabled(gtHinhThucSelect, false);
             }
 
             if (this.handleHinhThucChange) {
@@ -719,20 +564,20 @@ export function setupActionListeners() {
             updatePhuongPhapDanhGiaOptions(true);
 
             if (gtTuyChonContainer) {
-                gtTuyChonContainer.style.display = 'flex';
+                setVisible(gtTuyChonContainer, true);
                 if (this.handleTuyChonMuaThemChange) this.handleTuyChonMuaThemChange();
             }
             if (gtPhanLoContainer) {
-                gtPhanLoContainer.style.display = 'flex';
+                setVisible(gtPhanLoContainer, true);
                 if (this.handlePhanLoChange) this.handlePhanLoChange();
             }
 
             const gtGoiThauThuocContainer = document.getElementById('gt-goithauthuoc-container');
             if (gtGoiThauThuocContainer) {
                 if (val === 'Hàng hóa') {
-                    gtGoiThauThuocContainer.style.display = '';
+                    setVisible(gtGoiThauThuocContainer, true, '');
                 } else {
-                    gtGoiThauThuocContainer.style.display = 'none';
+                    setVisible(gtGoiThauThuocContainer, false);
                     const radioNo = document.querySelector('input[name="gt-goithauthuoc"][value="0"]');
                     if (radioNo) radioNo.checked = true;
                 }
@@ -747,13 +592,13 @@ export function setupActionListeners() {
     if (gtTuyChonMuaThemSelect && gtTuyChonMuaThemTableContainer) {
         const handleTuyChonMuaThemChange = () => {
             if (gtTuyChonMuaThemSelect.value === 'Có') {
-                gtTuyChonMuaThemTableContainer.style.display = 'block';
+                setVisible(gtTuyChonMuaThemTableContainer, true, 'block');
                 const tbody = document.getElementById('tuychonmuathem-tbody');
                 if (tbody && tbody.children.length === 0) {
                     this.addTuyChonMuaThemRow();
                 }
             } else {
-                gtTuyChonMuaThemTableContainer.style.display = 'none';
+                setVisible(gtTuyChonMuaThemTableContainer, false);
             }
         };
         gtTuyChonMuaThemSelect.addEventListener('change', handleTuyChonMuaThemChange);
@@ -769,13 +614,13 @@ export function setupActionListeners() {
     if (gtPhanLoSelect && gtPhanLoTableContainer) {
         const handlePhanLoChange = () => {
             if (gtPhanLoSelect.value === 'Có') {
-                gtPhanLoTableContainer.style.display = 'block';
+                setVisible(gtPhanLoTableContainer, true, 'block');
                 const tbody = document.getElementById('phanlo-tbody');
                 if (tbody && tbody.children.length === 0) {
                     this.addPhanLoRow();
                 }
             } else {
-                gtPhanLoTableContainer.style.display = 'none';
+                setVisible(gtPhanLoTableContainer, false);
             }
         };
         gtPhanLoSelect.addEventListener('change', handlePhanLoChange);
@@ -802,69 +647,7 @@ export function setupActionListeners() {
         btnThemTraLoi.addEventListener('click', () => this.addTraLoiLamRoRow());
     }
 
-    const btnTemplatePhanLo = document.getElementById('btn-template-phanlo');
-    const btnImportPhanLo = document.getElementById('btn-import-excel-phanlo');
-    const inputImportPhanLo = document.getElementById('excel-file-input-phanlo');
-
-    const downloadInlineTemplate = (type, btn) => {
-        if (!type || !btn) return;
-        btn.disabled = true;
-        const originalText = btn.innerHTML;
-        btn.innerHTML = 'Đang tải...';
-
-        fetch(`/api/export-excel-template/${type}`)
-            .then(res => {
-                if (!res.ok) throw new Error('Không thể tải tệp mẫu');
-                return res.blob();
-            })
-            .then(blob => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Mau_nhap_lieu_${type}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-            })
-            .catch(err => this.view.customAlert('Lỗi tải mẫu', 'Lỗi tải Excel mẫu: ' + err.message, 'x-circle'))
-            .finally(() => {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            });
-    };
-
-    if (btnTemplatePhanLo) {
-        btnTemplatePhanLo.addEventListener('click', () => this.exportEditPhanLoExcel());
-    }
-
-    if (btnImportPhanLo && inputImportPhanLo) {
-        btnImportPhanLo.addEventListener('click', () => inputImportPhanLo.click());
-        inputImportPhanLo.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                this.handleInlineExcelUpload(e.target.files[0], 'phanlo');
-                inputImportPhanLo.value = '';
-            }
-        });
-    }
-
-    const btnTemplateTuyChon = document.getElementById('btn-template-tuychonmuathem');
-    const btnImportTuyChon = document.getElementById('btn-import-excel-tuychonmuathem');
-    const inputImportTuyChon = document.getElementById('excel-file-input-tuychonmuathem');
-
-    if (btnTemplateTuyChon) {
-        btnTemplateTuyChon.addEventListener('click', () => this.exportEditTuyChonMuaThemExcel());
-    }
-
-    if (btnImportTuyChon && inputImportTuyChon) {
-        btnImportTuyChon.addEventListener('click', () => inputImportTuyChon.click());
-        inputImportTuyChon.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                this.handleInlineExcelUpload(e.target.files[0], 'tuychonmuathem');
-                inputImportTuyChon.value = '';
-            }
-        });
-    }
+    setupInlineExcelControls(this);
 
     const gtQuaMangSelect = document.getElementById('gt-quatmang');
     const gtTrongNuocSelect = document.getElementById('gt-trongnuocquocte');
@@ -872,9 +655,9 @@ export function setupActionListeners() {
         const handleQuaMangChange = () => {
             if (gtQuaMangSelect.value === 'Qua mạng') {
                 gtTrongNuocSelect.value = 'Trong nước';
-                gtTrongNuocSelect.disabled = true;
+                setDisabled(gtTrongNuocSelect, true);
             } else {
-                gtTrongNuocSelect.disabled = false;
+                setDisabled(gtTrongNuocSelect, false);
             }
         };
         gtQuaMangSelect.addEventListener('change', handleQuaMangChange);
@@ -899,54 +682,6 @@ export function setupActionListeners() {
 }
 
 
-export function handleInlineExcelUpload(file, type) {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('type', type);
-
-    const tbody = document.getElementById(`${type}-tbody`);
-    const originalHTML = tbody.innerHTML;
-    tbody.innerHTML = `<tr><td colspan="${type === 'phanlo' ? 5 : 6}" style="text-align: center; padding: 20px; font-weight: bold; color: var(--primary);">
-        Đang tải dữ liệu và phân tích file Excel...
-    </td></tr>`;
-
-    fetch('/api/import-excel', {
-        method: 'POST',
-        body: fd
-    })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                tbody.innerHTML = '';
-                const validRows = data.rows.filter(r => r._valid);
-                if (validRows.length === 0) {
-                    this.view.customAlert('Không có dữ liệu', 'Không tìm thấy dòng dữ liệu hợp lệ nào trong tệp Excel!', 'alert-triangle');
-                    tbody.innerHTML = originalHTML;
-                    return;
-                }
-
-                validRows.forEach(row => {
-                    delete row._valid;
-                    delete row._comment;
-                    if (type === 'phanlo') {
-                        this.addPhanLoRow(row);
-                    } else if (type === 'tuychonmuathem') {
-                        this.addTuyChonMuaThemRow(row);
-                    }
-                });
-                this.view.customAlert('Nhập thành công', `Đã nhập thành công ${validRows.length} dòng dữ liệu từ Excel vào bảng!`, 'check-circle');
-            } else {
-                this.view.customAlert('Lỗi phân tích', 'Lỗi phân tích Excel: ' + (data.error || 'Không rõ nguyên nhân'), 'x-circle');
-                tbody.innerHTML = originalHTML;
-            }
-        })
-        .catch(err => {
-            this.view.customAlert('Lỗi kết nối', 'Lỗi kết nối: ' + err.message, 'x-circle');
-            tbody.innerHTML = originalHTML;
-        });
-}
-
-
 export function updatePackageFieldsVisibility(isReadOnly = false) {
     const trangThai = document.getElementById('gt-trangthai')?.value;
     const formGoiThau = document.getElementById('form-goithau');
@@ -958,11 +693,11 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     if (gtTrangThai) {
         const formGroup = gtTrangThai.closest('.form-group');
         if (htVal === 'Chỉ định thầu rút gọn' || htVal === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
-            if (formGroup) formGroup.style.display = 'none';
-            gtTrangThai.removeAttribute('required');
+            setVisible(formGroup, false);
+            setRequired(gtTrangThai, false);
         } else {
-            if (formGroup) formGroup.style.display = 'flex';
-            gtTrangThai.setAttribute('required', 'true');
+            setVisible(formGroup, true);
+            setRequired(gtTrangThai, true);
         }
     }
 
@@ -979,11 +714,11 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
             const optIdx = statusOrder.indexOf(optVal);
             if (originalIdx >= 0 && optIdx >= 0 && optIdx < originalIdx) {
                 // Edit mode: disable options that are earlier than current status
-                opt.disabled = true;
+                setDisabled(opt, true);
             } else {
                 // New mode (originalIdx < 0): enable all options
                 // Edit mode: enable options at or after current status
-                opt.disabled = false;
+                setDisabled(opt, false);
             }
         });
     }
@@ -1013,23 +748,23 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
         if (!input) return;
         const formGroup = input.closest('.form-group');
         if (isLocked) {
-            if (formGroup) formGroup.style.display = 'none';
-            input.disabled = true;
+            setVisible(formGroup, false);
+            setDisabled(input, true);
         } else {
-            input.disabled = false;
+            setDisabled(input, false);
             // Re-enforce disabled rules for gt-phuongthuc if needed
             if (id === 'gt-phuongthuc') {
                 const lv = document.getElementById('gt-linhvuc')?.value;
                 const ht = document.getElementById('gt-hinhthuc')?.value;
                 if (lv === 'Tư vấn' || ht === 'Chào hàng cạnh tranh' || ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
-                    input.disabled = true;
+                    setDisabled(input, true);
                 }
                 if (window.initCustomSelect) initCustomSelect(id);
             }
             if (id === 'gt-quatmang') {
                 const ht = document.getElementById('gt-hinhthuc')?.value;
                 if (ht === 'Chỉ định thầu rút gọn' || ht === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
-                    input.disabled = true;
+                    setDisabled(input, true);
                 }
                 if (window.initCustomSelect) initCustomSelect(id);
             }
@@ -1040,7 +775,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
                 'gt-tuychonmuathem', 'gt-phanlo'
             ];
             if (nonConditional.includes(id) && formGroup) {
-                formGroup.style.display = 'flex';
+                setVisible(formGroup, true);
             }
         }
     });
@@ -1049,8 +784,8 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     const tuyChonTable = document.getElementById('gt-tuychonmuathem-table-container');
     const phanLoTable = document.getElementById('gt-phanlo-table-container');
     if (isLocked) {
-        if (tuyChonTable) tuyChonTable.style.display = 'none';
-        if (phanLoTable) phanLoTable.style.display = 'none';
+        setVisible(tuyChonTable, false);
+        setVisible(phanLoTable, false);
     }
 
     const phuongThuc = document.getElementById('gt-phuongthuc')?.value || '';
@@ -1076,35 +811,35 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
 
         if (htVal === 'Chỉ định thầu rút gọn' || htVal === 'Lựa chọn nhà thầu trong trường hợp đặc biệt') {
             if (['gt-soquyetdinh', 'gt-ngayquyetdinh', 'gt-thoigiandangtai', 'gt-thoigiandongthau', 'gt-thoigianmothau', 'gt-thoigianmoehsdxtc'].includes(f.id)) {
-                formGroup.style.display = 'none';
-                input.removeAttribute('required');
+                setVisible(formGroup, false);
+                setRequired(input, false);
                 return;
             }
         }
 
         if (trangThai === 'Chuẩn bị') {
-            formGroup.style.display = 'none';
-            input.removeAttribute('required');
+            setVisible(formGroup, false);
+            setRequired(input, false);
             if (label) {
                 label.innerHTML = f.label;
             }
         } else if (trangThai === 'Đang mời thầu' && (f.id === 'gt-thoigianmothau' || f.id === 'gt-thoigianmoehsdxtc')) {
-            formGroup.style.display = 'none';
-            input.removeAttribute('required');
+            setVisible(formGroup, false);
+            setRequired(input, false);
         } else if (f.id === 'gt-thoigianmoehsdxtc' && !is1G2T) {
-            formGroup.style.display = 'none';
-            input.removeAttribute('required');
+            setVisible(formGroup, false);
+            setRequired(input, false);
         } else {
-            formGroup.style.display = 'flex';
+            setVisible(formGroup, true);
             if (f.required) {
-                input.setAttribute('required', 'true');
+                setRequired(input, true);
                 if (label && !label.querySelector('.required')) {
                     label.innerHTML = `${f.label} <span class="required">*</span>`;
                 } else if (label) {
                     label.innerHTML = `${f.label} <span class="required">*</span>`;
                 }
             } else {
-                input.removeAttribute('required');
+                setRequired(input, false);
                 if (label) {
                     label.innerHTML = f.label;
                 }
@@ -1117,10 +852,10 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
         const formGroup = maInput.closest('.form-group');
         const label = formGroup?.querySelector('label');
         if (trangThai === 'Chuẩn bị') {
-            maInput.removeAttribute('required');
+            setRequired(maInput, false);
             if (label) label.innerHTML = 'Mã thông báo mời thầu';
         } else {
-            maInput.setAttribute('required', 'true');
+            setRequired(maInput, true);
             if (label && !label.querySelector('.required')) {
                 label.innerHTML = 'Mã thông báo mời thầu <span class="required">*</span>';
             }
@@ -1128,20 +863,14 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     }
 
     const giaHanContainer = document.getElementById('gt-giahan-container');
-    if (giaHanContainer) {
-        giaHanContainer.style.display = (trangThai !== 'Chuẩn bị') ? 'flex' : 'none';
-    }
+    setVisible(giaHanContainer, trangThai !== 'Chuẩn bị');
 
     const yeuCauLamRoContainer = document.getElementById('gt-yeucaulamro-container');
     const traLoiLamRoContainer = document.getElementById('gt-traloilamro-container');
     const showClarifications = trangThai !== 'Chuẩn bị';
 
-    if (yeuCauLamRoContainer) {
-        yeuCauLamRoContainer.style.display = showClarifications ? 'flex' : 'none';
-    }
-    if (traLoiLamRoContainer) {
-        traLoiLamRoContainer.style.display = showClarifications ? 'flex' : 'none';
-    }
+    setVisible(yeuCauLamRoContainer, showClarifications);
+    setVisible(traLoiLamRoContainer, showClarifications);
 
     // Logic ẩn/hiện và thuộc tính required/readonly cho 3 trường mới
     const linhVuc = document.getElementById('gt-linhvuc')?.value || '';
@@ -1164,102 +893,72 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
 
     // Tỷ lệ bảo đảm hợp đồng (%) - chỉ hiện khi không phải chỉ định thầu rút gọn, lựa chọn đặc biệt và Tư vấn
     const showTyleBaoDamHd = (ht !== 'Chỉ định thầu rút gọn' && ht !== 'Lựa chọn nhà thầu trong trường hợp đặc biệt' && linhVuc !== 'Tư vấn');
-    if (containerTyleBaoDamHd) {
-        containerTyleBaoDamHd.style.display = showTyleBaoDamHd ? 'flex' : 'none';
-    }
+    setVisible(containerTyleBaoDamHd, showTyleBaoDamHd);
     if (tyleBaoDamHdInput) {
-        if (showTyleBaoDamHd) {
-            tyleBaoDamHdInput.disabled = isReadOnly;
-        } else {
-            tyleBaoDamHdInput.disabled = true;
+        setDisabled(tyleBaoDamHdInput, showTyleBaoDamHd ? isReadOnly : true);
+        if (!showTyleBaoDamHd) {
             tyleBaoDamHdInput.value = '';
         }
     }
     if (noBidSecurity) {
-        if (containerBaoDam) containerBaoDam.style.display = 'none';
-        if (containerHlBaoDam) containerHlBaoDam.style.display = 'none';
+        setVisible(containerBaoDam, false);
+        setVisible(containerHlBaoDam, false);
 
-        if (mainBaoDamInput) mainBaoDamInput.removeAttribute('required');
+        setRequired(mainBaoDamInput, false);
 
-        if (thBaoDam) thBaoDam.style.display = 'none';
+        setVisible(thBaoDam, false);
         document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
-            cell.style.display = 'none';
+            setVisible(cell, false);
             const input = cell.querySelector('input');
-            if (input) input.removeAttribute('required');
+            setRequired(input, false);
         });
     } else {
-        if (containerBaoDam) containerBaoDam.style.display = 'flex';
-        if (containerHlBaoDam) {
-            if (trangThai === 'Chuẩn bị') {
-                containerHlBaoDam.style.display = 'none';
-            } else {
-                containerHlBaoDam.style.display = 'flex';
-            }
-        }
+        setVisible(containerBaoDam, true);
+        setVisible(containerHlBaoDam, trangThai !== 'Chuẩn bị');
 
         const isMoiThauOrLater = (trangThai !== 'Chuẩn bị');
-        if (mainBaoDamInput) {
-            if (isMoiThauOrLater) {
-                mainBaoDamInput.setAttribute('required', 'true');
-            } else {
-                mainBaoDamInput.removeAttribute('required');
-            }
-        }
+        setRequired(mainBaoDamInput, isMoiThauOrLater);
 
         if (phanLo === 'Có') {
             if (mainBaoDamInput) {
-                mainBaoDamInput.setAttribute('readonly', 'true');
-                mainBaoDamInput.style.background = 'var(--neutral-soft)';
-                mainBaoDamInput.style.cursor = 'not-allowed';
-                mainBaoDamInput.removeAttribute('required');
+                setReadonlyVisual(mainBaoDamInput, true);
+                setRequired(mainBaoDamInput, false);
             }
 
-            if (thBaoDam) thBaoDam.style.display = '';
+            setVisible(thBaoDam, true, '');
             document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
-                cell.style.display = '';
+                setVisible(cell, true, '');
                 const input = cell.querySelector('input');
-                if (input) {
-                    if (isMoiThauOrLater) {
-                        input.setAttribute('required', 'true');
-                    } else {
-                        input.removeAttribute('required');
-                    }
-                }
+                setRequired(input, isMoiThauOrLater);
             });
             this.recalculateTotalLotSecurities();
         } else {
             if (mainBaoDamInput) {
-                mainBaoDamInput.removeAttribute('readonly');
-                mainBaoDamInput.style.background = '';
-                mainBaoDamInput.style.cursor = 'auto';
+                setReadonlyVisual(mainBaoDamInput, false);
             }
 
-            if (thBaoDam) thBaoDam.style.display = 'none';
+            setVisible(thBaoDam, false);
             document.querySelectorAll('.col-baodam-phanlo-cell').forEach(cell => {
-                cell.style.display = 'none';
+                setVisible(cell, false);
                 const input = cell.querySelector('input');
-                if (input) input.removeAttribute('required');
+                setRequired(input, false);
             });
         }
     }
 
     // Thời gian hiệu lực hồ sơ dự thầu chỉ hiện khi ở trạng thái Đang mời thầu hoặc muộn hơn
-    if (trangThai === 'Chuẩn bị') {
-        if (containerHsdt) containerHsdt.style.display = 'none';
-        if (hieulucHsdtInput) hieulucHsdtInput.removeAttribute('required');
-    } else {
-        if (containerHsdt) containerHsdt.style.display = 'flex';
-        if (hieulucHsdtInput) hieulucHsdtInput.setAttribute('required', 'true');
-    }
+    const showHsdtDuration = trangThai !== 'Chuẩn bị';
+    setVisible(containerHsdt, showHsdtDuration);
+    setRequired(hieulucHsdtInput, showHsdtDuration);
 
     const gtGoiThauThuocContainer = document.getElementById('gt-goithauthuoc-container');
     if (gtGoiThauThuocContainer) {
         if (isLocked) {
-            gtGoiThauThuocContainer.style.display = 'none';
-            gtGoiThauThuocContainer.querySelectorAll('input[name="gt-goithauthuoc"]').forEach(r => r.disabled = true);
+            setVisible(gtGoiThauThuocContainer, false);
+            gtGoiThauThuocContainer.querySelectorAll('input[name="gt-goithauthuoc"]').forEach(r => setDisabled(r, true));
         } else {
-            gtGoiThauThuocContainer.style.display = (linhVuc === 'Hàng hóa') ? '' : 'none';
-            gtGoiThauThuocContainer.querySelectorAll('input[name="gt-goithauthuoc"]').forEach(r => r.disabled = isReadOnly);
+            setVisible(gtGoiThauThuocContainer, linhVuc === 'Hàng hóa', '');
+            gtGoiThauThuocContainer.querySelectorAll('input[name="gt-goithauthuoc"]').forEach(r => setDisabled(r, isReadOnly));
         }
     }
 }
@@ -1291,28 +990,28 @@ export function updateAwardedContractorUI(defaultDataList = null) {
     const condBlock = document.getElementById('conditional-awarded-contractor');
     const singleContainer = document.getElementById('awarded-single-container');
     const multiContainer = document.getElementById('awarded-multi-container');
+    const requiredSingleFields = [
+        document.getElementById('gt-nhathautrungthauid'),
+        document.getElementById('gt-giatrungthau'),
+        document.getElementById('gt-thoigian-goithau'),
+        document.getElementById('gt-thoigian-hopdong')
+    ];
 
     if (!condBlock) return;
 
     if (trangThai !== 'Đã có kết quả') {
-        condBlock.style.display = 'none';
-        document.getElementById('gt-nhathautrungthauid')?.removeAttribute('required');
-        document.getElementById('gt-giatrungthau')?.removeAttribute('required');
-        document.getElementById('gt-thoigian-goithau')?.removeAttribute('required');
-        document.getElementById('gt-thoigian-hopdong')?.removeAttribute('required');
+        setVisible(condBlock, false);
+        requiredSingleFields.forEach(input => setRequired(input, false));
         return;
     }
 
-    condBlock.style.display = 'block';
+    setVisible(condBlock, true, 'block');
 
     if (phanLo === 'Có') {
-        singleContainer.style.display = 'none';
-        multiContainer.style.display = 'block';
+        setVisible(singleContainer, false);
+        setVisible(multiContainer, true, 'block');
 
-        document.getElementById('gt-nhathautrungthauid')?.removeAttribute('required');
-        document.getElementById('gt-giatrungthau')?.removeAttribute('required');
-        document.getElementById('gt-thoigian-goithau')?.removeAttribute('required');
-        document.getElementById('gt-thoigian-hopdong')?.removeAttribute('required');
+        requiredSingleFields.forEach(input => setRequired(input, false));
 
         const tbody = document.getElementById('awarded-phanlo-tbody');
         if (tbody) {
@@ -1402,27 +1101,16 @@ export function updateAwardedContractorUI(defaultDataList = null) {
                 if (sel) sel.value = selectedNt;
 
                 const giaInput = row.querySelector('.awarded-pl-gia');
-                if (giaInput) {
-                    giaInput.addEventListener('input', (e) => {
-                        const cursorPosition = e.target.selectionStart;
-                        const originalLength = e.target.value.length;
-                        e.target.value = this.model.formatVND(e.target.value);
-                        const newLength = e.target.value.length;
-                        e.target.setSelectionRange(cursorPosition + (newLength - originalLength), cursorPosition + (newLength - originalLength));
-                    });
-                }
+                bindCurrencyElement(giaInput, value => this.model.formatVND(value));
 
                 tbody.appendChild(row);
             });
         }
     } else {
-        singleContainer.style.display = 'block';
-        multiContainer.style.display = 'none';
+        setVisible(singleContainer, true, 'block');
+        setVisible(multiContainer, false);
 
-        document.getElementById('gt-nhathautrungthauid')?.setAttribute('required', 'true');
-        document.getElementById('gt-giatrungthau')?.setAttribute('required', 'true');
-        document.getElementById('gt-thoigian-goithau')?.setAttribute('required', 'true');
-        document.getElementById('gt-thoigian-hopdong')?.setAttribute('required', 'true');
+        requiredSingleFields.forEach(input => setRequired(input, true));
     }
 }
 

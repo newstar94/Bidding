@@ -2,6 +2,7 @@
    BiddingFlow - Controller (Events, Interaction & Business logic dispatching)
    ========================================================================== */
 
+import { getJvData } from '/views/subviews/goithau/jvDataStore.js';
 
 
 export class BiddingController {
@@ -553,6 +554,9 @@ export class BiddingController {
         window.moThauGoiThau = (id) => this.moThauGoiThau(id);
         window.phatHanhHsmtGoiThau = (id) => this.phatHanhHsmtGoiThau(id);
         window.enforceSingleLeader = (tbodyId, roleName) => this.enforceSingleLeader(tbodyId, roleName);
+        window.openMoThauJVManager = (tr) => this.openMoThauJVManager(tr);
+        window.openMoThauJVViewModal = (members, leadName, leadCode) => this.openMoThauJVViewModal(members, leadName, leadCode);
+        window.showNhaThauDetailsAndCloseJV = (ntId) => this.showNhaThauDetailsAndCloseJV(ntId);
 
         window.editChuDauTu = (id) => this.editChuDauTu(id);
         window.deleteChuDauTu = (id) => this.deleteChuDauTu(id);
@@ -711,10 +715,13 @@ export class BiddingController {
         this._delegatedActionsReady = true;
 
         document.addEventListener('click', (event) => {
-            if (event.target.closest('[data-bf-stop]') && !event.target.closest('[data-bf-stop] [data-bf-action]')) {
+            const eventTarget = event.target instanceof Element ? event.target : null;
+            if (!eventTarget) return;
+
+            if (eventTarget.closest('[data-bf-stop]') && !eventTarget.closest('[data-bf-stop] [data-bf-action]')) {
                 return;
             }
-            const target = event.target.closest('[data-bf-action]');
+            const target = eventTarget.closest('[data-bf-action]');
             if (!target) return;
 
             const action = target.dataset.bfAction;
@@ -796,9 +803,9 @@ export class BiddingController {
                 case 'show-contractor-close-jv':
                     return call('showNhaThauDetailsAndCloseJV', id);
                 case 'show-jv':
-                    if (window._jvDataMap && window._jvDataMap[id] && typeof window.openMoThauJVViewModal === 'function') {
+                    if (getJvData(id) && typeof window.openMoThauJVViewModal === 'function') {
                         event.preventDefault();
-                        const data = window._jvDataMap[id];
+                        const data = getJvData(id);
                         window.openMoThauJVViewModal(data.members, data.leadName, data.leadCode);
                     }
                     return;
@@ -836,7 +843,10 @@ export class BiddingController {
         });
 
         document.addEventListener('change', (event) => {
-            const target = event.target.closest('[data-bf-change]');
+            const eventTarget = event.target instanceof Element ? event.target : null;
+            if (!eventTarget) return;
+
+            const target = eventTarget.closest('[data-bf-change]');
             if (!target) return;
             const action = target.dataset.bfChange;
             const root = target.dataset.root;
