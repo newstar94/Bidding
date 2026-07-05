@@ -24,88 +24,6 @@ MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
 COMPUTED_SOURCE_TABLE = '__computed__'
 CONTEXT_SOURCE_TABLE = '__context__'
 
-WORD_DYNAMIC_MAPPING_SEEDS = [
-    ("ds_phan_lo", "ds_phan_lo", "", "Danh sách tất cả phần lô"),
-    ("ds_nha_thau", "ds_nha_thau", "", "Danh sách nhà thầu tham dự"),
-    ("ds_nha_thau_trung", "ds_nha_thau_trung", "", "Danh sách nhà thầu trúng thầu"),
-    ("ds_nha_thau_truot", "ds_nha_thau_truot", "", "Danh sách nhà thầu trượt thầu"),
-    ("ds_phan_lo_co_nha_thau_tham_du", "ds_phan_lo_co_nha_thau_tham_du", "", "Danh sách phần lô có nhà thầu tham dự"),
-    ("ds_phan_lo_khong_co_nha_thau_tham_du", "ds_phan_lo_khong_co_nha_thau_tham_du", "", "Danh sách phần lô không có nhà thầu tham dự"),
-    ("ds_phan_lo_co_nha_thau_trung", "ds_phan_lo_co_nha_thau_trung", "", "Danh sách phần lô có nhà thầu trúng thầu"),
-    ("ds_phan_lo_tham_du_khong_trung", "ds_phan_lo_tham_du_khong_trung", "", "Danh sách phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng"),
-    ("tong_so_phan_lo", CONTEXT_SOURCE_TABLE, "tong_so_phan_lo", "Tổng số phần lô"),
-    ("so_phan_lo_co_nha_thau_tham_du", CONTEXT_SOURCE_TABLE, "so_phan_lo_co_nha_thau_tham_du", "Số phần lô có nhà thầu tham dự"),
-    ("so_phan_lo_khong_co_nha_thau_tham_du", CONTEXT_SOURCE_TABLE, "so_phan_lo_khong_co_nha_thau_tham_du", "Số phần lô không có nhà thầu tham dự"),
-    ("so_phan_lo_co_nha_thau_trung", CONTEXT_SOURCE_TABLE, "so_phan_lo_co_nha_thau_trung", "Số phần lô có nhà thầu trúng thầu"),
-    ("so_phan_lo_tham_du_khong_trung", CONTEXT_SOURCE_TABLE, "so_phan_lo_tham_du_khong_trung", "Số phần lô tham dự nhưng không có nhà thầu trúng")
-]
-
-def ensure_dynamic_word_mappings_for_org(org_name):
-    org_name = str(org_name or '').strip()
-    if not org_name:
-        return 0
-
-    conn = database.get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE owner_id = ?", (org_name,))
-        existing = cursor.fetchall()
-        existing_keys = {(row[1], row[2]) for row in existing}
-        existing_vars = {str(row[0] or '').lower() for row in existing}
-
-        inserted = 0
-        for ten_bien, source_table, source_column, mo_ta in WORD_DYNAMIC_MAPPING_SEEDS:
-            if ten_bien.lower() in existing_vars:
-                continue
-            if (source_table, source_column) in existing_keys:
-                continue
-            mapping_id = "wmp-" + str(uuid.uuid4())[:8]
-            cursor.execute("""
-                INSERT INTO cau_hinh_bien_word (id, ten_bien, source_table, source_column, mo_ta, owner_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (mapping_id, ten_bien, source_table, source_column, mo_ta, org_name))
-            existing_vars.add(ten_bien.lower())
-            existing_keys.add((source_table, source_column))
-            inserted += 1
-
-        conn.commit()
-        return inserted
-    finally:
-        conn.close()
-
-
-def ensure_default_word_mappings_for_all_orgs():
-    conn = database.get_connection()
-    try:
-        cursor = conn.cursor()
-        owners = set()
-        try:
-            cursor.execute("SELECT id FROM to_chuc WHERE id IS NOT NULL AND TRIM(id) <> ''")
-            owners.update(str(row[0]).strip() for row in cursor.fetchall() if row[0])
-        except Exception:
-            pass
-        try:
-            cursor.execute("SELECT DISTINCT owner_id FROM cau_hinh_bien_word WHERE owner_id IS NOT NULL AND TRIM(owner_id) <> ''")
-            owners.update(str(row[0]).strip() for row in cursor.fetchall() if row[0])
-        except Exception:
-            pass
-    finally:
-        conn.close()
-
-    total_inserted = 0
-    for owner in sorted(owners):
-        total_inserted += ensure_default_word_mappings_for_org(owner)
-    return total_inserted
-
-
-
-def ensure_default_word_mappings_for_org(org_name):
-    org_name = str(org_name or '').strip()
-    if not org_name:
-        return 0
-
-    return ensure_dynamic_word_mappings_for_org(org_name)
-
 def _safe_filename(value, fallback='download.docx'):
     name = os.path.basename(str(value or fallback)).strip()
     name = re.sub(r'[^A-Za-z0-9_.-]+', '_', name)
@@ -1029,7 +947,6 @@ async def list_word_mappings_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
-        ensure_default_word_mappings_for_org(org_name)
         conn = database.get_connection()
         cursor = conn.cursor()
 

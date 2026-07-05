@@ -276,12 +276,19 @@
                         chỉnh.
                     </p>
 
-                    <div class="select-wrapper mb-3" style="max-width: 350px; margin-bottom: 12px;">
-                        <select id="dictionary-group-select" class="form-control">
-                            <option value="global">1. Các biến đơn lẻ</option>
-                            <option value="custom_lists">2. Các biến danh sách</option>
-                            <option value="computed">3. Biến kết quả</option>
-                        </select>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; max-width: 720px; margin-bottom: 12px;">
+                        <div class="select-wrapper">
+                            <select id="dictionary-type-select" class="form-control">
+                                <option value="single">Bi&#7871;n &#273;&#417;n l&#7867;</option>
+                                <option value="list">Danh s&#225;ch &#273;&#7897;ng</option>
+                            </select>
+                        </div>
+                        <div class="select-wrapper">
+                            <select id="dictionary-group-select" class="form-control">
+                                <option value="global">C&#225;c bi&#7871;n &#225;nh x&#7841;</option>
+                                <option value="computed">Bi&#7871;n k&#7871;t qu&#7843;</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div class="table-container"

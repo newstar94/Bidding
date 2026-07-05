@@ -189,18 +189,22 @@ def build_report_context(package_id, user_id, org_name, type_param):
 
     contract_data = {}
     if type_param == 'contract':
-        cursor.execute("SELECT * FROM hop_dong_lcnt WHERE owner_id = ?", (org_name,))
-        all_contracts = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
-        for hd in all_contracts:
-            goi_thau_ids_str = hd.get('goi_thau_ids', '')
-            if goi_thau_ids_str:
-                try:
-                    linked_ids = json.loads(goi_thau_ids_str) if isinstance(goi_thau_ids_str, str) else goi_thau_ids_str
-                    if isinstance(linked_ids, list) and package_id in linked_ids:
-                        contract_data = hd
-                        break
-                except Exception:
-                    pass
+        cursor.execute("""
+            SELECT hd.*
+            FROM hop_dong hd
+            JOIN hop_dong_goi_thau hdgt ON hdgt.hop_dong_id = hd.id
+            WHERE hd.owner_id = ? AND hdgt.goi_thau_id = ?
+            ORDER BY CAST(hd.phien_ban AS INTEGER) DESC
+            LIMIT 1
+        """, (org_name, package_id))
+        row_contract = cursor.fetchone()
+        if row_contract:
+            contract_data = parse_json_fields(dict(row_contract))
+            cursor.execute(
+                "SELECT goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id = ?",
+                (contract_data.get('id'),)
+            )
+            contract_data['goi_thau_ids'] = [r[0] for r in cursor.fetchall()]
 
     # Fetch assigned experts (Tổ chuyên gia)
     cursor.execute("""

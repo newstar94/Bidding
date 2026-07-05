@@ -7,8 +7,7 @@ from .routes_docx import (
     upload_template_api,
     list_word_mappings_api,
     save_word_mapping_api,
-    delete_word_mapping_api,
-    ensure_default_word_mappings_for_all_orgs
+    delete_word_mapping_api
 )
 
 from .routes_excel import (

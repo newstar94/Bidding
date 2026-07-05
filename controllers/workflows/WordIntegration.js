@@ -31,12 +31,60 @@ export function setupWordTemplatesEvents() {
         });
     }
 
-    // Set up dictionary group select change event
+    const dictionaryTypeSelect = document.getElementById('dictionary-type-select');
     const dictionarySelect = document.getElementById('dictionary-group-select');
+    const dictionaryGroupsByType = {
+        single: [
+            { value: 'global', label: 'Các biến ánh xạ' },
+            { value: 'computed', label: 'Biến kết quả' }
+        ],
+        list: [
+            { value: 'custom_lists', label: 'Các danh sách động' }
+        ]
+    };
+    const getDictionaryTypeByGroup = (group) => group === 'custom_lists' ? 'list' : 'single';
+    const renderDictionaryControls = (targetGroup = 'global', shouldRender = false) => {
+        if (!dictionarySelect) return;
+
+        const type = getDictionaryTypeByGroup(targetGroup);
+        if (dictionaryTypeSelect) dictionaryTypeSelect.value = type;
+
+        const groups = dictionaryGroupsByType[type];
+        dictionarySelect.innerHTML = groups.map(group =>
+            `<option value="${group.value}">${group.label}</option>`
+        ).join('');
+
+        const nextGroup = groups.some(group => group.value === targetGroup) ? targetGroup : groups[0].value;
+        dictionarySelect.value = nextGroup;
+
+        if (shouldRender) {
+            this.view.renderDictionary(nextGroup);
+            this.setupCopyVariableEvents();
+        }
+    };
+
+    this.setWordDictionaryGroup = (group = 'global', shouldRender = true) => {
+        renderDictionaryControls(group, shouldRender);
+    };
+
+    if (dictionaryTypeSelect) {
+        dictionaryTypeSelect.innerHTML = `
+            <option value="single">Biến đơn lẻ</option>
+            <option value="list">Danh sách động</option>
+        `;
+    }
+
+    if (dictionaryTypeSelect && dictionarySelect) {
+        dictionaryTypeSelect.addEventListener('change', (e) => {
+            const groups = dictionaryGroupsByType[e.target.value] || dictionaryGroupsByType.single;
+            renderDictionaryControls(groups[0].value, true);
+        });
+    }
+
     if (dictionarySelect) {
+        renderDictionaryControls(dictionarySelect.value || 'global');
         dictionarySelect.addEventListener('change', (e) => {
-            const group = e.target.value;
-            this.view.renderDictionary(group);
+            this.view.renderDictionary(e.target.value);
             this.setupCopyVariableEvents();
         });
     }
@@ -503,10 +551,7 @@ export function setupWordTemplatesEvents() {
             checkExistingMapping();
             
             // Automatically switch dictionary view to global (single variables) and update filter
-            const dictionarySelect = document.getElementById('dictionary-group-select');
-            if (dictionarySelect) {
-                dictionarySelect.value = 'global';
-            }
+            if (this.setWordDictionaryGroup) this.setWordDictionaryGroup('global', false);
             if (this.view && this.view.renderWordMappingsTable) {
                 this.view.renderWordMappingsTable();
             }
@@ -515,10 +560,7 @@ export function setupWordTemplatesEvents() {
 
         columnSelect.addEventListener('change', () => {
             checkExistingMapping();
-            const dictionarySelect = document.getElementById('dictionary-group-select');
-            if (dictionarySelect) {
-                dictionarySelect.value = 'global';
-            }
+            if (this.setWordDictionaryGroup) this.setWordDictionaryGroup('global', false);
             if (this.view && this.view.renderWordMappingsTable) {
                 this.view.renderWordMappingsTable();
             }
@@ -530,10 +572,7 @@ export function setupWordTemplatesEvents() {
         wmlTableSelect.addEventListener('change', () => {
             checkExistingListMapping();
             // Automatically switch dictionary view to custom_lists (list variables) and update filter
-            const dictionarySelect = document.getElementById('dictionary-group-select');
-            if (dictionarySelect) {
-                dictionarySelect.value = 'custom_lists';
-            }
+            if (this.setWordDictionaryGroup) this.setWordDictionaryGroup('custom_lists', false);
             if (this.view && this.view.renderWordMappingsTable) {
                 this.view.renderWordMappingsTable();
             }
@@ -809,8 +848,7 @@ export function setupWordTemplatesEvents() {
                 if (res.ok && data.success) {
                     resetWmcForm();
                     await this.loadWordMappings();
-                    const dictionarySelect = document.getElementById('dictionary-group-select');
-                    if (dictionarySelect) dictionarySelect.value = 'computed';
+                    if (this.setWordDictionaryGroup) this.setWordDictionaryGroup('computed', false);
                     if (this.view.renderWordMappingsTable) this.view.renderWordMappingsTable();
                     if (this.view.customAlert) {
                         await this.view.customAlert('Thành công', 'Đã lưu biến kết quả thành công!', 'check-circle');
@@ -835,8 +873,7 @@ export function setupWordTemplatesEvents() {
             document.getElementById('wmc-ten-bien').value = m.tenBien;
             document.getElementById('wmc-formula').value = m.formula || m.sourceColumn || '';
             if (cancelWmcBtn) cancelWmcBtn.style.display = 'inline-block';
-            const dictionarySelect = document.getElementById('dictionary-group-select');
-            if (dictionarySelect) dictionarySelect.value = 'computed';
+            if (this.setWordDictionaryGroup) this.setWordDictionaryGroup('computed', false);
             const submitBtn = formWmc.querySelector('button[type="submit"]');
             if (submitBtn) {
                 submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Cập nhật';

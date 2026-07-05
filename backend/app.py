@@ -206,7 +206,6 @@ from routes.export_routes import (
     list_word_mappings_api,
     save_word_mapping_api,
     delete_word_mapping_api,
-    ensure_default_word_mappings_for_all_orgs,
     import_excel_api,
     export_excel_template_api,
     export_mothau_template_api,
@@ -564,7 +563,6 @@ async def lifespan(app):
     try:
         from helpers import khoi_tao_va_di_tru_he_thong
         khoi_tao_va_di_tru_he_thong()
-        ensure_default_word_mappings_for_all_orgs()
     except Exception as db_err:
         log_error(db_err, "startup_database_init")
 
