@@ -17,11 +17,37 @@
         #dictionary-table tbody td .action-btn-group {
             justify-content: flex-start !important;
         }
+        #tab-bieumau .word-config-grid {
+            align-items: stretch !important;
+        }
+        #tab-bieumau .word-config-grid > .dashboard-card {
+            display: flex;
+            flex-direction: column;
+        }
+        #tab-bieumau .word-config-grid > .dashboard-card > .card-body {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+        }
+        #tab-bieumau .word-config-form {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+        }
+        #tab-bieumau .word-config-form > .form-grid {
+            display: flex !important;
+            flex: 1;
+            flex-direction: column;
+        }
+        #tab-bieumau .word-config-actions {
+            margin-top: auto !important;
+            padding-top: 8px;
+        }
     </style>
     <div style="display: flex; flex-direction: column; gap: 24px;">
 
         <!-- Top Row: 2 Columns Layout -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+        <div class="word-config-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: stretch;">
 
             <!-- Top Left: Custom Variable Mappings Form -->
             <div class="dashboard-card" style="height: 100%;">
@@ -35,7 +61,7 @@
                         tương ứng.
                     </p>
 
-                    <form id="form-word-mapping"
+                    <form id="form-word-mapping" class="word-config-form"
                         style="padding: 16px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
                         <h5 style="margin: 0 0 12px 0; font-size: 0.88rem; font-weight: 700; color: var(--text-main);">
                             Thêm / Cập nhật biến ánh xạ</h5>
@@ -90,9 +116,58 @@
                                 </select>
                             </div>
                             <div id="wm-mapping-status" style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted); margin-top: 4px; display: none;"></div>
-                            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+                            <div class="word-config-actions" style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
                                 <button type="button" id="btn-wm-cancel" class="btn btn-outline"
                                     style="display: none;">Hủy</button>
+                                <button type="submit" class="btn btn-primary"><i data-lucide="save"
+                                        style="width: 14px; height: 14px;"></i> Lưu biến</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Top Middle: Computed Variable Form -->
+            <div class="dashboard-card" style="height: 100%;">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="card-title">Biến kết quả</h3>
+                    <i data-lucide="calculator" class="text-muted"></i>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3" style="font-size: 0.85rem; margin-bottom: 12px;">
+                        Tạo biến mới từ công thức backend, ví dụ <code>addWorkingDays(ngay_quyet_dinh_ket_qua, 1)</code>.
+                    </p>
+
+                    <form id="form-word-computed-mapping" class="word-config-form"
+                        style="padding: 16px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                        <h5 style="margin: 0 0 12px 0; font-size: 0.88rem; font-weight: 700; color: var(--text-main);">
+                            Thêm / Cập nhật biến công thức</h5>
+                        <input type="hidden" id="wmc-id">
+                        <div class="form-grid" style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                            <div class="form-group">
+                                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Tên biến kết quả</label>
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <span style="position: absolute; left: 8px; font-weight: bold; color: var(--primary);">{</span>
+                                    <input type="text" id="wmc-ten-bien" class="form-control" placeholder="ngay_thu_chap_thuan"
+                                        style="padding-left: 18px; padding-right: 18px; font-weight: 600;" required>
+                                    <span style="position: absolute; right: 8px; font-weight: bold; color: var(--primary);">}</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Công thức</label>
+                                <input type="text" id="wmc-formula" class="form-control"
+                                    placeholder="addWorkingDays(ngay_quyet_dinh_ket_qua, 1)" required>
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Chèn biến có sẵn</label>
+                                <input type="text" id="wmc-insert-var" class="form-control"
+                                    placeholder="Nhập tên biến để chèn, ví dụ: ngay_quyet_dinh_ket_qua">
+                                <div id="wmc-insert-var-status" style="font-size: 0.78rem; font-weight: 500; color: var(--text-muted); margin-top: 6px; display: none;"></div>
+                                <div id="wmc-formula-suggestions" style="display: none; flex-wrap: wrap; gap: 6px; margin-top: 8px;"></div>
+                            </div>
+                            <div id="wmc-mapping-status" style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted); margin-top: 4px; display: none;"></div>
+                            <div class="word-config-actions" style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+                                <button type="button" id="btn-wmc-cancel" class="btn btn-outline" style="display: none;">Hủy</button>
                                 <button type="submit" class="btn btn-primary"><i data-lucide="save"
                                         style="width: 14px; height: 14px;"></i> Lưu biến</button>
                             </div>
@@ -113,7 +188,7 @@
                         Word.
                     </p>
 
-                    <form id="form-word-list-mapping"
+                    <form id="form-word-list-mapping" class="word-config-form"
                         style="padding: 16px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
                         <h5 style="margin: 0 0 12px 0; font-size: 0.88rem; font-weight: 700; color: var(--text-main);">
                             Thêm / Cập nhật vòng lặp danh sách</h5>
@@ -173,7 +248,7 @@
                                 </select>
                             </div>
                             <div id="wml-mapping-status" style="font-size: 0.8rem; font-weight: 500; color: var(--text-muted); margin-top: 4px; display: none;"></div>
-                            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+                            <div class="word-config-actions" style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
                                 <button type="button" id="btn-wml-cancel" class="btn btn-outline"
                                     style="display: none;">Hủy</button>
                                 <button type="submit" class="btn btn-primary"><i data-lucide="save"
@@ -203,6 +278,7 @@
                         <select id="dictionary-group-select" class="form-control">
                             <option value="global">1. Các biến đơn lẻ</option>
                             <option value="custom_lists">2. Các biến danh sách</option>
+                            <option value="computed">3. Biến kết quả</option>
                         </select>
                     </div>
 

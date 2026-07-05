@@ -69,7 +69,7 @@ export function setupWordTemplatesEvents() {
             { value: 'tong_muc_dau_tu', label: 'Tổng mức đầu tư dự án / Tổng dự toán' },
             { value: 'ngay_phe_duyet', label: 'Ngày phê duyệt quyết định kế hoạch LCNT' },
             { value: 'quyet_dinh_phe_duyet', label: 'Số quyết định phê duyệt kế hoạch LCNT' },
-            { value: 'thoi_gian_dang_tai', label: 'Thời gian dự kiến đăng tải kế hoạch LCNT' },
+            { value: 'thoi_gian_dang_tai', label: 'Thời gian đăng tải kế hoạch LCNT' },
             { value: 'nguon_von', label: 'Nguồn vốn' },
             { value: 'thoi_gian_du_an', label: 'Thời gian thực hiện dự án' },
             { value: 'dia_diem_quy_mo', label: 'Địa điểm và quy mô xây dựng/mua sắm' },
@@ -275,10 +275,164 @@ export function setupWordTemplatesEvents() {
     const formWml = document.getElementById('form-word-list-mapping');
     const cancelWmlBtn = document.getElementById('btn-wml-cancel');
     const wmlTableSelect = document.getElementById('wml-source-table');
+    const formWmc = document.getElementById('form-word-computed-mapping');
+    const cancelWmcBtn = document.getElementById('btn-wmc-cancel');
+    const wmcInsertVarInput = document.getElementById('wmc-insert-var');
 
     if (tableSelect) makeSearchableSelect(tableSelect, 'Tìm kiếm thực thể...');
     if (columnSelect) makeSearchableSelect(columnSelect, 'Chọn hoặc tìm kiếm trường thông tin...');
     if (wmlTableSelect) makeSearchableSelect(wmlTableSelect, 'Tìm kiếm danh sách...');
+    const getFormulaVariableNames = () => new Set((this.model.state?.wordMappings || [])
+        .filter(m => m.tenBien && m.sourceColumn && m.sourceColumn !== '*')
+        .map(m => String(m.tenBien).toLowerCase()));
+
+    const formulaFunctionNames = new Set([
+        'adddays', 'subtractdays', 'addworkingdays', 'subtractworkingdays',
+        'nextworkingday', 'previousworkingday', 'diffworkingdays', 'isworkingday',
+        'round', 'ceil', 'floor', 'formatdate', 'formatnumber', 'if', 'and', 'or'
+    ]);
+
+    const normalizeFormulaVariableName = (value) => String(value || '')
+        .trim()
+        .replace(/^\{\s*/, '')
+        .replace(/\s*\}$/, '')
+        .trim()
+        .toLowerCase();
+
+    const normalizeFormulaText = (value) => String(value || '')
+        .replace(/\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}/g, '$1')
+        .trim();
+
+    const extractFormulaVariables = (formula) => {
+        const names = new Set();
+        const sanitized = normalizeFormulaText(formula).replace(/"[^"]*"|'[^']*'/g, ' ');
+        sanitized.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name, offset, text) => {
+            const lowerName = name.toLowerCase();
+            const after = text.slice(offset + name.length).trimStart();
+            if (!formulaFunctionNames.has(lowerName) && !after.startsWith('(')) {
+                names.add(lowerName);
+            }
+            return name;
+        });
+        return names;
+    };
+
+    const setInsertVarStatus = (message, kind = 'muted') => {
+        const status = document.getElementById('wmc-insert-var-status');
+        if (!status) return;
+        status.style.display = message ? 'block' : 'none';
+        status.style.color = kind === 'error' ? 'var(--danger)' : (kind === 'success' ? 'var(--success)' : 'var(--text-muted)');
+        status.textContent = message || '';
+    };
+
+    const getMappingByVariableName = (name) => (this.model.state?.wordMappings || [])
+        .find(m => String(m.tenBien || '').toLowerCase() === String(name || '').toLowerCase());
+
+    const inferFormulaVariableType = (mapping) => {
+        const text = `${mapping?.tenBien || ''} ${mapping?.sourceColumn || ''}`.toLowerCase();
+        if (/(^|_)(ngay|date|thoi_gian|han|deadline)(_|$)/.test(text)) return 'date';
+        if (/(^|_)(gia|tong|tien|so_luong|ty_le|phan_tram|hieu_luc|so_ngay|gia_tri|muc)(_|$)/.test(text)) return 'number';
+        return 'text';
+    };
+
+    const formulaSuggestionSets = {
+        date: [
+            { label: 'Cộng ngày', formula: 'addDays(__var__, 1)' },
+            { label: 'Trừ ngày', formula: 'subtractDays(__var__, 1)' },
+            { label: 'Cộng ngày làm việc', formula: 'addWorkingDays(__var__, 1)' },
+            { label: 'Trừ ngày làm việc', formula: 'subtractWorkingDays(__var__, 1)' },
+            { label: 'Định dạng ngày', formula: 'formatDate(__var__, "dd/MM/yyyy")' }
+        ],
+        number: [
+            { label: 'Làm tròn', formula: 'round(__var__)' },
+            { label: 'Định dạng số', formula: 'formatNumber(__var__)' },
+            { label: 'Tính phần trăm', formula: 'round(__var__ * 0.01)' },
+            { label: 'Cộng số', formula: '__var__ + 1' },
+            { label: 'Trừ số', formula: '__var__ - 1' }
+        ],
+        text: [
+            { label: 'Dùng trực tiếp', formula: '__var__' }
+        ]
+    };
+
+    const setFormulaText = (text) => {
+        const formulaInput = document.getElementById('wmc-formula');
+        if (!formulaInput) return;
+        formulaInput.value = text;
+        formulaInput.focus();
+        formulaInput.setSelectionRange(text.length, text.length);
+    };
+
+    const renderFormulaSuggestions = (variableName) => {
+        const box = document.getElementById('wmc-formula-suggestions');
+        if (!box) return;
+        const mapping = getMappingByVariableName(variableName);
+        if (!mapping) {
+            box.style.display = 'none';
+            box.innerHTML = '';
+            return;
+        }
+        const type = inferFormulaVariableType(mapping);
+        const suggestions = [
+            { label: 'Chèn biến', formula: '__var__' },
+            ...(formulaSuggestionSets[type] || formulaSuggestionSets.text)
+        ];
+        box.innerHTML = suggestions.map(item => {
+            const formula = item.formula.replaceAll('__var__', variableName);
+            return `<button type="button" class="btn btn-outline btn-sm btn-wmc-suggestion" data-formula="${formula.replace(/"/g, '&quot;')}" style="padding: 4px 8px; font-size: 0.74rem;">${item.label}</button>`;
+        }).join('');
+        box.style.display = 'flex';
+    };
+
+    const validateAndSuggestFormulaVariable = async () => {
+        const variableName = (wmcInsertVarInput?.value || '').trim();
+        if (!variableName) {
+            setInsertVarStatus('');
+            renderFormulaSuggestions('');
+            return true;
+        }
+        const normalizedName = normalizeFormulaVariableName(variableName);
+        if (!normalizedName) {
+            setInsertVarStatus('');
+            renderFormulaSuggestions('');
+            return true;
+        }
+        if (!getFormulaVariableNames().has(normalizedName)) {
+            setInsertVarStatus(`Biến "${variableName}" không tồn tại trong ánh xạ.`, 'error');
+            renderFormulaSuggestions('');
+            await this.view.customAlert('Biến không tồn tại', `Biến <strong>{${variableName}}</strong> chưa có trong danh sách ánh xạ.`, 'alert-triangle');
+            return false;
+        }
+        wmcInsertVarInput.value = normalizedName;
+        setInsertVarStatus(`Biến {${normalizedName}} hợp lệ. Chọn một gợi ý công thức bên dưới.`, 'success');
+        renderFormulaSuggestions(normalizedName);
+        return true;
+    };
+
+    if (wmcInsertVarInput) {
+        wmcInsertVarInput.addEventListener('keydown', async (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                await validateAndSuggestFormulaVariable();
+            }
+        });
+        wmcInsertVarInput.addEventListener('blur', () => {
+            if (wmcInsertVarInput.value.trim()) validateAndSuggestFormulaVariable();
+        });
+        wmcInsertVarInput.addEventListener('input', () => {
+            setInsertVarStatus('');
+            renderFormulaSuggestions('');
+        });
+    }
+
+    const formulaSuggestionsBox = document.getElementById('wmc-formula-suggestions');
+    if (formulaSuggestionsBox) {
+        formulaSuggestionsBox.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-wmc-suggestion');
+            if (!btn) return;
+            setFormulaText(btn.getAttribute('data-formula') || '');
+        });
+    }
 
     const checkExistingMapping = () => {
         const table = tableSelect?.value;
@@ -426,11 +580,35 @@ export function setupWordTemplatesEvents() {
         }
     };
 
+    const resetWmcForm = () => {
+        if (formWmc) {
+            formWmc.reset();
+            document.getElementById('wmc-id').value = '';
+            if (cancelWmcBtn) cancelWmcBtn.style.display = 'none';
+            const statusDiv = document.getElementById('wmc-mapping-status');
+            if (statusDiv) statusDiv.style.display = 'none';
+            setInsertVarStatus('');
+            renderFormulaSuggestions('');
+            const submitBtn = formWmc.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Lưu biến';
+                lucide.createIcons({ root: submitBtn });
+            }
+            if (this.view && this.view.renderWordMappingsTable) {
+                this.view.renderWordMappingsTable();
+            }
+            this.setupCopyVariableEvents();
+        }
+    };
+
     if (cancelWmBtn) {
         cancelWmBtn.addEventListener('click', resetWmForm);
     }
     if (cancelWmlBtn) {
         cancelWmlBtn.addEventListener('click', resetWmlForm);
+    }
+    if (cancelWmcBtn) {
+        cancelWmcBtn.addEventListener('click', resetWmcForm);
     }
 
     if (formWm) {
@@ -583,10 +761,81 @@ export function setupWordTemplatesEvents() {
         });
     }
 
+    if (formWmc) {
+        formWmc.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('wmc-id').value;
+            const tenBien = document.getElementById('wmc-ten-bien').value.trim();
+            const formulaInput = document.getElementById('wmc-formula');
+            const formula = normalizeFormulaText(formulaInput.value);
+
+            if (!tenBien || !formula) return;
+            formulaInput.value = formula;
+
+            const availableVariables = getFormulaVariableNames();
+            const referencedVariables = extractFormulaVariables(formula);
+            const selfReference = referencedVariables.has(tenBien.toLowerCase());
+            const missingVariables = [...referencedVariables].filter(name => !availableVariables.has(name));
+            if (selfReference) {
+                await this.view.customAlert('Công thức không hợp lệ', `Biến <strong>{${tenBien}}</strong> không được tự tham chiếu chính nó.`, 'alert-triangle');
+                return;
+            }
+            if (missingVariables.length) {
+                await this.view.customAlert('Biến không tồn tại', `Các biến sau chưa có trong danh sách ánh xạ: <strong>${missingVariables.map(name => `{${name}}`).join(', ')}</strong>.`, 'alert-triangle');
+                return;
+            }
+
+            const duplicate = (this.model.state.wordMappings || []).find(m => m.tenBien.toLowerCase() === tenBien.toLowerCase() && m.id !== id);
+            if (duplicate) {
+                await this.view.customAlert('Trùng tên biến', `Tên biến <strong>{${tenBien}}</strong> đã tồn tại.`, 'alert-triangle');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/word-mappings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, tenBien, mappingType: 'computed', formula })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    resetWmcForm();
+                    await this.loadWordMappings();
+                    const dictionarySelect = document.getElementById('dictionary-group-select');
+                    if (dictionarySelect) dictionarySelect.value = 'computed';
+                    if (this.view.renderWordMappingsTable) this.view.renderWordMappingsTable();
+                    if (this.view.customAlert) {
+                        await this.view.customAlert('Thành công', 'Đã lưu biến kết quả thành công!', 'check-circle');
+                    }
+                } else {
+                    await this.view.customAlert('Lỗi lưu biến', data.error || 'Lỗi khi lưu biến kết quả.', 'x-circle');
+                }
+            } catch (err) {
+                console.error(err);
+                await this.view.customAlert('Lỗi kết nối', 'Không thể kết nối máy chủ.', 'x-circle');
+            }
+        });
+    }
+
     // Register global edit/delete handlers on window for HTML onclick compatibility
     window.editWordMapping = (id) => {
         const m = (this.model.state.wordMappings || []).find(x => x.id === id);
         if (!m) return;
+
+        if (m.mappingType === 'computed' || m.sourceTable === '__computed__') {
+            document.getElementById('wmc-id').value = m.id;
+            document.getElementById('wmc-ten-bien').value = m.tenBien;
+            document.getElementById('wmc-formula').value = m.formula || m.sourceColumn || '';
+            if (cancelWmcBtn) cancelWmcBtn.style.display = 'inline-block';
+            const dictionarySelect = document.getElementById('dictionary-group-select');
+            if (dictionarySelect) dictionarySelect.value = 'computed';
+            const submitBtn = formWmc.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i> Cập nhật';
+                lucide.createIcons({ root: submitBtn });
+            }
+            return;
+        }
 
         // Check if it is a list mapping
         if (!m.sourceColumn || m.sourceColumn === '*') {

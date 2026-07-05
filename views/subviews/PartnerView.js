@@ -154,7 +154,7 @@ export function renderDictionary(group) {
                 'tong_muc_dau_tu': 'Tổng mức đầu tư dự án / Tổng dự toán',
                 'quyet_dinh_phe_duyet': 'Số quyết định phê duyệt kế hoạch LCNT',
                 'ngay_phe_duyet': 'Ngày phê duyệt quyết định kế hoạch LCNT',
-                'thoi_gian_dang_tai': 'Thời gian dự kiến đăng tải kế hoạch LCNT',
+                'thoi_gian_dang_tai': 'Thời gian đăng tải kế hoạch LCNT',
                 'nguon_von': 'Nguồn vốn',
                 'thoi_gian_du_an': 'Thời gian thực hiện dự án',
                 'dia_diem_quy_mo': 'Địa điểm và quy mô xây dựng/mua sắm',
@@ -371,7 +371,7 @@ export function renderDictionary(group) {
     let variables = DICTIONARY[group] || [];
     if (group === 'global' && this.model.state && this.model.state.wordMappings) {
         const customVars = this.model.state.wordMappings
-            .filter(m => m.sourceColumn && m.sourceColumn !== '*')
+            .filter(m => m.sourceColumn && m.sourceColumn !== '*' && m.sourceTable !== '__computed__')
             .map(m => ({
                 code: `{${m.tenBien}}`,
                 desc: `Biến tự định nghĩa (Ánh xạ: Bảng ${getTableLabel(m.sourceTable)} -> ${getColumnLabel(m.sourceTable, m.sourceColumn)})`,
@@ -384,7 +384,7 @@ export function renderDictionary(group) {
         variables = [...variables, ...customVars];
     } else if (group === 'custom_lists' && this.model.state && this.model.state.wordMappings) {
         const customLists = this.model.state.wordMappings
-            .filter(m => !m.sourceColumn || m.sourceColumn === '*')
+            .filter(m => (!m.sourceColumn || m.sourceColumn === '*') && m.sourceTable !== '__computed__')
             .map(m => ({
                 code: `{#${m.tenBien}}`,
                 desc: `Biến vòng lặp danh sách tự định nghĩa (Ánh xạ từ bảng: ${getTableLabel(m.sourceTable)})`,
@@ -396,6 +396,19 @@ export function renderDictionary(group) {
                 tenBien: m.tenBien
             }));
         variables = [...variables, ...customLists];
+    } else if (group === 'computed' && this.model.state && this.model.state.wordMappings) {
+        variables = this.model.state.wordMappings
+            .filter(m => m.mappingType === 'computed' || m.sourceTable === '__computed__')
+            .map(m => ({
+                code: `{${m.tenBien}}`,
+                desc: m.formula || m.sourceColumn || '',
+                isCustom: true,
+                isComputed: true,
+                id: m.id,
+                sourceTable: m.sourceTable,
+                sourceColumn: m.sourceColumn,
+                tenBien: m.tenBien
+            }));
     }
 
     // Filter variables dynamically based on currently selected values in the mapping forms
@@ -482,7 +495,13 @@ export function renderDictionary(group) {
 
         let descHTML = '';
         if (v.isCustom) {
-            if (!v.sourceColumn || v.sourceColumn === '*') {
+            if (v.isComputed) {
+                descHTML = `
+                    <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">Công thức</span>
+                    <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
+                    <code style="font-size: 0.8rem;">${v.desc}</code>
+                `;
+            } else if (!v.sourceColumn || v.sourceColumn === '*') {
                 descHTML = `
                     <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">Vòng lặp danh sách</span>
                     <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
