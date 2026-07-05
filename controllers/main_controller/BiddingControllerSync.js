@@ -194,6 +194,31 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
                 'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
             }
         });
+        if (response.status === 401 || response.status === 403) {
+            let errorMsg = '';
+            try {
+                const data = await response.clone().json();
+                errorMsg = data?.error || '';
+            } catch (e) {
+                errorMsg = '';
+            }
+            const normalizedMsg = errorMsg.toLowerCase();
+            const isAuthError = (
+                normalizedMsg.includes('xác thực') ||
+                normalizedMsg.includes('phiên') ||
+                normalizedMsg.includes('đăng nhập') ||
+                normalizedMsg.includes('tài khoản') ||
+                normalizedMsg.includes('authentication') ||
+                normalizedMsg.includes('session')
+            );
+            if (isAuthError || isBackground) {
+                if (syncStatusText) syncStatusText.textContent = 'Cần đăng nhập lại';
+                return;
+            }
+        }
+        if (!response.ok) {
+            throw new Error(`Không thể đồng bộ dữ liệu: HTTP ${response.status}`);
+        }
         if (response.ok) {
             const dbData = await response.json();
 

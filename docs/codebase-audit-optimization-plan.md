@@ -1,6 +1,8 @@
 # Backlog còn lại - BiddingFlow
 
-File này chỉ giữ các việc chưa thực hiện hoặc chưa được manual test đầy đủ. Các mục đã refactor xong như helper format tiền, helper feedback field, inline Excel controls của form gói thầu, modal return state, package validation, JV data store và file upload helper đã được loại khỏi backlog. Các unit test JS/Python hiện có cho validation, mapper, delta merge, schema constraint và Excel preview đã chạy pass nên không liệt kê lại ở đây.
+File này chỉ giữ các việc chưa thực hiện hoặc chưa được manual test đầy đủ. Các unit test JS/Python hiện có cho validation, mapper, delta merge, schema constraint và Excel preview đã chạy pass nên không liệt kê lại ở đây.
+
+Ghi chú mới nhất: với `APP_DEBUG=False`, server đã phục vụ `dist/controllers/app.bundle.js`. F5 production trên dữ liệu hiện tại không mất dữ liệu và phần loader sau khi reload còn khoảng 0.10-0.40 giây; tổng thời gian reload trang khoảng 0.62-0.68 giây. Cần kiểm tra lại với bộ dữ liệu vừa/lớn trước khi đóng hẳn mục hiệu năng tải nặng.
 
 ## Giai đoạn 0 - Baseline và kiểm chứng hiệu năng
 
@@ -9,7 +11,7 @@ File này chỉ giữ các việc chưa thực hiện hoặc chưa được manu
 
 ## Giai đoạn 2 - Local-first và loader
 
-- [ ] Xác nhận F5 khi có local data đạt mục tiêu loader dưới 500ms với dữ liệu vừa.
+- [ ] Xác nhận F5 khi có local data đạt mục tiêu loader dưới 500ms với dữ liệu vừa/lớn.
 - [ ] Kiểm tra không còn màn hình placeholder bị nháy sau khi loader biến mất.
 
 ## Giai đoạn 4 - DB/schema
@@ -47,8 +49,8 @@ File này chỉ giữ các việc chưa thực hiện hoặc chưa được manu
 
 ## Ưu tiên tiếp theo
 
-1. Manual test F5/local-first và snapshot gói thầu theo phiên bản kế hoạch.
-2. Manual test CSRF, login/check-session/logout và WebSocket + `sync_version`.
-3. Manual test tạo/sửa/xóa, export/import và sync end-to-end sau khi mapper đã pass unit test.
-4. Tối ưu loader/local-first và kiểm chứng render các bảng lớn.
+1. Ghi lại request count/dung lượng local storage và kiểm tra F5 với dữ liệu vừa/lớn.
+2. Manual test snapshot gói thầu theo phiên bản kế hoạch.
+3. Manual test login/check-session/logout, throttle và cấu hình security production.
+4. Manual test tạo/sửa/xóa, export/import và sync end-to-end.
 5. Manual test workflow chính còn lại trong Giai đoạn 9.

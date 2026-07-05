@@ -169,7 +169,7 @@ export function setupAuth() {
         if (initLoader) {
             initLoader.style.opacity = '0';
             initLoader.style.visibility = 'hidden';
-            setTimeout(() => initLoader.remove(), 180);
+            setTimeout(() => initLoader.remove(), 90);
         }
     };
     window.hideInitLoader = hideInitLoader;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'biddingflow-shell-v1';
+const CACHE_NAME = 'biddingflow-shell-v2';
 const APP_SHELL = [
     '/',
     '/style.css?v=6.13',
@@ -7,6 +7,10 @@ const APP_SHELL = [
     '/css/components.css',
     '/css/views.css',
     '/css/toast.css',
+    '/vendor/lucide/lucide.min.js?v=1.21.0',
+    '/vendor/flatpickr/flatpickr.min.css?v=4',
+    '/vendor/flatpickr/flatpickr.min.js?v=4',
+    '/vendor/flatpickr/l10n/vn.js?v=4',
     '/dist/controllers/app.bundle.js'
 ];
 
@@ -34,7 +38,22 @@ self.addEventListener('fetch', event => {
     if (request.method !== 'GET' || url.origin !== self.location.origin) return;
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/uploads/')) return;
 
-    if (url.pathname === '/' || url.pathname.endsWith('.css') || url.pathname.startsWith('/dist/')) {
+    if (url.pathname === '/') {
+        event.respondWith(
+            fetch(request)
+                .then(response => {
+                    if (response && response.ok) {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+                    }
+                    return response;
+                })
+                .catch(() => caches.match(request))
+        );
+        return;
+    }
+
+    if (url.pathname.endsWith('.css') || url.pathname.startsWith('/dist/') || url.pathname.startsWith('/vendor/')) {
         event.respondWith(
             caches.match(request).then(cached => {
                 const network = fetch(request)

@@ -1,5 +1,6 @@
 ﻿import { authFetchDownload } from '../utils/workflow_helpers.js';
 import { triggerExcelTemplateDownload as triggerTemplateDownload } from './excelTemplateAdapter.js';
+import { ensureXlsxLoaded } from '../utils/externalAssets.js';
 import { readExcelRows, showExcelImportSaveButton } from './excelFileReader.js';
 import {
     parseAwardResultImport,
@@ -501,7 +502,8 @@ export function exportEditTuyChonMuaThemExcel() {
 }
 
 
-export function importPhatHanhPhanLoExcel(file) {
+export async function importPhatHanhPhanLoExcel(file) {
+    const XLSX = await ensureXlsxLoaded();
     const reader = new FileReader();
     reader.onload = (e) => {
         try {

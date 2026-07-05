@@ -1,4 +1,7 @@
-export function readExcelRows(file) {
+import { ensureXlsxLoaded } from '../utils/externalAssets.js';
+
+export async function readExcelRows(file) {
+    const XLSX = await ensureXlsxLoaded();
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (evt) => {

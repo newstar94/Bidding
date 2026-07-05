@@ -126,9 +126,11 @@ def compile_html(file_path):
             '\n',
             compiled
         )
+        bundle_path = os.path.join(project_root, 'dist', 'controllers', 'app.bundle.js')
+        bundle_version = str(int(os.path.getmtime(bundle_path))) if os.path.exists(bundle_path) else "1"
         compiled = re.sub(
             r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
-            '<script type="module" src="/dist/controllers/app.bundle.js"></script>',
+            f'<script type="module" src="/dist/controllers/app.bundle.js?v={bundle_version}"></script>',
             compiled
         )
         compiled = compiled.replace('<meta name="bf-app-debug" content="true">', '<meta name="bf-app-debug" content="false">')
@@ -255,6 +257,7 @@ class ProductionViewStaticFiles(StaticFiles):
             normalized == "style.css"
             or normalized == "service-worker.js"
             or (normalized.startswith("css/") and normalized.endswith(".css"))
+            or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css")))
         )
         if not allowed:
             return Response("Access Denied", status_code=403)
@@ -446,11 +449,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Thêm CSP hỗ trợ tải tài nguyên tự host và các CDN cần thiết
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: blob:; "
-            f"connect-src 'self' https://unpkg.com https://cdn.jsdelivr.net ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT}; "
-            "font-src 'self' https://fonts.gstatic.com https://unpkg.com https://cdn.jsdelivr.net; "
+            f"connect-src 'self' ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT}; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "worker-src 'self'; "
             "base-uri 'self'; "
             "object-src 'none';"

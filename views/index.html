@@ -19,17 +19,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
 
-    <!-- Lucide Icons CDN -->
-    <script defer src="https://unpkg.com/lucide@1.21.0"></script>
+    <!-- Lucide Icons -->
+    <script defer src="/vendor/lucide/lucide.min.js?v=1.21.0"></script>
 
-    <!-- SheetJS (XLSX) CDN for Excel Import and Export -->
-    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-
-    <!-- flatpickr CSS & JS CDN -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/vn.js"></script>
+    <!-- flatpickr CSS & JS -->
+    <link rel="stylesheet" href="/vendor/flatpickr/flatpickr.min.css?v=4">
+    <script defer src="/vendor/flatpickr/flatpickr.min.js?v=4"></script>
+    <script defer src="/vendor/flatpickr/l10n/vn.js?v=4"></script>
 
     <!-- Module Preloads for Fast Dev Loading (Flatten ES Module Waterfall) -->
     <link rel="modulepreload" href="/controllers/app.js">
@@ -53,7 +49,7 @@
 <body>
     <!-- System Initialization Loader Overlay -->
     <div id="system-init-loader"
-        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; transition: opacity 0.16s ease, visibility 0.16s ease; font-family: 'Plus Jakarta Sans', sans-serif;">
+        style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; transition: opacity 0.08s ease, visibility 0.08s ease; font-family: 'Plus Jakarta Sans', sans-serif;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
             <div
                 style="width: 48px; height: 48px; border: 3.5px solid rgba(59, 130, 246, 0.1); border-radius: 50%; border-top-color: #3b82f6; animation: spin-loader 1s linear infinite;">
