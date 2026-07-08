@@ -1,4 +1,4 @@
-const CACHE_NAME = 'biddingflow-shell-v2';
+const CACHE_NAME = 'biddingflow-shell-v3';
 const APP_SHELL = [
     '/',
     '/style.css?v=6.13',

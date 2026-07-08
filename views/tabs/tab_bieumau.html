@@ -105,6 +105,7 @@
                                     <option value="cv_da_thuc_hien">Công việc đã thực hiện</option>
                                     <option value="cv_khong_ap_dung">Công việc không áp dụng LCNT</option>
                                     <option value="cv_chua_du_dieu_kien">Công việc chưa đủ điều kiện LCNT</option>
+                                    <option value="__context__">Thực thể động</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -214,9 +215,6 @@
                                 <select id="wml-source-table" class="form-control" required>
                                     <option value="">-- Chọn danh sách --</option>
                                     <option value="goi_thau">Gói thầu / Phiên bản gói thầu</option>
-                                    <option value="ds_nha_thau">Nhà thầu tham dự</option>
-                                    <option value="ds_nha_thau_trung">Nhà thầu trúng thầu</option>
-                                    <option value="ds_nha_thau_truot">Nhà thầu trượt thầu</option>
                                     <option value="chuyen_gia">Danh sách chuyên gia (toàn hệ thống)</option>
                                     <option value="to_chuyen_gia">Tổ chuyên gia (của Gói thầu)</option>
                                     <option value="to_tham_dinh">Tổ thẩm định (của Gói thầu)</option>
@@ -231,7 +229,14 @@
                                     <option value="ds_phan_lo_co_nha_thau_tham_du">Phần lô có nhà thầu tham dự</option>
                                     <option value="ds_phan_lo_khong_co_nha_thau_tham_du">Phần lô không có nhà thầu tham dự</option>
                                     <option value="ds_phan_lo_co_nha_thau_trung">Phần lô có nhà thầu trúng thầu</option>
-                                    <option value="ds_phan_lo_tham_du_khong_trung">Phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng</option>
+                                    <option value="ds_phan_lo_co_nha_thau_tham_du_khong_trung">Phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng</option>
+                                    <option value="ds_nha_thau_tham_du">Nhà thầu tham dự</option>
+                                    <option value="ds_nha_thau_trung_thau">Nhà thầu trúng thầu</option>
+                                    <option value="ds_nha_thau_truot_thau">Nhà thầu trượt thầu</option>
+                                    <option value="ds_nha_thau_khong_dat">Nhà thầu không đạt</option>
+                                    <option value="ds_nha_thau_dat_khong_xep_hang_1">Nhà thầu đạt nhưng không xếp hạng 1</option>
+                                    <option value="ds_nha_thau_khong_duoc_danh_gia">Nhà thầu không được đánh giá (Quy trình 2)</option>
+                                    <option value="ds_nha_thau_trung_theo_phan_lo">Nhà thầu trúng thầu, kèm danh sách phần lô trúng</option>
                                     <option value="tuy_chon_mua_them_list">Tùy chọn mua thêm (trong Gói thầu)</option>
                                     <option value="gia_han_list">Danh sách gia hạn (trong Gói thầu)</option>
                                     <option value="yeu_cau_lam_ro_list">Danh sách yêu cầu làm rõ (trong Gói thầu)
@@ -276,17 +281,12 @@
                         chỉnh.
                     </p>
 
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; max-width: 720px; margin-bottom: 12px;">
-                        <div class="select-wrapper">
-                            <select id="dictionary-type-select" class="form-control">
-                                <option value="single">Bi&#7871;n &#273;&#417;n l&#7867;</option>
-                                <option value="list">Danh s&#225;ch &#273;&#7897;ng</option>
-                            </select>
-                        </div>
+                    <div style="max-width: 420px; margin-bottom: 12px;">
                         <div class="select-wrapper">
                             <select id="dictionary-group-select" class="form-control">
-                                <option value="global">C&#225;c bi&#7871;n &#225;nh x&#7841;</option>
+                                <option value="global">Bi&#7871;n &#225;nh x&#7841;</option>
                                 <option value="computed">Bi&#7871;n k&#7871;t qu&#7843;</option>
+                                <option value="custom_lists">Danh s&#225;ch</option>
                             </select>
                         </div>
                     </div>

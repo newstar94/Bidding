@@ -36,6 +36,7 @@ export async function editChuDauTu(id) {
         document.getElementById('cdt-ma').value = cdt.maChuDauTu;
         document.getElementById('cdt-mst').value = cdt.maSoThue || '';
         document.getElementById('cdt-ten').value = cdt.tenChuDauTu;
+        document.getElementById('cdt-tenviettat').value = cdt.tenVietTat || '';
         document.getElementById('cdt-chucvunguoidungdau').value = cdt.chucVuNguoiDungDau || '';
         document.getElementById('cdt-daidiencdt').value = cdt.daiDienCdt || '';
         document.getElementById('cdt-chucvudaidien').value = cdt.chucVuDaiDien || '';
@@ -194,6 +195,7 @@ export async function handleChuDauTuSubmit(e) {
         maChuDauTu: document.getElementById('cdt-ma').value.trim(),
         maSoThue: maSoThue,
         tenChuDauTu: document.getElementById('cdt-ten').value.trim(),
+        tenVietTat: document.getElementById('cdt-tenviettat').value.trim(),
         chucVuNguoiDungDau: document.getElementById('cdt-chucvunguoidungdau').value.trim(),
         daiDienCdt: document.getElementById('cdt-daidiencdt').value.trim(),
         chucVuDaiDien: document.getElementById('cdt-chucvudaidien').value.trim(),

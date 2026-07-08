@@ -7,6 +7,7 @@ ENTITY_SCHEMA = {
     'chudautu': [
         {'field': 'maChuDauTu',           'label': 'Mã chủ đầu tư',              'aliases': ['Mã chủ đầu tư', 'Mã CĐT', 'maChuDauTu']},
         {'field': 'tenChuDauTu',           'label': 'Tên chủ đầu tư',             'aliases': ['Tên chủ đầu tư', 'Tên CĐT', 'tenChuDauTu']},
+        {'field': 'tenVietTat',            'label': 'Tên viết tắt',                 'aliases': ['Tên viết tắt', 'Tên VT', 'Viết tắt', 'tenVietTat']},
         {'field': 'maSoThue',              'label': 'Mã số thuế',                  'aliases': ['Mã số thuế', 'MST', 'maSoThue']},
         {'field': 'chucVuNguoiDungDau',   'label': 'Chức vụ người đứng đầu',      'aliases': ['Chức vụ người đứng đầu', 'Chức vụ', 'chucVuNguoiDungDau']},
         {'field': 'daiDienCdt',           'label': 'Đại diện CĐT',                'aliases': ['Đại diện CĐT', 'Người ký QĐ', 'Người ký', 'daiDienCdt']},
@@ -92,6 +93,7 @@ ENTITY_SCHEMA = {
                                            'options': ['Độc lập', 'Liên danh']},
         {'field': 'maNhaThau',            'label': 'Mã nhà thầu',                 'aliases': ['Mã nhà thầu', 'Mã định danh', 'Mã nhà thầu', 'maNhaThau']},
         {'field': 'tenNhaThau',           'label': 'Tên nhà thầu',                'aliases': ['Tên nhà thầu', 'tenNhaThau']},
+        {'field': 'tenVietTat',           'label': 'Tên viết tắt',                 'aliases': ['Tên viết tắt', 'Tên VT', 'Viết tắt', 'tenVietTat']},
         {'field': 'maSoThue',             'label': 'Mã số thuế',                  'aliases': ['Mã số thuế', 'MST', 'maSoThue']},
         {'field': 'nguoiDaiDien',         'label': 'Người đại diện',              'aliases': ['Người đại diện', 'nguoiDaiDien']},
         {'field': 'danhXung',             'label': 'Danh xưng',                   'aliases': ['Danh xưng', 'danhXung'],

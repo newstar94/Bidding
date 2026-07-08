@@ -34,6 +34,7 @@ export async function renderChuDauTuTable() {
         const filtered = latestChuDauTu.filter(c =>
             (c.maChuDauTu || '').toLowerCase().includes(searchVal) ||
             (c.tenChuDauTu || '').toLowerCase().includes(searchVal) ||
+            (c.tenVietTat || '').toLowerCase().includes(searchVal) ||
             (c.maSoThue && c.maSoThue.includes(searchVal))
         );
 
@@ -93,6 +94,7 @@ export async function renderChuDauTuTable() {
                 </td>
                 <td style="min-width: 220px; max-width: 320px;" class="fw-bold text-wrap">
                     ${displayedCdt.tenChuDauTu || ''}
+                    ${displayedCdt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${displayedCdt.tenVietTat}</div>` : ''}
                     ${displayedCdt.coQuanChuQuan ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">CQ chủ quản: ${displayedCdt.coQuanChuQuan}</div>` : ''}
                 </td>
                 <td>${displayedCdt.maSoThue || '--'}</td>
@@ -194,6 +196,10 @@ export function renderChuDauTuVersionDetails(versionId) {
                 <div class="detail-item">
                     <div class="detail-label">Mã số thuế</div>
                     <div class="detail-value fw-bold">${cdt.maSoThue || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Tên viết tắt</div>
+                    <div class="detail-value fw-bold">${cdt.tenVietTat || '--'}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Đại diện CĐT</div>

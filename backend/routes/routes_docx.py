@@ -17,6 +17,7 @@ from helpers import (
 )
 import custom_exporter
 import services.docx_service as docx_service
+from helpers_py.word_defaults import ensure_default_word_mappings
 import uuid
 
 SYSTEM_TEMPLATES = {'mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx'}
@@ -69,37 +70,6 @@ def _validate_docx_upload(filename, content):
         raise ValueError('Tệp .docx không hợp lệ')
     return _safe_filename(f"{root[:80]}_{uuid.uuid4().hex[:8]}.docx")
 
-def enrich_context_with_filtered_bidders(context):
-    bids = context.get('nha_thau', [])
-    if not isinstance(bids, list):
-        bids = []
-
-    pkg = context.get('goi_thau', {})
-    nha_thau_trung_thau_id = pkg.get('nha_thau_trung_thau_id') if isinstance(pkg, dict) else None
-
-    winning_bids = []
-    failed_bids = []
-    for b in bids:
-        if not isinstance(b, dict):
-            continue
-        is_winner = False
-        if nha_thau_trung_thau_id and b.get('nha_thau_id') == nha_thau_trung_thau_id:
-            is_winner = True
-        elif b.get('danh_gia_ket_luan') in ('Trúng thầu', 'Đề nghị trúng thầu', 'Đạt'):
-            is_winner = True
-
-        if is_winner:
-            winning_bids.append(b)
-        else:
-            failed_bids.append(b)
-
-    context['nha_thau_trung_thau'] = winning_bids
-    context['nha_thau_truot_thau'] = failed_bids
-    context['ds_nha_thau'] = bids
-    context['ds_nha_thau_trung'] = winning_bids
-    context['ds_nha_thau_truot'] = failed_bids
-
-
 def _ensure_list(value):
     return value if isinstance(value, list) else []
 
@@ -110,6 +80,89 @@ def _as_text(value):
 
 def _same_id(left, right):
     return _as_text(left) and _as_text(left) == _as_text(right)
+
+
+def _normalize_vietnamese_text(value):
+    import unicodedata
+    text = _as_text(value).lower()
+    text = unicodedata.normalize('NFD', text)
+    text = ''.join(ch for ch in text if unicodedata.category(ch) != 'Mn')
+    return text.replace('đ', 'd')
+
+
+def _is_rank_1(value):
+    text = _normalize_vietnamese_text(value)
+    return 'xep hang 1' in text or text in ('1', 'hang 1')
+
+
+def _is_not_evaluated_bid(bid, pkg):
+    conclusion = _normalize_vietnamese_text(bid.get('danh_gia_ket_luan'))
+    if conclusion in ('khong danh gia', 'cho danh gia'):
+        return True
+    quy_trinh = _normalize_vietnamese_text(pkg.get('quy_trinh_danh_gia') if isinstance(pkg, dict) else '')
+    if quy_trinh == 'quytrinh2':
+        values = [
+            bid.get('danh_gia_hop_le'),
+            bid.get('danh_gia_nang_luc'),
+            bid.get('danh_gia_ky_thuat'),
+            bid.get('danh_gia_tai_chinh'),
+            bid.get('danh_gia_ket_luan'),
+        ]
+        return not any(_as_text(value) for value in values)
+    return False
+
+
+def _is_unqualified_bid(bid):
+    fields = (
+        'danh_gia_hop_le',
+        'danh_gia_nang_luc',
+        'danh_gia_ky_thuat',
+        'danh_gia_tai_chinh',
+        'danh_gia_ket_luan',
+    )
+    return any('khong dat' in _normalize_vietnamese_text(bid.get(field)) for field in fields)
+
+
+def _is_passed_bid(bid):
+    conclusion = _normalize_vietnamese_text(bid.get('danh_gia_ket_luan'))
+    if conclusion.startswith('dat'):
+        return True
+    if conclusion and ('khong dat' in conclusion or conclusion in ('khong danh gia', 'cho danh gia')):
+        return False
+    hop_le = _normalize_vietnamese_text(bid.get('danh_gia_hop_le'))
+    nang_luc = _normalize_vietnamese_text(bid.get('danh_gia_nang_luc'))
+    ky_thuat = _normalize_vietnamese_text(bid.get('danh_gia_ky_thuat'))
+    return hop_le == 'dat' and nang_luc == 'dat' and ky_thuat not in ('', 'khong dat')
+
+
+def _is_winning_bid(bid, pkg):
+    winner_id = pkg.get('nha_thau_trung_thau_id') if isinstance(pkg, dict) else ''
+    if winner_id and _same_id(bid.get('nha_thau_id'), winner_id):
+        return True
+    conclusion = _normalize_vietnamese_text(bid.get('danh_gia_ket_luan'))
+    return conclusion in ('trung thau', 'de nghi trung thau')
+
+
+def _bid_identity_key(bid):
+    return (
+        _as_text(bid.get('nha_thau_id'))
+        or _as_text(bid.get('ma_nha_thau'))
+        or _as_text(bid.get('ma_dinh_danh'))
+        or _as_text(bid.get('ten_nha_thau'))
+        or _as_text(bid.get('ten_nha_thau_mt'))
+    ).lower()
+
+
+def _dedupe_bids(bids):
+    result = []
+    seen = set()
+    for bid in bids:
+        key = _bid_identity_key(bid) or f'row-{len(result)}'
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(bid)
+    return result
 
 
 def _money_text(value):
@@ -134,6 +187,64 @@ def _bid_display_item(bid):
     return item
 
 
+def _collect_lot_winner_keys(context):
+    winner_keys = set()
+    for lot in _ensure_list(context.get('ds_phan_lo_co_nha_thau_trung')):
+        for bid in _ensure_list(lot.get('ds_nha_thau_trung_thau') if isinstance(lot, dict) else []):
+            if isinstance(bid, dict):
+                key = _bid_identity_key(bid)
+                if key:
+                    winner_keys.add(key)
+    return winner_keys
+
+
+def enrich_context_with_filtered_bidders(context):
+    bids = [_bid_display_item(b) for b in _ensure_list(context.get('nha_thau')) if isinstance(b, dict)]
+    pkg = context.get('goi_thau', {})
+    lot_winner_keys = _collect_lot_winner_keys(context)
+
+    winning_bids = []
+    losing_bids = []
+    unqualified_bids = []
+    passed_not_rank_1_bids = []
+    not_evaluated_bids = []
+
+    for bid in bids:
+        is_winner = _is_winning_bid(bid, pkg) or (_bid_identity_key(bid) in lot_winner_keys)
+        if is_winner:
+            winning_bids.append(bid)
+        else:
+            losing_bids.append(bid)
+
+        if _is_not_evaluated_bid(bid, pkg):
+            not_evaluated_bids.append(bid)
+        elif _is_unqualified_bid(bid):
+            unqualified_bids.append(bid)
+        elif _is_passed_bid(bid) and not _is_rank_1(bid.get('danh_gia_tai_chinh')) and not is_winner:
+            passed_not_rank_1_bids.append(bid)
+
+    winning_bids = [_strip_private_keys(bid) for bid in _dedupe_bids(winning_bids)]
+    losing_bids = [_strip_private_keys(bid) for bid in _dedupe_bids(losing_bids)]
+    unqualified_bids = [_strip_private_keys(bid) for bid in _dedupe_bids(unqualified_bids)]
+    passed_not_rank_1_bids = [_strip_private_keys(bid) for bid in _dedupe_bids(passed_not_rank_1_bids)]
+    not_evaluated_bids = [_strip_private_keys(bid) for bid in _dedupe_bids(not_evaluated_bids)]
+    all_bids = [_strip_private_keys(bid) for bid in bids]
+
+    context['nha_thau'] = all_bids
+    context['ds_nha_thau_tham_du'] = all_bids
+    context['ds_nha_thau_trung_thau'] = winning_bids
+    context['ds_nha_thau_truot_thau'] = losing_bids
+    context['ds_nha_thau_khong_dat'] = unqualified_bids
+    context['ds_nha_thau_dat_khong_xep_hang_1'] = passed_not_rank_1_bids
+    context['ds_nha_thau_khong_duoc_danh_gia'] = not_evaluated_bids
+    context['tong_so_nha_thau_tham_du'] = len(all_bids)
+    context['so_nha_thau_trung_thau'] = len(winning_bids)
+    context['so_nha_thau_truot_thau'] = len(losing_bids)
+    context['so_nha_thau_khong_dat'] = len(unqualified_bids)
+    context['so_nha_thau_dat_khong_xep_hang_1'] = len(passed_not_rank_1_bids)
+    context['so_nha_thau_khong_duoc_danh_gia'] = len(not_evaluated_bids)
+
+
 def _strip_private_keys(item):
     if not isinstance(item, dict):
         return item
@@ -154,8 +265,13 @@ def enrich_context_with_lot_summaries(context):
         context['ds_phan_lo_co_nha_thau_tham_du'] = []
         context['ds_phan_lo_khong_co_nha_thau_tham_du'] = []
         context['ds_phan_lo_co_nha_thau_trung'] = []
-        context['ds_phan_lo_tham_du_khong_trung'] = []
-        context['ds_nha_thau_trung'] = []
+        context['ds_phan_lo_co_nha_thau_tham_du_khong_trung'] = []
+        context['ds_nha_thau_trung_theo_phan_lo'] = []
+        context['tong_so_phan_lo'] = 0
+        context['so_phan_lo_co_nha_thau_tham_du'] = 0
+        context['so_phan_lo_khong_co_nha_thau_tham_du'] = 0
+        context['so_phan_lo_co_nha_thau_trung'] = 0
+        context['so_phan_lo_tham_du_khong_trung'] = 0
         return
 
     lots_by_code = {}
@@ -236,9 +352,9 @@ def enrich_context_with_lot_summaries(context):
         lot_item = dict(lot)
         lot_item['ma_phan_lo'] = code
         lot_item['ten_phan_lo'] = lot_item.get('ten_phan_lo') or ''
-        lot_item['ds_nha_thau'] = [_strip_private_keys(bid) for bid in participants]
-        lot_item['ds_nha_thau_trung'] = [winner_display_item] if winner_display_item else []
-        lot_item['ds_nha_thau_truot'] = [_strip_private_keys(bid) for bid in failed_bidders]
+        lot_item['ds_nha_thau_tham_du'] = [_strip_private_keys(bid) for bid in participants]
+        lot_item['ds_nha_thau_trung_thau'] = [winner_display_item] if winner_display_item else []
+        lot_item['ds_nha_thau_truot_thau'] = [_strip_private_keys(bid) for bid in failed_bidders]
         lot_item['so_nha_thau_tham_du'] = len(participants)
         lot_item['co_nha_thau_tham_du'] = 'Có' if participants else 'Không'
         lot_item['co_nha_thau_trung'] = 'Có' if winner_item else 'Không'
@@ -287,8 +403,8 @@ def enrich_context_with_lot_summaries(context):
     context['ds_phan_lo_co_nha_thau_tham_du'] = lots_with_participants
     context['ds_phan_lo_khong_co_nha_thau_tham_du'] = lots_without_participants
     context['ds_phan_lo_co_nha_thau_trung'] = lots_with_winner
-    context['ds_phan_lo_tham_du_khong_trung'] = lots_participated_without_winner
-    context['ds_nha_thau_trung'] = winner_summary
+    context['ds_phan_lo_co_nha_thau_tham_du_khong_trung'] = lots_participated_without_winner
+    context['ds_nha_thau_trung_theo_phan_lo'] = winner_summary
     context['tong_so_phan_lo'] = len(all_lots)
     context['so_phan_lo_co_nha_thau_tham_du'] = len(lots_with_participants)
     context['so_phan_lo_khong_co_nha_thau_tham_du'] = len(lots_without_participants)
@@ -561,8 +677,6 @@ def apply_custom_mappings(context, mappings_rows):
         'ke_hoach_lcnt': ['ke_hoach'],
         'goi_thau': ['goi_thau', 'goi_thau_versions', 'goi_thau'],
         'nha_thau': ['nha_thau'],
-        'nha_thau_trung_thau': ['nha_thau_trung_thau'],
-        'nha_thau_truot_thau': ['nha_thau_truot_thau'],
         'chu_dau_tu': ['chu_dau_tu'],
         'hop_dong': ['hop_dong'],
         'tai_khoan': ['user'],
@@ -678,10 +792,15 @@ def apply_custom_mappings(context, mappings_rows):
             entity_keys = {
                 'ke_hoach_lcnt': ['ke_hoach'],
                 'goi_thau': ['goi_thau', 'goi_thau_versions'],
-                'nha_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
-                'thong_tin_mo_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
-                'nha_thau_trung_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
-                'nha_thau_truot_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids', 'nha_thau_trung_thau', 'nha_thau_truot_thau'],
+                'nha_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids'],
+                'thong_tin_mo_thau': ['nha_thau', 'thong_tin_mo_thau', 'bids'],
+                'ds_nha_thau_tham_du': ['ds_nha_thau_tham_du'],
+                'ds_nha_thau_trung_thau': ['ds_nha_thau_trung_thau'],
+                'ds_nha_thau_truot_thau': ['ds_nha_thau_truot_thau'],
+                'ds_nha_thau_khong_dat': ['ds_nha_thau_khong_dat'],
+                'ds_nha_thau_dat_khong_xep_hang_1': ['ds_nha_thau_dat_khong_xep_hang_1'],
+                'ds_nha_thau_khong_duoc_danh_gia': ['ds_nha_thau_khong_duoc_danh_gia'],
+                'ds_nha_thau_trung_theo_phan_lo': ['ds_nha_thau_trung_theo_phan_lo'],
                 'chuyen_gia': ['chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'],
                 'to_chuyen_gia': ['chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'],
                 'to_tham_dinh': ['chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'],
@@ -692,6 +811,11 @@ def apply_custom_mappings(context, mappings_rows):
                 'phan_lo': ['phan_lo_list', 'awarded_phan_lo_list'],
                 'phan_lo_list': ['phan_lo_list', 'awarded_phan_lo_list'],
                 'awarded_phan_lo_list': ['phan_lo_list', 'awarded_phan_lo_list'],
+                'ds_phan_lo': ['ds_phan_lo'],
+                'ds_phan_lo_co_nha_thau_tham_du': ['ds_phan_lo_co_nha_thau_tham_du'],
+                'ds_phan_lo_khong_co_nha_thau_tham_du': ['ds_phan_lo_khong_co_nha_thau_tham_du'],
+                'ds_phan_lo_co_nha_thau_tham_du_khong_trung': ['ds_phan_lo_co_nha_thau_tham_du_khong_trung'],
+                'ds_phan_lo_co_nha_thau_trung': ['ds_phan_lo_co_nha_thau_trung'],
                 'tuy_chon_mua_them': ['tuy_chon_mua_them_list'],
                 'tuy_chon_mua_them_list': ['tuy_chon_mua_them_list'],
                 'gia_han': ['gia_han_list'],
@@ -711,7 +835,7 @@ def apply_custom_mappings(context, mappings_rows):
             }
 
             primary_keys = entity_keys.get(src_table, [])
-            if src_table in ('nha_thau', 'thong_tin_mo_thau', 'nha_thau_trung_thau', 'nha_thau_truot_thau'):
+            if src_table in ('nha_thau', 'thong_tin_mo_thau'):
                 primary_keys = list(set(entity_keys['nha_thau'] + entity_keys['thong_tin_mo_thau']))
             elif src_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'):
                 primary_keys = list(set(entity_keys['chuyen_gia']))
@@ -739,7 +863,7 @@ def apply_custom_mappings(context, mappings_rows):
                 if not l_col or l_col == '*' or l_col == '':
                     is_match = (
                         (l_table == src_table)
-                        or (src_table in ('nha_thau', 'thong_tin_mo_thau', 'nha_thau_trung_thau', 'nha_thau_truot_thau') and l_table in ('nha_thau', 'thong_tin_mo_thau', 'nha_thau_trung_thau', 'nha_thau_truot_thau'))
+                        or (src_table in ('nha_thau', 'thong_tin_mo_thau') and l_table in ('nha_thau', 'thong_tin_mo_thau'))
                         or (src_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh') and l_table in ('chuyen_gia', 'to_chuyen_gia', 'to_tham_dinh'))
                         or (src_table in ('yeu_cau_lam_ro', 'yeu_cau_lam_ro_list') and l_table in ('yeu_cau_lam_ro', 'yeu_cau_lam_ro_list'))
                         or (src_table in ('tra_loi_lam_ro', 'tra_loi_lam_ro_list') and l_table in ('tra_loi_lam_ro', 'tra_loi_lam_ro_list'))
@@ -793,8 +917,8 @@ async def export_plan_api(request):
 
         # Build context from service
         unified_context = docx_service.build_plan_context(plan_id, user_id, org_name)
-        enrich_context_with_filtered_bidders(unified_context)
         enrich_context_with_lot_summaries(unified_context)
+        enrich_context_with_filtered_bidders(unified_context)
 
         # Load mappings
         conn = database.get_connection()
@@ -835,8 +959,8 @@ async def export_report_api(request):
 
         # Build context from service
         unified_context = docx_service.build_report_context(package_id, user_id, org_name, type_param)
-        enrich_context_with_filtered_bidders(unified_context)
         enrich_context_with_lot_summaries(unified_context)
+        enrich_context_with_filtered_bidders(unified_context)
 
         # Load mappings
         conn = database.get_connection()
@@ -949,6 +1073,9 @@ async def list_word_mappings_api(request):
         org_name = get_active_org(request, user_id)
         conn = database.get_connection()
         cursor = conn.cursor()
+
+        ensure_default_word_mappings(cursor, org_name)
+        conn.commit()
 
         cursor.execute("SELECT id, ten_bien, source_table, source_column, mo_ta FROM cau_hinh_bien_word WHERE owner_id = ?", (org_name,))
         rows = cursor.fetchall()

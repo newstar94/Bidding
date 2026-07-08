@@ -1074,11 +1074,11 @@ async def paginate_api(request):
                 query_parts.append("(ma_goi_thau LIKE ? OR ten_goi_thau LIKE ?)")
                 query_params.extend([search_like, search_like])
             elif table_name == "chu_dau_tu":
-                query_parts.append("(ma_chu_dau_tu LIKE ? OR ten_chu_dau_tu LIKE ? OR ma_so_thue LIKE ?)")
-                query_params.extend([search_like, search_like, search_like])
+                query_parts.append("(ma_chu_dau_tu LIKE ? OR ten_chu_dau_tu LIKE ? OR ten_viet_tat LIKE ? OR ma_so_thue LIKE ?)")
+                query_params.extend([search_like, search_like, search_like, search_like])
             elif table_name == "nha_thau":
-                query_parts.append("(ma_nha_thau LIKE ? OR ten_nha_thau LIKE ? OR ma_so_thue LIKE ?)")
-                query_params.extend([search_like, search_like, search_like])
+                query_parts.append("(ma_nha_thau LIKE ? OR ten_nha_thau LIKE ? OR ten_viet_tat LIKE ? OR ma_so_thue LIKE ?)")
+                query_params.extend([search_like, search_like, search_like, search_like])
             elif table_name == "chuyen_gia":
                 query_parts.append("(ho_ten LIKE ? OR so_cccd LIKE ? OR so_chung_chi LIKE ?)")
                 query_params.extend([search_like, search_like, search_like])

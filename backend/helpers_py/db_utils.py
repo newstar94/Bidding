@@ -1,5 +1,6 @@
 from .schema import SCHEMA_DINH_NGHIA
 from .auth_helper import hash_password
+from .word_defaults import ensure_default_word_mappings_for_all_orgs
 import os
 import json
 import uuid
@@ -402,6 +403,7 @@ def khoi_tao_va_di_tru_he_thong():
             )
 
         _ensure_runtime_indexes(cursor)
+        ensure_default_word_mappings_for_all_orgs(cursor)
 
         conn.commit()
         print("Khởi tạo và đồng bộ schema cơ sở dữ liệu thành công!")

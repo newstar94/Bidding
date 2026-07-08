@@ -34,6 +34,7 @@ export async function renderNhaThauTable() {
         const filtered = latestNhaThau.filter(n =>
             (n.maNhaThau || '').toLowerCase().includes(searchVal) ||
             (n.tenNhaThau || '').toLowerCase().includes(searchVal) ||
+            (n.tenVietTat || '').toLowerCase().includes(searchVal) ||
             (n.maSoThue && n.maSoThue.includes(searchVal)) ||
             (n.loaiNhaThau === 'Liên danh' && n.thanhVienLienDanh && n.thanhVienLienDanh.some(m => (m.tenNhaThau || '').toLowerCase().includes(searchVal) || (m.maSoThue || '').includes(searchVal)))
         );
@@ -103,6 +104,7 @@ export async function renderNhaThauTable() {
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
                             ${esc(displayedNt.tenNhaThau || '')}
+                            ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ''}
                             <div style="margin-top: 4px;"><span class="badge badge-info">Liên danh (${members.length} TV)</span></div>
                             <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--primary-soft); white-space: normal !important;">
                                 + ${names}
@@ -141,6 +143,7 @@ export async function renderNhaThauTable() {
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
                             ${esc(displayedNt.tenNhaThau || '')}
+                            ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ''}
                         </td>
                         <td>${esc(displayedNt.maSoThue || '--')}</td>
                         <td>${rep}</td>
@@ -234,6 +237,10 @@ export function renderNhaThauVersionDetails(versionId) {
                     <div class="detail-label">Số thành viên</div>
                     <div class="detail-value fw-bold">${members.length} TV</div>
                 </div>
+                <div class="detail-item">
+                    <div class="detail-label">Tên viết tắt</div>
+                    <div class="detail-value fw-bold">${nt.tenVietTat || '--'}</div>
+                </div>
             </div>
 
             <h5 class="detail-sub-title" style="margin-top: 24px; color: var(--primary); font-weight: 700;">Danh sách thành viên liên danh</h5>
@@ -267,6 +274,10 @@ export function renderNhaThauVersionDetails(versionId) {
                 <div class="detail-item">
                     <div class="detail-label">Mã số thuế</div>
                     <div class="detail-value fw-bold">${nt.maSoThue || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Tên viết tắt</div>
+                    <div class="detail-value fw-bold">${nt.tenVietTat || '--'}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Người đại diện</div>

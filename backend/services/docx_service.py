@@ -42,6 +42,29 @@ def parse_json_fields(row_dict):
             row_dict[col] = [] if col != "thong_tin_thiet_bi_cuoi" else {}
     return row_dict
 
+def enrich_bids_with_contractor_fields(cursor, bids):
+    contractor_ids = sorted({
+        str(bid.get('nha_thau_id')).strip()
+        for bid in bids
+        if isinstance(bid, dict) and bid.get('nha_thau_id')
+    })
+    if not contractor_ids:
+        return bids
+
+    placeholders = ','.join(['?'] * len(contractor_ids))
+    cursor.execute(
+        f"SELECT id, ten_viet_tat FROM nha_thau WHERE id IN ({placeholders})",
+        contractor_ids,
+    )
+    contractors = {row['id']: dict(row) for row in cursor.fetchall()}
+    for bid in bids:
+        if not isinstance(bid, dict):
+            continue
+        contractor = contractors.get(str(bid.get('nha_thau_id') or '').strip())
+        if contractor and not bid.get('ten_viet_tat'):
+            bid['ten_viet_tat'] = contractor.get('ten_viet_tat') or ''
+    return bids
+
 def extract_evaluation_dates(pkg):
     if not pkg:
         return pkg
@@ -178,6 +201,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
 
     cursor.execute("SELECT * FROM thong_tin_mo_thau WHERE goi_thau_id = ? AND owner_id = ?", (package_id, org_name))
     bids = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
+    enrich_bids_with_contractor_fields(cursor, bids)
 
     # Fetch all versions of the package
     id_goc = pkg.get('id_goc')

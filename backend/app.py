@@ -83,17 +83,32 @@ APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"  # Mặc đ�
 
 # Cache cho HTML đã biên dịch (chỉ được dùng khi APP_DEBUG=False)
 _compiled_html_cache = None
+_compiled_html_cache_signature = None
 _compiled_html_lock = threading.Lock()
+
+
+def _html_cache_signature():
+    mtimes = []
+    views_dir = os.path.join(project_root, 'views')
+    for root, _, files in os.walk(views_dir):
+        for filename in files:
+            if filename.endswith('.html'):
+                try:
+                    mtimes.append(os.path.getmtime(os.path.join(root, filename)))
+                except OSError:
+                    pass
+    return max(mtimes) if mtimes else 0
 
 
 def compile_html(file_path):
     """Biên dịch file HTML bằng cách giải quyết INCLUDE placeholders đệ quy.
     Khi production: trả về cache nếu đã biên dịch. Khi debug: luôn đọc từ disk.
     """
-    global _compiled_html_cache
+    global _compiled_html_cache, _compiled_html_cache_signature
 
     # Trả cache ngay nếu production và đã có cache
-    if not APP_DEBUG and _compiled_html_cache:
+    signature = _html_cache_signature() if not APP_DEBUG else None
+    if not APP_DEBUG and _compiled_html_cache and _compiled_html_cache_signature == signature:
         return _compiled_html_cache
 
     def replace_include(match):
@@ -135,8 +150,8 @@ def compile_html(file_path):
         )
         compiled = compiled.replace('<meta name="bf-app-debug" content="true">', '<meta name="bf-app-debug" content="false">')
         with _compiled_html_lock:
-            if not _compiled_html_cache:
-                _compiled_html_cache = compiled
+            _compiled_html_cache = compiled
+            _compiled_html_cache_signature = signature
     return compiled
 
 

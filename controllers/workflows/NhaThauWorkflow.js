@@ -109,6 +109,9 @@ export async function editNhaThau(id, isReadOnly = false) {
             const tenInput = document.getElementById('nt-ten');
             if (tenInput) tenInput.value = nt.tenNhaThau || '';
 
+            const tenVietTatInput = document.getElementById('nt-tenviettat');
+            if (tenVietTatInput) tenVietTatInput.value = nt.tenVietTat || '';
+
             if (document.getElementById('nt-mst')) document.getElementById('nt-mst').value = nt.maSoThue || '';
             if (document.getElementById('nt-nguoidaidien')) document.getElementById('nt-nguoidaidien').value = nt.nguoiDaiDien || '';
             if (document.getElementById('nt-danhxung')) document.getElementById('nt-danhxung').value = nt.danhXung || 'Ông';
@@ -298,6 +301,7 @@ export async function handleNhaThauSubmit(e) {
     let data = {
         maNhaThau: maNhaThau,
         tenNhaThau: tenNhaThau,
+        tenVietTat: document.getElementById('nt-tenviettat').value.trim(),
         loaiNhaThau: 'Độc lập',
         maSoThue: maSoThue,
         nguoiDaiDien: document.getElementById('nt-nguoidaidien').value.trim(),

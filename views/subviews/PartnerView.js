@@ -88,11 +88,20 @@ export function renderDictionary(group) {
             'tra_loi_lam_ro': 'Trả lời làm rõ',
             'tra_loi_lam_ro_list': 'Trả lời làm rõ',
             'ds_phan_lo': 'Tất cả phần lô',
-            'ds_nha_thau': 'Nhà thầu tham dự',
-            'ds_nha_thau_trung': 'Nhà thầu trúng thầu',
-            'ds_nha_thau_truot': 'Nhà thầu trượt thầu',
+            'ds_nha_thau_tham_du': 'Nhà thầu tham dự',
+            'ds_nha_thau_trung_thau': 'Nhà thầu trúng thầu',
+            'ds_nha_thau_truot_thau': 'Nhà thầu trượt thầu',
+            'ds_nha_thau_khong_dat': 'Nhà thầu không đạt',
+            'ds_nha_thau_dat_khong_xep_hang_1': 'Nhà thầu đạt nhưng không xếp hạng 1',
+            'ds_nha_thau_khong_duoc_danh_gia': 'Nhà thầu không được đánh giá',
+            'ds_nha_thau_trung_theo_phan_lo': 'Nhà thầu trúng thầu, kèm danh sách phần lô trúng',
             'phan_lo': 'Phần lô',
             'phan_lo_list': 'Phần lô',
+            'ds_phan_lo_co_nha_thau_tham_du': 'Phần lô có nhà thầu tham dự',
+            'ds_phan_lo_khong_co_nha_thau_tham_du': 'Phần lô không có nhà thầu tham dự',
+            'ds_phan_lo_co_nha_thau_tham_du_khong_trung': 'Phần lô tham dự nhưng không có nhà thầu trúng',
+            'ds_phan_lo_co_nha_thau_trung': 'Phần lô có nhà thầu trúng thầu',
+            '__context__': 'Thực thể động',
             'tuy_chon_mua_them': 'Tùy chọn mua thêm',
             'tuy_chon_mua_them_list': 'Tùy chọn mua thêm',
             'gia_han': 'Gia hạn',
@@ -103,8 +112,6 @@ export function renderDictionary(group) {
             'cv_chua_du_dieu_kien': 'Công việc chưa đủ điều kiện LCNT',
             'awarded_phan_lo_list': 'Phần lô trúng thầu',
             'goi_thau_ids': 'Gói thầu liên kết',
-            'nha_thau_trung_thau': 'Nhà thầu trúng thầu',
-            'nha_thau_truot_thau': 'Nhà thầu trượt thầu',
             'to_chuyen_gia': 'Tổ chuyên gia',
             'to_tham_dinh': 'Tổ thẩm định'
         };
@@ -121,9 +128,6 @@ export function renderDictionary(group) {
         if (normTbl.startsWith('awarded_')) {
             normTbl = normTbl.substring(8);
         }
-        if (normTbl === 'nha_thau_trung_thau' || normTbl === 'nha_thau_truot_thau') {
-            normTbl = 'nha_thau';
-        }
         if (normTbl === 'to_chuyen_gia' || normTbl === 'to_tham_dinh') {
             normTbl = 'chuyen_gia';
         }
@@ -135,6 +139,7 @@ export function renderDictionary(group) {
             'chu_dau_tu': {
                 'ten_chu_dau_tu': 'Tên chủ đầu tư',
                 'ma_chu_dau_tu': 'Mã chủ đầu tư',
+                'ten_viet_tat': 'Tên viết tắt chủ đầu tư',
                 'ma_so_thue': 'Mã số thuế chủ đầu tư',
                 'chuc_vu_nguoi_dung_dau': 'Chức vụ người đứng đầu (ví dụ: Giám đốc)',
                 'dai_dien_cdt': 'Họ tên người đại diện chủ đầu tư',
@@ -226,6 +231,7 @@ export function renderDictionary(group) {
             'nha_thau': {
                 'ten_nha_thau': 'Tên nhà thầu',
                 'ma_nha_thau': 'Mã nhà thầu',
+                'ten_viet_tat': 'Tên viết tắt nhà thầu',
                 'loai_nha_thau': 'Loại nhà thầu (Độc lập/Liên danh)',
                 'ma_so_thue': 'Mã số thuế nhà thầu',
                 'nguoi_dai_dien': 'Người đại diện nhà thầu',
@@ -367,8 +373,69 @@ export function renderDictionary(group) {
             'cv_chua_du_dieu_kien': {
                 'ten_cong_viec': 'Tên công việc chưa đủ điều kiện LCNT',
                 'gia_tri': 'Giá trị công việc chưa đủ điều kiện LCNT'
+            },
+            '__context__': {
+                'tong_so_phan_lo': 'Tổng số phần lô',
+                'so_phan_lo_co_nha_thau_tham_du': 'Số phần lô có nhà thầu tham dự',
+                'so_phan_lo_khong_co_nha_thau_tham_du': 'Số phần lô không có nhà thầu tham dự',
+                'so_phan_lo_tham_du_khong_trung': 'Số phần lô có nhà thầu tham dự nhưng không có nhà thầu trúng',
+                'so_phan_lo_co_nha_thau_trung': 'Số phần lô có nhà thầu trúng thầu',
+                'tong_so_nha_thau_tham_du': 'Tổng số nhà thầu tham dự',
+                'so_nha_thau_trung_thau': 'Số nhà thầu trúng thầu',
+                'so_nha_thau_truot_thau': 'Số nhà thầu trượt thầu',
+                'so_nha_thau_khong_dat': 'Số nhà thầu không đạt',
+                'so_nha_thau_dat_khong_xep_hang_1': 'Số nhà thầu đạt nhưng không xếp hạng 1',
+                'so_nha_thau_khong_duoc_danh_gia': 'Số nhà thầu không được đánh giá'
+            },
+            'ds_phan_lo': {
+                'ma_phan_lo': 'Mã phần lô',
+                'ten_phan_lo': 'Tên phần lô',
+                'gia_tri_phan_lo': 'Giá trị phần lô',
+                'so_nha_thau_tham_du': 'Số nhà thầu tham dự phần lô',
+                'co_nha_thau_tham_du': 'Có nhà thầu tham dự',
+                'co_nha_thau_trung': 'Có nhà thầu trúng thầu',
+                'ten_nha_thau_trung': 'Tên nhà thầu trúng thầu phần lô',
+                'gia_trung_thau': 'Giá trúng thầu phần lô',
+                'ds_ten_nha_thau_tham_du': 'Danh sách tên nhà thầu tham dự phần lô',
+                'ly_do_khong_trung': 'Lý do không trúng của phần lô'
+            },
+            'ds_nha_thau_tham_du': {
+                'ma_nha_thau': 'Mã nhà thầu',
+                'ten_nha_thau': 'Tên nhà thầu',
+                'ten_viet_tat': 'Tên viết tắt nhà thầu',
+                'loai_nha_thau': 'Loại nhà thầu',
+                'ma_phan_lo': 'Mã phần lô tham dự',
+                'ten_phan_lo': 'Tên phần lô tham dự',
+                'gia_du_thau': 'Giá dự thầu',
+                'gia_sau_giam_gia': 'Giá sau giảm giá',
+                'danh_gia_hop_le': 'Đánh giá hợp lệ',
+                'danh_gia_nang_luc': 'Đánh giá năng lực',
+                'danh_gia_ky_thuat': 'Đánh giá kỹ thuật',
+                'danh_gia_tai_chinh': 'Đánh giá tài chính / xếp hạng',
+                'danh_gia_ket_luan': 'Kết luận đánh giá',
+                'ly_do_truot': 'Lý do trượt thầu'
+            },
+            'ds_nha_thau_trung_theo_phan_lo': {
+                'ma_nha_thau': 'Mã nhà thầu trúng',
+                'ten_nha_thau': 'Tên nhà thầu trúng',
+                'ten_viet_tat': 'Tên viết tắt nhà thầu trúng',
+                'so_phan_lo_trung': 'Số phần lô trúng',
+                'tong_gia_tri_trung_thau': 'Tổng giá trị trúng thầu'
             }
         };
+        [
+            'ds_phan_lo_co_nha_thau_tham_du',
+            'ds_phan_lo_khong_co_nha_thau_tham_du',
+            'ds_phan_lo_co_nha_thau_tham_du_khong_trung',
+            'ds_phan_lo_co_nha_thau_trung'
+        ].forEach(key => { cols[key] = cols.ds_phan_lo; });
+        [
+            'ds_nha_thau_trung_thau',
+            'ds_nha_thau_truot_thau',
+            'ds_nha_thau_khong_dat',
+            'ds_nha_thau_dat_khong_xep_hang_1',
+            'ds_nha_thau_khong_duoc_danh_gia'
+        ].forEach(key => { cols[key] = cols.ds_nha_thau_tham_du; });
         return (cols[normTbl] && cols[normTbl][col]) || col;
     };
 
