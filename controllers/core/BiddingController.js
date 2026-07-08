@@ -421,11 +421,6 @@ export class BiddingController {
         ].filter(Boolean);
         const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
 
-        if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
-            this._initialSyncStarted = true;
-            await this.forceSyncData(false, true);
-        }
-
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
 
@@ -439,8 +434,16 @@ export class BiddingController {
         }
 
 
-        // Dùng delta sync để tối ưu hóa hiệu năng khởi động (tránh force full sync)
-        if (!this._initialSyncStarted) {
+        // Render first, then refresh data in the background so F5 is not blocked by full sync.
+        if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
+            this._initialSyncStarted = true;
+            const startInitialSync = () => this.forceSyncData(true, true);
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(startInitialSync, { timeout: 500 });
+            } else {
+                setTimeout(startInitialSync, 100);
+            }
+        } else if (!this._initialSyncStarted) {
             this._initialSyncStarted = true;
             const startBackgroundSync = () => this.scheduleBackgroundSync ? this.scheduleBackgroundSync(500) : this.forceSyncData(true);
             if ('requestIdleCallback' in window) {
