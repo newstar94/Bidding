@@ -20,7 +20,7 @@ SCHEMA_DINH_NGHIA = {
             "email": "TEXT",
             "token_phien": "TEXT",
             "anh_dai_dien": "TEXT",
-            "goi_dich_vu_id": "TEXT DEFAULT 'silver'",
+            "goi_dich_vu_id": "TEXT",
             "ngay_bat_dau_goi": "TEXT",
             "ngay_het_han_goi": "TEXT",
             "han_su_dung_token": "INTEGER",  # Unix timestamp — nhất quán với created_at (ISO string cũ sẽ expire ngay khi migrate)
@@ -28,6 +28,7 @@ SCHEMA_DINH_NGHIA = {
             "da_xac_minh": "INTEGER DEFAULT 0",
             "ma_xac_minh": "TEXT",
             "han_xac_minh": "INTEGER",
+            "google_id": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },

@@ -1,0 +1,269 @@
+import os
+import re
+import json
+import uuid
+import time
+import urllib.request
+import urllib.error
+import urllib.parse
+from datetime import datetime
+
+from starlette.responses import JSONResponse
+
+from helpers import (
+    database,
+    get_effective_roles,
+    log_error,
+    log_audit,
+    _session_cache_invalidate_by_user_id,
+)
+from services.auth_service import (
+    get_client_ip,
+    check_rate_limit,
+    record_rate_limit_failure,
+    get_user_org_names,
+    _SECURE_COOKIES,
+    SESSION_EXPIRY_HOURS,
+    SESSION_INACTIVITY_TIMEOUT_HOURS,
+)
+
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+
+# URL xac minh token Google (tokeninfo endpoint — khong can thu vien ben ngoai)
+_GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo?id_token={token}"
+
+
+def _verify_google_token(id_token: str):
+    """
+    Xac minh Google ID Token bang Google tokeninfo endpoint.
+    Tra ve payload (dict) neu hop le, None neu khong hop le.
+    Kiem tra: aud == GOOGLE_CLIENT_ID, exp > now.
+    """
+    if not id_token or not GOOGLE_CLIENT_ID:
+        return None
+    try:
+        url = _GOOGLE_TOKENINFO_URL.format(token=urllib.parse.quote(id_token))
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, Exception):
+        return None
+
+    # Kiem tra aud khop voi Client ID cua ung dung
+    aud = payload.get("aud", "")
+    if aud != GOOGLE_CLIENT_ID:
+        return None
+
+    # Kiem tra token chua het han
+    try:
+        if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+    except (ValueError, TypeError):
+        return None
+
+    return payload
+
+
+async def google_login_api(request):
+    """
+    POST /api/auth/google-login
+    Body: { "credential": "<google_id_token>" }
+
+    Xac minh Google ID Token -> tim hoac tao tai khoan -> tra session cookie.
+    """
+    conn = None
+    try:
+        ip = get_client_ip(request)
+        rate_key = f"google_login:{ip}"
+        if not check_rate_limit(rate_key, consume_attempt=False):
+            return JSONResponse(
+                {"error": "Qua nhieu yeu cau dang nhap. Vui long thu lai sau 60 giay."},
+                status_code=429,
+            )
+
+        if not GOOGLE_CLIENT_ID:
+            return JSONResponse(
+                {"error": "Dang nhap Google chua duoc cau hinh tren may chu."},
+                status_code=503,
+            )
+
+        try:
+            data = await request.json()
+        except Exception:
+            return JSONResponse({"error": "Du lieu yeu cau khong hop le."}, status_code=400)
+
+        credential = (data.get("credential") or "").strip()
+        if not credential:
+            record_rate_limit_failure(rate_key)
+            return JSONResponse({"error": "Thieu Google credential."}, status_code=400)
+
+        payload = _verify_google_token(credential)
+        if not payload:
+            record_rate_limit_failure(rate_key)
+            log_audit("auth.google_login_failed", request=request, metadata={"reason": "invalid_token"})
+            return JSONResponse(
+                {"error": "Token Google khong hop le hoac da het han. Vui long thu lai."},
+                status_code=401,
+            )
+
+        google_id = payload.get("sub", "")
+        email = (payload.get("email") or "").strip().lower()
+        name = (payload.get("name") or email.split("@")[0]).strip()
+        picture = payload.get("picture", "")
+        email_verified = payload.get("email_verified", "false") == "true"
+
+        if not google_id or not email:
+            record_rate_limit_failure(rate_key)
+            return JSONResponse({"error": "Khong lay duoc thong tin tu tai khoan Google."}, status_code=400)
+
+        if not email_verified:
+            return JSONResponse(
+                {"error": "Email Google chua duoc xac minh. Vui long xac minh email Google truoc."},
+                status_code=400,
+            )
+
+        conn = database.get_connection()
+        cursor = conn.cursor()
+
+        # 1. Tim user theo google_id truoc
+        user = None
+        try:
+            cursor.execute("SELECT * FROM tai_khoan WHERE google_id = ?", (google_id,))
+            row = cursor.fetchone()
+            if row:
+                user = dict(row)
+        except Exception:
+            pass
+
+        # 2. Tim theo email neu chua co
+        if not user:
+            cursor.execute(
+                "SELECT * FROM tai_khoan WHERE email != '' AND lower(email) = ?",
+                (email,),
+            )
+            row = cursor.fetchone()
+            if row:
+                user = dict(row)
+                # Lien ket google_id vao tai khoan hien co
+                try:
+                    cursor.execute(
+                        "UPDATE tai_khoan SET google_id = ?, anh_dai_dien = COALESCE(NULLIF(anh_dai_dien,''), ?) WHERE id = ?",
+                        (google_id, picture, user["id"]),
+                    )
+                    user["google_id"] = google_id
+                    if not user.get("anh_dai_dien") and picture:
+                        user["anh_dai_dien"] = picture
+                except Exception:
+                    pass
+
+        # 3. Chua co -> tao tai khoan moi tu dong
+        if not user:
+            base_username = email.split("@")[0].replace(".", "_").replace("-", "_")
+            base_username = re.sub(r"[^a-z0-9_]", "", base_username.lower()) or "user"
+
+            username = base_username
+            suffix = 1
+            while True:
+                cursor.execute("SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
+                if not cursor.fetchone():
+                    break
+                username = f"{base_username}{suffix}"
+                suffix += 1
+
+            new_id = str(uuid.uuid4())
+            try:
+                cursor.execute(
+                    """INSERT INTO tai_khoan
+                       (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
+                        anh_dai_dien, da_xac_minh, google_id)
+                       VALUES (?, ?, NULL, ?, 'employee', ?, ?, 1, ?)""",
+                    (new_id, username, name, email, picture, google_id),
+                )
+            except Exception:
+                # Fallback neu cot google_id chua ton tai trong schema cu
+                cursor.execute(
+                    """INSERT INTO tai_khoan
+                       (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
+                        anh_dai_dien, da_xac_minh)
+                       VALUES (?, ?, NULL, ?, 'employee', ?, ?, 1)""",
+                    (new_id, username, name, email, picture),
+                )
+            cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
+            user = dict(cursor.fetchone())
+
+            log_audit(
+                "auth.google_auto_register",
+                actor_user_id=new_id,
+                target_type="tai_khoan",
+                target_id=new_id,
+                request=request,
+                metadata={"email": email, "username": username},
+            )
+
+        # Tai khoan chua xac minh -> tu xac minh qua Google
+        if not user.get("da_xac_minh"):
+            cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE id = ?", (user["id"],))
+            user["da_xac_minh"] = 1
+
+        # Tao session token
+        session_token = str(uuid.uuid4())
+        token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
+        device_info = json.dumps({
+            "user_agent": request.headers.get("User-Agent", "")[:200],
+            "ip": request.client.host,
+            "login_time": datetime.utcnow().isoformat(),
+            "method": "google",
+        })
+        cursor.execute(
+            "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ? WHERE id = ?",
+            (session_token, token_expiry, device_info, user["id"]),
+        )
+        _session_cache_invalidate_by_user_id(user["id"])
+
+        org_names = get_user_org_names(cursor, user["id"])
+        conn.commit()
+
+        log_audit(
+            "auth.google_login_success",
+            actor_user_id=user["id"],
+            owner_id=org_names,
+            target_type="tai_khoan",
+            target_id=user["id"],
+            request=request,
+            metadata={"email": email},
+        )
+
+        effective_roles = list(get_effective_roles(user["vai_tro"]))
+        response = JSONResponse({
+            "success": True,
+            "id": user["id"],
+            "username": user["ten_dang_nhap"],
+            "name": user["ho_ten"],
+            "role": user["vai_tro"],
+            "effective_roles": effective_roles,
+            "email": user["email"],
+            "avatar": user.get("anh_dai_dien") or "",
+            "package_id": user.get("goi_dich_vu_id"),
+            "organization_name": org_names,
+            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
+        })
+        cookie_max_age = SESSION_EXPIRY_HOURS * 3600
+        response.set_cookie(
+            "session_token", session_token,
+            httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age,
+        )
+        response.delete_cookie("username", path="/")
+        return response
+
+    except Exception as e:
+        log_error(e, "google_login_api")
+        return JSONResponse(
+            {"error": "Da xay ra loi khi dang nhap bang Google. Vui long thu lai sau."},
+            status_code=500,
+        )
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass

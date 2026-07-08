@@ -1,4 +1,4 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    BiddingFlow - AuthController (Part of Controller split)
    ========================================================================== */
 
@@ -703,5 +703,121 @@ export function setupAuth() {
             }
         };
     });
+
+    // Khoi dong Google Sign-In sau khi GSI library da tai xong
+    const initGoogle = () => {
+        if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+            this.setupGoogleSignIn();
+        }
+    };
+    if (typeof google !== 'undefined' && google.accounts) {
+        initGoogle();
+    } else {
+        window.addEventListener('load', initGoogle, { once: true });
+        setTimeout(initGoogle, 1500);
+    }
 }
 
+export function setupGoogleSignIn() {
+    const clientId = document.querySelector('meta[name="google-client-id"]')?.content;
+    if (!clientId) return;
+
+    const container = document.getElementById('google-signin-btn-container');
+    if (!container) return;
+
+    // Cho den khi google.accounts.id san sang
+    if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) return;
+
+    const handleGoogleResponse = async (response) => {
+        if (!response || !response.credential) return;
+        const errorDiv = document.getElementById('login-error');
+        if (errorDiv) errorDiv.style.display = 'none';
+
+        try {
+            const res = await fetch('/api/auth/google-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ credential: response.credential })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                if (errorDiv) {
+                    errorDiv.textContent = data.error || 'Dang nhap Google that bai!';
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+
+            // Xu ly ket qua giong login thuong
+            sessionStorage.removeItem('bf_session_token');
+            localStorage.removeItem('bf_session_token');
+            sessionStorage.setItem('bf_username', data.username);
+            sessionStorage.setItem('bf_user_id', data.id);
+            localStorage.removeItem('bf_remember_me');
+
+            await this.model.init();
+
+            const effectiveRoles = data.effective_roles || [];
+            let activeRole = data.role || 'employee';
+            if (effectiveRoles.includes('super_admin')) activeRole = 'super_admin';
+            else if (effectiveRoles.includes('manager')) activeRole = 'manager';
+
+            const resolvedUserId = !this.model.hasEffectiveRole(data.role, 'manager')
+                ? (data.id ? data.id : '1')
+                : (this.model.hasEffectiveRole(data.role, 'super_admin') ? 'sa-1' : 'mgr-1');
+
+            this.model.switchActiveRole(activeRole, data.name, resolvedUserId);
+            this.model.state.activeuser.avatar = data.avatar || '';
+            this.model.state.activeuser.email = data.email || '';
+            this.model.state.activeuser.dbRole = data.role || '';
+            this.model.state.activeuser.dbRoles = effectiveRoles;
+            this.model.state.activeuser.package_id = data.package_id || 'none';
+            this.model.state.activeuser.organization_name = data.organization_name || '';
+            localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
+
+            if (data.inactivity_timeout_hours) {
+                localStorage.setItem('bf_inactivity_timeout', data.inactivity_timeout_hours);
+            }
+
+            const overlay = document.getElementById('auth-overlay');
+            if (overlay) overlay.style.display = 'none';
+            const appContainer = document.querySelector('.app-container');
+            if (appContainer) appContainer.style.filter = 'none';
+
+            try { await this.forceSyncData(); } catch (err) { console.error('Failed sync after Google login:', err); }
+
+            this.view.updateActiveUserProfileDisplay();
+            if (typeof this.renderWorkspaceSwitcher === 'function') this.renderWorkspaceSwitcher();
+
+            if (activeRole === 'super_admin') {
+                this.switchTab('superadmin-dashboard');
+            } else {
+                this.switchTab('dashboard');
+            }
+            this.startBackgroundSessionChecker();
+
+        } catch (err) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Loi ket noi Google: ' + err.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+    };
+
+    google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleResponse.bind(this),
+        ux_mode: 'popup',
+        context: 'signin',
+    });
+
+    google.accounts.id.renderButton(container, {
+        theme: 'outline',
+        size: 'large',
+        width: 300,
+        text: 'signin_with',
+        locale: 'vi',
+        logo_alignment: 'center',
+    });
+}
