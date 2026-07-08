@@ -77,6 +77,20 @@ APP_PORT = int(os.environ.get("APP_PORT", "8000"))
 APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"  # Mặc định TẮt debug trên production
 
+# [SEC-4] Danh sach origin duoc phep ket noi WebSocket.
+# Mac dinh tu tinh tu APP_HOST:APP_PORT. Co the ghi de qua ALLOWED_WS_ORIGINS
+_ws_origins_env = os.environ.get("ALLOWED_WS_ORIGINS", "")
+if _ws_origins_env:
+    ALLOWED_WS_ORIGINS = frozenset(o.strip().rstrip("/") for o in _ws_origins_env.split(",") if o.strip())
+else:
+    _scheme = "https" if APP_SECURE_COOKIES else "http"
+    _port_suffix = f":{APP_PORT}" if APP_PORT not in (80, 443) else ""
+    ALLOWED_WS_ORIGINS = frozenset([
+        f"{_scheme}://{APP_HOST}{_port_suffix}",
+        f"{_scheme}://localhost{_port_suffix}",
+        f"{_scheme}://127.0.0.1{_port_suffix}",
+    ])
+
 # ==========================================
 # 2. HTML TEMPLATE COMPILER
 # ==========================================
@@ -88,16 +102,24 @@ _compiled_html_lock = threading.Lock()
 
 
 def _html_cache_signature():
-    mtimes = []
+    """[PERF-3] Dung hash noi dung thay vi max mtime.
+    mtime chi thay doi khi file save, nhung khong detect thay doi noi dung
+    (e.g. touch, copy-over, git checkout). Hash dam bao chinh xac hon.
+    Dung md5 (khong can crypto-safe, chi can phat hien thay doi).
+    """
+    import hashlib as _hashlib
+    h = _hashlib.md5()
     views_dir = os.path.join(project_root, 'views')
-    for root, _, files in os.walk(views_dir):
-        for filename in files:
+    for root, dirs, files in os.walk(views_dir):
+        dirs.sort()  # Duyet theo thu tu xac dinh de hash nhat quan
+        for filename in sorted(files):
             if filename.endswith('.html'):
                 try:
-                    mtimes.append(os.path.getmtime(os.path.join(root, filename)))
+                    with open(os.path.join(root, filename), 'rb') as _f:
+                        h.update(_f.read())
                 except OSError:
                     pass
-    return max(mtimes) if mtimes else 0
+    return h.hexdigest()
 
 
 def compile_html(file_path):

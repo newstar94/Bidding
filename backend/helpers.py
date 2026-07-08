@@ -54,7 +54,9 @@ from helpers_py.text_utils import (
     clean_id,
     clean_admin_prefix,
     format_date_str,
-    VietnameseFloat
+    VietnameseFloat,
+    safe_float,
+    safe_int
 )
 
 from helpers_py.db_utils import (

@@ -138,7 +138,10 @@ async def login_api(request):
             "organization_name": org_names,
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
         })
-        cookie_max_age = SESSION_REMEMBER_EXPIRY_HOURS * 3600 if remember else None
+        # [SEC-3] Luôn đặt max_age tường minh để cookie expire đồng bộ với DB token.
+        # remember=True → 30 ngày; remember=False → SESSION_EXPIRY_HOURS (default 12h).
+        # Tránh trường hợp token còn trong DB nhưng cookie đã bị browser xóa (hoặc ngược lại).
+        cookie_max_age = (SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS) * 3600
         response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
         response.delete_cookie("username", path="/")
         return response
@@ -232,7 +235,7 @@ async def check_session_api(request):
         })
         
         if new_expiry_set:
-            cookie_max_age = expiry_hours * 3600 if remember else None
+            cookie_max_age = (SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS) * 3600
             response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
             response.delete_cookie("username", path="/")
             

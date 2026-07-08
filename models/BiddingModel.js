@@ -332,6 +332,12 @@ export class BiddingModel {
             return record;
         }
 
+        // [LG-4] First-write-wins: key dau tien ghi vao normalized se duoc giu,
+        // key trung ten den sau bi bo qua (tru khi gia tri cu la null/undefined/'').
+        // Server hien tai serialize camelCase truoc snake_case trong JSON response
+        // (map_db_to_json tra camelCase), nen camelCase luon thang.
+        // CANH BAO: Neu server doi thu tu key (snake truoc camel), logic se bi dao nguoc.
+        // => Giu logic nay nhung dam bao server luon serialize camelCase len truoc.
         const normalized = {};
         Object.entries(record).forEach(([key, value]) => {
             const canonicalKey = snakeToCamel(key);

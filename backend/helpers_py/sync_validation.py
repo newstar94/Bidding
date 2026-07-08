@@ -4,6 +4,7 @@ from datetime import datetime
 
 from .schema import SCHEMA_DINH_NGHIA
 from .sync_mapper import json_key_for_column
+from .text_utils import safe_float, safe_int
 
 
 PACKAGE_STATUSES = {"Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"}
@@ -13,23 +14,6 @@ LEGACY_PACKAGE_STATUS_ALIASES = {
 DEFAULT_PAPER_STATUS_COLOR = "#64748b"
 DATE_KEYS = ["ngayQuyetDinh", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau", "ngayPheDuyet", "ngayKy"]
 
-
-def safe_float(val):
-    if val in (None, ""):
-        return None
-    try:
-        return float(str(val).replace(",", "."))
-    except Exception:
-        return None
-
-
-def safe_int(val):
-    if val in (None, ""):
-        return None
-    try:
-        return int(float(val))
-    except Exception:
-        return None
 
 
 def is_valid_date_format(val):

@@ -1,6 +1,51 @@
 import re
 import datetime
 
+
+def safe_float(val):
+    """
+    Parse giá trị sang float.
+    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB
+    (phân biệt 'chưa nhập' vs 'nhập 0' cho các trường tài chính Optional).
+    Hỗ trợ cả dạng số tiếng Việt (1.000.000,50) và tiếng Anh (1,000,000.50).
+    """
+    if val is None or val == '':
+        return None
+    try:
+        s = str(val).strip()
+        if not s:
+            return None
+        if ',' in s and '.' in s:
+            if s.find('.') < s.find(','):
+                # Dạng tiếng Việt: 1.000.000,50 → 1000000.50
+                s = s.replace('.', '').replace(',', '.')
+            else:
+                # Dạng tiếng Anh: 1,000,000.50 → 1000000.50
+                s = s.replace(',', '')
+        elif ',' in s:
+            if s.count(',') == 1:
+                # Dấu phẩy duy nhất → dấu phân cách thập phân
+                s = s.replace(',', '.')
+            else:
+                # Nhiều dấu phẩy → dấu phân cách nghìn
+                s = s.replace(',', '')
+        return float(s)
+    except Exception:
+        return None
+
+
+def safe_int(val):
+    """
+    Parse giá trị sang int.
+    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB.
+    """
+    if val is None or val == '':
+        return None
+    try:
+        return int(float(val))
+    except Exception:
+        return None
+
 def to_snake_case(name):
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()

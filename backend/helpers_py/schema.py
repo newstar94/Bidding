@@ -351,7 +351,6 @@ SCHEMA_DINH_NGHIA = {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
             "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
-            "org_id": "TEXT",
             "name": "TEXT NOT NULL",
             "color": "TEXT NOT NULL DEFAULT '#64748b'",
             "sync_version": "INTEGER DEFAULT 0",

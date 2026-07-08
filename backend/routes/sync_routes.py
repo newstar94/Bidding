@@ -13,6 +13,8 @@ from helpers import (
     verify_session,
     SCHEMA_DINH_NGHIA,
     clean_id,
+    safe_float,
+    safe_int,
     save_base64_image,
     load_base64_image,
     log_error,
@@ -86,43 +88,6 @@ def get_owner_type(cursor, owner_id):
 # CÁC HÀM TRỢ GIÚP CHO ĐỒNG BỘ DỮ LIỆU
 # ==========================================
 
-def safe_float(val):
-    """
-    Parse giá trị sang float.
-    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB
-    (phân biệt 'chưa nhập' vs 'nhập 0' cho các trường tài chính Optional).
-    """
-    if val is None or val == '':
-        return None
-    try:
-        s = str(val).strip()
-        if not s:
-            return None
-        if ',' in s and '.' in s:
-            if s.find('.') < s.find(','):
-                s = s.replace('.', '').replace(',', '.')
-            else:
-                s = s.replace(',', '')
-        elif ',' in s:
-            if s.count(',') == 1:
-                s = s.replace(',', '.')
-            else:
-                s = s.replace(',', '')
-        return float(s)
-    except Exception:
-        return None
-
-def safe_int(val):
-    """
-    Parse giá trị sang int.
-    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB.
-    """
-    if val is None or val == '':
-        return None
-    try:
-        return int(float(val))
-    except Exception:
-        return None
 
 def _get_expert_relations_for_packages(cursor, gt_ids):
     if not gt_ids:
@@ -173,6 +138,17 @@ def _get_contract_package_ids(cursor, hd_ids):
 # ==========================================
 
 async def sync_websocket_endpoint(websocket):
+    # [SEC-4] Kiểm tra Origin header ngăn CSWSH (Cross-Site WebSocket Hijacking).
+    # Bỏ qua trong APP_DEBUG=True để thuận tiện phát triển local.
+    try:
+        from app import ALLOWED_WS_ORIGINS, APP_DEBUG as _APP_DEBUG
+        origin = (websocket.headers.get("origin") or "").rstrip("/")
+        if not _APP_DEBUG and origin and origin not in ALLOWED_WS_ORIGINS:
+            await websocket.close(code=4403)  # 4403 = Forbidden origin
+            return
+    except Exception:
+        pass  # Nếu import lỗi (test env), bỏ qua kiểm tra origin
+
     await websocket.accept()
     
     owner_id = None
@@ -229,8 +205,13 @@ async def sync_websocket_endpoint(websocket):
         _last_auth_check = _time.time()
         _AUTH_CHECK_INTERVAL = 30 * 60  # Kiểm tra lại token mỗi 30 phút
 
+        _PING_INTERVAL = 55.0   # Gui ping sau 55 giay khong co tin hieu
+        _PONG_TIMEOUT = 15.0    # Doi pong toi da 15 giay; qua han -> dong ket noi
+        _waiting_pong = False   # Dang cho pong tu client
+
         while True:
             _now = _time.time()
+            # [SEC] Kiem tra dinh ky token con hieu luc
             if _now - _last_auth_check >= _AUTH_CHECK_INTERVAL:
                 _last_auth_check = _now
                 try:
@@ -249,11 +230,26 @@ async def sync_websocket_endpoint(websocket):
                     pass
 
             try:
-                # Chờ tối đa 60 giây — nếu timeout thì gửi ping để kiểm tra kết nối còn sống
-                await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+                # [PERF-4] Proper ping/pong protocol:
+                # - Neu dang doi pong: timeout ngan (PONG_TIMEOUT) -> ket noi chenh lech
+                # - Neu binh thuong: timeout dai (PING_INTERVAL) -> gui ping neu nhan het timeout
+                recv_timeout = _PONG_TIMEOUT if _waiting_pong else _PING_INTERVAL
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=recv_timeout)
+                _waiting_pong = False  # Nhan duoc bat ky tin hieu -> reset pong flag
+                try:
+                    msg_in = json.loads(raw)
+                    # Client co the gui {"type":"pong"} hoac bat ky lenh khac
+                    # Deu duoc tinh la "con song" — pong flag da reset o tren
+                except Exception:
+                    pass
             except asyncio.TimeoutError:
-                # Gửi ping — nếu connection đã chết sẽ raise exception và thoát loop
+                if _waiting_pong:
+                    # Client khong tra loi pong trong PONG_TIMEOUT giay -> ket noi da mat
+                    await websocket.close(code=1001)  # 1001 = Going Away
+                    return
+                # Gui ping va bat dau doi pong
                 await websocket.send_text('{"type":"ping"}')
+                _waiting_pong = True
 
     except Exception:
         pass
@@ -497,13 +493,12 @@ async def sync_api(request):
             if not cursor.fetchone():
                 cursor.execute("""
                     INSERT INTO trang_thai_ho_so_giay
-                        (id, owner_id, owner_type, org_id, name, color, sync_version, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, owner_id, owner_type, name, color, sync_version, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     str(uuid.uuid4()),
                     org_name,
                     owner_type,
-                    org_name,
                     status_name,
                     DEFAULT_PAPER_STATUS_COLOR,
                     batch_sync_version,
@@ -564,10 +559,9 @@ async def sync_api(request):
                                     elif not isinstance(val, str):
                                         val = json.dumps(val)
 
-                                # Bảo vệ XSS: Lọc sạch HTML/JS của các chuỗi văn bản thông thường
+                                # Chuẩn hóa khoảng trắng cho chuỗi văn bản thường (XSS escape thực hiện tại tầng render, không phải tại tầng lưu trữ)
                                 if isinstance(val, str) and not (col in _explicit_json or col.endswith("_list") or col.startswith("cv_") or col == "goi_thau_ids" or val.startswith("[") or val.startswith("{")):
-                                    import html
-                                    val = html.escape(val.strip())
+                                    val = val.strip()
                                         
                                 # Chuẩn hóa kiểu dữ liệu số
                                 col_type_upper = table_spec["columns"][col].upper()
@@ -607,6 +601,11 @@ async def sync_api(request):
                         db_row_data["id"] = str(uuid.uuid4())
 
                     if table_name == "phan_cong_nhan_su":
+                        # [LG-8] Nghiep vu: 1 muc tieu (id_muc_tieu + loai_doi_tuong) chi co DUY NHAT 1 nguoi phu trach.
+                        # Xoa phan cong cu cung muc tieu nhung khac ID truoc khi upsert ban ghi moi.
+                        # Nay sinh khi doi chuyen vien phu trach: client gui ban ghi moi voi ID moi,
+                        # nen can xoa ban ghi cu (khac ID) de tranh vi pham UNIQUE constraint.
+                        # CANH BAO: Neu nang len "nhieu nguoi / 1 muc tieu" phai sua UNIQUE constraint va xoa logic xoa nay.
                         cursor.execute("""
                             DELETE FROM phan_cong_nhan_su 
                             WHERE id_muc_tieu = ? AND loai_doi_tuong = ? AND id != ?
@@ -724,17 +723,7 @@ async def sync_api(request):
                         table_name = TABLE_KEYS[tbl_key]
                         c_id = get_clean_id(table_name, rec_id)
                         if c_id:
-                            if False:
-                                # Tìm id_goc của bản ghi trước khi xóa để xóa sạch toàn bộ lịch sử các phiên bản
-                                cursor.execute(f"SELECT id_goc FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
-                                row = cursor.fetchone()
-                                id_goc = row[0] if row else None
-                                if id_goc:
-                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
-                                else:
-                                    cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
-                            else:
-                                cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
+                            cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
 
                             cursor.execute(
                                 DELETED_RECORD_UPSERT_SQL,
@@ -742,7 +731,7 @@ async def sync_api(request):
                             )
                             # Ghi Audit Log cho DELETE
                             # Cần cập nhật lại is_latest nếu bảng bị xóa là bảng versioning
-                            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau"]:
+                            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau", "chuyen_gia", "hop_dong"]:
                                 updated_versioned_tables.add(table_name)
                                 
         # Tính lại is_latest bằng hàm chung (tránh duplicate logic với migration)
@@ -794,6 +783,7 @@ async def get_all_data_api(request):
     [GET] /api/get-all-data
     Trả về dữ liệu thay đổi từ lần đồng bộ trước (nếu truyền since) hoặc toàn bộ dữ liệu.
     """
+    conn = None  # Khởi tạo trước try để finally có thể đóng khi exception
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -831,11 +821,14 @@ async def get_all_data_api(request):
         # Calculate total records across versionable/heavy tables
         heavy_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
         paginated_payload_keys = [key for key, table in TABLE_KEYS.items() if table in heavy_tables]
-        total_records = 0
-        for tbl in heavy_tables:
-            cursor.execute(f"SELECT COUNT(*) FROM {tbl} WHERE owner_id = ?", (org_name,))
-            total_records += cursor.fetchone()[0]
-            
+        # [PERF-1] Gop 6 COUNT(*) rieng le thanh 1 UNION ALL query de giam round-trips DB
+        _union_sql = " UNION ALL ".join(
+            f"SELECT COUNT(*) AS c FROM {tbl} WHERE owner_id = ?"
+            for tbl in heavy_tables
+        )
+        cursor.execute(f"SELECT SUM(c) FROM ({_union_sql})", [org_name] * len(heavy_tables))
+        total_records = cursor.fetchone()[0] or 0
+
         use_server_pagination = total_records > 10000
         
         # Helper query function
@@ -985,7 +978,6 @@ async def get_all_data_api(request):
                 if tbl_key:
                     deletions.append({"table": tbl_key, "id": row[1]})
                     
-        conn.commit()
         current_sync_version = get_current_sync_version(cursor, org_name)
         conn.close()
         
@@ -1016,13 +1008,13 @@ async def get_all_data_api(request):
         return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         traceback.print_exc()
+        return JSONResponse({"error": "Da xay ra loi he thong khi lay du lieu."}, status_code=500)
+    finally:
         if conn:
             try:
-                conn.rollback()
                 conn.close()
             except Exception:
                 pass
-        return JSONResponse({"error": "Da xay ra loi he thong khi lay du lieu."}, status_code=500)
 
 async def paginate_api(request):
     conn = None  # [BL-4] Khởi tạo trước try để finally có thể đóng khi exception

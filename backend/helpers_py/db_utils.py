@@ -154,6 +154,7 @@ def _ensure_runtime_indexes(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_to_chuc_quan_ly ON to_chuc (quan_ly_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (owner_id, deleted_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (owner_id, delete_version)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_table ON deleted_records (owner_id, table_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_mutations_owner_created ON sync_mutations (owner_id, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (owner_id, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log (actor_user_id, created_at)")
@@ -374,7 +375,16 @@ def khoi_tao_va_di_tru_he_thong():
         cursor.execute("SELECT COUNT(*) FROM tai_khoan")
         if cursor.fetchone()[0] == 0:
             admin_uuid = "user-" + str(uuid.uuid4())
-            admin_pass = os.environ.get("ADMIN_PASSWORD", "123456")
+            admin_pass = os.environ.get("ADMIN_PASSWORD", "")
+            if not admin_pass:
+                import secrets as _secrets
+                admin_pass = _secrets.token_urlsafe(16)
+                print(f"\n{'='*60}")
+                print(f"  MẬT KHẨU ADMIN MẶC ĐỊNH (lần khởi tạo đầu tiên):")
+                print(f"  Tài khoản : admin")
+                print(f"  Mật khẩu  : {admin_pass}")
+                print(f"  ⚠️  Hãy đổi mật khẩu ngay sau khi đăng nhập lần đầu!")
+                print(f"{'='*60}\n")
             admin_name = os.environ.get("ADMIN_NAME", "Administrator")
             admin_email = os.environ.get("ADMIN_EMAIL", "admin@localhost")
             org_name = os.environ.get("DEFAULT_ORG_NAME", "HTD")
