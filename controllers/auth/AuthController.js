@@ -253,15 +253,31 @@ export function startBackgroundSessionChecker() {
                 }
             } else {
                 if (data.user) {
-                    const activeuser = this.model.state.activeuser;
+                    const activeuser = this.model.state.activeuser || {};
+                    this.model.state.activeuser = activeuser;
                     let hasChanges = false;
+                    const nextDbRoles = data.user.effective_roles || [];
+                    const nextActiveRole = this.model.constructor.resolveAllowedActiveRole({
+                        ...activeuser,
+                        dbRole: data.user.role || '',
+                        dbRoles: nextDbRoles
+                    }, this.model.state.activerole);
+                    if (this.model.state.activerole !== nextActiveRole) {
+                        this.model.state.activerole = nextActiveRole;
+                        hasChanges = true;
+                    }
                     if (activeuser.name !== data.user.name) { activeuser.name = data.user.name; hasChanges = true; }
                     if (activeuser.avatar !== (data.user.avatar || '')) { activeuser.avatar = data.user.avatar || ''; hasChanges = true; }
                     if (activeuser.email !== (data.user.email || '')) { activeuser.email = data.user.email || ''; hasChanges = true; }
                     if (activeuser.dbRole !== (data.user.role || '')) { activeuser.dbRole = data.user.role || ''; hasChanges = true; }
+                    if (JSON.stringify(activeuser.dbRoles || []) !== JSON.stringify(nextDbRoles)) { activeuser.dbRoles = nextDbRoles; hasChanges = true; }
+                    const nextTitle = this.model.constructor.getRoleTitle(this.model.state.activerole);
+                    if (activeuser.title !== nextTitle) { activeuser.title = nextTitle; hasChanges = true; }
                     if (activeuser.package_id !== (data.user.package_id || 'none')) { activeuser.package_id = data.user.package_id || 'none'; hasChanges = true; }
                     if (activeuser.organization_name !== (data.user.organization_name || '')) { activeuser.organization_name = data.user.organization_name || ''; hasChanges = true; }
                     if (hasChanges) {
+                        sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.model.state.activerole));
+                        sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(activeuser));
                         localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(activeuser));
                         this.view.updateActiveUserProfileDisplay();
 
@@ -364,7 +380,12 @@ export function setupAuth() {
             sessionStorage.setItem('bf_username', user.username);
         }
         if (!this.model.state.activeuser) this.model.state.activeuser = {};
-        if (!this.model.state.activerole) this.model.state.activerole = user.role || 'employee';
+        const requestedRole = this.model.state.activeuser.dbRole ? this.model.state.activerole : null;
+        this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole({
+            ...this.model.state.activeuser,
+            dbRole: user.role || '',
+            dbRoles: user.effective_roles || []
+        }, requestedRole);
         this.model.state.activeuser.name = user.name;
         this.model.state.activeuser.avatar = user.avatar || '';
         this.model.state.activeuser.email = user.email || '';
@@ -375,10 +396,9 @@ export function setupAuth() {
         if (user.inactivity_timeout_hours) {
             localStorage.setItem('bf_inactivity_timeout', user.inactivity_timeout_hours);
         }
-        let title = 'Chuyên viên';
-        if (this.model.state.activerole === 'super_admin') title = 'Super Admin';
-        else if (this.model.state.activerole === 'manager') title = 'Quản lý';
-        this.model.state.activeuser.title = title;
+        this.model.state.activeuser.title = this.model.constructor.getRoleTitle(this.model.state.activerole);
+        sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.model.state.activerole));
+        sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
         localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
         this.view.updateActiveUserProfileDisplay();
     };
@@ -649,6 +669,11 @@ export function setupAuth() {
                 ? (data.id ? data.id : '1')
                 : (this.model.hasEffectiveRole(data.role, 'super_admin') ? 'sa-1' : 'mgr-1');
 
+            this.model.state.activeuser = {
+                ...(this.model.state.activeuser || {}),
+                dbRole: data.role || '',
+                dbRoles: effectiveRoles
+            };
             this.model.switchActiveRole(activeRole, data.name, resolvedUserId);
             this.model.state.activeuser.avatar = data.avatar || '';
             this.model.state.activeuser.email = data.email || '';
@@ -1160,6 +1185,11 @@ export function setupGoogleSignIn() {
                                 ? (data.id ? data.id : '1')
                                 : (this.model.hasEffectiveRole(data.role, 'super_admin') ? 'sa-1' : 'mgr-1');
 
+                            this.model.state.activeuser = {
+                                ...(this.model.state.activeuser || {}),
+                                dbRole: data.role || '',
+                                dbRoles: effectiveRoles
+                            };
                             this.model.switchActiveRole(activeRole, data.name, resolvedUserId);
                             this.model.state.activeuser.avatar = data.avatar || '';
                             this.model.state.activeuser.email = data.email || '';
@@ -1192,6 +1222,11 @@ export function setupGoogleSignIn() {
                 ? (data.id ? data.id : '1')
                 : (this.model.hasEffectiveRole(data.role, 'super_admin') ? 'sa-1' : 'mgr-1');
 
+            this.model.state.activeuser = {
+                ...(this.model.state.activeuser || {}),
+                dbRole: data.role || '',
+                dbRoles: effectiveRoles
+            };
             this.model.switchActiveRole(activeRole, data.name, resolvedUserId);
             this.model.state.activeuser.avatar = data.avatar || '';
             this.model.state.activeuser.email = data.email || '';

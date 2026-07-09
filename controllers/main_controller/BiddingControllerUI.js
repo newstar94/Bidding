@@ -1,5 +1,42 @@
 import { consumeModalReturnState } from './modalReturnState.js';
 
+function requiredRoleForTab(tabName) {
+    if (tabName === 'superadmin-dashboard' || tabName === 'superadmin') return 'super_admin';
+    if (tabName === 'managernhanvien' || tabName === 'managerhosogiay') return 'manager';
+    return null;
+}
+
+function defaultTabForRole(model) {
+    return model?.state?.activerole === 'super_admin' ? 'superadmin-dashboard' : 'dashboard';
+}
+
+function canAccessTab(controller, tabName) {
+    const requiredRole = requiredRoleForTab(tabName);
+    return !requiredRole || controller.model.hasActiveEffectiveRole(requiredRole);
+}
+
+function guardTabAccess(controller, tabName, action = null, updateState = true) {
+    if (canAccessTab(controller, tabName)) {
+        return { tabName, action };
+    }
+
+    const fallbackTab = defaultTabForRole(controller.model);
+    if (typeof controller.view?.showToast === 'function') {
+        controller.view.showToast(
+            'Không có quyền truy cập',
+            'Tài khoản của bạn không có quyền mở trang quản trị này.',
+            'warning'
+        );
+    }
+
+    if (updateState) {
+        const fallbackUrl = controller.routeMap[fallbackTab] || fallbackTab;
+        history.replaceState({ tab: fallbackTab, action: null }, '', '/' + fallbackUrl);
+    }
+
+    return { tabName: fallbackTab, action: null };
+}
+
 export function setupTheme() {
     document.body.classList.remove('dark-mode');
     localStorage.removeItem(this.model.STORAGE_KEYS.THEME);
@@ -100,7 +137,7 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
         } else if (urlTab === 'nhathau-detail') {
             tabName = 'nhathau-detail';
         } else {
-            tabName = this.model.state.activerole === 'super_admin' ? 'superadmin-dashboard' : 'dashboard';
+            tabName = defaultTabForRole(this.model);
         }
     }
 
@@ -207,6 +244,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
         }
     }
 
+    const guardedRoute = guardTabAccess(this, tabName, action, true);
+    tabName = guardedRoute.tabName;
+    action = guardedRoute.action;
+
     if (isInit) {
         const finalUrlTab = this.routeMap[tabName] || tabName;
         let finalUrlAction = action ? (this.actionMap[action] || action) : null;
@@ -259,6 +300,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
 
 
 export function switchTab(tabName, action = null, updateState = true) {
+    const guardedRoute = guardTabAccess(this, tabName, action, updateState);
+    tabName = guardedRoute.tabName;
+    action = guardedRoute.action;
+
     this.model.state.activetab = tabName;
     this.model.state.activeaction = action;
     if (updateState) {

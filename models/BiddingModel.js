@@ -474,15 +474,16 @@ export class BiddingModel {
         }
 
         try {
-            this.state.activerole = storedRole || 'super_admin';
+            this.state.activerole = BiddingModel.resolveAllowedActiveRole(storedUser, storedRole);
         } catch (e) {
-            this.state.activerole = 'super_admin';
+            this.state.activerole = 'employee';
         }
 
         try {
-            this.state.activeuser = storedUser || { name: 'Admin', title: 'Hệ thống', id: 'sa-1' };
+            this.state.activeuser = storedUser || { name: 'Khách', title: 'Chuyên viên', id: '' };
+            this.state.activeuser.title = BiddingModel.getRoleTitle(this.state.activerole);
         } catch (e) {
-            this.state.activeuser = { name: 'Admin', title: 'Hệ thống', id: 'sa-1' };
+            this.state.activeuser = { name: 'Khách', title: 'Chuyên viên', id: '' };
         }
 
     }
@@ -599,10 +600,9 @@ export class BiddingModel {
     }
 
     switchActiveRole(role, userName, userId) {
-        this.state.activerole = role;
-        let title = 'Chuyên viên';
-        if (role === 'super_admin') title = 'Super Admin';
-        else if (role === 'manager') title = 'Quản lý';
+        const allowedRole = BiddingModel.resolveAllowedActiveRole(this.state.activeuser, role);
+        this.state.activerole = allowedRole;
+        const title = BiddingModel.getRoleTitle(allowedRole);
 
         this.state.activeuser = {
             ...(this.state.activeuser || {}),
@@ -620,6 +620,7 @@ export class BiddingModel {
         Object.keys(this.STORAGE_KEYS).forEach(key => {
             if (key !== 'THEME') {
                 localStorage.removeItem(this.STORAGE_KEYS[key]);
+                sessionStorage.removeItem(this.STORAGE_KEYS[key]);
             }
         });
         sessionStorage.removeItem('bf_session_token');
@@ -649,6 +650,38 @@ export class BiddingModel {
         manager: ['manager', 'employee'],
         employee: ['employee'],
     };
+
+    static getRoleTitle(role) {
+        if (role === 'super_admin') return 'Super Admin';
+        if (role === 'manager') return 'Quản lý';
+        return 'Chuyên viên';
+    }
+
+    static resolveAllowedActiveRole(user, requestedRole = null) {
+        const rolesFromServer = Array.isArray(user?.dbRoles) ? user.dbRoles : [];
+        const roleSource = rolesFromServer.length > 0
+            ? rolesFromServer.join(',')
+            : (user?.dbRole || user?.role || '');
+
+        if (!roleSource) {
+            return (user && requestedRole && BiddingModel.ROLE_HIERARCHY[requestedRole])
+                ? requestedRole
+                : 'employee';
+        }
+
+        const allowedRoles = new Set(BiddingModel.getEffectiveRoles(roleSource));
+
+        if (allowedRoles.size === 0) {
+            allowedRoles.add('employee');
+        }
+
+        if (requestedRole && allowedRoles.has(requestedRole)) {
+            return requestedRole;
+        }
+        if (allowedRoles.has('super_admin')) return 'super_admin';
+        if (allowedRoles.has('manager')) return 'manager';
+        return 'employee';
+    }
 
     /**
      * Kiểm tra xem user (dựa vào cỗt role) có role yêu cầu hay không (kể cả kế thừa).
