@@ -177,6 +177,8 @@ export function editKeHoach(id) {
         document.getElementById('kh-loaihinh').value = kh.loaiHinhMuaSam || '';
         document.getElementById('kh-duan').value = kh.tenDuAnDuToan || '';
         document.getElementById('kh-chudautuid').value = kh.chuDauTuId;
+        document.getElementById('kh-donvitrinhcdt').value = kh.donViTrinhCdt || '';
+        document.getElementById('kh-tenviettatdonvitrinh').value = kh.tenVietTatDonViTrinh || '';
         const tmInput = document.getElementById('kh-tongmuc');
         tmInput.value = kh.tongMucDauTu ? this.model.formatVND(kh.tongMucDauTu) : "";
         tmInput.placeholder = (kh.isTongMucTuDong === true || kh.isTongMucTuDong === 1 || !kh.tongMucDauTu) ? "Tổng Dự toán/Tổng mức đầu tư" : "Nhập số tiền";
@@ -230,6 +232,8 @@ export function editKeHoach(id) {
         document.getElementById('kh-ngaytrinhdutoan').value = '';
         document.getElementById('kh-ngaypheduyetdutoan').value = '';
         document.getElementById('kh-quyetdinhpheduyetdutoan').value = '';
+        document.getElementById('kh-donvitrinhcdt').value = '';
+        document.getElementById('kh-tenviettatdonvitrinh').value = '';
 
         // Reset additional Project fields
         document.getElementById('kh-maduan').value = '';
@@ -399,6 +403,8 @@ export async function handleKeHoachSubmit(e) {
     const ngayPheDuyetDuToanRaw = document.getElementById('kh-ngaypheduyetdutoan').value;
     const ngayPheDuyetDuToanYMD = this.model.convertDMYToYMD(ngayPheDuyetDuToanRaw);
     const soQdPheDuyetDuToan = document.getElementById('kh-quyetdinhpheduyetdutoan').value.trim();
+    const donViTrinhCdt = document.getElementById('kh-donvitrinhcdt').value.trim();
+    const tenVietTatDonViTrinh = document.getElementById('kh-tenviettatdonvitrinh').value.trim();
 
     const maDuan = document.getElementById('kh-maduan').value.trim();
     const nguonVon = document.getElementById('kh-nguonvon').value.trim();
@@ -439,6 +445,8 @@ export async function handleKeHoachSubmit(e) {
         loaiHinhMuaSam: loaiHinhVal,
         tenDuAnDuToan: document.getElementById('kh-duan').value.trim(),
         chuDauTuId: document.getElementById('kh-chudautuid').value,
+        donViTrinhCdt: donViTrinhCdt,
+        tenVietTatDonViTrinh: tenVietTatDonViTrinh,
         tongMucDauTu: isTongMucTuDong ? 0 : this.model.parseVND(currentVal),
         isTongMucTuDong: isTongMucTuDong,
         ngayPheDuyet: ngayPheDuyetYMD,

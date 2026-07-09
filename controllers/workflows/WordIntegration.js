@@ -91,6 +91,8 @@ export function setupWordTemplatesEvents() {
             { value: 'ten_ke_hoach', label: 'Tên kế hoạch lựa chọn nhà thầu (LCNT)' },
             { value: 'ten_du_an_du_toan', label: 'Tên dự án / Dự toán mua sắm' },
             { value: 'loai_hinh_mua_sam', label: 'Loại hình mua sắm (ví dụ: Xây lắp, Hàng hóa, Phi tư vấn...)' },
+            { value: 'don_vi_trinh_cdt', label: 'Đơn vị trình của chủ đầu tư' },
+            { value: 'ten_viet_tat_don_vi_trinh', label: 'Tên viết tắt đơn vị trình của chủ đầu tư' },
             { value: 'tong_muc_dau_tu', label: 'Tổng mức đầu tư dự án / Tổng dự toán' },
             { value: 'ngay_phe_duyet', label: 'Ngày phê duyệt quyết định kế hoạch LCNT' },
             { value: 'quyet_dinh_phe_duyet', label: 'Số quyết định phê duyệt kế hoạch LCNT' },

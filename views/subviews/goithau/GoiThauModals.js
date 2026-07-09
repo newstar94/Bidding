@@ -105,6 +105,8 @@ export function renderExcelPreview(rows, importType) {
         tenKeHoach: 'Tên kế hoạch',
         loaiHinhMuaSam: 'Loại hình',
         tenDuAnDuToan: 'Dự án / Dự toán',
+        donViTrinhCdt: 'Đơn vị trình của chủ đầu tư',
+        tenVietTatDonViTrinh: 'Tên viết tắt đơn vị trình',
         tongMucDauTu: 'Tổng mức đầu tư',
         ngayPheDuyet: 'Ngày phê duyệt',
         quyetDinhPheDuyet: 'QĐ phê duyệt',

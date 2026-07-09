@@ -160,6 +160,8 @@ export function renderDictionary(group) {
                 'ma_du_an': 'Mã dự án đầu tư',
                 'ten_du_an_du_toan': 'Tên dự án / Dự toán mua sắm',
                 'loai_hinh_mua_sam': 'Loại hình mua sắm (ví dụ: Xây lắp, Hàng hóa, Phi tư vấn...)',
+                'don_vi_trinh_cdt': 'Đơn vị trình của chủ đầu tư',
+                'ten_viet_tat_don_vi_trinh': 'Tên viết tắt đơn vị trình của chủ đầu tư',
                 'tong_muc_dau_tu': 'Tổng mức đầu tư dự án / Tổng dự toán',
                 'quyet_dinh_phe_duyet': 'Số quyết định phê duyệt kế hoạch LCNT',
                 'ngay_phe_duyet': 'Ngày phê duyệt quyết định kế hoạch LCNT',

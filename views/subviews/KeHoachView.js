@@ -473,6 +473,14 @@ export async function renderPlanVersionDetails(versionId) {
                     <div class="detail-value">${kh.pheDuyet ? `<span class="badge ${kh.pheDuyet === 'Kế hoạch' ? 'badge-info' : 'badge-success'}">${kh.pheDuyet}</span>` : '<span class="text-muted">--</span>'}</div>
                 </div>
                 <div class="detail-item">
+                    <div class="detail-label">Đơn vị trình của chủ đầu tư</div>
+                    <div class="detail-value">${kh.donViTrinhCdt || '--'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Tên viết tắt đơn vị trình</div>
+                    <div class="detail-value">${kh.tenVietTatDonViTrinh || '--'}</div>
+                </div>
+                <div class="detail-item">
                     <div class="detail-label">Tổng Giá Trị Kế Hoạch</div>
                     <div class="detail-value text-blue" style="font-size: 1.15rem;">${formatCurrency(kh.tongMucDauTu)}</div>
                 </div>

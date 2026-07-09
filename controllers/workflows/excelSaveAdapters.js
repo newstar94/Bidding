@@ -47,6 +47,8 @@ export function saveBasicExcelImport(controller, type, validRows) {
                 tenKeHoach: row.tenKeHoach || '',
                 tenDuAnDuToan: row.tenDuAnDuToan || '',
                 chuDauTuId: '',
+                donViTrinhCdt: row.donViTrinhCdt || '',
+                tenVietTatDonViTrinh: row.tenVietTatDonViTrinh || '',
                 tongMucDauTu: parseFloat(row.tongMucDauTu) || 0,
                 ngayPheDuyet: ensureYMD(controller, row.ngayPheDuyet),
                 quyetDinhPheDuyet: row.quyetDinhPheDuyet || '',

@@ -1,7 +1,7 @@
 import hashlib
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 3
+WORD_DEFAULT_MAPPINGS_VERSION = 4
 WORD_DEFAULT_SEED_PREFIX = "__word_defaults_seeded_v"
 
 
@@ -30,6 +30,8 @@ WORD_SINGLE_SOURCES = {
         "ten_ke_hoach",
         "ten_du_an_du_toan",
         "loai_hinh_mua_sam",
+        "don_vi_trinh_cdt",
+        "ten_viet_tat_don_vi_trinh",
         "tong_muc_dau_tu",
         "is_tong_muc_tu_dong",
         "ngay_phe_duyet",
@@ -216,6 +218,8 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("ke_hoach_lcnt", "ma_du_an"): "ma_du_an",
     ("ke_hoach_lcnt", "ten_du_an_du_toan"): "ten_du_an_du_toan",
     ("ke_hoach_lcnt", "loai_hinh_mua_sam"): "loai_mua_sam",
+    ("ke_hoach_lcnt", "don_vi_trinh_cdt"): "don_vi_trinh_cdt",
+    ("ke_hoach_lcnt", "ten_viet_tat_don_vi_trinh"): "ten_tat_dv_trinh",
     ("ke_hoach_lcnt", "tong_muc_dau_tu"): "tong_muc_dau_tu",
     ("ke_hoach_lcnt", "is_tong_muc_tu_dong"): "tong_muc_tu_dong",
     ("ke_hoach_lcnt", "ngay_phe_duyet"): "ngay_phe_duyet_kh",

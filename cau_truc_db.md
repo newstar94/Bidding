@@ -212,6 +212,8 @@ Cot:
 | `ten_du_an_du_toan` | `TEXT` | Ten du an/du toan |
 | `loai_hinh_mua_sam` | `TEXT` | Loai hinh mua sam |
 | `chu_dau_tu_id` | `TEXT` | FK chu dau tu |
+| `don_vi_trinh_cdt` | `TEXT` | Don vi trinh cua chu dau tu |
+| `ten_viet_tat_don_vi_trinh` | `TEXT` | Ten viet tat don vi trinh |
 | `tong_muc_dau_tu` | `REAL` | Tong muc dau tu |
 | `is_tong_muc_tu_dong` | `INTEGER DEFAULT 0` | Co tinh tong tu dong |
 | `ngay_phe_duyet` | `TEXT` | Ngay phe duyet |

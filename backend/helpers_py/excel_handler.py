@@ -30,6 +30,8 @@ ENTITY_SCHEMA = {
                                            'options': ['Dự án', 'Dự toán mua sắm']},
         {'field': 'tenDuAnDuToan',        'label': 'Tên dự án',                  'aliases': ['Tên dự án', 'Dự án', 'Dự án / Dự toán', 'tenDuAnDuToan']},
         {'field': 'chuDauTuId',           'label': 'Chủ đầu tư',                  'aliases': ['Chủ đầu tư', 'Mã chủ đầu tư', 'chuDauTuId']},
+        {'field': 'donViTrinhCdt',        'label': 'Đơn vị trình của chủ đầu tư', 'aliases': ['Đơn vị trình của chủ đầu tư', 'Đơn vị trình CĐT', 'donViTrinhCdt']},
+        {'field': 'tenVietTatDonViTrinh', 'label': 'Tên viết tắt đơn vị trình',   'aliases': ['Tên viết tắt đơn vị trình', 'Tên viết tắt ĐV trình', 'tenVietTatDonViTrinh']},
         {'field': 'tongMucDauTu',         'label': 'Tổng mức đầu tư',             'aliases': ['Tổng giá trị', 'Tổng mức đầu tư', 'tongMucDauTu']},
         {'field': 'ngayPheDuyet',         'label': 'Ngày phê duyệt',               'aliases': ['Ngày phê duyệt', 'ngayPheDuyet']},
         {'field': 'quyetDinhPheDuyet',    'label': 'Số QĐ',               'aliases': ['Số QĐ', 'QĐ phê duyệt', 'quyetDinhPheDuyet']},
