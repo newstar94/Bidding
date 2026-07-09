@@ -1,4 +1,4 @@
-﻿import time
+import time
 import secrets
 import uuid
 from starlette.responses import JSONResponse
@@ -16,34 +16,40 @@ from services.auth_service import (
     check_rate_limit,
     generate_otp
 )
+from helpers_py.username_validator import validate_username
 
 async def register_api(request):
     conn = None
     try:
         ip = get_client_ip(request)
         if not check_rate_limit(f"register:{ip}"):
-            return JSONResponse({"error": "QuÃ¡ nhiá»u yÃªu cáº§u Ä‘Äƒng kÃ½. Vui lÃ²ng thá»­ láº¡i sau 60 giÃ¢y."}, status_code=429)
+            return JSONResponse({"error": "Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau 60 giây."}, status_code=429)
 
         data = await request.json()
-        username = data.get('username', '').strip()
+        username = data.get('username', '').strip().lower()
         password = data.get('password', '').strip()
         name = data.get('name', '').strip()
         email = data.get('email', '').strip()
         role = 'employee'
         
         if not username or not password or not name or not email:
-            return JSONResponse({"error": "Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ thÃ´ng tin báº¯t buá»™c!"}, status_code=400)
+            return JSONResponse({"error": "Vui lòng nhập đầy đủ thông tin bắt buộc!"}, status_code=400)
             
+        # Kiểm tra username qua bộ lọc 3 lớp (format + nhạy cảm + trùng route)
+        valid, reason = validate_username(username)
+        if not valid:
+            return JSONResponse({"error": reason}, status_code=400)
+
         conn = database.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("SELECT id FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
         if cursor.fetchone():
-            return JSONResponse({"error": "TÃ i khoáº£n Ä‘Äƒng nháº­p Ä‘Ã£ tá»“n táº¡i!"}, status_code=400)
+            return JSONResponse({"error": "Tên đăng nhập đã tồn tại!"}, status_code=400)
             
         cursor.execute("SELECT id FROM tai_khoan WHERE email = ?", (email,))
         if cursor.fetchone():
-            return JSONResponse({"error": "Äá»‹a chá»‰ email nÃ y Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng bá»Ÿi má»™t tÃ i khoáº£n khÃ¡c!"}, status_code=400)
+            return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
             
         user_uuid = "user-" + str(uuid.uuid4())
         code = generate_otp()

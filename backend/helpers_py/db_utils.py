@@ -377,14 +377,7 @@ def khoi_tao_va_di_tru_he_thong():
             admin_uuid = "user-" + str(uuid.uuid4())
             admin_pass = os.environ.get("ADMIN_PASSWORD", "")
             if not admin_pass:
-                import secrets as _secrets
-                admin_pass = _secrets.token_urlsafe(16)
-                print(f"\n{'='*60}")
-                print(f"  MẬT KHẨU ADMIN MẶC ĐỊNH (lần khởi tạo đầu tiên):")
-                print(f"  Tài khoản : admin")
-                print(f"  Mật khẩu  : {admin_pass}")
-                print(f"  ⚠️  Hãy đổi mật khẩu ngay sau khi đăng nhập lần đầu!")
-                print(f"{'='*60}\n")
+                raise ValueError("ADMIN_PASSWORD environment variable is not configured. Initial admin password must be set in the environment.")
             admin_name = os.environ.get("ADMIN_NAME", "Administrator")
             admin_email = os.environ.get("ADMIN_EMAIL", "admin@localhost")
             org_name = os.environ.get("DEFAULT_ORG_NAME", "HTD")

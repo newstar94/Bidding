@@ -226,7 +226,8 @@ from routes.auth_routes import (
     update_user_package_api,
     update_user_metadata_api,
     list_system_packages_api,
-    update_system_package_api
+    update_system_package_api,
+    set_username_api
 )
 from routes.google_auth_routes import google_login_api
 from routes.sync_routes import (
@@ -401,6 +402,7 @@ routes = [
     Route("/api/auth/resend-code", resend_code_api, methods=["POST"]),
     Route("/api/auth/login", login_api, methods=["POST"]),
     Route("/api/auth/google-login", google_login_api, methods=["POST"]),
+    Route("/api/auth/set-username", set_username_api, methods=["POST"]),
     Route("/api/auth/check-session", check_session_api, methods=["POST"]),
     Route("/api/auth/logout", logout_api, methods=["POST"]),
     Route("/api/auth/forgot-password", forgot_password_api, methods=["POST"]),
@@ -489,7 +491,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://accounts.google.com https://apis.google.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
             "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
             f"connect-src 'self' ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT} https://accounts.google.com https://oauth2.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "

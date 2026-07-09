@@ -29,8 +29,9 @@ SCHEMA_DINH_NGHIA = {
             "ma_xac_minh": "TEXT",
             "han_xac_minh": "INTEGER",
             "google_id": "TEXT",
-            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
-            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
+            "username_da_dat": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": ["FOREIGN KEY (goi_dich_vu_id) REFERENCES goi_dich_vu(id) ON DELETE SET NULL"],
         "field_map": {

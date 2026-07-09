@@ -1,6 +1,84 @@
-﻿/* ==========================================================================
+/* ==========================================================================
    BiddingFlow - AuthController (Part of Controller split)
    ========================================================================== */
+
+/**
+ * validateUsernameClient(username)
+ * Bộ lọc username phía client — đồng bộ logic 3 lớp với backend (username_validator.py).
+ * Trả về: { ok: true } hoặc { ok: false, message: "..." }
+ *
+ * Lớp 1: FORMAT  — [a-z0-9_], 3-30 ký tự, không bắt đầu/kết thúc bằng '_', không '__'
+ * Lớp 2: SENSITIVE — Nhãn hàng, từ thô tục, từ hệ thống
+ * Lớp 3: RESERVED  — Route SPA / API của hệ thống
+ */
+export function validateUsernameClient(username) {
+    const u = (username || '').toLowerCase().trim();
+
+    // --- Lớp 1: Format ---
+    if (!/^[a-z0-9_]{3,30}$/.test(u)) {
+        return { ok: false, message: 'Tên đăng nhập chỉ được chứa chữ thường (a-z), số (0-9) và dấu gạch dưới (_), từ 3 đến 30 ký tự.' };
+    }
+    if (u.startsWith('_') || u.endsWith('_')) {
+        return { ok: false, message: 'Tên đăng nhập không được bắt đầu hoặc kết thúc bằng dấu gạch dưới (_).' };
+    }
+    if (u.includes('__')) {
+        return { ok: false, message: 'Tên đăng nhập không được chứa hai dấu gạch dưới liên tiếp (__).' };
+    }
+
+    // --- Lớp 2: Từ nhạy cảm ---
+    const SENSITIVE = new Set([
+        // Hệ thống / đặc quyền
+        'admin','administrator','superadmin','superuser','root','sysadmin',
+        'system','support','helpdesk','moderator','staff','operator',
+        'service','bot','daemon','null','undefined','anonymous','guest',
+        'test','demo','debug','dev','devops','api','server',
+        'billing','noreply','no_reply','postmaster','webmaster','hostmaster',
+        'info','contact','abuse','security',
+        // Nhãn hàng
+        'google','facebook','microsoft','apple','amazon','twitter','tiktok',
+        'youtube','instagram','linkedin','github','gitlab','openai','chatgpt',
+        'netflix','spotify','paypal','visa','mastercard',
+        'vingroup','viettel','vnpt','mobifone','vinaphone',
+        'biddingflow','bidding_flow',
+        // Từ thô tục (dạng ASCII)
+        'dit','dcm','dm','lol','cac','lon','bu_lon','bu_cac',
+        'me_may','fuck','shit','ass','bitch','bastard','cunt',
+        'porn','sex','nude','xxx','rape',
+    ]);
+
+    // Khớp toàn phần hoặc xuất hiện trong chuỗi ngăn cách bởi '_'
+    if (SENSITIVE.has(u)) {
+        return { ok: false, message: 'Tên đăng nhập chứa từ không được phép (nhãn hàng, từ thô tục hoặc từ hệ thống). Vui lòng chọn tên khác.' };
+    }
+    const parts = u.split('_').filter(Boolean);
+    for (const part of parts) {
+        if (SENSITIVE.has(part)) {
+            return { ok: false, message: 'Tên đăng nhập chứa từ không được phép (nhãn hàng, từ thô tục hoặc từ hệ thống). Vui lòng chọn tên khác.' };
+        }
+    }
+
+    // --- Lớp 3: Route hệ thống ---
+    const RESERVED = new Set([
+        'tong-quan','ke-hoach','goi-thau','mothau','danh-gia-hsdt',
+        'chu-dau-tu','nha-thau','chuyen-gia','hop-dong','bieu-mau',
+        'tong-quan-admin','quan-ly-tai-khoan','nhan-su','trang-thai-ho-so',
+        'trang-ca-nhan','goi-thau-chi-tiet','ke-hoach-chi-tiet',
+        'hop-dong-chi-tiet','chu-dau-tu-chi-tiet','nha-thau-chi-tiet',
+        'chudautu-detail','nhathau-detail',
+        'api','auth','sync','paginate','ws','dist','views',
+        'controllers','models','uploads','static','templates',
+        'holidays','export','import','address',
+        'login','logout','register','verify','forgot','password',
+        'me','self','my','account','profile','dashboard',
+        'settings','config','setup','install',
+    ]);
+
+    if (RESERVED.has(u) || RESERVED.has(u.replace(/_/g, '-'))) {
+        return { ok: false, message: 'Tên đăng nhập này trùng với đường dẫn hệ thống và không thể sử dụng. Vui lòng chọn tên khác.' };
+    }
+
+    return { ok: true, message: '' };
+}
 
 export function setupActivityTracker() {
     const updateActivity = () => {
@@ -295,11 +373,32 @@ export function setupAuth() {
                     await this.model.init({ priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname) });
                 }
 
-                if (!canShowLocalFirst && !shouldWaitForDetailData) {
-                    showCachedWorkspace();
-                }
+                const effectiveRoles = data.user.effective_roles || [];
+                let activeRole = data.user.role || 'employee';
+                if (effectiveRoles.includes('super_admin')) activeRole = 'super_admin';
+                else if (effectiveRoles.includes('manager')) activeRole = 'manager';
 
-                refreshWorkspaceInBackground();
+                // Nếu user cần đặt username, hiển thị modal và chặn không cho vào dashboard trước khi đặt xong
+                if (data.user.needs_username) {
+                    overlay.style.display = 'none';
+                    document.querySelector('.app-container').style.filter = 'blur(10px)';
+                    hideInitLoader();
+                    
+                    this._showSetUsernameModal(
+                        activeRole,
+                        () => {
+                            document.querySelector('.app-container').style.filter = 'none';
+                            this._finishGoogleLogin(activeRole);
+                        },
+                        data.user.suggested_username || '',
+                        data.user.account_linked || false
+                    );
+                } else {
+                    if (!canShowLocalFirst && !shouldWaitForDetailData) {
+                        showCachedWorkspace();
+                    }
+                    refreshWorkspaceInBackground();
+                }
 
                 this.startBackgroundSessionChecker();
             }
@@ -385,6 +484,9 @@ export function setupAuth() {
 
                 this.model.clearSessionData();
                 if (this._sessionInterval) clearInterval(this._sessionInterval);
+                localStorage.removeItem('bf_active_org');
+                localStorage.removeItem('bf_last_sync_timestamp');
+                localStorage.removeItem('bf_last_sync_version');
 
                 overlay.style.display = 'flex';
                 document.querySelector('.app-container').style.filter = 'blur(10px)';
@@ -440,6 +542,17 @@ export function setupAuth() {
                 localStorage.removeItem('bf_remember_me');
                 localStorage.removeItem('bf_username');
                 localStorage.removeItem('bf_user_id');
+            }
+
+            // Đồng bộ active org mới trước khi init model
+            const orgs = (data.organization_name || '').split(',').map(o => o.trim()).filter(Boolean);
+            const currentActiveOrg = localStorage.getItem('bf_active_org');
+            if (!currentActiveOrg || !orgs.includes(currentActiveOrg)) {
+                if (orgs.length > 0) {
+                    localStorage.setItem('bf_active_org', orgs[0]);
+                } else {
+                    localStorage.removeItem('bf_active_org');
+                }
             }
 
             // Re-initialize database connection name and data keys for this specific user
@@ -503,7 +616,7 @@ export function setupAuth() {
     // Handle Register Submission
     formRegister.onsubmit = async (e) => {
         e.preventDefault();
-        const username = document.getElementById('register-username').value.trim();
+        const username = document.getElementById('register-username').value.trim().toLowerCase();
         const fullname = document.getElementById('register-fullname').value.trim();
         const email = document.getElementById('register-email').value.trim();
         const password = document.getElementById('register-password').value.trim();
@@ -514,6 +627,15 @@ export function setupAuth() {
 
         errorDiv.style.display = 'none';
         successDiv.style.display = 'none';
+
+        // Kiểm tra username qua bộ lọc 3 lớp (format + nhạy cảm + trùng route)
+        const usernameCheck = validateUsernameClient(username);
+        if (!usernameCheck.ok) {
+            errorDiv.textContent = usernameCheck.message;
+            errorDiv.style.display = 'block';
+            document.getElementById('register-username').focus();
+            return;
+        }
 
         if (password.length < 6) {
             errorDiv.textContent = 'Mật khẩu đăng nhập phải có ít nhất 6 ký tự!';
@@ -719,6 +841,10 @@ export function setupAuth() {
 }
 
 export function setupGoogleSignIn() {
+    // Guard: chỉ cho phép initialize 1 lần duy nhất
+    if (window._gsiInitialized) return;
+    window._gsiInitialized = true;
+
     const clientId = document.querySelector('meta[name="google-client-id"]')?.content;
     if (!clientId) return;
 
@@ -727,6 +853,133 @@ export function setupGoogleSignIn() {
 
     // Cho den khi google.accounts.id san sang
     if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) return;
+
+    // Helper: hoàn tất đăng nhập sau khi username đã được đặt (hoặc không cần đặt)
+    this._finishGoogleLogin = async (activeRole) => {
+        try { await this.forceSyncData(); } catch (err) { console.error('Failed sync after Google login:', err); }
+        this.view.updateActiveUserProfileDisplay();
+        if (typeof this.renderWorkspaceSwitcher === 'function') this.renderWorkspaceSwitcher();
+        if (activeRole === 'super_admin') {
+            this.switchTab('superadmin-dashboard');
+        } else {
+            this.switchTab('dashboard');
+        }
+        this.startBackgroundSessionChecker();
+    };
+
+    // Helper: hiển thị modal bắt buộc đặt username (không thể tắt)
+    // - suggestedUsername: username gợi ý sinh tự động (có thể sửa)
+    // - accountLinked: true nếu là tài khoản cũ (Email+MK) vừa được liên kết với Google
+    this._showSetUsernameModal = (activeRole, onSuccess, suggestedUsername = '', accountLinked = false) => {
+        const modalOverlay = document.getElementById('modal-set-username-overlay');
+        const input = document.getElementById('input-set-username');
+        const errorDiv = document.getElementById('set-username-error');
+        const submitBtn = document.getElementById('btn-set-username-submit');
+        if (!modalOverlay || !input || !submitBtn) return;
+
+        // Cập nhật mô tả modal theo ngữ cảnh
+        const descEl = modalOverlay.querySelector('[data-username-modal-desc]');
+        if (descEl) {
+            if (accountLinked) {
+                descEl.innerHTML = 'Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span style="color: #ef4444; font-weight: 600;">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
+            } else {
+                descEl.innerHTML = 'Tài khoản Google của bạn đã được tạo. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span style="color: #ef4444; font-weight: 600;">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
+            }
+        }
+
+        // Hiện modal (dùng flex)
+        modalOverlay.style.display = 'flex';
+
+        // Điền sẵn username gợi ý nếu có
+        if (suggestedUsername) {
+            input.value = suggestedUsername;
+        } else {
+            input.value = '';
+        }
+        input.focus();
+        // Đặt cursor ở cuối
+        try { input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
+
+        if (errorDiv) errorDiv.style.display = 'none';
+
+        // Render lucide icons bên trong modal
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Validate realtime — dùng validateUsernameClient (3 lớp)
+        input.oninput = () => {
+            const val = input.value.toLowerCase();
+            input.value = val.replace(/[^a-z0-9_]/g, '');
+            const hint = document.getElementById('set-username-hint');
+            if (hint && input.value.length > 0) {
+                const check = validateUsernameClient(input.value);
+                if (!check.ok) {
+                    hint.textContent = check.message;
+                    hint.style.color = '#ef4444';
+                } else {
+                    hint.textContent = 'Chỉ chữ thường (a-z), số (0-9) và dấu gạch dưới (_). Từ 3 đến 30 ký tự.';
+                    hint.style.color = '#22c55e';
+                }
+            } else if (hint) {
+                hint.textContent = 'Chỉ chữ thường (a-z), số (0-9) và dấu gạch dưới (_). Từ 3 đến 30 ký tự.';
+                hint.style.color = '';
+            }
+        };
+
+        // Submit
+        const _doSubmit = async () => {
+            const username = input.value.trim();
+            // Kiểm tra 3 lớp phía client trước khi gửi lên server
+            const usernameCheck = validateUsernameClient(username);
+            if (!usernameCheck.ok) {
+                if (errorDiv) {
+                    errorDiv.textContent = usernameCheck.message;
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.7';
+            const btnSpan = submitBtn.querySelector('span');
+            if (btnSpan) btnSpan.textContent = 'Đang lưu...';
+            if (errorDiv) errorDiv.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/auth/set-username', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    if (errorDiv) {
+                        errorDiv.textContent = result.error || 'Đặt tên đăng nhập thất bại. Vui lòng thử lại.';
+                        errorDiv.style.display = 'block';
+                    }
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    if (btnSpan) btnSpan.textContent = 'Xác nhận tên đăng nhập';
+                    return;
+                }
+                // Thành công — cập nhật model và ẩn modal
+                if (this.model?.state?.activeuser) {
+                    this.model.state.activeuser.username = result.username;
+                }
+                modalOverlay.style.display = 'none';
+                onSuccess();
+            } catch (err) {
+                if (errorDiv) {
+                    errorDiv.textContent = 'Lỗi kết nối. Vui lòng thử lại.';
+                    errorDiv.style.display = 'block';
+                }
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                if (btnSpan) btnSpan.textContent = 'Xác nhận tên đăng nhập';
+            }
+        };
+
+        submitBtn.onclick = _doSubmit;
+        input.onkeydown = (e) => { if (e.key === 'Enter') _doSubmit(); };
+    };
 
     const handleGoogleResponse = async (response) => {
         if (!response || !response.credential) return;
@@ -756,12 +1009,73 @@ export function setupGoogleSignIn() {
             sessionStorage.setItem('bf_user_id', data.id);
             localStorage.removeItem('bf_remember_me');
 
-            await this.model.init();
+            // Ẩn overlay đăng nhập ngay lập tức để người dùng thấy modal Đặt tên đăng nhập (Ảnh 2)
+            const overlay = document.getElementById('auth-overlay');
+            if (overlay) overlay.style.display = 'none';
+            const appContainer = document.querySelector('.app-container');
+            if (appContainer) appContainer.style.filter = 'none';
+
+            // Đồng bộ active org mới cho Google Login trước khi init model
+            const orgs = (data.organization_name || '').split(',').map(o => o.trim()).filter(Boolean);
+            const currentActiveOrg = localStorage.getItem('bf_active_org');
+            if (!currentActiveOrg || !orgs.includes(currentActiveOrg)) {
+                if (orgs.length > 0) {
+                    localStorage.setItem('bf_active_org', orgs[0]);
+                } else {
+                    localStorage.removeItem('bf_active_org');
+                }
+            }
 
             const effectiveRoles = data.effective_roles || [];
             let activeRole = data.role || 'employee';
             if (effectiveRoles.includes('super_admin')) activeRole = 'super_admin';
             else if (effectiveRoles.includes('manager')) activeRole = 'manager';
+
+            // Nếu tài khoản mới chưa đặt username → hiển thị modal bắt buộc ĐẦU TIÊN
+            if (data.needs_username) {
+                this._showSetUsernameModal(
+                    activeRole,
+                    async () => {
+                        // Sau khi họ đặt username thành công và click Xác nhận:
+                        // Tiến hành init model và hoàn tất đăng nhập
+                        const submitBtn = document.getElementById('btn-set-username-submit');
+                        const btnSpan = submitBtn ? submitBtn.querySelector('span') : null;
+                        const originalText = btnSpan ? btnSpan.textContent : 'Xác nhận tên đăng nhập';
+                        if (btnSpan) btnSpan.textContent = 'Đang khởi tạo thiết lập...';
+                        
+                        try {
+                            await this.model.init();
+                            const resolvedUserId = !this.model.hasEffectiveRole(data.role, 'manager')
+                                ? (data.id ? data.id : '1')
+                                : (this.model.hasEffectiveRole(data.role, 'super_admin') ? 'sa-1' : 'mgr-1');
+
+                            this.model.switchActiveRole(activeRole, data.name, resolvedUserId);
+                            this.model.state.activeuser.avatar = data.avatar || '';
+                            this.model.state.activeuser.email = data.email || '';
+                            this.model.state.activeuser.dbRole = data.role || '';
+                            this.model.state.activeuser.dbRoles = effectiveRoles;
+                            this.model.state.activeuser.package_id = data.package_id || 'none';
+                            this.model.state.activeuser.organization_name = data.organization_name || '';
+                            localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
+
+                            if (data.inactivity_timeout_hours) {
+                                localStorage.setItem('bf_inactivity_timeout', data.inactivity_timeout_hours);
+                            }
+
+                            await this._finishGoogleLogin(activeRole);
+                        } catch (initErr) {
+                            console.error('Failed to init model after username set:', initErr);
+                            alert('Đã xảy ra lỗi khi khởi tạo dữ liệu. Vui lòng tải lại trang.');
+                        }
+                    },
+                    data.suggested_username || '',
+                    data.account_linked || false
+                );
+                return;
+            }
+
+            // Đối với tài khoản bình thường (đã có username), chạy tiếp như cũ:
+            await this.model.init();
 
             const resolvedUserId = !this.model.hasEffectiveRole(data.role, 'manager')
                 ? (data.id ? data.id : '1')
@@ -780,22 +1094,7 @@ export function setupGoogleSignIn() {
                 localStorage.setItem('bf_inactivity_timeout', data.inactivity_timeout_hours);
             }
 
-            const overlay = document.getElementById('auth-overlay');
-            if (overlay) overlay.style.display = 'none';
-            const appContainer = document.querySelector('.app-container');
-            if (appContainer) appContainer.style.filter = 'none';
-
-            try { await this.forceSyncData(); } catch (err) { console.error('Failed sync after Google login:', err); }
-
-            this.view.updateActiveUserProfileDisplay();
-            if (typeof this.renderWorkspaceSwitcher === 'function') this.renderWorkspaceSwitcher();
-
-            if (activeRole === 'super_admin') {
-                this.switchTab('superadmin-dashboard');
-            } else {
-                this.switchTab('dashboard');
-            }
-            this.startBackgroundSessionChecker();
+            await this._finishGoogleLogin(activeRole);
 
         } catch (err) {
             if (errorDiv) {

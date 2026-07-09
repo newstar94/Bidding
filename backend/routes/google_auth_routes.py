@@ -9,6 +9,7 @@ import urllib.parse
 from datetime import datetime
 
 from starlette.responses import JSONResponse
+from starlette.background import BackgroundTasks
 
 from helpers import (
     database,
@@ -31,6 +32,55 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
 # URL xac minh token Google (tokeninfo endpoint — khong can thu vien ben ngoai)
 _GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo?id_token={token}"
+
+# Bang chuyen doi ky tu Unicode co dau sang ASCII (tieng Viet)
+_UNICODE_MAP = str.maketrans(
+    "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
+    "ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ",
+    "aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd"
+    "AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIIIOOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD",
+)
+
+from helpers_py.username_validator import validate_username as _validate_username
+
+
+def _generate_suggested_username(name: str, email: str, cursor) -> str:
+    """
+    Sinh username goi y tu email dang nhap Google:
+    - Lay toan bo phan phia truoc @ cua email
+    - Chuyen thuong, thay the ky tu dac biet bang '_'
+    - Neu trung -> tu dong them _[ky tu ngau nhien]
+    """
+    import re as _re_u
+    import random as _random
+
+    email_prefix = email.split('@')[0].lower()
+    base = _re_u.sub(r'[^a-z0-9_]', '_', email_prefix)
+    base = _re_u.sub(r'_+', '_', base).strip('_')
+    
+    if len(base) < 3:
+        base = 'user'
+
+    # Neu base bi reserved/sensitive thi them suffix '_u' de tranh
+    ok, _ = _validate_username(base)
+    if not ok:
+        base = (base[:26] + '_u').strip('_')
+
+    candidate = base
+    while True:
+        try:
+            cursor.execute("SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ?", (candidate,))
+            if not cursor.fetchone():
+                ok, _ = _validate_username(candidate)
+                if ok:
+                    break
+        except Exception:
+            break
+        
+        rand_suffix = ''.join(_random.choice('abcdefghijklmnopqrstuvwxyz0123456789') for _ in range(4))
+        candidate = f"{base[:25]}_{rand_suffix}"
+        
+    return candidate
 
 
 def _verify_google_token(id_token: str):
@@ -72,6 +122,7 @@ async def google_login_api(request):
     Xac minh Google ID Token -> tim hoac tao tai khoan -> tra session cookie.
     """
     conn = None
+    bg_tasks = None
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
@@ -135,7 +186,8 @@ async def google_login_api(request):
         except Exception:
             pass
 
-        # 2. Tim theo email neu chua co
+        # 2. Tim theo email neu chua co — dong bo tai khoan cu
+        account_linked = False  # Flag: tai khoan cu vua duoc lien ket
         if not user:
             cursor.execute(
                 "SELECT * FROM tai_khoan WHERE email != '' AND lower(email) = ?",
@@ -144,49 +196,62 @@ async def google_login_api(request):
             row = cursor.fetchone()
             if row:
                 user = dict(row)
-                # Lien ket google_id vao tai khoan hien co
+                account_linked = True
+                # Lien ket google_id vao tai khoan cu.
+                # username_da_dat = 1 neu da co ten_dang_nhap, nguoc lai giu 0 de buoc dat username.
+                already_has_username = bool(user.get("ten_dang_nhap"))
                 try:
                     cursor.execute(
-                        "UPDATE tai_khoan SET google_id = ?, anh_dai_dien = COALESCE(NULLIF(anh_dai_dien,''), ?) WHERE id = ?",
-                        (google_id, picture, user["id"]),
+                        "UPDATE tai_khoan SET google_id = ?, anh_dai_dien = COALESCE(NULLIF(anh_dai_dien,''), ?)"
+                        ", username_da_dat = ? WHERE id = ?",
+                        (google_id, picture, 1 if already_has_username else 0, user["id"]),
                     )
                     user["google_id"] = google_id
+                    user["username_da_dat"] = 1 if already_has_username else 0
                     if not user.get("anh_dai_dien") and picture:
                         user["anh_dai_dien"] = picture
                 except Exception:
                     pass
+                log_audit(
+                    "auth.google_account_linked",
+                    actor_user_id=user["id"],
+                    target_type="tai_khoan",
+                    target_id=user["id"],
+                    request=request,
+                    metadata={"email": email, "had_username": already_has_username},
+                )
+
+        else:
+            account_linked = False  # Khong phai link, khong phai moi (da co google_id)
 
         # 3. Chua co -> tao tai khoan moi tu dong
         if not user:
-            base_username = email.split("@")[0].replace(".", "_").replace("-", "_")
-            base_username = re.sub(r"[^a-z0-9_]", "", base_username.lower()) or "user"
+            import secrets as _secrets
+            from helpers import hash_password as _hash_password
 
-            username = base_username
-            suffix = 1
-            while True:
-                cursor.execute("SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
-                if not cursor.fetchone():
-                    break
-                username = f"{base_username}{suffix}"
-                suffix += 1
+            # Sinh mat khau tam (10 ky tu an toan)
+            temp_password = _secrets.token_urlsafe(8)  # ~11 ky tu base64url
+            temp_password_hash = _hash_password(temp_password)
 
-            new_id = str(uuid.uuid4())
+            # ID co tien to "user-" nhat quan voi cac tai khoan khac
+            new_id = "user-" + str(uuid.uuid4())
+
             try:
                 cursor.execute(
                     """INSERT INTO tai_khoan
                        (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
-                        anh_dai_dien, da_xac_minh, google_id)
-                       VALUES (?, ?, NULL, ?, 'employee', ?, ?, 1, ?)""",
-                    (new_id, username, name, email, picture, google_id),
+                        anh_dai_dien, da_xac_minh, google_id, username_da_dat)
+                       VALUES (?, NULL, ?, ?, 'employee', ?, ?, 1, ?, 0)""",
+                    (new_id, temp_password_hash, name, email, picture, google_id),
                 )
             except Exception:
-                # Fallback neu cot google_id chua ton tai trong schema cu
+                # Fallback neu cot google_id hoac username_da_dat chua ton tai trong schema cu
                 cursor.execute(
                     """INSERT INTO tai_khoan
                        (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
                         anh_dai_dien, da_xac_minh)
-                       VALUES (?, ?, NULL, ?, 'employee', ?, ?, 1)""",
-                    (new_id, username, name, email, picture),
+                       VALUES (?, NULL, ?, ?, 'employee', ?, ?, 1)""",
+                    (new_id, temp_password_hash, name, email, picture),
                 )
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
@@ -197,8 +262,54 @@ async def google_login_api(request):
                 target_type="tai_khoan",
                 target_id=new_id,
                 request=request,
-                metadata={"email": email, "username": username},
+                metadata={"email": email, "username": None},
             )
+
+            # Khởi tạo BackgroundTasks và lập lịch gửi email
+            bg_tasks = BackgroundTasks()
+            try:
+                from helpers import gui_email as _gui_email
+                tieu_de = "[BiddingFlow] Tài khoản mới — Mật khẩu tạm thời của bạn"
+                noi_dung_html = f"""
+                <html>
+                <body style="font-family: Arial, sans-serif; background: #f4f6fa; margin: 0; padding: 0;">
+                  <div style="max-width: 520px; margin: 40px auto; background: #fff; border-radius: 12px;
+                              box-shadow: 0 2px 12px rgba(0,0,0,0.08); overflow: hidden;">
+                    <div style="background: linear-gradient(135deg, #4f46e5, #7c3aed); padding: 32px; text-align: center;">
+                      <h1 style="color: #fff; margin: 0; font-size: 1.4rem;">BiddingFlow</h1>
+                      <p style="color: #c4b5fd; margin: 8px 0 0;">Hệ thống quản lý đấu thầu</p>
+                    </div>
+                    <div style="padding: 32px;">
+                      <p style="color: #374151; font-size: 1rem; margin-top: 0;">Xin chào <strong>{name}</strong>,</p>
+                      <p style="color: #6b7280;">Tài khoản của bạn vừa được tạo tự động qua đăng nhập Google.
+                         Bên dưới là mật khẩu tạm thời để đăng nhập bằng tên đăng nhập (sau khi bạn đặt):</p>
+                      <div style="background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px;
+                                  padding: 20px; text-align: center; margin: 24px 0;">
+                        <p style="color: #6b7280; font-size: 0.8rem; margin: 0 0 8px;">MẬT KHẨU TẠM THỜI</p>
+                        <span style="font-size: 1.6rem; font-weight: 700; color: #4f46e5;
+                                     letter-spacing: 4px; font-family: monospace;">{temp_password}</span>
+                      </div>
+                      <p style="color: #ef4444; font-size: 0.85rem;">
+                        ⚠️ Vui lòng đổi mật khẩu ngay sau khi đăng nhập để bảo mật tài khoản.
+                      </p>
+                      <p style="color: #6b7280; font-size: 0.85rem;">
+                        Lần đăng nhập tiếp theo bạn sẽ được yêu cầu đặt tên đăng nhập (username) cho tài khoản.
+                        Tên đăng nhập chỉ có thể đặt một lần và không thể thay đổi sau đó.
+                      </p>
+                    </div>
+                    <div style="background: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                      <p style="color: #9ca3af; font-size: 0.75rem; margin: 0;">
+                        Email này được gửi tự động từ BiddingFlow. Vui lòng không trả lời email này.
+                      </p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+                """
+                bg_tasks.add_task(_gui_email, email, tieu_de, noi_dung_html)
+            except Exception as _e:
+                log_error(_e, "google_login_send_temp_password_email")
+
 
         # Tai khoan chua xac minh -> tu xac minh qua Google
         if not user.get("da_xac_minh"):
@@ -234,6 +345,14 @@ async def google_login_api(request):
         )
 
         effective_roles = list(get_effective_roles(user["vai_tro"]))
+        # Chỉ cần username = NULL là phải đặt; tài khoản cũ có username rồi không hỏi lại
+        needs_username = not user.get("ten_dang_nhap")
+
+        # Sinh username goi y chi khi can dat username
+        suggested_username = ""
+        if needs_username:
+            suggested_username = _generate_suggested_username(user.get("ho_ten", ""), email, cursor)
+
         response = JSONResponse({
             "success": True,
             "id": user["id"],
@@ -246,7 +365,10 @@ async def google_login_api(request):
             "package_id": user.get("goi_dich_vu_id"),
             "organization_name": org_names,
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
-        })
+            "needs_username": needs_username,
+            "suggested_username": suggested_username,
+            "account_linked": account_linked,
+        }, background=bg_tasks)
         cookie_max_age = SESSION_EXPIRY_HOURS * 3600
         response.set_cookie(
             "session_token", session_token,

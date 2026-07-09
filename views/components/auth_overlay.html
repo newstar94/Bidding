@@ -211,3 +211,109 @@
         </form>
     </div>
 </div>
+
+<!-- ================= MODAL ĐẶT USERNAME LẦN ĐẦU (Google Login) ================= -->
+<div id="modal-set-username-overlay" style="
+    display: none;
+    position: fixed; inset: 0; z-index: 99999;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+">
+    <div style="
+        background: var(--bg-card, #fff);
+        border-radius: 16px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+        padding: 40px 36px 32px;
+        width: 100%;
+        max-width: 440px;
+        margin: 16px;
+        animation: slideIn 0.3s ease;
+    ">
+        <!-- Icon & Tiêu đề -->
+        <div style="text-align: center; margin-bottom: 24px;">
+            <div style="
+                width: 56px; height: 56px; border-radius: 50%;
+                background: linear-gradient(135deg, #4f46e5, #7c3aed);
+                display: flex; align-items: center; justify-content: center;
+                margin: 0 auto 16px;
+                box-shadow: 0 4px 16px rgba(79,70,229,0.35);
+            ">
+                <i data-lucide="user-check" style="width: 28px; height: 28px; color: #fff;"></i>
+            </div>
+            <h3 style="margin: 0 0 8px; font-size: 1.25rem; font-weight: 700; color: var(--text-main, #111);">
+                Đặt tên đăng nhập
+            </h3>
+            <p data-username-modal-desc style="margin: 0; font-size: 0.875rem; color: var(--text-muted, #6b7280); line-height: 1.5;">
+                Tài khoản Google của bạn đã được tạo. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.
+                <br><span style="color: #ef4444; font-weight: 600;">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>
+            </p>
+        </div>
+
+        <!-- Form -->
+        <div id="set-username-error" style="
+            display: none;
+            background: #fef2f2; border: 1px solid #fecaca;
+            color: #dc2626; border-radius: 8px;
+            padding: 10px 14px; font-size: 0.85rem;
+            margin-bottom: 16px;
+        "></div>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-size: 0.85rem; font-weight: 700; margin-bottom: 8px; color: var(--text-main, #111);">
+                Tên đăng nhập <span style="color: #ef4444;">*</span>
+            </label>
+            <div style="position: relative;">
+                <div style="
+                    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+                    color: var(--text-muted, #9ca3af); pointer-events: none;
+                ">
+                    <i data-lucide="at-sign" style="width: 18px; height: 18px;"></i>
+                </div>
+                <input
+                    type="text"
+                    id="input-set-username"
+                    placeholder="vd: nguyen_van_a"
+                    maxlength="30"
+                    autocomplete="off"
+                    autocapitalize="none"
+                    spellcheck="false"
+                    style="
+                        width: 100%; box-sizing: border-box;
+                        padding: 12px 12px 12px 40px;
+                        border: 2px solid var(--border-color, #e5e7eb);
+                        border-radius: 10px; font-size: 1rem;
+                        background: var(--bg-main, #f9fafb);
+                        color: var(--text-main, #111);
+                        transition: border-color 0.2s;
+                        outline: none;
+                        font-family: monospace;
+                        letter-spacing: 0.5px;
+                    "
+                >
+            </div>
+            <p id="set-username-hint" style="margin: 6px 0 0; font-size: 0.78rem; color: var(--text-muted, #6b7280);">
+                Chỉ chữ thường (a-z), số (0-9) và dấu gạch dưới (_). Từ 3 đến 30 ký tự. Không chứa từ nhạy cảm hoặc trùng đường dẫn hệ thống.
+            </p>
+        </div>
+
+        <button
+            id="btn-set-username-submit"
+            type="button"
+            style="
+                width: 100%; padding: 13px;
+                background: linear-gradient(135deg, #4f46e5, #7c3aed);
+                color: #fff; border: none; border-radius: 10px;
+                font-size: 1rem; font-weight: 700; cursor: pointer;
+                display: flex; align-items: center; justify-content: center; gap: 8px;
+                transition: opacity 0.2s, transform 0.1s;
+                box-shadow: 0 4px 12px rgba(79,70,229,0.3);
+            "
+        >
+            <i data-lucide="check" style="width: 18px; height: 18px;"></i>
+            <span>Xác nhận tên đăng nhập</span>
+        </button>
+    </div>
+</div>

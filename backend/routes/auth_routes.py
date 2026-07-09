@@ -208,6 +208,48 @@ async def check_session_api(request):
             conn.commit()
             conn.close()
             new_expiry_set = True
+        cached = _session_cache_get(session_token)
+        if cached and cached.get('token_phien') == session_token and 'ten_dang_nhap' in cached:
+            user = cached
+        else:
+            conn = database.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien, goi_dich_vu_id, token_phien, han_su_dung_token, thong_tin_thiet_bi_cuoi, google_id, mat_khau FROM tai_khoan WHERE token_phien = ?", (session_token,))
+            row = cursor.fetchone()
+            if row:
+                user = dict(row)
+            if conn:
+                conn.close()
+
+        if not user:
+            return JSONResponse({"valid": False, "reason": "user_not_found"})
+
+        if user.get('token_phien') != session_token:
+            return JSONResponse({"valid": False, "reason": "logged_in_elsewhere"})
+            
+        now = time.time()
+        if user.get('han_su_dung_token'):
+            try:
+                if now > float(user['han_su_dung_token']):
+                    _session_cache_invalidate(session_token)
+                    return JSONResponse({"valid": False, "reason": "token_expired"})
+            except Exception:
+                pass
+
+        expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
+        current_expiry = float(user.get('han_su_dung_token') or 0)
+        
+        new_expiry_set = False
+        if current_expiry - now < (expiry_hours * 3600) / 2:
+            new_expiry = int(now + expiry_hours * 3600)
+            user['han_su_dung_token'] = new_expiry
+            
+            conn = database.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE tai_khoan SET han_su_dung_token = ? WHERE id = ?", (new_expiry, user['id']))
+            conn.commit()
+            conn.close()
+            new_expiry_set = True
 
         _session_cache_set(session_token, user)
                  
@@ -215,6 +257,28 @@ async def check_session_api(request):
         cursor = conn.cursor()
         org_names = get_user_org_names(cursor, user['id'])
         conn.close()
+
+        # Kiểm tra và sinh thông tin đặt username nếu cần thiết
+        needs_username = not user.get('ten_dang_nhap')
+        suggested_username = ""
+        account_linked = False
+        if needs_username:
+            # Nhập hàm sinh username để đồng bộ gợi ý
+            from google_auth_routes import _generate_suggested_username
+            conn_suggest = database.get_connection()
+            try:
+                cursor_suggest = conn_suggest.cursor()
+                suggested_username = _generate_suggested_username(user.get('ho_ten', ''), user.get('email', ''), cursor_suggest)
+            except Exception:
+                pass
+            finally:
+                if conn_suggest:
+                    conn_suggest.close()
+
+            # Xác định account_linked nếu tài khoản này có mật khẩu nhưng chưa có username (tài khoản cũ liên kết)
+            # Hoặc được tạo qua Google login
+            if user.get('google_id') and user.get('mat_khau'):
+                account_linked = True
 
         effective_roles = list(get_effective_roles(user['vai_tro']))
         response = JSONResponse({
@@ -230,7 +294,10 @@ async def check_session_api(request):
                 "avatar": user.get('anh_dai_dien'),
                 "package_id": user.get('goi_dich_vu_id'),
                 "organization_name": org_names,
-                "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
+                "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
+                "needs_username": needs_username,
+                "suggested_username": suggested_username,
+                "account_linked": account_linked
             }
         })
         
@@ -698,3 +765,84 @@ async def update_system_package_api(request):
     except Exception as e:
         log_error(e, "update_system_package_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật gói dịch vụ."}, status_code=500)
+
+
+import re as _re
+from helpers_py.username_validator import validate_username
+
+async def set_username_api(request):
+    """
+    POST /api/auth/set-username
+    Body: { "username": "ten_mong_muon" }
+
+    Cho phép người dùng đặt tên đăng nhập lần đầu tiên (chỉ 1 lần).
+    Sau khi đặt, username bị khóa vĩnh viễn (username_da_dat = 1).
+    """
+    conn = None
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
+        data = await request.json()
+        new_username = (data.get("username") or "").strip().lower()
+
+        # Validate qua bộ lọc 3 lớp (format + nhạy cảm + trùng route)
+        valid, reason = validate_username(new_username)
+        if not valid:
+            return JSONResponse({"error": reason}, status_code=400)
+
+        conn = database.get_connection()
+        cursor = conn.cursor()
+
+        # Lấy thông tin user hiện tại
+        cursor.execute("SELECT id, ten_dang_nhap, username_da_dat FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return JSONResponse({"error": "Không tìm thấy tài khoản."}, status_code=404)
+
+        user = dict(row)
+
+        # Kiểm tra đã đặt username chưa
+        if user.get("username_da_dat") == 1 and user.get("ten_dang_nhap"):
+            return JSONResponse(
+                {"error": "Tên đăng nhập đã được đặt trước đó và không thể thay đổi."},
+                status_code=400
+            )
+
+        # Kiểm tra trùng username
+        cursor.execute("SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ? AND id != ?", (new_username, role_or_err.user_id))
+        if cursor.fetchone():
+            return JSONResponse(
+                {"error": "Tên đăng nhập này đã được sử dụng. Vui lòng chọn tên khác."},
+                status_code=409
+            )
+
+        # Lưu username và khóa lại
+        cursor.execute(
+            "UPDATE tai_khoan SET ten_dang_nhap = ?, username_da_dat = 1, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            (new_username, role_or_err.user_id)
+        )
+        _session_cache_invalidate_by_user_id(role_or_err.user_id)
+        conn.commit()
+
+        log_audit(
+            "auth.set_username",
+            actor_user_id=role_or_err.user_id,
+            target_type="tai_khoan",
+            target_id=role_or_err.user_id,
+            request=request,
+            metadata={"new_username": new_username}
+        )
+
+        return JSONResponse({"success": True, "username": new_username})
+
+    except Exception as e:
+        log_error(e, "set_username_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại."}, status_code=500)
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
