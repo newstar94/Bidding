@@ -1,6 +1,8 @@
 import os
 import traceback
 import json
+import sqlite3
+import time
 from datetime import datetime
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -41,6 +43,7 @@ def log_error(e_or_msg, context="System", level="ERROR"):
 
 def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, target_id=None, request=None, metadata=None):
     """Ghi audit log best-effort cho thao tac quan trong."""
+    conn = None
     try:
         ip_address = None
         if request is not None:
@@ -51,14 +54,12 @@ def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, targe
         if metadata is not None:
             metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
 
-        from helpers import database as _db
-        conn = _db.get_connection()
-        cur = conn.cursor()
-        cur.execute("""
+        sql = """
             INSERT INTO audit_log (
                 actor_user_id, owner_id, action, target_type, target_id, ip_address, metadata_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
+        """
+        params = (
             actor_user_id,
             owner_id,
             action,
@@ -66,9 +67,46 @@ def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, targe
             target_id,
             ip_address,
             metadata_json,
-        ))
-        conn.commit()
-        conn.close()
+        )
+
+        from helpers import database as _db
+        last_err = None
+        for attempt in range(4):
+            try:
+                conn = _db.get_connection()
+                try:
+                    conn.execute("PRAGMA busy_timeout = 15000")
+                except Exception:
+                    pass
+                cur = conn.cursor()
+                cur.execute(sql, params)
+                conn.commit()
+                return
+            except sqlite3.OperationalError as err:
+                last_err = err
+                if conn:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    conn = None
+                if "locked" not in str(err).lower() or attempt == 3:
+                    raise
+                time.sleep(0.15 * (attempt + 1))
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    conn = None
+
+        if last_err:
+            raise last_err
     except Exception as audit_err:
         log_error(audit_err, "audit_log", level="WARN")
 

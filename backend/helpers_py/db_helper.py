@@ -31,6 +31,7 @@ def optimized_get_connection(*args, **kwargs):
     try:
         cursor = raw_conn.cursor()
         cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute("PRAGMA busy_timeout = 15000")
         cursor.execute("PRAGMA foreign_keys = ON")
         cursor.execute("PRAGMA cache_size = -65536")
         cursor.execute("PRAGMA synchronous = NORMAL")

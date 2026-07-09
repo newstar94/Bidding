@@ -281,6 +281,9 @@ export class BiddingController {
                 }
 
                 if (isSessionError) {
+                    if (window._bfAuthFlowInProgress) {
+                        return response;
+                    }
                     const overlay = document.getElementById('auth-overlay');
                     if (overlay && overlay.style.display !== 'flex') {
                         this.model.clearSessionData();
@@ -307,6 +310,9 @@ export class BiddingController {
 
             // Xử lý các lỗi phiên đăng nhập hết hạn (401 Unauthorized)
             if (response.status === 401 && typeof url === 'string' && url.startsWith('/api/') && !url.includes('/api/auth/login') && !url.includes('/api/auth/check-session')) {
+                if (window._bfAuthFlowInProgress) {
+                    return response;
+                }
                 // Phiên làm việc hết hạn hoặc không hợp lệ -> Chuyển về màn hình đăng nhập ngay lập tức
                 const overlay = document.getElementById('auth-overlay');
                 if (overlay && overlay.style.display !== 'flex') {

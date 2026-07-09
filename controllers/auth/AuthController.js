@@ -80,6 +80,36 @@ export function validateUsernameClient(username) {
     return { ok: true, message: '' };
 }
 
+function setAuthFlowInProgress(isInProgress) {
+    window._bfAuthFlowInProgress = !!isInProgress;
+    window._bfAuthStateChangedAt = Date.now();
+}
+
+function setAuthSessionActive(isActive) {
+    window._bfAuthSessionActive = !!isActive;
+    window._bfAuthStateChangedAt = Date.now();
+    if (isActive) {
+        setAuthFlowInProgress(false);
+    }
+}
+
+function isAuthTransitionActive() {
+    return !!window._bfAuthFlowInProgress;
+}
+
+function isStaleAuthResult(requestStartedAt) {
+    return Number.isFinite(requestStartedAt)
+        && Number.isFinite(window._bfAuthStateChangedAt)
+        && requestStartedAt < window._bfAuthStateChangedAt;
+}
+
+function hideAuthOverlay() {
+    const overlay = document.getElementById('auth-overlay');
+    if (overlay) overlay.style.display = 'none';
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) appContainer.style.filter = 'none';
+}
+
 export function setupActivityTracker() {
     const updateActivity = () => {
         localStorage.setItem('bf_last_activity', Date.now().toString());
@@ -260,7 +290,11 @@ export function setupAuth() {
         return keys.some(key => Array.isArray(this.model.state[key]) && this.model.state[key].length > 0);
     };
 
-    const showLoginOverlay = () => {
+    const showLoginOverlay = (requestStartedAt = Date.now()) => {
+        if (isAuthTransitionActive() || isStaleAuthResult(requestStartedAt)) {
+            hideInitLoader();
+            return;
+        }
         this.model.clearSessionData();
         overlay.style.display = 'flex';
         document.querySelector('.app-container').style.filter = 'blur(10px)';
@@ -351,6 +385,7 @@ export function setupAuth() {
             requestAnimationFrame(showCachedWorkspace);
         }
 
+        const sessionCheckStartedAt = Date.now();
         fetch('/api/auth/check-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -362,9 +397,11 @@ export function setupAuth() {
             throw new Error("Invalid session response");
         }).then(async data => {
             if (!data || !data.valid) {
-                showLoginOverlay();
+                showLoginOverlay(sessionCheckStartedAt);
             } else {
                 if (loaderText) loaderText.textContent = 'Đang tải...';
+
+                setAuthSessionActive(true);
 
                 // Update active user details dynamically to prevent cache issues
                 const previousUserId = sessionStorage.getItem('bf_user_id');
@@ -404,7 +441,7 @@ export function setupAuth() {
             }
         }).catch(err => {
             console.error("Lỗi kiểm tra phiên làm việc:", err);
-            showLoginOverlay();
+            showLoginOverlay(sessionCheckStartedAt);
         });
     }
 
@@ -483,6 +520,8 @@ export function setupAuth() {
                 }
 
                 this.model.clearSessionData();
+                setAuthSessionActive(false);
+                setAuthFlowInProgress(false);
                 if (this._sessionInterval) clearInterval(this._sessionInterval);
                 localStorage.removeItem('bf_active_org');
                 localStorage.removeItem('bf_last_sync_timestamp');
@@ -529,6 +568,7 @@ export function setupAuth() {
             }
 
             // Save non-sensitive profile/cache metadata. Session token lives only in HttpOnly cookies.
+            setAuthSessionActive(true);
             sessionStorage.removeItem('bf_session_token');
             localStorage.removeItem('bf_session_token');
             sessionStorage.setItem('bf_username', data.username);
@@ -583,8 +623,7 @@ export function setupAuth() {
             }
 
             // Hide Auth overlay
-            overlay.style.display = 'none';
-            document.querySelector('.app-container').style.filter = 'none';
+            hideAuthOverlay();
 
             // Fetch and load all data from SQLite immediately
             try {
@@ -856,6 +895,8 @@ export function setupGoogleSignIn() {
 
     // Helper: hoàn tất đăng nhập sau khi username đã được đặt (hoặc không cần đặt)
     this._finishGoogleLogin = async (activeRole) => {
+        setAuthSessionActive(true);
+        hideAuthOverlay();
         try { await this.forceSyncData(); } catch (err) { console.error('Failed sync after Google login:', err); }
         this.view.updateActiveUserProfileDisplay();
         if (typeof this.renderWorkspaceSwitcher === 'function') this.renderWorkspaceSwitcher();
@@ -964,6 +1005,7 @@ export function setupGoogleSignIn() {
                 if (this.model?.state?.activeuser) {
                     this.model.state.activeuser.username = result.username;
                 }
+                sessionStorage.setItem('bf_username', result.username);
                 modalOverlay.style.display = 'none';
                 onSuccess();
             } catch (err) {
@@ -983,8 +1025,33 @@ export function setupGoogleSignIn() {
 
     const handleGoogleResponse = async (response) => {
         if (!response || !response.credential) return;
+        setAuthFlowInProgress(true);
         const errorDiv = document.getElementById('login-error');
         if (errorDiv) errorDiv.style.display = 'none';
+        hideAuthOverlay();
+
+        const showGoogleLoginError = (message) => {
+            setAuthSessionActive(false);
+            setAuthFlowInProgress(false);
+            const overlay = document.getElementById('auth-overlay');
+            const appContainer = document.querySelector('.app-container');
+            if (overlay) overlay.style.display = 'flex';
+            if (appContainer) appContainer.style.filter = 'blur(10px)';
+
+            const formLogin = document.getElementById('form-auth-login');
+            const formRegister = document.getElementById('form-auth-register');
+            const formForgot = document.getElementById('form-auth-forgot');
+            const formVerify = document.getElementById('form-auth-verify');
+            if (formLogin) formLogin.style.display = 'block';
+            if (formRegister) formRegister.style.display = 'none';
+            if (formForgot) formForgot.style.display = 'none';
+            if (formVerify) formVerify.style.display = 'none';
+
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            }
+        };
 
         try {
             const res = await fetch('/api/auth/google-login', {
@@ -995,25 +1062,25 @@ export function setupGoogleSignIn() {
             const data = await res.json();
 
             if (!res.ok) {
-                if (errorDiv) {
-                    errorDiv.textContent = data.error || 'Dang nhap Google that bai!';
-                    errorDiv.style.display = 'block';
-                }
+                showGoogleLoginError(data.error || 'Dang nhap Google that bai!');
                 return;
             }
+
+            setAuthSessionActive(true);
 
             // Xu ly ket qua giong login thuong
             sessionStorage.removeItem('bf_session_token');
             localStorage.removeItem('bf_session_token');
-            sessionStorage.setItem('bf_username', data.username);
+            if (data.username) {
+                sessionStorage.setItem('bf_username', data.username);
+            } else {
+                sessionStorage.removeItem('bf_username');
+            }
             sessionStorage.setItem('bf_user_id', data.id);
             localStorage.removeItem('bf_remember_me');
 
             // Ẩn overlay đăng nhập ngay lập tức để người dùng thấy modal Đặt tên đăng nhập (Ảnh 2)
-            const overlay = document.getElementById('auth-overlay');
-            if (overlay) overlay.style.display = 'none';
-            const appContainer = document.querySelector('.app-container');
-            if (appContainer) appContainer.style.filter = 'none';
+            hideAuthOverlay();
 
             // Đồng bộ active org mới cho Google Login trước khi init model
             const orgs = (data.organization_name || '').split(',').map(o => o.trim()).filter(Boolean);
@@ -1097,10 +1164,7 @@ export function setupGoogleSignIn() {
             await this._finishGoogleLogin(activeRole);
 
         } catch (err) {
-            if (errorDiv) {
-                errorDiv.textContent = 'Loi ket noi Google: ' + err.message;
-                errorDiv.style.display = 'block';
-            }
+            showGoogleLoginError('Loi ket noi Google: ' + err.message);
         }
     };
 
