@@ -13,24 +13,27 @@
                 <div class="modal-body" style="max-height: 72vh; overflow-y: auto;">
                     <div class="form-grid">
                         <div class="form-group col-span-2">
-                            <label for="nt-ma">Mã nhà thầu <span class="required">*</span></label>
-                            <input type="text" id="nt-ma" required placeholder="Ví dụ: NT-ECO">
-                            <span class="error-text">Vui lòng nhập mã nhà thầu</span>
+                            <div class="form-grid" style="grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 0;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="nt-ma">Mã nhà thầu <span class="required">*</span></label>
+                                    <input type="text" id="nt-ma" required placeholder="Ví dụ: NT-ECO">
+                                    <span class="error-text">Vui lòng nhập mã nhà thầu</span>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="nt-mst">Mã số thuế <span class="required">*</span></label>
+                                    <input type="text" id="nt-mst" required placeholder="Mã số thuế doanh nghiệp">
+                                    <span class="error-text">Vui lòng nhập mã số thuế</span>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="nt-tenviettat">Tên viết tắt</label>
+                                    <input type="text" id="nt-tenviettat" placeholder="Ví dụ: ECO">
+                                </div>
+                            </div>
                         </div>
                         <div class="form-group col-span-2">
                             <label for="nt-ten">Tên nhà thầu <span class="required">*</span></label>
                             <input type="text" id="nt-ten" required placeholder="Tên đầy đủ của doanh nghiệp">
                             <span class="error-text">Vui lòng nhập tên doanh nghiệp</span>
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label for="nt-tenviettat">Tên viết tắt</label>
-                            <input type="text" id="nt-tenviettat" placeholder="Ví dụ: ECO">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="nt-mst">Mã số thuế <span class="required">*</span></label>
-                            <input type="text" id="nt-mst" required placeholder="Mã số thuế doanh nghiệp">
-                            <span class="error-text">Vui lòng nhập mã số thuế</span>
                         </div>
                         <div class="form-group">
                             <label for="nt-nguoidaidien">Người đại diện <span class="required">*</span></label>
@@ -54,23 +57,27 @@
                             <input type="email" id="nt-email" placeholder="contact@nhathau.com">
                             <span class="error-text">Email không hợp lệ</span>
                         </div>
-                        <div class="form-group">
-                            <label>Tỉnh/Thành phố <span class="required">*</span></label>
-                            <select id="nt-tinh" class="select-province" required>
-                                <option value="">-- Chọn Tỉnh/Thành phố --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Xã/Phường <span class="required">*</span></label>
-                            <select id="nt-xa" class="select-ward" required disabled>
-                                <option value="">-- Chọn Xã/Phường --</option>
-                            </select>
-                        </div>
                         <div class="form-group col-span-2">
-                            <label for="nt-diachichitiet">Địa chỉ chi tiết <span class="required">*</span></label>
-                            <input type="text" id="nt-diachichitiet" required
-                                placeholder="Số nhà, tên đường, thôn/xóm...">
-                            <span class="error-text">Vui lòng nhập địa chỉ chi tiết</span>
+                            <div class="form-grid" style="grid-template-columns: 1fr 1fr 2fr; gap: 12px; margin-bottom: 0;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>Tỉnh/Thành phố <span class="required">*</span></label>
+                                    <select id="nt-tinh" class="select-province" required>
+                                        <option value="">-- Chọn Tỉnh/Thành phố --</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>Xã/Phường <span class="required">*</span></label>
+                                    <select id="nt-xa" class="select-ward" required disabled>
+                                        <option value="">-- Chọn Xã/Phường --</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="nt-diachichitiet">Địa chỉ chi tiết <span class="required">*</span></label>
+                                    <input type="text" id="nt-diachichitiet" required
+                                        placeholder="Số nhà, tên đường, thôn/xóm...">
+                                    <span class="error-text">Vui lòng nhập địa chỉ chi tiết</span>
+                                </div>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="nt-sotaikhoan">Số tài khoản <span class="required">*</span></label>
