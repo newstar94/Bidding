@@ -149,6 +149,40 @@ export async function editNhaThau(id, isReadOnly = false) {
             const idInput = document.getElementById('form-nhathau-id');
             if (idInput) idInput.value = '';
         }
+        // Tự động tra cứu MST và điền thông tin khi người dùng chuyển trỏ chuột (blur)
+        const mstInput = document.getElementById('nt-mst');
+        if (mstInput && !isReadOnly) {
+            mstInput.onblur = async () => {
+                const val = mstInput.value.trim();
+                if (!val) return;
+                try {
+                    mstInput.style.opacity = '0.7';
+                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(val)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.name) {
+                            const nameInput = document.getElementById('nt-ten');
+                            if (nameInput) {
+                                nameInput.value = data.name;
+                            }
+                            const addrInput = document.getElementById('nt-diachichitiet');
+                            if (addrInput) {
+                                addrInput.value = data.address || '';
+                            }
+                            const shortInput = document.getElementById('nt-tenviettat');
+                            if (shortInput) {
+                                shortInput.value = data.short_name || '';
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Lỗi tra cứu MST: ", err);
+                } finally {
+                    mstInput.style.opacity = '1';
+                }
+            };
+        }
+
         this.view.openModal('modal-nhathau');
     } catch (err) {
         console.error("Lỗi trong editNhaThau: ", err);
@@ -334,14 +368,18 @@ export async function handleNhaThauSubmit(e) {
             data.phienBan = nextVerStr;
             data.phienBan = nextVerStr;
             data.isLatest = 1;
-            data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            this.model.state.nhathau.push(data);
+            data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
+            data.updatedAt = this.model.getCurrentDateTimeString();
+            this.model.state.nhathau.push(data);
         } else {
             data.id = id;
             data.rootId = currentNt.rootId || currentNt.id;
             data.phienBan = currentNt.phienBan || '00';
             data.phienBan = currentNt.phienBan || '00';
             data.isLatest = currentNt.isLatest !== undefined ? currentNt.isLatest : 1;
-            data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            const idx = this.model.state.nhathau.findIndex(n => n.id === id);
+            data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
+            data.updatedAt = this.model.getCurrentDateTimeString();
+            const idx = this.model.state.nhathau.findIndex(n => n.id === id);
             this.model.state.nhathau[idx] = data;
         }
     } else {
@@ -351,7 +389,9 @@ export async function handleNhaThauSubmit(e) {
         data.phienBan = '00';
         data.phienBan = '00';
         data.isLatest = 1;
-        data.createdAt = this.model.getCurrentDateTimeString();        data.updatedAt = this.model.getCurrentDateTimeString();        this.model.state.nhathau.push(data);
+        data.createdAt = this.model.getCurrentDateTimeString();
+        data.updatedAt = this.model.getCurrentDateTimeString();
+        this.model.state.nhathau.push(data);
     }
 
     this.model.persistData('nhathau');

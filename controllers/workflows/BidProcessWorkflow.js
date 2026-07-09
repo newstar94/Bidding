@@ -1162,11 +1162,11 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         });
     }
 
-    // Auto fill contractor name if code matches one in the database
+    // Auto fill contractor name if code matches one in the database or via online API
     const inputMa = tr.querySelector('.mt-ma-nha-thau');
     const inputTen = tr.querySelector('.mt-ten-nha-thau');
     if (inputMa && inputTen) {
-        const handleCodeChange = () => {
+        const handleCodeChange = async (e) => {
             const code = inputMa.value.trim();
             if (!code) return;
             const latestList = this.model.getLatestNhaThau();
@@ -1175,6 +1175,24 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 inputTen.value = matched.tenNhaThau || '';
                 if (tr.querySelector('.mt-loai-nha-thau')?.value === 'Liên danh') {
                     tr._leadMemberName = matched.tenNhaThau || '';
+                }
+            } else if (e.type === 'change') {
+                try {
+                    inputMa.style.opacity = '0.7';
+                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(code)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.name) {
+                            inputTen.value = data.name;
+                            if (tr.querySelector('.mt-loai-nha-thau')?.value === 'Liên danh') {
+                                tr._leadMemberName = data.name;
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Lỗi tra cứu MST nhà thầu mới khi mở thầu: ", err);
+                } finally {
+                    inputMa.style.opacity = '1';
                 }
             }
         };

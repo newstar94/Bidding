@@ -65,7 +65,41 @@ export async function editChuDauTu(id) {
         document.getElementById('cdt-diachichitiet').value = '';
         await this.initAddressDropdowns('cdt-tinh', 'cdt-xa', '', '');
     }
-    this.view.openModal('modal-chudautu');
+    // Tự động tra cứu MST và điền thông tin khi người dùng chuyển trỏ chuột (blur)
+        const mstInput = document.getElementById('cdt-mst');
+        if (mstInput) {
+            mstInput.onblur = async () => {
+                const val = mstInput.value.trim();
+                if (!val) return;
+                try {
+                    mstInput.style.opacity = '0.7';
+                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(val)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.name) {
+                            const nameInput = document.getElementById('cdt-ten');
+                            if (nameInput) {
+                                nameInput.value = data.name;
+                            }
+                            const addrInput = document.getElementById('cdt-diachichitiet');
+                            if (addrInput) {
+                                addrInput.value = data.address || '';
+                            }
+                            const shortInput = document.getElementById('cdt-tenviettat');
+                            if (shortInput) {
+                                shortInput.value = data.short_name || '';
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Lỗi tra cứu MST: ", err);
+                } finally {
+                    mstInput.style.opacity = '1';
+                }
+            };
+        }
+
+        this.view.openModal('modal-chudautu');
 }
 
 
@@ -229,14 +263,18 @@ export async function handleChuDauTuSubmit(e) {
             data.phienBan = nextVerStr;
             data.phienBan = nextVerStr;
             data.isLatest = 1;
-            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            this.model.state.chudautu.push(data);
+            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
+            data.updatedAt = this.model.getCurrentDateTimeString();
+            this.model.state.chudautu.push(data);
         } else {
             data.id = id;
             data.rootId = currentCdt.rootId || currentCdt.id;
             data.phienBan = currentCdt.phienBan || '00';
             data.phienBan = currentCdt.phienBan || '00';
             data.isLatest = currentCdt.isLatest !== undefined ? currentCdt.isLatest : 1;
-            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();            data.updatedAt = this.model.getCurrentDateTimeString();            const idx = this.model.state.chudautu.findIndex(c => c.id === id);
+            data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
+            data.updatedAt = this.model.getCurrentDateTimeString();
+            const idx = this.model.state.chudautu.findIndex(c => c.id === id);
             this.model.state.chudautu[idx] = data;
         }
     } else {
@@ -246,7 +284,9 @@ export async function handleChuDauTuSubmit(e) {
         data.phienBan = '00';
         data.phienBan = '00';
         data.isLatest = 1;
-        data.createdAt = this.model.getCurrentDateTimeString();        data.updatedAt = this.model.getCurrentDateTimeString();        this.model.state.chudautu.push(data);
+        data.createdAt = this.model.getCurrentDateTimeString();
+        data.updatedAt = this.model.getCurrentDateTimeString();
+        this.model.state.chudautu.push(data);
     }
 
     this.model.persistData('chudautu');

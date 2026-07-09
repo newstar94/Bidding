@@ -58,3 +58,28 @@ async def get_wards_api(request):
         return JSONResponse(wards)
     except Exception as e:
         return JSONResponse({"error": f"Không thể tải danh sách xã phường: {str(e)}"}, status_code=502)
+
+
+async def lookup_tax_code_api(request):
+    """
+    [GET] /api/lookup-tax-code
+    Tra cứu thông tin doanh nghiệp (nhà thầu/chủ đầu tư) từ mã số thuế trực tuyến.
+    """
+    tax_code = request.query_params.get("code", "")
+    if not tax_code:
+        return JSONResponse({"error": "Thiếu mã số thuế"}, status_code=400)
+
+    try:
+        from services.partner_lookup_service import lookup_partner_info, extract_clean_tax_code
+        cleaned_code = extract_clean_tax_code(tax_code)
+        if not cleaned_code:
+            return JSONResponse({"error": "Mã số thuế không hợp lệ về mặt định dạng"}, status_code=400)
+
+        info = lookup_partner_info(cleaned_code)
+        if info:
+            return JSONResponse(info)
+        else:
+            return JSONResponse({"error": "Không tìm thấy thông tin doanh nghiệp cho mã số thuế này"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"error": f"Lỗi hệ thống khi tra cứu: {str(e)}"}, status_code=500)
+

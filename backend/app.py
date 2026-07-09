@@ -256,7 +256,8 @@ from routes.export_routes import (
 )
 from routes.address_routes import (
     get_provinces_api,
-    get_wards_api
+    get_wards_api,
+    lookup_tax_code_api
 )
 
 
@@ -395,6 +396,7 @@ routes = [
     # Address proxy routes (tránh bị chặn CSP, server gọi API bên ngoài thay browser)
     Route("/api/address/provinces", get_provinces_api, methods=["GET"]),
     Route("/api/address/wards/{province_code}", get_wards_api, methods=["GET"]),
+    Route("/api/lookup-tax-code", lookup_tax_code_api, methods=["GET"]),
     
     # Auth Routes
     Route("/api/auth/register", register_api, methods=["POST"]),
@@ -611,6 +613,13 @@ async def lifespan(app):
 
     import threading
     threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()
+    
+    # Khởi chạy background service tự động cập nhật thông tin nhà thầu từ MST
+    try:
+        from services.partner_lookup_service import start_partner_background_service
+        start_partner_background_service()
+    except Exception as start_err:
+        log_error(start_err, "start_partner_background_service")
     
     # Dọn dẹp session cache và org cache hết hạn mỗi 5 phút để tránh RAM tích tụ
     from helpers_py.auth_helper import _session_cache_cleanup
