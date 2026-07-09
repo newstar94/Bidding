@@ -415,7 +415,7 @@ def build_default_word_mappings():
                 "ten_bien": _default_single_name(source_table, column),
                 "source_table": source_table,
                 "source_column": column,
-                "mo_ta": f"Bien don mac dinh tu cau_truc_db.md: {source_table}.{column}",
+                "mo_ta": f"Bien don mac dinh tu schema he thong: {source_table}.{column}",
             })
 
     for ten_bien, source_table, mo_ta in WORD_CONTEXT_MAPPINGS:
@@ -423,7 +423,7 @@ def build_default_word_mappings():
             "ten_bien": ten_bien,
             "source_table": "__context__",
             "source_column": source_table,
-            "mo_ta": f"Thuc the dong mac dinh tu cau_truc_db.md: {mo_ta}",
+            "mo_ta": f"Thuc the dong mac dinh tu schema he thong: {mo_ta}",
         })
 
     for ten_bien, source_table, mo_ta in WORD_LIST_MAPPINGS:
@@ -431,7 +431,7 @@ def build_default_word_mappings():
             "ten_bien": ten_bien,
             "source_table": source_table,
             "source_column": "",
-            "mo_ta": f"Danh sach mac dinh tu cau_truc_db.md: {mo_ta}",
+            "mo_ta": f"Danh sach mac dinh tu schema he thong: {mo_ta}",
         })
 
     return mappings
@@ -460,7 +460,10 @@ def ensure_default_word_mappings(cursor, owner_id):
             existing_id, existing_name, existing_desc = existing[0], existing[1], existing[2] or ""
             if (
                 existing_name != mapping["ten_bien"]
-                and "mac dinh tu cau_truc_db.md" in existing_desc
+                and (
+                    "mac dinh tu cau_truc_db.md" in existing_desc
+                    or "mac dinh tu schema he thong" in existing_desc
+                )
             ):
                 cursor.execute(
                     "SELECT 1 FROM cau_hinh_bien_word WHERE owner_id = ? AND ten_bien = ? AND id != ?",

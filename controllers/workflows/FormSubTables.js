@@ -1,11 +1,19 @@
 import { parseBidDateTime } from './dateParseUtils.js';
 import { bindCurrencyElement } from '../main_controller/domUtils.js';
 
+function normalizeSubRowValue(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function makeSubRowKey(...values) {
+    return values.map(normalizeSubRowValue).join('|');
+}
+
 export function addPhanLoRow(data = {}) {
     const tbody = document.getElementById('phanlo-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || window.generateUUID();
+    const rowId = data.id || window.generateRecordId('phanlo');
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -94,7 +102,7 @@ export function addTuyChonMuaThemRow(data = {}) {
     const tbody = document.getElementById('tuychonmuathem-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || window.generateUUID();
+    const rowId = data.id || window.generateRecordId('tuychonmuathem');
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -231,7 +239,7 @@ export function addGiaHanRow(data = {}) {
     const tbody = document.getElementById('gt-giahan-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || window.generateUUID();
+    const rowId = data.id || window.generateRecordId('giahan');
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -269,12 +277,16 @@ export function _loadGiaHanRows(list) {
 
 export function _collectGiaHanRows() {
     const list = [];
+    const seen = new Set();
     document.querySelectorAll('#gt-giahan-tbody tr').forEach(tr => {
         const id = tr.getAttribute('data-id');
         const timeInput = tr.querySelector('.gh-time-input').value.trim();
         const reasonInput = tr.querySelector('.gh-reason-input').value.trim();
 
         if (timeInput && reasonInput) {
+            const key = makeSubRowKey(timeInput, reasonInput);
+            if (seen.has(key)) return;
+            seen.add(key);
             list.push({ id, thoiGianDongThau: timeInput, lyDoGiaHan: reasonInput });
         }
     });
@@ -298,7 +310,7 @@ export function addYeuCauLamRoRow(data = {}) {
     const tbody = document.getElementById('gt-yeucaulamro-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || window.generateUUID();
+    const rowId = data.id || window.generateRecordId('yeucaulamro');
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -332,12 +344,16 @@ export function _loadYeuCauLamRoRows(list) {
 
 export function _collectYeuCauLamRoRows() {
     const list = [];
+    const seen = new Set();
     document.querySelectorAll('#gt-yeucaulamro-tbody tr').forEach(tr => {
         const id = tr.getAttribute('data-id');
         const timeInput = tr.querySelector('.yc-time-input').value.trim();
         const contentInput = tr.querySelector('.yc-content-input').value.trim();
 
         if (timeInput && contentInput) {
+            const key = makeSubRowKey(timeInput, contentInput);
+            if (seen.has(key)) return;
+            seen.add(key);
             list.push({ id, thoiGianYeuCau: timeInput, noiDungYeuCau: contentInput });
         }
     });
@@ -361,7 +377,7 @@ export function addTraLoiLamRoRow(data = {}) {
     const tbody = document.getElementById('gt-traloilamro-tbody');
     if (!tbody) return;
 
-    const rowId = data.id || window.generateUUID();
+    const rowId = data.id || window.generateRecordId('traloilamro');
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', rowId);
 
@@ -395,12 +411,16 @@ export function _loadTraLoiLamRoRows(list) {
 
 export function _collectTraLoiLamRoRows() {
     const list = [];
+    const seen = new Set();
     document.querySelectorAll('#gt-traloilamro-tbody tr').forEach(tr => {
         const id = tr.getAttribute('data-id');
         const timeInput = tr.querySelector('.tl-time-input').value.trim();
         const contentInput = tr.querySelector('.tl-content-input').value.trim();
 
         if (timeInput && contentInput) {
+            const key = makeSubRowKey(timeInput, contentInput);
+            if (seen.has(key)) return;
+            seen.add(key);
             list.push({ id, thoiGianTraLoi: timeInput, noiDungTraLoi: contentInput });
         }
     });
@@ -457,6 +477,10 @@ export function enforceSingleLeader(tbodyId, roleName, changedSelect = null) {
                     }
                 }
             }
+        }
+
+        if (window.initCustomSelect && sel.id) {
+            window.initCustomSelect(sel.id);
         }
     });
 }

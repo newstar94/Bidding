@@ -949,7 +949,8 @@ export function setupGoogleSignIn() {
     if (window._gsiInitialized) return;
     window._gsiInitialized = true;
 
-    const clientId = document.querySelector('meta[name="google-client-id"]')?.content;
+    const clientId = document.querySelector('meta[name="google-client-id"]')?.content?.trim();
+    if (clientId === '__GOOGLE_CLIENT_ID__') return;
     if (!clientId) return;
 
     const container = document.getElementById('google-signin-btn-container');

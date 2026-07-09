@@ -27,6 +27,7 @@ from services.auth_service import (
     SESSION_EXPIRY_HOURS,
     SESSION_INACTIVITY_TIMEOUT_HOURS,
 )
+from helpers_py.id_utils import generate_record_id
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
@@ -244,7 +245,7 @@ async def google_login_api(request):
             temp_password_hash = _hash_password(temp_password)
 
             # ID co tien to "user-" nhat quan voi cac tai khoan khac
-            new_id = "user-" + str(uuid.uuid4())
+            new_id = generate_record_id("tai_khoan")
 
             try:
                 cursor.execute(

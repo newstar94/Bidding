@@ -1,10 +1,9 @@
 from .schema import SCHEMA_DINH_NGHIA
 from .auth_helper import hash_password
+from .id_utils import generate_record_id, stable_org_id
 from .word_defaults import ensure_default_word_mappings_for_all_orgs
 import os
-import json
 import uuid
-import hashlib
 from db_helper import database
 
 # Whitelist bảo vệ DDL: chỉ cho phép tên bảng được định nghĩa trong schema
@@ -62,10 +61,12 @@ def _sync_table_schema(cursor, table_name: str, table_spec: dict):
     _assert_safe_table(table_name)
     expected_cols = table_spec["columns"]
 
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
-    if not cursor.fetchone():
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    table_row = cursor.fetchone()
+    if not table_row:
         cursor.execute(_build_create_table_sql(table_name, table_spec))
         return
+    current_create_sql = table_row[0] or ""
 
     cursor.execute(f"PRAGMA table_info({table_name})")
     current_info = cursor.fetchall()
@@ -73,7 +74,7 @@ def _sync_table_schema(cursor, table_name: str, table_spec: dict):
 
     expected_names = list(expected_cols.keys())
     current_names = list(current_cols.keys())
-    rebuild_needed = expected_names != current_names
+    rebuild_needed = expected_names != current_names or "_schema_sync_" in current_create_sql
 
     if not rebuild_needed:
         for col_name, col_def in expected_cols.items():
@@ -88,12 +89,16 @@ def _sync_table_schema(cursor, table_name: str, table_spec: dict):
 
     temp_table = f"_schema_sync_{table_name}_{uuid.uuid4().hex[:8]}"
     common_cols = [col for col in expected_names if col in current_cols]
-    cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table}")
-    cursor.execute(_build_create_table_sql(table_name, table_spec))
-    if common_cols:
-        cols_sql = ", ".join(common_cols)
-        cursor.execute(f"INSERT INTO {table_name} ({cols_sql}) SELECT {cols_sql} FROM {temp_table}")
-    cursor.execute(f"DROP TABLE {temp_table}")
+    cursor.execute("PRAGMA legacy_alter_table = ON")
+    try:
+        cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table}")
+        cursor.execute(_build_create_table_sql(table_name, table_spec))
+        if common_cols:
+            cols_sql = ", ".join(common_cols)
+            cursor.execute(f"INSERT INTO {table_name} ({cols_sql}) SELECT {cols_sql} FROM {temp_table}")
+        cursor.execute(f"DROP TABLE {temp_table}")
+    finally:
+        cursor.execute("PRAGMA legacy_alter_table = OFF")
 
 
 def _ensure_runtime_indexes(cursor):
@@ -141,6 +146,13 @@ def _ensure_runtime_indexes(cursor):
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_ke_hoach ON goi_thau (ke_hoach_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_nha_thau_trung ON goi_thau (nha_thau_trung_thau_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (owner_id, ke_hoach_id, loai, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (owner_id, goi_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_tuy_chon_parent ON goi_thau_tuy_chon_mua_them (owner_id, goi_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_gia_han_parent ON goi_thau_gia_han (owner_id, goi_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_parent ON goi_thau_lam_ro (owner_id, goi_thau_id, loai, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_parent ON nha_thau_lien_danh_thanh_vien (owner_id, nha_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_parent ON thong_tin_mo_thau_lien_danh_thanh_vien (owner_id, thong_tin_mo_thau_id, sort_order)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_ke_hoach ON hop_dong (ke_hoach_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_chu_dau_tu ON hop_dong (chu_dau_tu_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau ON hop_dong (nha_thau_id)")
@@ -291,13 +303,13 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
     """
     if owner_id:
         cursor.execute("""
-            SELECT id, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
+            SELECT id, loai_hinh_mua_sam
             FROM ke_hoach_lcnt
             WHERE owner_id = ? AND is_tong_muc_tu_dong = 1
         """, (owner_id,))
     else:
         cursor.execute("""
-            SELECT id, loai_hinh_mua_sam, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien
+            SELECT id, loai_hinh_mua_sam
             FROM ke_hoach_lcnt
             WHERE is_tong_muc_tu_dong = 1
         """)
@@ -306,9 +318,6 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
     for row in plans:
         plan_id = row[0]
         loai_hinh = row[1]
-        cv_da_thuc_hien_str = row[2]
-        cv_khong_ap_dung_str = row[3]
-        cv_chua_du_dieu_kien_str = row[4]
         
         cursor.execute("""
             SELECT COALESCE(SUM(gia_goi_thau), 0)
@@ -317,20 +326,16 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
         """, (plan_id,))
         sum_iv = cursor.fetchone()[0] or 0
             
-        def sum_cv_list(cv_str):
-            if not cv_str:
-                return 0
-            try:
-                parsed = json.loads(cv_str)
-                if isinstance(parsed, list):
-                    return sum(float(i.get('giaTri') or 0) for i in parsed if isinstance(i, dict))
-            except Exception:
-                pass
-            return 0
-
-        sum_i = sum_cv_list(cv_da_thuc_hien_str)
-        sum_ii = sum_cv_list(cv_khong_ap_dung_str)
-        sum_iii = sum_cv_list(cv_chua_du_dieu_kien_str)
+        cursor.execute("""
+            SELECT loai, COALESCE(SUM(gia_tri), 0)
+            FROM ke_hoach_cong_viec
+            WHERE ke_hoach_id = ?
+            GROUP BY loai
+        """, (plan_id,))
+        cv_sums = {r[0]: r[1] or 0 for r in cursor.fetchall()}
+        sum_i = cv_sums.get("da_thuc_hien", 0)
+        sum_ii = cv_sums.get("khong_ap_dung", 0)
+        sum_iii = cv_sums.get("chua_du_dieu_kien", 0)
 
         is_project = (loai_hinh == 'Dự án')
         if is_project:
@@ -374,14 +379,14 @@ def khoi_tao_va_di_tru_he_thong():
 
         cursor.execute("SELECT COUNT(*) FROM tai_khoan")
         if cursor.fetchone()[0] == 0:
-            admin_uuid = "user-" + str(uuid.uuid4())
+            admin_uuid = generate_record_id("tai_khoan")
             admin_pass = os.environ.get("ADMIN_PASSWORD", "")
             if not admin_pass:
                 raise ValueError("ADMIN_PASSWORD environment variable is not configured. Initial admin password must be set in the environment.")
             admin_name = os.environ.get("ADMIN_NAME", "Administrator")
             admin_email = os.environ.get("ADMIN_EMAIL", "admin@localhost")
             org_name = os.environ.get("DEFAULT_ORG_NAME", "HTD")
-            org_id = "org-" + hashlib.md5(org_name.encode("utf-8")).hexdigest()[:16]
+            org_id = stable_org_id(org_name)
 
             cursor.execute(
                 """

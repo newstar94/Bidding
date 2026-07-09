@@ -153,7 +153,7 @@ async def login_api(request):
             try: conn.close()
             except Exception: pass
 
-async def check_session_api(request):
+async def _check_session_api_legacy(request):
     try:
         try:
             data = await request.json()
@@ -310,6 +310,150 @@ async def check_session_api(request):
     except Exception as e:
         log_error(e, "check_session_api")
         return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
+
+def _load_user_by_session_token(session_token):
+    cached = _session_cache_get(session_token)
+    if cached and cached.get('token_phien') == session_token and 'ten_dang_nhap' in cached:
+        return cached
+
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien,
+                   goi_dich_vu_id, token_phien, han_su_dung_token,
+                   thong_tin_thiet_bi_cuoi, google_id, mat_khau
+            FROM tai_khoan
+            WHERE token_phien = ?
+        """, (session_token,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _validate_token_expiry(session_token, user):
+    if not user:
+        return "user_not_found"
+    if user.get('token_phien') != session_token:
+        return "logged_in_elsewhere"
+    if user.get('han_su_dung_token'):
+        try:
+            if time.time() > float(user['han_su_dung_token']):
+                _session_cache_invalidate(session_token)
+                return "token_expired"
+        except Exception:
+            pass
+    return None
+
+
+def _extend_session_if_needed(user, remember):
+    expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
+    now = time.time()
+    current_expiry = float(user.get('han_su_dung_token') or 0)
+    if current_expiry - now >= (expiry_hours * 3600) / 2:
+        return False
+
+    new_expiry = int(now + expiry_hours * 3600)
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE tai_khoan SET han_su_dung_token = ? WHERE id = ?",
+            (new_expiry, user['id'])
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    user['han_su_dung_token'] = new_expiry
+    return True
+
+
+def _get_org_names_for_session(user_id):
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        return get_user_org_names(cursor, user_id)
+    finally:
+        conn.close()
+
+
+def _get_username_setup_state(user):
+    needs_username = not user.get('ten_dang_nhap')
+    if not needs_username:
+        return False, "", False
+
+    suggested_username = ""
+    conn_suggest = database.get_connection()
+    try:
+        from google_auth_routes import _generate_suggested_username
+        cursor_suggest = conn_suggest.cursor()
+        suggested_username = _generate_suggested_username(
+            user.get('ho_ten', ''),
+            user.get('email', ''),
+            cursor_suggest
+        )
+    except Exception:
+        pass
+    finally:
+        conn_suggest.close()
+    account_linked = bool(user.get('google_id') and user.get('mat_khau'))
+    return needs_username, suggested_username, account_linked
+
+
+def _session_response(user, remember, session_was_extended):
+    needs_username, suggested_username, account_linked = _get_username_setup_state(user)
+    response = JSONResponse({
+        "valid": True,
+        "device_info": user.get('thong_tin_thiet_bi_cuoi'),
+        "user": {
+            "id": user['id'],
+            "username": user['ten_dang_nhap'],
+            "name": user['ho_ten'],
+            "role": user['vai_tro'],
+            "effective_roles": list(get_effective_roles(user['vai_tro'])),
+            "email": user['email'],
+            "avatar": user.get('anh_dai_dien'),
+            "package_id": user.get('goi_dich_vu_id'),
+            "organization_name": _get_org_names_for_session(user['id']),
+            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
+            "needs_username": needs_username,
+            "suggested_username": suggested_username,
+            "account_linked": account_linked
+        }
+    })
+
+    if session_was_extended:
+        cookie_max_age = (SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS) * 3600
+        response.set_cookie("session_token", user['token_phien'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
+        response.delete_cookie("username", path="/")
+    return response
+
+
+async def check_session_api(request):
+    try:
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        session_token = (request.cookies.get('session_token') or '').strip()
+        remember = data.get('remember', False)
+
+        if not session_token:
+            return JSONResponse({"valid": False, "reason": "missing_auth"})
+
+        user = _load_user_by_session_token(session_token)
+        invalid_reason = _validate_token_expiry(session_token, user)
+        if invalid_reason:
+            return JSONResponse({"valid": False, "reason": invalid_reason})
+
+        session_was_extended = _extend_session_if_needed(user, remember)
+        _session_cache_set(session_token, user)
+        return _session_response(user, remember, session_was_extended)
+    except Exception as e:
+        log_error(e, "check_session_api")
+        return JSONResponse({"valid": False, "error": "Lá»—i kiá»ƒm tra phiÃªn lÃ m viá»‡c."}, status_code=500)
+
 
 async def update_profile_api(request):
     conn = None

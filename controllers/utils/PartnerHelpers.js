@@ -1,3 +1,188 @@
+function addressCacheRoot() {
+    return typeof window !== 'undefined' ? window : globalThis;
+}
+
+function normalizeAddressToken(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase()
+        .replace(/[.,;:()]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function stripAdminPrefix(value, type) {
+    const text = normalizeAddressToken(value);
+    if (type === 'province') {
+        return text
+            .replace(/^(tinh|thanh pho|tp)\s+/, '')
+            .replace(/^(t p)\s+/, '')
+            .trim();
+    }
+    return text
+        .replace(/^(phuong|xa|thi tran|tt)\s+/, '')
+        .trim();
+}
+
+function escapeOptionText(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function renderWardOptions(wards) {
+    return '<option value="">-- Chọn Xã/Phường --</option>' +
+        wards.map(w => `<option value="${w.code}" data-name="${escapeOptionText(w.name)}">${escapeOptionText(w.name)}</option>`).join('');
+}
+
+function syncCustomSelectDisplay(select) {
+    if (!select) return;
+    const wrapper = select.parentNode?.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
+    const input = wrapper?.querySelector('.custom-select-search');
+    if (input) {
+        const selectedOpt = select.options[select.selectedIndex];
+        input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : '';
+    }
+    const optionsList = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`) || wrapper?.querySelector('.custom-select-options');
+    if (optionsList) {
+        optionsList.querySelectorAll('li').forEach(li => {
+            li.className = li.getAttribute('data-value') === select.value ? 'selected' : '';
+            li.style.display = '';
+        });
+    }
+}
+
+async function ensureVietnamProvinces() {
+    const root = addressCacheRoot();
+    if (!root._vietnamProvinces || !Array.isArray(root._vietnamProvinces) || root._vietnamProvinces.length === 0) {
+        const res = await fetch('/api/address/provinces');
+        if (!res.ok) return [];
+        const data = await res.json();
+        root._vietnamProvinces = Array.isArray(data) ? data : [];
+    }
+    return root._vietnamProvinces;
+}
+
+async function ensureVietnamWards(provinceCode) {
+    if (!provinceCode) return [];
+    const root = addressCacheRoot();
+    root._vietnamWards = root._vietnamWards || {};
+    if (!root._vietnamWards[provinceCode] || !Array.isArray(root._vietnamWards[provinceCode])) {
+        const res = await fetch(`/api/address/wards/${provinceCode}`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        root._vietnamWards[provinceCode] = Array.isArray(data) ? data : [];
+    }
+    return root._vietnamWards[provinceCode];
+}
+
+function findAdministrativeMatch(parts, candidates, type) {
+    const normalizedParts = parts.map(part => normalizeAddressToken(part));
+    const normalizedAddress = normalizeAddressToken(parts.join(', '));
+    const sorted = [...candidates].sort((a, b) => String(b.name || '').length - String(a.name || '').length);
+
+    for (const item of sorted) {
+        const full = normalizeAddressToken(item.name);
+        const short = stripAdminPrefix(item.name, type);
+        const aliases = [...new Set([full, short].filter(Boolean))];
+
+        for (let idx = normalizedParts.length - 1; idx >= 0; idx--) {
+            const part = normalizedParts[idx];
+            if (aliases.some(alias => part === alias || part.endsWith(` ${alias}`) || alias.endsWith(` ${part}`))) {
+                return { item, partIndex: idx };
+            }
+        }
+
+        if (aliases.some(alias => normalizedAddress.endsWith(` ${alias}`) || normalizedAddress.includes(` ${alias} `))) {
+            return { item, partIndex: -1 };
+        }
+    }
+
+    return null;
+}
+
+export function composeInternalAddress(detail = '', wardName = '', provinceName = '') {
+    return `${String(detail || '').trim()} | ${String(wardName || '').trim()} | ${String(provinceName || '').trim()}`;
+}
+
+export async function parseVietnamAddress(rawAddress) {
+    const raw = String(rawAddress || '').trim();
+    if (!raw) {
+        return { detail: '', wardName: '', provinceName: '', wardCode: '', provinceCode: '', formattedAddress: '', rawAddress: '' };
+    }
+
+    const parts = raw.split(',').map(part => part.trim()).filter(Boolean);
+    if (parts.length === 0) {
+        return { detail: raw, wardName: '', provinceName: '', wardCode: '', provinceCode: '', formattedAddress: composeInternalAddress(raw, '', ''), rawAddress: raw };
+    }
+
+    const provinces = await ensureVietnamProvinces();
+    const provinceMatch = findAdministrativeMatch(parts, provinces, 'province');
+    const province = provinceMatch?.item || null;
+    let ward = null;
+    let wardMatch = null;
+
+    if (province?.code) {
+        const wards = await ensureVietnamWards(province.code);
+        const partsWithoutProvince = parts.filter((_, idx) => idx !== provinceMatch.partIndex);
+        wardMatch = findAdministrativeMatch(partsWithoutProvince, wards, 'ward');
+        ward = wardMatch?.item || null;
+        if (wardMatch && provinceMatch.partIndex >= 0 && wardMatch.partIndex >= provinceMatch.partIndex) {
+            wardMatch = { ...wardMatch, partIndex: wardMatch.partIndex + 1 };
+        }
+    }
+
+    const removeIndexes = new Set();
+    if (provinceMatch?.partIndex >= 0) removeIndexes.add(provinceMatch.partIndex);
+    if (wardMatch?.partIndex >= 0) removeIndexes.add(wardMatch.partIndex);
+    const detail = parts.filter((_, idx) => !removeIndexes.has(idx)).join(', ').trim() || raw;
+    const wardName = ward?.name || '';
+    const provinceName = province?.name || '';
+
+    return {
+        detail,
+        wardName,
+        provinceName,
+        wardCode: ward?.code || '',
+        provinceCode: province?.code || '',
+        formattedAddress: composeInternalAddress(detail, wardName, provinceName),
+        rawAddress: raw
+    };
+}
+
+export async function applyRawAddressToAddressControls(rawAddress, { detailInputId, provinceSelectId, wardSelectId }) {
+    const parsed = await parseVietnamAddress(rawAddress);
+    const detailInput = document.getElementById(detailInputId);
+    const provinceSelect = document.getElementById(provinceSelectId);
+    const wardSelect = document.getElementById(wardSelectId);
+
+    if (detailInput) {
+        detailInput.value = parsed.detail || rawAddress || '';
+    }
+
+    if (provinceSelect && parsed.provinceCode) {
+        provinceSelect.value = String(parsed.provinceCode);
+        syncCustomSelectDisplay(provinceSelect);
+    }
+
+    if (wardSelect && parsed.provinceCode) {
+        const wards = await ensureVietnamWards(parsed.provinceCode);
+        wardSelect.innerHTML = renderWardOptions(wards);
+        wardSelect.disabled = false;
+        if (parsed.wardCode) {
+            wardSelect.value = String(parsed.wardCode);
+        }
+        syncCustomSelectDisplay(wardSelect);
+    }
+
+    return parsed;
+}
+
 export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinhName = '', currentXaName = '', isDisabled = false) {
     const tinhSelect = document.getElementById(tinhSelectId);
     const xaSelect = document.getElementById(xaSelectId);

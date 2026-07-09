@@ -24,6 +24,19 @@ Cần cài đặt Node.js trên máy tính của bạn, sau đó di chuyển và
 npm install
 ```
 
+### Cau hinh `.env` bat buoc cho lan chay dau
+
+Truoc khi khoi dong server lan dau, tao `.env` tu `.env.example` va dat toi thieu:
+
+```env
+ADMIN_PASSWORD=mat_khau_manh_cua_ban
+ADMIN_NAME=Administrator
+ADMIN_EMAIL=admin@localhost
+DEFAULT_ORG_NAME=HTD
+```
+
+Neu `ADMIN_PASSWORD` bi bo trong, server se dung co che fail-fast va khong tao DB mac dinh. Dieu nay tranh viec vo tinh khoi tao he thong voi mat khau rong hoac yeu.
+
 ---
 
 ## 3. Chạy thử local trong quá trình phát triển (Development Mode)

@@ -37,7 +37,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
 
     if (type === 'plan' || type === 'kehoach') {
         const mappedData = validRows.map(row => {
-            const planId = window.generateUUID();
+            const planId = window.generateRecordId('kehoach');
             return {
                 id: planId,
                 maKeHoach: row.maKeHoach || '',
@@ -65,7 +65,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
         const latestPlans = controller.model.getLatestPlans();
         const mappedData = validRows.map(row => {
             const matchedPlan = latestPlans.find(p => p.maKeHoach.toLowerCase() === (row.keHoachId || row.maKeHoach || '').toLowerCase());
-            const gtId = window.generateUUID();
+            const gtId = window.generateRecordId('goithau');
             return {
                 id: gtId,
                 maGoiThau: row.maGoiThau || '',
@@ -114,7 +114,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
                 (mst && c.maSoThue && c.maSoThue.trim() === mst) ||
                 (maCdt && c.maChuDauTu && c.maChuDauTu.trim().toLowerCase() === maCdt)
             );
-            const targetId = existing ? existing.id : window.generateUUID();
+            const targetId = existing ? existing.id : window.generateRecordId('chudautu');
             return {
                 id: targetId,
                 rootId: targetId,
@@ -150,7 +150,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
                 (mst && n.maSoThue && n.maSoThue.trim() === mst) ||
                 (maNt && n.maNhaThau && n.maNhaThau.trim().toLowerCase() === maNt)
             );
-            const targetId = existing ? existing.id : window.generateUUID();
+            const targetId = existing ? existing.id : window.generateRecordId('nhathau');
             return {
                 id: targetId,
                 rootId: targetId,
@@ -186,7 +186,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
                 (cccd && cg.soCCCD && cg.soCCCD.trim() === cccd) ||
                 (soChungChi && cg.soChungChi && cg.soChungChi.trim().toLowerCase() === soChungChi)
             );
-            const targetId = existing ? existing.id : window.generateUUID();
+            const targetId = existing ? existing.id : window.generateRecordId('chuyengia');
             return {
                 id: targetId,
                 rootId: targetId,
@@ -217,7 +217,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
             const nt = controller.model.state.nhathau.find(n => n.maNhaThau.toLowerCase() === (row.nhaThauId || '').toLowerCase());
             const soHd = (row.soHopDong || '').trim().toLowerCase();
             const existing = controller.model.state.hopdong.find(h => h.soHopDong && h.soHopDong.trim().toLowerCase() === soHd);
-            const targetId = existing ? existing.id : window.generateUUID();
+            const targetId = existing ? existing.id : window.generateRecordId('hopdong');
             return {
                 id: targetId,
                 rootId: targetId,
@@ -266,7 +266,7 @@ function ensureContractorForOpeningImport(controller, row) {
     );
 
     if (!foundNt && row.tenNhaThau) {
-        const newId = window.generateUUID();
+        const newId = window.generateRecordId('nhathau');
         foundNt = {
             id: newId,
             rootId: newId,
@@ -307,7 +307,7 @@ function saveOpeningImport(controller, validRows) {
         const nhaThauId = foundNt ? foundNt.id : row.nhaThauId;
 
         controller.model.state.thongtinmothau.push({
-            id: row.id || window.generateUUID(),
+            id: row.id || window.generateRecordId('thongtinmothau'),
             goiThauId: gtId,
             nhaThauId,
             maPhanLo: row.maPhanLo || '',
@@ -400,7 +400,7 @@ function saveAwardResultImport(controller, validRows) {
             const latestNhaThauList = controller.model.getLatestNhaThau();
             const foundNt = latestNhaThauList.find(n => n.id === row.nhaThauId);
             bid = {
-                id: row.id || window.generateUUID(),
+                id: row.id || window.generateRecordId('thongtinmothau'),
                 goiThauId: gtId,
                 nhaThauId: row.nhaThauId,
                 maNhaThau: row.maNhaThau || (foundNt ? foundNt.maNhaThau : ''),

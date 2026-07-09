@@ -185,8 +185,12 @@ export function autoSync() {
                     console.info(`[Sync] Đã xóa ${data.orphanedIds.length} record mồ côi khỏi IndexedDB:`, data.orphanedIds);
                 }
             }
+            return { ok: true, status, data };
         })
-        .catch(err => console.error("Error auto sync:", err));
+        .catch(err => {
+            console.error("Error auto sync:", err);
+            return { ok: false, error: err };
+        });
 }
 
 
@@ -234,7 +238,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
             );
             if (isAuthError || isBackground) {
                 if (syncStatusText) syncStatusText.textContent = 'Cần đăng nhập lại';
-                return;
+                return { ok: false, status, data };
             }
         }
         if (!response.ok) {

@@ -22,6 +22,7 @@ from helpers_py.excel_handler import (
     _schema_to_options,
     _schema_to_map_cols
 )
+from helpers_py.sync_mapper import fetch_package_lot_codes
 
 def create_excel_template(import_type):
     """Tạo file mẫu Excel nhập liệu cơ bản cho chudautu, kehoach, goithau, nhathau, chuyengia, hopdong..."""
@@ -252,13 +253,14 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
     conn = database.get_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT linh_vuc, phuong_thuc_lua_chon, phan_lo, phan_lo_list FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
+    cursor.execute("SELECT linh_vuc, phuong_thuc_lua_chon, phan_lo FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
     gt_row = cursor.fetchone()
     if not gt_row:
         conn.close()
         raise ValueError("Package not found")
         
-    linh_vuc, phuong_thuc_lua_chon, phan_lo, phan_lo_list_str = gt_row
+    linh_vuc, phuong_thuc_lua_chon, phan_lo = gt_row
+    lot_codes = fetch_package_lot_codes(cursor, pkg_id_clean, org_name)
     
     cursor.execute("""
         SELECT loai_nha_thau, ma_phan_lo, ten_phan_lo, ma_dinh_danh, ten_nha_thau,
@@ -320,6 +322,9 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
                 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)',
                 'Đánh giá tài chính (Điểm hoặc Xếp hạng)', 'Làm rõ tài chính (nếu có)'
             ]
+
+    if has_phan_lo and lot_codes:
+        options_map['Mã phần lô'] = lot_codes
 
     wb = Workbook()
     ws = wb.active

@@ -1,3 +1,6 @@
+import { normalizeTaxCodeForLookup } from '../main_controller/domUtils.js';
+import { applyRawAddressToAddressControls } from '../utils/PartnerHelpers.js';
+
 export async function deleteNhaThau(id) {
     const nt = this.model.state.nhathau.find(n => n.id === id);
     if (!nt) return;
@@ -100,6 +103,8 @@ export async function editNhaThau(id, isReadOnly = false) {
             const nt = this.model.state.nhathau.find(n => n.id === id);
             if (!nt) throw new Error("Không tìm thấy dữ liệu nhà thầu với ID " + id);
             
+            form.dataset.diaChiGoc = nt.diaChiGoc || '';
+
             const idInput = document.getElementById('form-nhathau-id');
             if (idInput) idInput.value = nt.id;
             
@@ -143,6 +148,7 @@ export async function editNhaThau(id, isReadOnly = false) {
             if (titleEl) titleEl.textContent = 'Thêm Nhà thầu mới';
             
             form.reset();
+            form.dataset.diaChiGoc = '';
             if (document.getElementById('nt-diachichitiet')) document.getElementById('nt-diachichitiet').value = '';
             await this.initAddressDropdowns('nt-tinh', 'nt-xa', '', '', false);
             
@@ -157,7 +163,9 @@ export async function editNhaThau(id, isReadOnly = false) {
                 if (!val) return;
                 try {
                     mstInput.style.opacity = '0.7';
-                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(val)}`);
+                    const lookupCode = normalizeTaxCodeForLookup(val);
+                    if (!lookupCode) return;
+                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(lookupCode)}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data && data.name) {
@@ -165,9 +173,13 @@ export async function editNhaThau(id, isReadOnly = false) {
                             if (nameInput) {
                                 nameInput.value = data.name;
                             }
-                            const addrInput = document.getElementById('nt-diachichitiet');
-                            if (addrInput) {
-                                addrInput.value = data.address || '';
+                            if (data.address) {
+                                form.dataset.diaChiGoc = data.address;
+                                await applyRawAddressToAddressControls(data.address, {
+                                    detailInputId: 'nt-diachichitiet',
+                                    provinceSelectId: 'nt-tinh',
+                                    wardSelectId: 'nt-xa'
+                                });
                             }
                             const shortInput = document.getElementById('nt-tenviettat');
                             if (shortInput) {
@@ -343,6 +355,7 @@ export async function handleNhaThauSubmit(e) {
         soDienThoai: document.getElementById('nt-sdt').value.trim(),
         email: document.getElementById('nt-email').value.trim(),
         diaChi: diaChiCombined,
+        diaChiGoc: form.dataset.diaChiGoc || '',
         soTaiKhoan: document.getElementById('nt-sotaikhoan').value.trim(),
         noiMoTaiKhoan: document.getElementById('nt-noimotaikhoan').value.trim(),
         maNganHang: document.getElementById('nt-manganhang').value.trim()
@@ -363,7 +376,7 @@ export async function handleNhaThauSubmit(e) {
 
         if (isNewVersion) {
             versions.forEach(n => { n.isLatest = 0; });
-            data.id = window.generateUUID();
+            data.id = window.generateRecordId('nhathau');
             data.rootId = rootId;
             data.phienBan = nextVerStr;
             data.phienBan = nextVerStr;
@@ -383,7 +396,7 @@ export async function handleNhaThauSubmit(e) {
             this.model.state.nhathau[idx] = data;
         }
     } else {
-        const newId = window.generateUUID();
+        const newId = window.generateRecordId('nhathau');
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';

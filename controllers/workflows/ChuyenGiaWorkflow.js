@@ -248,7 +248,7 @@ export async function handleChuyenGiaSubmit(e) {
 
         if (isNewVersion) {
             versions.forEach(c => { c.isLatest = 0; });
-            data.id = window.generateUUID();
+            data.id = window.generateRecordId('chuyengia');
             data.rootId = rootId;
             data.phienBan = nextVerStr;
             data.phienBan = nextVerStr;
@@ -264,7 +264,7 @@ export async function handleChuyenGiaSubmit(e) {
             this.model.state.chuyengia[idx] = data;
         }
     } else {
-        const newId = window.generateUUID();
+        const newId = window.generateRecordId('chuyengia');
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';

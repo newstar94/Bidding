@@ -7,6 +7,7 @@ from collections import defaultdict
 from helpers import (
     _org_cache_invalidate_by_user_id
 )
+from helpers_py.id_utils import stable_org_id
 
 # Configuration from environment
 _SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
@@ -124,7 +125,7 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
             if org_row:
                 org_id = org_row['id']
             else:
-                org_id = "org-" + hashlib.md5(org_name.encode('utf-8')).hexdigest()[:16]
+                org_id = stable_org_id(org_name)
                 cursor.execute(
                     "INSERT OR IGNORE INTO to_chuc (id, ten_to_chuc, quan_ly_id) VALUES (?, ?, ?)",
                     (org_id, org_name, user_id)

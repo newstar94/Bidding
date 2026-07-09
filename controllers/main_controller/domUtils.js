@@ -40,3 +40,11 @@ export function bindCurrencyElement(element, formatValue) {
 export function bindCurrencyElements(elements, formatValue) {
     Array.from(elements || []).forEach(element => bindCurrencyElement(element, formatValue));
 }
+
+export function normalizeTaxCodeForLookup(value) {
+    return String(value || '').trim().replace(/^(vnp|vnz|vn)[\s._-]*/i, '').trim();
+}
+
+export function normalizeTaxCodeForCompare(value) {
+    return normalizeTaxCodeForLookup(value).replace(/[^0-9a-z]/gi, '').toLowerCase();
+}

@@ -58,6 +58,7 @@ SCHEMA_DINH_NGHIA = {
             "chuc_vu_dai_dien": "TEXT",
             "danh_xung": "TEXT DEFAULT 'Ông'",
             "dia_chi": "TEXT",
+            "dia_chi_goc": "TEXT",
             "so_dien_thoai": "TEXT",
             "so_tai_khoan": "TEXT",
             "noi_mo_tai_khoan": "TEXT",
@@ -93,9 +94,6 @@ SCHEMA_DINH_NGHIA = {
             "ngay_phe_duyet": "TEXT",
             "quyet_dinh_phe_duyet": "TEXT",
             "thoi_gian_dang_tai": "TEXT",
-            "cv_da_thuc_hien": "TEXT",
-            "cv_khong_ap_dung": "TEXT",
-            "cv_chua_du_dieu_kien": "TEXT",
             "nguon_von": "TEXT",
             "thoi_gian_du_an": "TEXT",
             "dia_diem_quy_mo": "TEXT",
@@ -115,9 +113,6 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL"],
         "field_map": {
             "thoi_gian_dang_tai": "thoiGianDangMa",
-            "cv_da_thuc_hien": "cvDaThucHienList",
-            "cv_khong_ap_dung": "cvKhongApDungList",
-            "cv_chua_du_dieu_kien": "cvChuaDuDieuKienList",
             "don_vi_trinh_cdt": "donViTrinhCdt",
             "ten_viet_tat_don_vi_trinh": "tenVietTatDonViTrinh",
             "phe_duyet": "pheDuyet",
@@ -127,8 +122,27 @@ SCHEMA_DINH_NGHIA = {
             "ngay_trinh_ke_hoach": "ngayTrinhKeHoach"
         }
     },
+    "ke_hoach_cong_viec": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "ke_hoach_id": "TEXT NOT NULL",
+            "loai": "TEXT NOT NULL CHECK(loai IN ('da_thuc_hien', 'khong_ap_dung', 'chua_du_dieu_kien'))",
+            "ten_cong_viec": "TEXT",
+            "gia_tri": "REAL",
+            "don_vi_thuc_hien": "TEXT",
+            "van_ban_phe_duyet": "TEXT",
+            "sort_order": "INTEGER DEFAULT 0",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE CASCADE"
+        ]
+    },
     "nha_thau": {
-        "json_fields": ["thanh_vien_lien_danh"],  # Trường JSON không theo convention _list/cv_
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
@@ -140,13 +154,13 @@ SCHEMA_DINH_NGHIA = {
             "ten_nha_thau": "TEXT NOT NULL",
             "ten_viet_tat": "TEXT",
             "loai_nha_thau": "TEXT",
-            "thanh_vien_lien_danh": "TEXT",
             "ma_so_thue": "TEXT",
             "nguoi_dai_dien": "TEXT",
             "danh_xung": "TEXT DEFAULT 'Ông'",
             "so_dien_thoai": "TEXT",
             "email": "TEXT",
             "dia_chi": "TEXT",
+            "dia_chi_goc": "TEXT",
             "so_tai_khoan": "TEXT",
             "noi_mo_tai_khoan": "TEXT",
             "ma_ngan_hang": "TEXT",
@@ -154,6 +168,33 @@ SCHEMA_DINH_NGHIA = {
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
+    },
+    "nha_thau_lien_danh_thanh_vien": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "nha_thau_id": "TEXT NOT NULL",
+            "ten_nha_thau": "TEXT",
+            "ma_so_thue": "TEXT",
+            "vai_tro": "TEXT",
+            "nguoi_dai_dien": "TEXT",
+            "danh_xung": "TEXT",
+            "so_dien_thoai": "TEXT",
+            "email": "TEXT",
+            "dia_chi": "TEXT",
+            "dia_chi_goc": "TEXT",
+            "so_tai_khoan": "TEXT",
+            "noi_mo_tai_khoan": "TEXT",
+            "ma_ngan_hang": "TEXT",
+            "sort_order": "INTEGER DEFAULT 0",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE CASCADE"
+        ]
     },
     "goi_thau": {
         "columns": {
@@ -179,8 +220,6 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_to_chuc": "TEXT",
             "thoi_gian_bat_dau_to_chuc": "TEXT",
             "phan_lo": "TEXT DEFAULT 'Không'",
-            "phan_lo_list": "TEXT",
-            "tuy_chon_mua_them_list": "TEXT",
             "thoi_gian_dang_tai": "TEXT",
             "thoi_gian_dong_thau": "TEXT",
             "thoi_gian_mo_thau": "TEXT",
@@ -189,12 +228,8 @@ SCHEMA_DINH_NGHIA = {
             "ngay_quyet_dinh": "TEXT",
             "so_quyet_dinh_ket_qua": "TEXT",
             "ngay_quyet_dinh_ket_qua": "TEXT",
-            "gia_han_list": "TEXT",
-            "yeu_cau_lam_ro_list": "TEXT",
-            "tra_loi_lam_ro_list": "TEXT",
             "thoi_gian_goi_thau": "TEXT",
             "thoi_gian_hop_dong": "TEXT",
-            "awarded_phan_lo_list": "TEXT",
             "gia_tri_dam_bao_du_thau": "REAL",
             "hieu_luc_hsdt": "INTEGER",
             "hieu_luc_dam_bao_du_thau": "INTEGER",
@@ -223,9 +258,6 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_dong_thau": "thoiGianDongThau",
             "thoi_gian_mo_thau": "thoiGianMoThau",
             "thoi_gian_mo_ehsdxtc": "thoiGianMoEhsdxtc",
-            "gia_han_list": "giaHanList",
-            "yeu_cau_lam_ro_list": "yeuCauLamRoList",
-            "tra_loi_lam_ro_list": "traLoiLamRoList",
             "so_quyet_dinh": "soQuyetDinh",
             "ngay_quyet_dinh": "ngayQuyetDinh",
             "so_quyet_dinh_ket_qua": "soQuyetDinhKetQua",
@@ -238,13 +270,92 @@ SCHEMA_DINH_NGHIA = {
             "phuong_phap_danh_gia": "phuongPhapDanhGia",
             "trong_so_ky_thuat": "trongSoKyThuat",
             "is_thuoc": "isThuoc",
-            "awarded_phan_lo_list": "awardedPhanLoList",
             "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt",
             "so_bao_cao_tham_dinh_hsmt": "soBaoCaoThamDinhHsmt",
             "ngay_bao_cao_tham_dinh_hsmt": "ngayBaoCaoThamDinhHsmt",
             "so_to_trinh_hsmt": "soToTrinhHsmt",
             "ngay_trinh_hsmt": "ngayTrinhHsmt"
         }
+    },
+    "goi_thau_phan_lo": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "goi_thau_id": "TEXT NOT NULL",
+            "ma_phan_lo": "TEXT",
+            "ten_phan_lo": "TEXT",
+            "gia_tri_phan_lo": "REAL",
+            "bao_dam_du_thau": "REAL",
+            "thoi_gian_thuc_hien": "TEXT",
+            "nha_thau_trung_thau_id": "TEXT",
+            "gia_trung_thau": "REAL",
+            "thoi_gian_goi_thau": "TEXT",
+            "thoi_gian_hop_dong": "TEXT",
+            "sort_order": "INTEGER DEFAULT 0",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
+        ]
+    },
+    "goi_thau_tuy_chon_mua_them": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "goi_thau_id": "TEXT NOT NULL",
+            "hang_muc": "TEXT",
+            "don_vi": "TEXT",
+            "so_luong": "REAL",
+            "ty_le": "REAL",
+            "gia_tri_uoc_tinh": "REAL",
+            "sort_order": "INTEGER DEFAULT 0",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE"
+        ]
+    },
+    "goi_thau_gia_han": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "goi_thau_id": "TEXT NOT NULL",
+            "thoi_gian_dong_thau": "TEXT",
+            "ly_do_gia_han": "TEXT",
+            "sort_order": "INTEGER DEFAULT 0",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE"
+        ]
+    },
+    "goi_thau_lam_ro": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "goi_thau_id": "TEXT NOT NULL",
+            "loai": "TEXT NOT NULL CHECK(loai IN ('yeu_cau', 'tra_loi'))",
+            "thoi_gian": "TEXT",
+            "noi_dung": "TEXT",
+            "sort_order": "INTEGER DEFAULT 0",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE"
+        ]
     },
     "chuyen_gia": {
         "json_fields": [],  # cv_* fields được detect bằng prefix convention
@@ -371,7 +482,6 @@ SCHEMA_DINH_NGHIA = {
     # dữ liệu cập nhật sau này của bảng nha_thau. Đây là yêu cầu nghiệp vụ bắt buộc.
     # =============================================================================
     "thong_tin_mo_thau": {
-        "json_fields": ["thanh_vien_lien_danh"],  # Trường JSON không theo convention suffix/prefix
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT",
@@ -393,7 +503,6 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_thuc_hien": "TEXT",
             "ten_nha_thau": "TEXT",
             "loai_nha_thau": "TEXT",
-            "thanh_vien_lien_danh": "TEXT",
             "danh_gia_hop_le": "TEXT",
             "danh_gia_nang_luc": "TEXT",
             "danh_gia_ky_thuat": "TEXT",
@@ -433,7 +542,6 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_thuc_hien": "thoiGianThucHien",
             "ten_nha_thau": "tenNhaThau",
             "loai_nha_thau": "loaiNhaThau",
-            "thanh_vien_lien_danh": "thanhVienLienDanh",
             "danh_gia_hop_le": "danhGiaHopLe",
             "danh_gia_nang_luc": "danhGiaNangLuc",
             "danh_gia_ky_thuat": "danhGiaKyThuat",
@@ -448,6 +556,33 @@ SCHEMA_DINH_NGHIA = {
             "nguyen_nhan_khong_dat_nang_luc": "nguyenNhanKhongDatNangLuc",
             "nguyen_nhan_khong_dat_ky_thuat": "nguyenNhanKhongDatKyThuat"
         }
+    },
+    "thong_tin_mo_thau_lien_danh_thanh_vien": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "owner_id": "TEXT",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "thong_tin_mo_thau_id": "TEXT NOT NULL",
+            "ten_nha_thau": "TEXT",
+            "ma_so_thue": "TEXT",
+            "vai_tro": "TEXT",
+            "nguoi_dai_dien": "TEXT",
+            "danh_xung": "TEXT",
+            "so_dien_thoai": "TEXT",
+            "email": "TEXT",
+            "dia_chi": "TEXT",
+            "dia_chi_goc": "TEXT",
+            "so_tai_khoan": "TEXT",
+            "noi_mo_tai_khoan": "TEXT",
+            "ma_ngan_hang": "TEXT",
+            "sort_order": "INTEGER DEFAULT 0",
+            "sync_version": "INTEGER DEFAULT 0",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE"
+        ]
     },
     "to_chuc": {
         "columns": {

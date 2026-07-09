@@ -1,7 +1,32 @@
+import { normalizeTaxCodeForCompare, normalizeTaxCodeForLookup } from '../main_controller/domUtils.js';
+
+function normalizeOpeningCode(value) {
+    return normalizeTaxCodeForCompare(value);
+}
+
+function normalizeTaxCodeForStorage(value) {
+    const normalized = normalizeTaxCodeForLookup(value);
+    return /^\d{10}$|^\d{13}$|^\d{10}-\d{3}$/.test(normalized) ? normalized : '';
+}
+
 function findLatestContractorByCode(latestNhaThauList, code) {
+    const normalizedCode = normalizeOpeningCode(code);
+    if (!normalizedCode) return null;
     return latestNhaThauList.find(n =>
-        n.maNhaThau && n.maNhaThau.trim().toLowerCase() === String(code || '').trim().toLowerCase()
-    );
+        normalizeOpeningCode(n.maNhaThau) === normalizedCode ||
+        normalizeOpeningCode(n.maSoThue) === normalizedCode
+    ) || null;
+}
+
+function isJointVentureType(value) {
+    return String(value || '').trim().toLowerCase() === 'liên danh';
+}
+
+function isLeadMember(member, leadCode) {
+    const role = String(member?.vaiTro || '').trim().toLowerCase();
+    const normalizedLeadCode = normalizeOpeningCode(leadCode);
+    return (role.includes('đứng') && role.includes('đầu')) ||
+        (normalizedLeadCode && normalizeOpeningCode(member?.maSoThue) === normalizedLeadCode);
 }
 
 function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} }) {
@@ -10,12 +35,13 @@ function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} })
         maNhaThau,
         tenNhaThau,
         loaiNhaThau: 'Độc lập',
-        maSoThue: member.maSoThue || maNhaThau,
+        maSoThue: normalizeTaxCodeForStorage(member.maSoThue || maNhaThau),
         nguoiDaiDien: member.nguoiDaiDien || '',
         danhXung: member.danhXung || 'Ông',
         soDienThoai: member.soDienThoai || '',
         email: member.email || '',
         diaChi: member.diaChi || '',
+        diaChiGoc: member.diaChiGoc || '',
         soTaiKhoan: member.soTaiKhoan || '',
         noiMoTaiKhoan: member.noiMoTaiKhoan || '',
         maNganHang: member.maNganHang || '',
@@ -24,13 +50,28 @@ function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} })
     };
 }
 
+function mergeContractorLookupData(target, source = {}) {
+    if (!target || !source) return;
+    const normalizedTaxCode = normalizeTaxCodeForStorage(source.maSoThue || source.maNhaThau);
+    if (normalizedTaxCode) target.maSoThue = normalizedTaxCode;
+    if (source.tenNhaThau && (!target.tenNhaThau || String(target.tenNhaThau).startsWith('Thành viên đứng đầu'))) {
+        target.tenNhaThau = source.tenNhaThau;
+    }
+    if (source.tenVietTat && !target.tenVietTat) target.tenVietTat = source.tenVietTat;
+    if (source.diaChi && !target.diaChi) target.diaChi = source.diaChi;
+    if (source.diaChiGoc && !target.diaChiGoc) target.diaChiGoc = source.diaChiGoc;
+    if (source.nguoiDaiDien && !target.nguoiDaiDien) target.nguoiDaiDien = source.nguoiDaiDien;
+    if (source.soDienThoai && !target.soDienThoai) target.soDienThoai = source.soDienThoai;
+    if (source.email && !target.email) target.email = source.email;
+}
+
 function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row }) {
     let foundNt = findLatestContractorByCode(latestNhaThauList, maNhaThau);
 
-    if (loaiNhaThau === 'Độc lập') {
+    if (!isJointVentureType(loaiNhaThau)) {
         if (!foundNt) {
             foundNt = createIndependentContractor({
-                id: window.generateUUID(),
+                id: window.generateRecordId('nhathau'),
                 maNhaThau,
                 tenNhaThau
             });
@@ -41,27 +82,50 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
             const dbNt = model.state.nhathau.find(n => n.id === foundNt.id);
             if (dbNt) {
                 dbNt.loaiNhaThau = 'Độc lập';
+                mergeContractorLookupData(dbNt, { maSoThue: maNhaThau, tenNhaThau });
                 model.persistData('nhathau');
             }
+        } else {
+            const dbNt = model.state.nhathau.find(n => n.id === foundNt.id) || foundNt;
+            mergeContractorLookupData(dbNt, { maSoThue: maNhaThau, tenNhaThau });
+            model.persistData('nhathau');
         }
         return foundNt;
     }
 
     if (!foundNt) {
         foundNt = createIndependentContractor({
-            id: window.generateUUID(),
+            id: window.generateRecordId('nhathau'),
             maNhaThau,
-            tenNhaThau: row._leadMemberName || (`Thành viên đứng đầu ${maNhaThau}`)
+            tenNhaThau: row._leadMemberName || (`Thành viên đứng đầu ${maNhaThau}`),
+            member: {
+                ...(row._leadMemberLookupData || {}),
+                maSoThue: maNhaThau,
+                tenNhaThau: row._leadMemberName || (`Thành viên đứng đầu ${maNhaThau}`)
+            }
         });
         model.state.nhathau.push(foundNt);
         model.persistData('nhathau');
         latestNhaThauList.push(foundNt);
-    } else if (row._leadMemberName) {
+    } else if (row._leadMemberName && !isJointVentureType(foundNt.loaiNhaThau)) {
         const dbNt = model.state.nhathau.find(n => n.id === foundNt.id);
         if (dbNt) {
             dbNt.tenNhaThau = row._leadMemberName;
+            mergeContractorLookupData(dbNt, {
+                ...(row._leadMemberLookupData || {}),
+                maSoThue: maNhaThau,
+                tenNhaThau: row._leadMemberName
+            });
             model.persistData('nhathau');
         }
+    } else {
+        const dbNt = model.state.nhathau.find(n => n.id === foundNt.id) || foundNt;
+        mergeContractorLookupData(dbNt, {
+            ...(row._leadMemberLookupData || {}),
+            maSoThue: maNhaThau,
+            tenNhaThau: row._leadMemberName
+        });
+        model.persistData('nhathau');
     }
 
     (row._thanhVienLienDanh || []).forEach(member => {
@@ -69,14 +133,18 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
         let subNt = findLatestContractorByCode(latestNhaThauList, member.maSoThue);
         if (!subNt) {
             subNt = createIndependentContractor({
-                id: window.generateUUID(),
-                maNhaThau: member.maSoThue,
+                id: window.generateRecordId('nhathau'),
+                maNhaThau: member.maNhaThau || member.maSoThue,
                 tenNhaThau: member.tenNhaThau,
                 member
             });
             model.state.nhathau.push(subNt);
             model.persistData('nhathau');
             latestNhaThauList.push(subNt);
+        } else {
+            const dbSubNt = model.state.nhathau.find(n => n.id === subNt.id) || subNt;
+            mergeContractorLookupData(dbSubNt, member);
+            model.persistData('nhathau');
         }
     });
 
@@ -86,19 +154,38 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
 function collectJvMembers(row, foundNt, maNhaThau) {
     const bidJvMembers = [{
         tenNhaThau: row._leadMemberName || foundNt.tenNhaThau || `Thành viên đứng đầu ${maNhaThau}`,
-        maSoThue: foundNt ? (foundNt.maSoThue || '') : '',
-        vaiTro: 'Đứng đầu liên danh'
+        maSoThue: normalizeTaxCodeForStorage(foundNt?.maSoThue || maNhaThau),
+        vaiTro: 'Đứng đầu liên danh',
+        nguoiDaiDien: row._leadMemberLookupData?.nguoiDaiDien || '',
+        danhXung: row._leadMemberLookupData?.danhXung || 'Ông',
+        soDienThoai: row._leadMemberLookupData?.soDienThoai || '',
+        email: row._leadMemberLookupData?.email || '',
+        diaChi: row._leadMemberLookupData?.diaChi || foundNt?.diaChi || '',
+        diaChiGoc: row._leadMemberLookupData?.diaChiGoc || foundNt?.diaChiGoc || '',
+        tenVietTat: row._leadMemberLookupData?.tenVietTat || foundNt?.tenVietTat || ''
     }];
 
-    const subMembers = (row._thanhVienLienDanh || []).filter(m =>
-        String(m.maSoThue).toLowerCase().trim() !== String(maNhaThau).toLowerCase().trim()
-        && m.vaiTro !== 'Đứng đầu liên danh'
-    );
-    subMembers.forEach(m => {
+    const rowMembers = Array.isArray(row._thanhVienLienDanh) ? row._thanhVienLienDanh : [];
+    const fallbackMembers = Array.isArray(foundNt?.thanhVienLienDanh) ? foundNt.thanhVienLienDanh : [];
+    const sourceMembers = rowMembers.length > 0 ? rowMembers : fallbackMembers;
+    const seenCodes = new Set([normalizeOpeningCode(maNhaThau), normalizeOpeningCode(bidJvMembers[0].maSoThue)].filter(Boolean));
+
+    sourceMembers.forEach(m => {
+        if (isLeadMember(m, maNhaThau)) return;
+        const normalizedMemberCode = normalizeOpeningCode(m.maSoThue);
+        if (!normalizedMemberCode || seenCodes.has(normalizedMemberCode)) return;
+        seenCodes.add(normalizedMemberCode);
         bidJvMembers.push({
             tenNhaThau: m.tenNhaThau,
-            maSoThue: m.maSoThue,
-            vaiTro: 'Thành viên liên danh'
+            maSoThue: normalizeTaxCodeForStorage(m.maSoThue),
+            vaiTro: 'Thành viên liên danh',
+            nguoiDaiDien: m.nguoiDaiDien || '',
+            danhXung: m.danhXung || 'Ông',
+            soDienThoai: m.soDienThoai || '',
+            email: m.email || '',
+            diaChi: m.diaChi || '',
+            diaChiGoc: m.diaChiGoc || '',
+            tenVietTat: m.tenVietTat || ''
         });
     });
 
@@ -136,20 +223,54 @@ export function validateOpeningRows(rows) {
     return { valid: !hasInvalid, invalidInputs };
 }
 
+export function validateOpeningJointVentureMembers(rows) {
+    const invalidInputs = [];
+    let hasInvalid = false;
+
+    rows.forEach(row => {
+        const leadInput = row.querySelector('.mt-ma-nha-thau');
+        const seen = new Set();
+        let rowInvalid = false;
+        const remember = code => {
+            const normalized = normalizeOpeningCode(code);
+            if (!normalized) return;
+            if (seen.has(normalized)) {
+                rowInvalid = true;
+                return;
+            }
+            seen.add(normalized);
+        };
+
+        remember(leadInput?.value || '');
+        (row._thanhVienLienDanh || []).forEach(member => remember(member.maSoThue));
+
+        if (rowInvalid) {
+            hasInvalid = true;
+            if (leadInput) invalidInputs.push(leadInput);
+            row.classList.add('invalid');
+        } else {
+            row.classList.remove('invalid');
+        }
+    });
+
+    return { valid: !hasInvalid, invalidInputs };
+}
+
 export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecial }) {
     const latestNhaThauList = model.getLatestNhaThau();
 
-    return rows.map(row => {
+    return Array.from(rows || []).map(row => {
         const id = row.getAttribute('data-id');
         const maNhaThau = row.querySelector('.mt-ma-nha-thau')?.value.trim() || '';
         const tenNhaThau = row.querySelector('.mt-ten-nha-thau')?.value.trim() || '';
         const loaiNhaThau = row.querySelector('.mt-loai-nha-thau')?.value || 'Độc lập';
         const foundNt = ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row });
-        const resolvedTenNhaThau = loaiNhaThau === 'Liên danh'
+        const isJointVenture = isJointVentureType(loaiNhaThau);
+        const resolvedTenNhaThau = isJointVenture
             ? tenNhaThau
             : (foundNt ? foundNt.tenNhaThau : tenNhaThau);
         const tyLeGiamGiaRaw = row.querySelector('.mt-ty-le-giam-gia')?.value || '0';
-        const bidJvMembers = loaiNhaThau === 'Liên danh'
+        const bidJvMembers = isJointVenture
             ? collectJvMembers(row, foundNt, maNhaThau)
             : [];
 

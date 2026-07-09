@@ -16,6 +16,7 @@ from services.auth_service import (
     check_rate_limit,
     generate_otp
 )
+from helpers_py.id_utils import generate_record_id
 from helpers_py.username_validator import validate_username
 
 async def register_api(request):
@@ -51,7 +52,7 @@ async def register_api(request):
         if cursor.fetchone():
             return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
             
-        user_uuid = "user-" + str(uuid.uuid4())
+        user_uuid = generate_record_id("tai_khoan")
         code = generate_otp()
         expiry = int(time.time()) + 600
         

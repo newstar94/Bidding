@@ -384,7 +384,7 @@ export function setupRBACEvents() {
             // Now, make sure they have a permission matrix row
             if (!this.model.state.permissionmatrix.some(m => m.empId === empIdInState)) {
                 this.model.state.permissionmatrix.push({
-                    id: window.generateUUID(),
+                    id: window.generateRecordId('permissionmatrix'),
                     empId: empIdInState,
                     kehoach: 'view',
                     goithau: 'view',
@@ -442,7 +442,7 @@ export function setupRBACEvents() {
 
             const data = {
                 orgId: orgId,
-                id: id || window.generateUUID(),
+                id: id || window.generateRecordId('custompaperstatuses'),
                 name: name,
                 color: color
             };

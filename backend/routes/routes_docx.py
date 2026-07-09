@@ -15,6 +15,7 @@ from helpers import (
     VietnameseFloat,
     OrgPermissionError
 )
+from helpers_py.id_utils import generate_record_id
 import custom_exporter
 import services.docx_service as docx_service
 from helpers_py.word_defaults import ensure_default_word_mappings
@@ -1174,7 +1175,7 @@ async def save_word_mapping_api(request):
                 """, (source_table, source_column, mo_ta, mapping_id))
             else:
                 # Insert new
-                mapping_id = "wmp-" + str(uuid.uuid4())[:8]
+                mapping_id = generate_record_id("cau_hinh_bien_word")
                 cursor.execute("""
                     INSERT INTO cau_hinh_bien_word (id, ten_bien, source_table, source_column, mo_ta, owner_id)
                     VALUES (?, ?, ?, ?, ?, ?)

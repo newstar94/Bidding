@@ -6,6 +6,7 @@ from helpers import (
     _org_cache_invalidate_by_user_id
 )
 import custom_exporter
+from helpers_py.sync_mapper import attach_child_rows, attach_child_rows_to_items
 
 def to_snake_case(s):
     import re
@@ -107,6 +108,7 @@ def build_plan_context(plan_id, user_id, org_name):
         conn.close()
         raise ValueError(f"Plan with id {plan_id} not found")
     plan = parse_json_fields(dict(row_plan))
+    attach_child_rows(cursor, "ke_hoach_lcnt", plan, owner_id=org_name, naming="snake")
     
     investor_name = '--'
     investor_address = ''
@@ -136,6 +138,7 @@ def build_plan_context(plan_id, user_id, org_name):
 
     cursor.execute("SELECT * FROM goi_thau WHERE ke_hoach_id = ? AND owner_id = ?", (plan_id, org_name))
     goi_thau_list = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
+    attach_child_rows_to_items(cursor, "goi_thau", goi_thau_list, owner_id=org_name, naming="snake")
     for gt in goi_thau_list:
         extract_evaluation_dates(gt)
     conn.close()
@@ -165,6 +168,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
         conn.close()
         raise ValueError(f"Package with id {package_id} not found")
     pkg = parse_json_fields(dict(row_pkg))
+    attach_child_rows(cursor, "goi_thau", pkg, owner_id=org_name, naming="snake")
     extract_evaluation_dates(pkg)
 
     plan = {}
@@ -176,6 +180,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
         row_plan = cursor.fetchone()
         if row_plan:
             plan = parse_json_fields(dict(row_plan))
+            attach_child_rows(cursor, "ke_hoach_lcnt", plan, owner_id=org_name, naming="snake")
             if plan.get('chu_dau_tu_id'):
                 cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ?", (plan['chu_dau_tu_id'],))
                 row_inv = cursor.fetchone()
@@ -201,6 +206,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
 
     cursor.execute("SELECT * FROM thong_tin_mo_thau WHERE goi_thau_id = ? AND owner_id = ?", (package_id, org_name))
     bids = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
+    attach_child_rows_to_items(cursor, "thong_tin_mo_thau", bids, owner_id=org_name, naming="snake")
     enrich_bids_with_contractor_fields(cursor, bids)
 
     # Fetch all versions of the package
@@ -208,6 +214,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
     root_id = id_goc if (id_goc and id_goc.strip()) else package_id
     cursor.execute("SELECT * FROM goi_thau WHERE owner_id = ? AND (id_goc = ? OR id = ?) ORDER BY CAST(phien_ban AS INTEGER) ASC", (org_name, root_id, root_id))
     goi_thau_versions = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
+    attach_child_rows_to_items(cursor, "goi_thau", goi_thau_versions, owner_id=org_name, naming="snake")
     for v in goi_thau_versions:
         extract_evaluation_dates(v)
 

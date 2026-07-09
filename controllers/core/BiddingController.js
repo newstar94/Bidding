@@ -451,7 +451,10 @@ export class BiddingController {
             }
         } else if (!this._initialSyncStarted) {
             this._initialSyncStarted = true;
-            const startBackgroundSync = () => this.scheduleBackgroundSync ? this.scheduleBackgroundSync(500) : this.forceSyncData(true);
+            // Refresh from the server once per page load even when IndexedDB has cached data.
+            // A browser hard reload does not clear IndexedDB, so delta-only sync can keep stale
+            // nested package lists if their parent record version did not change.
+            const startBackgroundSync = () => this.forceSyncData(true, true);
             if ('requestIdleCallback' in window) {
                 requestIdleCallback(startBackgroundSync, { timeout: 2000 });
             } else {

@@ -478,7 +478,7 @@ export async function handleKeHoachSubmit(e) {
             oldKh.updatedAt = this.model.getCurrentDateTimeString();        }
     } else {
         this.tempPlanAction = 'create';
-        const planId = window.generateUUID();
+        const planId = window.generateRecordId('kehoach');
         targetPlanId = planId;
         this.tempPlanData.id = planId;
 
@@ -827,7 +827,7 @@ export async function savePlanBreakdown() {
             const relatedPlans = this.model.state.kehoach.filter(k => (k.rootId || k.id) === rootId);
             const maxVersion = Math.max(...relatedPlans.map(k => parseInt(k.phienBan) || 0));
             const nextVersion = String(maxVersion + 1).padStart(2, '0');
-            const newId = window.generateUUID();
+            const newId = window.generateRecordId('kehoach');
             finalPlanId = newId;
 
             relatedPlans.forEach(k => { k.isLatest = 0; });
@@ -851,7 +851,7 @@ export async function savePlanBreakdown() {
             const activeUserId = this.model.state.activeuser.id;
             if (activeUserId) {
                 await this.model.addRecord('assignments', {
-                    id: window.generateUUID(),
+                    id: window.generateRecordId('assignments'),
                     empId: activeUserId,
                     targetId: newId,
                     type: 'kehoach'
@@ -861,7 +861,7 @@ export async function savePlanBreakdown() {
             // Duplicate packages and bids from the old plan version to the new plan version
             const oldPackages = this.model.state.goithau.filter(gt => gt.keHoachId === oldKh.id);
             oldPackages.forEach(gt => {
-                const newGtId = window.generateUUID();
+                const newGtId = window.generateRecordId('goithau');
                 this.model.state.goithau.push({
                     ...gt,
                     id: newGtId,
@@ -874,7 +874,7 @@ export async function savePlanBreakdown() {
                     relatedBids.forEach(b => {
                         this.model.state.thongtinmothau.push({
                             ...b,
-                            id: window.generateUUID(),
+                            id: window.generateRecordId('assignments'),
                             goiThauId: newGtId
                         });
                     });
@@ -904,7 +904,7 @@ export async function savePlanBreakdown() {
         const activeUserId = this.model.state.activeuser.id;
         if (activeUserId) {
             await this.model.addRecord('assignments', {
-                id: window.generateUUID(),
+                id: window.generateRecordId('assignments'),
                 empId: activeUserId,
                 targetId: finalPlanId,
                 type: 'kehoach'

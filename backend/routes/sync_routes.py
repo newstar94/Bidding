@@ -1,6 +1,5 @@
 import json
 import re
-import uuid
 import asyncio
 import traceback
 from datetime import datetime
@@ -25,13 +24,16 @@ from helpers import (
     _assert_safe_table  # [SEC-1] Guard tường minh chống SQL Injection do thiếu whitelist
 )
 from helpers_py.sync_mapper import (
+    attach_child_rows_to_items,
     canonicalize_payload_item,
     db_column_for_json_key,
     get_payload_value,
     json_key_for_column,
     map_db_to_json,
+    save_child_payloads,
 )
 from helpers_py.sync_validation import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
+from helpers_py.id_utils import generate_record_id
 
 # Global dictionary to store active WebSocket connections
 active_connections = {}  # owner_id -> set of websocket instances
@@ -366,6 +368,8 @@ async def sync_api(request):
         updated_versioned_tables = set()
         orphaned_ids = []  # Danh sách record bị từ chối do FK (parent đã bị xóa) — gửi về client để xóa khỏi IndexedDB
         
+        sync_item_errors = []
+
         # Pass 1: Validation
         validation_errors = []
         incoming_paper_status_names = {
@@ -496,7 +500,7 @@ async def sync_api(request):
                         (id, owner_id, owner_type, name, color, sync_version, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    str(uuid.uuid4()),
+                    generate_record_id("trang_thai_ho_so_giay"),
                     org_name,
                     owner_type,
                     status_name,
@@ -598,7 +602,9 @@ async def sync_api(request):
                     # Để tránh lỗi UNIQUE constraint failed khi chèn/cập nhật phan_cong_nhan_su hoặc ma_tran_phan_quyen
                     # và xóa phân công cũ của mục tiêu này để tránh trùng lặp khi đổi chuyên viên phụ trách
                     if not db_row_data.get("id"):
-                        db_row_data["id"] = str(uuid.uuid4())
+                        db_row_data["id"] = generate_record_id(table_name)
+                    if not item.get("id"):
+                        item["id"] = db_row_data["id"]
 
                     if table_name == "phan_cong_nhan_su":
                         # [LG-8] Nghiep vu: 1 muc tieu (id_muc_tieu + loai_doi_tuong) chi co DUY NHAT 1 nguoi phu trach.
@@ -628,6 +634,15 @@ async def sync_api(request):
                     else:
                         sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) ON CONFLICT(id) DO NOTHING"
                     cursor.execute(sql, tuple(db_row_data.values()))
+                    save_child_payloads(
+                        cursor,
+                        table_name,
+                        item,
+                        org_name,
+                        owner_type,
+                        batch_sync_version,
+                        current_time,
+                    )
                     
                     # Ghi Audit Log cho UPSERT
                     item_id = get_clean_id(table_name, item.get('id'))
@@ -711,7 +726,12 @@ async def sync_api(request):
                             pass
                     else:
                         log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
-                    
+                        sync_item_errors.append({
+                            "table": table_name,
+                            "id": item.get("id"),
+                            "message": str(item_err)
+                        })
+
         # 3. Xử lý xóa bản ghi tường minh được gửi từ Client (Explicit Deletions)
         deletions = data.get("deletions", [])
         if isinstance(deletions, list):
@@ -746,6 +766,9 @@ async def sync_api(request):
         response_data = {"status": "success", "timestamp": current_time, "syncVersion": current_sync_version}
         if orphaned_ids:
             response_data["orphanedIds"] = orphaned_ids  # Client sẽ xóa các record này khỏi IndexedDB
+        if sync_item_errors:
+            response_data["status"] = "error"
+            response_data["errors"] = sync_item_errors
         if client_mutation_id:
             cursor.execute(
                 "INSERT OR REPLACE INTO sync_mutations (owner_id, client_mutation_id, response_json) VALUES (?, ?, ?)",
@@ -858,6 +881,7 @@ async def get_all_data_api(request):
                 if item.get(list_key) is None:
                     item[list_key] = []
             kehoach.append(item)
+        attach_child_rows_to_items(cursor, "ke_hoach_lcnt", kehoach, owner_id=org_name)
             
         # 3. Chuyengia
         chuyengia = []
@@ -875,6 +899,7 @@ async def get_all_data_api(request):
         nhathau = []
         for row in query_table("nha_thau"):
             nhathau.append(map_db_to_json("nha_thau", dict(row)))
+        attach_child_rows_to_items(cursor, "nha_thau", nhathau, owner_id=org_name)
             
         # 5. Goithau
         goithau = []
@@ -897,6 +922,7 @@ async def get_all_data_api(request):
                 if item.get(list_key) is None:
                     item[list_key] = []
             goithau.append(item)
+        attach_child_rows_to_items(cursor, "goi_thau", goithau, owner_id=org_name)
             
         # 6. Hopdong — dùng batch query để tránh N+1
         hopdong = []
@@ -935,6 +961,7 @@ async def get_all_data_api(request):
         thongtinmothau = []
         for row in query_table("thong_tin_mo_thau"):
             thongtinmothau.append(map_db_to_json("thong_tin_mo_thau", dict(row)))
+        attach_child_rows_to_items(cursor, "thong_tin_mo_thau", thongtinmothau, owner_id=org_name)
 
         # 10. Permission Matrix - [MỚI] Đồng bộ phân quyền nhân viên từ server
         permissionmatrix = []
@@ -1223,6 +1250,8 @@ async def paginate_api(request):
                 item["allVersions"] = versions_by_root.get(root_val, [])
                 
             items.append(item)
+        if table_name in ["ke_hoach_lcnt", "goi_thau", "nha_thau", "thong_tin_mo_thau"]:
+            attach_child_rows_to_items(cursor, table_name, items, owner_id=org_name)
             
         conn.close()
         return JSONResponse({

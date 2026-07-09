@@ -2,6 +2,7 @@ import { authFetchDownload, initCustomSelect } from '../view_helpers.js';
 import { bindCurrencyElement } from '../../../controllers/main_controller/domUtils.js';
 import { getAppController } from '../../../controllers/main_controller/controllerRef.js';
 import { setFieldFeedback } from '../../../controllers/main_controller/formStateUtils.js';
+import { validateExtensionRows } from '../../../controllers/workflows/packageValidation.js';
 import { setJvData } from './jvDataStore.js';
 
 export function checkBidQualified(b) {
@@ -71,6 +72,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
 
     // Calculate tabs & select current active tab first to ensure correct button visibility checks
     const is1G2T = gt.phuongThucLuaChon === 'Một giai đoạn hai túi hồ sơ';
+    const inviteComparisonLabel = is1G2T ? 'Ngày mời đối chiếu tài liệu/Thương thảo' : 'Ngày mời đối chiếu tài liệu';
+    const comparisonLabel = is1G2T ? 'Ngày đối chiếu tài liệu/Thương thảo' : 'Ngày đối chiếu tài liệu';
     let isTechEvalSaved = false;
     let isFinEvalSaved = false;
     let isEvalSaved1G1T = false;
@@ -740,7 +743,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 const nextVersion = String(maxVersion + 1).padStart(2, '0');
 
                                 relatedGts.forEach(g => { g.isLatest = 0; });
-                                const newGtId = window.generateUUID();
+                                const newGtId = window.generateRecordId('goithau');
                                 finalId = newGtId;
 
                                 if (!this.model.state.selectedPackageVersion) {
@@ -783,7 +786,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                     const oldBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(id));
                                     const newBids = oldBids.map(b => ({
                                         ...b,
-                                        id: window.generateUUID(),
+                                        id: window.generateRecordId('thongtinmothau'),
                                         goiThauId: newGtId
                                     }));
                                     this.model.state.thongtinmothau = [...this.model.state.thongtinmothau, ...newBids];
@@ -1056,6 +1059,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         const giaHanList = appController?._collectGiaHanRows() || [];
                         const yeuCauLamRoList = appController?._collectYeuCauLamRoRows() || [];
                         const traLoiLamRoList = appController?._collectTraLoiLamRoRows() || [];
+                        const extensionInputRows = Array.from(document.querySelectorAll('#gt-giahan-tbody tr')).map((tr) => ({
+                            timeStr: tr.querySelector('.gh-time-input')?.value.trim() || '',
+                            reason: tr.querySelector('.gh-reason-input')?.value.trim() || ''
+                        }));
+                        const extensionValidation = validateExtensionRows(gt.thoiGianDongThau || '', extensionInputRows);
+                        if (!extensionValidation.valid) {
+                            await this.customAlert('Dữ liệu không hợp lệ', extensionValidation.error, 'alert-triangle');
+                            appController?.validateGiaHanRealtime?.();
+                            return;
+                        }
 
                         gt.giaHanList = giaHanList;
                         gt.yeuCauLamRoList = yeuCauLamRoList;
@@ -1138,11 +1151,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                         <div class="form-group evaluation-extra-field" style="display: none;">
-                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày mời đối chiếu tài liệu/Thương thảo</label>
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">${inviteComparisonLabel}</label>
                             <input type="text" id="danhgiahsdt-ngay-moi-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
                         <div class="form-group evaluation-extra-field" style="display: none;">
-                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày đối chiếu tài liệu/Thương thảo</label>
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">${comparisonLabel}</label>
                             <input type="text" id="danhgiahsdt-ngay-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
                     </div>
@@ -1209,11 +1222,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
                         <div class="form-group evaluation-extra-field" style="display: none;">
-                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày mời đối chiếu tài liệu/Thương thảo</label>
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">${inviteComparisonLabel}</label>
                             <input type="text" id="danhgiahsdt-ngay-moi-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
                         <div class="form-group evaluation-extra-field" style="display: none;">
-                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">Ngày đối chiếu tài liệu/Thương thảo</label>
+                            <label style="font-weight:700; font-size:0.85rem; color:var(--text-main); display:block; margin-bottom:6px;">${comparisonLabel}</label>
                             <input type="text" id="danhgiahsdt-ngay-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
                     </div>
@@ -2765,7 +2778,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 // Helper: thêm hàng mới vào bảng nhập nhà thầu
                 const addCdtrugRow = (bidData = {}) => {
                     if (!cdtrugTbody) return;
-                    const rowId = bidData.id || window.generateUUID();
+                    const rowId = bidData.id || window.generateRecordId('thongtinmothau');
                     const hasPhanLo = gt.phanLo === 'Có';
                     const lotList = gt.phanLoList || [];
                     const lotOptions = (Array.isArray(lotList) ? lotList : (typeof lotList === 'string' ? JSON.parse(lotList || '[]') : []))
@@ -2994,7 +3007,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 );
 
                                 if (!foundNt && tenNhaThau) {
-                                    const newNtId = window.generateUUID();
+                                    const newNtId = window.generateRecordId('nhathau');
                                     foundNt = {
                                         id: newNtId,
                                         rootId: newNtId,
@@ -3235,7 +3248,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     const tbody = document.getElementById('approve-bidders-tbody');
                     if (!tbody) return;
 
-                    const newId = window.generateUUID();
+                    const newId = window.generateRecordId('thongtinmothau');
                     const tr = document.createElement('tr');
                     tr.setAttribute('data-approve-bid-id', newId);
                     tr.setAttribute('data-is-qualified', 'true');

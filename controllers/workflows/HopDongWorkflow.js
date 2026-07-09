@@ -545,7 +545,7 @@ export async function handleHopDongSubmit(e) {
 
         if (isNewVersion) {
             versions.forEach(h => { h.isLatest = 0; });
-            data.id = window.generateUUID();
+            data.id = window.generateRecordId('hopdong');
             data.rootId = rootId;
             data.phienBan = nextVerStr;
             data.phienBan = nextVerStr;
@@ -562,7 +562,7 @@ export async function handleHopDongSubmit(e) {
             this.model.state.hopdong[idx] = data;
         }
     } else {
-        const newId = window.generateUUID();
+        const newId = window.generateRecordId('hopdong');
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';
@@ -578,7 +578,7 @@ export async function handleHopDongSubmit(e) {
             await this.model.deleteRecord('assignments', oldA.id);
         }
         if (assignedEmpId) {
-            await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: finalHdId, type: 'hopdong' });
+            await this.model.addRecord('assignments', { id: window.generateRecordId('assignments'), empId: assignedEmpId, targetId: finalHdId, type: 'hopdong' });
         }
     }
 

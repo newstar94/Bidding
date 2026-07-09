@@ -184,6 +184,8 @@ async def index(request):
     Tối ưu hóa ETag browser caching.
     """
     html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    html_content = html_content.replace("__GOOGLE_CLIENT_ID__", google_client_id)
     etag = f'"{hashlib.md5(html_content.encode("utf-8")).hexdigest()}"'
 
     if_none_match = request.headers.get("if-none-match")

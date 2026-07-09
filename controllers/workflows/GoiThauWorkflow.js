@@ -232,6 +232,9 @@ export function editGoiThau(id, isReadOnly = false) {
     const setupCheckboxListeners = (tbodyId, selectName, roleName, jobName, otherTbodyId) => {
         const tbody = document.getElementById(tbodyId);
         const checkboxes = tbody.querySelectorAll(`input[name="${selectName}"]`);
+        const hasAnotherSelectedExpert = (currentCheckbox) => Array.from(checkboxes)
+            .some(input => input !== currentCheckbox && input.checked);
+
         checkboxes.forEach(cb => {
             // Enforce single leader in each team on role change
             const row = cb.closest('tr');
@@ -260,6 +263,15 @@ export function editGoiThau(id, isReadOnly = false) {
                 if (roleSelect) {
                     if (newChecked) {
                         roleSelect.disabled = false;
+                        if (!hasAnotherSelectedExpert(cb)) {
+                            const leaderOption = Array.from(roleSelect.options).find(option => option.value === 'Tổ trưởng')
+                                || roleSelect.options[1]
+                                || roleSelect.options[0];
+                            if (leaderOption) {
+                                roleSelect.value = leaderOption.value;
+                                roleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }
                     } else {
                         roleSelect.value = 'Tổ viên';
                         roleSelect.disabled = true;
@@ -631,7 +643,8 @@ export function editGoiThau(id, isReadOnly = false) {
             btn.disabled = true;
         });
 
-        if (submitBtn) submitBtn.style.display = 'none';
+        const formSubmitBtn = form.querySelector('button[type="submit"]');
+        if (formSubmitBtn) formSubmitBtn.style.display = 'none';
 
 
         document.querySelectorAll('#phanlo-tbody input, #phanlo-tbody select, #phanlo-tbody button, #tuychonmuathem-tbody input, #tuychonmuathem-tbody select, #tuychonmuathem-tbody button').forEach(el => {
@@ -1088,7 +1101,7 @@ export async function handleGoiThauSubmit(e) {
             const nextVersion = String(maxVersion + 1).padStart(2, '0');
 
             relatedGts.forEach(g => { g.isLatest = 0; });
-            const newGtId = window.generateUUID();
+            const newGtId = window.generateRecordId('goithau');
             finalGtId = newGtId;
 
             if (!this.model.state.selectedPackageVersion) {
@@ -1127,7 +1140,7 @@ export async function handleGoiThauSubmit(e) {
                 const oldBids = this.model.state.thongtinmothau.filter(b => String(b.goiThauId) === String(id));
                 const newBids = oldBids.map(b => ({
                     ...b,
-                    id: window.generateUUID(),
+                    id: window.generateRecordId('assignments'),
                     goiThauId: newGtId
                 }));
                 this.model.state.thongtinmothau = [...this.model.state.thongtinmothau, ...newBids];
@@ -1136,7 +1149,7 @@ export async function handleGoiThauSubmit(e) {
 
             const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
             if (assignedEmpId) {
-                await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
+                await this.model.addRecord('assignments', { id: window.generateRecordId('assignments'), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
             }
         } else {
             oldGt.maGoiThau = inputCode;
@@ -1149,11 +1162,11 @@ export async function handleGoiThauSubmit(e) {
                 await this.model.deleteRecord('assignments', oldA.id);
             }
             if (assignedEmpId) {
-                await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: id, type: 'goithau' });
+                await this.model.addRecord('assignments', { id: window.generateRecordId('assignments'), empId: assignedEmpId, targetId: id, type: 'goithau' });
             }
         }
     } else {
-        const newGtId = window.generateUUID();
+        const newGtId = window.generateRecordId('goithau');
         finalGtId = newGtId;
         const formEl = document.getElementById('form-goithau');
         const rebidFrom = formEl ? formEl.getAttribute('data-rebid-from') : null;
@@ -1169,11 +1182,11 @@ export async function handleGoiThauSubmit(e) {
 
         const assignedEmpId = document.getElementById('gt-nhanvienphutrach').value;
         if (assignedEmpId) {
-            await this.model.addRecord('assignments', { id: window.generateUUID(), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
+            await this.model.addRecord('assignments', { id: window.generateRecordId('assignments'), empId: assignedEmpId, targetId: newGtId, type: 'goithau' });
         }
     }
 
-    this.model.persistData('goithau');
+    await this.model.persistData('goithau');
 
     if (oldPlanId) {
         this.recalculatePlanTotal(oldPlanId);
@@ -1193,9 +1206,17 @@ export async function handleGoiThauSubmit(e) {
     if (hasModalReturnState('goithau-detail') && finalGtId) {
         updateModalReturnAction(finalGtId);
     }
+    const syncResult = await this.autoSync();
+    if (syncResult && syncResult.ok === false) {
+        await this.view.customAlert(
+            'Lỗi đồng bộ',
+            'Dữ liệu đã được lưu tạm trên máy nhưng chưa ghi được vào cơ sở dữ liệu. Vui lòng kiểm tra lỗi đồng bộ và thử lưu lại.',
+            'alert-triangle'
+        );
+        return;
+    }
     this.closeModal('modal-goithau');
     this.view.renderGoiThauTable();
-    this.autoSync();
 
     if (this.packageWizard.active) {
         if (this.packageWizard.currentCount < this.packageWizard.totalCount) {

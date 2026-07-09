@@ -2,7 +2,10 @@
   "name": "biddingflow-frontend",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
+    "test": "node --test controllers/**/*.test.mjs views/**/*.test.mjs",
+    "check": "npm test && npm run build",
     "build": "vite build",
     "build:secure": "vite build --mode secure"
   },

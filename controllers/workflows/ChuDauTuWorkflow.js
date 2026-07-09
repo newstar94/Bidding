@@ -1,3 +1,6 @@
+import { normalizeTaxCodeForLookup } from '../main_controller/domUtils.js';
+import { applyRawAddressToAddressControls } from '../utils/PartnerHelpers.js';
+
 export async function deleteChuDauTu(id) {
     const hasPlans = this.model.state.kehoach.some(k => k.chuDauTuId === id);
     if (hasPlans) {
@@ -32,6 +35,7 @@ export async function editChuDauTu(id) {
         this.switchTab('chudautu', 'chinhsua', true);
         document.getElementById('modal-chudautu-title').textContent = 'Cập nhật Chủ đầu tư';
         const cdt = this.model.state.chudautu.find(c => c.id === id);
+        form.dataset.diaChiGoc = cdt.diaChiGoc || '';
         document.getElementById('form-chudautu-id').value = cdt.id;
         document.getElementById('cdt-ma').value = cdt.maChuDauTu;
         document.getElementById('cdt-mst').value = cdt.maSoThue || '';
@@ -60,6 +64,7 @@ export async function editChuDauTu(id) {
         this.switchTab('chudautu', 'taomoi', true);
         document.getElementById('modal-chudautu-title').textContent = 'Thêm Chủ đầu tư mới';
         form.reset();
+        form.dataset.diaChiGoc = '';
         document.getElementById('form-chudautu-id').value = '';
         document.getElementById('cdt-coquanchuquan').value = '';
         document.getElementById('cdt-diachichitiet').value = '';
@@ -73,7 +78,9 @@ export async function editChuDauTu(id) {
                 if (!val) return;
                 try {
                     mstInput.style.opacity = '0.7';
-                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(val)}`);
+                    const lookupCode = normalizeTaxCodeForLookup(val);
+                    if (!lookupCode) return;
+                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(lookupCode)}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data && data.name) {
@@ -81,9 +88,13 @@ export async function editChuDauTu(id) {
                             if (nameInput) {
                                 nameInput.value = data.name;
                             }
-                            const addrInput = document.getElementById('cdt-diachichitiet');
-                            if (addrInput) {
-                                addrInput.value = data.address || '';
+                            if (data.address) {
+                                form.dataset.diaChiGoc = data.address;
+                                await applyRawAddressToAddressControls(data.address, {
+                                    detailInputId: 'cdt-diachichitiet',
+                                    provinceSelectId: 'cdt-tinh',
+                                    wardSelectId: 'cdt-xa'
+                                });
                             }
                             const shortInput = document.getElementById('cdt-tenviettat');
                             if (shortInput) {
@@ -235,6 +246,7 @@ export async function handleChuDauTuSubmit(e) {
         chucVuDaiDien: document.getElementById('cdt-chucvudaidien').value.trim(),
         danhXung: document.getElementById('cdt-danhxung').value,
         diaChi: diaChiCombined,
+        diaChiGoc: form.dataset.diaChiGoc || '',
         soDienThoai: document.getElementById('cdt-sdt').value.trim(),
         soTaiKhoan: document.getElementById('cdt-sotaikhoan').value.trim(),
         noiMoTaiKhoan: document.getElementById('cdt-noimotaikhoan').value.trim(),
@@ -258,7 +270,7 @@ export async function handleChuDauTuSubmit(e) {
 
         if (isNewVersion) {
             versions.forEach(c => { c.isLatest = 0; });
-            data.id = window.generateUUID();
+            data.id = window.generateRecordId('chudautu');
             data.rootId = rootId;
             data.phienBan = nextVerStr;
             data.phienBan = nextVerStr;
@@ -278,7 +290,7 @@ export async function handleChuDauTuSubmit(e) {
             this.model.state.chudautu[idx] = data;
         }
     } else {
-        const newId = window.generateUUID();
+        const newId = window.generateRecordId('chudautu');
         data.id = newId;
         data.rootId = newId;
         data.phienBan = '00';

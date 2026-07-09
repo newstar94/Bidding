@@ -6,6 +6,7 @@ import json
 import re
 from datetime import datetime
 from helpers import database
+from helpers_py.address_parser import parse_vietnam_address_to_internal
 
 def extract_clean_tax_code(val):
     if not val:
@@ -86,11 +87,19 @@ def run_partner_lookup_worker():
             conn = database.get_connection()
             cursor = conn.cursor()
             
-            # Fetch contractors with tax code or contractor code but missing details
+            # Fetch contractors with tax code or contractor code but missing details,
+            # or records whose tax code still contains a bidding-code prefix.
             cursor.execute("""
                 SELECT id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau 
                 FROM nha_thau 
-                WHERE (ten_nha_thau IS NULL OR ten_nha_thau = '' OR ten_nha_thau LIKE 'Nhà thầu%' OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)')
+                WHERE (
+                    ten_nha_thau IS NULL OR ten_nha_thau = ''
+                    OR ten_nha_thau LIKE 'Nhà thầu%'
+                    OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)'
+                    OR dia_chi IS NULL OR dia_chi = ''
+                    OR ten_viet_tat IS NULL OR ten_viet_tat = ''
+                    OR lower(ma_so_thue) LIKE 'vn%'
+                )
                   AND (
                     (ma_so_thue IS NOT NULL AND ma_so_thue != '') 
                     OR (ma_nha_thau IS NOT NULL AND ma_nha_thau != '')
@@ -128,7 +137,8 @@ def run_partner_lookup_worker():
                 
                 if info and info.get("name"):
                     new_name = info["name"].strip()
-                    new_address = (info.get("address") or "").strip()
+                    new_address_raw = (info.get("address") or "").strip()
+                    new_address = parse_vietnam_address_to_internal(new_address_raw) if new_address_raw else ""
                     new_short_name = (info.get("short_name") or "").strip()
                     
                     print(f"[Partner Worker] Found company info via {info['source']}: {new_name}", flush=True)
@@ -151,12 +161,13 @@ def run_partner_lookup_worker():
                         UPDATE nha_thau
                         SET ten_nha_thau = ?,
                             dia_chi = CASE WHEN dia_chi IS NULL OR dia_chi = '' THEN ? ELSE dia_chi END,
+                            dia_chi_goc = CASE WHEN dia_chi_goc IS NULL OR dia_chi_goc = '' THEN ? ELSE dia_chi_goc END,
                             ten_viet_tat = CASE WHEN ten_viet_tat IS NULL OR ten_viet_tat = '' THEN ? ELSE ten_viet_tat END,
-                            ma_so_thue = CASE WHEN ma_so_thue IS NULL OR ma_so_thue = '' THEN ? ELSE ma_so_thue END,
+                            ma_so_thue = ?,
                             sync_version = ?,
                             updated_at = datetime('now', 'localtime')
                         WHERE id = ?
-                    """, (new_name, new_address, new_short_name, tax_code, new_sync_ver, c_id))
+                    """, (new_name, new_address, new_address_raw, new_short_name, tax_code, new_sync_ver, c_id))
                     
                     # Update thong_tin_mo_thau snapshot if name is empty/generic/placeholder
                     cursor.execute("""
