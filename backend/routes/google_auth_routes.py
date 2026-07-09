@@ -114,6 +114,13 @@ def _verify_google_token(id_token: str):
     return payload
 
 
+def _add_background_audit(bg_tasks, action, **kwargs):
+    if bg_tasks is None:
+        bg_tasks = BackgroundTasks()
+    bg_tasks.add_task(log_audit, action, **kwargs)
+    return bg_tasks
+
+
 async def google_login_api(request):
     """
     POST /api/auth/google-login
@@ -123,6 +130,7 @@ async def google_login_api(request):
     """
     conn = None
     bg_tasks = None
+    pending_audits = []
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
@@ -212,14 +220,16 @@ async def google_login_api(request):
                         user["anh_dai_dien"] = picture
                 except Exception:
                     pass
-                log_audit(
+                pending_audits.append((
                     "auth.google_account_linked",
-                    actor_user_id=user["id"],
-                    target_type="tai_khoan",
-                    target_id=user["id"],
-                    request=request,
-                    metadata={"email": email, "had_username": already_has_username},
-                )
+                    {
+                        "actor_user_id": user["id"],
+                        "target_type": "tai_khoan",
+                        "target_id": user["id"],
+                        "request": request,
+                        "metadata": {"email": email, "had_username": already_has_username},
+                    },
+                ))
 
         else:
             account_linked = False  # Khong phai link, khong phai moi (da co google_id)
@@ -256,14 +266,16 @@ async def google_login_api(request):
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
 
-            log_audit(
+            pending_audits.append((
                 "auth.google_auto_register",
-                actor_user_id=new_id,
-                target_type="tai_khoan",
-                target_id=new_id,
-                request=request,
-                metadata={"email": email, "username": None},
-            )
+                {
+                    "actor_user_id": new_id,
+                    "target_type": "tai_khoan",
+                    "target_id": new_id,
+                    "request": request,
+                    "metadata": {"email": email, "username": None},
+                },
+            ))
 
             # Khởi tạo BackgroundTasks và lập lịch gửi email
             bg_tasks = BackgroundTasks()
@@ -334,7 +346,11 @@ async def google_login_api(request):
         org_names = get_user_org_names(cursor, user["id"])
         conn.commit()
 
-        log_audit(
+        for audit_action, audit_kwargs in pending_audits:
+            bg_tasks = _add_background_audit(bg_tasks, audit_action, **audit_kwargs)
+
+        bg_tasks = _add_background_audit(
+            bg_tasks,
             "auth.google_login_success",
             actor_user_id=user["id"],
             owner_id=org_names,

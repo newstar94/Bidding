@@ -71,11 +71,11 @@ def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, targe
 
         from helpers import database as _db
         last_err = None
-        for attempt in range(4):
+        for attempt in range(3):
             try:
                 conn = _db.get_connection()
                 try:
-                    conn.execute("PRAGMA busy_timeout = 15000")
+                    conn.execute("PRAGMA busy_timeout = 1000")
                 except Exception:
                     pass
                 cur = conn.cursor()
@@ -94,9 +94,9 @@ def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, targe
                     except Exception:
                         pass
                     conn = None
-                if "locked" not in str(err).lower() or attempt == 3:
+                if "locked" not in str(err).lower() or attempt == 2:
                     raise
-                time.sleep(0.15 * (attempt + 1))
+                time.sleep(0.05 * (attempt + 1))
             finally:
                 if conn:
                     try:
