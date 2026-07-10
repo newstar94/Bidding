@@ -4,12 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "python -m compileall -q backend scripts && npm run build",
+    "check": "python -m compileall -q backend scripts && npm run build && npm run test:api",
     "generate:schema": "python scripts/generate_schema_contract.py",
     "build": "vite build",
-    "build:secure": "vite build --mode secure"
+    "build:secure": "vite build --mode secure",
+    "test": "npm run test:api && npm run test:e2e",
+    "test:api": "python -m pytest tests/api",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:install-browsers": "playwright install"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "esbuild": "^0.28.1",
     "javascript-obfuscator": "^5.4.3",
     "vite": "^8.1.4"

@@ -33,6 +33,15 @@ scratch/
 
 # Tool caches
 .pytest_cache/
+test-results/
+playwright-report/
+blob-report/
+
+# Local automation testing files
+tests/
+docs/testing.md
+playwright.config.js
+pytest.ini
 
 # Node.js
 node_modules/
