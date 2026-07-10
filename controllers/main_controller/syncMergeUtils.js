@@ -1,6 +1,6 @@
 export function normalizeIncomingRecords(model, key, records) {
     if (model && typeof model.normalizeRecordKeys === 'function') {
-        return (records || []).map(record => model.normalizeRecordKeys(record));
+        return (records || []).map(record => model.normalizeRecordKeys(record, key));
     }
     return records || [];
 }
@@ -21,7 +21,7 @@ export function mergeIncomingRecords(model, key, incoming) {
 }
 
 export function applySyncPayload(model, dbData, options = {}) {
-    const metadataKeys = new Set(['deletions', 'useServerSidePagination', 'timestamp', 'paginatedKeys', 'syncVersion']);
+    const metadataKeys = new Set(['deletions', 'useServerSidePagination', 'timestamp', 'paginatedKeys', 'syncVersion', 'dashboardSummary']);
     const changedKeys = new Set();
     const deletionsByTable = {};
     const paginatedKeys = new Set(dbData.paginatedKeys || []);
@@ -29,6 +29,7 @@ export function applySyncPayload(model, dbData, options = {}) {
     const isFullInitialSync = !options.useVersionDelta && options.since === '0';
 
     model.useServerSidePagination = useServerSidePagination;
+    model.dashboardSummary = dbData.dashboardSummary || null;
 
     const shouldSkipEmptyPaginatedStore = (key, incoming) => {
         return useServerSidePagination
@@ -39,7 +40,7 @@ export function applySyncPayload(model, dbData, options = {}) {
             && model.state[key].length > 0;
     };
 
-    Object.keys(dbData).forEach(key => {
+    const applyIncoming = () => Object.keys(dbData).forEach(key => {
         if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
 
         const incoming = normalizeIncomingRecords(model, key, dbData[key]);
@@ -51,7 +52,7 @@ export function applySyncPayload(model, dbData, options = {}) {
             model.state[key] = incoming;
             changedKeys.add(key);
             if (typeof model.persistData === 'function') {
-                model.persistData(key);
+                model.persistData(key, { trackMutation: false });
             }
             return;
         }
@@ -62,9 +63,15 @@ export function applySyncPayload(model, dbData, options = {}) {
         if (model.db && typeof model.db.putRecords === 'function') {
             model.db.putRecords(key, incoming).catch(e => console.error("Error storing records", e));
         } else if (typeof model.persistData === 'function') {
-            model.persistData(key);
+            model.persistData(key, { trackMutation: false });
         }
     });
+
+    if (typeof model.suspendMutationTracking === 'function') {
+        model.suspendMutationTracking(applyIncoming);
+    } else {
+        applyIncoming();
+    }
 
     if (!isFullInitialSync) {
         (dbData.deletions || []).forEach(del => {

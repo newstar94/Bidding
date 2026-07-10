@@ -1,44 +1,39 @@
-import importlib.machinery
-import importlib.util
 import os
-import sys
+import sqlite3
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.dirname(current_dir)
 project_root = os.path.dirname(backend_dir)
-models_dir = os.path.join(project_root, 'models')
-
-sys.path.insert(0, project_root)
-sys.path.append(models_dir)
+models_dir = os.path.join(project_root, "models")
 
 
-def load_and_register(name, filepath):
-    loader = importlib.machinery.SourcelessFileLoader(name, filepath)
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
-    sys.modules[name] = module
-    loader.exec_module(module)
-    return module
+class SQLiteDatabase:
+    def __init__(self, db_path=None):
+        default_path = os.path.join(models_dir, "bidding.db")
+        self.db_path = os.path.abspath(db_path or os.environ.get("BIDDING_DB_PATH") or default_path)
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_path, timeout=15, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        self._apply_pragmas(conn)
+        return conn
 
-models = load_and_register('models', os.path.join(models_dir, 'models.cpython-314.pyc'))
-database = load_and_register('database', os.path.join(models_dir, 'database.cpython-314.pyc'))
-
-orig_get_connection = database.get_connection
-
-
-def optimized_get_connection(*args, **kwargs):
-    raw_conn = orig_get_connection(*args, **kwargs)
-    try:
-        cursor = raw_conn.cursor()
+    @staticmethod
+    def _apply_pragmas(conn):
+        cursor = conn.cursor()
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA busy_timeout = 15000")
         cursor.execute("PRAGMA foreign_keys = ON")
         cursor.execute("PRAGMA cache_size = -65536")
         cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.execute("PRAGMA temp_store = MEMORY")
-    except Exception as e:
-        print(f"Error applying SQLite PRAGMAs: {e}")
-    return raw_conn
 
 
-database.get_connection = optimized_get_connection
+models = None
+database = SQLiteDatabase()
+
+
+def load_and_register(name, filepath):
+    return database if name == "database" else models

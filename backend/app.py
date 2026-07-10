@@ -33,6 +33,7 @@ import threading
 import hashlib
 import contextlib
 import secrets
+from urllib.parse import urlparse
 
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
@@ -76,6 +77,21 @@ APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
 APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"  # Mặc định TẮt debug trên production
+APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
+IS_PRODUCTION = APP_ENV in {"prod", "production"}
+
+
+def _split_env_list(value):
+    return [item.strip().rstrip("/") for item in str(value or "").split(",") if item.strip()]
+
+
+def _is_local_origin(origin):
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return False
+    return parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+
 
 # [SEC-4] Danh sach origin duoc phep ket noi WebSocket.
 # Mac dinh tu tinh tu APP_HOST:APP_PORT. Co the ghi de qua ALLOWED_WS_ORIGINS
@@ -236,6 +252,7 @@ from routes.sync_routes import (
     sync_websocket_endpoint,
     sync_api,
     get_all_data_api,
+    record_api,
     paginate_api
 )
 from routes.export_routes import (
@@ -374,6 +391,7 @@ routes = [
     Route("/uploads/{file_path:path}", protected_upload_api, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),
     Route("/api/paginate", paginate_api, methods=["GET"]),
+    Route("/api/record", record_api, methods=["GET"]),
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
     WebSocketRoute("/ws/sync", sync_websocket_endpoint),
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
@@ -480,7 +498,16 @@ else:
 # CORS: Mặc định chỉ cho phép localhost + 127.0.0.1.
 # Để mở rộng, set CORS_ORIGINS trong .env (VD: CORS_ORIGINS=https://yourdomain.com)
 cors_origins_str = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000")
-cors_origins = [o.strip() for o in cors_origins_str.split(",")] if cors_origins_str else ["http://127.0.0.1:8000"]
+cors_origins = _split_env_list(cors_origins_str) or ["http://127.0.0.1:8000"]
+
+if IS_PRODUCTION:
+    super_admin_allowlist = _split_env_list(os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", ""))
+    if not APP_SECURE_COOKIES:
+        raise RuntimeError("APP_SECURE_COOKIES=True is required when APP_ENV=production.")
+    if "*" in cors_origins or any(_is_local_origin(origin) for origin in cors_origins):
+        raise RuntimeError("CORS_ORIGINS must contain production HTTPS origins only when APP_ENV=production.")
+    if "*" in super_admin_allowlist or not super_admin_allowlist:
+        raise RuntimeError("SUPER_ADMIN_IP_ALLOWLIST must be explicit and cannot contain * when APP_ENV=production.")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -491,6 +518,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
         # Thêm CSP hỗ trợ tải tài nguyên tự host và các CDN cần thiết
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "

@@ -1,4 +1,4 @@
-import { initCustomSelect } from '../view_helpers.js';
+import { initCustomSelect, renderEmptyRow } from '../view_helpers.js';
 import { parseYearMonth, sortRecords } from '../tableDataUtils.js';
 import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 import { setJvData } from './jvDataStore.js';
@@ -106,16 +106,7 @@ export async function renderGoiThauTable() {
 
     if (totalItems === 0) {
         clearVirtualTable(tableBody);
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8">
-                    <div class="empty-state">
-                        <i data-lucide="archive"></i>
-                        <p>Không tìm thấy Gói thầu nào phù hợp</p>
-                    </div>
-                </td>
-            </tr>
-        `;
+        tableBody.innerHTML = renderEmptyRow(8, 'Không tìm thấy Gói thầu nào phù hợp', 'archive');
         const pag = document.getElementById('goithau-pagination');
         if (pag) pag.innerHTML = '';
     } else {

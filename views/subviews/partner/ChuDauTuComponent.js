@@ -1,4 +1,4 @@
-import { initCustomSelect } from '../view_helpers.js';
+import { escapeHtml, initCustomSelect, renderEmptyRow, safeAttr } from '../view_helpers.js';
 import { sortRecords } from '../tableDataUtils.js';
 import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
@@ -47,20 +47,12 @@ export async function renderChuDauTuTable() {
 
     if (totalItems === 0) {
         clearVirtualTable(tableBody);
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="8">
-                    <div class="empty-state">
-                        <i data-lucide="building"></i>
-                        <p>Không tìm thấy Chủ đầu tư nào phù hợp</p>
-                    </div>
-                </td>
-            </tr>
-        `;
+        tableBody.innerHTML = renderEmptyRow(8, 'Không tìm thấy Chủ đầu tư nào phù hợp', 'building');
         const pag = document.getElementById('chudautu-pagination');
         if (pag) pag.innerHTML = '';
     } else {
         renderVirtualTable(tableBody, slicedData, c => {
+            const esc = escapeHtml;
             const root = c.rootId || c.id;
             const allVersions = c.allVersions || this.model.state.chudautu.filter(x => (x.rootId || x.id) === root)
                 .sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
@@ -74,11 +66,11 @@ export async function renderChuDauTuTable() {
             const optionsHtml = allVersions.map(v => {
                 const label = String(parseInt(v.phienBan || 0)).padStart(2, '0');
                 const isSel = v.id === displayedCdt.id ? 'selected' : '';
-                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+                return `<option value="${safeAttr(v.id)}" ${isSel}>${esc(label)}</option>`;
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-investor-version" data-root="${root}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist" data-bf-change="change-investor-version" data-root="${safeAttr(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
@@ -87,33 +79,33 @@ export async function renderChuDauTuTable() {
             <tr>
                 <td>
                     <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" data-bf-action="show-investor" data-id="${displayedCdt.id}" class="text-blue fw-bold link-hover" title="Xem chi tiết Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${displayedCdt.maChuDauTu || ''}</span></a>
+                        <a href="#" data-bf-action="show-investor" data-id="${safeAttr(displayedCdt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedCdt.maChuDauTu || '')}</span></a>
                         <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                         ${dropdownHtml}
                     </div>
                 </td>
                 <td style="min-width: 220px; max-width: 320px;" class="fw-bold text-wrap">
-                    ${displayedCdt.tenChuDauTu || ''}
-                    ${displayedCdt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${displayedCdt.tenVietTat}</div>` : ''}
-                    ${displayedCdt.coQuanChuQuan ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">CQ chủ quản: ${displayedCdt.coQuanChuQuan}</div>` : ''}
+                    ${esc(displayedCdt.tenChuDauTu || '')}
+                    ${displayedCdt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedCdt.tenVietTat)}</div>` : ''}
+                    ${displayedCdt.coQuanChuQuan ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">CQ chủ quản: ${esc(displayedCdt.coQuanChuQuan)}</div>` : ''}
                 </td>
-                <td>${displayedCdt.maSoThue || '--'}</td>
-                <td><span class="fw-bold">${displayedCdt.danhXung || 'Ông'} ${displayedCdt.daiDienCdt || '--'}</span></td>
+                <td>${esc(displayedCdt.maSoThue || '--')}</td>
+                <td><span class="fw-bold">${esc(displayedCdt.danhXung || 'Ông')} ${esc(displayedCdt.daiDienCdt || '--')}</span></td>
                 <td style="min-width: 240px; max-width: 360px;" class="text-wrap">
-                    <div style="font-size:0.85rem;" class="fw-bold">${(displayedCdt.diaChi || '').replace(/\s*\|\s*/g, ', ')}</div>
-                    <div style="font-size:0.75rem; color:var(--text-light);">${displayedCdt.soDienThoai || ''}${displayedCdt.email ? ' | ' + displayedCdt.email : ''}</div>
+                    <div style="font-size:0.85rem;" class="fw-bold">${esc((displayedCdt.diaChi || '').replace(/\s*\|\s*/g, ', '))}</div>
+                    <div style="font-size:0.75rem; color:var(--text-light);">${esc(displayedCdt.soDienThoai || '')}${displayedCdt.email ? ' | ' + esc(displayedCdt.email) : ''}</div>
                 </td>
                 <td>
-                    <div style="font-size:0.85rem;" class="fw-bold">${displayedCdt.soTaiKhoan || '--'}</div>
-                    <div style="font-size:0.75rem; color:var(--text-light);">${displayedCdt.noiMoTaiKhoan || '--'}${displayedCdt.maQHNS ? ' | QHNS: ' + displayedCdt.maQHNS : ''}</div>
+                    <div style="font-size:0.85rem;" class="fw-bold">${esc(displayedCdt.soTaiKhoan || '--')}</div>
+                    <div style="font-size:0.75rem; color:var(--text-light);">${esc(displayedCdt.noiMoTaiKhoan || '--')}${displayedCdt.maQHNS ? ' | QHNS: ' + esc(displayedCdt.maQHNS) : ''}</div>
                 </td>
                 <td class="text-right">
                     <div class="action-btn-group">
                         ${displayedCdt.id === c.id ? `
-                        <button class="action-btn btn-edit" data-bf-action="edit-investor" data-id="${displayedCdt.id}" title="Sửa">
+                        <button class="action-btn btn-edit" data-bf-action="edit-investor" data-id="${safeAttr(displayedCdt.id)}" title="Sửa">
                             <i data-lucide="edit-2"></i>
                         </button>
-                        <button class="action-btn btn-delete" data-bf-action="delete-investor" data-id="${displayedCdt.id}" title="Xóa">
+                        <button class="action-btn btn-delete" data-bf-action="delete-investor" data-id="${safeAttr(displayedCdt.id)}" title="Xóa">
                             <i data-lucide="trash-2"></i>
                         </button>
                         ` : ''}

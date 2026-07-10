@@ -6,7 +6,8 @@ import * as Dashboard from '/views/subviews/DashboardView.js';
 import * as Plan from '/views/subviews/PlanView.js';
 import * as Partner from '/views/subviews/PartnerView.js';
 import * as SystemUser from '/views/subviews/SystemUserView.js';
-import { initCustomSelect, syncCustomSelectDisabled } from '../subviews/view_helpers.js';
+import { escapeHtml, initCustomSelect, syncCustomSelectDisabled } from '../subviews/view_helpers.js';
+import { ensureFlatpickrLoaded } from '/controllers/utils/externalAssets.js';
 
 // Expose helpers globally so other files can access them without ESM import issues
 window.initCustomSelect = initCustomSelect;
@@ -415,7 +416,21 @@ export class BiddingView {
     }
 
     initFlatpickr(container = document) {
-        if (typeof flatpickr === 'undefined') return;
+        const hasDateInputs = container.querySelector?.('input.flatpickr-date, input.flatpickr-datetime');
+        if (!hasDateInputs) return;
+        if (typeof flatpickr === 'undefined') {
+            if (this._flatpickrLoading) return;
+            this._flatpickrLoading = ensureFlatpickrLoaded()
+                .then(() => {
+                    this._flatpickrLoading = null;
+                    this.initFlatpickr(container);
+                })
+                .catch(err => {
+                    this._flatpickrLoading = null;
+                    console.error('Failed to lazy-load flatpickr:', err);
+                });
+            return;
+        }
         
         const setupPlugins = (instance) => {
             // 1. Add Footer Buttons (Confirm/Cancel)
@@ -783,11 +798,30 @@ export class BiddingView {
             // Render three buttons horizontally with smaller font and padding
             buttonContainer.style.flexDirection = 'row';
             buttonContainer.style.gap = '10px';
-            buttonContainer.innerHTML = `
-                <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; height: 38px;">Hủy</button>
-                <button type="button" class="btn btn-primary" id="btn-dialog-opt1" style="flex: 1.6; background: var(--warning); border-color: var(--warning); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;">${option1Text}</button>
-                <button type="button" class="btn btn-primary" id="btn-dialog-opt2" style="flex: 1.6; background: var(--danger); border-color: var(--danger); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;">${option2Text}</button>
-            `;
+            buttonContainer.replaceChildren();
+
+            const cancelChoiceBtn = document.createElement('button');
+            cancelChoiceBtn.type = 'button';
+            cancelChoiceBtn.className = 'btn btn-outline';
+            cancelChoiceBtn.id = 'btn-dialog-cancel';
+            cancelChoiceBtn.style.cssText = 'flex: 1; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; height: 38px;';
+            cancelChoiceBtn.textContent = 'Huy';
+
+            const opt1ChoiceBtn = document.createElement('button');
+            opt1ChoiceBtn.type = 'button';
+            opt1ChoiceBtn.className = 'btn btn-primary';
+            opt1ChoiceBtn.id = 'btn-dialog-opt1';
+            opt1ChoiceBtn.style.cssText = 'flex: 1.6; background: var(--warning); border-color: var(--warning); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;';
+            opt1ChoiceBtn.textContent = option1Text;
+
+            const opt2ChoiceBtn = document.createElement('button');
+            opt2ChoiceBtn.type = 'button';
+            opt2ChoiceBtn.className = 'btn btn-primary';
+            opt2ChoiceBtn.id = 'btn-dialog-opt2';
+            opt2ChoiceBtn.style.cssText = 'flex: 1.6; background: var(--danger); border-color: var(--danger); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;';
+            opt2ChoiceBtn.textContent = option2Text;
+
+            buttonContainer.append(cancelChoiceBtn, opt1ChoiceBtn, opt2ChoiceBtn);
 
             lucide.createIcons();
 
@@ -859,19 +893,28 @@ export class BiddingView {
             okBtn.style.background = '';
             okBtn.style.borderColor = '';
 
-            const originalMessageHtml = messageEl.innerHTML;
+            const originalMessageText = messageEl.textContent;
             const originalMessageStyle = messageEl.style.display;
 
             cancelBtn.style.display = 'block';
             if (closeBtn) closeBtn.style.display = 'block';
 
-            const optionsHtml = options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('');
-            messageEl.innerHTML = `
-                <div style="margin-bottom: 12px;">${message}</div>
-                <select id="dialog-custom-select" class="form-control" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
-                    ${optionsHtml}
-                </select>
-            `;
+            const promptText = document.createElement('div');
+            promptText.style.marginBottom = '12px';
+            promptText.textContent = message;
+
+            const selectEl = document.createElement('select');
+            selectEl.id = 'dialog-custom-select';
+            selectEl.className = 'form-control';
+            selectEl.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;';
+            options.forEach(opt => {
+                const optionEl = document.createElement('option');
+                optionEl.value = String(opt?.value ?? '');
+                optionEl.textContent = String(opt?.label ?? '');
+                selectEl.appendChild(optionEl);
+            });
+
+            messageEl.replaceChildren(promptText, selectEl);
 
             lucide.createIcons();
             modal.classList.add('active');
@@ -898,7 +941,7 @@ export class BiddingView {
                 cancelBtn.removeEventListener('click', onCancel);
                 if (closeBtn) closeBtn.removeEventListener('click', onClose);
                 modal.classList.remove('active');
-                messageEl.innerHTML = originalMessageHtml;
+                messageEl.textContent = originalMessageText;
                 messageEl.style.display = originalMessageStyle;
             };
 
@@ -933,6 +976,9 @@ export class BiddingView {
         let message = '';
         let type = 'info';
         let duration = 4000;
+        const options = typeof arguments[3] === 'object' && arguments[3] !== null
+            ? arguments[3]
+            : (typeof arg3 === 'object' && arg3 !== null ? arg3 : {});
 
         if (arg3 !== undefined && (typeof arg3 === 'string' || typeof arg3 === 'number')) {
             title = arg1;
@@ -970,16 +1016,36 @@ export class BiddingView {
             info: '<i data-lucide="info"></i>'
         }[type] || '<i data-lucide="info"></i>';
 
-        toast.innerHTML = `
-            <div class="bf-toast-icon">${iconSvg}</div>
-            <div class="bf-toast-content">
-                <div class="bf-toast-title">${title}</div>
-                <div class="bf-toast-desc">${message}</div>
-            </div>
-            <button class="bf-toast-close" type="button" aria-label="Dismiss toast">
-                <i data-lucide="x"></i>
-            </button>
-        `;
+        const iconWrap = document.createElement('div');
+        iconWrap.className = 'bf-toast-icon';
+        iconWrap.innerHTML = iconSvg;
+        const content = document.createElement('div');
+        content.className = 'bf-toast-content';
+        const titleNode = document.createElement('div');
+        titleNode.className = 'bf-toast-title';
+        titleNode.textContent = title || '';
+        const descNode = document.createElement('div');
+        descNode.className = 'bf-toast-desc';
+        descNode.textContent = message || '';
+        content.append(titleNode, descNode);
+        if (options.actionLabel && typeof options.onAction === 'function') {
+            const actionButton = document.createElement('button');
+            actionButton.type = 'button';
+            actionButton.className = 'bf-toast-action';
+            actionButton.textContent = options.actionLabel;
+            actionButton.style.cssText = 'margin-top: 8px; align-self: flex-start; border: 0; background: transparent; color: var(--primary); font-weight: 700; cursor: pointer; padding: 0;';
+            actionButton.addEventListener('click', () => {
+                options.onAction();
+                dismissToast();
+            });
+            content.appendChild(actionButton);
+        }
+        const closeButton = document.createElement('button');
+        closeButton.className = 'bf-toast-close';
+        closeButton.type = 'button';
+        closeButton.setAttribute('aria-label', 'Dismiss toast');
+        closeButton.innerHTML = '<i data-lucide="x"></i>';
+        toast.append(iconWrap, content, closeButton);
 
         container.appendChild(toast);
         if (window.lucide) {
@@ -1033,20 +1099,21 @@ export class BiddingView {
 
             titleEl.textContent = title;
             // Hỗ trợ nội dung nhiều dòng: nếu message có ký tự xuống dòng thì dùng white-space:pre-wrap
-            if (message && (message.includes('\n') || message.includes('<br>') || message.includes('<br/>'))) {
+            const plainMessage = String(message || '').replace(/<br\s*\/?>/gi, '\n');
+            if (plainMessage && plainMessage.includes('\n')) {
                 messageEl.style.whiteSpace = 'pre-wrap';
                 messageEl.style.textAlign = 'left';
                 messageEl.style.fontSize = '0.85rem';
                 messageEl.style.maxHeight = '340px';
                 messageEl.style.overflowY = 'auto';
-                messageEl.innerHTML = message;
+                messageEl.textContent = plainMessage;
             } else {
                 messageEl.style.whiteSpace = '';
                 messageEl.style.textAlign = '';
                 messageEl.style.fontSize = '';
                 messageEl.style.maxHeight = '';
                 messageEl.style.overflowY = '';
-                messageEl.innerHTML = message;
+                messageEl.textContent = plainMessage;
             }
             cancelBtn.style.display = 'none';
             if (closeBtn) closeBtn.style.display = 'block';
@@ -1450,7 +1517,7 @@ export class BiddingView {
             'Đã có kết quả': '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đã có kết quả</span>',
             'Hủy thầu': '<span class="badge badge-danger"><i data-lucide="x-circle"></i> Hủy thầu</span>'
         };
-        return maps[status] || `<span class="badge">${status}</span>`;
+        return maps[status] || `<span class="badge">${escapeHtml(status)}</span>`;
     }
 }
 

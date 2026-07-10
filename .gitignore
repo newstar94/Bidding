@@ -24,14 +24,14 @@ uploads/
 Thumbs.db
 Desktop.ini
 
+# Local editor/agent metadata
+.vscode/
+.agents/
+
 # Scratch files
 scratch/
 
-# Test files and caches
-backend/tests/
-**/tests/
-!backend/tests/
-!backend/tests/*.py
+# Tool caches
 .pytest_cache/
 
 # Node.js

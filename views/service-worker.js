@@ -1,4 +1,4 @@
-const CACHE_NAME = 'biddingflow-shell-v3';
+const CACHE_NAME = 'biddingflow-shell-v4';
 const APP_SHELL = [
     '/',
     '/style.css?v=6.13',
@@ -8,9 +8,6 @@ const APP_SHELL = [
     '/css/views.css',
     '/css/toast.css',
     '/vendor/lucide/lucide.min.js?v=1.21.0',
-    '/vendor/flatpickr/flatpickr.min.css?v=4',
-    '/vendor/flatpickr/flatpickr.min.js?v=4',
-    '/vendor/flatpickr/l10n/vn.js?v=4',
     '/dist/controllers/app.bundle.js'
 ];
 

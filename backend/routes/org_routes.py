@@ -66,13 +66,20 @@ async def add_user_to_org_api(request):
             conn.close()
             return JSONResponse({"success": True, "message": "Nhân sự đã thuộc tổ chức này!"})
             
+        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
+        u_row = cursor.fetchone()
+        if not u_row:
+            conn.close()
+            return JSONResponse({"error": "Nguoi dung khong ton tai."}, status_code=404)
+        if 'super_admin' not in effective_roles and 'super_admin' in get_effective_roles(u_row['vai_tro'] or ''):
+            conn.close()
+            return JSONResponse({"error": "Ban khong co quyen them super_admin vao to chuc."}, status_code=403)
+
         cursor.execute(
             "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
             (user_id, org_id, 'employee')
         )
         
-        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
-        u_row = cursor.fetchone()
         if u_row:
             current_role = u_row['vai_tro'] or ''
             if not current_role or current_role == 'none':
@@ -104,12 +111,20 @@ async def remove_user_from_org_api(request):
         if not user_id:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
             
+        if str(user_id) == str(role_or_err.user_id):
+            return JSONResponse({"error": "Khong the tu go chinh minh khoi to chuc."}, status_code=400)
+
         org_id = get_active_org(request, role_or_err.user_id)
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         conn = database.get_connection()
         cursor = conn.cursor()
         sync_version = next_sync_version(cursor, org_id)
+
+        cursor.execute("SELECT 1 FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
+        if not cursor.fetchone():
+            conn.close()
+            return JSONResponse({"error": "Nguoi dung khong thuoc to chuc hien tai."}, status_code=404)
         
         cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
         

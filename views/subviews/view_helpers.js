@@ -3,6 +3,53 @@
  */
 export { getAuthDownloadUrl, authFetchDownload } from '../../controllers/utils/workflow_helpers.js';
 
+export function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+export function safeAttr(value) {
+    return escapeHtml(value);
+}
+
+export function htmlIcon(name, attrs = '') {
+    const iconName = String(name || '').trim();
+    if (!/^[A-Za-z0-9_-]+$/.test(iconName)) return '';
+    const extraAttrs = attrs ? ` ${String(attrs).trim()}` : '';
+    return `<i data-lucide="${iconName}"${extraAttrs}></i>`;
+}
+
+export function textCell(value, attrs = '') {
+    const extraAttrs = attrs ? ` ${String(attrs).trim()}` : '';
+    return `<td${extraAttrs}>${escapeHtml(value ?? '')}</td>`;
+}
+
+export function renderEmptyRow(colspan, message, icon = 'inbox') {
+    const safeColspan = Math.max(1, parseInt(colspan, 10) || 1);
+    return `
+        <tr>
+            <td colspan="${safeColspan}">
+                <div class="empty-state">
+                    ${htmlIcon(icon)}
+                    <p>${escapeHtml(message)}</p>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+export function safeImageSrc(value) {
+    const src = String(value || '').trim();
+    if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) return src;
+    if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
+    return '';
+}
+
 export function formatCurrency(value) {
     if (value === null || value === undefined || value === '') return '--';
     const num = Number(value);
@@ -126,6 +173,8 @@ export function initCustomSelect(selectId) {
     }
 
     const isVersionSelect = select.classList.contains('page-version-select') || select.classList.contains('version-select') || select.classList.contains('phienban-select') || select.classList.contains('modal-version-select') || select.classList.contains('version-droplist');
+    const safeSelectId = escapeHtml(selectId);
+    const safeTriggerText = escapeHtml(triggerText);
 
     if (!wrapper) {
         wrapper = document.createElement('div');
@@ -140,16 +189,16 @@ export function initCustomSelect(selectId) {
 
         wrapper.innerHTML = `
             <div class="custom-select-trigger">
-                <span>${triggerText}</span>
+                <span>${safeTriggerText}</span>
                 ${isVersionSelect ? '' : `
                 <div class="custom-select-trigger-arrow">
                     <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
                 </div>
                 `}
             </div>
-            <ul class="custom-select-options" data-parent="${selectId}" style="display: none; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: ${isVersionSelect ? '4px' : 'var(--radius-md)'}; box-shadow: var(--shadow-lg); z-index: 999999; list-style: none; padding: 6px 0; margin: 0; max-height: 220px; overflow-y: auto;">
+            <ul class="custom-select-options" data-parent="${safeSelectId}" style="display: none; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: ${isVersionSelect ? '4px' : 'var(--radius-md)'}; box-shadow: var(--shadow-lg); z-index: 999999; list-style: none; padding: 6px 0; margin: 0; max-height: 220px; overflow-y: auto;">
                 ${options.map(opt => `
-                    <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: ${isVersionSelect ? '4px 14px' : '8px 14px'}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
+                    <li data-value="${escapeHtml(opt.value)}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: ${isVersionSelect ? '4px 14px' : '8px 14px'}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${escapeHtml(opt.text)}</li>
                 `).join('')}
             </ul>
         `;
@@ -215,7 +264,7 @@ export function initCustomSelect(selectId) {
         const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector('.custom-select-options');
         if (optionsList) {
             optionsList.innerHTML = options.map(opt => `
-                <li data-value="${opt.value}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: ${isVersionSelect ? '4px 14px' : '8px 14px'}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${opt.text}</li>
+                <li data-value="${escapeHtml(opt.value)}" class="custom-option-item ${opt.selected ? 'selected' : ''}" style="padding: ${isVersionSelect ? '4px 14px' : '8px 14px'}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${escapeHtml(opt.text)}</li>
             `).join('');
         }
 

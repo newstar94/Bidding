@@ -3,22 +3,6 @@ import { renderNhaThauTable, showNhaThauDetails, renderNhaThauVersionDetails } f
 import { renderChuyenGiaTable, showChuyenGiaDetails } from './partner/ChuyenGiaComponent.js';
 import { renderHopDongTable, showHopDongDetails, renderContractVersionDetails } from './partner/HopDongComponent.js';
 
-// Bind to window for HTML compatibility
-window.renderChuDauTuTable = renderChuDauTuTable;
-window.showChuDauTuDetails = showChuDauTuDetails;
-window.renderChuDauTuVersionDetails = renderChuDauTuVersionDetails;
-
-window.renderNhaThauTable = renderNhaThauTable;
-window.showNhaThauDetails = showNhaThauDetails;
-window.renderNhaThauVersionDetails = renderNhaThauVersionDetails;
-
-window.renderChuyenGiaTable = renderChuyenGiaTable;
-window.showChuyenGiaDetails = showChuyenGiaDetails;
-
-window.renderHopDongTable = renderHopDongTable;
-window.showHopDongDetails = showHopDongDetails;
-window.renderContractVersionDetails = renderContractVersionDetails;
-
 export {
     renderChuDauTuTable,
     showChuDauTuDetails,
@@ -672,9 +656,3 @@ export function getJointVentureMemberHTML(cardId, memberData = null) {
     `;
 }
 
-// Bind remaining helpers to window
-window.renderBieumauTab = renderBieumauTab;
-window.renderDictionary = renderDictionary;
-window.renderWordMappingsTable = renderWordMappingsTable;
-window.renderWordTemplates = renderWordTemplates;
-window.getJointVentureMemberHTML = getJointVentureMemberHTML;

@@ -1,3 +1,10 @@
+const safeExpertImageSrc = (value) => {
+    const src = String(value || '').trim();
+    if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) return src;
+    if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
+    return '';
+};
+
 export async function deleteChuyenGia(id) {
     if (this.model.state.activerole === 'employee') {
         await this.view.customAlert('Từ chối truy cập', 'Tài khoản Chuyên viên không được phép xóa Chuyên gia khỏi hệ thống!', 'lock');
@@ -80,9 +87,10 @@ export function editChuyenGia(id) {
         document.getElementById('cg-donvicapchungchi').value = cg.donViCapChungChi || '';
         document.getElementById('cg-ngaycapchungchi').value = this.model.formatForDateInput(cg.ngayCapChungChi);
 
-        if (cg.anhChungChi) {
-            this.tempChuyenGiaImageBase64 = cg.anhChungChi;
-            previewImg.src = cg.anhChungChi;
+        const certificateImageSrc = safeExpertImageSrc(cg.anhChungChi);
+        if (certificateImageSrc) {
+            this.tempChuyenGiaImageBase64 = certificateImageSrc;
+            previewImg.src = certificateImageSrc;
             previewContainer.style.display = 'flex';
             uploadZone.style.display = 'none';
         } else {
@@ -92,9 +100,10 @@ export function editChuyenGia(id) {
             uploadZone.style.display = 'flex';
         }
 
-        if (cg.anhChuKy) {
-            this.tempChuyenGiaSignatureBase64 = cg.anhChuKy;
-            previewImgChuky.src = cg.anhChuKy;
+        const signatureImageSrc = safeExpertImageSrc(cg.anhChuKy);
+        if (signatureImageSrc) {
+            this.tempChuyenGiaSignatureBase64 = signatureImageSrc;
+            previewImgChuky.src = signatureImageSrc;
             previewContainerChuky.style.display = 'flex';
             uploadZoneChuky.style.display = 'none';
         } else {

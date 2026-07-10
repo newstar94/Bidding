@@ -927,8 +927,8 @@ export function setupWordTemplatesEvents() {
         });
     }
 
-    // Register global edit/delete handlers on window for HTML onclick compatibility
-    window.editWordMapping = (id) => {
+    // Register edit/delete commands for delegated UI actions.
+    const editWordMappingHandler = (id) => {
         const m = (this.model.state.wordMappings || []).find(x => x.id === id);
         if (!m) return;
 
@@ -980,7 +980,7 @@ export function setupWordTemplatesEvents() {
         }
     };
 
-    window.deleteWordMapping = async (id) => {
+    const deleteWordMappingHandler = async (id) => {
         const confirmed = await this.view.customConfirm('Xác nhận xóa', 'Bạn có chắc chắn muốn xóa biến ánh xạ này không?', 'trash-2');
         if (!confirmed) return;
         try {
@@ -1000,6 +1000,14 @@ export function setupWordTemplatesEvents() {
             console.error(err);
         }
     };
+
+    if (typeof this.registerCommand === 'function') {
+        this.registerCommand('editWordMapping', editWordMappingHandler);
+        this.registerCommand('deleteWordMapping', deleteWordMappingHandler);
+    } else {
+        window.editWordMapping = editWordMappingHandler;
+        window.deleteWordMapping = deleteWordMappingHandler;
+    }
 }
 
 

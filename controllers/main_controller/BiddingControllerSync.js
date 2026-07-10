@@ -64,17 +64,121 @@ function renderChangedState(controller, changedKeys, { isBackground = false } = 
     }
 }
 
+function showSyncErrorReport(controller, errors) {
+    if (!controller || !Array.isArray(errors) || errors.length === 0) return;
+    if (controller.model) {
+        controller.model.syncErrors = errors;
+    }
+    if (controller.view && typeof controller.view.showToast === 'function') {
+        controller.view.showToast(
+            'Loi dong bo',
+            `${errors.length} ban ghi chua hop le. Bam de xem chi tiet trong hop thoai.`,
+            'error',
+            {
+                actionLabel: 'Xem loi',
+                onAction: () => {
+                    if (controller.view && typeof controller.view.customAlert === 'function') {
+                        const detailLines = errors.slice(0, 20).map((err, index) => {
+                            const table = err.table || 'unknown';
+                            const id = err.id || '';
+                            const message = err.message || String(err);
+                            return `${index + 1}. [${table}${id ? `/${id}` : ''}] ${message}`;
+                        });
+                        const more = errors.length > 20 ? `\n... va ${errors.length - 20} loi khac.` : '';
+                        controller.view.customAlert('Loi dong bo du lieu', detailLines.join('\n') + more, 'alert-triangle');
+                    }
+                }
+            }
+        );
+    }
+}
+
+const DETAIL_ROUTE_TABLE = {
+    'goithau-detail': 'goithau',
+    'kehoach-detail': 'kehoach',
+    'hopdong-detail': 'hopdong',
+    'chudautu-detail': 'chudautu',
+    'nhathau-detail': 'nhathau',
+};
+
+function detailRecordExists(model, tableKey, lookup) {
+    const needle = String(decodeURIComponent(lookup || '')).toLowerCase();
+    const cleanNeedle = needle.replace(/[\/-]/g, '');
+    const list = Array.isArray(model.state[tableKey]) ? model.state[tableKey] : [];
+    return list.some(item => {
+        if (String(item.id || '').toLowerCase() === needle) return true;
+        if (tableKey === 'goithau' && String(item.maGoiThau || '').toLowerCase() === needle) return true;
+        if (tableKey === 'kehoach' && encodeURIComponent(String(item.maKeHoach || '')).toLowerCase() === needle) return true;
+        if (tableKey === 'hopdong' && String(item.soHopDong || '').toLowerCase().replace(/[\/-]/g, '') === cleanNeedle) return true;
+        if (tableKey === 'chudautu' && String(item.maChuDauTu || '').toLowerCase() === needle) return true;
+        if (tableKey === 'nhathau' && String(item.maNhaThau || '').toLowerCase() === needle) return true;
+        return false;
+    });
+}
+
+export async function fetchRecordByLookup(tableKey, lookup) {
+    if (!tableKey || !lookup) return null;
+    const response = await fetch(`/api/record?table=${encodeURIComponent(tableKey)}&lookup=${encodeURIComponent(lookup)}`, {
+        headers: {
+            'X-Active-Org': encodeURIComponent(localStorage.getItem('bf_active_org') || '')
+        }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data || !data.item) return null;
+
+    const record = typeof this.model.normalizeRecordKeys === 'function'
+        ? this.model.normalizeRecordKeys(data.item, tableKey)
+        : data.item;
+    if (!Array.isArray(this.model.state[tableKey])) {
+        this.model.state[tableKey] = [];
+    }
+    const idx = this.model.state[tableKey].findIndex(item => String(item.id) === String(record.id));
+    if (idx >= 0) {
+        this.model.state[tableKey][idx] = record;
+    } else {
+        this.model.state[tableKey].push(record);
+    }
+    if (this.model.db && typeof this.model.db.putRecord === 'function') {
+        await this.model.db.putRecord(tableKey, record);
+    } else if (typeof this.model.persistData === 'function') {
+        await this.model.persistData(tableKey, { trackMutation: false });
+    }
+    return record;
+}
+
+export function ensureDetailRecordLoaded(tabName, action) {
+    const tableKey = DETAIL_ROUTE_TABLE[tabName];
+    if (!tableKey || !action || !this.model?.useServerSidePagination) return null;
+    if (detailRecordExists(this.model, tableKey, action)) return null;
+
+    const pendingKey = `${tableKey}:${action}`;
+    this._pendingDetailRecordLoads = this._pendingDetailRecordLoads || new Map();
+    if (this._pendingDetailRecordLoads.has(pendingKey)) {
+        return this._pendingDetailRecordLoads.get(pendingKey);
+    }
+
+    const promise = this.fetchRecordByLookup(tableKey, action)
+        .catch(err => {
+            console.error('Failed to fetch detail record:', err);
+            return null;
+        })
+        .finally(() => {
+            this._pendingDetailRecordLoads.delete(pendingKey);
+        });
+    this._pendingDetailRecordLoads.set(pendingKey, promise);
+    return promise;
+}
+
 
 export function autoSync() {
-    const deletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
-    const clientMutationId = (window.crypto && typeof window.crypto.randomUUID === 'function')
-        ? window.crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const payload = {
-        ...this.model.state,
-        clientMutationId,
-        deletions: deletions
-    };
+    const mutationBatch = this.model && typeof this.model.buildMutationSyncPayload === 'function'
+        ? this.model.buildMutationSyncPayload()
+        : null;
+    if (!mutationBatch) {
+        return Promise.resolve({ ok: true, skipped: true });
+    }
+    const { payload, snapshot } = mutationBatch;
     return fetch('/api/sync', {
         method: 'POST',
         headers: {
@@ -90,6 +194,27 @@ export function autoSync() {
         .then(({ ok, status, data }) => {
             // Xử lý lỗi validation từ server (status 400)
             if (!ok || data.status === 'error') {
+                if (status === 409 || data.status === 'conflict') {
+                    console.warn('[Sync Conflict]', data.message || data.error || 'Server data changed before local sync.');
+                    if (data.currentSyncVersion !== undefined && data.currentSyncVersion !== null) {
+                        localStorage.setItem('bf_conflict_server_sync_version', String(data.currentSyncVersion));
+                    }
+                    if (this.view && typeof this.view.showToast === 'function') {
+                        this.view.showToast(
+                            'Xung dot dong bo',
+                            'Du lieu tren server da thay doi. Tai lai du lieu moi truoc khi dong bo tiep.',
+                            'warning',
+                            {
+                                actionLabel: 'Tai lai',
+                                onAction: () => this.forceSyncData(false, true).catch(err => console.error('Failed manual conflict refresh:', err))
+                            }
+                        );
+                    }
+                    if (typeof this.forceSyncData === 'function') {
+                        this.forceSyncData(true).catch(err => console.error('Failed to refresh after sync conflict:', err));
+                    }
+                    return { ok: false, status, data, conflict: true };
+                }
                 if (Array.isArray(data.errors) && data.errors.length > 0) {
                     const TABLE_LABELS = {
                         'chu_dau_tu': 'Chủ đầu tư',
@@ -148,18 +273,26 @@ export function autoSync() {
 
                     const fullMsg = msgLines.join('\n');
                     console.error('[Sync Error]\n' + fullMsg, data.errors);
+                    showSyncErrorReport(this, data.errors);
                 } else {
                     console.error('[Sync Error]', data.error || data.message || 'Đồng bộ thất bại');
+                    if (this.view && typeof this.view.showToast === 'function') {
+                        this.view.showToast('Loi dong bo', data.error || data.message || 'Dong bo that bai', 'error');
+                    }
                 }
                 return;
             }
 
             if (data.timestamp) {
                 localStorage.setItem('bf_last_sync_timestamp', data.timestamp);
-                localStorage.removeItem('bf_local_deletions');
             }
             if (data.syncVersion !== undefined && data.syncVersion !== null) {
                 localStorage.setItem('bf_last_sync_version', data.syncVersion.toString());
+            }
+            if (this.model && typeof this.model.clearSyncedMutationQueue === 'function') {
+                this.model.clearSyncedMutationQueue(snapshot);
+            } else {
+                localStorage.removeItem('bf_local_deletions');
             }
             // Xóa các record mồ côi (parent đã bị xóa trên server) khỏi local state
             if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
@@ -176,7 +309,7 @@ export function autoSync() {
                         const before = this.model.state[stateKey].length;
                         this.model.state[stateKey] = this.model.state[stateKey].filter(item => String(item.id) !== String(id));
                         if (this.model.state[stateKey].length < before) {
-                            this.model.persistData(stateKey);
+                            this.model.persistData(stateKey, { trackMutation: false });
                             stateChanged = true;
                         }
                     }
@@ -204,6 +337,11 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
     const hasLocalDataForCurrentRoute = typeof this.hasLocalDataForRoute === 'function'
         ? this.hasLocalDataForRoute(window.location.pathname)
         : (typeof this.hasLocalWorkspaceData === 'function' ? this.hasLocalWorkspaceData() : false);
+    if (syncStatusText) {
+        syncStatusText.textContent = !isBackground && !hasLocalDataForCurrentRoute
+            ? 'Dang tai du lieu lan dau...'
+            : 'Dang dong bo...';
+    }
     const shouldShowFullLoader = !isBackground && !hasLocalDataForCurrentRoute && this.view && this.view.showLoader;
     if (shouldShowFullLoader) this.view.showLoader();
 
@@ -238,7 +376,7 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
             );
             if (isAuthError || isBackground) {
                 if (syncStatusText) syncStatusText.textContent = 'Cần đăng nhập lại';
-                return { ok: false, status, data };
+                return { ok: false, status: response.status, error: errorMsg };
             }
         }
         if (!response.ok) {

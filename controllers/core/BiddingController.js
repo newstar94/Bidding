@@ -119,6 +119,101 @@ export class BiddingController {
         });
     }
 
+    getActiveUserWorkspaceList() {
+        const currentUser = this.model?.state?.activeuser || {};
+        return String(currentUser.organization_name || '')
+            .split(',')
+            .map(org => org.trim())
+            .filter(Boolean);
+    }
+
+    async resetWorkspaceData(nextOrg = '') {
+        if (nextOrg) {
+            localStorage.setItem('bf_active_org', nextOrg);
+        } else {
+            localStorage.removeItem('bf_active_org');
+        }
+        localStorage.setItem('bf_last_sync_timestamp', '0');
+        localStorage.removeItem('bf_last_sync_version');
+        localStorage.removeItem('bf_last_fetch_time');
+        localStorage.removeItem('bf_mutation_queue');
+        localStorage.setItem('bf_local_deletions', '[]');
+        if (this.model) {
+            this.model.dashboardSummary = null;
+            this.model._hasPersistedWorkspaceData = false;
+        }
+        if (this.model?.db?.stores) {
+            await Promise.all(this.model.db.stores.map(storeName => {
+                if (Array.isArray(this.model.state[storeName])) {
+                    this.model.state[storeName] = [];
+                }
+                return this.model.db.putTableData(storeName, []).catch(() => { });
+            }));
+        }
+    }
+
+    async recoverActiveOrgAccess() {
+        if (this._recoveringActiveOrg) return false;
+        this._recoveringActiveOrg = true;
+        try {
+            const currentOrg = localStorage.getItem('bf_active_org') || '';
+            const orgs = this.getActiveUserWorkspaceList();
+            const nextOrg = orgs.find(org => org !== currentOrg) || orgs[0] || '';
+            await this.resetWorkspaceData(nextOrg);
+            if (typeof this.renderWorkspaceSwitcher === 'function') {
+                this.renderWorkspaceSwitcher();
+            }
+            if (!nextOrg) {
+                return false;
+            }
+            this.view?.showToast?.(
+                'Da doi workspace',
+                `Workspace cu khong con quyen truy cap. Dang tai du lieu cua "${nextOrg}".`,
+                'warning'
+            );
+            if (typeof this.forceSyncData === 'function') {
+                await this.forceSyncData(false, true);
+            }
+            if (typeof this.switchTab === 'function') {
+                this.switchTab(this.model.state.activetab || 'dashboard', null, false);
+            }
+            this.view?.updateActiveUserProfileDisplay?.();
+            return true;
+        } catch (err) {
+            console.error('Failed to recover active workspace:', err);
+            return false;
+        } finally {
+            this._recoveringActiveOrg = false;
+        }
+    }
+
+    ensureCommandRegistry() {
+        if (!this.commands) {
+            this.commands = new Map();
+        }
+        return this.commands;
+    }
+
+    registerCommand(name, handler, { exposeLegacy = true } = {}) {
+        if (!name || typeof handler !== 'function') return;
+        this.ensureCommandRegistry().set(name, handler);
+        if (exposeLegacy) {
+            window[name] = (...args) => this.executeCommand(name, ...args);
+        }
+    }
+
+    executeCommand(name, ...args) {
+        const handler = this.ensureCommandRegistry().get(name);
+        if (typeof handler === 'function') {
+            return handler(...args);
+        }
+        if (typeof window[name] === 'function') {
+            return window[name](...args);
+        }
+        console.warn(`[Command] Missing handler: ${name}`);
+        return undefined;
+    }
+
     getStartupPriorityKeys(pathname = window.location.pathname) {
         const cleanPath = pathname.startsWith('/') ? pathname.substring(1) : pathname;
         const tab = cleanPath.split('/').filter(Boolean)[0] || this.routeMap.dashboard;
@@ -256,16 +351,9 @@ export class BiddingController {
                         errorMsg = data.error;
                     }
                     if (errorMsg === "Không có quyền truy cập tổ chức này!") {
-                        localStorage.removeItem('bf_active_org');
-                        localStorage.setItem('bf_last_sync_timestamp', '0');
-                        localStorage.removeItem('bf_last_sync_version');
-                        if (this.model.db && this.model.db.stores) {
-                            this.model.db.stores.forEach(storeName => {
-                                this.model.db.putTableData(storeName, []).catch(() => { });
-                                if (this.model.state[storeName]) {
-                                    this.model.state[storeName] = [];
-                                }
-                            });
+                        const recovered = await this.recoverActiveOrgAccess();
+                        if (recovered) {
+                            return response;
                         }
                     }
                     if (
@@ -403,8 +491,6 @@ export class BiddingController {
         this.setupDelegatedActions();
         this.setupConditionalUI();
         this.setupFileUploads();
-        this.setupWordTemplatesEvents();
-        this.setupExcelImportEvents();
 
         // RBAC Init
         this.view.updateActiveUserProfileDisplay();
@@ -544,24 +630,47 @@ export class BiddingController {
         window.showChuDauTuDetails = (id) => this.view.showChuDauTuDetails(id);
         window.showNhaThauDetails = (id) => this.view.showNhaThauDetails(id);
 
+        const getSafeImageSrc = (value) => {
+            const src = String(value || '').trim();
+            if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) return src;
+            if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
+            return '';
+        };
+
         window.zoomCertificateImage = (id) => {
             const cg = this.model.state.chuyengia.find(c => c.id === id);
-            if (!cg || !cg.anhChungChi) return;
+            const safeSrc = getSafeImageSrc(cg?.anhChungChi);
+            if (!safeSrc) return;
 
             const lightbox = document.createElement('div');
             lightbox.className = 'certificate-lightbox';
-            lightbox.innerHTML = `<img src="${cg.anhChungChi}" alt="Chứng chỉ Zoom" loading="lazy" decoding="async">`;
+            const img = document.createElement('img');
+            img.src = safeSrc;
+            img.alt = 'Chung chi Zoom';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            lightbox.appendChild(img);
             lightbox.onclick = () => lightbox.remove();
             document.body.appendChild(lightbox);
         };
 
         window.zoomSignatureImage = (id) => {
             const cg = this.model.state.chuyengia.find(c => c.id === id);
-            if (!cg || !cg.anhChuKy) return;
+            const safeSrc = getSafeImageSrc(cg?.anhChuKy);
+            if (!safeSrc) return;
 
             const lightbox = document.createElement('div');
             lightbox.className = 'certificate-lightbox';
-            lightbox.innerHTML = `<img src="${cg.anhChuKy}" alt="Chữ ký Zoom" loading="lazy" decoding="async" style="max-height:60vh; background:#fff; padding:24px; border-radius:12px;">`;
+            const img = document.createElement('img');
+            img.src = safeSrc;
+            img.alt = 'Chu ky Zoom';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.style.maxHeight = '60vh';
+            img.style.background = '#fff';
+            img.style.padding = '24px';
+            img.style.borderRadius = '12px';
+            lightbox.appendChild(img);
             lightbox.onclick = () => lightbox.remove();
             document.body.appendChild(lightbox);
         };
@@ -733,6 +842,74 @@ export class BiddingController {
             else if (tabKey === 'chuyengia') this.view.renderChuyenGiaTable();
             else if (tabKey === 'hopdong') this.view.renderHopDongTable();
         };
+
+        [
+            'toggleSortTable',
+            'changePlanRowVersion',
+            'changePackageRowVersion',
+            'changeChuDauTuRowVersion',
+            'changeNhaThauRowVersion',
+            'changeChuyenGiaRowVersion',
+            'changeHopDongRowVersion',
+            'showPackageDetails',
+            'showKeHoachDetails',
+            'showHopDongDetails',
+            'showChuyenGiaDetails',
+            'showChuDauTuDetails',
+            'showNhaThauDetails',
+            'zoomCertificateImage',
+            'zoomSignatureImage',
+            'editKeHoach',
+            'deleteKeHoach',
+            'addBreakdownRow',
+            'removeBreakdownRow',
+            'editGoiThau',
+            'deleteGoiThau',
+            'restoreCanceledPackage',
+            'addGiaHanRow',
+            'validateGiaHanRealtime',
+            'moThauGoiThau',
+            'phatHanhHsmtGoiThau',
+            'enforceSingleLeader',
+            'openMoThauJVManager',
+            'openMoThauJVViewModal',
+            'showNhaThauDetailsAndCloseJV',
+            'editChuDauTu',
+            'deleteChuDauTu',
+            'editNhaThau',
+            'deleteNhaThau',
+            'editChuyenGia',
+            'deleteChuyenGia',
+            'editHopDong',
+            'deleteHopDong',
+            'saveKetQuaChiDinhThau',
+            'exportContractFromHopDong',
+            'addJointVentureMemberCard',
+            'removeJointVentureMemberCard',
+            'switchTab',
+            'toggleOrgLock',
+            'renewOrgSubscription',
+            'editPackageQuota',
+            'editSystemPackage',
+            'togglePackageLock',
+            'editEmployee',
+            'deleteEmployee',
+            'editHoSoGiayStatus',
+            'deleteHoSoGiayStatus',
+            'triggerUpgradePrompt',
+            'deleteSystemUser',
+            'changeUserRole',
+            'changeUserPackage',
+            'toggleUserPackage',
+            'updateUserMetadata',
+            'showSystemUserDetail',
+            'renderTablePagination',
+            'handlePageChange'
+        ].forEach(name => {
+            if (typeof window[name] === 'function') {
+                this.ensureCommandRegistry().set(name, window[name]);
+            }
+        });
     }
 
     setupDelegatedActions() {
@@ -755,16 +932,14 @@ export class BiddingController {
             const value = target.dataset.value;
 
             const call = (fn, ...args) => {
-                if (typeof window[fn] === 'function') {
-                    event.preventDefault();
-                    window[fn](...args);
-                }
+                event.preventDefault();
+                return this.executeCommand(fn, ...args);
             };
 
             switch (action) {
                 case 'call': {
                     const fn = target.dataset.fn;
-                    if (fn && typeof window[fn] === 'function') {
+                    if (fn) {
                         event.preventDefault();
                         let args = [];
                         try {
@@ -773,7 +948,7 @@ export class BiddingController {
                             args = [];
                         }
                         args = args.map(arg => arg === null ? target : arg);
-                        window[fn](...args);
+                        this.executeCommand(fn, ...args);
                     }
                     return;
                 }
@@ -787,11 +962,7 @@ export class BiddingController {
                     return;
                 }
                 case 'page':
-                    if (typeof window.handlePageChange === 'function') {
-                        event.preventDefault();
-                        window.handlePageChange(target.dataset.containerId, parseInt(target.dataset.page, 10));
-                    }
-                    return;
+                    return call('handlePageChange', target.dataset.containerId, parseInt(target.dataset.page, 10));
                 case 'switch-tab':
                     return call('switchTab', target.dataset.tab);
                 case 'close-modal':
@@ -828,10 +999,10 @@ export class BiddingController {
                 case 'show-contractor-close-jv':
                     return call('showNhaThauDetailsAndCloseJV', id);
                 case 'show-jv':
-                    if (getJvData(id) && typeof window.openMoThauJVViewModal === 'function') {
+                    if (getJvData(id)) {
                         event.preventDefault();
                         const data = getJvData(id);
-                        window.openMoThauJVViewModal(data.members, data.leadName, data.leadCode);
+                        this.executeCommand('openMoThauJVViewModal', data.members, data.leadName, data.leadCode);
                     }
                     return;
                 case 'show-lot-winners':
@@ -875,23 +1046,23 @@ export class BiddingController {
             if (!target) return;
             const action = target.dataset.bfChange;
             const root = target.dataset.root;
-            if (action === 'change-plan-version' && typeof window.changePlanRowVersion === 'function') {
-                window.changePlanRowVersion(root, target.value);
+            if (action === 'change-plan-version') {
+                this.executeCommand('changePlanRowVersion', root, target.value);
             }
-            if (action === 'change-package-version' && typeof window.changePackageRowVersion === 'function') {
-                window.changePackageRowVersion(root, target.value);
+            if (action === 'change-package-version') {
+                this.executeCommand('changePackageRowVersion', root, target.value);
             }
-            if (action === 'change-investor-version' && typeof window.changeChuDauTuRowVersion === 'function') {
-                window.changeChuDauTuRowVersion(root, target.value);
+            if (action === 'change-investor-version') {
+                this.executeCommand('changeChuDauTuRowVersion', root, target.value);
             }
-            if (action === 'change-contractor-version' && typeof window.changeNhaThauRowVersion === 'function') {
-                window.changeNhaThauRowVersion(root, target.value);
+            if (action === 'change-contractor-version') {
+                this.executeCommand('changeNhaThauRowVersion', root, target.value);
             }
-            if (action === 'change-expert-version' && typeof window.changeChuyenGiaRowVersion === 'function') {
-                window.changeChuyenGiaRowVersion(root, target.value);
+            if (action === 'change-expert-version') {
+                this.executeCommand('changeChuyenGiaRowVersion', root, target.value);
             }
-            if (action === 'change-contract-version' && typeof window.changeHopDongRowVersion === 'function') {
-                window.changeHopDongRowVersion(root, target.value);
+            if (action === 'change-contract-version') {
+                this.executeCommand('changeHopDongRowVersion', root, target.value);
             }
         }, true);
     }

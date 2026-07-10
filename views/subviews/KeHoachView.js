@@ -1,4 +1,4 @@
-import { formatCurrency, formatDate, initCustomSelect } from './view_helpers.js';
+import { formatCurrency, formatDate, initCustomSelect, renderEmptyRow } from './view_helpers.js';
 import { parseYearMonth, sortRecords } from './tableDataUtils.js';
 import { clearVirtualTable, renderVirtualTable } from './virtualTable.js';
 export async function renderKeHoachTable() {
@@ -97,16 +97,7 @@ export async function renderKeHoachTable() {
 
     if (totalItems === 0) {
         clearVirtualTable(tableBody);
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="10">
-                    <div class="empty-state">
-                        <i data-lucide="file-warning"></i>
-                        <p>Không tìm thấy Kế hoạch lựa chọn nhà thầu nào phù hợp</p>
-                    </div>
-                </td>
-            </tr>
-        `;
+        tableBody.innerHTML = renderEmptyRow(10, 'Không tìm thấy Kế hoạch lựa chọn nhà thầu nào phù hợp', 'file-warning');
         const pag = document.getElementById('kehoach-pagination');
         if (pag) pag.innerHTML = '';
     } else {

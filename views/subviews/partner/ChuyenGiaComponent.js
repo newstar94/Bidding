@@ -1,4 +1,4 @@
-import { formatDate } from '../view_helpers.js';
+import { escapeHtml, formatDate, safeImageSrc } from '../view_helpers.js';
 import { sortRecords } from '../tableDataUtils.js';
 import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
@@ -75,15 +75,22 @@ export async function renderChuyenGiaTable() {
             }
             const selectedId = this.model.state.selectedChuyenGiaVersion[root] || cg.id;
             const displayedCg = this.model.state.chuyengia.find(x => x.id === selectedId) || cg;
+            const displayedId = escapeHtml(displayedCg.id);
+            const rootAttr = escapeHtml(root);
+            const expertName = escapeHtml(displayedCg.hoTen || '');
+            const expertCccd = escapeHtml(displayedCg.soCCCD || '');
+            const certificateNo = escapeHtml(displayedCg.soChungChi || '');
+            const certificateIssuer = escapeHtml(displayedCg.donViCapChungChi || '--');
+            const certificateDate = escapeHtml(displayedCg.ngayCapChungChi ? formatDate(displayedCg.ngayCapChungChi) : '--');
 
             const optionsHtml = allVersions.map(v => {
-                const label = String(parseInt(v.phienBan || 0)).padStart(2, '0');
+                const label = escapeHtml(String(parseInt(v.phienBan || 0)).padStart(2, '0'));
                 const isSel = v.id === displayedCg.id ? 'selected' : '';
-                return `<option value="${v.id}" ${isSel}>${label}</option>`;
+                return `<option value="${escapeHtml(v.id)}" ${isSel}>${label}</option>`;
             }).join('');
 
             const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-expert-version" data-root="${root}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist" data-bf-change="change-expert-version" data-root="${rootAttr}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
                     ${optionsHtml}
                 </select>
             `;
@@ -92,23 +99,23 @@ export async function renderChuyenGiaTable() {
             <tr>
                 <td class="fw-bold">
                     <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" data-bf-action="show-expert" data-id="${displayedCg.id}" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch" style="display: inline-flex; align-items: center; line-height: 1;"><span style="margin: 0; line-height: 1;">${displayedCg.hoTen || ''}</span></a>
+                        <a href="#" data-bf-action="show-expert" data-id="${displayedId}" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch" style="display: inline-flex; align-items: center; line-height: 1;"><span style="margin: 0; line-height: 1;">${expertName}</span></a>
                         <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                         ${dropdownHtml}
                     </div>
                 </td>
-                <td>${displayedCg.soCCCD || ''}</td>
-                <td><span class="badge badge-info">${displayedCg.soChungChi || ''}</span></td>
-                <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${displayedCg.donViCapChungChi || '--'}</td>
-                <td>${displayedCg.ngayCapChungChi ? formatDate(displayedCg.ngayCapChungChi) : '--'}</td>
+                <td>${expertCccd}</td>
+                <td><span class="badge badge-info">${certificateNo}</span></td>
+                <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${certificateIssuer}</td>
+                <td>${certificateDate}</td>
                 <td class="text-right">
                     ${isEmployee ? '' : `
                     <div class="action-btn-group">
                         ${displayedCg.id === cg.id ? `
-                        <button class="action-btn btn-edit" data-bf-action="edit-expert" data-id="${displayedCg.id}" title="Sửa">
+                        <button class="action-btn btn-edit" data-bf-action="edit-expert" data-id="${displayedId}" title="Sửa">
                             <i data-lucide="edit-2"></i>
                         </button>
-                        <button class="action-btn btn-delete" data-bf-action="delete-expert" data-id="${displayedCg.id}" title="Xóa">
+                        <button class="action-btn btn-delete" data-bf-action="delete-expert" data-id="${displayedId}" title="Xóa">
                             <i data-lucide="trash-2"></i>
                         </button>
                         ` : ''}
@@ -131,36 +138,46 @@ export function showChuyenGiaDetails(id) {
     const cg = this.model.state.chuyengia.find(c => c.id === id);
     if (!cg) return;
 
-    const avatarInitial = cg.hoTen.split(' ').map(w => w[0]).pop().toUpperCase();
-    const certFileName = cg.tenAnhChungChi || (cg.soCCCD ? `CC_${cg.soCCCD}.png` : '--');
-    const sigFileName = cg.tenAnhChuKy || (cg.soCCCD ? `CK_${cg.soCCCD}.png` : '--');
+    const displayName = escapeHtml(cg.hoTen || '');
+    const cccd = escapeHtml(cg.soCCCD || '--');
+    const cccdDate = escapeHtml(cg.ngayCapCCCD ? formatDate(cg.ngayCapCCCD) : '--');
+    const cccdIssuer = escapeHtml(cg.noiCapCCCD || '--');
+    const certificateNo = escapeHtml(cg.soChungChi || '--');
+    const certificateDate = escapeHtml(cg.ngayCapChungChi ? formatDate(cg.ngayCapChungChi) : '--');
+    const certificateIssuer = escapeHtml(cg.donViCapChungChi || '--');
+    const expertId = escapeHtml(cg.id);
+    const signatureSrc = safeImageSrc(cg.anhChuKy);
+    const certificateSrc = safeImageSrc(cg.anhChungChi);
+    const avatarInitial = escapeHtml(String(cg.hoTen || '?').split(' ').map(w => w[0]).pop().toUpperCase());
+    const certFileName = escapeHtml(cg.tenAnhChungChi || (cg.soCCCD ? `CC_${cg.soCCCD}.png` : '--'));
+    const sigFileName = escapeHtml(cg.tenAnhChuKy || (cg.soCCCD ? `CK_${cg.soCCCD}.png` : '--'));
 
     const html = `
         <div class="expert-profile-grid">
             <div class="profile-passport-card">
                 <div class="profile-passport-avatar">${avatarInitial}</div>
-                <div class="profile-passport-name">${cg.hoTen}</div>
+                <div class="profile-passport-name">${displayName}</div>
 
                 <div class="passport-details-list">
                     <div class="passport-detail-row">
                         <div class="passport-detail-label">Số CCCD</div>
-                        <div class="passport-detail-val fw-bold">${cg.soCCCD || '--'}</div>
+                        <div class="passport-detail-val fw-bold">${cccd}</div>
                     </div>
                     <div class="passport-detail-row">
                         <div class="passport-detail-label">Ngày cấp CCCD</div>
-                        <div class="passport-detail-val">${cg.ngayCapCCCD ? formatDate(cg.ngayCapCCCD) : '--'}</div>
+                        <div class="passport-detail-val">${cccdDate}</div>
                     </div>
                     <div class="passport-detail-row">
                         <div class="passport-detail-label">Nơi cấp CCCD</div>
-                        <div class="passport-detail-val">${cg.noiCapCCCD || '--'}</div>
+                        <div class="passport-detail-val">${cccdIssuer}</div>
                     </div>
                 </div>
 
                 <div style="margin-top: 18px;">
                     <div class="passport-detail-label" style="margin-bottom: 6px;">Ảnh chữ ký chuyên gia</div>
-                    <div class="signature-display-frame" data-bf-action="zoom-signature" data-id="${cg.id}" title="Bấm để phóng to">
-                        ${cg.anhChuKy
-            ? `<img src="${cg.anhChuKy}" alt="Chữ ký" loading="lazy" decoding="async" style="max-height:80px; max-width:100%; object-fit:contain;">`
+                    <div class="signature-display-frame" data-bf-action="zoom-signature" data-id="${expertId}" title="Bấm để phóng to">
+                        ${signatureSrc
+            ? `<img src="${signatureSrc}" alt="Chữ ký" loading="lazy" decoding="async" style="max-height:80px; max-width:100%; object-fit:contain;">`
             : `<span class="text-muted" style="font-size:0.78rem;">Chưa có ảnh chữ ký</span>`
         }
                     </div>
@@ -172,31 +189,31 @@ export function showChuyenGiaDetails(id) {
                 <div class="expert-cert-viewer">
                     <div class="expert-cert-title-bar">
                         <h5>Chứng chỉ Hành nghề Đấu thầu</h5>
-                        <span class="badge badge-info">Số CC: ${cg.soChungChi}</span>
+                        <span class="badge badge-info">Số CC: ${certificateNo}</span>
                     </div>
 
                     <div class="passport-details-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 0; margin-bottom: 12px;">
                         <div class="passport-detail-row">
                             <div class="passport-detail-label">Số chứng chỉ</div>
-                            <div class="passport-detail-val fw-bold text-blue">${cg.soChungChi || '--'}</div>
+                            <div class="passport-detail-val fw-bold text-blue">${certificateNo}</div>
                         </div>
                         <div class="passport-detail-row">
                             <div class="passport-detail-label">Ngày cấp</div>
-                            <div class="passport-detail-val">${cg.ngayCapChungChi ? formatDate(cg.ngayCapChungChi) : '--'}</div>
+                            <div class="passport-detail-val">${certificateDate}</div>
                         </div>
                         <div class="passport-detail-row" style="grid-column: span 2;">
                             <div class="passport-detail-label">Đơn vị cấp chứng chỉ</div>
-                            <div class="passport-detail-val fw-bold">${cg.donViCapChungChi || '--'}</div>
+                            <div class="passport-detail-val fw-bold">${certificateIssuer}</div>
                         </div>
                     </div>
 
                     <div class="passport-detail-label" style="margin-bottom: 6px;">Ảnh chụp chứng chỉ thực tế</div>
-                    <div class="cert-image-frame" data-bf-action="zoom-certificate" data-id="${cg.id}">
-                        ${cg.anhChungChi
-            ? `<img src="${cg.anhChungChi}" alt="Ảnh chứng chỉ" loading="lazy" decoding="async">`
+                    <div class="cert-image-frame" data-bf-action="zoom-certificate" data-id="${expertId}">
+                        ${certificateSrc
+            ? `<img src="${certificateSrc}" alt="Ảnh chứng chỉ" loading="lazy" decoding="async">`
             : `<div style="display:flex;align-items:center;justify-content:center;height:120px;color:var(--text-light);">Chưa có ảnh chứng chỉ</div>`
         }
-                        ${cg.anhChungChi ? `<div class="cert-zoom-overlay"><i data-lucide="zoom-in"></i> Phóng to</div>` : ''}
+                        ${certificateSrc ? `<div class="cert-zoom-overlay"><i data-lucide="zoom-in"></i> Phóng to</div>` : ''}
                     </div>
                     <div style="margin-top:4px; font-size:0.72rem; color:var(--text-light);">📁 ${certFileName}</div>
                 </div>

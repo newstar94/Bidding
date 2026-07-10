@@ -228,7 +228,7 @@ export function startBackgroundSessionChecker() {
         }).then(res => {
             if (res.ok) return res.json();
             throw new Error("Invalid session");
-        }).then(data => {
+        }).then(async data => {
             if (!data || !data.valid) {
                 clearInterval(this._sessionInterval);
                 this.model.clearSessionData();
@@ -284,20 +284,17 @@ export function startBackgroundSessionChecker() {
                         let activeOrg = localStorage.getItem('bf_active_org');
                         const orgs = (activeuser.organization_name || '').split(',').map(o => o.trim()).filter(Boolean);
                         if (activeOrg && !orgs.includes(activeOrg)) {
-                            if (orgs.length > 0) {
-                                localStorage.setItem('bf_active_org', orgs[0]);
+                            const nextOrg = orgs[0] || '';
+                            if (typeof this.resetWorkspaceData === 'function') {
+                                await this.resetWorkspaceData(nextOrg);
                             } else {
-                                localStorage.removeItem('bf_active_org');
-                            }
-                            localStorage.setItem('bf_last_sync_timestamp', '0');
-                            localStorage.removeItem('bf_last_sync_version');
-                            if (this.model.db && this.model.db.stores) {
-                                this.model.db.stores.forEach(storeName => {
-                                    this.model.db.putTableData(storeName, []).catch(() => { });
-                                    if (this.model.state[storeName]) {
-                                        this.model.state[storeName] = [];
-                                    }
-                                });
+                                if (nextOrg) {
+                                    localStorage.setItem('bf_active_org', nextOrg);
+                                } else {
+                                    localStorage.removeItem('bf_active_org');
+                                }
+                                localStorage.setItem('bf_last_sync_timestamp', '0');
+                                localStorage.removeItem('bf_last_sync_version');
                             }
                             // Tải lại dữ liệu cho không gian làm việc mới ngay lập tức
                             this.forceSyncData().catch(err => console.error("Lỗi tự động tải lại dữ liệu:", err));
@@ -583,9 +580,13 @@ export function setupAuth() {
                 setAuthSessionActive(false);
                 setAuthFlowInProgress(false);
                 if (this._sessionInterval) clearInterval(this._sessionInterval);
-                localStorage.removeItem('bf_active_org');
-                localStorage.removeItem('bf_last_sync_timestamp');
-                localStorage.removeItem('bf_last_sync_version');
+                if (typeof this.resetWorkspaceData === 'function') {
+                    await this.resetWorkspaceData('');
+                } else {
+                    localStorage.removeItem('bf_active_org');
+                    localStorage.removeItem('bf_last_sync_timestamp');
+                    localStorage.removeItem('bf_last_sync_version');
+                }
 
                 overlay.style.display = 'flex';
                 document.querySelector('.app-container').style.filter = 'blur(10px)';

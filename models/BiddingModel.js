@@ -3,6 +3,11 @@
    ========================================================================== */
 
 import * as formatters from '/views/utils/formatters.js';
+import {
+    COMMON_FIELD_NAME_OVERRIDES,
+    FIELD_MAP_BY_TABLE,
+    resolveSchemaTable
+} from '/models/schemaContract.js';
 
 const RECORD_ID_PREFIXES = {
     user: 'user-',
@@ -45,6 +50,22 @@ const RECORD_ID_PREFIXES = {
     cau_hinh_bien_word: 'wmp-'
 };
 
+const SYNCED_STATE_KEYS = new Set([
+    'chudautu',
+    'kehoach',
+    'goithau',
+    'chuyengia',
+    'nhathau',
+    'hopdong',
+    'assignments',
+    'custompaperstatuses',
+    'thongtinmothau',
+    'permissionmatrix'
+]);
+
+const MUTATION_QUEUE_KEY = 'bf_mutation_queue';
+const LOCAL_DELETIONS_KEY = 'bf_local_deletions';
+
 function createUUID() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
@@ -53,6 +74,20 @@ function createUUID() {
         const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
     });
+}
+
+function readLocalJson(key, fallback) {
+    if (typeof localStorage === 'undefined') return fallback;
+    try {
+        return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    } catch (e) {
+        return fallback;
+    }
+}
+
+function writeLocalJson(key, value) {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(key, JSON.stringify(value));
 }
 
 window.generateUUID = function() {
@@ -281,28 +316,12 @@ class BrowserDB {
     }
 }
 
-const FIELD_NAME_OVERRIDES = {
-    id_goc: 'rootId',
-    root_id: 'rootId',
-    so_cccd: 'soCCCD',
-    ma_qhns: 'maQHNS',
-    thoi_gian_dang_tai: 'thoiGianDangTai',
-    thoi_gian_dang_ma: 'thoiGianDangMa',
-    thoi_gian_mo_ehsdxtc: 'thoiGianMoEhsdxtc',
-    hieu_luc_hsdt: 'hieuLucHsdt',
-    hieu_luc_hsdxt: 'hieuLucHsdxt',
-    ty_le_bao_dam_hop_dong: 'tyLeBaoDamHopDong',
-    yeu_cau_tham_dinh_hsmt: 'yeuCauThamDinhHsmt',
-    so_bao_cao_tham_dinh_hsmt: 'soBaoCaoThamDinhHsmt',
-    ngay_bao_cao_tham_dinh_hsmt: 'ngayBaoCaoThamDinhHsmt',
-    so_to_trinh_hsmt: 'soToTrinhHsmt',
-    ngay_trinh_hsmt: 'ngayTrinhHsmt',
-    emp_id: 'empId'
-};
-
-const snakeToCamel = (key) => {
+const snakeToCamel = (key, type = null) => {
     if (!key || !key.includes('_')) return key;
-    if (FIELD_NAME_OVERRIDES[key]) return FIELD_NAME_OVERRIDES[key];
+    const tableName = type ? resolveSchemaTable(type) : null;
+    const tableFieldMap = tableName ? FIELD_MAP_BY_TABLE[tableName] : null;
+    if (tableFieldMap?.[key]) return tableFieldMap[key];
+    if (COMMON_FIELD_NAME_OVERRIDES[key]) return COMMON_FIELD_NAME_OVERRIDES[key];
     return key.replace(/_([a-z0-9])/g, (_, ch) => ch.toUpperCase());
 };
 
@@ -376,9 +395,10 @@ export class BiddingModel {
         this._loadedStorageKeys = new Set();
         this._allDataLoadPromise = null;
         this._hasPersistedWorkspaceData = false;
+        this._suspendMutationTracking = 0;
     }
 
-    normalizeRecordKeys(record) {
+    normalizeRecordKeys(record, type = null) {
         if (!record || typeof record !== 'object' || Array.isArray(record)) {
             return record;
         }
@@ -391,7 +411,7 @@ export class BiddingModel {
         // => Giu logic nay nhung dam bao server luon serialize camelCase len truoc.
         const normalized = {};
         Object.entries(record).forEach(([key, value]) => {
-            const canonicalKey = snakeToCamel(key);
+            const canonicalKey = snakeToCamel(key, type);
             if (!(canonicalKey in normalized) || normalized[canonicalKey] === undefined || normalized[canonicalKey] === null || normalized[canonicalKey] === '') {
                 normalized[canonicalKey] = value;
             }
@@ -401,7 +421,7 @@ export class BiddingModel {
 
     normalizeRecords(type, records) {
         if (!Array.isArray(records)) return records;
-        const normalized = records.map(record => this.normalizeRecordKeys(record));
+        const normalized = records.map(record => this.normalizeRecordKeys(record, type));
         this.state[type] = normalized;
         return normalized;
     }
@@ -548,18 +568,7 @@ export class BiddingModel {
                 const newIds = new Set(this.state[type].map(x => x.id).filter(Boolean));
                 const deletedIds = oldData.map(x => x.id).filter(id => id && !newIds.has(id));
                 if (deletedIds.length > 0) {
-                    let localDeletions = [];
-                    try {
-                        localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
-                    } catch (e) {
-                        localDeletions = [];
-                    }
-                    deletedIds.forEach(id => {
-                        if (!localDeletions.some(d => d.id === id && d.table === type)) {
-                            localDeletions.push({ table: type, id: id });
-                        }
-                    });
-                    localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
+                    this.markDeleted(type, deletedIds);
                 }
             }
         } catch (e) {
@@ -567,27 +576,200 @@ export class BiddingModel {
         }
     }
 
+    _isSyncedStateKey(type) {
+        return SYNCED_STATE_KEYS.has(type);
+    }
+
+    _emptyMutationQueue() {
+        return {
+            baseSyncVersion: (typeof localStorage !== 'undefined' ? (localStorage.getItem('bf_last_sync_version') || '0') : '0'),
+            clientMutationId: createUUID(),
+            dirtyTables: {},
+            upserts: {},
+            deletes: [],
+            revision: 0
+        };
+    }
+
+    getMutationQueue() {
+        const queue = readLocalJson(MUTATION_QUEUE_KEY, null) || this._emptyMutationQueue();
+        queue.baseSyncVersion = queue.baseSyncVersion ?? (typeof localStorage !== 'undefined' ? (localStorage.getItem('bf_last_sync_version') || '0') : '0');
+        queue.clientMutationId = queue.clientMutationId || createUUID();
+        queue.dirtyTables = queue.dirtyTables && typeof queue.dirtyTables === 'object' ? queue.dirtyTables : {};
+        queue.upserts = queue.upserts && typeof queue.upserts === 'object' ? queue.upserts : {};
+        queue.deletes = Array.isArray(queue.deletes) ? queue.deletes : [];
+        queue.revision = Number.isFinite(Number(queue.revision)) ? Number(queue.revision) : 0;
+        return queue;
+    }
+
+    _saveMutationQueue(queue) {
+        const hasDirtyTables = Object.keys(queue.dirtyTables || {}).some(key => queue.dirtyTables[key]);
+        const hasUpserts = Object.values(queue.upserts || {}).some(items => items && Object.keys(items).length > 0);
+        const hasDeletes = Array.isArray(queue.deletes) && queue.deletes.length > 0;
+        if (!hasDirtyTables && !hasUpserts && !hasDeletes) {
+            if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem(MUTATION_QUEUE_KEY);
+            }
+            return;
+        }
+        writeLocalJson(MUTATION_QUEUE_KEY, queue);
+    }
+
+    _touchMutationQueue(queue) {
+        queue.revision = (Number(queue.revision) || 0) + 1;
+        queue.clientMutationId = queue.clientMutationId || createUUID();
+        if (queue.baseSyncVersion === undefined || queue.baseSyncVersion === null || queue.baseSyncVersion === '') {
+            queue.baseSyncVersion = (typeof localStorage !== 'undefined' ? (localStorage.getItem('bf_last_sync_version') || '0') : '0');
+        }
+    }
+
+    markRecordDirty(type, records) {
+        if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
+        const list = Array.isArray(records) ? records : [records];
+        const validRecords = list.filter(record => record && record.id);
+        if (validRecords.length === 0) return;
+        const queue = this.getMutationQueue();
+        if (!queue.upserts[type]) queue.upserts[type] = {};
+        validRecords.forEach(record => {
+            queue.upserts[type][record.id] = this.normalizeRecordKeys(record, type);
+            queue.deletes = queue.deletes.filter(item => !(item.table === type && String(item.id) === String(record.id)));
+        });
+        this._touchMutationQueue(queue);
+        this._saveMutationQueue(queue);
+    }
+
+    markTableDirty(type) {
+        if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
+        const records = Array.isArray(this.state[type])
+            ? this.state[type].filter(record => record && record.id).map(record => this.normalizeRecordKeys(record, type))
+            : [];
+        if (records.length === 0) return;
+        const queue = this.getMutationQueue();
+        queue.dirtyTables[type] = false;
+        queue.upserts[type] = {};
+        const currentIds = new Set();
+        records.forEach(record => {
+            currentIds.add(String(record.id));
+            queue.upserts[type][record.id] = record;
+        });
+        queue.deletes = queue.deletes.filter(item => item.table !== type || !currentIds.has(String(item.id)));
+        this._touchMutationQueue(queue);
+        this._saveMutationQueue(queue);
+    }
+
     markDeleted(type, recordIds) {
         const ids = Array.isArray(recordIds) ? recordIds : [recordIds];
-        let localDeletions = [];
-        try {
-            localDeletions = JSON.parse(localStorage.getItem('bf_local_deletions') || '[]');
-        } catch (e) {
-            localDeletions = [];
-        }
+        let localDeletions = readLocalJson(LOCAL_DELETIONS_KEY, []);
         ids.filter(Boolean).forEach(id => {
             if (!localDeletions.some(d => d.id === id && d.table === type)) {
                 localDeletions.push({ table: type, id });
             }
         });
-        localStorage.setItem('bf_local_deletions', JSON.stringify(localDeletions));
+        writeLocalJson(LOCAL_DELETIONS_KEY, localDeletions);
+
+        if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
+        const queue = this.getMutationQueue();
+        ids.filter(Boolean).forEach(id => {
+            if (queue.upserts[type]) {
+                delete queue.upserts[type][id];
+            }
+            if (!queue.deletes.some(d => d.id === id && d.table === type)) {
+                queue.deletes.push({ table: type, id });
+            }
+        });
+        this._touchMutationQueue(queue);
+        this._saveMutationQueue(queue);
     }
 
-    async persistData(type) {
+    buildMutationSyncPayload() {
+        const queue = this.getMutationQueue();
+        const payload = {
+            clientMutationId: queue.clientMutationId,
+            baseSyncVersion: queue.baseSyncVersion,
+            upserts: {},
+            deletions: []
+        };
+        const snapshot = JSON.parse(JSON.stringify(queue));
+
+        Object.keys(queue.dirtyTables || {}).forEach(type => {
+            if (!queue.dirtyTables[type] || !this._isSyncedStateKey(type)) return;
+            payload[type] = Array.isArray(this.state[type])
+                ? this.state[type].map(record => this.normalizeRecordKeys(record, type))
+                : [];
+            payload.upserts[type] = payload[type];
+        });
+
+        Object.entries(queue.upserts || {}).forEach(([type, recordsById]) => {
+            if (!this._isSyncedStateKey(type) || payload[type]) return;
+            const records = Object.values(recordsById || {}).map(record => this.normalizeRecordKeys(record, type));
+            if (records.length > 0) {
+                payload[type] = records;
+                payload.upserts[type] = records;
+            }
+        });
+
+        const queuedDeletes = Array.isArray(queue.deletes) ? queue.deletes : [];
+        const localDeletions = readLocalJson(LOCAL_DELETIONS_KEY, []);
+        const deleteMap = new Map();
+        [...queuedDeletes, ...localDeletions].forEach(item => {
+            if (!item || !item.table || !item.id) return;
+            deleteMap.set(`${item.table}::${item.id}`, { table: item.table, id: item.id });
+        });
+        payload.deletions = Array.from(deleteMap.values());
+
+        const hasUpserts = Object.keys(payload.upserts).length > 0;
+        if (!hasUpserts && payload.deletions.length === 0) {
+            return null;
+        }
+        return { payload, snapshot };
+    }
+
+    clearSyncedMutationQueue(snapshot) {
+        const current = this.getMutationQueue();
+        if (!snapshot || (current.clientMutationId === snapshot.clientMutationId && current.revision === snapshot.revision)) {
+            if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem(MUTATION_QUEUE_KEY);
+                localStorage.removeItem(LOCAL_DELETIONS_KEY);
+            }
+            return;
+        }
+
+        Object.entries(snapshot.upserts || {}).forEach(([type, recordsById]) => {
+            Object.entries(recordsById || {}).forEach(([id, record]) => {
+                const currentRecord = current.upserts?.[type]?.[id];
+                if (JSON.stringify(currentRecord) === JSON.stringify(record)) {
+                    delete current.upserts[type][id];
+                }
+            });
+            if (current.upserts?.[type] && Object.keys(current.upserts[type]).length === 0) {
+                delete current.upserts[type];
+            }
+        });
+
+        current.deletes = (current.deletes || []).filter(item =>
+            !(snapshot.deletes || []).some(oldItem => oldItem.table === item.table && String(oldItem.id) === String(item.id))
+        );
+        this._saveMutationQueue(current);
+        writeLocalJson(LOCAL_DELETIONS_KEY, current.deletes || []);
+    }
+
+    suspendMutationTracking(callback) {
+        this._suspendMutationTracking += 1;
+        try {
+            return callback();
+        } finally {
+            this._suspendMutationTracking = Math.max(0, this._suspendMutationTracking - 1);
+        }
+    }
+
+    async persistData(type, options = {}) {
         const key = type.toUpperCase();
         if (this.STORAGE_KEYS[key]) {
             if (Array.isArray(this.state[type])) {
                 this.normalizeRecords(type, this.state[type]);
+            }
+            if (options.trackMutation !== false && this._isSyncedStateKey(type)) {
+                await this.trackDeletions(type);
             }
             if (this.db.stores.includes(type)) {
                 try {
@@ -602,6 +784,9 @@ export class BiddingModel {
                     console.error("Failed to persist data for type:", type, err);
                 }
             }
+            if (options.trackMutation !== false) {
+                this.markTableDirty(type);
+            }
         }
     }
 
@@ -609,20 +794,21 @@ export class BiddingModel {
         if (!this.state[type]) {
             this.state[type] = [];
         }
-        const normalizedRecord = this.normalizeRecordKeys(record);
+        const normalizedRecord = this.normalizeRecordKeys(record, type);
         this.state[type].push(normalizedRecord);
         if (this.db.stores.includes(type)) {
             await this.db.putRecord(type, normalizedRecord);
         } else {
             this.persistData(type);
         }
+        this.markRecordDirty(type, normalizedRecord);
     }
 
     async updateRecord(type, record) {
         if (!this.state[type]) {
             this.state[type] = [];
         }
-        const normalizedRecord = this.normalizeRecordKeys(record);
+        const normalizedRecord = this.normalizeRecordKeys(record, type);
         const index = this.state[type].findIndex(x => x.id === normalizedRecord.id);
         if (index !== -1) {
             this.state[type][index] = normalizedRecord;
@@ -634,6 +820,7 @@ export class BiddingModel {
         } else {
             this.persistData(type);
         }
+        this.markRecordDirty(type, normalizedRecord);
     }
 
     async deleteRecord(type, recordId) {

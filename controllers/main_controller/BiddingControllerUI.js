@@ -244,6 +244,20 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
         }
     }
 
+    if (action && typeof this.ensureDetailRecordLoaded === 'function') {
+        const pendingDetailLoad = this.ensureDetailRecordLoaded(tabName, action);
+        if (pendingDetailLoad) {
+            pendingDetailLoad.then(record => {
+                if (record) {
+                    this.handlePathRouting(pathname, updateState, isInit);
+                } else {
+                    this.switchTab(tabName, action, updateState);
+                }
+            });
+            return;
+        }
+    }
+
     const guardedRoute = guardTabAccess(this, tabName, action, true);
     tabName = guardedRoute.tabName;
     action = guardedRoute.action;
@@ -451,6 +465,7 @@ export function renderTabData(tabName, action = null) {
             this.view.renderHopDongTable();
             break;
         case 'bieumau':
+            this.setupWordTemplatesEvents();
             this.loadWordTemplates();
             this.view.renderDictionary('global');
             this.setupCopyVariableEvents();

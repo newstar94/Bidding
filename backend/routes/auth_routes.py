@@ -604,6 +604,7 @@ async def list_users_api(request):
             return JSONResponse({"error": "Không tìm thấy thông tin tài khoản yêu cầu!"}, status_code=404)
             
         req_role = requester['vai_tro']
+        effective_roles = get_effective_roles(req_role)
         
         cursor.execute("SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?", (role_or_err.user_id,))
         req_org_ids = [r['to_chuc_id'] for r in cursor.fetchall()]
@@ -614,11 +615,14 @@ async def list_users_api(request):
         email_filter_sql = " AND lower(email) = ?" if email_query else ""
         email_filter_tk_sql = " AND lower(tk.email) = ?" if email_query else ""
 
-        if 'super_admin' in get_effective_roles(req_role):
+        if 'super_admin' in effective_roles:
             if email_query:
                 cursor.execute(sql_base + " WHERE lower(email) = ?", (email_query,))
             else:
                 cursor.execute(sql_base)
+            users_raw = cursor.fetchall()
+        elif 'manager' not in effective_roles:
+            cursor.execute(sql_base + " WHERE id = ?" + email_filter_sql, tuple([role_or_err.user_id] + ([email_query] if email_query else [])))
             users_raw = cursor.fetchall()
         else:
             if not req_org_ids:
@@ -728,6 +732,9 @@ async def update_user_role_api(request):
         if 'super_admin' not in effective_roles and 'super_admin' in requested_roles:
             return JSONResponse({"error": "Bạn không có quyền gán vai trò Quản trị viên tối cao!"}, status_code=403)
         
+        if 'super_admin' not in effective_roles and any(role != 'employee' for role in requested_roles):
+            return JSONResponse({"error": "Ban khong co quyen gan vai tro quan tri."}, status_code=403)
+
         if 'super_admin' not in effective_roles:
             requester_id = role_or_err.user_id
             conn_check = database.get_connection()
@@ -862,6 +869,10 @@ async def update_user_metadata_api(request):
 
 async def list_system_packages_api(request):
     try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT id, ten_goi AS name, gia_ca AS price, han_muc_nhan_su AS quota, mo_ta AS description FROM goi_dich_vu")

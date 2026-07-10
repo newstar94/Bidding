@@ -2,7 +2,79 @@
    BiddingFlow - DashboardView (Part of View split)
    ========================================================================== */
 
+import { escapeHtml, safeAttr, renderEmptyRow } from './view_helpers.js';
+
 export function renderDashboard() {
+    const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
+    if (serverSummary && serverSummary.counts) {
+        const counts = serverSummary.counts || {};
+        const statusCounts = serverSummary.statusCounts || {};
+        const recentPackages = Array.isArray(serverSummary.recentPackages) ? serverSummary.recentPackages : [];
+
+        document.getElementById('stat-count-kehoach').textContent = counts.kehoach || 0;
+        document.getElementById('stat-count-goithau').textContent = counts.goithau || 0;
+        document.getElementById('stat-count-chudautu').textContent = counts.chudautu || 0;
+        document.getElementById('stat-count-nhathau').textContent = counts.nhathau || 0;
+        document.getElementById('stat-count-chuyengia').textContent = counts.chuyengia || 0;
+        const statCountHopDong = document.getElementById('stat-count-hopdong');
+        if (statCountHopDong) statCountHopDong.textContent = counts.hopdong || 0;
+
+        document.getElementById('stat-active-goithau').textContent = `${counts.activeGoithau || 0} goi dang moi thau`;
+        document.getElementById('stat-total-budget').textContent = this.model.formatCurrency(serverSummary.totalContractValue || 0);
+        document.getElementById('stat-savings-value').textContent = `${counts.hopdong || 0} Hop dong`;
+        document.getElementById('stat-savings-percent').textContent = 'Dang thuc hien';
+        document.getElementById('donut-total-count').textContent = counts.goithau || 0;
+
+        const total = counts.goithau || 1;
+        const palette = ['var(--text-light)', 'var(--primary)', '#f59e0b', '#9333ea', 'var(--success)', 'var(--danger)'];
+        let accum = 0;
+        const gradientParts = [];
+        let legendHTML = '';
+        Object.entries(statusCounts).forEach(([status, count], index) => {
+            const pct = (Number(count || 0) / total) * 100;
+            const color = palette[index % palette.length];
+            if (count > 0) {
+                gradientParts.push(`${color} ${accum}% ${accum + pct}%`);
+                accum += pct;
+            }
+            legendHTML += `
+                <div class="legend-item">
+                    <div class="legend-info">
+                        <span class="legend-dot" style="background-color: ${color}"></span>
+                    <span>${escapeHtml(status)}</span>
+                    </div>
+                    <span class="legend-val">${count} (${pct.toFixed(0)}%)</span>
+                </div>
+            `;
+        });
+
+        const donutElement = document.querySelector('.status-donut-chart');
+        if (donutElement) {
+            donutElement.style.background = gradientParts.length > 0
+                ? `conic-gradient(${gradientParts.join(', ')})`
+                : 'var(--neutral-soft)';
+        }
+        document.getElementById('status-legend-list').innerHTML = legendHTML;
+
+        const recentTableBody = document.getElementById('recent-packages-table').querySelector('tbody');
+        if (recentPackages.length === 0) {
+            recentTableBody.innerHTML = renderEmptyRow(5, 'Chua co goi thau nao', 'inbox');
+        } else {
+            recentTableBody.innerHTML = recentPackages.map(gt => `
+                <tr>
+                    <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiet Goi thau"><span class="detail-code">${escapeHtml(gt.maGoiThau || '')}</span></a></td>
+                    <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="view-package-link">${escapeHtml(gt.tenGoiThau || '')}</a></td>
+                    <td>${this.model.formatCurrency(gt.giaGoiThau)}</td>
+                    <td>${escapeHtml(gt.hinhThucLuaChon || '')}</td>
+                    <td>${this.getStatusBadge(gt.trangThai)}</td>
+                </tr>
+            `).join('');
+
+        }
+        lucide.createIcons();
+        return;
+    }
+
     const listSignature = (items, fields) => (items || [])
         .map(item => fields.map(field => item[field] ?? '').join(':'))
         .join('|');
@@ -114,24 +186,18 @@ export function renderDashboard() {
     const recentList = [...latestPackages].reverse().slice(0, 4);
 
     if (recentList.length === 0) {
-        recentTableBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Chưa có gói thầu nào</td></tr>`;
+        recentTableBody.innerHTML = renderEmptyRow(5, 'Chưa có gói thầu nào', 'inbox');
     } else {
         recentTableBody.innerHTML = recentList.map(gt => `
             <tr>
-                <td><a href="#" data-bf-action="show-package" data-id="${gt.id}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu"><span class="detail-code">${gt.maGoiThau}</span></a></td>
-                <td><a href="#" class="view-package-link" data-id="${gt.id}">${gt.tenGoiThau}</a></td>
+                <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu"><span class="detail-code">${escapeHtml(gt.maGoiThau)}</span></a></td>
+                <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="view-package-link">${escapeHtml(gt.tenGoiThau)}</a></td>
                 <td>${this.model.formatCurrency(gt.giaGoiThau)}</td>
-                <td>${gt.hinhThucLuaChon}</td>
+                <td>${escapeHtml(gt.hinhThucLuaChon)}</td>
                 <td>${this.getStatusBadge(gt.trangThai)}</td>
             </tr>
         `).join('');
 
-        recentTableBody.querySelectorAll('.view-package-link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                window.showPackageDetails(link.getAttribute('data-id'));
-            });
-        });
     }
     lucide.createIcons();
 }

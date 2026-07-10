@@ -2,6 +2,7 @@ import json
 import re
 
 from .schema import SCHEMA_DINH_NGHIA
+from .date_utils import normalize_datetime_value
 from .id_utils import generate_record_id
 from .text_utils import clean_id, safe_float, to_camel_case
 
@@ -134,7 +135,7 @@ def save_child_payloads(cursor, table_name, item, owner_id, owner_type, sync_ver
         _save_plan_children(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at)
     elif table_name == "goi_thau":
         _save_package_children(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at)
-        _save_package_expert_relations(cursor, parent_id, item)
+        _save_package_expert_relations(cursor, parent_id, item, owner_id, owner_type)
     elif table_name == "nha_thau":
         _save_member_children(cursor, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", parent_id, item, owner_id, owner_type, sync_version, updated_at)
     elif table_name == "thong_tin_mo_thau":
@@ -186,7 +187,7 @@ def _save_package_children(cursor, parent_id, item, owner_id, owner_type, sync_v
     _save_clarifications(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at)
 
 
-def _save_package_expert_relations(cursor, parent_id, item):
+def _save_package_expert_relations(cursor, parent_id, item, owner_id, owner_type):
     relation_specs = [
         ("toChuyenGia", "chuyen_gia"),
         ("toThamDinh", "tham_dinh"),
@@ -195,15 +196,23 @@ def _save_package_expert_relations(cursor, parent_id, item):
         if not _has_child_key(item, payload_key):
             continue
         cursor.execute(
-            "DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = ?",
-            (parent_id, relation_type),
+            "DELETE FROM goi_thau_chuyen_gia WHERE owner_id = ? AND goi_thau_id = ? AND loai = ?",
+            (owner_id, parent_id, relation_type),
         )
         rows = []
         for row in _parse_child_list(item.get(payload_key)):
             expert_id = clean_id(_first_value(row, "chuyenGiaId", "chuyen_gia_id", "id"))
             if not expert_id:
                 continue
+            cursor.execute(
+                "SELECT 1 FROM chuyen_gia WHERE owner_id = ? AND id = ? LIMIT 1",
+                (owner_id, expert_id),
+            )
+            if not cursor.fetchone():
+                raise ValueError(f"Chuyen gia {expert_id} khong thuoc owner hien tai.")
             rows.append((
+                owner_id,
+                owner_type,
                 parent_id,
                 expert_id,
                 relation_type,
@@ -213,8 +222,8 @@ def _save_package_expert_relations(cursor, parent_id, item):
         if rows:
             cursor.executemany("""
                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (
-                    goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
-                ) VALUES (?, ?, ?, ?, ?)
+                    owner_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """, rows)
 
 
@@ -318,7 +327,7 @@ def _save_extensions(cursor, parent_id, value, owner_id, owner_type, sync_versio
             owner_id,
             owner_type,
             parent_id,
-            _first_value(row, "thoiGianDongThau", "thoi_gian_dong_thau", default=""),
+            normalize_datetime_value(_first_value(row, "thoiGianDongThau", "thoi_gian_dong_thau", default="")),
             _first_value(row, "lyDoGiaHan", "ly_do_gia_han", default=""),
             index,
             sync_version,
@@ -357,7 +366,7 @@ def _save_clarifications(cursor, parent_id, item, owner_id, owner_type, sync_ver
                 owner_type,
                 parent_id,
                 kind,
-                _first_value(row, time_key, default=""),
+                normalize_datetime_value(_first_value(row, time_key, default="")),
                 _first_value(row, content_key, default=""),
                 index,
                 sync_version,

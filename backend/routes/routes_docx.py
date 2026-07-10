@@ -16,6 +16,7 @@ from helpers import (
     OrgPermissionError
 )
 from helpers_py.id_utils import generate_record_id
+from helpers_py.access_policy import can_read_record, is_manager_role
 import custom_exporter
 import services.docx_service as docx_service
 from helpers_py.word_defaults import ensure_default_word_mappings
@@ -25,6 +26,23 @@ SYSTEM_TEMPLATES = {'mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx'}
 MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
 COMPUTED_SOURCE_TABLE = '__computed__'
 CONTEXT_SOURCE_TABLE = '__context__'
+
+
+def _can_export_record(role_or_err, org_name, payload_key, table_name, record_id):
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        return can_read_record(
+            cursor,
+            str(role_or_err),
+            role_or_err.user_id,
+            org_name,
+            payload_key,
+            table_name,
+            record_id,
+        )
+    finally:
+        conn.close()
 
 def _safe_filename(value, fallback='download.docx'):
     name = os.path.basename(str(value or fallback)).strip()
@@ -915,6 +933,8 @@ async def export_plan_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        if not _can_export_record(role_or_err, org_name, "kehoach", "ke_hoach_lcnt", plan_id):
+            return JSONResponse({"error": "Ban khong co quyen xuat ke hoach nay."}, status_code=403)
 
         # Build context from service
         unified_context = docx_service.build_plan_context(plan_id, user_id, org_name)
@@ -957,6 +977,8 @@ async def export_report_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        if not _can_export_record(role_or_err, org_name, "goithau", "goi_thau", package_id):
+            return JSONResponse({"error": "Ban khong co quyen xuat goi thau nay."}, status_code=403)
 
         # Build context from service
         unified_context = docx_service.build_report_context(package_id, user_id, org_name, type_param)
@@ -1070,6 +1092,8 @@ async def list_word_mappings_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
+        if not is_manager_role(str(role_or_err)):
+            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
         conn = database.get_connection()
@@ -1103,6 +1127,8 @@ async def save_word_mapping_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
+        if not is_manager_role(str(role_or_err)):
+            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
 
@@ -1194,6 +1220,8 @@ async def delete_word_mapping_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
+        if not is_manager_role(str(role_or_err)):
+            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
 

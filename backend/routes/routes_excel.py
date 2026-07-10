@@ -3,11 +3,13 @@ import os
 from starlette.responses import StreamingResponse, JSONResponse
 
 from helpers import (
+    database,
     verify_session,
     clean_id,
     get_active_org,
     OrgPermissionError
 )
+from helpers_py.access_policy import can_read_record
 
 from helpers_py.excel_handler import parse_excel
 import services.excel_service as excel_service
@@ -19,6 +21,23 @@ ALLOWED_EXCEL_MIME_TYPES = {
     'application/vnd.ms-excel',
     'application/octet-stream',
 }
+
+
+def _can_export_package(role_or_err, org_name, package_id):
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        return can_read_record(
+            cursor,
+            str(role_or_err),
+            role_or_err.user_id,
+            org_name,
+            "goithau",
+            "goi_thau",
+            package_id,
+        )
+    finally:
+        conn.close()
 
 
 def _validate_excel_upload(file_obj, file_bytes):
@@ -130,6 +149,8 @@ async def export_opening_fin_template_api(request):
         pkg_id_clean = clean_id(package_id)
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
+        if not _can_export_package(role_or_err, org_name, pkg_id_clean):
+            return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
         wb = excel_service.create_opening_fin_template(pkg_id_clean, org_name)
 
@@ -163,6 +184,8 @@ async def export_danhgiahsdt_template_api(request):
         pkg_id_clean = clean_id(package_id)
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
+        if not _can_export_package(role_or_err, org_name, pkg_id_clean):
+            return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
         wb = excel_service.create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type)
 
@@ -197,6 +220,8 @@ async def export_ketquaqd_template_api(request):
         pkg_id_clean = clean_id(package_id)
         if not pkg_id_clean:
             return JSONResponse({"error": "Invalid package_id format"}, status_code=400)
+        if not _can_export_package(role_or_err, org_name, pkg_id_clean):
+            return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
         wb = excel_service.create_ketquaqd_template(pkg_id_clean, org_name)
 

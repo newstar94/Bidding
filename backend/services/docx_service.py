@@ -224,16 +224,16 @@ def build_report_context(package_id, user_id, org_name, type_param):
             SELECT hd.*
             FROM hop_dong hd
             JOIN hop_dong_goi_thau hdgt ON hdgt.hop_dong_id = hd.id
-            WHERE hd.owner_id = ? AND hdgt.goi_thau_id = ?
+            WHERE hd.owner_id = ? AND hdgt.owner_id = ? AND hdgt.goi_thau_id = ?
             ORDER BY CAST(hd.phien_ban AS INTEGER) DESC
             LIMIT 1
-        """, (org_name, package_id))
+        """, (org_name, org_name, package_id))
         row_contract = cursor.fetchone()
         if row_contract:
             contract_data = parse_json_fields(dict(row_contract))
             cursor.execute(
-                "SELECT goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id = ?",
-                (contract_data.get('id'),)
+                "SELECT goi_thau_id FROM hop_dong_goi_thau WHERE owner_id = ? AND hop_dong_id = ?",
+                (org_name, contract_data.get('id'))
             )
             contract_data['goi_thau_ids'] = [r[0] for r in cursor.fetchall()]
 
@@ -242,8 +242,8 @@ def build_report_context(package_id, user_id, org_name, type_param):
         SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec 
         FROM goi_thau_chuyen_gia gtcg
         JOIN chuyen_gia cg ON gtcg.chuyen_gia_id = cg.id
-        WHERE gtcg.goi_thau_id = ? AND gtcg.loai = 'chuyen_gia'
-    """, (package_id,))
+        WHERE gtcg.owner_id = ? AND cg.owner_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'chuyen_gia'
+    """, (org_name, org_name, package_id))
     to_chuyen_gia = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
 
     # Fetch assigned appraisal members (Tổ thẩm định)
@@ -251,8 +251,8 @@ def build_report_context(package_id, user_id, org_name, type_param):
         SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec 
         FROM goi_thau_chuyen_gia gtcg
         JOIN chuyen_gia cg ON gtcg.chuyen_gia_id = cg.id
-        WHERE gtcg.goi_thau_id = ? AND gtcg.loai = 'tham_dinh'
-    """, (package_id,))
+        WHERE gtcg.owner_id = ? AND cg.owner_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'tham_dinh'
+    """, (org_name, org_name, package_id))
     to_tham_dinh = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
 
     conn.close()

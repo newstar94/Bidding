@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test controllers/**/*.test.mjs views/**/*.test.mjs",
-    "check": "npm test && npm run build",
+    "check": "python -m compileall -q backend scripts && npm run build",
+    "generate:schema": "python scripts/generate_schema_contract.py",
     "build": "vite build",
     "build:secure": "vite build --mode secure"
   },

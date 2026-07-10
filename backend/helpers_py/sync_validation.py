@@ -1,9 +1,9 @@
 import json
 import re
-from datetime import datetime
 
 from .schema import SCHEMA_DINH_NGHIA
 from .sync_mapper import json_key_for_column
+from .date_utils import is_datetime_column, parse_datetime_value
 from .text_utils import safe_float, safe_int
 
 
@@ -12,51 +12,25 @@ LEGACY_PACKAGE_STATUS_ALIASES = {
     "Huỷ thầu": "Hủy thầu"
 }
 DEFAULT_PAPER_STATUS_COLOR = "#64748b"
-DATE_KEYS = ["ngayQuyetDinh", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau", "ngayPheDuyet", "ngayKy"]
+DATE_KEYS_BY_TABLE = {
+    table_name: [
+        json_key_for_column(table_name, col)
+        for col in table_spec.get("columns", {}).keys()
+        if is_datetime_column(col)
+    ]
+    for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
+}
 
 
 
 def is_valid_date_format(val):
     if not val:
         return True
-    val = str(val).strip()
-    for fmt in (
-        "%Y-%m-%d",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M",
-        "%Y-%m-%d %H:%M",
-        "%d/%m/%Y",
-        "%d/%m/%Y %H:%M:%S",
-        "%d/%m/%Y %H:%M",
-    ):
-        try:
-            datetime.strptime(val, fmt)
-            return True
-        except ValueError:
-            pass
-    return False
+    return parse_datetime_value(val) is not None
 
 
 def parse_date(val):
-    if not val:
-        return None
-    val = str(val).strip()
-    for fmt in (
-        "%Y-%m-%d",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M",
-        "%Y-%m-%d %H:%M",
-        "%d/%m/%Y",
-        "%d/%m/%Y %H:%M:%S",
-        "%d/%m/%Y %H:%M",
-    ):
-        try:
-            return datetime.strptime(val, fmt)
-        except ValueError:
-            pass
-    return None
+    return parse_datetime_value(val)
 
 
 def validate_sync_item(table_name, item, incoming_paper_status_names=None):
@@ -132,7 +106,7 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
     if mst and not is_auto_created_nt and not re.match(r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$", str(mst).strip()):
         errors.append("Mã số thuế không đúng định dạng.")
 
-    for date_key in DATE_KEYS:
+    for date_key in DATE_KEYS_BY_TABLE.get(table_name, []):
         val = item.get(date_key)
         if val and not is_valid_date_format(str(val).strip()):
             errors.append(f"Trường ngày/giờ '{date_key}' không đúng định dạng.")
