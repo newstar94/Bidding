@@ -82,7 +82,7 @@ export function setupWordTemplatesEvents() {
             { value: 'noi_mo_tai_khoan', label: 'Nơi mở tài khoản chủ đầu tư' },
             { value: 'email', label: 'Email chủ đầu tư' },
             { value: 'ma_qhns', label: 'Mã QHNS (Quan hệ ngân sách) chủ đầu tư' },
-            { value: 'co_quan_chu_quan', label: 'Cơ quan chủ quan của chủ đầu tư' },
+            { value: 'co_quan_chu_quan', label: 'Cơ quan chủ quản của chủ đầu tư' },
             { value: 'phien_ban', label: 'Phiên bản dữ liệu' }
         ],
         'ke_hoach_lcnt': [
@@ -129,7 +129,7 @@ export function setupWordTemplatesEvents() {
             { value: 'thoi_gian_dang_tai', label: 'Thời gian đăng tải thông báo mời thầu' },
             { value: 'thoi_gian_dong_thau', label: 'Thời gian đóng thầu' },
             { value: 'thoi_gian_mo_thau', label: 'Thời gian mở thầu' },
-            { value: 'thoi_gian_mo_ehsdxtc', label: 'Thời gian mở E-HSDXTC (Hồ sơ đề xuất kỹ thuật)' },
+            { value: 'thoi_gian_mo_ehsdxtc', label: 'Thời gian mở E-HSĐXTC (Hồ sơ đề xuất tài chính)' },
             { value: 'so_quyet_dinh', label: 'Số quyết định phê duyệt HSMT / Hồ sơ yêu cầu' },
             { value: 'ngay_quyet_dinh', label: 'Ngày quyết định phê duyệt HSMT / Hồ sơ yêu cầu' },
             { value: 'so_quyet_dinh_ket_qua', label: 'Số quyết định phê duyệt kết quả LCNT' },
@@ -144,7 +144,7 @@ export function setupWordTemplatesEvents() {
             { value: 'ngay_moi_doi_chieu', label: 'Ngày mời đối chiếu tài liệu/Thương thảo' },
             { value: 'ngay_doi_chieu', label: 'Ngày đối chiếu tài liệu/Thương thảo' },
             { value: 'ty_le_bao_dam_hop_dong', label: 'Tỷ lệ bảo đảm thực hiện hợp đồng (%)' },
-            { value: 'is_thuoc', label: 'Thuộc danh mục mua sắm tập trung (0: Không, 1: Có)' },
+            { value: 'is_thuoc', label: 'Có phải thuốc hay không (0: Không, 1: Có)' },
             { value: 'yeu_cau_tham_dinh_hsmt', label: 'Yêu cầu thẩm định HSMT (Có/Không)' },
             { value: 'so_bao_cao_tham_dinh_hsmt', label: 'Số báo cáo thẩm định HSMT' },
             { value: 'ngay_bao_cao_tham_dinh_hsmt', label: 'Ngày báo cáo thẩm định HSMT' },
@@ -200,7 +200,7 @@ export function setupWordTemplatesEvents() {
             { value: 'gia_du_thau', label: 'Giá dự thầu mở thầu' },
             { value: 'dam_bao_du_thau', label: 'Bảo đảm dự thầu mở thầu' },
             { value: 'hieu_luc_dam_bao', label: 'Hiệu lực bảo đảm mở thầu' },
-            { value: 'hieu_luc_hsdxt', label: 'Hiệu lực HSDXT mở thầu' },
+            { value: 'hieu_luc_hsdxt', label: 'Hiệu lực E-HSĐXKT mở thầu' },
             { value: 'ty_le_giam_gia', label: 'Tỷ lệ giảm giá mở thầu' },
             { value: 'gia_sau_giam_gia', label: 'Giá sau giảm giá mở thầu' },
             { value: 'hieu_luc_hsdt', label: 'Hiệu lực HSDT mở thầu (ngày)' },
@@ -1046,10 +1046,10 @@ export async function loadWordTemplates() {
             this.view.renderWordTemplates(templates);
             this.setupTemplateActivationEvents();
         }
-        // Load the custom mappings concurrently
-        await this.loadWordMappings();
     } catch (err) {
         console.error("Failed to load templates:", err);
+    } finally {
+        await this.loadWordMappings();
     }
 }
 
@@ -1057,24 +1057,35 @@ export async function loadWordTemplates() {
 export async function loadWordMappings() {
     try {
         const res = await fetch('/api/word-mappings');
-        if (res.ok) {
-            const mappings = await res.json();
-            if (!this.model.state) this.model.state = {};
-            this.model.state.wordMappings = mappings;
-
-            // Render the mappings list table
-            if (this.view.renderWordMappingsTable) {
-                this.view.renderWordMappingsTable(mappings);
-            }
-
-            // Re-render the dictionary to include the custom mappings
-            const dictionarySelect = document.getElementById('dictionary-group-select');
-            const group = dictionarySelect ? dictionarySelect.value : 'global';
-            this.view.renderDictionary(group);
-            this.setupCopyVariableEvents();
+        const payload = await res.json().catch(() => null);
+        if (!res.ok) {
+            throw new Error(payload?.error || `HTTP ${res.status}`);
         }
+        if (!Array.isArray(payload)) {
+            throw new Error('Phản hồi danh sách biến Word không đúng định dạng.');
+        }
+
+        if (!this.model.state) this.model.state = {};
+        this.model.state.wordMappings = payload;
+
+        // Render the mappings list table
+        if (this.view.renderWordMappingsTable) {
+            this.view.renderWordMappingsTable(payload);
+        }
+
+        // Re-render the dictionary to include the custom mappings
+        const dictionarySelect = document.getElementById('dictionary-group-select');
+        const group = dictionarySelect ? dictionarySelect.value : 'global';
+        this.view.renderDictionary(group);
+        this.setupCopyVariableEvents();
     } catch (err) {
         console.error("Failed to load word mappings:", err);
+        if (!this.model.state) this.model.state = {};
+        this.model.state.wordMappings = [];
+        const tbody = document.getElementById('dictionary-table-body');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted" style="padding: 24px;">Không tải được danh sách biến Word: ${err.message || err}</td></tr>`;
+        }
     }
 }
 

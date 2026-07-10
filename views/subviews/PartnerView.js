@@ -135,7 +135,7 @@ export function renderDictionary(group) {
                 'so_tai_khoan': 'Số tài khoản chủ đầu tư',
                 'noi_mo_tai_khoan': 'Nơi mở tài khoản chủ đầu tư',
                 'ma_qhns': 'Mã QHNS (Quan hệ ngân sách) chủ đầu tư',
-                'co_quan_chu_quan': 'Cơ quan chủ quan của chủ đầu tư',
+                'co_quan_chu_quan': 'Cơ quan chủ quản của chủ đầu tư',
                 'phien_ban': 'Phiên bản dữ liệu'
             },
             'ke_hoach_lcnt': {
@@ -182,7 +182,7 @@ export function renderDictionary(group) {
                 'thoi_gian_dang_tai': 'Thời gian đăng tải thông báo mời thầu',
                 'thoi_gian_dong_thau': 'Thời gian đóng thầu',
                 'thoi_gian_mo_thau': 'Thời gian mở thầu',
-                'thoi_gian_mo_ehsdxtc': 'Thời gian mở E-HSDXTC (Hồ sơ đề xuất kỹ thuật)',
+                'thoi_gian_mo_ehsdxtc': 'Thời gian mở E-HSĐXTC (Hồ sơ đề xuất tài chính)',
                 'so_quyet_dinh': 'Số quyết định phê duyệt HSMT / Hồ sơ yêu cầu',
                 'ngay_quyet_dinh': 'Ngày quyết định phê duyệt HSMT / Hồ sơ yêu cầu',
                 'so_quyet_dinh_ket_qua': 'Số quyết định phê duyệt kết quả LCNT',
@@ -212,7 +212,7 @@ export function renderDictionary(group) {
                 'ngay_trinh_ket_qua': 'Ngày trình kết quả LCNT',
                 'phuong_phap_danh_gia': 'Phương pháp đánh giá hồ sơ dự thầu (HSDT)',
                 'trong_so_ky_thuat': 'Trọng số điểm kỹ thuật (%)',
-                'is_thuoc': 'Thuộc danh mục mua sắm tập trung (0: Không, 1: Có)'
+                'is_thuoc': 'Có phải thuốc hay không (0: Không, 1: Có)'
             },
             'nha_thau': {
                 'ten_nha_thau': 'Tên nhà thầu',
@@ -258,7 +258,7 @@ export function renderDictionary(group) {
                 'gia_du_thau': 'Giá dự thầu mở thầu',
                 'dam_bao_du_thau': 'Bảo đảm dự thầu mở thầu',
                 'hieu_luc_dam_bao': 'Hiệu lực bảo đảm mở thầu',
-                'hieu_luc_hsdxt': 'Hiệu lực HSDXT mở thầu',
+                'hieu_luc_hsdxt': 'Hiệu lực E-HSĐXKT mở thầu',
                 'ty_le_giam_gia': 'Tỷ lệ giảm giá mở thầu',
                 'gia_sau_giam_gia': 'Giá sau giảm giá mở thầu',
                 'hieu_luc_hsdt': 'Hiệu lực HSDT mở thầu (ngày)',
