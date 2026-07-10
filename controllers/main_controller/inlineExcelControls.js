@@ -23,11 +23,14 @@ function bindInlineExcelPair({ templateButtonId, importButtonId, inputId, import
     const importButton = document.getElementById(importButtonId);
     const input = document.getElementById(inputId);
 
-    if (templateButton) {
+    if (templateButton && !templateButton._hasInlineExcelListener) {
+        templateButton._hasInlineExcelListener = true;
         templateButton.addEventListener('click', exportTemplate);
     }
 
-    if (importButton && input) {
+    if (importButton && input && !importButton._hasInlineExcelListener) {
+        importButton._hasInlineExcelListener = true;
+        input._hasInlineExcelListener = true;
         importButton.addEventListener('click', () => input.click());
         input.addEventListener('change', (event) => {
             if (event.target.files.length > 0) {

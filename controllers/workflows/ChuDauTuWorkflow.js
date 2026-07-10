@@ -28,6 +28,10 @@ export async function deleteChuDauTu(id) {
 
 
 export async function editChuDauTu(id) {
+    if (!document.getElementById('modal-chudautu')) {
+        await this.ensureLazyModal?.('modal-chudautu');
+    }
+
     const form = document.getElementById('form-chudautu');
     form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
 

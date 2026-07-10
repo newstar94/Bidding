@@ -187,6 +187,10 @@ export async function phatHanhHsmtGoiThau(id) {
     const gt = this.model.state.goithau.find(g => g.id === id);
     if (!gt) return;
 
+    if (!document.getElementById('modal-phathanh-hsmt')) {
+        await this.ensureLazyModal?.('modal-phathanh-hsmt');
+    }
+
     this.view.populatePhathanhHsmtForm(gt, this.model);
     this.view.openModal('modal-phathanh-hsmt');
 }

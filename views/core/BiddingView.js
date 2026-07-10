@@ -412,6 +412,10 @@ export class BiddingView {
             modal.classList.add('active');
             this.enhanceVisibleContent(modal);
             this.createIconsScoped(modal);
+        } else if (window.appController?.ensureLazyModal) {
+            window.appController.ensureLazyModal(modalId)
+                .then(() => this.openModal(modalId))
+                .catch(err => console.error('Failed to lazy-load modal:', modalId, err));
         }
     }
 

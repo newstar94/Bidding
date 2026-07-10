@@ -318,6 +318,16 @@ export function switchTab(tabName, action = null, updateState = true) {
     tabName = guardedRoute.tabName;
     action = guardedRoute.action;
 
+    if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
+        this.ensureLazyTab(tabName)
+            .then(() => this.switchTab(tabName, action, updateState))
+            .catch(err => {
+                console.error('Failed to lazy-load tab:', tabName, err);
+                this.view?.showToast?.('Khong tai duoc giao dien', 'Vui long tai lai trang va thu lai.', 'error');
+            });
+        return;
+    }
+
     this.model.state.activetab = tabName;
     this.model.state.activeaction = action;
     if (updateState) {
@@ -364,6 +374,9 @@ export function switchTab(tabName, action = null, updateState = true) {
         const path = '/' + urlTab + (urlAction ? '/' + urlAction : '');
         history.pushState({ tab: tabName, action: action }, '', path);
     }
+
+    this.view.elements.navButtons = document.querySelectorAll('.nav-btn');
+    this.view.elements.tabPanes = document.querySelectorAll('.tab-pane');
 
     this.view.elements.navButtons.forEach(btn => {
         if (btn.getAttribute('data-tab') === tabName) {
@@ -412,22 +425,22 @@ export function switchTab(tabName, action = null, updateState = true) {
         setTimeout(() => {
             if (tabName === 'kehoach') {
                 const modal = document.getElementById('modal-kehoach');
-                if (modal && !modal.classList.contains('active')) this.editKeHoach(null);
+                if (!modal || !modal.classList.contains('active')) this.editKeHoach(null);
             } else if (tabName === 'goithau') {
                 const modal = document.getElementById('modal-goithau');
-                if (modal && !modal.classList.contains('active')) this.editGoiThau(null);
+                if (!modal || !modal.classList.contains('active')) this.editGoiThau(null);
             } else if (tabName === 'hopdong') {
                 const modal = document.getElementById('modal-hopdong');
-                if (modal && !modal.classList.contains('active')) this.editHopDong(null);
+                if (!modal || !modal.classList.contains('active')) this.editHopDong(null);
             } else if (tabName === 'chudautu') {
                 const modal = document.getElementById('modal-chudautu');
-                if (modal && !modal.classList.contains('active')) this.editChuDauTu(null);
+                if (!modal || !modal.classList.contains('active')) this.editChuDauTu(null);
             } else if (tabName === 'nhathau') {
                 const modal = document.getElementById('modal-nhathau');
-                if (modal && !modal.classList.contains('active')) this.editNhaThau(null);
+                if (!modal || !modal.classList.contains('active')) this.editNhaThau(null);
             } else if (tabName === 'chuyengia') {
                 const modal = document.getElementById('modal-chuyengia');
-                if (modal && !modal.classList.contains('active')) this.editChuyenGia(null);
+                if (!modal || !modal.classList.contains('active')) this.editChuyenGia(null);
             }
         }, 100);
     } else if (!action) {

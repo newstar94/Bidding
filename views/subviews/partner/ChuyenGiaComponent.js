@@ -135,6 +135,12 @@ export async function renderChuyenGiaTable() {
 }
 
 export function showChuyenGiaDetails(id) {
+    if (!document.getElementById('modal-detail-chuyengia')) {
+        window.appController?.ensureLazyModal?.('modal-detail-chuyengia')
+            .then(() => this.showChuyenGiaDetails(id));
+        return;
+    }
+
     const cg = this.model.state.chuyengia.find(c => c.id === id);
     if (!cg) return;
 

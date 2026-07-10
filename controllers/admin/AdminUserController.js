@@ -146,6 +146,10 @@ export async function updateUserMetadata(userId, field, value) {
 
 export async function showSystemUserDetail(userId) {
     try {
+        if (!document.getElementById('modal-detail-system-user')) {
+            await this.ensureLazyModal?.('modal-detail-system-user');
+        }
+
         const res = await fetch('/api/auth/users');
         if (!res.ok) throw new Error("Failed to fetch users");
         const users = await res.json();
@@ -248,7 +252,10 @@ export function setupRBACEvents() {
     // Open Add Employee Modal
     const btnAddEmp = document.getElementById('btn-manager-add-employee');
     if (btnAddEmp) {
-        btnAddEmp.addEventListener('click', () => {
+        btnAddEmp.addEventListener('click', async () => {
+            if (!document.getElementById('modal-manager-employee')) {
+                await this.ensureLazyModal?.('modal-manager-employee');
+            }
             document.getElementById('modal-employee-title').textContent = 'Thêm Nhân sự phòng thầu';
             document.getElementById('form-manager-employee').reset();
             document.getElementById('form-employee-id').value = '';
@@ -856,9 +863,13 @@ export async function deleteHoSoGiayStatus(id) {
     await this.autoSync();
 }
 
-export function editSystemPackage(pkgId) {
+export async function editSystemPackage(pkgId) {
     const pkg = this.model.state.systempackages.find(p => p.id === pkgId);
     if (!pkg) return;
+
+    if (!document.getElementById('modal-edit-package')) {
+        await this.ensureLazyModal?.('modal-edit-package');
+    }
 
     document.getElementById('edit-pkg-id').value = pkg.id;
     document.getElementById('edit-pkg-name').value = pkg.name;

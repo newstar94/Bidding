@@ -50,6 +50,192 @@ export class BiddingController {
             'chinhsua': 'chinh-sua'
         };
 
+        this.lazyTabPartials = {
+            'kehoach-detail': '/tabs/tab_kehoach_detail.html',
+            'goithau-detail': '/tabs/tab_goithau_detail.html',
+            mothau: '/tabs/tab_mothau.html',
+            danhgiahsdt: '/tabs/tab_danhgiahsdt.html',
+            'chudautu-detail': '/tabs/tab_chudautu_detail.html',
+            'nhathau-detail': '/tabs/tab_nhathau_detail.html',
+            'hopdong-detail': '/tabs/tab_hopdong_detail.html',
+            bieumau: '/tabs/tab_bieumau.html',
+            'superadmin-dashboard': '/tabs/tab_superadmin_dashboard.html',
+            superadmin: '/tabs/tab_superadmin.html',
+            managernhanvien: '/tabs/tab_managernhanvien.html',
+            managerhosogiay: '/tabs/tab_managerhosogiay.html',
+            profile: '/tabs/tab_profile.html'
+        };
+
+        this.lazyModalPartials = {
+            'modal-kehoach': '/modals/modal_kehoach.html',
+            'modal-plan-breakdown': '/modals/modal_plan_breakdown.html',
+            'modal-phathanh-hsmt': '/modals/modal_phathanh_hsmt.html',
+            'modal-goithau': '/modals/modal_goithau.html',
+            'modal-chudautu': '/modals/modal_chudautu.html',
+            'modal-nhathau': '/modals/modal_nhathau.html',
+            'modal-chuyengia': '/modals/modal_chuyengia.html',
+            'modal-detail-goithau': '/modals/modal_detail_goithau.html',
+            'modal-detail-kehoach': '/modals/modal_detail_kehoach.html',
+            'modal-detail-chuyengia': '/modals/modal_detail_chuyengia.html',
+            'modal-hopdong': '/modals/modal_hopdong.html',
+            'modal-manager-employee': '/modals/modal_manager_employee.html',
+            'modal-edit-package': '/modals/modal_edit_package.html',
+            'modal-detail-system-user': '/modals/modal_detail_system_user.html'
+        };
+        this._lazyPartialPromises = new Map();
+
+    }
+
+    async ensureLazyPartial(kind, id) {
+        const isTab = kind === 'tab';
+        const existing = document.getElementById(isTab ? `tab-${id}` : id);
+        if (existing) return existing;
+
+        const partials = isTab ? this.lazyTabPartials : this.lazyModalPartials;
+        const url = partials[id];
+        if (!url) return null;
+
+        const key = `${kind}:${id}`;
+        if (!this._lazyPartialPromises.has(key)) {
+            this._lazyPartialPromises.set(key, (async () => {
+                const response = await fetch(url, { credentials: 'same-origin' });
+                if (!response.ok) {
+                    throw new Error(`Failed to load ${url}: HTTP ${response.status}`);
+                }
+
+                const html = await response.text();
+                const template = document.createElement('template');
+                template.innerHTML = html.trim();
+                const root = document.getElementById(isTab ? 'lazy-tab-root' : 'lazy-modal-root')
+                    || document.querySelector(isTab ? '.content-viewport' : 'body');
+                root.appendChild(template.content);
+
+                this.view.elements.navButtons = document.querySelectorAll('.nav-btn');
+                this.view.elements.tabPanes = document.querySelectorAll('.tab-pane');
+                if (isTab) {
+                    this.setupActionListeners?.();
+                    if (['superadmin', 'superadmin-dashboard', 'managernhanvien', 'managerhosogiay', 'profile'].includes(id)) {
+                        this.setupRBACEvents?.();
+                    }
+                }
+                if (!isTab) {
+                    this.setupActionListeners?.();
+                    if (id === 'modal-goithau') {
+                        this.setupConditionalUI?.();
+                    }
+                    if (id === 'modal-chuyengia') {
+                        this.setupFileUploads?.();
+                    }
+                    if (['modal-manager-employee', 'modal-detail-system-user', 'modal-edit-package'].includes(id)) {
+                        this.setupRBACEvents?.();
+                    }
+                }
+                this.view.createIconsScoped(root);
+                this.view.enhanceVisibleContent(root);
+                return document.getElementById(isTab ? `tab-${id}` : id);
+            })().catch(err => {
+                this._lazyPartialPromises.delete(key);
+                throw err;
+            }));
+        }
+
+        return this._lazyPartialPromises.get(key);
+    }
+
+    ensureLazyTab(tabName) {
+        return this.ensureLazyPartial('tab', tabName);
+    }
+
+    ensureLazyModal(modalId) {
+        return this.ensureLazyPartial('modal', modalId);
+    }
+
+    getTabNameForPath(pathname = window.location.pathname) {
+        const cleanPath = pathname.startsWith('/') ? pathname.substring(1) : pathname;
+        const urlTab = cleanPath.split('/').filter(Boolean)[0] || '';
+        for (const [tabName, routePath] of Object.entries(this.routeMap)) {
+            if (routePath === urlTab) return tabName;
+        }
+        if (urlTab === 'chudautu-detail') return 'chudautu-detail';
+        if (urlTab === 'nhathau-detail') return 'nhathau-detail';
+        return null;
+    }
+
+    markStartup(label) {
+        try {
+            if (!this._startupTimes) this._startupTimes = {};
+            const now = window.performance?.now ? window.performance.now() : Date.now();
+            this._startupTimes[label] = now;
+            if (window.performance?.mark) {
+                window.performance.mark(`bf:${label}`);
+            }
+        } catch (e) { }
+    }
+
+    measureStartup(name, startLabel, endLabel) {
+        try {
+            const start = this._startupTimes?.[startLabel];
+            const end = this._startupTimes?.[endLabel];
+            if (Number.isFinite(start) && Number.isFinite(end)) {
+                return { name, duration: Math.round(end - start) };
+            }
+            if (!window.performance?.measure) return null;
+            const measureName = `bf:${name}`;
+            window.performance.measure(measureName, `bf:${startLabel}`, `bf:${endLabel}`);
+            const entries = window.performance.getEntriesByName(measureName);
+            const entry = entries[entries.length - 1];
+            return entry ? { name, duration: Math.round(entry.duration) } : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    publishStartupMetrics() {
+        const metrics = [
+            this.measureStartup('model init', 'init:start', 'model:init'),
+            this.measureStartup('critical ui setup', 'model:init', 'ui:critical'),
+            this.measureStartup('route render', 'ui:critical', 'route:rendered'),
+            this.measureStartup('time to hide loader', 'init:start', 'loader:hidden')
+        ].filter(Boolean);
+
+        window.__BF_STARTUP_METRICS__ = metrics;
+        if (window.__BF_APP_DEBUG__ || localStorage.getItem('bf_perf_debug') === 'true') {
+            console.table(metrics);
+        }
+    }
+
+    schedulePostStartupTask(task, { timeout = 1500, delay = 0 } = {}) {
+        const run = () => {
+            try {
+                Promise.resolve(task()).catch(err => {
+                    console.error('Post-startup task failed:', err);
+                });
+            } catch (err) {
+                console.error('Post-startup task failed:', err);
+            }
+        };
+        const scheduleIdle = () => {
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(run, { timeout });
+            } else {
+                setTimeout(run, delay);
+            }
+        };
+
+        requestAnimationFrame(() => requestAnimationFrame(scheduleIdle));
+    }
+
+    loadHolidaysInBackground() {
+        if (window._vietnameseHolidays) return;
+        fetch('/api/holidays')
+            .then(res => res.json())
+            .then(data => {
+                window._vietnameseHolidays = data || {};
+            })
+            .catch(e => {
+                console.error('Failed to load holidays:', e);
+                window._vietnameseHolidays = {};
+            });
     }
 
     hasLocalWorkspaceData() {
@@ -290,6 +476,8 @@ export class BiddingController {
     }
 
     async init() {
+        this.markStartup('init:start');
+
         // Intercept native fetch to automatically append security headers & handle auth errors globally
         const originalFetch = window.fetch;
         const readCookie = (name) => {
@@ -432,6 +620,7 @@ export class BiddingController {
 
         const startupPriorityKeys = this.getStartupPriorityKeys(window.location.pathname);
         await this.model.init({ priorityKeys: startupPriorityKeys });
+        this.markStartup('model:init');
 
         // #region UI Setup / Offline Banner
         // Create offline banner dynamically
@@ -474,27 +663,16 @@ export class BiddingController {
 
         this.registerGlobals();
         this.setupTheme();
-        if (!window._vietnameseHolidays) {
-            fetch('/api/holidays')
-                .then(res => res.json())
-                .then(data => {
-                    window._vietnameseHolidays = data || {};
-                })
-                .catch(e => {
-                    console.error('Failed to load holidays:', e);
-                    window._vietnameseHolidays = {};
-                });
-        }
         this.setupSidebar();
         this.setupTabs();
         this.setupActionListeners();
         this.setupDelegatedActions();
         this.setupConditionalUI();
-        this.setupFileUploads();
 
         // RBAC Init
         this.view.updateActiveUserProfileDisplay();
         this.setupRBACEvents();
+        this.markStartup('ui:critical');
 
         // SPA Routing & History Popstate event listener for browser Back/Forward navigation
         window.addEventListener('popstate', (e) => {
@@ -512,45 +690,52 @@ export class BiddingController {
             this.routeMap['nhathau-detail']
         ].filter(Boolean);
         const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
+        const initialTabName = this.getTabNameForPath(initialPath)
+            || (this.model.state.activerole === 'super_admin' ? 'superadmin-dashboard' : 'dashboard');
+        if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
+            await this.ensureLazyTab(initialTabName);
+        }
 
         // Initialize Tab based on URL Pathname or Role Default
         this.handlePathRouting(window.location.pathname, false, true);
+        this.markStartup('route:rendered');
 
         // Ẩn màn hình loading ngay sau khi giao diện đã được render xong từ dữ liệu cục bộ IndexedDB
         if (typeof window.hideInitLoader === 'function') {
             window.hideInitLoader();
         }
+        this.markStartup('loader:hidden');
+        this.publishStartupMetrics();
 
-        if (this.model && typeof this.model.hydrateRemainingStorageKeysIdle === 'function') {
-            this.model.hydrateRemainingStorageKeysIdle();
-        }
+        this.schedulePostStartupTask(() => {
+            if (this.model && typeof this.model.hydrateRemainingStorageKeysIdle === 'function') {
+                this.model.hydrateRemainingStorageKeysIdle();
+            }
+        }, { timeout: 1200, delay: 100 });
+
+        this.schedulePostStartupTask(() => {
+            this.setupFileUploads();
+            this.loadHolidaysInBackground();
+        }, { timeout: 600, delay: 100 });
 
 
         // Render first, then refresh data in the background so F5 is not blocked by full sync.
         if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
             this._initialSyncStarted = true;
-            const startInitialSync = () => this.forceSyncData(true, true);
-            if ('requestIdleCallback' in window) {
-                requestIdleCallback(startInitialSync, { timeout: 500 });
-            } else {
-                setTimeout(startInitialSync, 100);
-            }
+            this.schedulePostStartupTask(() => this.forceSyncData(true, true), { timeout: 750, delay: 150 });
         } else if (!this._initialSyncStarted) {
             this._initialSyncStarted = true;
             // Refresh from the server once per page load even when IndexedDB has cached data.
             // A browser hard reload does not clear IndexedDB, so delta-only sync can keep stale
             // nested package lists if their parent record version did not change.
-            const startBackgroundSync = () => this.forceSyncData(true, true);
-            if ('requestIdleCallback' in window) {
-                requestIdleCallback(startBackgroundSync, { timeout: 2000 });
-            } else {
-                setTimeout(startBackgroundSync, 500);
-            }
+            this.schedulePostStartupTask(() => this.forceSyncData(true, true), { timeout: 2400, delay: 700 });
         }
 
         // Initialize background sync
-        this.setupAutoSyncBackground();
-        this.loadInitDataInBackground();
+        this.schedulePostStartupTask(() => {
+            this.setupAutoSyncBackground();
+            this.loadInitDataInBackground();
+        }, { timeout: 2500, delay: 900 });
     }
 
 

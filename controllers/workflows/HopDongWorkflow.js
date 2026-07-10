@@ -77,6 +77,11 @@ export async function deleteHopDong(id) {
 
 
 export function editHopDong(id) {
+    if (!document.getElementById('modal-hopdong')) {
+        this.ensureLazyModal?.('modal-hopdong').then(() => this.editHopDong(id));
+        return;
+    }
+
     try {
         const form = document.getElementById('form-hopdong');
         form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));

@@ -66,6 +66,10 @@ export async function deleteNhaThau(id) {
 
 
 export async function editNhaThau(id, isReadOnly = false) {
+    if (!document.getElementById('modal-nhathau')) {
+        await this.ensureLazyModal?.('modal-nhathau');
+    }
+
     try {
         const form = document.getElementById('form-nhathau');
         if (!form) throw new Error("Không tìm thấy form nhập nhà thầu (form-nhathau)");

@@ -100,6 +100,11 @@ export async function deleteKeHoach(id) {
 
 
 export function editKeHoach(id) {
+    if (!document.getElementById('modal-kehoach')) {
+        this.ensureLazyModal?.('modal-kehoach').then(() => this.editKeHoach(id));
+        return;
+    }
+
     const modal = document.getElementById('modal-kehoach');
     const form = document.getElementById('form-kehoach');
 
@@ -501,6 +506,11 @@ export async function handleKeHoachSubmit(e) {
 
 
 export function openPlanBreakdownModal(planId) {
+    if (!document.getElementById('modal-plan-breakdown')) {
+        this.ensureLazyModal?.('modal-plan-breakdown').then(() => this.openPlanBreakdownModal(planId));
+        return;
+    }
+
     const kh = this.model.state.kehoach.find(k => k.id === planId);
     if (!kh) return;
 

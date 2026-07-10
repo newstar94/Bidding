@@ -5,6 +5,10 @@ import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from 
 
 export function openPackageWizardStep() {
     if (!this.packageWizard.active) return;
+    if (!document.getElementById('modal-goithau')) {
+        this.ensureLazyModal?.('modal-goithau').then(() => this.openPackageWizardStep());
+        return;
+    }
 
     this.editGoiThau(null);
 
@@ -111,6 +115,11 @@ export async function deleteGoiThau(id) {
 
 
 export function editGoiThau(id, isReadOnly = false) {
+    if (!document.getElementById('modal-goithau')) {
+        this.ensureLazyModal?.('modal-goithau').then(() => this.editGoiThau(id, isReadOnly));
+        return;
+    }
+
     const modal = document.getElementById('modal-goithau');
     const form = document.getElementById('form-goithau');
     const gt = id ? this.model.state.goithau.find(g => String(g.id) === String(id)) : null;

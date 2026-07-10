@@ -51,6 +51,11 @@ export function editChuyenGia(id) {
         this.view.customAlert('Từ chối truy cập', 'Tài khoản Chuyên viên không được phép thêm hoặc chỉnh sửa thông tin Chuyên gia!', 'lock');
         return;
     }
+    if (!document.getElementById('modal-chuyengia')) {
+        this.ensureLazyModal?.('modal-chuyengia').then(() => this.editChuyenGia(id));
+        return;
+    }
+
     const form = document.getElementById('form-chuyengia');
     form.querySelectorAll('.form-group').forEach(fg => fg.classList.remove('invalid'));
 

@@ -242,7 +242,8 @@ export function setupActionListeners() {
     const btnPhathanhImport = document.getElementById('btn-phathanh-import-excel');
     const inputPhathanhImport = document.getElementById('phathanh-excel-file-input');
 
-    if (btnPhathanhExport) {
+    if (btnPhathanhExport && !btnPhathanhExport._hasExcelListener) {
+        btnPhathanhExport._hasExcelListener = true;
         btnPhathanhExport.addEventListener('click', () => {
             const id = document.getElementById('phathanh-gt-id').value;
             const gt = this.model.state.goithau.find(g => g.id === id);
@@ -252,7 +253,9 @@ export function setupActionListeners() {
         });
     }
 
-    if (btnPhathanhImport && inputPhathanhImport) {
+    if (btnPhathanhImport && inputPhathanhImport && !btnPhathanhImport._hasExcelListener) {
+        btnPhathanhImport._hasExcelListener = true;
+        inputPhathanhImport._hasExcelListener = true;
         btnPhathanhImport.addEventListener('click', () => inputPhathanhImport.click());
         inputPhathanhImport.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
@@ -664,9 +667,9 @@ export function setupActionListeners() {
         this.handleQuaMangChange = handleQuaMangChange;
     }
 
-    document.getElementById('form-chudautu').addEventListener('submit', (e) => this.handleChuDauTuSubmit(e));
-    document.getElementById('form-nhathau').addEventListener('submit', (e) => this.handleNhaThauSubmit(e));
-    document.getElementById('form-chuyengia').addEventListener('submit', (e) => this.handleChuyenGiaSubmit(e));
+    onById('form-chudautu', 'submit', (e) => this.handleChuDauTuSubmit(e));
+    onById('form-nhathau', 'submit', (e) => this.handleNhaThauSubmit(e));
+    onById('form-chuyengia', 'submit', (e) => this.handleChuyenGiaSubmit(e));
 
     const formHopDong = document.getElementById('form-hopdong');
     if (formHopDong) {
@@ -674,7 +677,29 @@ export function setupActionListeners() {
     }
 
     document.querySelectorAll('.btn-import-excel').forEach(btn => {
+        if (btn._hasExcelListener) return;
+        btn._hasExcelListener = true;
         btn.addEventListener('click', () => {
+            const type = btn.getAttribute('data-type');
+            this.triggerExcelImport(type);
+        });
+    });
+
+    document.querySelectorAll('.btn-download-excel-template-direct').forEach(btn => {
+        if (btn._hasExcelListener) return;
+        btn._hasExcelListener = true;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const type = btn.getAttribute('data-type');
+            this.triggerExcelTemplateDownload(type);
+        });
+    });
+
+    document.querySelectorAll('.btn-import-excel-direct').forEach(btn => {
+        if (btn._hasExcelListener) return;
+        btn._hasExcelListener = true;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
             const type = btn.getAttribute('data-type');
             this.triggerExcelImport(type);
         });

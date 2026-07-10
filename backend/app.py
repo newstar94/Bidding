@@ -359,6 +359,8 @@ class ProductionViewStaticFiles(StaticFiles):
             or normalized == "service-worker.js"
             or (normalized.startswith("css/") and normalized.endswith(".css"))
             or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css")))
+            or (normalized.startswith("tabs/") and normalized.endswith(".html"))
+            or (normalized.startswith("modals/") and normalized.endswith(".html"))
         )
         if not allowed:
             return Response("Access Denied", status_code=403)
