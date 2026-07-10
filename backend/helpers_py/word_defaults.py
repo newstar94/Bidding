@@ -503,5 +503,5 @@ def ensure_default_word_mappings(cursor, owner_id):
 
 
 def ensure_default_word_mappings_for_all_orgs(cursor):
-    cursor.execute("SELECT ten_to_chuc FROM to_chuc WHERE ten_to_chuc IS NOT NULL AND ten_to_chuc != ''")
+    cursor.execute("SELECT id FROM to_chuc WHERE id IS NOT NULL AND id != ''")
     return sum(ensure_default_word_mappings(cursor, row[0]) for row in cursor.fetchall())
