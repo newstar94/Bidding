@@ -93,11 +93,53 @@ def _is_local_origin(origin):
     return parsed.hostname in {"localhost", "127.0.0.1", "::1"}
 
 
+def _is_public_https_origin(origin):
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return False
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.netloc)
+        and not parsed.path
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+        and not _is_local_origin(origin)
+    )
+
+
+def _websocket_csp_source(origin):
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return None
+    if not parsed.netloc:
+        return None
+    if parsed.scheme == "https":
+        return f"wss://{parsed.netloc}"
+    if parsed.scheme == "http":
+        return f"ws://{parsed.netloc}"
+    if parsed.scheme in {"ws", "wss"}:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return None
+
+
+def _unique_ordered(values):
+    seen = set()
+    result = []
+    for value in values:
+        if value and value not in seen:
+            result.append(value)
+            seen.add(value)
+    return result
+
+
 # [SEC-4] Danh sach origin duoc phep ket noi WebSocket.
 # Mac dinh tu tinh tu APP_HOST:APP_PORT. Co the ghi de qua ALLOWED_WS_ORIGINS
 _ws_origins_env = os.environ.get("ALLOWED_WS_ORIGINS", "")
 if _ws_origins_env:
-    ALLOWED_WS_ORIGINS = frozenset(o.strip().rstrip("/") for o in _ws_origins_env.split(",") if o.strip())
+    ALLOWED_WS_ORIGINS = frozenset(_split_env_list(_ws_origins_env))
 else:
     _scheme = "https" if APP_SECURE_COOKIES else "http"
     _port_suffix = f":{APP_PORT}" if APP_PORT not in (80, 443) else ""
@@ -504,10 +546,20 @@ if IS_PRODUCTION:
     super_admin_allowlist = _split_env_list(os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", ""))
     if not APP_SECURE_COOKIES:
         raise RuntimeError("APP_SECURE_COOKIES=True is required when APP_ENV=production.")
-    if "*" in cors_origins or any(_is_local_origin(origin) for origin in cors_origins):
+    if "*" in cors_origins or not all(_is_public_https_origin(origin) for origin in cors_origins):
         raise RuntimeError("CORS_ORIGINS must contain production HTTPS origins only when APP_ENV=production.")
+    if "*" in ALLOWED_WS_ORIGINS or not all(_is_public_https_origin(origin) for origin in ALLOWED_WS_ORIGINS):
+        raise RuntimeError("ALLOWED_WS_ORIGINS must contain production HTTPS origins only when APP_ENV=production.")
     if "*" in super_admin_allowlist or not super_admin_allowlist:
         raise RuntimeError("SUPER_ADMIN_IP_ALLOWLIST must be explicit and cannot contain * when APP_ENV=production.")
+
+
+CSP_CONNECT_SOURCES = " ".join(_unique_ordered([
+    "'self'",
+    *(_websocket_csp_source(origin) for origin in ALLOWED_WS_ORIGINS),
+    "https://accounts.google.com",
+    "https://oauth2.googleapis.com",
+]))
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -526,7 +578,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "script-src 'self' https://accounts.google.com https://apis.google.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
             "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
-            f"connect-src 'self' ws://127.0.0.1:{APP_PORT} wss://127.0.0.1:{APP_PORT} ws://localhost:{APP_PORT} wss://localhost:{APP_PORT} https://accounts.google.com https://oauth2.googleapis.com; "
+            f"connect-src {CSP_CONNECT_SOURCES}; "
             "font-src 'self' https://fonts.gstatic.com; "
             "frame-src 'self' https://accounts.google.com; "
             "worker-src 'self'; "
