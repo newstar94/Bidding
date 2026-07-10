@@ -369,8 +369,8 @@ export class BiddingController {
                 return false;
             }
             this.view?.showToast?.(
-                'Da doi workspace',
-                `Workspace cu khong con quyen truy cap. Dang tai du lieu cua "${nextOrg}".`,
+                'Đã đổi workspace',
+                `Workspace cũ không còn quyền truy cập. Đang tải dữ liệu của "${nextOrg}".`,
                 'warning'
             );
             if (typeof this.forceSyncData === 'function') {

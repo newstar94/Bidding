@@ -821,7 +821,9 @@ async def get_all_data_api(request):
         # Calculate total records across versionable/heavy tables
         heavy_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
         paginated_payload_keys = [key for key, table in TABLE_KEYS.items() if table in heavy_tables]
-        use_server_pagination = is_full_initial_fetch
+        # This is a workspace capability, not a property of one response. Delta
+        # requests still use paginated tables for list views.
+        use_server_pagination = True
         
         # Helper query function
         def query_table(tbl):
@@ -992,7 +994,9 @@ async def get_all_data_api(request):
             ]
 
         current_sync_version = get_current_sync_version(cursor, org_name)
-        dashboard_summary = build_dashboard_summary(cursor, org_name, role_str, user_id) if use_server_pagination else None
+        # Delta payloads intentionally contain only changed rows. Always return
+        # a complete summary so the dashboard never derives totals from them.
+        dashboard_summary = build_dashboard_summary(cursor, org_name, role_str, user_id)
         conn.close()
         
         return JSONResponse({
@@ -1023,7 +1027,7 @@ async def get_all_data_api(request):
         return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         traceback.print_exc()
-        return JSONResponse({"error": "Da xay ra loi he thong khi lay du lieu."}, status_code=500)
+        return JSONResponse({"error": "Đã xảy ra lỗi hệ thống khi lấy dữ liệu."}, status_code=500)
     finally:
         if conn:
             try:
@@ -1419,7 +1423,7 @@ async def paginate_api(request):
         return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
         traceback.print_exc()
-        return JSONResponse({"error": "Da xay ra loi he thong khi phan trang."}, status_code=500)
+        return JSONResponse({"error": "Đã xảy ra lỗi hệ thống khi phân trang."}, status_code=500)
     finally:
         # [BL-4] Đảm bảo conn luôn được đóng kể cả khi exception
         if conn:

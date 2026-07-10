@@ -38,3 +38,28 @@ export function sortRecords(records, field, order = 'asc') {
     });
     return records;
 }
+
+export function cachePaginatedRecords(model, key, records) {
+    const normalized = typeof model?.normalizeRecordKeys === 'function'
+        ? (records || []).map(record => model.normalizeRecordKeys(record, key))
+        : (records || []);
+
+    if (!Array.isArray(model.state[key])) {
+        model.state[key] = [];
+    }
+    normalized.forEach(record => {
+        const index = model.state[key].findIndex(item => String(item.id) === String(record.id));
+        if (index >= 0) {
+            model.state[key][index] = record;
+        } else {
+            model.state[key].push(record);
+        }
+    });
+
+    if (normalized.length > 0 && model.db && typeof model.db.putRecords === 'function') {
+        model.db.putRecords(key, normalized).catch(err => {
+            console.error(`Failed to cache paginated ${key} records:`, err);
+        });
+    }
+    return normalized;
+}

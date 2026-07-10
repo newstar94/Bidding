@@ -4,11 +4,31 @@
 
 import { escapeHtml, safeAttr, renderEmptyRow } from './view_helpers.js';
 
+const PACKAGE_STATUS_COLORS = {
+    'Chuẩn bị': 'var(--text-light)',
+    'Đang mời thầu': 'var(--primary)',
+    'Đã mở thầu': '#f59e0b',
+    'Đang chấm thầu': '#9333ea',
+    'Đã có kết quả': 'var(--success)',
+    'Hủy thầu': 'var(--danger)'
+};
+
+export function normalizeDashboardStatusCounts(incoming = {}) {
+    const counts = Object.fromEntries(
+        Object.keys(PACKAGE_STATUS_COLORS).map(status => [status, 0])
+    );
+    Object.entries(incoming || {}).forEach(([rawStatus, rawCount]) => {
+        const status = rawStatus === 'Huỷ thầu' ? 'Hủy thầu' : rawStatus;
+        counts[status] = Number(rawCount || 0);
+    });
+    return counts;
+}
+
 export function renderDashboard() {
     const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
     if (serverSummary && serverSummary.counts) {
         const counts = serverSummary.counts || {};
-        const statusCounts = serverSummary.statusCounts || {};
+        const statusCounts = normalizeDashboardStatusCounts(serverSummary.statusCounts);
         const recentPackages = Array.isArray(serverSummary.recentPackages) ? serverSummary.recentPackages : [];
 
         document.getElementById('stat-count-kehoach').textContent = counts.kehoach || 0;
@@ -19,20 +39,20 @@ export function renderDashboard() {
         const statCountHopDong = document.getElementById('stat-count-hopdong');
         if (statCountHopDong) statCountHopDong.textContent = counts.hopdong || 0;
 
-        document.getElementById('stat-active-goithau').textContent = `${counts.activeGoithau || 0} goi dang moi thau`;
+        document.getElementById('stat-active-goithau').textContent = `${counts.activeGoithau || 0} gói đang mời thầu`;
         document.getElementById('stat-total-budget').textContent = this.model.formatCurrency(serverSummary.totalContractValue || 0);
-        document.getElementById('stat-savings-value').textContent = `${counts.hopdong || 0} Hop dong`;
-        document.getElementById('stat-savings-percent').textContent = 'Dang thuc hien';
+        document.getElementById('stat-savings-value').textContent = `${counts.hopdong || 0} Hợp đồng`;
+        document.getElementById('stat-savings-percent').textContent = 'Đang thực hiện';
         document.getElementById('donut-total-count').textContent = counts.goithau || 0;
 
         const total = counts.goithau || 1;
-        const palette = ['var(--text-light)', 'var(--primary)', '#f59e0b', '#9333ea', 'var(--success)', 'var(--danger)'];
+        const fallbackPalette = Object.values(PACKAGE_STATUS_COLORS);
         let accum = 0;
         const gradientParts = [];
         let legendHTML = '';
         Object.entries(statusCounts).forEach(([status, count], index) => {
             const pct = (Number(count || 0) / total) * 100;
-            const color = palette[index % palette.length];
+            const color = PACKAGE_STATUS_COLORS[status] || fallbackPalette[index % fallbackPalette.length];
             if (count > 0) {
                 gradientParts.push(`${color} ${accum}% ${accum + pct}%`);
                 accum += pct;
@@ -58,11 +78,11 @@ export function renderDashboard() {
 
         const recentTableBody = document.getElementById('recent-packages-table').querySelector('tbody');
         if (recentPackages.length === 0) {
-            recentTableBody.innerHTML = renderEmptyRow(5, 'Chua co goi thau nao', 'inbox');
+            recentTableBody.innerHTML = renderEmptyRow(5, 'Chưa có gói thầu nào', 'inbox');
         } else {
             recentTableBody.innerHTML = recentPackages.map(gt => `
                 <tr>
-                    <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiet Goi thau"><span class="detail-code">${escapeHtml(gt.maGoiThau || '')}</span></a></td>
+                    <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu"><span class="detail-code">${escapeHtml(gt.maGoiThau || '')}</span></a></td>
                     <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="view-package-link">${escapeHtml(gt.tenGoiThau || '')}</a></td>
                     <td>${this.model.formatCurrency(gt.giaGoiThau)}</td>
                     <td>${escapeHtml(gt.hinhThucLuaChon || '')}</td>
@@ -105,14 +125,7 @@ export function renderDashboard() {
                 activePackages++;
             }
         });
-        statusCounts = {
-            'Chuẩn bị': 0,
-            'Đang mời thầu': 0,
-            'Đã mở thầu': 0,
-            'Đang chấm thầu': 0,
-            'Đã có kết quả': 0,
-            'Hủy thầu': 0
-        };
+        statusCounts = normalizeDashboardStatusCounts();
         latestPackages.forEach(gt => {
             if (statusCounts[gt.trangThai] !== undefined) {
                 statusCounts[gt.trangThai]++;
@@ -139,15 +152,6 @@ export function renderDashboard() {
     const total = latestPackages.length || 1;
     document.getElementById('donut-total-count').textContent = latestPackages.length;
 
-    const colors = {
-        'Chuẩn bị': 'var(--text-light)',
-        'Đang mời thầu': 'var(--primary)',
-        'Đã mở thầu': '#f59e0b',
-        'Đang chấm thầu': '#9333ea',
-        'Đã có kết quả': 'var(--success)',
-        'Hủy thầu': 'var(--danger)'
-    };
-
     let accum = 0;
     const gradientParts = [];
     let legendHTML = '';
@@ -157,14 +161,14 @@ export function renderDashboard() {
         const pct = (count / total) * 100;
         
         if (count > 0) {
-            gradientParts.push(`${colors[status]} ${accum}% ${accum + pct}%`);
+            gradientParts.push(`${PACKAGE_STATUS_COLORS[status]} ${accum}% ${accum + pct}%`);
             accum += pct;
         }
 
         legendHTML += `
             <div class="legend-item">
                 <div class="legend-info">
-                    <span class="legend-dot" style="background-color: ${colors[status]}"></span>
+                    <span class="legend-dot" style="background-color: ${PACKAGE_STATUS_COLORS[status]}"></span>
                     <span>${status}</span>
                 </div>
                 <span class="legend-val">${count} (${pct.toFixed(0)}%)</span>

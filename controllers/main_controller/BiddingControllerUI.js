@@ -324,7 +324,7 @@ export function switchTab(tabName, action = null, updateState = true) {
             .then(() => this.switchTab(tabName, action, updateState))
             .catch(err => {
                 console.error('Failed to load workflow module:', tabName, err);
-                this.view?.showToast?.('Khong tai duoc chuc nang', 'Vui long thu lai.', 'error');
+                this.view?.showToast?.('Không tải được chức năng', 'Vui lòng thử lại.', 'error');
             });
         return;
     }
@@ -334,7 +334,7 @@ export function switchTab(tabName, action = null, updateState = true) {
             .then(() => this.switchTab(tabName, action, updateState))
             .catch(err => {
                 console.error('Failed to lazy-load tab:', tabName, err);
-                this.view?.showToast?.('Khong tai duoc giao dien', 'Vui long tai lai trang va thu lai.', 'error');
+                this.view?.showToast?.('Không tải được giao diện', 'Vui lòng tải lại trang và thử lại.', 'error');
             });
         return;
     }

@@ -28,8 +28,20 @@ export function applySyncPayload(model, dbData, options = {}) {
     const useServerSidePagination = !!dbData.useServerSidePagination;
     const isFullInitialSync = !options.useVersionDelta && options.since === '0';
 
-    model.useServerSidePagination = useServerSidePagination;
-    model.dashboardSummary = dbData.dashboardSummary || null;
+    // A delta response contains only changed records, so `false` there must not
+    // disable the pagination mode established by the preceding full response.
+    if (isFullInitialSync || useServerSidePagination) {
+        model.useServerSidePagination = useServerSidePagination;
+    }
+
+    // Older servers may omit the summary on delta syncs. Preserve the last
+    // complete summary instead of falling back to intentionally partial arrays.
+    if (dbData.dashboardSummary != null) {
+        model.dashboardSummary = dbData.dashboardSummary;
+        changedKeys.add('dashboardSummary');
+    } else if (isFullInitialSync) {
+        model.dashboardSummary = null;
+    }
 
     const shouldSkipEmptyPaginatedStore = (key, incoming) => {
         return useServerSidePagination

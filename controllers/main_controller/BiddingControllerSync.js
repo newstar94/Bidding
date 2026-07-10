@@ -43,19 +43,25 @@ export function setupAutoSyncBackground() {
 function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
     if (!changedKeys || changedKeys.size === 0 || !controller.view) return;
 
-    const renderIfChanged = (keys, renderFn) => {
-        if (keys.some(key => changedKeys.has(key)) && typeof renderFn === 'function') {
-            renderFn.call(controller.view);
+    const renderIfChanged = (keys, renderFn, requiredElementId = null) => {
+        if (
+            keys.some(key => changedKeys.has(key))
+            && typeof renderFn === 'function'
+            && (!requiredElementId || document.getElementById(requiredElementId))
+        ) {
+            Promise.resolve(renderFn.call(controller.view)).catch(err => {
+                console.error(`Failed to render changed state${requiredElementId ? ` for ${requiredElementId}` : ''}:`, err);
+            });
         }
     };
 
-    renderIfChanged(['kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'assignments', 'thongtinmothau'], controller.view.renderDashboard);
-    renderIfChanged(['kehoach', 'chudautu', 'goithau'], controller.view.renderKeHoachTable);
-    renderIfChanged(['goithau', 'kehoach', 'chudautu', 'nhathau', 'thongtinmothau', 'assignments'], controller.view.renderGoiThauTable);
-    renderIfChanged(['chudautu', 'kehoach'], controller.view.renderChuDauTuTable);
-    renderIfChanged(['nhathau', 'goithau', 'hopdong', 'thongtinmothau'], controller.view.renderNhaThauTable);
-    renderIfChanged(['chuyengia', 'assignments'], controller.view.renderChuyenGiaTable);
-    renderIfChanged(['hopdong', 'goithau', 'nhathau', 'chudautu'], controller.view.renderHopDongTable);
+    renderIfChanged(['dashboardSummary', 'kehoach', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong', 'assignments', 'thongtinmothau'], controller.view.renderDashboard, 'tab-dashboard');
+    renderIfChanged(['kehoach', 'chudautu', 'goithau'], controller.view.renderKeHoachTable, 'tab-kehoach');
+    renderIfChanged(['goithau', 'kehoach', 'chudautu', 'nhathau', 'thongtinmothau', 'assignments'], controller.view.renderGoiThauTable, 'tab-goithau');
+    renderIfChanged(['chudautu', 'kehoach'], controller.view.renderChuDauTuTable, 'tab-chudautu');
+    renderIfChanged(['nhathau', 'goithau', 'hopdong', 'thongtinmothau'], controller.view.renderNhaThauTable, 'tab-nhathau');
+    renderIfChanged(['chuyengia', 'assignments'], controller.view.renderChuyenGiaTable, 'tab-chuyengia');
+    renderIfChanged(['hopdong', 'goithau', 'nhathau', 'chudautu'], controller.view.renderHopDongTable, 'tab-hopdong');
 
     if (isBackground && typeof controller.handlePathRouting === 'function') {
         requestAnimationFrame(() => {
@@ -71,11 +77,11 @@ function showSyncErrorReport(controller, errors) {
     }
     if (controller.view && typeof controller.view.showToast === 'function') {
         controller.view.showToast(
-            'Loi dong bo',
-            `${errors.length} ban ghi chua hop le. Bam de xem chi tiet trong hop thoai.`,
+            'Lỗi đồng bộ',
+            `${errors.length} bản ghi chưa hợp lệ. Bấm để xem chi tiết trong hộp thoại.`,
             'error',
             {
-                actionLabel: 'Xem loi',
+                actionLabel: 'Xem lỗi',
                 onAction: () => {
                     if (controller.view && typeof controller.view.customAlert === 'function') {
                         const detailLines = errors.slice(0, 20).map((err, index) => {
@@ -84,8 +90,8 @@ function showSyncErrorReport(controller, errors) {
                             const message = err.message || String(err);
                             return `${index + 1}. [${table}${id ? `/${id}` : ''}] ${message}`;
                         });
-                        const more = errors.length > 20 ? `\n... va ${errors.length - 20} loi khac.` : '';
-                        controller.view.customAlert('Loi dong bo du lieu', detailLines.join('\n') + more, 'alert-triangle');
+                        const more = errors.length > 20 ? `\n... và ${errors.length - 20} lỗi khác.` : '';
+                        controller.view.customAlert('Lỗi đồng bộ dữ liệu', detailLines.join('\n') + more, 'alert-triangle');
                     }
                 }
             }
@@ -201,11 +207,11 @@ export function autoSync() {
                     }
                     if (this.view && typeof this.view.showToast === 'function') {
                         this.view.showToast(
-                            'Xung dot dong bo',
-                            'Du lieu tren server da thay doi. Tai lai du lieu moi truoc khi dong bo tiep.',
+                            'Xung đột đồng bộ',
+                            'Dữ liệu trên máy chủ đã thay đổi. Tải lại dữ liệu mới trước khi đồng bộ tiếp.',
                             'warning',
                             {
-                                actionLabel: 'Tai lai',
+                                actionLabel: 'Tải lại',
                                 onAction: () => this.forceSyncData(false, true).catch(err => console.error('Failed manual conflict refresh:', err))
                             }
                         );
@@ -277,7 +283,7 @@ export function autoSync() {
                 } else {
                     console.error('[Sync Error]', data.error || data.message || 'Đồng bộ thất bại');
                     if (this.view && typeof this.view.showToast === 'function') {
-                        this.view.showToast('Loi dong bo', data.error || data.message || 'Dong bo that bai', 'error');
+                        this.view.showToast('Lỗi đồng bộ', data.error || data.message || 'Đồng bộ thất bại', 'error');
                     }
                 }
                 return;
@@ -339,8 +345,8 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
         : (typeof this.hasLocalWorkspaceData === 'function' ? this.hasLocalWorkspaceData() : false);
     if (syncStatusText) {
         syncStatusText.textContent = !isBackground && !hasLocalDataForCurrentRoute
-            ? 'Dang tai du lieu lan dau...'
-            : 'Dang dong bo...';
+            ? 'Đang tải dữ liệu lần đầu...'
+            : 'Đang đồng bộ...';
     }
     const shouldShowFullLoader = !isBackground && !hasLocalDataForCurrentRoute && this.view && this.view.showLoader;
     if (shouldShowFullLoader) this.view.showLoader();

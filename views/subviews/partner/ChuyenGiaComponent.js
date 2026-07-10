@@ -1,10 +1,14 @@
 import { escapeHtml, formatDate, safeImageSrc } from '../view_helpers.js';
-import { sortRecords } from '../tableDataUtils.js';
+import { cachePaginatedRecords, sortRecords } from '../tableDataUtils.js';
 import { clearVirtualTable, renderVirtualTable } from '../virtualTable.js';
 
 export async function renderChuyenGiaTable() {
-    const tableBody = document.getElementById('chuyengia-table').querySelector('tbody');
+    const table = document.getElementById('chuyengia-table');
+    if (!table) return;
+    const tableBody = table.querySelector('tbody');
     const searchVal = document.getElementById('search-chuyengia').value.toLowerCase();
+    const requestId = (this._chuyenGiaRenderRequestId || 0) + 1;
+    this._chuyenGiaRenderRequestId = requestId;
 
     const isEmployee = this.model.state.activerole === 'employee';
     const btnAdd = document.getElementById('btn-add-chuyengia');
@@ -27,13 +31,21 @@ export async function renderChuyenGiaTable() {
         }
         try {
             const res = await fetch(`/api/paginate?table=chuyengia&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
-            if (res.ok) {
-                const data = await res.json();
-                slicedData = data.items;
-                totalItems = data.totalItems;
-            }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
+            slicedData = cachePaginatedRecords(this.model, 'chuyengia', data.items);
+            totalItems = Number(data.totalItems || 0);
         } catch (e) {
             console.error("Failed to fetch paginated experts", e);
+            if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
+            clearVirtualTable(tableBody);
+            tableBody.innerHTML = `
+                <tr><td colspan="7" style="text-align:center; padding:28px; color:var(--danger);">
+                    Không thể tải danh sách Chuyên gia. Vui lòng thử lại.
+                </td></tr>
+            `;
+            return;
         }
     } else {
         const latestChuyenGia = this.model.getLatestChuyenGia();
