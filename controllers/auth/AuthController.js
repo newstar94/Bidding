@@ -148,18 +148,24 @@ function hideGoogleAuthPending() {
 }
 
 export function setupActivityTracker() {
+    if (this._activityTrackerBound) return;
+    this._activityTrackerBound = true;
+
+    const minimumWriteInterval = 15000;
+    let lastWriteAt = Number(localStorage.getItem('bf_last_activity') || 0);
     const updateActivity = () => {
-        localStorage.setItem('bf_last_activity', Date.now().toString());
+        if (!window._bfAuthSessionActive) return;
+        const now = Date.now();
+        if (now - lastWriteAt < minimumWriteInterval) return;
+        lastWriteAt = now;
+        localStorage.setItem('bf_last_activity', now.toString());
     };
 
     ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(type => {
         document.addEventListener(type, updateActivity, { passive: true });
     });
 
-    // Initial set if user is already logged in
-    if (!localStorage.getItem('bf_last_activity')) {
-        updateActivity();
-    }
+    updateActivity();
 }
 
 export function checkInactivity() {
@@ -440,16 +446,20 @@ export function setupAuth() {
         }
 
         const sessionCheckStartedAt = Date.now();
-        fetch('/api/auth/check-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remember: localStorage.getItem('bf_remember_me') === 'true' })
-        }).then(res => {
-            if (res.ok) {
-                return res.json();
-            }
-            throw new Error("Invalid session response");
-        }).then(async data => {
+        const precheckedSession = this._initialSessionData;
+        delete this._initialSessionData;
+        const sessionPromise = precheckedSession !== undefined
+            ? Promise.resolve(precheckedSession)
+            : fetch('/api/auth/check-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ remember: localStorage.getItem('bf_remember_me') === 'true' })
+            }).then(res => {
+                if (res.ok) return res.json();
+                throw new Error("Invalid session response");
+            });
+
+        sessionPromise.then(async data => {
             if (isAuthTransitionActive() || isStaleAuthResult(sessionCheckStartedAt)) {
                 return;
             }
@@ -654,6 +664,12 @@ export function setupAuth() {
                 } else {
                     localStorage.removeItem('bf_active_org');
                 }
+            }
+
+            if (this._workspaceDeferredUntilReload) {
+                hideAuthOverlay();
+                window.location.reload();
+                return;
             }
 
             // Re-initialize database connection name and data keys for this specific user
@@ -965,6 +981,10 @@ export function setupGoogleSignIn() {
         setAuthSessionActive(true);
         hideGoogleAuthPending();
         hideAuthOverlay();
+        if (this._workspaceDeferredUntilReload) {
+            window.location.reload();
+            return;
+        }
         try { await this.forceSyncData(); } catch (err) { console.error('Failed sync after Google login:', err); }
         this.view.updateActiveUserProfileDisplay();
         if (typeof this.renderWorkspaceSwitcher === 'function') this.renderWorkspaceSwitcher();

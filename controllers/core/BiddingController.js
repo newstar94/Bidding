@@ -634,6 +634,36 @@ export class BiddingController {
             sessionStorage.setItem('bf_username', rememberedUsername);
         }
 
+        let initialSessionData = { valid: false };
+        try {
+            const sessionResponse = await fetch('/api/auth/check-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ remember: localStorage.getItem('bf_remember_me') === 'true' })
+            });
+            if (sessionResponse.ok) {
+                initialSessionData = await sessionResponse.json();
+            }
+        } catch (err) {
+            console.warn('Initial session check failed:', err);
+        }
+        this._initialSessionData = initialSessionData;
+
+        if (!initialSessionData?.valid) {
+            this._workspaceDeferredUntilReload = true;
+            this.view.initDOM();
+            this.setupAuth();
+            this.markStartup('ui:critical');
+            return;
+        }
+
+        if (initialSessionData.user?.id) {
+            sessionStorage.setItem('bf_user_id', String(initialSessionData.user.id));
+        }
+        if (initialSessionData.user?.username) {
+            sessionStorage.setItem('bf_username', initialSessionData.user.username);
+        }
+
         const startupPriorityKeys = this.getStartupPriorityKeys(window.location.pathname);
         await this.model.init({ priorityKeys: startupPriorityKeys });
         this.markStartup('model:init');
