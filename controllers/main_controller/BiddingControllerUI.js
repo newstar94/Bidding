@@ -318,6 +318,17 @@ export function switchTab(tabName, action = null, updateState = true) {
     tabName = guardedRoute.tabName;
     action = guardedRoute.action;
 
+    const workflowTabs = ['bieumau', 'mothau', 'danhgiahsdt'];
+    if (!this._workflowModulesReady && (action === 'taomoi' || workflowTabs.includes(tabName))) {
+        this.ensureWorkflowModules()
+            .then(() => this.switchTab(tabName, action, updateState))
+            .catch(err => {
+                console.error('Failed to load workflow module:', tabName, err);
+                this.view?.showToast?.('Khong tai duoc chuc nang', 'Vui long thu lai.', 'error');
+            });
+        return;
+    }
+
     if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
         this.ensureLazyTab(tabName)
             .then(() => this.switchTab(tabName, action, updateState))

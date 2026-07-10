@@ -225,6 +225,22 @@ export class BiddingController {
         requestAnimationFrame(() => requestAnimationFrame(scheduleIdle));
     }
 
+    ensureWorkflowModules() {
+        if (!this._workflowModulesPromise) {
+            this._workflowModulesPromise = Promise.all([
+                import('/controllers/workflows/BiddingWorkflows.js'),
+                import('/controllers/workflows/PartnerWorkflows.js')
+            ]).then(([bidding, partner]) => {
+                Object.assign(BiddingController.prototype, bidding, partner);
+                this._workflowModulesReady = true;
+            }).catch(err => {
+                this._workflowModulesPromise = null;
+                throw err;
+            });
+        }
+        return this._workflowModulesPromise;
+    }
+
     loadHolidaysInBackground() {
         if (window._vietnameseHolidays) return;
         fetch('/api/holidays')
@@ -713,6 +729,8 @@ export class BiddingController {
             }
         }, { timeout: 1200, delay: 100 });
 
+        this.schedulePostStartupTask(() => this.ensureWorkflowModules(), { timeout: 500, delay: 0 });
+
         this.schedulePostStartupTask(() => {
             this.setupFileUploads();
             this.loadHolidaysInBackground();
@@ -860,36 +878,41 @@ export class BiddingController {
             document.body.appendChild(lightbox);
         };
 
-        window.editKeHoach = (id) => this.editKeHoach(id);
-        window.deleteKeHoach = (id) => this.deleteKeHoach(id);
-        window.addBreakdownRow = (type) => this.addBreakdownRow(type);
-        window.removeBreakdownRow = (btn, type) => this.removeBreakdownRow(btn, type);
+        const runWorkflow = async (methodName, ...args) => {
+            await this.ensureWorkflowModules();
+            return this[methodName](...args);
+        };
 
-        window.editGoiThau = (id, isReadOnly = false) => this.editGoiThau(id, isReadOnly);
-        window.deleteGoiThau = (id) => this.deleteGoiThau(id);
-        window.restoreCanceledPackage = (id) => this.restoreCanceledPackage(id);
-        window.addGiaHanRow = (data) => this.addGiaHanRow(data);
-        window.validateGiaHanRealtime = () => this.validateGiaHanRealtime();
-        window.moThauGoiThau = (id) => this.moThauGoiThau(id);
-        window.phatHanhHsmtGoiThau = (id) => this.phatHanhHsmtGoiThau(id);
-        window.enforceSingleLeader = (tbodyId, roleName) => this.enforceSingleLeader(tbodyId, roleName);
-        window.openMoThauJVManager = (tr) => this.openMoThauJVManager(tr);
-        window.openMoThauJVViewModal = (members, leadName, leadCode) => this.openMoThauJVViewModal(members, leadName, leadCode);
-        window.showNhaThauDetailsAndCloseJV = (ntId) => this.showNhaThauDetailsAndCloseJV(ntId);
+        window.editKeHoach = (id) => runWorkflow('editKeHoach', id);
+        window.deleteKeHoach = (id) => runWorkflow('deleteKeHoach', id);
+        window.addBreakdownRow = (type) => runWorkflow('addBreakdownRow', type);
+        window.removeBreakdownRow = (btn, type) => runWorkflow('removeBreakdownRow', btn, type);
 
-        window.editChuDauTu = (id) => this.editChuDauTu(id);
-        window.deleteChuDauTu = (id) => this.deleteChuDauTu(id);
+        window.editGoiThau = (id, isReadOnly = false) => runWorkflow('editGoiThau', id, isReadOnly);
+        window.deleteGoiThau = (id) => runWorkflow('deleteGoiThau', id);
+        window.restoreCanceledPackage = (id) => runWorkflow('restoreCanceledPackage', id);
+        window.addGiaHanRow = (data) => runWorkflow('addGiaHanRow', data);
+        window.validateGiaHanRealtime = () => runWorkflow('validateGiaHanRealtime');
+        window.moThauGoiThau = (id) => runWorkflow('moThauGoiThau', id);
+        window.phatHanhHsmtGoiThau = (id) => runWorkflow('phatHanhHsmtGoiThau', id);
+        window.enforceSingleLeader = (tbodyId, roleName) => runWorkflow('enforceSingleLeader', tbodyId, roleName);
+        window.openMoThauJVManager = (tr) => runWorkflow('openMoThauJVManager', tr);
+        window.openMoThauJVViewModal = (members, leadName, leadCode) => runWorkflow('openMoThauJVViewModal', members, leadName, leadCode);
+        window.showNhaThauDetailsAndCloseJV = (ntId) => runWorkflow('showNhaThauDetailsAndCloseJV', ntId);
 
-        window.editNhaThau = (id, isReadOnly = false) => this.editNhaThau(id, isReadOnly);
-        window.deleteNhaThau = (id) => this.deleteNhaThau(id);
+        window.editChuDauTu = (id) => runWorkflow('editChuDauTu', id);
+        window.deleteChuDauTu = (id) => runWorkflow('deleteChuDauTu', id);
 
-        window.editChuyenGia = (id) => this.editChuyenGia(id);
-        window.deleteChuyenGia = (id) => this.deleteChuyenGia(id);
+        window.editNhaThau = (id, isReadOnly = false) => runWorkflow('editNhaThau', id, isReadOnly);
+        window.deleteNhaThau = (id) => runWorkflow('deleteNhaThau', id);
 
-        window.editHopDong = (id) => this.editHopDong(id);
-        window.deleteHopDong = (id) => this.deleteHopDong(id);
+        window.editChuyenGia = (id) => runWorkflow('editChuyenGia', id);
+        window.deleteChuyenGia = (id) => runWorkflow('deleteChuyenGia', id);
 
-        window.saveKetQuaChiDinhThau = (gtId) => this.saveKetQuaChiDinhThau(gtId);
+        window.editHopDong = (id) => runWorkflow('editHopDong', id);
+        window.deleteHopDong = (id) => runWorkflow('deleteHopDong', id);
+
+        window.saveKetQuaChiDinhThau = (gtId) => runWorkflow('saveKetQuaChiDinhThau', gtId);
 
         window.exportContractFromHopDong = (pkgId, soHopDong) => {
             const dbId = pkgId;

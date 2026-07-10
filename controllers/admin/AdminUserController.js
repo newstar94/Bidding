@@ -4,6 +4,15 @@
 
 import { bindCurrencyElement } from '../main_controller/domUtils.js';
 
+function bindAdminEvent(element, eventName, bindingName, handler) {
+    if (!element) return;
+    element.__bfBoundEvents = element.__bfBoundEvents || new Set();
+    const bindingKey = `admin:${eventName}:${bindingName}`;
+    if (element.__bfBoundEvents.has(bindingKey)) return;
+    element.__bfBoundEvents.add(bindingKey);
+    element.addEventListener(eventName, handler);
+}
+
 export async function triggerUpgradePrompt() {
     await this.view.customAlert(
         'Hạn mức Đạt giới hạn!',
@@ -193,10 +202,10 @@ export function setupRBACEvents() {
             e.stopPropagation();
             profileDropdown.classList.toggle('active');
         };
-        profileTrigger.addEventListener('click', toggleDropdown);
+        bindAdminEvent(profileTrigger, 'click', 'profile-dropdown-toggle', toggleDropdown);
 
         // Click outside to close profile dropdown
-        document.addEventListener('click', (e) => {
+        bindAdminEvent(document, 'click', 'profile-dropdown-outside', (e) => {
             if (!profileTrigger.contains(e.target) && !profileDropdown.contains(e.target)) {
                 profileDropdown.classList.remove('active');
             }
@@ -206,7 +215,7 @@ export function setupRBACEvents() {
     // Dropdown Profile info tab click listener
     const btnDropdownProfile = document.getElementById('btn-dropdown-profile');
     if (btnDropdownProfile) {
-        btnDropdownProfile.addEventListener('click', () => {
+        bindAdminEvent(btnDropdownProfile, 'click', 'open-profile-tab', () => {
             if (profileDropdown) profileDropdown.classList.remove('active');
             this.switchTab('profile');
         });
@@ -214,7 +223,7 @@ export function setupRBACEvents() {
 
     // Dropdown Role switcher listener
     document.querySelectorAll('.dropdown-role-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        bindAdminEvent(btn, 'click', 'switch-active-role', (e) => {
             const val = btn.getAttribute('data-switch-role');
             const currentUser = this.model.state.activeuser;
             const userName = currentUser ? currentUser.name : 'Vy Tuấn Dương';
@@ -252,7 +261,7 @@ export function setupRBACEvents() {
     // Open Add Employee Modal
     const btnAddEmp = document.getElementById('btn-manager-add-employee');
     if (btnAddEmp) {
-        btnAddEmp.addEventListener('click', async () => {
+        bindAdminEvent(btnAddEmp, 'click', 'open-manager-employee', async () => {
             if (!document.getElementById('modal-manager-employee')) {
                 await this.ensureLazyModal?.('modal-manager-employee');
             }
@@ -266,7 +275,7 @@ export function setupRBACEvents() {
     // Add / Edit Employee Form submit
     const formEmp = document.getElementById('form-manager-employee');
     if (formEmp) {
-        formEmp.addEventListener('submit', async (e) => {
+        bindAdminEvent(formEmp, 'submit', 'save-manager-employee', async (e) => {
             e.preventDefault();
             if (!this.view.validateForm(formEmp)) return;
 
@@ -414,7 +423,7 @@ export function setupRBACEvents() {
     // Save Permission Matrix Button
     const btnSaveMatrix = document.getElementById('btn-save-permission-matrix');
     if (btnSaveMatrix) {
-        btnSaveMatrix.addEventListener('click', async () => {
+        bindAdminEvent(btnSaveMatrix, 'click', 'save-permission-matrix', async () => {
             document.querySelectorAll('#manager-matrix-tbody tr').forEach(row => {
                 const selects = row.querySelectorAll('.matrix-select');
                 if (selects.length > 0) {
@@ -438,7 +447,7 @@ export function setupRBACEvents() {
     // Custom Paper Status Form submit
     const formHsg = document.getElementById('form-manager-hosogiay');
     if (formHsg) {
-        formHsg.addEventListener('submit', async (e) => {
+        bindAdminEvent(formHsg, 'submit', 'save-paper-status', async (e) => {
             e.preventDefault();
             if (!this.view.validateForm(formHsg)) return;
 
@@ -478,7 +487,7 @@ export function setupRBACEvents() {
     // Handle dynamic visibility of Organization field in Admin User Detail modal
     const suPkgDropdown = document.getElementById('detail-su-package');
     if (suPkgDropdown) {
-        suPkgDropdown.addEventListener('change', (e) => {
+        bindAdminEvent(suPkgDropdown, 'change', 'toggle-system-user-org', (e) => {
             const orgContainer = document.getElementById('detail-su-org-container');
             if (orgContainer) {
                 orgContainer.style.display = e.target.value !== 'none' ? 'block' : 'none';
@@ -489,7 +498,7 @@ export function setupRBACEvents() {
     // Handle Detail System User Form Submit
     const formSu = document.getElementById('form-detail-system-user');
     if (formSu) {
-        formSu.addEventListener('submit', async (e) => {
+        bindAdminEvent(formSu, 'submit', 'save-system-user', async (e) => {
             e.preventDefault();
             if (!this.view.validateForm(formSu)) return;
 
@@ -548,7 +557,7 @@ export function setupRBACEvents() {
     // Handle Edit System Package Form Submit
     const formEditPkg = document.getElementById('form-edit-package');
     if (formEditPkg) {
-        formEditPkg.addEventListener('submit', async (e) => {
+        bindAdminEvent(formEditPkg, 'submit', 'save-system-package', async (e) => {
             e.preventDefault();
             if (!this.view.validateForm(formEditPkg)) return;
 
@@ -592,7 +601,7 @@ export function setupRBACEvents() {
     const profileAvatarFallback = document.getElementById('profile-avatar-fallback');
 
     if (profileAvatarInput) {
-        profileAvatarInput.addEventListener('change', (e) => {
+        bindAdminEvent(profileAvatarInput, 'change', 'select-profile-avatar', (e) => {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
@@ -638,7 +647,7 @@ export function setupRBACEvents() {
     // Profile form submit
     const formProfileUpdate = document.getElementById('form-profile-update');
     if (formProfileUpdate) {
-        formProfileUpdate.addEventListener('submit', async (e) => {
+        bindAdminEvent(formProfileUpdate, 'submit', 'save-profile', async (e) => {
             e.preventDefault();
             if (!this.view.validateForm(formProfileUpdate)) return;
 
@@ -684,7 +693,7 @@ export function setupRBACEvents() {
     // Password form submit
     const formProfilePassword = document.getElementById('form-profile-password');
     if (formProfilePassword) {
-        formProfilePassword.addEventListener('submit', async (e) => {
+        bindAdminEvent(formProfilePassword, 'submit', 'change-profile-password', async (e) => {
             e.preventDefault();
             if (!this.view.validateForm(formProfilePassword)) return;
 

@@ -194,12 +194,16 @@ export function setupActionListeners() {
 
 
 
-    onById('btn-add-kehoach', 'click', () => this.editKeHoach(null));
-    onById('btn-add-goithau', 'click', () => this.editGoiThau(null));
-    onById('btn-add-chudautu', 'click', () => this.editChuDauTu(null));
-    onById('btn-add-nhathau', 'click', () => this.editNhaThau(null));
-    onById('btn-add-chuyengia', 'click', () => this.editChuyenGia(null));
-    onById('btn-add-hopdong', 'click', () => this.editHopDong(null));
+    const runWorkflow = async (methodName, ...args) => {
+        await this.ensureWorkflowModules();
+        return this[methodName](...args);
+    };
+    onById('btn-add-kehoach', 'click', () => runWorkflow('editKeHoach', null));
+    onById('btn-add-goithau', 'click', () => runWorkflow('editGoiThau', null));
+    onById('btn-add-chudautu', 'click', () => runWorkflow('editChuDauTu', null));
+    onById('btn-add-nhathau', 'click', () => runWorkflow('editNhaThau', null));
+    onById('btn-add-chuyengia', 'click', () => runWorkflow('editChuyenGia', null));
+    onById('btn-add-hopdong', 'click', () => runWorkflow('editHopDong', null));
 
     [
         'kh-tongmuc',
@@ -681,7 +685,7 @@ export function setupActionListeners() {
         btn._hasExcelListener = true;
         btn.addEventListener('click', () => {
             const type = btn.getAttribute('data-type');
-            this.triggerExcelImport(type);
+            runWorkflow('triggerExcelImport', type);
         });
     });
 
@@ -691,7 +695,7 @@ export function setupActionListeners() {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const type = btn.getAttribute('data-type');
-            this.triggerExcelTemplateDownload(type);
+            runWorkflow('triggerExcelTemplateDownload', type);
         });
     });
 
@@ -701,7 +705,7 @@ export function setupActionListeners() {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const type = btn.getAttribute('data-type');
-            this.triggerExcelImport(type);
+            runWorkflow('triggerExcelImport', type);
         });
     });
 }
