@@ -25,6 +25,7 @@ function obfuscatorPlugin({ debugProtection = false } = {}) {
         renameGlobals: false,
         selfDefending: true,
         simplify: true,
+        sourceMap: false,
         splitStrings: true,
         splitStringsChunkLength: 8,
         stringArray: true,
@@ -37,7 +38,7 @@ function obfuscatorPlugin({ debugProtection = false } = {}) {
 
       return {
         code: obfuscationResult.getObfuscatedCode(),
-        map: obfuscationResult.getSourceMap()
+        map: null
       };
     }
   };
