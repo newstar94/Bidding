@@ -66,6 +66,8 @@ async def lookup_tax_code_api(request):
     Tra cứu thông tin doanh nghiệp (nhà thầu/chủ đầu tư) từ mã số thuế trực tuyến.
     """
     tax_code = request.query_params.get("code", "")
+    org_code = request.query_params.get("orgCode", "")
+    role_name = request.query_params.get("role", "NT")
     if not tax_code:
         return JSONResponse({"error": "Thiếu mã số thuế"}, status_code=400)
 
@@ -75,7 +77,11 @@ async def lookup_tax_code_api(request):
         if not cleaned_code:
             return JSONResponse({"error": "Mã số thuế không hợp lệ về mặt định dạng"}, status_code=400)
 
-        info = lookup_partner_info(cleaned_code)
+        info = lookup_partner_info(
+            cleaned_code,
+            org_code=org_code,
+            role_name=role_name,
+        )
         if info:
             return JSONResponse(info)
         else:

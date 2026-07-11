@@ -110,6 +110,42 @@ function hideAuthOverlay() {
     if (appContainer) appContainer.style.filter = 'none';
 }
 
+function hideInitLoader() {
+    const initLoader = document.getElementById('system-init-loader');
+    if (!initLoader) return;
+
+    initLoader.style.opacity = '0';
+    initLoader.style.visibility = 'hidden';
+    initLoader.setAttribute('aria-busy', 'false');
+}
+
+function showInitLoader(message = 'Đang tải...') {
+    const initLoader = document.getElementById('system-init-loader');
+    if (!initLoader) return null;
+
+    const messageElement = initLoader.querySelector('#system-init-loader-text');
+    if (messageElement) messageElement.textContent = message;
+    initLoader.style.display = 'flex';
+    initLoader.style.opacity = '1';
+    initLoader.style.visibility = 'visible';
+    initLoader.setAttribute('aria-busy', 'true');
+    return initLoader;
+}
+
+function reloadWithInitLoader() {
+    const initLoader = showInitLoader();
+    if (initLoader) {
+        hideGoogleAuthPending();
+        hideAuthOverlay();
+        // Force the loader styles to paint before navigation starts.
+        void initLoader.offsetHeight;
+    }
+
+    requestAnimationFrame(() => {
+        setTimeout(() => window.location.reload(), 0);
+    });
+}
+
 function showGoogleAuthPending() {
     let pending = document.getElementById('google-auth-pending-overlay');
     if (!pending) {
@@ -153,10 +189,10 @@ export function setupActivityTracker() {
 
     const minimumWriteInterval = 15000;
     let lastWriteAt = Number(localStorage.getItem('bf_last_activity') || 0);
-    const updateActivity = () => {
-        if (!window._bfAuthSessionActive) return;
+    const updateActivity = (force = false) => {
+        if (!force && !window._bfAuthSessionActive) return;
         const now = Date.now();
-        if (now - lastWriteAt < minimumWriteInterval) return;
+        if (!force && now - lastWriteAt < minimumWriteInterval) return;
         lastWriteAt = now;
         localStorage.setItem('bf_last_activity', now.toString());
     };
@@ -165,7 +201,7 @@ export function setupActivityTracker() {
         document.addEventListener(type, updateActivity, { passive: true });
     });
 
-    updateActivity();
+    updateActivity(true);
 }
 
 export function checkInactivity() {
@@ -328,15 +364,8 @@ export function setupAuth() {
     const formForgot = document.getElementById('form-auth-forgot');
     const formVerify = document.getElementById('form-auth-verify');
 
-    const hideInitLoader = () => {
-        const initLoader = document.getElementById('system-init-loader');
-        if (initLoader) {
-            initLoader.style.opacity = '0';
-            initLoader.style.visibility = 'hidden';
-            setTimeout(() => initLoader.remove(), 90);
-        }
-    };
     window.hideInitLoader = hideInitLoader;
+    window.showInitLoader = showInitLoader;
 
     const hasLocalWorkspaceData = () => {
         if (typeof this.hasLocalWorkspaceData === 'function') {
@@ -667,8 +696,7 @@ export function setupAuth() {
             }
 
             if (this._workspaceDeferredUntilReload) {
-                hideAuthOverlay();
-                window.location.reload();
+                reloadWithInitLoader();
                 return;
             }
 
@@ -979,12 +1007,12 @@ export function setupGoogleSignIn() {
     // Helper: hoàn tất đăng nhập sau khi username đã được đặt (hoặc không cần đặt)
     this._finishGoogleLogin = async (activeRole) => {
         setAuthSessionActive(true);
-        hideGoogleAuthPending();
-        hideAuthOverlay();
         if (this._workspaceDeferredUntilReload) {
-            window.location.reload();
+            reloadWithInitLoader();
             return;
         }
+        hideGoogleAuthPending();
+        hideAuthOverlay();
         try { await this.forceSyncData(); } catch (err) { console.error('Failed sync after Google login:', err); }
         this.view.updateActiveUserProfileDisplay();
         if (typeof this.renderWorkspaceSwitcher === 'function') this.renderWorkspaceSwitcher();
@@ -1202,6 +1230,10 @@ export function setupGoogleSignIn() {
                         if (btnSpan) btnSpan.textContent = 'Đang khởi tạo thiết lập...';
                         
                         try {
+                            if (this._workspaceDeferredUntilReload) {
+                                await this._finishGoogleLogin(activeRole);
+                                return;
+                            }
                             await this.model.init();
                             const resolvedUserId = !this.model.hasEffectiveRole(data.role, 'manager')
                                 ? (data.id ? data.id : '1')
@@ -1238,6 +1270,10 @@ export function setupGoogleSignIn() {
             }
 
             // Đối với tài khoản bình thường (đã có username), chạy tiếp như cũ:
+            if (this._workspaceDeferredUntilReload) {
+                await this._finishGoogleLogin(activeRole);
+                return;
+            }
             await this.model.init();
 
             const resolvedUserId = !this.model.hasEffectiveRole(data.role, 'manager')

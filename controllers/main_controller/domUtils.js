@@ -55,12 +55,24 @@ export function bindCurrencyElement(element, formatValue) {
     return element;
 }
 
-export function bindCurrencyElements(elements, formatValue) {
-    Array.from(elements || []).forEach(element => bindCurrencyElement(element, formatValue));
-}
-
 export function normalizeTaxCodeForLookup(value) {
     return String(value || '').trim().replace(/^(vnp|vnz|vn)[\s._-]*/i, '').trim();
+}
+
+export function normalizeVietnamTaxCode(value) {
+    return normalizeTaxCodeForLookup(value).replace(/[\s._]/g, '');
+}
+
+export function isVietnamTaxCode(value) {
+    return /^(?:\d{9,14}|\d{10}-\d{3})$/.test(normalizeVietnamTaxCode(value));
+}
+
+export function extractTaxCodeFromPartnerCode(value) {
+    const partnerCode = String(value || '').trim();
+    if (!/^(?:vnp|vnz|vn)/i.test(partnerCode)) return '';
+
+    const taxCode = normalizeVietnamTaxCode(partnerCode);
+    return isVietnamTaxCode(taxCode) ? taxCode : '';
 }
 
 export function normalizeTaxCodeForCompare(value) {

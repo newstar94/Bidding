@@ -1205,6 +1205,7 @@ export const SCHEMA_CONTRACT = {
         "loai_nha_thau",
         "ma_so_thue",
         "nguoi_dai_dien",
+        "chuc_vu_dai_dien",
         "danh_xung",
         "so_dien_thoai",
         "email",
@@ -1218,6 +1219,7 @@ export const SCHEMA_CONTRACT = {
         "updated_at"
       ],
       "fieldMap": {
+        "chuc_vu_dai_dien": "chucVuDaiDien",
         "created_at": "createdAt",
         "danh_xung": "danhXung",
         "dia_chi": "diaChi",
@@ -1244,6 +1246,7 @@ export const SCHEMA_CONTRACT = {
       },
       "jsonFields": [],
       "reverseFieldMap": {
+        "chucVuDaiDien": "chuc_vu_dai_dien",
         "createdAt": "created_at",
         "danhXung": "danh_xung",
         "diaChi": "dia_chi",

@@ -1,5 +1,6 @@
-import { normalizeTaxCodeForLookup } from '../main_controller/domUtils.js';
+import { extractTaxCodeFromPartnerCode, normalizeVietnamTaxCode } from '../main_controller/domUtils.js';
 import { applyRawAddressToAddressControls } from '../utils/PartnerHelpers.js';
+import { bindPartnerTaxCodeLookup } from './partnerTaxLookup.js';
 
 export async function deleteNhaThau(id) {
     const nt = this.model.state.nhathau.find(n => n.id === id);
@@ -123,6 +124,7 @@ export async function editNhaThau(id, isReadOnly = false) {
 
             if (document.getElementById('nt-mst')) document.getElementById('nt-mst').value = nt.maSoThue || '';
             if (document.getElementById('nt-nguoidaidien')) document.getElementById('nt-nguoidaidien').value = nt.nguoiDaiDien || '';
+            if (document.getElementById('nt-chucvudaidien')) document.getElementById('nt-chucvudaidien').value = nt.chucVuDaiDien || '';
             if (document.getElementById('nt-danhxung')) document.getElementById('nt-danhxung').value = nt.danhXung || 'Ông';
             if (document.getElementById('nt-sdt')) document.getElementById('nt-sdt').value = nt.soDienThoai || '';
             if (document.getElementById('nt-email')) document.getElementById('nt-email').value = nt.email || '';
@@ -159,44 +161,37 @@ export async function editNhaThau(id, isReadOnly = false) {
             const idInput = document.getElementById('form-nhathau-id');
             if (idInput) idInput.value = '';
         }
-        // Tự động tra cứu MST và điền thông tin khi người dùng chuyển trỏ chuột (blur)
-        const mstInput = document.getElementById('nt-mst');
-        if (mstInput && !isReadOnly) {
-            mstInput.onblur = async () => {
-                const val = mstInput.value.trim();
-                if (!val) return;
-                try {
-                    mstInput.style.opacity = '0.7';
-                    const lookupCode = normalizeTaxCodeForLookup(val);
-                    if (!lookupCode) return;
-                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(lookupCode)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.name) {
-                            const nameInput = document.getElementById('nt-ten');
-                            if (nameInput) {
-                                nameInput.value = data.name;
-                            }
-                            if (data.address) {
-                                form.dataset.diaChiGoc = data.address;
-                                await applyRawAddressToAddressControls(data.address, {
-                                    detailInputId: 'nt-diachichitiet',
-                                    provinceSelectId: 'nt-tinh',
-                                    wardSelectId: 'nt-xa'
-                                });
-                            }
-                            const shortInput = document.getElementById('nt-tenviettat');
-                            if (shortInput) {
-                                shortInput.value = data.short_name || '';
-                            }
-                        }
+        // Đồng bộ MST từ mã đối tác và tra cứu thông tin doanh nghiệp.
+        const partnerCodeInput = document.getElementById('nt-ma');
+        const partnerTaxInput = document.getElementById('nt-mst');
+        partnerCodeInput?.__bfPartnerTaxLookupCleanup?.();
+        if (!isReadOnly) {
+            bindPartnerTaxCodeLookup({
+                codeInput: partnerCodeInput,
+                taxInput: partnerTaxInput,
+                partnerRole: 'NT',
+                applyLookupData: async (data) => {
+                    if (data.org_code) document.getElementById('nt-ma').value = data.org_code;
+                    if (data.tax_code) document.getElementById('nt-mst').value = data.tax_code;
+                    document.getElementById('nt-ten').value = data.name;
+                    if (data.short_name) document.getElementById('nt-tenviettat').value = data.short_name;
+                    if (data.representative_name) {
+                        document.getElementById('nt-nguoidaidien').value = data.representative_name;
                     }
-                } catch (err) {
-                    console.error("Lỗi tra cứu MST: ", err);
-                } finally {
-                    mstInput.style.opacity = '1';
+                    if (data.representative_position) {
+                        document.getElementById('nt-chucvudaidien').value = data.representative_position;
+                    }
+                    if (data.phone) document.getElementById('nt-sdt').value = data.phone;
+                    if (data.address) {
+                        form.dataset.diaChiGoc = data.address;
+                        await applyRawAddressToAddressControls(data.address, {
+                            detailInputId: 'nt-diachichitiet',
+                            provinceSelectId: 'nt-tinh',
+                            wardSelectId: 'nt-xa'
+                        });
+                    }
                 }
-            };
+            });
         }
 
         this.view.openModal('modal-nhathau');
@@ -214,12 +209,16 @@ export async function editNhaThau(id, isReadOnly = false) {
 export async function handleNhaThauSubmit(e) {
     e.preventDefault();
     const form = document.getElementById('form-nhathau');
+    const maNhaThauInput = document.getElementById('nt-ma');
+    const maSoThueInput = document.getElementById('nt-mst');
+    const derivedTaxCode = extractTaxCodeFromPartnerCode(maNhaThauInput.value);
+    maSoThueInput.value = derivedTaxCode || normalizeVietnamTaxCode(maSoThueInput.value);
     if (!this.view.validateForm(form)) return;
 
     const id = document.getElementById('form-nhathau-id').value;
-    const maNhaThau = document.getElementById('nt-ma').value.trim();
+    const maNhaThau = maNhaThauInput.value.trim();
     const tenNhaThau = document.getElementById('nt-ten').value.trim();
-    const maSoThue = document.getElementById('nt-mst').value.trim();
+    const maSoThue = maSoThueInput.value.trim();
 
     // Kiểm tra trùng Mã nhà thầu (maNhaThau)
     if (maNhaThau) {
@@ -253,7 +252,7 @@ export async function handleNhaThauSubmit(e) {
 
     // Kiểm tra trùng Mã số thuế (maSoThue)
     if (maSoThue) {
-        const mstRegex = /^\d{10}$|^\d{13}$|^\d{10}-\d{3}$/;
+        const mstRegex = /^\d{9,14}$|^\d{10}-\d{3}$/;
         if (!mstRegex.test(maSoThue)) {
             const inputEl = document.getElementById('nt-mst');
             const formGroup = inputEl.closest('.form-group');
@@ -262,7 +261,7 @@ export async function handleNhaThauSubmit(e) {
                 const errText = formGroup.querySelector('.error-text');
                 if (errText) {
                     const originalErr = errText.textContent;
-                    errText.textContent = 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).';
+                    errText.textContent = 'Mã số thuế không đúng định dạng (phải gồm từ 9 đến 14 chữ số).';
                     inputEl.addEventListener('input', () => {
                         formGroup.classList.remove('invalid');
                         errText.textContent = originalErr;
@@ -355,6 +354,7 @@ export async function handleNhaThauSubmit(e) {
         loaiNhaThau: 'Độc lập',
         maSoThue: maSoThue,
         nguoiDaiDien: document.getElementById('nt-nguoidaidien').value.trim(),
+        chucVuDaiDien: document.getElementById('nt-chucvudaidien').value.trim(),
         danhXung: document.getElementById('nt-danhxung').value,
         soDienThoai: document.getElementById('nt-sdt').value.trim(),
         email: document.getElementById('nt-email').value.trim(),

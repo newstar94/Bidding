@@ -4,7 +4,7 @@ from .id_utils import generate_record_id, stable_org_id
 from .word_defaults import ensure_default_word_mappings_for_all_orgs
 import os
 import uuid
-from db_helper import database
+from .db_helper import database
 
 DB_SCHEMA_VERSION = 1
 

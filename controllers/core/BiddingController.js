@@ -228,9 +228,10 @@ export class BiddingController {
     ensureWorkflowModules() {
         if (!this._workflowModulesPromise) {
             this._workflowModulesPromise = Promise.all([
+                this.model.ensureAllDataLoaded(),
                 import('/controllers/workflows/BiddingWorkflows.js'),
                 import('/controllers/workflows/PartnerWorkflows.js')
-            ]).then(([bidding, partner]) => {
+            ]).then(([, bidding, partner]) => {
                 Object.assign(BiddingController.prototype, bidding, partner);
                 this._workflowModulesReady = true;
             }).catch(err => {
@@ -634,18 +635,21 @@ export class BiddingController {
             sessionStorage.setItem('bf_username', rememberedUsername);
         }
 
-        let initialSessionData = { valid: false };
-        try {
-            const sessionResponse = await fetch('/api/auth/check-session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ remember: localStorage.getItem('bf_remember_me') === 'true' })
-            });
-            if (sessionResponse.ok) {
-                initialSessionData = await sessionResponse.json();
+        let initialSessionData = this._initialSessionData;
+        if (initialSessionData === undefined) {
+            initialSessionData = { valid: false };
+            try {
+                const sessionResponse = await fetch('/api/auth/check-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ remember: localStorage.getItem('bf_remember_me') === 'true' })
+                });
+                if (sessionResponse.ok) {
+                    initialSessionData = await sessionResponse.json();
+                }
+            } catch (err) {
+                console.warn('Initial session check failed:', err);
             }
-        } catch (err) {
-            console.warn('Initial session check failed:', err);
         }
         this._initialSessionData = initialSessionData;
 
@@ -752,14 +756,6 @@ export class BiddingController {
         }
         this.markStartup('loader:hidden');
         this.publishStartupMetrics();
-
-        this.schedulePostStartupTask(() => {
-            if (this.model && typeof this.model.hydrateRemainingStorageKeysIdle === 'function') {
-                this.model.hydrateRemainingStorageKeysIdle();
-            }
-        }, { timeout: 1200, delay: 100 });
-
-        this.schedulePostStartupTask(() => this.ensureWorkflowModules(), { timeout: 500, delay: 0 });
 
         this.schedulePostStartupTask(() => {
             this.setupFileUploads();

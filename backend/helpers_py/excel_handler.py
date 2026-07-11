@@ -98,6 +98,7 @@ ENTITY_SCHEMA = {
         {'field': 'tenVietTat',           'label': 'Tên viết tắt',                 'aliases': ['Tên viết tắt', 'Tên VT', 'Viết tắt', 'tenVietTat']},
         {'field': 'maSoThue',             'label': 'Mã số thuế',                  'aliases': ['Mã số thuế', 'MST', 'maSoThue']},
         {'field': 'nguoiDaiDien',         'label': 'Người đại diện',              'aliases': ['Người đại diện', 'nguoiDaiDien']},
+        {'field': 'chucVuDaiDien',        'label': 'Chức vụ người đại diện',      'aliases': ['Chức vụ người đại diện', 'chucVuDaiDien']},
         {'field': 'danhXung',             'label': 'Danh xưng',                   'aliases': ['Danh xưng', 'danhXung'],
                                            'options': ['Ông', 'Bà']},
         {'field': 'soDienThoai',          'label': 'Số điện thoại',               'aliases': ['Số điện thoại', 'SĐT', 'soDienThoai']},

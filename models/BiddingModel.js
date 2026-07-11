@@ -337,7 +337,6 @@ export class BiddingModel {
             GOITHAU: 'bf_goithau',
             HOPDONG: 'bf_hopdong',
             THEME: 'bf_dark_mode',
-            USERID: 'bf_user_id',
 
             // New RBAC Storage Keys
             ACTIVEROLE: 'bf_active_role',

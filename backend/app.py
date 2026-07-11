@@ -27,7 +27,6 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-import uvicorn
 import re
 import threading
 import hashlib
@@ -71,7 +70,7 @@ if os.path.exists(env_path):
                 continue
             if '=' in line:
                 k, v = line.split('=', 1)
-                os.environ[k.strip()] = v.strip().strip("'").strip('"')
+                os.environ.setdefault(k.strip(), v.strip().strip("'").strip('"'))
 
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
@@ -79,6 +78,9 @@ APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "t
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"  # Mặc định TẮt debug trên production
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 IS_PRODUCTION = APP_ENV in {"prod", "production"}
+BACKGROUND_STARTUP_DELAY_SECONDS = max(0, int(os.environ.get("BACKGROUND_STARTUP_DELAY_SECONDS", "5")))
+ENABLE_IMAGE_CACHE_PREWARM = os.environ.get("ENABLE_IMAGE_CACHE_PREWARM", "true").lower() == "true"
+ENABLE_PARTNER_LOOKUP_WORKER = os.environ.get("ENABLE_PARTNER_LOOKUP_WORKER", "true").lower() == "true"
 
 
 def _split_env_list(value):
@@ -156,28 +158,25 @@ else:
 # Cache cho HTML đã biên dịch (chỉ được dùng khi APP_DEBUG=False)
 _compiled_html_cache = None
 _compiled_html_cache_signature = None
+_index_response_cache = None
 _compiled_html_lock = threading.Lock()
 
 
 def _html_cache_signature():
-    """[PERF-3] Dung hash noi dung thay vi max mtime.
-    mtime chi thay doi khi file save, nhung khong detect thay doi noi dung
-    (e.g. touch, copy-over, git checkout). Hash dam bao chinh xac hon.
-    Dung md5 (khong can crypto-safe, chi can phat hien thay doi).
-    """
-    import hashlib as _hashlib
-    h = _hashlib.md5()
+    """Build a cheap development signature without reading template contents."""
+    entries = []
     views_dir = os.path.join(project_root, 'views')
     for root, dirs, files in os.walk(views_dir):
-        dirs.sort()  # Duyet theo thu tu xac dinh de hash nhat quan
+        dirs.sort()
         for filename in sorted(files):
             if filename.endswith('.html'):
                 try:
-                    with open(os.path.join(root, filename), 'rb') as _f:
-                        h.update(_f.read())
+                    path = os.path.join(root, filename)
+                    stat = os.stat(path)
+                    entries.append((os.path.relpath(path, views_dir), stat.st_mtime_ns, stat.st_size))
                 except OSError:
                     pass
-    return h.hexdigest()
+    return tuple(entries)
 
 
 def compile_html(file_path):
@@ -186,10 +185,14 @@ def compile_html(file_path):
     """
     global _compiled_html_cache, _compiled_html_cache_signature
 
-    # Trả cache ngay nếu production và đã có cache
-    signature = _html_cache_signature() if not APP_DEBUG else None
-    if not APP_DEBUG and _compiled_html_cache and _compiled_html_cache_signature == signature:
-        return _compiled_html_cache
+    if not APP_DEBUG and _compiled_html_cache:
+        if IS_PRODUCTION:
+            return _compiled_html_cache
+        signature = _html_cache_signature()
+        if _compiled_html_cache_signature == signature:
+            return _compiled_html_cache
+    else:
+        signature = None if APP_DEBUG or IS_PRODUCTION else _html_cache_signature()
 
     def replace_include(match):
         include_path = match.group(1).strip()
@@ -235,16 +238,26 @@ def compile_html(file_path):
     return compiled
 
 
-async def index(request):
-    """
-    [GET] /
-    Biên dịch và trả về tệp index.html đã được ghép nối từ các partials.
-    Tối ưu hóa ETag browser caching.
-    """
+def _build_index_response_payload():
+    """Compile the index and its ETag once for a production process."""
+    global _index_response_cache
     html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
     google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     html_content = html_content.replace("__GOOGLE_CLIENT_ID__", google_client_id)
     etag = f'"{hashlib.md5(html_content.encode("utf-8")).hexdigest()}"'
+    if IS_PRODUCTION:
+        with _compiled_html_lock:
+            _index_response_cache = (html_content, etag)
+    return html_content, etag
+
+
+async def index(request):
+    """Return the compiled application shell with browser ETag caching."""
+    global _index_response_cache
+    if IS_PRODUCTION and _index_response_cache is not None:
+        html_content, etag = _index_response_cache
+    else:
+        html_content, etag = _build_index_response_payload()
 
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and if_none_match == etag:
@@ -260,9 +273,6 @@ from helpers import (
     database,
     get_active_org
 )
-
-import custom_exporter
-
 
 from routes.otp_routes import (
     register_api,
@@ -689,6 +699,9 @@ import contextlib
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
+    if IS_PRODUCTION:
+        _build_index_response_payload()
+
     # Khởi tạo và di trú cơ sở dữ liệu nếu chưa tồn tại
     try:
         from helpers import khoi_tao_va_di_tru_he_thong
@@ -696,15 +709,30 @@ async def lifespan(app):
     except Exception as db_err:
         log_error(db_err, "startup_database_init")
 
-    import threading
-    threading.Thread(target=custom_exporter.prewarm_image_cache, daemon=True).start()
-    
-    # Khởi chạy background service tự động cập nhật thông tin nhà thầu từ MST
-    try:
-        from services.partner_lookup_service import start_partner_background_service
-        start_partner_background_service()
-    except Exception as start_err:
-        log_error(start_err, "start_partner_background_service")
+    def _start_optional_background_services():
+        import time as _time
+        if BACKGROUND_STARTUP_DELAY_SECONDS:
+            _time.sleep(BACKGROUND_STARTUP_DELAY_SECONDS)
+
+        if ENABLE_IMAGE_CACHE_PREWARM:
+            try:
+                from custom_exporter import prewarm_image_cache
+                prewarm_image_cache()
+            except Exception as start_err:
+                log_error(start_err, "prewarm_image_cache")
+
+        if ENABLE_PARTNER_LOOKUP_WORKER:
+            try:
+                from services.partner_lookup_service import start_partner_background_service
+                start_partner_background_service()
+            except Exception as start_err:
+                log_error(start_err, "start_partner_background_service")
+
+    threading.Thread(
+        target=_start_optional_background_services,
+        daemon=True,
+        name="optional-background-startup",
+    ).start()
     
     # Dọn dẹp session cache và org cache hết hạn mỗi 5 phút để tránh RAM tích tụ
     from helpers_py.auth_helper import _session_cache_cleanup
@@ -763,5 +791,8 @@ app = Starlette(
 # 5. KHỞI CHẠY MÁY CHỦ UVICORN
 # ==========================================
 if __name__ == "__main__":
-    # Khởi chạy server sử dụng đường dẫn import dạng module chính xác 'backend.app:app'
-    uvicorn.run("backend.app:app", host=APP_HOST, port=APP_PORT, reload=APP_DEBUG)
+    import uvicorn
+    if APP_DEBUG:
+        uvicorn.run("backend.app:app", host=APP_HOST, port=APP_PORT, reload=True)
+    else:
+        uvicorn.run(app, host=APP_HOST, port=APP_PORT, reload=False)

@@ -4,6 +4,8 @@ import urllib.request
 import urllib.error
 import json
 import re
+import ssl
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from helpers import database
 from helpers_py.address_parser import parse_vietnam_address_to_internal
@@ -23,6 +25,167 @@ def extract_clean_tax_code(val):
     if 9 <= len(digits_only) <= 14:
         return cleaned
     return None
+
+
+MUASAMCONG_CONTRACTOR_SERVICE_BASE = (
+    "https://muasamcong.mpi.gov.vn/o/egp-portal-contractors-approved/services"
+)
+MUASAMCONG_INVESTOR_SERVICE_BASE = (
+    "https://muasamcong.mpi.gov.vn/o/egp-portal-investor-approved-v2/services"
+)
+
+
+def _create_muasamcong_ssl_context():
+    context = ssl.create_default_context()
+    try:
+        context.set_ciphers("DEFAULT:@SECLEVEL=1")
+    except ssl.SSLError:
+        pass
+    return context
+
+
+MUASAMCONG_SSL_CONTEXT = _create_muasamcong_ssl_context()
+
+
+def normalize_procurement_org_code(value):
+    raw_value = re.sub(r"[\s._-]+", "", str(value or "").strip().lower())
+    match = re.fullmatch(r"(vnp|vnz|vn)(\d{9,14})", raw_value)
+    return f"{match.group(1)}{match.group(2)}" if match else None
+
+
+def _post_muasamcong_json(
+    endpoint,
+    payload,
+    timeout=8,
+    service_base=MUASAMCONG_CONTRACTOR_SERVICE_BASE,
+):
+    request = urllib.request.Request(
+        f"{service_base}/{endpoint}",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+            "Origin": "https://muasamcong.mpi.gov.vn",
+            "Referer": "https://muasamcong.mpi.gov.vn/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150 Safari/537.36",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(
+        request,
+        timeout=timeout,
+        context=MUASAMCONG_SSL_CONTEXT,
+    ) as response:
+        return json.loads(response.read().decode("utf-8-sig"))
+
+
+def _fetch_muasamcong_area_name(code, service_base=MUASAMCONG_CONTRACTOR_SERVICE_BASE):
+    if not code:
+        return ""
+    try:
+        result = _post_muasamcong_json(
+            "get-area-by-code",
+            {"queryParams": {"code": {"equals": code}}},
+            service_base=service_base,
+        )
+        if isinstance(result, list):
+            values = result
+        elif isinstance(result, dict):
+            values = result.get("value", [])
+        else:
+            values = []
+        return values[0].get("name", "") if values else ""
+    except Exception:
+        return ""
+
+
+def _build_muasamcong_partner_info(data, org_code, area_names=None, fallback_tax_code=""):
+    if not isinstance(data, dict) or not data.get("orgFullName"):
+        return None
+
+    area_names = area_names or {}
+    address_parts = []
+    for value in (
+        data.get("officeAdd"),
+        area_names.get(data.get("officeWar")),
+        area_names.get(data.get("officeDis")),
+        area_names.get(data.get("officePro")),
+    ):
+        value = str(value or "").strip()
+        if value and value not in address_parts:
+            address_parts.append(value)
+
+    return {
+        "name": data.get("orgFullName"),
+        "address": ", ".join(address_parts),
+        "short_name": data.get("orgShortName") or "",
+        "source": "MuaSamCong",
+        "org_code": data.get("orgCode") or org_code,
+        "tax_code": data.get("taxCode") or fallback_tax_code or "",
+        "english_name": data.get("orgEnName") or "",
+        "representative_name": data.get("repName") or "",
+        "representative_position": data.get("repPosition") or "",
+        "phone": data.get("officePhone") or "",
+        "website": data.get("officeWeb") or "",
+        "business_type": data.get("businessType") or "",
+        "businesses": data.get("businesses") or [],
+        "procurement_data": data,
+    }
+
+
+def fetch_muasamcong_info(tax_code, org_code, role_name="NT"):
+    normalized_org_code = normalize_procurement_org_code(org_code)
+    if not normalized_org_code:
+        return None
+
+    normalized_role = str(role_name or "NT").strip().upper()
+    if normalized_role not in {"NT", "CDT"}:
+        normalized_role = "NT"
+
+    try:
+        if normalized_role == "CDT":
+            service_base = MUASAMCONG_INVESTOR_SERVICE_BASE
+            response_data = _post_muasamcong_json(
+                "um/org/get-detail-info",
+                {"orgCode": normalized_org_code},
+                service_base=service_base,
+            )
+            data = response_data.get("orgInfo") if isinstance(response_data, dict) else None
+            returned_org_code = normalize_procurement_org_code(data.get("orgCode")) if isinstance(data, dict) else None
+            if returned_org_code != normalized_org_code:
+                return None
+        else:
+            service_base = MUASAMCONG_CONTRACTOR_SERVICE_BASE
+            data = _post_muasamcong_json(
+                "get-detail-approve-bidder",
+                {"orgCode": normalized_org_code, "roleName": normalized_role},
+                service_base=service_base,
+            )
+
+        returned_tax_code = extract_clean_tax_code(data.get("taxCode")) if isinstance(data, dict) else None
+        requested_tax_code = extract_clean_tax_code(tax_code)
+        if returned_tax_code and requested_tax_code and returned_tax_code != requested_tax_code:
+            return None
+
+        area_codes = list(dict.fromkeys(
+            code for code in (data.get("officePro"), data.get("officeDis"), data.get("officeWar"))
+            if code
+        ))
+        with ThreadPoolExecutor(max_workers=max(1, len(area_codes))) as executor:
+            area_values = executor.map(
+                lambda code: _fetch_muasamcong_area_name(code, service_base),
+                area_codes,
+            )
+            area_names = dict(zip(area_codes, area_values))
+        return _build_muasamcong_partner_info(
+            data,
+            normalized_org_code,
+            area_names,
+            fallback_tax_code=requested_tax_code,
+        )
+    except Exception as error:
+        print(f"[Partner Lookup] MuaSamCong error for {normalized_org_code}: {error}", flush=True)
+        return None
 
 def fetch_vietqr_info(tax_code):
     url = f"https://api.vietqr.io/v2/business/{tax_code}"
@@ -66,12 +229,21 @@ def fetch_escodata_info(tax_code):
         print(f"[Partner Lookup] Escodata error for {tax_code}: {e}", flush=True)
     return None
 
-def lookup_partner_info(tax_code):
-    # 1. Try VietQR
+def lookup_partner_info(tax_code, org_code=None, role_name="NT"):
+    # Always prefer the procurement portal. Tax-only lookups use the common vn prefix.
+    procurement_org_code = normalize_procurement_org_code(org_code)
+    if not procurement_org_code:
+        digits_only = re.sub(r"[^0-9]", "", str(tax_code or ""))
+        procurement_org_code = f"vn{digits_only}" if digits_only else None
+
+    info = fetch_muasamcong_info(tax_code, procurement_org_code, role_name=role_name)
+    if info:
+        return info
+    # Try VietQR.
     info = fetch_vietqr_info(tax_code)
     if info:
         return info
-    # 2. Try Escodata fallback
+    # Try Escodata fallback.
     info = fetch_escodata_info(tax_code)
     if info:
         return info
@@ -133,7 +305,11 @@ def run_partner_lookup_worker():
                     continue
                     
                 print(f"[Partner Worker] Querying info for tax code: {tax_code}...", flush=True)
-                info = lookup_partner_info(tax_code)
+                info = lookup_partner_info(
+                    tax_code,
+                    org_code=ma_nha_thau or ma_so_thue,
+                    role_name="NT",
+                )
                 
                 if info and info.get("name"):
                     new_name = info["name"].strip()

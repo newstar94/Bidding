@@ -1,8 +1,3 @@
-import os
-import re
-import json
-from io import BytesIO
-import pandas as pd
 from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
@@ -10,17 +5,10 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from helpers import (
     database,
-    clean_id,
-    VietnameseFloat,
-    SCHEMA_DINH_NGHIA,
-    to_camel_case,
-    load_base64_image
 )
 from helpers_py.excel_handler import (
-    parse_excel,
     _schema_to_headers,
-    _schema_to_options,
-    _schema_to_map_cols
+    _schema_to_options
 )
 from helpers_py.sync_mapper import fetch_package_lot_codes
 

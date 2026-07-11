@@ -1,5 +1,6 @@
-import { normalizeTaxCodeForLookup } from '../main_controller/domUtils.js';
+import { extractTaxCodeFromPartnerCode, normalizeVietnamTaxCode } from '../main_controller/domUtils.js';
 import { applyRawAddressToAddressControls } from '../utils/PartnerHelpers.js';
+import { bindPartnerTaxCodeLookup } from './partnerTaxLookup.js';
 
 export async function deleteChuDauTu(id) {
     const hasPlans = this.model.state.kehoach.some(k => k.chuDauTuId === id);
@@ -74,45 +75,33 @@ export async function editChuDauTu(id) {
         document.getElementById('cdt-diachichitiet').value = '';
         await this.initAddressDropdowns('cdt-tinh', 'cdt-xa', '', '');
     }
-    // Tự động tra cứu MST và điền thông tin khi người dùng chuyển trỏ chuột (blur)
-        const mstInput = document.getElementById('cdt-mst');
-        if (mstInput) {
-            mstInput.onblur = async () => {
-                const val = mstInput.value.trim();
-                if (!val) return;
-                try {
-                    mstInput.style.opacity = '0.7';
-                    const lookupCode = normalizeTaxCodeForLookup(val);
-                    if (!lookupCode) return;
-                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(lookupCode)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.name) {
-                            const nameInput = document.getElementById('cdt-ten');
-                            if (nameInput) {
-                                nameInput.value = data.name;
-                            }
-                            if (data.address) {
-                                form.dataset.diaChiGoc = data.address;
-                                await applyRawAddressToAddressControls(data.address, {
-                                    detailInputId: 'cdt-diachichitiet',
-                                    provinceSelectId: 'cdt-tinh',
-                                    wardSelectId: 'cdt-xa'
-                                });
-                            }
-                            const shortInput = document.getElementById('cdt-tenviettat');
-                            if (shortInput) {
-                                shortInput.value = data.short_name || '';
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.error("Lỗi tra cứu MST: ", err);
-                } finally {
-                    mstInput.style.opacity = '1';
+    // Đồng bộ MST từ mã đối tác và tra cứu thông tin doanh nghiệp.
+        bindPartnerTaxCodeLookup({
+            codeInput: document.getElementById('cdt-ma'),
+            taxInput: document.getElementById('cdt-mst'),
+            partnerRole: 'CDT',
+            applyLookupData: async (data) => {
+                if (data.org_code) document.getElementById('cdt-ma').value = data.org_code;
+                if (data.tax_code) document.getElementById('cdt-mst').value = data.tax_code;
+                document.getElementById('cdt-ten').value = data.name;
+                if (data.short_name) document.getElementById('cdt-tenviettat').value = data.short_name;
+                if (data.representative_name) {
+                    document.getElementById('cdt-daidiencdt').value = data.representative_name;
                 }
-            };
-        }
+                if (data.representative_position) {
+                    document.getElementById('cdt-chucvudaidien').value = data.representative_position;
+                }
+                if (data.phone) document.getElementById('cdt-sdt').value = data.phone;
+                if (data.address) {
+                    form.dataset.diaChiGoc = data.address;
+                    await applyRawAddressToAddressControls(data.address, {
+                        detailInputId: 'cdt-diachichitiet',
+                        provinceSelectId: 'cdt-tinh',
+                        wardSelectId: 'cdt-xa'
+                    });
+                }
+            }
+        });
 
         this.view.openModal('modal-chudautu');
 }
@@ -121,11 +110,15 @@ export async function editChuDauTu(id) {
 export async function handleChuDauTuSubmit(e) {
     e.preventDefault();
     const form = document.getElementById('form-chudautu');
+    const maChuDauTuInput = document.getElementById('cdt-ma');
+    const maSoThueInput = document.getElementById('cdt-mst');
+    const derivedTaxCode = extractTaxCodeFromPartnerCode(maChuDauTuInput.value);
+    maSoThueInput.value = derivedTaxCode || normalizeVietnamTaxCode(maSoThueInput.value);
     if (!this.view.validateForm(form)) return;
 
     const id = document.getElementById('form-chudautu-id').value;
-    const maChuDauTu = document.getElementById('cdt-ma').value.trim();
-    const maSoThue = document.getElementById('cdt-mst').value.trim();
+    const maChuDauTu = maChuDauTuInput.value.trim();
+    const maSoThue = maSoThueInput.value.trim();
 
     if (maChuDauTu) {
         const latestChuDauTu = this.model.getLatestChuDauTu();
@@ -151,7 +144,7 @@ export async function handleChuDauTuSubmit(e) {
     }
 
     if (maSoThue) {
-        const mstRegex = /^\d{10}$|^\d{13}$|^\d{10}-\d{3}$/;
+        const mstRegex = /^\d{9,14}$|^\d{10}-\d{3}$/;
         if (!mstRegex.test(maSoThue)) {
             const inputEl = document.getElementById('cdt-mst');
             const formGroup = inputEl.closest('.form-group');
@@ -160,7 +153,7 @@ export async function handleChuDauTuSubmit(e) {
                 const errText = formGroup.querySelector('.error-text');
                 if (errText) {
                     const originalErr = errText.textContent;
-                    errText.textContent = 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số).';
+                    errText.textContent = 'Mã số thuế không đúng định dạng (phải gồm từ 9 đến 14 chữ số).';
                     inputEl.addEventListener('input', () => {
                         formGroup.classList.remove('invalid');
                         errText.textContent = originalErr;

@@ -1,6 +1,6 @@
 import time
 import threading
-from db_helper import database
+from .db_helper import database
 
 _org_cache = {}
 _org_cache_lock = threading.Lock()

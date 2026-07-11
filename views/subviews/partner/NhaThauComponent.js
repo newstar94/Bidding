@@ -285,7 +285,7 @@ export function renderNhaThauVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Chức vụ người đại diện</div>
-                    <div class="detail-value">${nt.chucVu || '--'}</div>
+                    <div class="detail-value">${nt.chucVuDaiDien || '--'}</div>
                 </div>
                 <div class="detail-item" style="grid-column: span 2;">
                     <div class="detail-label">Địa chỉ</div>

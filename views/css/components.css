@@ -903,6 +903,21 @@
     margin-left: 2px;
 }
 
+#modal-nhathau .form-grid > .form-group:has(#nt-danhxung) {
+    grid-column: span 2;
+}
+
+#modal-nhathau .form-grid > .form-group:has(#nt-email) {
+    grid-column: auto;
+}
+
+@media (max-width: 768px) {
+    #modal-nhathau .form-grid > .form-group:has(#nt-danhxung),
+    #modal-nhathau .form-grid > .form-group:has(#nt-email) {
+        grid-column: span 1;
+    }
+}
+
 .form-group input,
 .form-group select {
     width: 100%;

@@ -2,8 +2,8 @@ import smtplib
 import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from db_helper import database
-from logging_utils import log_error
+from .db_helper import database
+from .logging_utils import log_error
 
 
 def gui_email(email_nhan, tieu_de, noi_dung_html):

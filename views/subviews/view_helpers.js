@@ -24,11 +24,6 @@ export function htmlIcon(name, attrs = '') {
     return `<i data-lucide="${iconName}"${extraAttrs}></i>`;
 }
 
-export function textCell(value, attrs = '') {
-    const extraAttrs = attrs ? ` ${String(attrs).trim()}` : '';
-    return `<td${extraAttrs}>${escapeHtml(value ?? '')}</td>`;
-}
-
 export function renderEmptyRow(colspan, message, icon = 'inbox') {
     const safeColspan = Math.max(1, parseInt(colspan, 10) || 1);
     return `

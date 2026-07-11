@@ -162,6 +162,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
                 loaiNhaThau: row.loaiNhaThau || 'Độc lập',
                 maSoThue: row.maSoThue || '',
                 nguoiDaiDien: row.nguoiDaiDien || '',
+                chucVuDaiDien: row.chucVuDaiDien || '',
                 danhXung: row.danhXung || 'Ông',
                 soDienThoai: row.soDienThoai || '',
                 email: row.email || '',

@@ -156,6 +156,7 @@ SCHEMA_DINH_NGHIA = {
             "loai_nha_thau": "TEXT",
             "ma_so_thue": "TEXT",
             "nguoi_dai_dien": "TEXT",
+            "chuc_vu_dai_dien": "TEXT",
             "danh_xung": "TEXT DEFAULT 'Ông'",
             "so_dien_thoai": "TEXT",
             "email": "TEXT",
