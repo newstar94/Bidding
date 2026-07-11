@@ -117,12 +117,14 @@ function hideInitLoader() {
     initLoader.style.opacity = '0';
     initLoader.style.visibility = 'hidden';
     initLoader.setAttribute('aria-busy', 'false');
+    document.body.classList.remove('bf-init-loading');
 }
 
 function showInitLoader(message = 'Đang tải...') {
     const initLoader = document.getElementById('system-init-loader');
     if (!initLoader) return null;
 
+    document.body.classList.add('bf-init-loading');
     const messageElement = initLoader.querySelector('#system-init-loader-text');
     if (messageElement) messageElement.textContent = message;
     initLoader.style.display = 'flex';
@@ -136,13 +138,12 @@ function reloadWithInitLoader() {
     const initLoader = showInitLoader();
     if (initLoader) {
         hideGoogleAuthPending();
-        hideAuthOverlay();
         // Force the loader styles to paint before navigation starts.
         void initLoader.offsetHeight;
     }
 
     requestAnimationFrame(() => {
-        setTimeout(() => window.location.reload(), 0);
+        requestAnimationFrame(() => window.location.reload());
     });
 }
 

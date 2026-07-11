@@ -1,3 +1,5 @@
+import { normalizePersonName } from '../main_controller/domUtils.js';
+
 const BASIC_IMPORT_TYPES = new Set(['plan', 'kehoach', 'package', 'goithau', 'chudautu', 'nhathau', 'chuyengia', 'hopdong']);
 const BUSINESS_IMPORT_TYPES = new Set(['mothau', 'danhgiahsdt', 'ketquaqd', 'opening_fin']);
 
@@ -125,7 +127,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
                 tenChuDauTu: row.tenChuDauTu || '',
                 tenVietTat: row.tenVietTat || '',
                 chucVuNguoiDungDau: row.chucVuNguoiDungDau || '',
-                daiDienCdt: row.daiDienCdt || '',
+                daiDienCdt: normalizePersonName(row.daiDienCdt),
                 chucVuDaiDien: row.chucVuDaiDien || '',
                 danhXung: row.danhXung || 'Ông',
                 diaChi: row.diaChi || '',
@@ -161,7 +163,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
                 tenVietTat: row.tenVietTat || '',
                 loaiNhaThau: row.loaiNhaThau || 'Độc lập',
                 maSoThue: row.maSoThue || '',
-                nguoiDaiDien: row.nguoiDaiDien || '',
+                nguoiDaiDien: normalizePersonName(row.nguoiDaiDien),
                 chucVuDaiDien: row.chucVuDaiDien || '',
                 danhXung: row.danhXung || 'Ông',
                 soDienThoai: row.soDienThoai || '',

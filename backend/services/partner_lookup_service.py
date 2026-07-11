@@ -8,7 +8,8 @@ import ssl
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from helpers import database
-from helpers_py.address_parser import parse_vietnam_address_to_internal
+from helpers_py.address_parser import compose_external_address, parse_vietnam_address_to_internal
+from helpers_py.text_utils import normalize_person_name
 
 def extract_clean_tax_code(val):
     if not val:
@@ -99,41 +100,40 @@ def _fetch_muasamcong_area_name(code, service_base=MUASAMCONG_CONTRACTOR_SERVICE
         return ""
 
 
-def _build_muasamcong_partner_info(data, org_code, area_names=None, fallback_tax_code=""):
+def _build_muasamcong_partner_info(data, org_code, area_names=None):
     if not isinstance(data, dict) or not data.get("orgFullName"):
         return None
 
+    def clean_text(value):
+        return str(value or "").strip()
+
     area_names = area_names or {}
-    address_parts = []
-    for value in (
-        data.get("officeAdd"),
+    administrative_names = [
         area_names.get(data.get("officeWar")),
         area_names.get(data.get("officeDis")),
         area_names.get(data.get("officePro")),
-    ):
-        value = str(value or "").strip()
-        if value and value not in address_parts:
-            address_parts.append(value)
+    ]
+    address = compose_external_address(data.get("officeAdd"), *administrative_names)
 
     return {
-        "name": data.get("orgFullName"),
-        "address": ", ".join(address_parts),
-        "short_name": data.get("orgShortName") or "",
+        "name": clean_text(data.get("orgFullName")),
+        "address": address,
+        "short_name": clean_text(data.get("orgShortName")),
         "source": "MuaSamCong",
-        "org_code": data.get("orgCode") or org_code,
-        "tax_code": data.get("taxCode") or fallback_tax_code or "",
-        "english_name": data.get("orgEnName") or "",
-        "representative_name": data.get("repName") or "",
-        "representative_position": data.get("repPosition") or "",
-        "phone": data.get("officePhone") or "",
-        "website": data.get("officeWeb") or "",
-        "business_type": data.get("businessType") or "",
+        "org_code": clean_text(data.get("orgCode") or org_code),
+        "tax_code": clean_text(data.get("taxCode")),
+        "english_name": clean_text(data.get("orgEnName")),
+        "representative_name": normalize_person_name(data.get("repName")),
+        "representative_position": clean_text(data.get("repPosition")),
+        "phone": clean_text(data.get("officePhone")),
+        "website": clean_text(data.get("officeWeb")),
+        "business_type": clean_text(data.get("businessType")),
         "businesses": data.get("businesses") or [],
         "procurement_data": data,
     }
 
 
-def fetch_muasamcong_info(tax_code, org_code, role_name="NT"):
+def fetch_muasamcong_info(tax_code="", org_code="", role_name="NT"):
     normalized_org_code = normalize_procurement_org_code(org_code)
     if not normalized_org_code:
         return None
@@ -181,7 +181,6 @@ def fetch_muasamcong_info(tax_code, org_code, role_name="NT"):
             data,
             normalized_org_code,
             area_names,
-            fallback_tax_code=requested_tax_code,
         )
     except Exception as error:
         print(f"[Partner Lookup] MuaSamCong error for {normalized_org_code}: {error}", flush=True)
@@ -229,23 +228,29 @@ def fetch_escodata_info(tax_code):
         print(f"[Partner Lookup] Escodata error for {tax_code}: {e}", flush=True)
     return None
 
-def lookup_partner_info(tax_code, org_code=None, role_name="NT"):
-    # Always prefer the procurement portal. Tax-only lookups use the common vn prefix.
+def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
+    # Prefer the procurement portal. Tax-only lookups use the common vn prefix,
+    # while organization-code lookups never derive a tax code from that identifier.
+    cleaned_tax_code = extract_clean_tax_code(tax_code)
     procurement_org_code = normalize_procurement_org_code(org_code)
     if not procurement_org_code:
-        digits_only = re.sub(r"[^0-9]", "", str(tax_code or ""))
+        digits_only = re.sub(r"[^0-9]", "", str(cleaned_tax_code or ""))
         procurement_org_code = f"vn{digits_only}" if digits_only else None
 
-    info = fetch_muasamcong_info(tax_code, procurement_org_code, role_name=role_name)
+    info = fetch_muasamcong_info(cleaned_tax_code or "", procurement_org_code, role_name=role_name)
     if info:
         return info
+    if not cleaned_tax_code:
+        return None
     # Try VietQR.
-    info = fetch_vietqr_info(tax_code)
+    info = fetch_vietqr_info(cleaned_tax_code)
     if info:
+        info["tax_code"] = cleaned_tax_code
         return info
     # Try Escodata fallback.
-    info = fetch_escodata_info(tax_code)
+    info = fetch_escodata_info(cleaned_tax_code)
     if info:
+        info["tax_code"] = cleaned_tax_code
         return info
     return None
 
@@ -289,12 +294,11 @@ def run_partner_lookup_worker():
             for row in rows:
                 c_id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau = row
                 
-                # Extract clean tax code
+                # Tax code and procurement organization code are independent inputs.
                 tax_code = extract_clean_tax_code(ma_so_thue)
-                if not tax_code:
-                    tax_code = extract_clean_tax_code(ma_nha_thau)
+                org_code = normalize_procurement_org_code(ma_nha_thau)
                     
-                if not tax_code:
+                if not tax_code and not org_code:
                     if ten_nha_thau is None or ten_nha_thau == '' or ten_nha_thau.startswith('Nhà thầu'):
                         cursor.execute("""
                             UPDATE nha_thau 
@@ -304,10 +308,10 @@ def run_partner_lookup_worker():
                         conn.commit()
                     continue
                     
-                print(f"[Partner Worker] Querying info for tax code: {tax_code}...", flush=True)
+                print(f"[Partner Worker] Querying info for org={org_code or '-'}, tax={tax_code or '-'}...", flush=True)
                 info = lookup_partner_info(
-                    tax_code,
-                    org_code=ma_nha_thau or ma_so_thue,
+                    tax_code or "",
+                    org_code=org_code,
                     role_name="NT",
                 )
                 
@@ -316,6 +320,7 @@ def run_partner_lookup_worker():
                     new_address_raw = (info.get("address") or "").strip()
                     new_address = parse_vietnam_address_to_internal(new_address_raw) if new_address_raw else ""
                     new_short_name = (info.get("short_name") or "").strip()
+                    returned_tax_code = (info.get("tax_code") or "").strip()
                     
                     print(f"[Partner Worker] Found company info via {info['source']}: {new_name}", flush=True)
                     
@@ -343,7 +348,7 @@ def run_partner_lookup_worker():
                             sync_version = ?,
                             updated_at = datetime('now', 'localtime')
                         WHERE id = ?
-                    """, (new_name, new_address, new_address_raw, new_short_name, tax_code, new_sync_ver, c_id))
+                    """, (new_name, new_address, new_address_raw, new_short_name, returned_tax_code, new_sync_ver, c_id))
                     
                     # Update thong_tin_mo_thau snapshot if name is empty/generic/placeholder
                     cursor.execute("""
@@ -369,7 +374,7 @@ def run_partner_lookup_worker():
                     except Exception:
                         pass
                 else:
-                    print(f"[Partner Worker] No info found for tax code: {tax_code}.", flush=True)
+                    print(f"[Partner Worker] No info found for org={org_code or '-'}, tax={tax_code or '-' }.", flush=True)
                     # Set a temporary placeholder so we don't query it continuously
                     if ten_nha_thau is None or ten_nha_thau == '' or ten_nha_thau.startswith('Nhà thầu'):
                         cursor.execute("""

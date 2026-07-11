@@ -1157,9 +1157,9 @@ export function renderDanhGiaHsdtPanel() {
                 if (jvViewLink) {
                     jvViewLink.addEventListener('click', (e) => {
                         e.preventDefault();
-                        const subMembers = (bid.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== bid.maNhaThau);
-                        const leadM = (bid.thanhVienLienDanh || []).find(m => m.vaiTro === "Đứng đầu liên danh") || { tenNhaThau: bid.tenNhaThau, maSoThue: bid.maNhaThau };
-                        window.openMoThauJVViewModal(subMembers, leadM.tenNhaThau, leadM.maSoThue);
+                        const subMembers = (bid.thanhVienLienDanh || []).filter(m => m.vaiTro !== "Đứng đầu liên danh" && (m.maNhaThau || m.maSoThue) !== bid.maNhaThau);
+                        const leadM = (bid.thanhVienLienDanh || []).find(m => m.vaiTro === "Đứng đầu liên danh") || { tenNhaThau: bid.tenNhaThau, maNhaThau: bid.maNhaThau, maSoThue: '' };
+                        window.openMoThauJVViewModal(subMembers, leadM.tenNhaThau, leadM.maNhaThau || leadM.maSoThue);
                     });
                 }
 

@@ -2,6 +2,17 @@ import re
 import datetime
 
 
+def normalize_person_name(value):
+    """Normalize a Vietnamese personal name to initial-capital form."""
+    text = re.sub(r"\s+", " ", str(value or "").strip()).lower()
+    return re.sub(
+        r"(^|[\s'-])([^\W\d_])",
+        lambda match: f"{match.group(1)}{match.group(2).upper()}",
+        text,
+        flags=re.UNICODE,
+    )
+
+
 def safe_float(val):
     """
     Parse giá trị sang float.

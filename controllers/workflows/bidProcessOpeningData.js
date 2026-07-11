@@ -1,11 +1,11 @@
-import { normalizeTaxCodeForCompare, normalizeTaxCodeForLookup } from '../main_controller/domUtils.js';
+import { normalizePersonName, normalizeTaxCodeForCompare, normalizeVietnamTaxCode } from '../main_controller/domUtils.js';
 
 function normalizeOpeningCode(value) {
     return normalizeTaxCodeForCompare(value);
 }
 
 function normalizeTaxCodeForStorage(value) {
-    const normalized = normalizeTaxCodeForLookup(value);
+    const normalized = normalizeVietnamTaxCode(value);
     return /^\d{10}$|^\d{13}$|^\d{10}-\d{3}$/.test(normalized) ? normalized : '';
 }
 
@@ -26,7 +26,7 @@ function isLeadMember(member, leadCode) {
     const role = String(member?.vaiTro || '').trim().toLowerCase();
     const normalizedLeadCode = normalizeOpeningCode(leadCode);
     return (role.includes('đứng') && role.includes('đầu')) ||
-        (normalizedLeadCode && normalizeOpeningCode(member?.maSoThue) === normalizedLeadCode);
+        (normalizedLeadCode && normalizeOpeningCode(member?.maNhaThau || member?.maSoThue) === normalizedLeadCode);
 }
 
 function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} }) {
@@ -35,8 +35,9 @@ function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} })
         maNhaThau,
         tenNhaThau,
         loaiNhaThau: 'Độc lập',
-        maSoThue: normalizeTaxCodeForStorage(member.maSoThue || maNhaThau),
-        nguoiDaiDien: member.nguoiDaiDien || '',
+        maSoThue: normalizeTaxCodeForStorage(member.maSoThue),
+        nguoiDaiDien: normalizePersonName(member.nguoiDaiDien),
+        chucVuDaiDien: member.chucVuDaiDien || '',
         danhXung: member.danhXung || 'Ông',
         soDienThoai: member.soDienThoai || '',
         email: member.email || '',
@@ -52,15 +53,17 @@ function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} })
 
 function mergeContractorLookupData(target, source = {}) {
     if (!target || !source) return;
-    const normalizedTaxCode = normalizeTaxCodeForStorage(source.maSoThue || source.maNhaThau);
-    if (normalizedTaxCode) target.maSoThue = normalizedTaxCode;
+    if (Object.prototype.hasOwnProperty.call(source, 'maSoThue')) {
+        target.maSoThue = normalizeTaxCodeForStorage(source.maSoThue);
+    }
     if (source.tenNhaThau && (!target.tenNhaThau || String(target.tenNhaThau).startsWith('Thành viên đứng đầu'))) {
         target.tenNhaThau = source.tenNhaThau;
     }
     if (source.tenVietTat && !target.tenVietTat) target.tenVietTat = source.tenVietTat;
     if (source.diaChi && !target.diaChi) target.diaChi = source.diaChi;
     if (source.diaChiGoc && !target.diaChiGoc) target.diaChiGoc = source.diaChiGoc;
-    if (source.nguoiDaiDien && !target.nguoiDaiDien) target.nguoiDaiDien = source.nguoiDaiDien;
+    if (source.nguoiDaiDien && !target.nguoiDaiDien) target.nguoiDaiDien = normalizePersonName(source.nguoiDaiDien);
+    if (source.chucVuDaiDien && !target.chucVuDaiDien) target.chucVuDaiDien = source.chucVuDaiDien;
     if (source.soDienThoai && !target.soDienThoai) target.soDienThoai = source.soDienThoai;
     if (source.email && !target.email) target.email = source.email;
 }
@@ -73,7 +76,8 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
             foundNt = createIndependentContractor({
                 id: window.generateRecordId('nhathau'),
                 maNhaThau,
-                tenNhaThau
+                tenNhaThau,
+                member: row._leadMemberLookupData || {}
             });
             model.state.nhathau.push(foundNt);
             model.persistData('nhathau');
@@ -82,12 +86,12 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
             const dbNt = model.state.nhathau.find(n => n.id === foundNt.id);
             if (dbNt) {
                 dbNt.loaiNhaThau = 'Độc lập';
-                mergeContractorLookupData(dbNt, { maSoThue: maNhaThau, tenNhaThau });
+                mergeContractorLookupData(dbNt, { ...(row._leadMemberLookupData || {}), tenNhaThau });
                 model.persistData('nhathau');
             }
         } else {
             const dbNt = model.state.nhathau.find(n => n.id === foundNt.id) || foundNt;
-            mergeContractorLookupData(dbNt, { maSoThue: maNhaThau, tenNhaThau });
+            mergeContractorLookupData(dbNt, { ...(row._leadMemberLookupData || {}), tenNhaThau });
             model.persistData('nhathau');
         }
         return foundNt;
@@ -100,7 +104,6 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
             tenNhaThau: row._leadMemberName || (`Thành viên đứng đầu ${maNhaThau}`),
             member: {
                 ...(row._leadMemberLookupData || {}),
-                maSoThue: maNhaThau,
                 tenNhaThau: row._leadMemberName || (`Thành viên đứng đầu ${maNhaThau}`)
             }
         });
@@ -113,7 +116,6 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
             dbNt.tenNhaThau = row._leadMemberName;
             mergeContractorLookupData(dbNt, {
                 ...(row._leadMemberLookupData || {}),
-                maSoThue: maNhaThau,
                 tenNhaThau: row._leadMemberName
             });
             model.persistData('nhathau');
@@ -122,19 +124,19 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
         const dbNt = model.state.nhathau.find(n => n.id === foundNt.id) || foundNt;
         mergeContractorLookupData(dbNt, {
             ...(row._leadMemberLookupData || {}),
-            maSoThue: maNhaThau,
             tenNhaThau: row._leadMemberName
         });
         model.persistData('nhathau');
     }
 
     (row._thanhVienLienDanh || []).forEach(member => {
-        if (!member.maSoThue) return;
-        let subNt = findLatestContractorByCode(latestNhaThauList, member.maSoThue);
+        const memberCode = member.maNhaThau || member.maSoThue;
+        if (!memberCode) return;
+        let subNt = findLatestContractorByCode(latestNhaThauList, memberCode);
         if (!subNt) {
             subNt = createIndependentContractor({
                 id: window.generateRecordId('nhathau'),
-                maNhaThau: member.maNhaThau || member.maSoThue,
+                maNhaThau: memberCode,
                 tenNhaThau: member.tenNhaThau,
                 member
             });
@@ -154,9 +156,10 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
 function collectJvMembers(row, foundNt, maNhaThau) {
     const bidJvMembers = [{
         tenNhaThau: row._leadMemberName || foundNt.tenNhaThau || `Thành viên đứng đầu ${maNhaThau}`,
-        maSoThue: normalizeTaxCodeForStorage(foundNt?.maSoThue || maNhaThau),
+        maNhaThau: foundNt?.maNhaThau || maNhaThau,
+        maSoThue: normalizeTaxCodeForStorage(foundNt?.maSoThue),
         vaiTro: 'Đứng đầu liên danh',
-        nguoiDaiDien: row._leadMemberLookupData?.nguoiDaiDien || '',
+        nguoiDaiDien: normalizePersonName(row._leadMemberLookupData?.nguoiDaiDien),
         danhXung: row._leadMemberLookupData?.danhXung || 'Ông',
         soDienThoai: row._leadMemberLookupData?.soDienThoai || '',
         email: row._leadMemberLookupData?.email || '',
@@ -172,14 +175,15 @@ function collectJvMembers(row, foundNt, maNhaThau) {
 
     sourceMembers.forEach(m => {
         if (isLeadMember(m, maNhaThau)) return;
-        const normalizedMemberCode = normalizeOpeningCode(m.maSoThue);
+        const normalizedMemberCode = normalizeOpeningCode(m.maNhaThau || m.maSoThue);
         if (!normalizedMemberCode || seenCodes.has(normalizedMemberCode)) return;
         seenCodes.add(normalizedMemberCode);
         bidJvMembers.push({
             tenNhaThau: m.tenNhaThau,
+            maNhaThau: m.maNhaThau || m.maSoThue || '',
             maSoThue: normalizeTaxCodeForStorage(m.maSoThue),
             vaiTro: 'Thành viên liên danh',
-            nguoiDaiDien: m.nguoiDaiDien || '',
+            nguoiDaiDien: normalizePersonName(m.nguoiDaiDien),
             danhXung: m.danhXung || 'Ông',
             soDienThoai: m.soDienThoai || '',
             email: m.email || '',
@@ -242,7 +246,7 @@ export function validateOpeningJointVentureMembers(rows) {
         };
 
         remember(leadInput?.value || '');
-        (row._thanhVienLienDanh || []).forEach(member => remember(member.maSoThue));
+        (row._thanhVienLienDanh || []).forEach(member => remember(member.maNhaThau || member.maSoThue));
 
         if (rowInvalid) {
             hasInvalid = true;

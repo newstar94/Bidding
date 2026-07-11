@@ -1,5 +1,5 @@
 import { getAppController } from '../main_controller/controllerRef.js';
-import { bindCurrencyElement, normalizeTaxCodeForCompare, normalizeTaxCodeForLookup } from '../main_controller/domUtils.js';
+import { bindCurrencyElement, normalizeTaxCodeForCompare } from '../main_controller/domUtils.js';
 import { setFieldFeedback } from '../main_controller/formStateUtils.js';
 import {
     canSaveOpeningInfo,
@@ -18,6 +18,7 @@ import {
 } from './bidProcessAwardResult.js';
 import { renderOpeningSummary } from './bidProcessRender.js';
 import { parseVietnamAddress } from '../utils/PartnerHelpers.js';
+import { getPartnerLookupInput, lookupPartnerInfo } from './partnerTaxLookup.js';
 
 function normalizeContractorLookupCode(value) {
     return normalizeTaxCodeForCompare(value);
@@ -32,13 +33,63 @@ function findContractorByCode(list, code) {
     ) || null;
 }
 
+async function mapPartnerLookupToContractor(code, info = {}) {
+    const rawAddress = info.address || info.diaChiGoc || '';
+    const parsedAddress = rawAddress ? await parseVietnamAddress(rawAddress) : null;
+    return {
+        tenNhaThau: info.name || info.tenNhaThau || '',
+        maNhaThau: info.org_code || info.maNhaThau || code,
+        maSoThue: info.tax_code || info.maSoThue || '',
+        tenVietTat: info.short_name || info.tenVietTat || '',
+        nguoiDaiDien: info.representative_name || info.nguoiDaiDien || '',
+        chucVuDaiDien: info.representative_position || info.chucVuDaiDien || '',
+        soDienThoai: info.phone || info.soDienThoai || '',
+        diaChi: parsedAddress?.formattedAddress || info.diaChi || '',
+        diaChiGoc: rawAddress
+    };
+}
+
+async function enrichOpeningRowsWithPartnerInfo(rows, model) {
+    const latestContractors = model.getLatestNhaThau();
+    await Promise.all(Array.from(rows || []).map(async row => {
+        const codeInput = row.querySelector('.mt-ma-nha-thau');
+        const nameInput = row.querySelector('.mt-ten-nha-thau');
+        const code = codeInput?.value.trim() || '';
+        if (!code) return;
+
+        const existing = findContractorByCode(latestContractors, code);
+        if (existing) {
+            row._leadMemberLookupData = await mapPartnerLookupToContractor(code, existing);
+            if (nameInput && !nameInput.value.trim()) nameInput.value = existing.tenNhaThau || '';
+        }
+
+        const lookupInput = getPartnerLookupInput(code);
+        if (!lookupInput) return;
+        try {
+            if (codeInput) codeInput.style.opacity = '0.7';
+            const info = await lookupPartnerInfo({ ...lookupInput, partnerRole: 'NT' });
+            if (!info?.name) return;
+            row._leadMemberLookupData = await mapPartnerLookupToContractor(code, info);
+            if (codeInput && info.org_code) codeInput.value = info.org_code;
+            if (nameInput) nameInput.value = info.name;
+            if (row.querySelector('.mt-loai-nha-thau')?.value === 'Liên danh') {
+                row._leadMemberName = info.name;
+            }
+        } catch (error) {
+            console.error('Lỗi tra cứu nhà thầu trước khi lưu mở thầu:', error);
+        } finally {
+            if (codeInput) codeInput.style.opacity = '1';
+        }
+    }));
+}
+
 function resolveLeadMemberName(contractor, leadCode) {
     if (!contractor) return '';
     const normalizedLeadCode = normalizeContractorLookupCode(leadCode);
     const leadMember = (contractor.thanhVienLienDanh || []).find(member => {
         const role = String(member.vaiTro || '').toLowerCase();
         return (role.includes('đứng') && role.includes('đầu')) ||
-            (normalizedLeadCode && normalizeContractorLookupCode(member.maSoThue) === normalizedLeadCode);
+            (normalizedLeadCode && normalizeContractorLookupCode(member.maNhaThau || member.maSoThue) === normalizedLeadCode);
     });
     if (leadMember?.tenNhaThau) return leadMember.tenNhaThau;
     if (String(contractor.loaiNhaThau || '').trim().toLowerCase() === 'liên danh') return '';
@@ -48,7 +99,7 @@ function resolveLeadMemberName(contractor, leadCode) {
 function getJointVentureSubMembers(members, leadCode) {
     const seenCodes = new Set([normalizeContractorLookupCode(leadCode)].filter(Boolean));
     return (members || []).filter(member => {
-        const normalizedCode = normalizeContractorLookupCode(member?.maSoThue);
+        const normalizedCode = normalizeContractorLookupCode(member?.maNhaThau || member?.maSoThue);
         if (!normalizedCode || seenCodes.has(normalizedCode)) return false;
         const role = String(member?.vaiTro || '').trim().toLowerCase();
         if (role.includes('đứng') && role.includes('đầu')) return false;
@@ -682,26 +733,16 @@ export function openMoThauJVManager(tr) {
     const leadNameInput = document.getElementById('jv-input-lead-name');
 
     const createLookupMemberData = async (code, info = {}) => {
-        const rawAddress = info.address || info.diaChiGoc || '';
-        const parsedAddress = rawAddress ? await parseVietnamAddress(rawAddress) : null;
-        return {
-            tenNhaThau: info.name || info.tenNhaThau || '',
-            maSoThue: normalizeTaxCodeForLookup(code),
-            tenVietTat: info.short_name || info.tenVietTat || '',
-            diaChi: parsedAddress?.formattedAddress || info.diaChi || '',
-            diaChiGoc: rawAddress
-        };
+        return mapPartnerLookupToContractor(code, info);
     };
 
     const lookupInfoByTaxCode = async (code, inputToDim) => {
-        const lookupCode = normalizeTaxCodeForLookup(code);
-        if (!lookupCode) return null;
+        const lookupInput = getPartnerLookupInput(code);
+        if (!lookupInput) return null;
         try {
             if (inputToDim) inputToDim.style.opacity = '0.7';
-            const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(lookupCode)}`);
-            if (!res.ok) return null;
-            const data = await res.json();
-            return await createLookupMemberData(lookupCode, data);
+            const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: 'NT' });
+            return data ? await createLookupMemberData(code, data) : null;
         } catch (err) {
             console.error("Lỗi tra cứu MST khi mở thầu: ", err);
             return null;
@@ -711,23 +752,25 @@ export function openMoThauJVManager(tr) {
     };
 
     const fillLeadNameFromCode = async () => {
-        if (!leadCode || !leadNameInput || leadNameInput.value.trim()) return;
+        if (!leadCode || !leadNameInput) return;
         const localName = resolveLeadMemberName(findContractorByCode(latestNhaThauListJV, leadCode), leadCode);
         if (localName) {
-            leadNameInput.value = localName;
+            if (!leadNameInput.value.trim()) leadNameInput.value = localName;
             tr._leadMemberName = localName;
             tr._leadMemberLookupData = {
                 tenNhaThau: localName,
-                maSoThue: normalizeTaxCodeForLookup(leadCode),
+                maNhaThau: findContractorByCode(latestNhaThauListJV, leadCode)?.maNhaThau || leadCode,
+                maSoThue: findContractorByCode(latestNhaThauListJV, leadCode)?.maSoThue || '',
                 diaChi: findContractorByCode(latestNhaThauListJV, leadCode)?.diaChi || '',
                 diaChiGoc: findContractorByCode(latestNhaThauListJV, leadCode)?.diaChiGoc || '',
                 tenVietTat: findContractorByCode(latestNhaThauListJV, leadCode)?.tenVietTat || ''
             };
-            return;
         }
         const apiInfo = await lookupInfoByTaxCode(leadCode, leadNameInput);
-        if (apiInfo?.tenNhaThau && !leadNameInput.value.trim()) {
-            leadNameInput.value = apiInfo.tenNhaThau;
+        if (apiInfo?.tenNhaThau) {
+            if (!leadNameInput.value.trim() || leadNameInput.dataset.autofilled !== '0') {
+                leadNameInput.value = apiInfo.tenNhaThau;
+            }
             tr._leadMemberName = apiInfo.tenNhaThau;
             tr._leadMemberLookupData = apiInfo;
         }
@@ -747,7 +790,7 @@ export function openMoThauJVManager(tr) {
 
         rowDiv.innerHTML = `
             <div class="form-group" style="margin-bottom: 0;">
-                <input type="text" class="jv-input-mst" required placeholder="Mã số thuế / Mã nhà thầu" value="${member.maSoThue || ''}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
+                <input type="text" class="jv-input-mst" required placeholder="Mã số thuế / Mã nhà thầu" value="${member.maNhaThau || member.maSoThue || ''}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
             </div>
             <div class="form-group" style="margin-bottom: 0;">
                 <input type="text" class="jv-input-ten" required placeholder="Tên nhà thầu thành viên" value="${member.tenNhaThau || ''}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
@@ -786,10 +829,11 @@ export function openMoThauJVManager(tr) {
                 tenInput.dataset.autofilled = '1';
                 rowDiv._lookupData = {
                     ...found,
-                    maSoThue: normalizeTaxCodeForLookup(found.maSoThue || code),
+                    maNhaThau: found.maNhaThau || code,
+                    maSoThue: found.maSoThue || '',
                     tenNhaThau: found.tenNhaThau || ''
                 };
-                return;
+                if (!allowOnlineLookup) return;
             }
             if (allowOnlineLookup) {
                 const apiInfo = await lookupInfoByTaxCode(code, mstInput);
@@ -800,15 +844,18 @@ export function openMoThauJVManager(tr) {
         };
         tenInput.addEventListener('input', () => {
             tenInput.dataset.autofilled = '0';
+            const lookupInput = getPartnerLookupInput(mstInput.value.trim()) || {};
             rowDiv._lookupData = {
                 ...(rowDiv._lookupData || {}),
                 tenNhaThau: tenInput.value.trim(),
-                maSoThue: normalizeTaxCodeForLookup(mstInput.value.trim())
+                maNhaThau: lookupInput.orgCode || rowDiv._lookupData?.maNhaThau || mstInput.value.trim(),
+                maSoThue: lookupInput.taxCode || rowDiv._lookupData?.maSoThue || ''
             };
         });
         mstInput.addEventListener('input', () => fillMemberNameFromCode(false));
         mstInput.addEventListener('change', () => fillMemberNameFromCode(true));
         mstInput.addEventListener('blur', () => fillMemberNameFromCode(true));
+        rowDiv._resolveLookup = () => fillMemberNameFromCode(true);
 
         listContainer.appendChild(rowDiv);
         fillMemberNameFromCode(false);
@@ -828,7 +875,10 @@ export function openMoThauJVManager(tr) {
     document.getElementById('btn-close-mothau-jv').onclick = closeModal;
     document.getElementById('btn-cancel-mothau-jv').onclick = closeModal;
 
-    document.getElementById('btn-save-mothau-jv').onclick = () => {
+    document.getElementById('btn-save-mothau-jv').onclick = async () => {
+        await fillLeadNameFromCode();
+        await Promise.all(Array.from(listContainer.querySelectorAll('.mothau-jv-member-row'))
+            .map(row => row._resolveLookup?.()));
         const leadNameInput = document.getElementById('jv-input-lead-name').value.trim();
         if (!leadNameInput) {
             controller?.view?.customAlert?.('Thiếu thông tin', 'Vui lòng nhập tên thành viên đứng đầu liên danh!', 'alert-triangle', '#jv-input-lead-name');
@@ -847,11 +897,12 @@ export function openMoThauJVManager(tr) {
             const mst = inputMst?.value.trim() || '';
 
             if (ten && mst) {
+                const lookupInput = getPartnerLookupInput(mst) || {};
                 updatedMembers.push({
                     ...(r._lookupData || {}),
                     tenNhaThau: ten,
-                    maNhaThau: mst,
-                    maSoThue: normalizeTaxCodeForLookup(mst)
+                    maNhaThau: r._lookupData?.maNhaThau || lookupInput.orgCode || mst,
+                    maSoThue: r._lookupData?.maSoThue || lookupInput.taxCode || ''
                 });
             } else if (ten || mst) {
                 valid = false;
@@ -967,10 +1018,11 @@ export function openMoThauJVViewModal(members, leadName, leadCode) {
         membersHtml = `<div style="text-align: center; color: var(--text-muted); padding: 12px;"><small>Không có Thành viên liên danh</small></div>`;
     } else {
         membersHtml = visibleMembers.map((m, idx) => {
-            const memberNtId = findNhaThauId(m.maSoThue, m.tenNhaThau);
+            const memberCode = m.maNhaThau || m.maSoThue || '';
+            const memberNtId = findNhaThauId(memberCode, m.tenNhaThau);
             const mCodeHtml = memberNtId
-                ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${m.maSoThue || '--'}</a>`
-                : (m.maSoThue || '--');
+                ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${memberCode || '--'}</a>`
+                : (memberCode || '--');
             const mNameHtml = memberNtId
                 ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${m.tenNhaThau || '--'}</a>`
                 : (m.tenNhaThau || '--');
@@ -1070,7 +1122,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     const leadM = (jvMembers || []).find(m => {
         const role = String(m.vaiTro || '').trim().toLowerCase();
         return (role.includes('đứng') && role.includes('đầu')) ||
-            (m.maSoThue && normalizeContractorLookupCode(m.maSoThue) === normalizeContractorLookupCode(ntCode));
+            ((m.maNhaThau || m.maSoThue) && normalizeContractorLookupCode(m.maNhaThau || m.maSoThue) === normalizeContractorLookupCode(ntCode));
     });
     tr._leadMemberName = leadM ? leadM.tenNhaThau : '';
     if (!tr._leadMemberName && ntCode) {
@@ -1364,19 +1416,19 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 if (tr.querySelector('.mt-loai-nha-thau')?.value === 'Liên danh') {
                     tr._leadMemberName = matched.tenNhaThau || '';
                 }
-            } else if (e.type === 'change') {
+            }
+            if (e.type === 'change') {
                 try {
                     inputMa.style.opacity = '0.7';
-                    const lookupCode = normalizeTaxCodeForLookup(code);
-                    if (!lookupCode) return;
-                    const res = await fetch(`/api/lookup-tax-code?code=${encodeURIComponent(lookupCode)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.name) {
-                            inputTen.value = data.name;
-                            if (tr.querySelector('.mt-loai-nha-thau')?.value === 'Liên danh') {
-                                tr._leadMemberName = data.name;
-                            }
+                    const lookupInput = getPartnerLookupInput(code);
+                    if (!lookupInput) return;
+                    const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: 'NT' });
+                    if (data?.name) {
+                        inputMa.value = data.org_code || code;
+                        inputTen.value = data.name;
+                        tr._leadMemberLookupData = await createLookupMemberData(code, data);
+                        if (tr.querySelector('.mt-loai-nha-thau')?.value === 'Liên danh') {
+                            tr._leadMemberName = data.name;
                         }
                     }
                 } catch (err) {
@@ -1553,6 +1605,7 @@ export async function saveThongTinMoThau() {
     }
 
     const rows = document.querySelectorAll('#mothau-table-tbody tr');
+    await enrichOpeningRowsWithPartnerInfo(rows, this.model);
     const openingRowsValidation = validateOpeningRows(rows);
     if (!openingRowsValidation.valid) {
         await this.view.customAlert('Thiếu dữ liệu', 'Vui lòng nhập đầy đủ Mã nhà thầu và Tên nhà thầu cho tất cả các dòng!', 'alert-triangle', openingRowsValidation.invalidInputs);

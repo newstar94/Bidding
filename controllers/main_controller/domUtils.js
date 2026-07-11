@@ -60,21 +60,28 @@ export function normalizeTaxCodeForLookup(value) {
 }
 
 export function normalizeVietnamTaxCode(value) {
-    return normalizeTaxCodeForLookup(value).replace(/[\s._]/g, '');
+    return String(value || '').trim().replace(/[\s._]/g, '');
 }
 
 export function isVietnamTaxCode(value) {
     return /^(?:\d{9,14}|\d{10}-\d{3})$/.test(normalizeVietnamTaxCode(value));
 }
 
-export function extractTaxCodeFromPartnerCode(value) {
-    const partnerCode = String(value || '').trim();
-    if (!/^(?:vnp|vnz|vn)/i.test(partnerCode)) return '';
-
-    const taxCode = normalizeVietnamTaxCode(partnerCode);
-    return isVietnamTaxCode(taxCode) ? taxCode : '';
+export function normalizeProcurementOrgCode(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s._-]+/g, '');
+    return /^(?:vnp|vnz|vn)\d{9,14}$/.test(normalized) ? normalized : '';
 }
 
 export function normalizeTaxCodeForCompare(value) {
     return normalizeTaxCodeForLookup(value).replace(/[^0-9a-z]/gi, '').toLowerCase();
+}
+
+export function normalizePersonName(value) {
+    return String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLocaleLowerCase('vi-VN')
+        .replace(/(^|[\s'-])(\p{L})/gu, (_match, separator, letter) =>
+            separator + letter.toLocaleUpperCase('vi-VN')
+        );
 }

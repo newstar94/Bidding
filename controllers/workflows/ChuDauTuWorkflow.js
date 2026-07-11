@@ -1,5 +1,5 @@
-import { extractTaxCodeFromPartnerCode, normalizeVietnamTaxCode } from '../main_controller/domUtils.js';
-import { applyRawAddressToAddressControls } from '../utils/PartnerHelpers.js';
+import { normalizePersonName, normalizeVietnamTaxCode } from '../main_controller/domUtils.js';
+import { applyRawAddressToAddressControls, composeInternalAddress } from '../utils/PartnerHelpers.js';
 import { bindPartnerTaxCodeLookup } from './partnerTaxLookup.js';
 
 export async function deleteChuDauTu(id) {
@@ -47,7 +47,7 @@ export async function editChuDauTu(id) {
         document.getElementById('cdt-ten').value = cdt.tenChuDauTu;
         document.getElementById('cdt-tenviettat').value = cdt.tenVietTat || '';
         document.getElementById('cdt-chucvunguoidungdau').value = cdt.chucVuNguoiDungDau || '';
-        document.getElementById('cdt-daidiencdt').value = cdt.daiDienCdt || '';
+        document.getElementById('cdt-daidiencdt').value = normalizePersonName(cdt.daiDienCdt);
         document.getElementById('cdt-chucvudaidien').value = cdt.chucVuDaiDien || '';
         document.getElementById('cdt-danhxung').value = cdt.danhXung || 'Ông';
         
@@ -82,11 +82,11 @@ export async function editChuDauTu(id) {
             partnerRole: 'CDT',
             applyLookupData: async (data) => {
                 if (data.org_code) document.getElementById('cdt-ma').value = data.org_code;
-                if (data.tax_code) document.getElementById('cdt-mst').value = data.tax_code;
+                document.getElementById('cdt-mst').value = data.tax_code || '';
                 document.getElementById('cdt-ten').value = data.name;
                 if (data.short_name) document.getElementById('cdt-tenviettat').value = data.short_name;
                 if (data.representative_name) {
-                    document.getElementById('cdt-daidiencdt').value = data.representative_name;
+                    document.getElementById('cdt-daidiencdt').value = normalizePersonName(data.representative_name);
                 }
                 if (data.representative_position) {
                     document.getElementById('cdt-chucvudaidien').value = data.representative_position;
@@ -112,8 +112,7 @@ export async function handleChuDauTuSubmit(e) {
     const form = document.getElementById('form-chudautu');
     const maChuDauTuInput = document.getElementById('cdt-ma');
     const maSoThueInput = document.getElementById('cdt-mst');
-    const derivedTaxCode = extractTaxCodeFromPartnerCode(maChuDauTuInput.value);
-    maSoThueInput.value = derivedTaxCode || normalizeVietnamTaxCode(maSoThueInput.value);
+    maSoThueInput.value = normalizeVietnamTaxCode(maSoThueInput.value);
     if (!this.view.validateForm(form)) return;
 
     const id = document.getElementById('form-chudautu-id').value;
@@ -231,7 +230,7 @@ export async function handleChuDauTuSubmit(e) {
     const tinhName = tinhSelect.options[tinhSelect.selectedIndex]?.getAttribute('data-name') || '';
     const huyenName = huyenSelect.options[huyenSelect.selectedIndex]?.getAttribute('data-name') || '';
     const diachichitiet = document.getElementById('cdt-diachichitiet').value.trim();
-    const diaChiCombined = `${diachichitiet} | ${huyenName} | ${tinhName}`;
+    const diaChiCombined = composeInternalAddress(diachichitiet, huyenName, tinhName);
 
     let data = {
         maChuDauTu: document.getElementById('cdt-ma').value.trim(),
@@ -239,7 +238,7 @@ export async function handleChuDauTuSubmit(e) {
         tenChuDauTu: document.getElementById('cdt-ten').value.trim(),
         tenVietTat: document.getElementById('cdt-tenviettat').value.trim(),
         chucVuNguoiDungDau: document.getElementById('cdt-chucvunguoidungdau').value.trim(),
-        daiDienCdt: document.getElementById('cdt-daidiencdt').value.trim(),
+        daiDienCdt: normalizePersonName(document.getElementById('cdt-daidiencdt').value),
         chucVuDaiDien: document.getElementById('cdt-chucvudaidien').value.trim(),
         danhXung: document.getElementById('cdt-danhxung').value,
         diaChi: diaChiCombined,

@@ -106,8 +106,32 @@ function findAdministrativeMatch(parts, candidates, type) {
     return null;
 }
 
+function escapeRegExp(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function stripAdministrativeSuffix(detail, ...administrativeNames) {
+    let result = String(detail || '').trim();
+    const names = [...new Set(administrativeNames.map(name => String(name || '').trim()).filter(Boolean))]
+        .sort((a, b) => b.length - a.length);
+    let changed = true;
+    while (result && changed) {
+        changed = false;
+        for (const name of names) {
+            const pattern = new RegExp(`(?:\\s*[,;:/\\-–—]\\s*)?${escapeRegExp(name)}\\s*$`, 'iu');
+            const cleaned = result.replace(pattern, '').replace(/[\s,;:/\-–—]+$/u, '').trim();
+            if (cleaned !== result) {
+                result = cleaned;
+                changed = true;
+            }
+        }
+    }
+    return result;
+}
+
 export function composeInternalAddress(detail = '', wardName = '', provinceName = '') {
-    return `${String(detail || '').trim()} | ${String(wardName || '').trim()} | ${String(provinceName || '').trim()}`;
+    const cleanDetail = stripAdministrativeSuffix(detail, wardName, provinceName);
+    return `${cleanDetail} | ${String(wardName || '').trim()} | ${String(provinceName || '').trim()}`;
 }
 
 export async function parseVietnamAddress(rawAddress) {
@@ -140,9 +164,10 @@ export async function parseVietnamAddress(rawAddress) {
     const removeIndexes = new Set();
     if (provinceMatch?.partIndex >= 0) removeIndexes.add(provinceMatch.partIndex);
     if (wardMatch?.partIndex >= 0) removeIndexes.add(wardMatch.partIndex);
-    const detail = parts.filter((_, idx) => !removeIndexes.has(idx)).join(', ').trim() || raw;
+    const matchedDetail = parts.filter((_, idx) => !removeIndexes.has(idx)).join(', ').trim() || raw;
     const wardName = ward?.name || '';
     const provinceName = province?.name || '';
+    const detail = stripAdministrativeSuffix(matchedDetail, wardName, provinceName);
 
     return {
         detail,

@@ -35,6 +35,7 @@ from helpers_py.sync_mapper import (
 from helpers_py.sync_validation import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
 from helpers_py.date_utils import is_datetime_column, normalize_datetime_value
 from helpers_py.id_utils import generate_record_id
+from helpers_py.text_utils import normalize_person_name
 from helpers_py.access_policy import (
     authorize_record_write,
     can_read_table,
@@ -523,6 +524,12 @@ async def sync_api(request):
                                 # Chuẩn hóa khoảng trắng cho chuỗi văn bản thường (XSS escape thực hiện tại tầng render, không phải tại tầng lưu trữ)
                                 if isinstance(val, str) and not (col in _explicit_json or col.endswith("_list") or col.startswith("cv_") or col == "goi_thau_ids" or val.startswith("[") or val.startswith("{")):
                                     val = val.strip()
+
+                                if (
+                                    (table_name == "chu_dau_tu" and col == "dai_dien_cdt")
+                                    or (table_name == "nha_thau" and col == "nguoi_dai_dien")
+                                ):
+                                    val = normalize_person_name(val)
 
                                 if is_datetime_column(col):
                                     val = normalize_datetime_value(val)

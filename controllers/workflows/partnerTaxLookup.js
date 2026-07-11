@@ -1,10 +1,32 @@
 import {
-    extractTaxCodeFromPartnerCode,
     isVietnamTaxCode,
+    normalizeProcurementOrgCode,
     normalizeVietnamTaxCode
 } from '../main_controller/domUtils.js';
 
 const LOOKUP_DELAY_MS = 400;
+
+export async function lookupPartnerInfo({ orgCode = '', taxCode = '', partnerRole = 'NT', signal } = {}) {
+    const normalizedOrgCode = normalizeProcurementOrgCode(orgCode);
+    const normalizedTaxCode = normalizeVietnamTaxCode(taxCode);
+    if (!normalizedOrgCode && !isVietnamTaxCode(normalizedTaxCode)) return null;
+
+    const query = new URLSearchParams({ role: partnerRole });
+    if (normalizedOrgCode) query.set('orgCode', normalizedOrgCode);
+    if (isVietnamTaxCode(normalizedTaxCode)) query.set('code', normalizedTaxCode);
+
+    const response = await fetch(`/api/lookup-tax-code?${query}`, { signal });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data?.name ? data : null;
+}
+
+export function getPartnerLookupInput(value) {
+    const orgCode = normalizeProcurementOrgCode(value);
+    if (orgCode) return { orgCode, taxCode: '' };
+    const taxCode = normalizeVietnamTaxCode(value);
+    return isVietnamTaxCode(taxCode) ? { orgCode: '', taxCode } : null;
+}
 
 export function bindPartnerTaxCodeLookup({
     codeInput,
@@ -21,7 +43,6 @@ export function bindPartnerTaxCodeLookup({
     let requestController = null;
     let activeLookupKey = '';
     let lastSuccessfulKey = '';
-    let autoFilledTaxCode = '';
 
     const setLoading = (isLoading) => {
         taxInput.style.opacity = isLoading ? '0.7' : '1';
@@ -36,19 +57,13 @@ export function bindPartnerTaxCodeLookup({
         setLoading(false);
     };
 
-    const lookupTaxCode = async (value, orgCode = '') => {
+    const runLookup = async ({ orgCode = '', taxCode = '' }) => {
         clearTimeout(lookupTimer);
         lookupTimer = null;
-
-        const taxCode = normalizeVietnamTaxCode(value);
-        if (!isVietnamTaxCode(taxCode)) return;
-
-        const normalizedOrgCode = extractTaxCodeFromPartnerCode(orgCode)
-            ? String(orgCode).trim()
-            : '';
-        const lookupKey = `${normalizedOrgCode.toLowerCase()}|${taxCode}`;
-
-        taxInput.value = taxCode;
+        const normalizedOrgCode = normalizeProcurementOrgCode(orgCode);
+        const normalizedTaxCode = normalizeVietnamTaxCode(taxCode);
+        if (!normalizedOrgCode && !isVietnamTaxCode(normalizedTaxCode)) return;
+        const lookupKey = `${partnerRole}|${normalizedOrgCode}|${normalizedTaxCode}`;
         if (lookupKey === activeLookupKey || lookupKey === lastSuccessfulKey) return;
 
         requestController?.abort();
@@ -58,16 +73,15 @@ export function bindPartnerTaxCodeLookup({
         setLoading(true);
 
         try {
-            const query = new URLSearchParams({ code: taxCode, role: partnerRole });
-            if (normalizedOrgCode) query.set('orgCode', normalizedOrgCode);
-            const response = await fetch(`/api/lookup-tax-code?${query}`, {
+            const data = await lookupPartnerInfo({
+                orgCode: normalizedOrgCode,
+                taxCode: normalizedTaxCode,
+                partnerRole,
                 signal: currentController.signal
             });
-            if (!response.ok || requestController !== currentController) return;
-
-            const data = await response.json();
             if (!data?.name || requestController !== currentController) return;
 
+            taxInput.value = data.tax_code || (normalizedOrgCode ? '' : normalizedTaxCode);
             await applyLookupData(data);
             lastSuccessfulKey = lookupKey;
         } catch (error) {
@@ -83,50 +97,40 @@ export function bindPartnerTaxCodeLookup({
         }
     };
 
-    const scheduleLookup = (taxCode, orgCode) => {
+    const scheduleLookup = lookupInput => {
         clearTimeout(lookupTimer);
-        lookupTimer = setTimeout(() => lookupTaxCode(taxCode, orgCode), LOOKUP_DELAY_MS);
+        lookupTimer = setTimeout(() => runLookup(lookupInput), LOOKUP_DELAY_MS);
     };
 
-    const syncTaxCodeFromPartnerCode = (lookupImmediately = false) => {
-        const taxCode = extractTaxCodeFromPartnerCode(codeInput.value);
-        if (!taxCode) {
+    const lookupFromPartnerCode = (lookupImmediately = false) => {
+        const orgCode = normalizeProcurementOrgCode(codeInput.value);
+        if (!orgCode) {
             cancelPendingLookup();
             lastSuccessfulKey = '';
-            if (autoFilledTaxCode && taxInput.value === autoFilledTaxCode) {
-                taxInput.value = '';
-            }
-            autoFilledTaxCode = '';
             return;
         }
 
-        const orgCode = codeInput.value.trim();
-        const lookupKey = `${orgCode.toLowerCase()}|${taxCode}`;
+        const lookupKey = `${partnerRole}|${orgCode}|`;
         cancelPendingLookup();
         if (lookupKey !== lastSuccessfulKey) lastSuccessfulKey = '';
-        taxInput.value = taxCode;
-        autoFilledTaxCode = taxCode;
+        taxInput.value = '';
         if (lookupImmediately) {
-            lookupTaxCode(taxCode, orgCode);
+            runLookup({ orgCode });
         } else {
-            scheduleLookup(taxCode, orgCode);
+            scheduleLookup({ orgCode });
         }
     };
 
-    const handleCodeInput = () => syncTaxCodeFromPartnerCode(false);
-    const handleCodeBlur = () => syncTaxCodeFromPartnerCode(true);
+    const handleCodeInput = () => lookupFromPartnerCode(false);
+    const handleCodeBlur = () => lookupFromPartnerCode(true);
     const handleTaxInput = () => {
         cancelPendingLookup();
         lastSuccessfulKey = '';
-        autoFilledTaxCode = '';
     };
     const handleTaxBlur = () => {
         const taxCode = normalizeVietnamTaxCode(taxInput.value);
-        const orgCode = extractTaxCodeFromPartnerCode(codeInput.value) === taxCode
-            ? codeInput.value.trim()
-            : '';
         taxInput.value = taxCode;
-        lookupTaxCode(taxCode, orgCode);
+        runLookup({ taxCode });
     };
 
     codeInput.addEventListener('input', handleCodeInput);

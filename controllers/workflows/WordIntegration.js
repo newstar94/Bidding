@@ -160,6 +160,7 @@ export function setupWordTemplatesEvents() {
             { value: 'loai_nha_thau', label: 'Loại nhà thầu (Độc lập/Liên danh)' },
             { value: 'ma_so_thue', label: 'Mã số thuế nhà thầu' },
             { value: 'nguoi_dai_dien', label: 'Người đại diện nhà thầu' },
+            { value: 'chuc_vu_dai_dien', label: 'Chức vụ người đại diện nhà thầu' },
             { value: 'danh_xung', label: 'Danh xưng người đại diện nhà thầu' },
             { value: 'so_dien_thoai', label: 'Số điện thoại nhà thầu' },
             { value: 'email', label: 'Email nhà thầu' },

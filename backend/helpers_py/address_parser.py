@@ -68,8 +68,41 @@ def _find_match(parts, candidates, kind):
     return None, -1
 
 
+def strip_administrative_suffix(detail, *administrative_names):
+    result = str(detail or "").strip()
+    names = sorted(
+        {str(name or "").strip() for name in administrative_names if str(name or "").strip()},
+        key=len,
+        reverse=True,
+    )
+    changed = True
+    while result and changed:
+        changed = False
+        for name in names:
+            pattern = rf"(?:\s*[,;:/\-–—]\s*)?{re.escape(name)}\s*$"
+            cleaned = re.sub(pattern, "", result, flags=re.IGNORECASE).rstrip(" ,;:/-–—")
+            if cleaned != result:
+                result = cleaned.strip()
+                changed = True
+    return result
+
+
+def compose_external_address(detail="", *administrative_names):
+    clean_detail = strip_administrative_suffix(detail, *administrative_names)
+    parts = [clean_detail] if clean_detail else []
+    seen = {_normalize(clean_detail)} if clean_detail else set()
+    for name in administrative_names:
+        clean_name = str(name or "").strip()
+        normalized_name = _normalize(clean_name)
+        if clean_name and normalized_name not in seen:
+            parts.append(clean_name)
+            seen.add(normalized_name)
+    return ", ".join(parts)
+
+
 def compose_internal_address(detail="", ward_name="", province_name=""):
-    return f"{str(detail or '').strip()} | {str(ward_name or '').strip()} | {str(province_name or '').strip()}"
+    clean_detail = strip_administrative_suffix(detail, ward_name, province_name)
+    return f"{clean_detail} | {str(ward_name or '').strip()} | {str(province_name or '').strip()}"
 
 
 def parse_vietnam_address_to_internal(raw_address):
@@ -98,6 +131,11 @@ def parse_vietnam_address_to_internal(raw_address):
 
         remove_indexes = {idx for idx in (province_index, ward_index) if idx >= 0}
         detail = ", ".join(part for idx, part in enumerate(parts) if idx not in remove_indexes).strip() or raw
+        detail = strip_administrative_suffix(
+            detail,
+            ward.get("name") if ward else "",
+            province.get("name") if province else "",
+        )
         return compose_internal_address(
             detail,
             ward.get("name") if ward else "",

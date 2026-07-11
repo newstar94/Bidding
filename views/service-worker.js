@@ -1,10 +1,10 @@
-const CACHE_NAME = 'biddingflow-shell-v5';
+const CACHE_NAME = 'biddingflow-shell-v6';
 const APP_SHELL = [
     '/',
-    '/style.css?v=6.13',
+    '/style.css?v=6.14',
     '/css/variables.css',
     '/css/base.css',
-    '/css/components.css',
+    '/css/components.css?v=6.14',
     '/css/views.css',
     '/css/toast.css',
     '/vendor/lucide/lucide.min.js?v=1.21.0.1',

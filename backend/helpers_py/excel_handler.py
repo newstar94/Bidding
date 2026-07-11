@@ -331,9 +331,7 @@ def parse_excel(file_bytes, import_type):
             if not item.get('maNhaThau'):
                 validation_comments.append("Mã nhà thầu không được để trống")
             mst = item.get('maSoThue')
-            if not mst:
-                validation_comments.append("Mã số thuế không được để trống")
-            elif not re.match(tax_pattern, str(mst).strip()):
+            if mst and not re.match(tax_pattern, str(mst).strip()):
                 validation_comments.append("Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số)")
             email = item.get('email')
             if email and not re.match(email_pattern, str(email).strip()):

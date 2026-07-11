@@ -4,7 +4,7 @@ import re
 from .schema import SCHEMA_DINH_NGHIA
 from .date_utils import normalize_datetime_value
 from .id_utils import generate_record_id
-from .text_utils import clean_id, safe_float, to_camel_case
+from .text_utils import clean_id, normalize_person_name, safe_float, to_camel_case
 
 
 def json_key_for_column(table_name, col):
@@ -50,6 +50,11 @@ def map_db_to_json(table_name, row_dict):
     for col in table_spec["columns"].keys():
         json_key = json_key_for_column(table_name, col)
         val = row_dict.get(col)
+        if (
+            (table_name == "chu_dau_tu" and col == "dai_dien_cdt")
+            or (table_name == "nha_thau" and col == "nguoi_dai_dien")
+        ):
+            val = normalize_person_name(val)
         is_json_field = (
             col in explicit_json_fields
             or col.endswith("_list")
@@ -393,9 +398,10 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, owne
             owner_type,
             parent_id,
             _first_value(row, "tenNhaThau", "ten_nha_thau", default=""),
+            _first_value(row, "maNhaThau", "ma_nha_thau", default=""),
             _first_value(row, "maSoThue", "ma_so_thue", default=""),
             _first_value(row, "vaiTro", "vai_tro", default=""),
-            _first_value(row, "nguoiDaiDien", "nguoi_dai_dien", default=""),
+            normalize_person_name(_first_value(row, "nguoiDaiDien", "nguoi_dai_dien", default="")),
             _first_value(row, "danhXung", "danh_xung", default=""),
             _first_value(row, "soDienThoai", "so_dien_thoai", default=""),
             _first_value(row, "email", default=""),
@@ -411,11 +417,11 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, owne
     if rows:
         cursor.executemany(f"""
             INSERT INTO {child_table} (
-                id, owner_id, owner_type, {parent_col}, ten_nha_thau, ma_so_thue,
+                id, owner_id, owner_type, {parent_col}, ten_nha_thau, ma_nha_thau, ma_so_thue,
                 vai_tro, nguoi_dai_dien, danh_xung, so_dien_thoai, email, dia_chi, dia_chi_goc,
                 so_tai_khoan, noi_mo_tai_khoan, ma_ngan_hang, sort_order,
                 sync_version, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
 
 
@@ -638,12 +644,13 @@ def _format_clarification_child(row, naming, is_request):
 
 
 def _format_member_child(row, naming):
-    return _shape_child(
+    shaped = _shape_child(
         row,
         naming,
         [
             ("id", "id"),
             ("ten_nha_thau", "tenNhaThau"),
+            ("ma_nha_thau", "maNhaThau"),
             ("ma_so_thue", "maSoThue"),
             ("vai_tro", "vaiTro"),
             ("nguoi_dai_dien", "nguoiDaiDien"),
@@ -657,6 +664,9 @@ def _format_member_child(row, naming):
             ("ma_ngan_hang", "maNganHang"),
         ],
     )
+    representative_key = "nguoi_dai_dien" if naming == "snake" else "nguoiDaiDien"
+    shaped[representative_key] = normalize_person_name(shaped.get(representative_key))
+    return shaped
 
 
 def _shape_child(row, naming, fields):

@@ -1,7 +1,7 @@
 import hashlib
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 4
+WORD_DEFAULT_MAPPINGS_VERSION = 5
 WORD_DEFAULT_SEED_PREFIX = "__word_defaults_seeded_v"
 
 
@@ -97,6 +97,7 @@ WORD_SINGLE_SOURCES = {
         "loai_nha_thau",
         "ma_so_thue",
         "nguoi_dai_dien",
+        "chuc_vu_dai_dien",
         "danh_xung",
         "so_dien_thoai",
         "email",
@@ -276,6 +277,7 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("nha_thau", "loai_nha_thau"): "loai_nt",
     ("nha_thau", "ma_so_thue"): "mst_nt",
     ("nha_thau", "nguoi_dai_dien"): "dai_dien_nt",
+    ("nha_thau", "chuc_vu_dai_dien"): "chuc_vu_dai_dien_nt",
     ("nha_thau", "danh_xung"): "danh_xung_nt",
     ("nha_thau", "so_dien_thoai"): "sdt_nt",
     ("nha_thau", "email"): "email_nt",

@@ -39,10 +39,7 @@ export function getExcelPreviewFieldError(type, key, val) {
     } else if (apiType === 'nhathau') {
         if (key === 'maNhaThau' && !strVal) return 'Mã nhà thầu không được để trống';
         if (key === 'tenNhaThau' && !strVal) return 'Tên nhà thầu không được để trống';
-        if (key === 'maSoThue') {
-            if (!strVal) return 'Mã số thuế không được để trống';
-            if (!taxPattern.test(strVal)) return 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số)';
-        }
+        if (key === 'maSoThue' && strVal && !taxPattern.test(strVal)) return 'Mã số thuế không đúng định dạng (phải gồm 10 hoặc 13 chữ số)';
         if (key === 'email' && strVal && !emailPattern.test(strVal)) return 'Email không đúng định dạng';
         if (key === 'soDienThoai' && strVal && !phonePattern.test(strVal)) return 'Số điện thoại không hợp lệ';
     } else if (apiType === 'chuyengia') {

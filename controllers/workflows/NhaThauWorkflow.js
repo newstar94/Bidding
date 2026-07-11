@@ -1,5 +1,5 @@
-import { extractTaxCodeFromPartnerCode, normalizeVietnamTaxCode } from '../main_controller/domUtils.js';
-import { applyRawAddressToAddressControls } from '../utils/PartnerHelpers.js';
+import { normalizePersonName, normalizeVietnamTaxCode } from '../main_controller/domUtils.js';
+import { applyRawAddressToAddressControls, composeInternalAddress } from '../utils/PartnerHelpers.js';
 import { bindPartnerTaxCodeLookup } from './partnerTaxLookup.js';
 
 export async function deleteNhaThau(id) {
@@ -123,7 +123,7 @@ export async function editNhaThau(id, isReadOnly = false) {
             if (tenVietTatInput) tenVietTatInput.value = nt.tenVietTat || '';
 
             if (document.getElementById('nt-mst')) document.getElementById('nt-mst').value = nt.maSoThue || '';
-            if (document.getElementById('nt-nguoidaidien')) document.getElementById('nt-nguoidaidien').value = nt.nguoiDaiDien || '';
+            if (document.getElementById('nt-nguoidaidien')) document.getElementById('nt-nguoidaidien').value = normalizePersonName(nt.nguoiDaiDien);
             if (document.getElementById('nt-chucvudaidien')) document.getElementById('nt-chucvudaidien').value = nt.chucVuDaiDien || '';
             if (document.getElementById('nt-danhxung')) document.getElementById('nt-danhxung').value = nt.danhXung || 'Ông';
             if (document.getElementById('nt-sdt')) document.getElementById('nt-sdt').value = nt.soDienThoai || '';
@@ -172,11 +172,11 @@ export async function editNhaThau(id, isReadOnly = false) {
                 partnerRole: 'NT',
                 applyLookupData: async (data) => {
                     if (data.org_code) document.getElementById('nt-ma').value = data.org_code;
-                    if (data.tax_code) document.getElementById('nt-mst').value = data.tax_code;
+                    document.getElementById('nt-mst').value = data.tax_code || '';
                     document.getElementById('nt-ten').value = data.name;
                     if (data.short_name) document.getElementById('nt-tenviettat').value = data.short_name;
                     if (data.representative_name) {
-                        document.getElementById('nt-nguoidaidien').value = data.representative_name;
+                        document.getElementById('nt-nguoidaidien').value = normalizePersonName(data.representative_name);
                     }
                     if (data.representative_position) {
                         document.getElementById('nt-chucvudaidien').value = data.representative_position;
@@ -211,8 +211,7 @@ export async function handleNhaThauSubmit(e) {
     const form = document.getElementById('form-nhathau');
     const maNhaThauInput = document.getElementById('nt-ma');
     const maSoThueInput = document.getElementById('nt-mst');
-    const derivedTaxCode = extractTaxCodeFromPartnerCode(maNhaThauInput.value);
-    maSoThueInput.value = derivedTaxCode || normalizeVietnamTaxCode(maSoThueInput.value);
+    maSoThueInput.value = normalizeVietnamTaxCode(maSoThueInput.value);
     if (!this.view.validateForm(form)) return;
 
     const id = document.getElementById('form-nhathau-id').value;
@@ -345,7 +344,7 @@ export async function handleNhaThauSubmit(e) {
     const tinhName = tinhSelect.options[tinhSelect.selectedIndex]?.getAttribute('data-name') || '';
     const huyenName = huyenSelect.options[huyenSelect.selectedIndex]?.getAttribute('data-name') || '';
     const diachichitiet = document.getElementById('nt-diachichitiet').value.trim();
-    const diaChiCombined = `${diachichitiet} | ${huyenName} | ${tinhName}`;
+    const diaChiCombined = composeInternalAddress(diachichitiet, huyenName, tinhName);
 
     let data = {
         maNhaThau: maNhaThau,
@@ -353,7 +352,7 @@ export async function handleNhaThauSubmit(e) {
         tenVietTat: document.getElementById('nt-tenviettat').value.trim(),
         loaiNhaThau: 'Độc lập',
         maSoThue: maSoThue,
-        nguoiDaiDien: document.getElementById('nt-nguoidaidien').value.trim(),
+        nguoiDaiDien: normalizePersonName(document.getElementById('nt-nguoidaidien').value),
         chucVuDaiDien: document.getElementById('nt-chucvudaidien').value.trim(),
         danhXung: document.getElementById('nt-danhxung').value,
         soDienThoai: document.getElementById('nt-sdt').value.trim(),

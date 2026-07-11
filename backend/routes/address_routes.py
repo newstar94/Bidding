@@ -65,21 +65,28 @@ async def lookup_tax_code_api(request):
     [GET] /api/lookup-tax-code
     Tra cứu thông tin doanh nghiệp (nhà thầu/chủ đầu tư) từ mã số thuế trực tuyến.
     """
-    tax_code = request.query_params.get("code", "")
-    org_code = request.query_params.get("orgCode", "")
+    tax_code = request.query_params.get("code", "").strip()
+    org_code = request.query_params.get("orgCode", "").strip()
     role_name = request.query_params.get("role", "NT")
-    if not tax_code:
-        return JSONResponse({"error": "Thiếu mã số thuế"}, status_code=400)
+    if not tax_code and not org_code:
+        return JSONResponse({"error": "Thiếu mã định danh hoặc mã số thuế"}, status_code=400)
 
     try:
-        from services.partner_lookup_service import lookup_partner_info, extract_clean_tax_code
-        cleaned_code = extract_clean_tax_code(tax_code)
-        if not cleaned_code:
+        from services.partner_lookup_service import (
+            extract_clean_tax_code,
+            lookup_partner_info,
+            normalize_procurement_org_code,
+        )
+        cleaned_code = extract_clean_tax_code(tax_code) if tax_code else ""
+        normalized_org_code = normalize_procurement_org_code(org_code) if org_code else ""
+        if tax_code and not cleaned_code:
             return JSONResponse({"error": "Mã số thuế không hợp lệ về mặt định dạng"}, status_code=400)
+        if org_code and not normalized_org_code:
+            return JSONResponse({"error": "Mã định danh không hợp lệ"}, status_code=400)
 
         info = lookup_partner_info(
             cleaned_code,
-            org_code=org_code,
+            org_code=normalized_org_code,
             role_name=role_name,
         )
         if info:
