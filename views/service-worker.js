@@ -1,4 +1,4 @@
-const CACHE_NAME = "biddingflow-shell-v6";
+const CACHE_NAME = "biddingflow-shell-v7";
 const APP_SHELL = [
   "/",
   "/style.css?v=6.14",
@@ -7,8 +7,7 @@ const APP_SHELL = [
   "/css/components.css?v=6.14",
   "/css/views.css",
   "/css/toast.css",
-  "/vendor/lucide/lucide.min.js?v=1.21.0.1",
-  "/dist/controllers/app.bundle.js"
+  "/vendor/lucide/lucide.min.js?v=1.21.0.1"
 ];
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -26,15 +25,6 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/") || url.pathname.startsWith("/uploads/")) return;
   if (url.pathname === "/") {
-    event.respondWith(
-      fetch(request).then((response) => {
-        if (response && response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      }).catch(() => caches.match(request))
-    );
     return;
   }
   if (url.pathname.endsWith(".css") || url.pathname.startsWith("/dist/") || url.pathname.startsWith("/vendor/")) {

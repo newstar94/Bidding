@@ -286,7 +286,7 @@ export function autoSync() {
     return { ok: false, error: err };
   });
 }
-export async function forceSyncData(isBackground = false, forceFull = false) {
+export async function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
   const syncBtn = document.getElementById("btn-force-sync");
   const syncIcon = document.getElementById("sync-icon");
   const syncStatusText = document.getElementById("sync-status-text");
@@ -302,7 +302,16 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
     const lastSyncVersion = localStorage.getItem("bf_last_sync_version");
     const useVersionDelta = !forceFull && lastSyncVersion !== null && lastSyncVersion !== "";
     const since = forceFull ? "0" : localStorage.getItem("bf_last_sync_timestamp") || "0";
-    const syncQuery = useVersionDelta ? `after_version=${encodeURIComponent(lastSyncVersion)}` : `since=${encodeURIComponent(since)}`;
+    const queryParams = new URLSearchParams(useVersionDelta ? { after_version: lastSyncVersion } : { since });
+    const currentTab = typeof this.getTabNameForPath === "function" ? this.getTabNameForPath(window.location.pathname) : "";
+    if (currentTab === "dashboard" || currentTab === "superadmin-dashboard") {
+      queryParams.set("include_summary", "1");
+    }
+    if (routeOnly && typeof this.getSyncTableKeysForPath === "function") {
+      const routeTables = this.getSyncTableKeysForPath(window.location.pathname);
+      if (routeTables.length > 0) queryParams.set("tables", routeTables.join(","));
+    }
+    const syncQuery = queryParams.toString();
     const response = await fetch("/api/get-all-data?" + syncQuery, {
       headers: {
         "X-Active-Org": encodeURIComponent(localStorage.getItem("bf_active_org") || "")
@@ -328,11 +337,12 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
     }
     if (response.ok) {
       const dbData = await response.json();
-      const { changedKeys } = applySyncPayload(this.model, dbData, { useVersionDelta, since });
-      if (dbData.syncVersion !== void 0 && dbData.syncVersion !== null) {
+      const { changedKeys, persistencePromise } = applySyncPayload(this.model, dbData, { useVersionDelta, since });
+      await persistencePromise;
+      if (!dbData.partial && dbData.syncVersion !== void 0 && dbData.syncVersion !== null) {
         localStorage.setItem("bf_last_sync_version", dbData.syncVersion.toString());
       }
-      if (dbData.timestamp) {
+      if (!dbData.partial && dbData.timestamp) {
         localStorage.setItem("bf_last_sync_timestamp", dbData.timestamp.toString());
       }
       localStorage.setItem("bf_last_fetch_time", Date.now().toString());
@@ -350,6 +360,9 @@ export async function forceSyncData(isBackground = false, forceFull = false) {
       }
       if (isBackground && this.model && typeof this.model.hydrateRemainingStorageKeysIdle === "function") {
         this.model.hydrateRemainingStorageKeysIdle();
+      }
+      if (routeOnly && typeof this.scheduleBackgroundSync === "function") {
+        this.scheduleBackgroundSync(900);
       }
     }
   } catch (err) {

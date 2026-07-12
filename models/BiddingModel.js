@@ -280,6 +280,34 @@ class BrowserDB {
       }
     });
   }
+  applySyncChanges({ replacements = {}, upserts = {}, deletions = {} } = {}) {
+    const tableNames = Array.from(new Set([
+      ...Object.keys(replacements),
+      ...Object.keys(upserts),
+      ...Object.keys(deletions)
+    ])).filter((name) => this.db?.objectStoreNames.contains(name));
+    if (!this.db || tableNames.length === 0) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db.transaction(tableNames, "readwrite");
+        tableNames.forEach((tableName) => {
+          const store = transaction.objectStore(tableName);
+          if (Object.prototype.hasOwnProperty.call(replacements, tableName)) {
+            store.clear();
+            (replacements[tableName] || []).forEach((item) => store.put(item));
+            return;
+          }
+          (upserts[tableName] || []).forEach((item) => store.put(item));
+          (deletions[tableName] || []).forEach((id) => store.delete(id));
+        });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error("IndexedDB sync transaction failed"));
+        transaction.onabort = () => reject(transaction.error || new Error("IndexedDB sync transaction aborted"));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
 }
 const snakeToCamel = (key, type = null) => {
   if (!key || !key.includes("_")) return key;
@@ -454,7 +482,7 @@ export class BiddingModel {
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
     this._allDataLoadPromise = null;
     await this.db.init();
-    this._hasPersistedWorkspaceData = await this.db.hasAnyTableData([
+    const persistedDataPromise = this.db.hasAnyTableData([
       "kehoach",
       "goithau",
       "chudautu",
@@ -464,7 +492,8 @@ export class BiddingModel {
       "thongtinmothau",
       "assignments"
     ]);
-    await this.loadStorageKeys(options.priorityKeys || Object.keys(this.STORAGE_KEYS));
+    const priorityLoadPromise = this.loadStorageKeys(options.priorityKeys || Object.keys(this.STORAGE_KEYS));
+    [this._hasPersistedWorkspaceData] = await Promise.all([persistedDataPromise, priorityLoadPromise]);
     if (!this.state.systempackages) {
       this.state.systempackages = [];
     }

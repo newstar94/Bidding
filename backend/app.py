@@ -32,6 +32,8 @@ import threading
 import hashlib
 import contextlib
 import secrets
+import json
+import time
 from urllib.parse import urlparse
 
 from starlette.applications import Starlette
@@ -224,11 +226,20 @@ def compile_html(file_path):
             '\n',
             compiled
         )
-        bundle_path = os.path.join(project_root, 'dist', 'controllers', 'app.bundle.js')
-        bundle_version = str(int(os.path.getmtime(bundle_path))) if os.path.exists(bundle_path) else "1"
+        bundle_src = "/dist/controllers/app.bundle.js"
+        manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
+        if os.path.exists(manifest_path):
+            try:
+                with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
+                    manifest = json.load(manifest_file)
+                bundle_file = manifest.get('controllers/app.js', {}).get('file')
+                if bundle_file:
+                    bundle_src = f"/dist/{bundle_file}"
+            except Exception as exc:
+                log_error(exc, "frontend_manifest")
         compiled = re.sub(
             r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
-            f'<script type="module" src="/dist/controllers/app.bundle.js?v={bundle_version}"></script>',
+            f'<script type="module" src="{bundle_src}"></script>',
             compiled
         )
         compiled = compiled.replace('<meta name="bf-app-debug" content="true">', '<meta name="bf-app-debug" content="false">')
@@ -259,11 +270,29 @@ async def index(request):
     else:
         html_content, etag = _build_index_response_payload()
 
+    bootstrap_started = time.perf_counter()
+    try:
+        session_bootstrap = build_session_bootstrap(request)
+    except Exception as exc:
+        log_error(exc, "index_session_bootstrap")
+        session_bootstrap = {"valid": False, "reason": "bootstrap_error"}
+    safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
+    response_etag = f'"{hashlib.md5((etag + safe_bootstrap).encode("utf-8")).hexdigest()}"'
     if_none_match = request.headers.get("if-none-match")
-    if if_none_match and if_none_match == etag:
-        return HTMLResponse(content="", status_code=304, headers={"ETag": etag})
-
-    return HTMLResponse(content=html_content, status_code=200, headers={"ETag": etag})
+    if if_none_match and if_none_match == response_etag:
+        return HTMLResponse(content="", status_code=304, headers={"ETag": response_etag, "Vary": "Cookie", "Cache-Control": "private, no-cache"})
+    html_content = html_content.replace("__BF_SESSION_BOOTSTRAP__", safe_bootstrap)
+    bootstrap_ms = (time.perf_counter() - bootstrap_started) * 1000
+    return HTMLResponse(
+        content=html_content,
+        status_code=200,
+        headers={
+            "ETag": response_etag,
+            "Vary": "Cookie",
+            "Cache-Control": "private, no-cache",
+            "Server-Timing": f"session-bootstrap;dur={bootstrap_ms:.1f}"
+        }
+    )
 
 from helpers import (
     log_error,
@@ -299,6 +328,7 @@ from routes.auth_routes import (
     update_system_package_api,
     set_username_api
 )
+from routes.auth_routes import build_session_bootstrap
 from routes.google_auth_routes import google_login_api
 from routes.sync_routes import (
     sync_websocket_endpoint,

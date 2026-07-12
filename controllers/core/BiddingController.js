@@ -197,12 +197,18 @@ export class BiddingController {
   }
   publishStartupMetrics() {
     const metrics = [
+      this.measureStartup("session check", "session-check-start", "session-check-end"),
+      this.measureStartup("workspace module import", "workspace-import-start", "workspace-import-end"),
+      this.measureStartup("app module to DOM ready", "app-module-start", "dom-content-loaded"),
       this.measureStartup("model init", "init:start", "model:init"),
       this.measureStartup("critical ui setup", "model:init", "ui:critical"),
       this.measureStartup("route render", "ui:critical", "route:rendered"),
       this.measureStartup("time to hide loader", "init:start", "loader:hidden")
     ].filter(Boolean);
     window.__BF_STARTUP_METRICS__ = metrics;
+    window.__BF_RESOURCE_METRICS__ = performance.getEntriesByType?.("resource")
+      ?.filter((entry) => entry.name.includes("/api/") || entry.name.includes("/controllers/") || entry.name.includes("/dist/"))
+      .map((entry) => ({ name: entry.name, duration: Math.round(entry.duration), transferSize: entry.transferSize })) || [];
     if (window.__BF_APP_DEBUG__ || localStorage.getItem("bf_perf_debug") === "true") {
       console.table(metrics);
     }
@@ -429,6 +435,11 @@ export class BiddingController {
       [this.routeMap.bieumau]: ["GOITHAU", "KEHOACH", "HOPDONG", "CHUDAUTU", "NHATHAU"]
     };
     return Array.from(new Set(byRoute[tab] || byRoute[this.routeMap.dashboard]));
+  }
+  getSyncTableKeysForPath(pathname = window.location.pathname) {
+    return this.getStartupPriorityKeys(pathname)
+      .map((key) => String(key || "").toLowerCase())
+      .filter((key) => ["chudautu", "kehoach", "goithau", "chuyengia", "nhathau", "hopdong", "assignments", "custompaperstatuses", "thongtinmothau", "permissionmatrix"].includes(key));
   }
   loadInitDataInBackground() {
     const load = async () => {
@@ -705,10 +716,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     }, { timeout: 600, delay: 100 });
     if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
       this._initialSyncStarted = true;
-      this.schedulePostStartupTask(() => this.forceSyncData(true, true), { timeout: 750, delay: 150 });
+      this.schedulePostStartupTask(() => this.forceSyncData(true, true, true), { timeout: 750, delay: 150 });
     } else if (!this._initialSyncStarted) {
       this._initialSyncStarted = true;
-      this.schedulePostStartupTask(() => this.forceSyncData(true, true), { timeout: 2400, delay: 700 });
+      this.schedulePostStartupTask(() => this.forceSyncData(true, true, true), { timeout: 2400, delay: 700 });
     }
     this.schedulePostStartupTask(() => {
       this.setupAutoSyncBackground();

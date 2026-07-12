@@ -18,9 +18,11 @@ export function mergeIncomingRecords(model, key, incoming) {
   });
 }
 export function applySyncPayload(model, dbData, options = {}) {
-  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "syncVersion", "dashboardSummary"]);
+  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "syncVersion", "dashboardSummary", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
+  const replacementsByTable = {};
+  const upsertsByTable = {};
   const paginatedKeys = new Set(dbData.paginatedKeys || []);
   const useServerSidePagination = !!dbData.useServerSidePagination;
   const isFullInitialSync = !options.useVersionDelta && options.since === "0";
@@ -45,19 +47,13 @@ export function applySyncPayload(model, dbData, options = {}) {
       }
       model.state[key] = incoming;
       changedKeys.add(key);
-      if (typeof model.persistData === "function") {
-        model.persistData(key, { trackMutation: false });
-      }
+      replacementsByTable[key] = incoming;
       return;
     }
     if (incoming.length === 0) return;
     mergeIncomingRecords(model, key, incoming);
     changedKeys.add(key);
-    if (model.db && typeof model.db.putRecords === "function") {
-      model.db.putRecords(key, incoming).catch((e) => console.error("Error storing records", e));
-    } else if (typeof model.persistData === "function") {
-      model.persistData(key, { trackMutation: false });
-    }
+    upsertsByTable[key] = incoming;
   });
   if (typeof model.suspendMutationTracking === "function") {
     model.suspendMutationTracking(applyIncoming);
@@ -77,11 +73,16 @@ export function applySyncPayload(model, dbData, options = {}) {
         deletionsByTable[key].push(id);
       }
     });
-    Object.keys(deletionsByTable).forEach((key) => {
-      if (deletionsByTable[key].length > 0 && model.db && typeof model.db.deleteRecords === "function") {
-        model.db.deleteRecords(key, deletionsByTable[key]).catch((e) => console.error("Error deleting records", e));
-      }
-    });
   }
-  return { changedKeys, deletionsByTable, useServerSidePagination };
+  let persistencePromise = Promise.resolve();
+  if (model.db && typeof model.db.applySyncChanges === "function") {
+    persistencePromise = model.db.applySyncChanges({
+      replacements: replacementsByTable,
+      upserts: upsertsByTable,
+      deletions: deletionsByTable
+    });
+  } else if (typeof model.persistData === "function") {
+    persistencePromise = Promise.all(Array.from(changedKeys).map((key) => model.persistData(key, { trackMutation: false })));
+  }
+  return { changedKeys, deletionsByTable, useServerSidePagination, persistencePromise };
 }

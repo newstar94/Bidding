@@ -1,16 +1,38 @@
 window.__BF_APP_DEBUG__ = document.querySelector('meta[name="bf-app-debug"]')?.content === "true";
+const startupMark = (name) => {
+  try {
+    performance.mark(`bf:${name}`);
+  } catch (_) {
+  }
+};
+startupMark("app-module-start");
+const readSessionBootstrap = () => {
+  try {
+    const node = document.getElementById("bf-session-bootstrap");
+    return node?.textContent ? JSON.parse(node.textContent) : null;
+  } catch (_) {
+    return null;
+  }
+};
 if (!window.lucide || typeof window.lucide.createIcons !== "function") {
   window.lucide = { __bfLucideShim: true, createIcons: () => {
   } };
 }
 const checkInitialSession = async () => {
+  const embedded = readSessionBootstrap();
+  if (embedded && typeof embedded.valid === "boolean") return embedded;
+  startupMark("session-check-start");
   try {
     const response = await fetch("/api/auth/check-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
     });
-    if (response.ok) return await response.json();
+    if (response.ok) {
+      const result = await response.json();
+      startupMark("session-check-end");
+      return result;
+    }
   } catch (err) {
     console.warn("Initial session check failed:", err);
   }
@@ -58,6 +80,7 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
   document.head.appendChild(script);
 });
 window.addEventListener("DOMContentLoaded", async () => {
+  startupMark("dom-content-loaded");
   if ("serviceWorker" in navigator && window.__BF_APP_DEBUG__ === false) {
     navigator.serviceWorker.register("/service-worker.js").catch(() => {
     });
@@ -71,13 +94,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   const initialSession = await checkInitialSession();
   if (initialSession?.valid) {
+    startupMark("workspace-import-start");
     const { bootstrapWorkspace } = await import("/controllers/workspaceBootstrap.js");
+    startupMark("workspace-import-end");
     await bootstrapWorkspace(initialSession);
   } else {
     const { bootstrapAuthShell } = await import("/controllers/auth/AuthShell.js");
     await bootstrapAuthShell(initialSession);
   }
   requestAnimationFrame(() => {
+    startupMark("first-app-frame");
     lucideReady.then((loaded) => {
       if (loaded) window.lucide.createIcons();
     });

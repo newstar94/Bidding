@@ -243,6 +243,40 @@ def _get_username_setup_state(user):
     return needs_username, suggested_username, account_linked
 
 
+def build_session_bootstrap(request):
+    """Return a read-only session snapshot for the HTML bootstrap payload."""
+    session_token = (request.cookies.get('session_token') or '').strip()
+    if not session_token:
+        return {"valid": False, "reason": "missing_auth"}
+
+    user = _load_user_by_session_token(session_token)
+    invalid_reason = _validate_token_expiry(session_token, user)
+    if invalid_reason:
+        return {"valid": False, "reason": invalid_reason}
+
+    needs_username, suggested_username, account_linked = _get_username_setup_state(user)
+    _session_cache_set(session_token, user)
+    return {
+        "valid": True,
+        "device_info": user.get('thong_tin_thiet_bi_cuoi'),
+        "user": {
+            "id": user['id'],
+            "username": user['ten_dang_nhap'],
+            "name": user['ho_ten'],
+            "role": user['vai_tro'],
+            "effective_roles": list(get_effective_roles(user['vai_tro'])),
+            "email": user['email'],
+            "avatar": user.get('anh_dai_dien'),
+            "package_id": user.get('goi_dich_vu_id'),
+            "organization_name": _get_org_names_for_session(user['id']),
+            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
+            "needs_username": needs_username,
+            "suggested_username": suggested_username,
+            "account_linked": account_linked
+        }
+    }
+
+
 def _session_response(user, remember, session_was_extended):
     needs_username, suggested_username, account_linked = _get_username_setup_state(user)
     response = JSONResponse({
@@ -273,6 +307,7 @@ def _session_response(user, remember, session_was_extended):
 
 
 async def check_session_api(request):
+    started_at = time.perf_counter()
     try:
         try:
             data = await request.json()
@@ -291,7 +326,9 @@ async def check_session_api(request):
 
         session_was_extended = _extend_session_if_needed(user, remember)
         _session_cache_set(session_token, user)
-        return _session_response(user, remember, session_was_extended)
+        response = _session_response(user, remember, session_was_extended)
+        response.headers["Server-Timing"] = f"session-check;dur={(time.perf_counter() - started_at) * 1000:.1f}"
+        return response
     except Exception as e:
         log_error(e, "check_session_api")
         return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)

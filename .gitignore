@@ -52,3 +52,4 @@ yarn-error.log*
 # Vite cache & build
 .vite/
 dist/
+.pw-bidding-profile/

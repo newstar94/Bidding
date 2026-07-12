@@ -2,6 +2,7 @@
 import re
 import asyncio
 import traceback
+import time
 from datetime import datetime
 
 from starlette.responses import JSONResponse
@@ -805,6 +806,7 @@ async def get_all_data_api(request):
     Trả về dữ liệu thay đổi từ lần đồng bộ trước (nếu truyền since) hoặc toàn bộ dữ liệu.
     """
     conn = None
+    started_at = time.perf_counter()
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -814,6 +816,12 @@ async def get_all_data_api(request):
         since = read_window.since
         after_version = read_window.after_version
         is_full_initial_fetch = read_window.is_full_initial_fetch
+        requested_keys = {
+            key.strip() for key in (request.query_params.get("tables") or "").split(",")
+            if key.strip() in TABLE_KEYS
+        }
+        is_partial_response = bool(requested_keys)
+        include_dashboard_summary = request.query_params.get("include_summary") in {"1", "true", "yes"}
 
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -834,6 +842,9 @@ async def get_all_data_api(request):
 
 
         def query_table(tbl):
+            payload_key = next((key for key, table_name in TABLE_KEYS.items() if table_name == tbl), None)
+            if is_partial_response and payload_key not in requested_keys:
+                return []
             is_full_fetch = is_full_initial_fetch
             if use_server_pagination and tbl in heavy_tables and is_full_fetch:
 
@@ -915,25 +926,27 @@ async def get_all_data_api(request):
 
 
         assignments = []
-        if after_version is not None:
-            cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
-        elif since != '1970-01-01 00:00:00' and since != '0':
-            cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND updated_at > ?", (org_name, since))
-        else:
-            cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ?", (org_name,))
-        for row in cursor.fetchall():
-            assignments.append(map_db_to_json("phan_cong_nhan_su", dict(row)))
+        if not is_partial_response or "assignments" in requested_keys:
+            if after_version is not None:
+                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+            elif since != '1970-01-01 00:00:00' and since != '0':
+                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+            else:
+                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ?", (org_name,))
+            for row in cursor.fetchall():
+                assignments.append(map_db_to_json("phan_cong_nhan_su", dict(row)))
 
 
         custompaperstatuses = []
-        if after_version is not None:
-            cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
-        elif since != '1970-01-01 00:00:00' and since != '0':
-            cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND updated_at > ?", (org_name, since))
-        else:
-            cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ?", (org_name,))
-        for row in cursor.fetchall():
-            custompaperstatuses.append(map_db_to_json("trang_thai_ho_so_giay", dict(row)))
+        if not is_partial_response or "custompaperstatuses" in requested_keys:
+            if after_version is not None:
+                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+            elif since != '1970-01-01 00:00:00' and since != '0':
+                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+            else:
+                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ?", (org_name,))
+            for row in cursor.fetchall():
+                custompaperstatuses.append(map_db_to_json("trang_thai_ho_so_giay", dict(row)))
 
 
         thongtinmothau = []
@@ -944,14 +957,15 @@ async def get_all_data_api(request):
 
         permissionmatrix = []
         try:
-            if after_version is not None:
-                cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
-            elif since != '1970-01-01 00:00:00' and since != '0':
-                cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND updated_at > ?", (org_name, since))
-            else:
-                cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ?", (org_name,))
-            for row in cursor.fetchall():
-                permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
+            if not is_partial_response or "permissionmatrix" in requested_keys:
+                if after_version is not None:
+                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+                elif since != '1970-01-01 00:00:00' and since != '0':
+                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+                else:
+                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ?", (org_name,))
+                for row in cursor.fetchall():
+                    permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
         except Exception:
             pass
 
@@ -1003,10 +1017,10 @@ async def get_all_data_api(request):
         current_sync_version = get_current_sync_version(cursor, org_name)
 
 
-        dashboard_summary = build_dashboard_summary(cursor, org_name, role_str, user_id)
+        dashboard_summary = build_dashboard_summary(cursor, org_name, role_str, user_id) if include_dashboard_summary else None
         conn.close()
 
-        return JSONResponse({
+        response_payload = {
             "chudautu": chudautu,
             "kehoach": kehoach,
             "chuyengia": chuyengia,
@@ -1021,9 +1035,20 @@ async def get_all_data_api(request):
             "useServerSidePagination": use_server_pagination,
             "paginatedKeys": paginated_payload_keys if use_server_pagination else [],
             "dashboardSummary": dashboard_summary,
+            "partial": is_partial_response,
             "timestamp": current_time,
             "syncVersion": current_sync_version
-        })
+        }
+        if is_partial_response:
+            for payload_key in list(TABLE_KEYS):
+                if payload_key not in requested_keys:
+                    response_payload.pop(payload_key, None)
+            response_payload["deletions"] = [
+                item for item in response_payload["deletions"] if item.get("table") in requested_keys
+            ]
+        response = JSONResponse(response_payload)
+        response.headers["Server-Timing"] = f"sync-read;dur={(time.perf_counter() - started_at) * 1000:.1f}"
+        return response
     except OrgPermissionError as e:
         if conn:
             try:
