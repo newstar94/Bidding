@@ -14,11 +14,15 @@ function isVietnamCountryPart(value) {
   return VIETNAM_COUNTRY_ALIASES.has(normalizeAddressToken(value));
 }
 export function stripVietnamCountrySuffix(parts) {
-  const cleaned = [...(parts || [])];
-  while (cleaned.length > 0 && isVietnamCountryPart(cleaned[cleaned.length - 1])) {
-    cleaned.pop();
-  }
-  return cleaned;
+  // API có thể trả quốc gia ở cuối hoặc xen giữa các thành phần. Loại bỏ
+  // ngay tại đây trước khi nhận diện tỉnh/phường và địa chỉ chi tiết.
+  return [...(parts || [])].filter((part) => !isVietnamCountryPart(part));
+}
+export function splitAddressParts(rawAddress) {
+  return String(rawAddress || "")
+    .split(/\s*(?:,|;|\||\r?\n)\s*/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 function stripAdminPrefix(value, type) {
   const text = normalizeAddressToken(value);
@@ -52,10 +56,15 @@ function syncCustomSelectDisplay(select) {
 async function ensureVietnamProvinces() {
   const root = addressCacheRoot();
   if (!root._vietnamProvinces || !Array.isArray(root._vietnamProvinces) || root._vietnamProvinces.length === 0) {
-    const res = await fetch("/api/address/provinces");
-    if (!res.ok) return [];
-    const data = await res.json();
-    root._vietnamProvinces = Array.isArray(data) ? data : [];
+    try {
+      const res = await fetch("/api/address/provinces");
+      if (!res.ok) return [];
+      const data = await res.json();
+      root._vietnamProvinces = Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.warn("Không thể tải danh mục tỉnh/thành để chuẩn hóa địa chỉ:", error);
+      return [];
+    }
   }
   return root._vietnamProvinces;
 }
@@ -64,10 +73,15 @@ async function ensureVietnamWards(provinceCode) {
   const root = addressCacheRoot();
   root._vietnamWards = root._vietnamWards || {};
   if (!root._vietnamWards[provinceCode] || !Array.isArray(root._vietnamWards[provinceCode])) {
-    const res = await fetch(`/api/address/wards/${provinceCode}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    root._vietnamWards[provinceCode] = Array.isArray(data) ? data : [];
+    try {
+      const res = await fetch(`/api/address/wards/${provinceCode}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      root._vietnamWards[provinceCode] = Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.warn("Không thể tải danh mục xã/phường để chuẩn hóa địa chỉ:", error);
+      return [];
+    }
   }
   return root._vietnamWards[provinceCode];
 }
@@ -133,7 +147,7 @@ export function parseStoredInternalAddress(storedAddress) {
   const provinceName = String(parts[2] || "").trim();
   if (parts.length >= 3 && (wardName || provinceName)) {
     const detailWithoutCountry = stripVietnamCountrySuffix(
-      String(parts[0] || "").split(",").map((part) => part.trim()).filter(Boolean)
+      splitAddressParts(parts[0])
     ).join(", ");
     return {
       detail: stripAdministrativeSuffix(detailWithoutCountry, wardName, provinceName),
@@ -150,15 +164,18 @@ export async function parseVietnamAddress(rawAddress) {
   if (!raw) {
     return { detail: "", wardName: "", provinceName: "", wardCode: "", provinceCode: "", formattedAddress: "", rawAddress: "" };
   }
-  const parts = stripVietnamCountrySuffix(raw.split(",").map((part) => part.trim()).filter(Boolean));
+  const parts = stripVietnamCountrySuffix(splitAddressParts(raw));
   if (parts.length === 0) {
     return { detail: raw, wardName: "", provinceName: "", wardCode: "", provinceCode: "", formattedAddress: composeInternalAddress(raw, "", ""), rawAddress: raw };
   }
+  // Nhận diện theo tiền tố trước để vẫn tách được địa chỉ cũ khi API địa giới
+  // không hoạt động hoặc danh mục hiện tại không còn đơn vị hành chính đó.
+  const provinceFallback = findPrefixedAdministrativePart(parts, "province");
   const provinces = await ensureVietnamProvinces();
   const provinceMatch = findAdministrativeMatch(parts, provinces, "province");
   const province = provinceMatch?.item || null;
-  const provinceFallback = findPrefixedAdministrativePart(parts, "province");
   const provincePartIndex = provinceMatch?.partIndex >= 0 ? provinceMatch.partIndex : provinceFallback?.partIndex ?? -1;
+  const wardFallback = findPrefixedAdministrativePart(parts, "ward", new Set([provincePartIndex]));
   let ward = null;
   let wardMatch = null;
   if (province?.code) {
@@ -166,7 +183,6 @@ export async function parseVietnamAddress(rawAddress) {
     wardMatch = findAdministrativeMatch(parts, wards, "ward");
     ward = wardMatch?.item || null;
   }
-  const wardFallback = findPrefixedAdministrativePart(parts, "ward", new Set([provincePartIndex]));
   const wardPartIndex = wardMatch?.partIndex >= 0 ? wardMatch.partIndex : wardFallback?.partIndex ?? -1;
   const removeIndexes = /* @__PURE__ */ new Set();
   if (provincePartIndex >= 0) removeIndexes.add(provincePartIndex);
@@ -185,6 +201,24 @@ export async function parseVietnamAddress(rawAddress) {
     rawAddress: raw
   };
 }
+function selectAddressOption(select, code, name, legacyPrefix) {
+  if (!select || (!code && !name)) return;
+  let option = code
+    ? Array.from(select.options).find((item) => String(item.value) === String(code))
+    : null;
+  if (!option && name) {
+    const normalizedName = normalizeAddressToken(name);
+    option = Array.from(select.options).find((item) => normalizeAddressToken(item.dataset?.name || item.text) === normalizedName);
+  }
+  if (!option && name) {
+    option = document.createElement("option");
+    option.value = `${legacyPrefix}:${name}`;
+    option.textContent = name;
+    option.dataset.name = name;
+    select.appendChild(option);
+  }
+  if (option) select.value = option.value;
+}
 export async function applyRawAddressToAddressControls(rawAddress, { detailInputId, provinceSelectId, wardSelectId }) {
   const parsed = await parseVietnamAddress(rawAddress);
   const detailInput = document.getElementById(detailInputId);
@@ -193,17 +227,17 @@ export async function applyRawAddressToAddressControls(rawAddress, { detailInput
   if (detailInput) {
     detailInput.value = parsed.detail || rawAddress || "";
   }
-  if (provinceSelect && parsed.provinceCode) {
-    provinceSelect.value = String(parsed.provinceCode);
+  if (provinceSelect && (parsed.provinceCode || parsed.provinceName)) {
+    selectAddressOption(provinceSelect, parsed.provinceCode, parsed.provinceName, "legacy-province");
     syncCustomSelectDisplay(provinceSelect);
   }
-  if (wardSelect && parsed.provinceCode) {
-    const wards = await ensureVietnamWards(parsed.provinceCode);
-    wardSelect.innerHTML = renderWardOptions(wards);
-    wardSelect.disabled = false;
-    if (parsed.wardCode) {
-      wardSelect.value = String(parsed.wardCode);
+  if (wardSelect && (parsed.provinceCode || parsed.wardName)) {
+    if (parsed.provinceCode) {
+      const wards = await ensureVietnamWards(parsed.provinceCode);
+      wardSelect.innerHTML = renderWardOptions(wards);
     }
+    wardSelect.disabled = false;
+    selectAddressOption(wardSelect, parsed.wardCode, parsed.wardName, "legacy-ward");
     syncCustomSelectDisplay(wardSelect);
   }
   return parsed;
@@ -243,12 +277,20 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
     const foundProvince = window._vietnamProvinces.find((p) => p.name === currentTinhName);
     if (foundProvince) {
       tinhSelect.value = foundProvince.code;
+    } else {
+      selectAddressOption(tinhSelect, "", currentTinhName, "legacy-province");
     }
   }
   const loadWards = async (provinceCode, selectWardName = "") => {
     if (!provinceCode) {
       xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
       xaSelect.disabled = true;
+      return;
+    }
+    if (String(provinceCode).startsWith("legacy-province:")) {
+      xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
+      xaSelect.disabled = isDisabled;
+      selectAddressOption(xaSelect, "", selectWardName, "legacy-ward");
       return;
     }
     xaSelect.innerHTML = '<option value="">Đang tải...</option>';
@@ -276,6 +318,8 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
       const foundWard = wards.find((w) => w.name === selectWardName);
       if (foundWard) {
         xaSelect.value = foundWard.code;
+      } else {
+        selectAddressOption(xaSelect, "", selectWardName, "legacy-ward");
       }
     }
   };
