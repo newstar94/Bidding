@@ -1,7 +1,7 @@
 import sys
 import os
 
-# Reconfigure stdout/stderr to use UTF-8 to prevent UnicodeEncodeError on Windows terminals
+
 if hasattr(sys.stdout, 'reconfigure'):
     try:
         sys.stdout.reconfigure(encoding='utf-8')
@@ -13,7 +13,7 @@ if hasattr(sys.stderr, 'reconfigure'):
     except Exception:
         pass
 
-# Fix for Windows asyncio ProactorEventLoop WinError 10054 / ConnectionResetError
+
 if sys.platform == 'win32':
     try:
         import socket
@@ -42,25 +42,25 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# ==========================================
-# 1. CẤU HÌNH ĐƯỜNG DẪN & TẢI MODULE BIÊN DỊCH
-# ==========================================
 
-current_dir = os.path.dirname(os.path.abspath(__file__))  # backend/
-project_root = os.path.dirname(current_dir)               # root
+
+
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
 models_dir = os.path.join(project_root, 'models')
 backend_dir = os.path.join(project_root, 'backend')
 helpers_py_dir = os.path.join(backend_dir, 'helpers_py')
 routes_dir = os.path.join(backend_dir, 'routes')
 
-# Thêm các thư mục MVC vào sys.path để Python có thể nạp chéo giữa các mô-đun
+
 sys.path.insert(0, project_root)
 sys.path.append(models_dir)
 sys.path.append(backend_dir)
 sys.path.append(helpers_py_dir)
 sys.path.append(routes_dir)
 
-# Tự động tải các cấu hình từ file .env nếu có
+
 env_path = os.path.join(project_root, '.env')
 if os.path.exists(env_path):
     with open(env_path, 'r', encoding='utf-8') as f:
@@ -75,7 +75,7 @@ if os.path.exists(env_path):
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
 APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
-APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"  # Mặc định TẮt debug trên production
+APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 IS_PRODUCTION = APP_ENV in {"prod", "production"}
 BACKGROUND_STARTUP_DELAY_SECONDS = max(0, int(os.environ.get("BACKGROUND_STARTUP_DELAY_SECONDS", "5")))
@@ -137,8 +137,8 @@ def _unique_ordered(values):
     return result
 
 
-# [SEC-4] Danh sach origin duoc phep ket noi WebSocket.
-# Mac dinh tu tinh tu APP_HOST:APP_PORT. Co the ghi de qua ALLOWED_WS_ORIGINS
+
+
 _ws_origins_env = os.environ.get("ALLOWED_WS_ORIGINS", "")
 if _ws_origins_env:
     ALLOWED_WS_ORIGINS = frozenset(_split_env_list(_ws_origins_env))
@@ -151,11 +151,11 @@ else:
         f"{_scheme}://127.0.0.1{_port_suffix}",
     ])
 
-# ==========================================
-# 2. HTML TEMPLATE COMPILER
-# ==========================================
 
-# Cache cho HTML đã biên dịch (chỉ được dùng khi APP_DEBUG=False)
+
+
+
+
 _compiled_html_cache = None
 _compiled_html_cache_signature = None
 _index_response_cache = None
@@ -199,7 +199,7 @@ def compile_html(file_path):
         full_path = os.path.join(project_root, include_path)
         if not os.path.exists(full_path) and include_path.startswith("views/"):
             full_path = os.path.join(project_root, include_path.replace("views/", ""))
-        # [SEC-5] Chặn path traversal: đảm bảo đường dẫn nằm trong project root
+
         resolved = os.path.realpath(full_path)
         if not resolved.startswith(os.path.realpath(project_root)):
             return f"<!-- INCLUDE ERROR: Path traversal denied for '{include_path}' -->"
@@ -354,7 +354,7 @@ async def list_holidays_api(request):
 
 class SafeStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
-        # Chỉ cho phép các file tĩnh phục vụ Frontend (.js, .css), từ chối mã nguồn Python và file nhạy cảm
+
         blocked_exts = (".py", ".pyc", ".pyo", ".db", ".sqlite", ".docx")
         if path.lower().endswith(blocked_exts) or "__pycache__" in path:
             return Response("Access Denied", status_code=403)
@@ -434,7 +434,7 @@ async def protected_upload_api(request):
     return FileResponse(file_path)
 
 
-# Đảm bảo thư mục dist và templates/uploads tồn tại để tránh StaticFiles báo lỗi khi khởi chạy app
+
 dist_dir = os.path.join(project_root, 'dist')
 os.makedirs(dist_dir, exist_ok=True)
 os.makedirs(os.path.join(project_root, 'templates', 'uploads'), exist_ok=True)
@@ -467,12 +467,12 @@ routes = [
     Route("/api/system-packages", list_system_packages_api, methods=["GET"]),
     Route("/api/system-packages/update", update_system_package_api, methods=["POST"]),
 
-    # Address proxy routes (tránh bị chặn CSP, server gọi API bên ngoài thay browser)
+
     Route("/api/address/provinces", get_provinces_api, methods=["GET"]),
     Route("/api/address/wards/{province_code}", get_wards_api, methods=["GET"]),
     Route("/api/lookup-tax-code", lookup_tax_code_api, methods=["GET"]),
-    
-    # Auth Routes
+
+
     Route("/api/auth/register", register_api, methods=["POST"]),
     Route("/api/auth/verify", verify_email_api, methods=["POST"]),
     Route("/api/auth/resend-code", resend_code_api, methods=["POST"]),
@@ -485,15 +485,15 @@ routes = [
     Route("/api/auth/update-profile", update_profile_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
-    # Static sub-routes PHẢI đứng trước dynamic {user_id} để tránh Starlette match nhầm
+
     Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
     Route("/api/auth/users/update-package", update_user_package_api, methods=["POST"]),
     Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),
     Route("/api/auth/users/add-to-org", add_user_to_org_api, methods=["POST"]),
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
     Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
-    
-    # SPA Clean Paths Fallback to serve index.html for browser routes (Kebab-Case Standardized)
+
+
     Route("/tong-quan", index, methods=["GET"]),
     Route("/ke-hoach", index, methods=["GET"]),
     Route("/ke-hoach/{action}", index, methods=["GET"]),
@@ -533,7 +533,7 @@ routes = [
     Route("/nhathau-detail", index, methods=["GET"]),
     Route("/nhathau-detail/{action}", index, methods=["GET"]),
 
-    # Mount gốc views cho tệp index.html và style.css (Dùng SafeStaticFiles cho /controllers và /models để chỉ serve file tĩnh JS/CSS)
+
     Mount("/dist", app=SafeStaticFiles(directory=dist_dir), name="dist"),
 ]
 
@@ -549,8 +549,8 @@ else:
         Mount("/", app=ProductionViewStaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
     )
 
-# CORS: Mặc định chỉ cho phép localhost + 127.0.0.1.
-# Để mở rộng, set CORS_ORIGINS trong .env (VD: CORS_ORIGINS=https://yourdomain.com)
+
+
 cors_origins_str = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000")
 cors_origins = _split_env_list(cors_origins_str) or ["http://127.0.0.1:8000"]
 
@@ -584,7 +584,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
-        # Thêm CSP hỗ trợ tải tài nguyên tự host và các CDN cần thiết
+
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://accounts.google.com https://apis.google.com; "
@@ -598,17 +598,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "object-src 'none';"
         )
         path = request.url.path
-        # Priority 11: HSTS khi chạy sau reverse proxy HTTPS
+
         if request.headers.get("X-Forwarded-Proto") == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        # Priority 3: Cache-Control cho static assets
+
         if path.startswith("/api/") or path.startswith("/ws/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         elif request.query_params.get("v") and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
-            # File có version string (?v=6.7) → cache vĩnh viễn (nội dung không đổi)
+
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         elif path.endswith(('.js', '.css')):
-            # JS/CSS không có version → revalidate mỗi request
+
             response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
         return response
 
@@ -618,7 +618,7 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
         content_length = request.headers.get("content-length")
         if content_length:
             try:
-                if int(content_length) > 10 * 1024 * 1024:  # 10MB
+                if int(content_length) > 10 * 1024 * 1024:
                     return JSONResponse({"error": "Payload quá lớn (Giới hạn 10MB)"}, status_code=413)
             except ValueError:
                 return JSONResponse({"error": "Content-Length không hợp lệ"}, status_code=400)
@@ -702,7 +702,7 @@ async def lifespan(app):
     if IS_PRODUCTION:
         _build_index_response_payload()
 
-    # Khởi tạo và di trú cơ sở dữ liệu nếu chưa tồn tại
+
     try:
         from helpers import khoi_tao_va_di_tru_he_thong
         khoi_tao_va_di_tru_he_thong()
@@ -733,28 +733,28 @@ async def lifespan(app):
         daemon=True,
         name="optional-background-startup",
     ).start()
-    
-    # Dọn dẹp session cache và org cache hết hạn mỗi 5 phút để tránh RAM tích tụ
+
+
     from helpers_py.auth_helper import _session_cache_cleanup
     from helpers import _org_cache_cleanup
     def _run_cache_cleanup():
         import time as _time
         _cleanup_cycle = 0
         while True:
-            _time.sleep(300)  # 5 phút
+            _time.sleep(300)
             _cleanup_cycle += 1
             try:
                 _session_cache_cleanup()
                 _org_cache_cleanup()
             except Exception:
                 pass
-            # Mỗi 6 chu kỳ (30 phút): xoá deleted_records cũ hơn 90 ngày
+
             if _cleanup_cycle % 6 == 0:
                 try:
                     from helpers import database as _db
                     _conn = _db.get_connection()
-                    # [SEC-2] Sửa: deleted_at lưu TEXT ISO → so sánh TEXT ISO với TEXT ISO
-                    # Trước: strftime('%s','now') - 7776000 (Integer Unix timestamp — sai kiểu)
+
+
                     _conn.execute(
                         "DELETE FROM deleted_records WHERE deleted_at < datetime('now', 'localtime', '-90 days')"
                     )
@@ -762,7 +762,7 @@ async def lifespan(app):
                     _conn.close()
                 except Exception:
                     pass
-                # Xóa cache ảnh tối ưu hóa cũ hơn 30 ngày trong uploads/chuyen_gia/
+
                 try:
                     _cg_dir = os.path.join(project_root, 'templates', 'uploads', 'chuyen_gia')
                     if os.path.exists(_cg_dir):
@@ -787,9 +787,9 @@ app = Starlette(
     exception_handlers={OrgPermissionError: org_permission_handler}
 )
 
-# ==========================================
-# 5. KHỞI CHẠY MÁY CHỦ UVICORN
-# ==========================================
+
+
+
 if __name__ == "__main__":
     import uvicorn
     if APP_DEBUG:

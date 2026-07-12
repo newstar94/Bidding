@@ -17,7 +17,7 @@ def get_active_org(request, user_id):
     if active_org:
         import urllib.parse
         active_org = urllib.parse.unquote(active_org)
-        
+
     cache_key = (user_id, active_org)
     now = time.time()
     with _org_cache_lock:
@@ -29,19 +29,19 @@ def get_active_org(request, user_id):
                 return val
             else:
                 del _org_cache[cache_key]
-                
+
     conn = database.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT tc.id, tc.ten_to_chuc 
+        SELECT tc.id, tc.ten_to_chuc
         FROM thanh_vien_to_chuc tvtc
         JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
         WHERE tvtc.user_id = ?
     """, (user_id,))
     rows = cursor.fetchall()
     conn.close()
-    
-    # Nếu client chỉ định tổ chức cụ thể nhưng user không thuộc tổ chức đó
+
+
     if active_org:
         matched = False
         for row in rows:
@@ -50,7 +50,7 @@ def get_active_org(request, user_id):
                 result = row['id']
                 break
         if not matched:
-            # Cho phép nếu là không gian cá nhân của chính user
+
             if active_org == str(user_id):
                 result = str(user_id)
             else:
@@ -63,10 +63,10 @@ def get_active_org(request, user_id):
             result = str(user_id)
         else:
             result = rows[0]['id']
-            
+
     with _org_cache_lock:
         _org_cache[cache_key] = (result, now + ORG_CACHE_TTL)
-        
+
     return result
 
 
@@ -87,4 +87,3 @@ def _org_cache_invalidate_by_user_id(user_id):
         to_delete = [k for k in _org_cache.keys() if k[0] == user_id]
         for k in to_delete:
             _org_cache.pop(k, None)
-

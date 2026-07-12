@@ -1,12 +1,9 @@
-"""
-address_routes.py - Proxy endpoint lấy danh sách tỉnh thành / xã phường từ provinces.open-api.vn
-Server gọi API thay cho browser để tránh bị chặn bởi CSP.
-"""
+
 import urllib.request
 import json
 from starlette.responses import JSONResponse
 
-# Cache server-side để không gọi API bên ngoài liên tục
+
 _provinces_cache = None
 _wards_cache = {}
 
@@ -14,10 +11,7 @@ PROVINCES_API_BASE = "https://provinces.open-api.vn/api/v2"
 
 
 async def get_provinces_api(request):
-    """
-    [GET] /api/address/provinces
-    Trả về danh sách tỉnh thành Việt Nam (v2 - sau sáp nhập 2025).
-    """
+
     global _provinces_cache
     if _provinces_cache is not None:
         return JSONResponse(_provinces_cache)
@@ -37,10 +31,7 @@ async def get_provinces_api(request):
 
 
 async def get_wards_api(request):
-    """
-    [GET] /api/address/wards/{province_code}
-    Trả về danh sách xã/phường của một tỉnh (v2 - depth=2).
-    """
+
     province_code = request.path_params.get("province_code", "")
     if not province_code:
         return JSONResponse({"error": "Thiếu mã tỉnh"}, status_code=400)
@@ -61,10 +52,7 @@ async def get_wards_api(request):
 
 
 async def lookup_tax_code_api(request):
-    """
-    [GET] /api/lookup-tax-code
-    Tra cứu thông tin doanh nghiệp (nhà thầu/chủ đầu tư) từ mã số thuế trực tuyến.
-    """
+
     tax_code = request.query_params.get("code", "").strip()
     org_code = request.query_params.get("orgCode", "").strip()
     role_name = request.query_params.get("role", "NT")
@@ -95,4 +83,3 @@ async def lookup_tax_code_api(request):
             return JSONResponse({"error": "Không tìm thấy thông tin doanh nghiệp cho mã số thuế này"}, status_code=404)
     except Exception as e:
         return JSONResponse({"error": f"Lỗi hệ thống khi tra cứu: {str(e)}"}, status_code=500)
-

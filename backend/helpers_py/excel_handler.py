@@ -205,19 +205,19 @@ def parse_excel(file_bytes, import_type):
         raise ValueError(f"Invalid type: {import_type}")
 
     df_raw = pd.read_excel(BytesIO(file_bytes), header=None)
-    
+
     all_possible_headers = []
     for poss in map_cols.values():
         all_possible_headers.extend([x.lower() for x in poss])
-        
+
     first_col = [str(x).strip().lower() for x in df_raw.iloc[:, 0].dropna()]
     vertical_matches = sum(1 for v in first_col if v in all_possible_headers)
-    
+
     first_row = [str(x).strip().lower() for x in df_raw.iloc[0, :].dropna()]
     horizontal_matches = sum(1 for h in first_row if h in all_possible_headers)
-    
+
     is_vertical = vertical_matches > horizontal_matches and vertical_matches >= 2
-    
+
     if is_vertical:
         headers = [str(x).strip() for x in df_raw.iloc[:, 0]]
         records = []
@@ -225,7 +225,7 @@ def parse_excel(file_bytes, import_type):
             col_vals = df_raw.iloc[:, col_idx]
             if all(str(x).strip() == "" or pd.isna(x) for x in col_vals):
                 continue
-            
+
             row_data = {}
             for r_idx, h in enumerate(headers):
                 val = col_vals.iloc[r_idx] if r_idx < len(col_vals) else ""
@@ -236,11 +236,11 @@ def parse_excel(file_bytes, import_type):
         df = pd.DataFrame(records)
     else:
         df = pd.read_excel(BytesIO(file_bytes))
-        
+
     df.columns = [str(c).strip() for c in df.columns]
-    
+
     rows = []
-    
+
     def find_col(possible_names):
         for name in possible_names:
             for col in df.columns:
@@ -251,13 +251,13 @@ def parse_excel(file_bytes, import_type):
     for idx, row in df.iterrows():
         item = {}
         validation_comments = []
-        
+
         for key, poss in map_cols.items():
             found = find_col(poss)
             val = row[found] if (found is not None) else None
             if pd.isna(val):
                 val = ""
-                
+
             if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'baoDamDuThau', 'damBaoDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao']:
                 val = clean_money(val)
             elif key in ['soLuong', 'tyLe']:
@@ -269,9 +269,9 @@ def parse_excel(file_bytes, import_type):
                 if isinstance(val, float) and val.is_integer():
                     val = int(val)
                 val = str(val).strip()
-                
+
             item[key] = val
-        
+
         email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
         cccd_pattern = r"^\d{12}$"
         tax_pattern = r"^\d{10}$|^\d{13}$|^\d{10}-\d{3}$"
@@ -371,12 +371,12 @@ def parse_excel(file_bytes, import_type):
         elif import_type == 'tuychonmuathem':
             if not item.get('hangMuc'):
                 validation_comments.append("Hạng mục không được để trống")
-        
+
         rows.append({
             "rowIdx": idx + 2 if not is_vertical else idx + 1,
             "data": item,
             "isValid": len(validation_comments) == 0,
             "comments": "; ".join(validation_comments)
         })
-        
+
     return rows

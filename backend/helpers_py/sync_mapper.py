@@ -4,7 +4,7 @@ import re
 from .schema import SCHEMA_DINH_NGHIA
 from .date_utils import normalize_datetime_value
 from .id_utils import generate_record_id
-from .text_utils import clean_id, normalize_person_name, safe_float, to_camel_case
+from .text_utils import clean_id, normalize_organization_name, normalize_person_name, safe_float, to_camel_case
 
 
 def json_key_for_column(table_name, col):
@@ -40,6 +40,10 @@ def canonicalize_payload_item(table_name, item):
             normalized[json_key] = item.get(json_key)
         elif col in item:
             normalized[json_key] = item.get(col)
+    if table_name == "chu_dau_tu" and normalized.get("tenChuDauTu"):
+        normalized["tenChuDauTu"] = normalize_organization_name(normalized["tenChuDauTu"])
+    elif table_name == "nha_thau" and normalized.get("tenNhaThau"):
+        normalized["tenNhaThau"] = normalize_organization_name(normalized["tenNhaThau"])
     return normalized
 
 
@@ -55,6 +59,10 @@ def map_db_to_json(table_name, row_dict):
             or (table_name == "nha_thau" and col == "nguoi_dai_dien")
         ):
             val = normalize_person_name(val)
+        elif table_name == "chu_dau_tu" and col == "ten_chu_dau_tu":
+            val = normalize_organization_name(val)
+        elif table_name == "nha_thau" and col == "ten_nha_thau":
+            val = normalize_organization_name(val)
         is_json_field = (
             col in explicit_json_fields
             or col.endswith("_list")

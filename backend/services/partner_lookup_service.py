@@ -9,19 +9,19 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from helpers import database
 from helpers_py.address_parser import compose_external_address, parse_vietnam_address_to_internal
-from helpers_py.text_utils import normalize_person_name
+from helpers_py.text_utils import normalize_organization_name, normalize_person_name
 
 def extract_clean_tax_code(val):
     if not val:
         return None
-    # Convert to string and strip whitespace
+
     val = str(val).strip()
-    # Remove prefix "vn" if it exists (case-insensitive)
+
     if val.lower().startswith("vn"):
         val = val[2:]
-    # Keep only digits and dashes
+
     cleaned = re.sub(r'[^0-9\-]', '', val)
-    # Ensure it looks like a valid tax code length (usually 10 or 13 digits)
+
     digits_only = re.sub(r'[^0-9]', '', cleaned)
     if 9 <= len(digits_only) <= 14:
         return cleaned
@@ -116,7 +116,7 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
     address = compose_external_address(data.get("officeAdd"), *administrative_names)
 
     return {
-        "name": clean_text(data.get("orgFullName")),
+        "name": normalize_organization_name(data.get("orgFullName")),
         "address": address,
         "short_name": clean_text(data.get("orgShortName")),
         "source": "MuaSamCong",
@@ -206,7 +206,7 @@ def fetch_vietqr_info(tax_code):
     return None
 
 def fetch_escodata_info(tax_code):
-    # Clean dashes since escodata might expect only digits
+
     digits_only = re.sub(r'[^0-9]', '', tax_code)
     url = f"https://escodata.net/api-mst/{digits_only}.htm"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -229,10 +229,11 @@ def fetch_escodata_info(tax_code):
     return None
 
 def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
-    # Prefer the procurement portal. Tax-only lookups use the common vn prefix,
-    # while organization-code lookups never derive a tax code from that identifier.
+
+
     cleaned_tax_code = extract_clean_tax_code(tax_code)
     procurement_org_code = normalize_procurement_org_code(org_code)
+    has_explicit_procurement_org_code = bool(procurement_org_code)
     if not procurement_org_code:
         digits_only = re.sub(r"[^0-9]", "", str(cleaned_tax_code or ""))
         procurement_org_code = f"vn{digits_only}" if digits_only else None
@@ -240,14 +241,18 @@ def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
     info = fetch_muasamcong_info(cleaned_tax_code or "", procurement_org_code, role_name=role_name)
     if info:
         return info
+
+
+    if has_explicit_procurement_org_code:
+        return None
     if not cleaned_tax_code:
         return None
-    # Try VietQR.
+
     info = fetch_vietqr_info(cleaned_tax_code)
     if info:
         info["tax_code"] = cleaned_tax_code
         return info
-    # Try Escodata fallback.
+
     info = fetch_escodata_info(cleaned_tax_code)
     if info:
         info["tax_code"] = cleaned_tax_code
@@ -258,17 +263,17 @@ def run_partner_lookup_worker():
     print("[Partner Worker] Started background contractor/investor lookup worker.", flush=True)
     while True:
         try:
-            # Run every 30 seconds
+
             time.sleep(30)
-            
+
             conn = database.get_connection()
             cursor = conn.cursor()
-            
-            # Fetch contractors with tax code or contractor code but missing details,
-            # or records whose tax code still contains a bidding-code prefix.
+
+
+
             cursor.execute("""
-                SELECT id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau 
-                FROM nha_thau 
+                SELECT id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau
+                FROM nha_thau
                 WHERE (
                     ten_nha_thau IS NULL OR ten_nha_thau = ''
                     OR ten_nha_thau LIKE 'Nhà thầu%'
@@ -278,53 +283,53 @@ def run_partner_lookup_worker():
                     OR lower(ma_so_thue) LIKE 'vn%'
                 )
                   AND (
-                    (ma_so_thue IS NOT NULL AND ma_so_thue != '') 
+                    (ma_so_thue IS NOT NULL AND ma_so_thue != '')
                     OR (ma_nha_thau IS NOT NULL AND ma_nha_thau != '')
                   )
                 LIMIT 5
             """)
             rows = cursor.fetchall()
-            
+
             if not rows:
                 conn.close()
                 continue
-                
+
             print(f"[Partner Worker] Found {len(rows)} contractors to lookup.", flush=True)
-            
+
             for row in rows:
                 c_id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau = row
-                
-                # Tax code and procurement organization code are independent inputs.
+
+
                 tax_code = extract_clean_tax_code(ma_so_thue)
                 org_code = normalize_procurement_org_code(ma_nha_thau)
-                    
+
                 if not tax_code and not org_code:
                     if ten_nha_thau is None or ten_nha_thau == '' or ten_nha_thau.startswith('Nhà thầu'):
                         cursor.execute("""
-                            UPDATE nha_thau 
+                            UPDATE nha_thau
                             SET ten_nha_thau = 'Nhà thầu (Mã số thuế không hợp lệ)'
                             WHERE id = ?
                         """, (c_id,))
                         conn.commit()
                     continue
-                    
+
                 print(f"[Partner Worker] Querying info for org={org_code or '-'}, tax={tax_code or '-'}...", flush=True)
                 info = lookup_partner_info(
                     tax_code or "",
                     org_code=org_code,
                     role_name="NT",
                 )
-                
+
                 if info and info.get("name"):
                     new_name = info["name"].strip()
                     new_address_raw = (info.get("address") or "").strip()
                     new_address = parse_vietnam_address_to_internal(new_address_raw) if new_address_raw else ""
                     new_short_name = (info.get("short_name") or "").strip()
                     returned_tax_code = (info.get("tax_code") or "").strip()
-                    
+
                     print(f"[Partner Worker] Found company info via {info['source']}: {new_name}", flush=True)
-                    
-                    # Update sync metadata and get new sync version
+
+
                     cursor.execute(
                         "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, 0)",
                         (owner_id,)
@@ -336,8 +341,8 @@ def run_partner_lookup_worker():
                     cursor.execute("SELECT current_version FROM sync_metadata WHERE owner_id = ?", (owner_id,))
                     meta_row = cursor.fetchone()
                     new_sync_ver = int(meta_row[0]) if meta_row else 1
-                    
-                    # Update contractor table
+
+
                     cursor.execute("""
                         UPDATE nha_thau
                         SET ten_nha_thau = ?,
@@ -349,8 +354,8 @@ def run_partner_lookup_worker():
                             updated_at = datetime('now', 'localtime')
                         WHERE id = ?
                     """, (new_name, new_address, new_address_raw, new_short_name, returned_tax_code, new_sync_ver, c_id))
-                    
-                    # Update thong_tin_mo_thau snapshot if name is empty/generic/placeholder
+
+
                     cursor.execute("""
                         UPDATE thong_tin_mo_thau
                         SET ten_nha_thau = ?,
@@ -359,10 +364,10 @@ def run_partner_lookup_worker():
                         WHERE nha_thau_id = ?
                           AND (ten_nha_thau IS NULL OR ten_nha_thau = '' OR ten_nha_thau LIKE 'Nhà thầu%' OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)')
                     """, (new_name, new_sync_ver, c_id))
-                    
+
                     conn.commit()
-                    
-                    # Broadcast sync event to websockets
+
+
                     try:
                         from routes.sync_routes import broadcast_websocket_event
                         broadcast_websocket_event(owner_id, {
@@ -375,15 +380,15 @@ def run_partner_lookup_worker():
                         pass
                 else:
                     print(f"[Partner Worker] No info found for org={org_code or '-'}, tax={tax_code or '-' }.", flush=True)
-                    # Set a temporary placeholder so we don't query it continuously
+
                     if ten_nha_thau is None or ten_nha_thau == '' or ten_nha_thau.startswith('Nhà thầu'):
                         cursor.execute("""
-                            UPDATE nha_thau 
+                            UPDATE nha_thau
                             SET ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)'
                             WHERE id = ?
                         """, (c_id,))
                         conn.commit()
-            
+
             conn.close()
         except Exception as e:
             print(f"[Partner Worker] Error in worker loop: {e}", flush=True)

@@ -1,4 +1,4 @@
-"""Lazy route proxies for optional Excel and Word features."""
+
 
 from importlib import import_module
 

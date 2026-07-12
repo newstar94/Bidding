@@ -74,7 +74,7 @@ def extract_evaluation_dates(pkg):
         try:
             meta = json.loads(metadata_str)
             if meta:
-                # If 1G2T, we get it from the financial sub-object
+
                 if meta.get('is1G2T') or 'financial' in meta:
                     fin = meta.get('financial', {}) or {}
                     ngay_moi_doichieu = fin.get('ngayMoiDoiChieu')
@@ -82,15 +82,15 @@ def extract_evaluation_dates(pkg):
                 else:
                     ngay_moi_doichieu = meta.get('ngayMoiDoiChieu')
                     ngay_doichieu = meta.get('ngayDoiChieu')
-                
-                # Format to DD/MM/YYYY if YYYY-MM-DD
+
+
                 def format_date(d_str):
                     if d_str and '-' in d_str:
                         parts = d_str.split('-')
                         if len(parts) == 3:
                             return f"{parts[2]}/{parts[1]}/{parts[0]}"
                     return d_str or ''
-                
+
                 pkg['ngay_moi_doi_chieu'] = format_date(ngay_moi_doichieu)
                 pkg['ngay_doi_chieu'] = format_date(ngay_doichieu)
         except Exception:
@@ -109,7 +109,7 @@ def build_plan_context(plan_id, user_id, org_name):
         raise ValueError(f"Plan with id {plan_id} not found")
     plan = parse_json_fields(dict(row_plan))
     attach_child_rows(cursor, "ke_hoach_lcnt", plan, owner_id=org_name, naming="snake")
-    
+
     investor_name = '--'
     investor_address = ''
     inv_data = {}
@@ -124,11 +124,11 @@ def build_plan_context(plan_id, user_id, org_name):
     cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (user_id,))
     row_user = cursor.fetchone()
     user_data = parse_json_fields(dict(row_user)) if row_user else {}
-    
+
     cursor.execute("SELECT * FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
     row_org = cursor.fetchone()
     org_data = parse_json_fields(dict(row_org)) if row_org else {}
-    
+
     gdv_data = {}
     if user_data.get('goi_dich_vu_id'):
         cursor.execute("SELECT * FROM goi_dich_vu WHERE id = ?", (user_data['goi_dich_vu_id'],))
@@ -209,7 +209,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
     attach_child_rows_to_items(cursor, "thong_tin_mo_thau", bids, owner_id=org_name, naming="snake")
     enrich_bids_with_contractor_fields(cursor, bids)
 
-    # Fetch all versions of the package
+
     id_goc = pkg.get('id_goc')
     root_id = id_goc if (id_goc and id_goc.strip()) else package_id
     cursor.execute("SELECT * FROM goi_thau WHERE owner_id = ? AND (id_goc = ? OR id = ?) ORDER BY CAST(phien_ban AS INTEGER) ASC", (org_name, root_id, root_id))
@@ -237,18 +237,18 @@ def build_report_context(package_id, user_id, org_name, type_param):
             )
             contract_data['goi_thau_ids'] = [r[0] for r in cursor.fetchall()]
 
-    # Fetch assigned experts (Tổ chuyên gia)
+
     cursor.execute("""
-        SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec 
+        SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec
         FROM goi_thau_chuyen_gia gtcg
         JOIN chuyen_gia cg ON gtcg.chuyen_gia_id = cg.id
         WHERE gtcg.owner_id = ? AND cg.owner_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'chuyen_gia'
     """, (org_name, org_name, package_id))
     to_chuyen_gia = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
 
-    # Fetch assigned appraisal members (Tổ thẩm định)
+
     cursor.execute("""
-        SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec 
+        SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec
         FROM goi_thau_chuyen_gia gtcg
         JOIN chuyen_gia cg ON gtcg.chuyen_gia_id = cg.id
         WHERE gtcg.owner_id = ? AND cg.owner_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'tham_dinh'

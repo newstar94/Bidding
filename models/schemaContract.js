@@ -1,4 +1,3 @@
-/* Generated from backend/helpers_py/schema.py. Do not edit by hand. */
 export const SCHEMA_CONTRACT = {
   "clientTableMap": {
     "assignments": "phan_cong_nhan_su",
@@ -1761,11 +1760,9 @@ export const SCHEMA_CONTRACT = {
   },
   "version": 1
 };
-
 export const CLIENT_TABLE_MAP = SCHEMA_CONTRACT.clientTableMap;
 export const COMMON_FIELD_NAME_OVERRIDES = SCHEMA_CONTRACT.commonFieldMap;
 export const FIELD_MAP_BY_TABLE = Object.fromEntries(
   Object.entries(SCHEMA_CONTRACT.tables).map(([table, spec]) => [table, spec.fieldMap || {}])
 );
-
 export const resolveSchemaTable = (type) => CLIENT_TABLE_MAP[type] || type;

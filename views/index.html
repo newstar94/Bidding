@@ -6,24 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BiddingFlow - Hệ thống Quản lý & Lưu trữ Thông tin Gói thầu</title>
 
-    <!-- Meta SEO -->
+
     <meta name="description"
         content="Hệ thống quản lý thông tin đấu thầu, kế hoạch lựa chọn nhà thầu, gói thầu, chủ đầu tư, nhà thầu và tổ chuyên gia chuyên nghiệp, hiện đại.">
     <meta name="keywords"
         content="quản lý đấu thầu, gói thầu, nhà thầu, chủ đầu tư, chuyên gia, kế hoạch lựa chọn nhà thầu">
     <meta name="Vy Tuấn Dương" content="Vy Tuấn Dương">
 
-    <!-- Google Fonts -->
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
 
-    <!-- Google Identity Services (Dang nhap bang Google) -->
+
     <meta name="google-client-id" content="__GOOGLE_CLIENT_ID__">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-    <!-- Module Preloads for Fast Dev Loading (Flatten ES Module Waterfall) -->
+
     <link rel="modulepreload" href="/controllers/app.js?v=6.15">
     <link rel="modulepreload" href="/controllers/core/BiddingController.js">
     <link rel="modulepreload" href="/models/BiddingModel.js">
@@ -34,7 +34,7 @@
     <link rel="modulepreload" href="/controllers/main_controller/BiddingControllerForms.js">
     <link rel="modulepreload" href="/controllers/main_controller/BiddingControllerSync.js">
 
-    <!-- Custom Style Sheet -->
+
     <link rel="stylesheet" href="/style.css?v=6.14">
     <link rel="icon" href="data:,">
     <meta name="bf-app-debug" content="true">
@@ -51,7 +51,7 @@
 </head>
 
 <body class="bf-init-loading">
-    <!-- System Initialization Loader Overlay -->
+
     <div id="system-init-loader"
         style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; transition: opacity 0.08s ease, visibility 0.08s ease; font-family: 'Plus Jakarta Sans', sans-serif;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
@@ -75,11 +75,11 @@
     <div class="app-container">
         <!-- INCLUDE: views/components/sidebar.html -->
 
-        <!-- Main Content Area -->
+
         <main class="main-content">
             <!-- INCLUDE: views/components/header.html -->
 
-            <!-- Scrollable Viewport -->
+
             <div class="content-viewport">
                 <!-- INCLUDE: views/tabs/tab_dashboard.html -->
                 <!-- INCLUDE: views/tabs/tab_kehoach.html -->
@@ -94,13 +94,13 @@
         </main>
     </div>
 
-    <!-- ================= MODALS OVERLAYS ================= -->
+
     <div id="lazy-modal-root" data-lazy-root="modals"></div>
     <!-- INCLUDE: views/modals/modal_custom_dialog.html -->
 
     <!-- INCLUDE: views/components/auth_overlay.html -->
 
-    <!-- App Script -->
+
     <script src="/vendor/lucide/lucide-shim.js?v=1.0.1"></script>
     <script type="module" src="/controllers/app.js?v=6.15"></script>
 </body>

@@ -1,4 +1,4 @@
-<!-- Modal 2: Gói thầu -->
+
 <div class="modal-overlay" id="modal-goithau">
     <div class="modal-card modal-lg">
         <div class="modal-header">
@@ -18,7 +18,7 @@
                         <label for="gt-kehoachid">Kế hoạch LCNT liên kết <span class="required">*</span></label>
                         <select id="gt-kehoachid" required>
                             <option value="">-- Chọn Kế hoạch --</option>
-                            <!-- Rendered via JS -->
+
                         </select>
                         <span class="error-text">Vui lòng chọn Kế hoạch LCNT</span>
                     </div>
@@ -86,7 +86,7 @@
                     <div class="form-group" id="gt-phuongphapdanhgia-container" style="display: none;">
                         <label for="gt-phuongphapdanhgia">Phương pháp đánh giá <span class="required">*</span></label>
                         <select id="gt-phuongphapdanhgia">
-                            <!-- Nạp động qua JS -->
+
                         </select>
                     </div>
                     <div class="form-group" id="gt-trongsokythuat-container" style="display: none;">
@@ -115,7 +115,7 @@
                             <option value="Có">Có</option>
                         </select>
                     </div>
-                    <!-- Bảng nhập tùy chọn mua thêm – chỉ hiện khi Tùy chọn mua thêm = Có -->
+
                     <div class="col-span-2" id="gt-tuychonmuathem-table-container" style="display: none;">
                         <div class="phanlo-header">
                             <label>Danh sách tùy chọn mua thêm</label>
@@ -165,7 +165,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="tuychonmuathem-tbody">
-                                    <!-- Rows inserted by JS -->
+
                                 </tbody>
                             </table>
                         </div>
@@ -177,7 +177,7 @@
                             <option value="Có">Có</option>
                         </select>
                     </div>
-                    <!-- Bảng nhập phần lô – chỉ hiện khi Phân lô = Có -->
+
                     <div class="col-span-2" id="gt-phanlo-table-container" style="display: none;">
                         <div class="phanlo-header">
                             <label>Danh sách phần lô</label>
@@ -227,7 +227,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="phanlo-tbody">
-                                    <!-- Rows inserted by JS -->
+
                                 </tbody>
                             </table>
                         </div>
@@ -300,11 +300,11 @@
                     <div class="form-group" id="gt-nhanvienphutrach-container">
                         <label for="gt-nhanvienphutrach">Chuyên viên phụ trách</label>
                         <select id="gt-nhanvienphutrach">
-                            <!-- Rendered dynamically by JS based on employees -->
+
                         </select>
                     </div>
 
-                    <!-- Các trường xuất hiện khi trạng thái chuyển sang Đang mời thầu hoặc sau đó -->
+
                     <div class="form-group" id="gt-giatribaomothau-container" style="display: none;">
                         <label for="gt-giatribaomothau">Giá trị bảo đảm dự thầu (VNĐ)</label>
                         <input type="text" id="gt-giatribaomothau" placeholder="Nhập giá trị bảo đảm dự thầu">
@@ -325,7 +325,7 @@
                         <input type="text" id="gt-hieuluchbaomothau" readonly placeholder="">
                     </div>
 
-                    <!-- Gia hạn thời điểm đóng thầu -->
+
                     <div class="form-group col-span-2" id="gt-giahan-container"
                         style="margin-top: 15px; display: none;">
                         <div class="phanlo-header">
@@ -351,13 +351,13 @@
                                     </tr>
                                 </thead>
                                 <tbody id="gt-giahan-tbody">
-                                    <!-- Rows inserted by JS -->
+
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <!-- Danh sách Thời gian yêu cầu làm rõ HSMT -->
+
                     <div class="form-group col-span-2" id="gt-yeucaulamro-container"
                         style="margin-top: 15px; display: none;">
                         <div class="phanlo-header">
@@ -383,13 +383,13 @@
                                     </tr>
                                 </thead>
                                 <tbody id="gt-yeucaulamro-tbody">
-                                    <!-- Rows inserted by JS -->
+
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <!-- Danh sách Thời gian trả lời làm rõ -->
+
                     <div class="form-group col-span-2" id="gt-traloilamro-container"
                         style="margin-top: 15px; display: none;">
                         <div class="phanlo-header">
@@ -414,13 +414,13 @@
                                     </tr>
                                 </thead>
                                 <tbody id="gt-traloilamro-tbody">
-                                    <!-- Rows inserted by JS -->
+
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <!-- Conditionally Displayed: Awarded contractor info -->
+
                     <div class="form-group-conditional col-span-2" id="conditional-awarded-contractor"
                         style="display: none;">
                         <div class="form-grid border-nested" id="awarded-single-container">
@@ -432,7 +432,7 @@
                                         class="required">*</span></label>
                                 <select id="gt-nhathautrungthauid">
                                     <option value="">-- Chọn Nhà thầu trúng thầu --</option>
-                                    <!-- Rendered via JS -->
+
                                 </select>
                                 <span class="error-text">Vui lòng chọn nhà thầu trúng thầu</span>
                             </div>
@@ -456,7 +456,7 @@
                             </div>
                         </div>
 
-                        <!-- Trực quan khi CÓ phân lô -->
+
                         <div class="col-span-2" id="awarded-multi-container" style="display: none; margin-top: 10px;">
                             <h4
                                 style="font-size: 0.88rem; font-weight: 700; color: var(--primary); margin-bottom: 8px;">
@@ -473,14 +473,14 @@
                                         </tr>
                                     </thead>
                                     <tbody id="awarded-phanlo-tbody">
-                                        <!-- Rows dynamically generated based on phanLoList via JS -->
+
                                     </tbody>
                                 </table>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Tổ Chuyên gia -->
+
                     <div class="form-group col-span-2" id="to-chuyengia-section" style="margin-top: 15px;">
                         <label style="font-weight: 700; color: var(--primary);">Tổ Chuyên gia</label>
                         <div class="phanlo-table-wrap">
@@ -494,13 +494,13 @@
                                     </tr>
                                 </thead>
                                 <tbody id="to-chuyengia-tbody">
-                                    <!-- Rendered via JS -->
+
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <!-- Tổ Thẩm định -->
+
                     <div class="form-group col-span-2" id="to-thamdinh-section" style="margin-top: 15px;">
                         <label style="font-weight: 700; color: var(--primary);">Tổ Thẩm định</label>
                         <div class="phanlo-table-wrap">
@@ -514,7 +514,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="to-thamdinh-tbody">
-                                    <!-- Rendered via JS -->
+
                                 </tbody>
                             </table>
                         </div>

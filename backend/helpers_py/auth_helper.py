@@ -61,12 +61,12 @@ def password_needs_rehash(stored_password: str) -> bool:
     except Exception:
         return True
 
-# ==========================================
-# SESSION CACHE (In-memory, TTL 60 giây)
-# ==========================================
-_session_cache = {}          # token -> (user_dict, expire_at)
+
+
+
+_session_cache = {}
 _session_cache_lock = threading.Lock()
-SESSION_CACHE_TTL = 60      # giây
+SESSION_CACHE_TTL = 60
 
 def _session_cache_get(token: str):
     with _session_cache_lock:
@@ -115,16 +115,16 @@ class SessionRole(str):
 
 def verify_session(request, required_role=None):
     token = request.cookies.get('session_token')
-    
+
     if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
     if required_role == 'super_admin':
-        # Kiểm tra IP allowlist cho quyền super_admin (Mục 12)
+
         import os
         allowlist_str = os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", "127.0.0.1,::1,localhost")
         allowlist = [ip.strip() for ip in allowlist_str.split(",") if ip.strip()]
-        
+
         if "*" not in allowlist:
             forwarded = request.headers.get('X-Forwarded-For')
             if forwarded:
@@ -142,16 +142,16 @@ def verify_session(request, required_role=None):
             if required_role and required_role not in get_effective_roles(cached_user['vai_tro']):
                 return False, "Bạn không có quyền thực hiện thao tác này!"
             return True, SessionRole(cached_user['vai_tro'], cached_user['id'])
-    
+
     conn = database.get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM tai_khoan WHERE token_phien = ?", (token,))
     row = cursor.fetchone()
     conn.close()
-    
+
     if not row:
         return False, "Tài khoản không tồn tại!"
-        
+
     user = dict(row)
     if user['token_phien'] != token:
         return False, "Phiên làm việc đã hết hạn hoặc không hợp lệ!"
@@ -164,7 +164,7 @@ def verify_session(request, required_role=None):
                 return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
         except Exception as ex:
             pass
-        
+
     if required_role and required_role not in get_effective_roles(user['vai_tro']):
         return False, "Bạn không có quyền thực hiện thao tác này!"
 

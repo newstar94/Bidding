@@ -8,8 +8,8 @@ from .db_helper import database
 
 DB_SCHEMA_VERSION = 1
 
-# Whitelist bảo vệ DDL: chỉ cho phép tên bảng được định nghĩa trong schema
-_ALLOWED_TABLES: frozenset = frozenset()  # Sẽ được khởi tạo sau khi SCHEMA_DINH_NGHIA sẵn sàng
+
+_ALLOWED_TABLES: frozenset = frozenset()
 
 def _get_allowed_tables() -> frozenset:
     global _ALLOWED_TABLES
@@ -457,18 +457,18 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
             WHERE is_tong_muc_tu_dong = 1
         """)
     plans = cursor.fetchall()
-    
+
     for row in plans:
         plan_id = row[0]
         loai_hinh = row[1]
-        
+
         cursor.execute("""
             SELECT COALESCE(SUM(gia_goi_thau), 0)
             FROM goi_thau
             WHERE ke_hoach_id = ? AND is_latest = 1
         """, (plan_id,))
         sum_iv = cursor.fetchone()[0] or 0
-            
+
         cursor.execute("""
             SELECT loai, COALESCE(SUM(gia_tri), 0)
             FROM ke_hoach_cong_viec
@@ -570,4 +570,3 @@ def khoi_tao_va_di_tru_he_thong():
     finally:
         if conn:
             conn.close()
-

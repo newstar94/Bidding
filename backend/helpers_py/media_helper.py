@@ -5,7 +5,7 @@ import re
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
 
-# Dict dùng cho image cache (hoạt động như LRU thủ công)
+
 _load_image_cache: dict = {}
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_SUBFOLDERS = {"chuyen_gia"}
@@ -32,7 +32,7 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         return base64_str
     if subfolder not in ALLOWED_IMAGE_SUBFOLDERS:
         raise ValueError("Thư mục lưu ảnh không hợp lệ")
-        
+
     header = ""
     data_str = base64_str
     if base64_str.startswith("data:image"):
@@ -42,19 +42,19 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
             data_str = parts[1]
         except Exception:
             return base64_str
-            
+
     mime = header.replace("data:", "").lower() if header else "image/png"
     ext = ALLOWED_IMAGE_MIME_TO_EXT.get(mime)
     if not ext:
         raise ValueError("Chỉ cho phép ảnh PNG, JPG hoặc WebP")
-        
+
     try:
         uploads_root = os.path.realpath(os.path.join(project_root, "templates", "uploads"))
         upload_dir = os.path.realpath(os.path.join(uploads_root, subfolder))
         if not upload_dir.startswith(uploads_root + os.sep):
             raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
         os.makedirs(upload_dir, exist_ok=True)
-        
+
         file_data = base64.b64decode(data_str, validate=True)
         if len(file_data) > MAX_IMAGE_UPLOAD_BYTES:
             raise ValueError("Dung lượng ảnh vượt quá giới hạn 5MB cho phép!")
@@ -62,25 +62,25 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         filepath = os.path.realpath(os.path.join(upload_dir, filename))
         if not filepath.startswith(upload_dir + os.sep):
             raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
-        
+
         try:
             from PIL import Image
             import io
-            
+
             img = Image.open(io.BytesIO(file_data))
             img.verify()
             img = Image.open(io.BytesIO(file_data))
             max_size = 1200
             if "sig" in filename_prefix:
                 max_size = 600
-                
+
             if img.width > max_size or img.height > max_size:
                 img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                
+
             save_format = "PNG" if ext == "png" else ("JPEG" if ext in ["jpg", "jpeg"] else "WEBP")
             save_kwargs = {}
             if save_format == "JPEG":
-                save_kwargs["quality"] = 85  # 85 = cân bằng tối ưu giữa chất lượng & dung lượng (tiết kiệm ~50%)
+                save_kwargs["quality"] = 85
                 save_kwargs["optimize"] = True
                 if img.mode in ("RGBA", "P"):
                     img = img.convert("RGB")
@@ -88,11 +88,11 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
                 save_kwargs["optimize"] = True
             elif save_format == "WEBP":
                 save_kwargs["quality"] = 85
-                
+
             img.save(filepath, format=save_format, **save_kwargs)
         except Exception as pil_err:
             raise ValueError("Nội dung ảnh không hợp lệ") from pil_err
-                
+
         return f"uploads/{subfolder}/{filename}"
     except Exception as e:
         print(f"Error saving base64 image: {e}")
@@ -103,7 +103,7 @@ def load_base64_image(db_value: str) -> str:
         return ""
     if not db_value.startswith("uploads/"):
         return db_value
-    # Cache key bao gồm mời lần file được chỉnh sửa (mà tử vựa) — tự invalidate khi upload ảnh mới
+
     try:
         filepath = os.path.join(
             project_root,
@@ -119,7 +119,7 @@ def load_base64_image(db_value: str) -> str:
             project_root,
             db_value.replace("uploads/", "templates/uploads/", 1)
         )
-    
+
     if cache_key in _load_image_cache:
         return _load_image_cache[cache_key]
     try:
@@ -135,7 +135,7 @@ def load_base64_image(db_value: str) -> str:
             elif ext == "gif":
                 mime = "image/gif"
             b64 = f"data:{mime};base64,{base64.b64encode(file_data).decode('utf-8')}"
-            # Cache kết quả (giới hạn 256 entry — LRU thủ công)
+
             if len(_load_image_cache) >= 256:
                 _load_image_cache.pop(next(iter(_load_image_cache)))
             _load_image_cache[cache_key] = b64

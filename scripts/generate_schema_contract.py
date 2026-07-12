@@ -6,7 +6,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from helpers_py.schema_contract import build_schema_contract  # noqa: E402
+from helpers_py.schema_contract import build_schema_contract
 
 
 def main():

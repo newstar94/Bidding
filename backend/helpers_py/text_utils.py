@@ -3,7 +3,7 @@ import datetime
 
 
 def normalize_person_name(value):
-    """Normalize a Vietnamese personal name to initial-capital form."""
+
     text = re.sub(r"\s+", " ", str(value or "").strip()).lower()
     return re.sub(
         r"(^|[\s'-])([^\W\d_])",
@@ -13,13 +13,57 @@ def normalize_person_name(value):
     )
 
 
+ORGANIZATION_ACRONYMS = {
+    "tnhh", "mtv", "ubnd", "hđnd", "cp", "jsc", "llc", "fpt", "vnpt",
+    "viettel", "evn", "bidv", "vietcombank", "vietinbank", "agribank", "pccc",
+}
+ADMIN_NAME_MARKERS = {
+    "xã", "phường", "huyện", "quận", "tỉnh", "thành phố", "thị xã", "thị trấn",
+}
+
+
+def normalize_organization_name(value):
+
+    compact = re.sub(r"\s+", " ", str(value or "").strip())
+    if not compact:
+        return ""
+
+    letters = [char for char in compact if char.isalpha()]
+    is_all_upper = bool(letters) and all(char == char.upper() for char in letters)
+    is_all_lower = bool(letters) and all(char == char.lower() for char in letters)
+    if not is_all_upper and not is_all_lower:
+        return compact
+
+    words = compact.lower().split(" ")
+    result = []
+    capitalize_admin_name = False
+    for index, word in enumerate(words):
+        bare = re.sub(r"^[^\wÀ-ỹ]+|[^\wÀ-ỹ]+$", "", word, flags=re.UNICODE)
+        if bare in ORGANIZATION_ACRONYMS:
+            normalized_word = word.replace(bare, bare.upper())
+        else:
+            normalized_word = word
+            if index == 0 or capitalize_admin_name:
+                normalized_word = re.sub(
+                    r"([^\W\d_])",
+                    lambda match: match.group(1).upper(),
+                    word,
+                    count=1,
+                    flags=re.UNICODE,
+                )
+
+        two_word_marker = f"{words[index - 1]} {bare}" if index > 0 else ""
+        is_marker = bare in ADMIN_NAME_MARKERS or two_word_marker in ADMIN_NAME_MARKERS
+        if is_marker:
+            capitalize_admin_name = True
+        if re.search(r"[,:;()]$", word) and not is_marker:
+            capitalize_admin_name = False
+        result.append(normalized_word)
+    return " ".join(result)
+
+
 def safe_float(val):
-    """
-    Parse giá trị sang float.
-    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB
-    (phân biệt 'chưa nhập' vs 'nhập 0' cho các trường tài chính Optional).
-    Hỗ trợ cả dạng số tiếng Việt (1.000.000,50) và tiếng Anh (1,000,000.50).
-    """
+
     if val is None or val == '':
         return None
     try:
@@ -28,17 +72,17 @@ def safe_float(val):
             return None
         if ',' in s and '.' in s:
             if s.find('.') < s.find(','):
-                # Dạng tiếng Việt: 1.000.000,50 → 1000000.50
+
                 s = s.replace('.', '').replace(',', '.')
             else:
-                # Dạng tiếng Anh: 1,000,000.50 → 1000000.50
+
                 s = s.replace(',', '')
         elif ',' in s:
             if s.count(',') == 1:
-                # Dấu phẩy duy nhất → dấu phân cách thập phân
+
                 s = s.replace(',', '.')
             else:
-                # Nhiều dấu phẩy → dấu phân cách nghìn
+
                 s = s.replace(',', '')
         return float(s)
     except Exception:
@@ -46,10 +90,7 @@ def safe_float(val):
 
 
 def safe_int(val):
-    """
-    Parse giá trị sang int.
-    Trả về None cho giá trị trống (None/'') để bảo toàn NULL trong DB.
-    """
+
     if val is None or val == '':
         return None
     try:
@@ -114,4 +155,3 @@ def clean_admin_prefix(name):
         return ""
     pattern = r"^(thành phố|tỉnh|phường|xã|thị trấn)\s+"
     return re.sub(pattern, '', name, flags=re.IGNORECASE)
-

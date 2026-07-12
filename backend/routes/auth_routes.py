@@ -27,7 +27,7 @@ from helpers import (
 from helpers_py.auth_helper import _session_cache_get, _session_cache_set
 from .sync_routes import disconnect_user_websockets
 
-# Import service helpers
+
 from services.auth_service import (
     get_client_ip,
     check_rate_limit,
@@ -67,11 +67,11 @@ async def login_api(request):
                 request=request,
                 metadata={"username": username}
             )
-        
+
         if not username or not password:
             record_failed_login()
             return JSONResponse({"error": "Vui lòng nhập tài khoản và mật khẩu!"}, status_code=400)
-            
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -83,7 +83,7 @@ async def login_api(request):
         if not row:
             record_failed_login()
             return JSONResponse({"error": "Tên đăng nhập hoặc mật khẩu không đúng"}, status_code=400)
-            
+
         user = dict(row)
         if not verify_password(user['mat_khau'], password):
             record_failed_login()
@@ -91,14 +91,14 @@ async def login_api(request):
 
         if password_needs_rehash(user.get('mat_khau')):
             cursor.execute("UPDATE tai_khoan SET mat_khau = ? WHERE id = ?", (hash_password(password), user['id']))
-            
+
         if not user.get('da_xac_minh'):
             return JSONResponse({
                 "error": "Tài khoản của bạn chưa được xác thực email. Vui lòng xác thực trước khi đăng nhập!",
                 "unverified": True,
                 "username": user['ten_dang_nhap']
             }, status_code=400)
-            
+
         session_token = str(uuid.uuid4())
         expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
         token_expiry = int(time.time() + expiry_hours * 3600)
@@ -123,7 +123,7 @@ async def login_api(request):
             request=request,
             metadata={"remember": remember}
         )
-        
+
         effective_roles = list(get_effective_roles(user['vai_tro']))
         response = JSONResponse({
             "success": True,
@@ -138,9 +138,9 @@ async def login_api(request):
             "organization_name": org_names,
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
         })
-        # [SEC-3] Luôn đặt max_age tường minh để cookie expire đồng bộ với DB token.
-        # remember=True → 30 ngày; remember=False → SESSION_EXPIRY_HOURS (default 12h).
-        # Tránh trường hợp token còn trong DB nhưng cookie đã bị browser xóa (hoặc ngược lại).
+
+
+
         cookie_max_age = (SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS) * 3600
         response.set_cookie("session_token", session_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
         response.delete_cookie("username", path="/")
@@ -294,7 +294,7 @@ async def check_session_api(request):
         return _session_response(user, remember, session_was_extended)
     except Exception as e:
         log_error(e, "check_session_api")
-        return JSONResponse({"valid": False, "error": "Lá»—i kiá»ƒm tra phiÃªn lÃ m viá»‡c."}, status_code=500)
+        return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
 
 
 async def update_profile_api(request):
@@ -303,31 +303,31 @@ async def update_profile_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         data = await request.json()
         name = data.get('name', '').strip()
         email = data.get('email', '').strip()
         avatar = data.get('avatar', '')
-        
+
         if not name or not email:
             return JSONResponse({"error": "Vui lòng điền đầy đủ Họ tên và Email!"}, status_code=400)
-            
+
         conn = database.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("SELECT ten_dang_nhap FROM tai_khoan WHERE email = ? AND id != ?", (email, role_or_err.user_id))
         if cursor.fetchone():
             return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
-            
+
         if avatar:
             cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ?, anh_dai_dien = ? WHERE id = ?", (name, email, avatar, role_or_err.user_id))
         else:
             cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ? WHERE id = ?", (name, email, role_or_err.user_id))
-            
+
         _session_cache_invalidate_by_user_id(role_or_err.user_id)
-            
+
         conn.commit()
-        
+
         return JSONResponse({"success": True, "message": "Cập nhật thông tin tài khoản thành công!"})
     except Exception as e:
         log_error(e, "update_profile_api")
@@ -343,26 +343,26 @@ async def change_password_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         data = await request.json()
         old_password = data.get('old_password', '').strip()
         new_password = data.get('new_password', '').strip()
-        
+
         if not old_password or not new_password:
             return JSONResponse({"error": "Vui lòng nhập đầy đủ mật khẩu cũ và mới!"}, status_code=400)
-            
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT mat_khau, id FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
         row = cursor.fetchone()
-        
+
         if not row:
             return JSONResponse({"error": "Người dùng không tồn tại!"}, status_code=400)
-            
+
         user = dict(row)
         if not verify_password(user['mat_khau'], old_password):
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
-            
+
         old_token = request.cookies.get('session_token')
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
@@ -380,9 +380,9 @@ async def change_password_api(request):
             target_id=user['id'],
             request=request
         )
-        
+
         response = JSONResponse({
-            "success": True, 
+            "success": True,
             "message": "Thay đổi mật khẩu thành công! Các phiên đăng nhập trên thiết bị khác đã bị đăng xuất."
         })
         response.set_cookie("session_token", new_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
@@ -435,24 +435,24 @@ async def list_users_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         conn = database.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
         requester = cursor.fetchone()
         if not requester:
             conn.close()
             return JSONResponse({"error": "Không tìm thấy thông tin tài khoản yêu cầu!"}, status_code=404)
-            
+
         req_role = requester['vai_tro']
         effective_roles = get_effective_roles(req_role)
-        
+
         cursor.execute("SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?", (role_or_err.user_id,))
         req_org_ids = [r['to_chuc_id'] for r in cursor.fetchall()]
-        
+
         sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, email, anh_dai_dien AS avatar, goi_dich_vu_id AS package_id, ngay_bat_dau_goi AS package_start_date, ngay_het_han_goi AS package_end_date FROM tai_khoan"
-        
+
         email_query = (request.query_params.get('email') or '').strip().lower()
         email_filter_sql = " AND lower(email) = ?" if email_query else ""
         email_filter_tk_sql = " AND lower(tk.email) = ?" if email_query else ""
@@ -474,9 +474,9 @@ async def list_users_api(request):
                 active_org_id = get_active_org(request, role_or_err.user_id)
                 if active_org_id and active_org_id in req_org_ids:
                     cursor.execute(f"""
-                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role, 
-                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id, 
-                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date 
+                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role,
+                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id,
+                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date
                         FROM tai_khoan tk
                         JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
                         WHERE tvtc.to_chuc_id = ?{email_filter_tk_sql}
@@ -485,15 +485,15 @@ async def list_users_api(request):
                 else:
                     placeholders = ",".join("?" for _ in req_org_ids)
                     cursor.execute(f"""
-                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role, 
-                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id, 
-                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date 
+                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role,
+                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id,
+                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date
                         FROM tai_khoan tk
                         JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
                         WHERE tvtc.to_chuc_id IN ({placeholders}){email_filter_tk_sql}
                     """, tuple(req_org_ids + ([email_query] if email_query else [])))
                     users_raw = cursor.fetchall()
-                
+
         user_ids = [r['id'] for r in users_raw]
         orgs_by_user = defaultdict(list)
         if user_ids:
@@ -506,7 +506,7 @@ async def list_users_api(request):
             """, user_ids)
             for row in cursor.fetchall():
                 orgs_by_user[row['user_id']].append(row['ten_to_chuc'])
-                
+
         users = []
         for row in users_raw:
             u = dict(row)
@@ -525,14 +525,14 @@ async def delete_user_api(request):
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         user_id = request.path_params.get('user_id')
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
         conn.commit()
         conn.close()
-        
+
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
@@ -543,7 +543,7 @@ async def delete_user_api(request):
             target_id=user_id,
             request=request
         )
-        
+
         return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
     except Exception as e:
         log_error(e, "delete_user_api")
@@ -554,26 +554,26 @@ async def update_user_role_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         effective_roles = get_effective_roles(str(role_or_err))
         if 'manager' not in effective_roles:
             return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
-            
+
         data = await request.json()
         user_id = data.get('user_id')
         new_role = data.get('role')
-        
+
         if not user_id or not new_role:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-            
+
         valid_roles = {'super_admin', 'manager', 'employee'}
         requested_roles = [r.strip() for r in new_role.split(',') if r.strip()]
         if not requested_roles or not all(r in valid_roles for r in requested_roles):
             return JSONResponse({"error": "Vai trò không hợp lệ!"}, status_code=400)
-            
+
         if 'super_admin' not in effective_roles and 'super_admin' in requested_roles:
             return JSONResponse({"error": "Bạn không có quyền gán vai trò Quản trị viên tối cao!"}, status_code=403)
-        
+
         if 'super_admin' not in effective_roles and any(role != 'employee' for role in requested_roles):
             return JSONResponse({"error": "Ban khong co quyen gan vai tro quan tri."}, status_code=403)
 
@@ -594,9 +594,9 @@ async def update_user_role_api(request):
             conn_check.close()
             if not requester_orgs.intersection(target_orgs):
                 return JSONResponse({"error": "Bạn không có quyền thay đổi vai trò của người dùng này!"}, status_code=403)
-        
+
         normalized_role = ','.join(requested_roles)
-            
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE tai_khoan SET vai_tro = ? WHERE id = ?", (normalized_role, user_id))
@@ -621,14 +621,14 @@ async def update_user_package_api(request):
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         data = await request.json()
         user_id = data.get('user_id')
         new_package = data.get('package_id')
-        
+
         if not user_id or new_package is None:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-            
+
         pkgs = [p.strip() for p in new_package.split(',')]
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -661,25 +661,25 @@ async def update_user_metadata_api(request):
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         data = await request.json()
         user_id = data.get('user_id')
         field = data.get('field')
         value = data.get('value')
-        
+
         if not user_id or not field:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-            
+
         field_map = {
             'package_start_date': 'ngay_bat_dau_goi',
             'package_end_date': 'ngay_het_han_goi',
             'name': 'ho_ten',
             'email': 'email'
         }
-        
+
         conn = database.get_connection()
         cursor = conn.cursor()
-        
+
         if field == 'organization_name':
             cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
             u_row = cursor.fetchone()
@@ -691,7 +691,7 @@ async def update_user_metadata_api(request):
                 return JSONResponse({"error": "Trường cập nhật không hợp lệ!"}, status_code=400)
             db_field = field_map[field]
             cursor.execute(f"UPDATE tai_khoan SET {db_field} = ? WHERE id = ?", (value, user_id))
-            
+
         conn.commit()
         conn.close()
         _session_cache_invalidate_by_user_id(user_id)
@@ -730,21 +730,21 @@ async def update_system_package_api(request):
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         data = await request.json()
         pkg_id = data.get('id')
         name = data.get('name')
         price = float(data.get('price', 0))
         quota = int(data.get('quota', 0))
         description = data.get('description', '')
-        
+
         if not pkg_id or not name:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-            
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            UPDATE goi_dich_vu 
+            UPDATE goi_dich_vu
             SET ten_goi = ?, gia_ca = ?, han_muc_nhan_su = ?, mo_ta = ?
             WHERE id = ?
         """, (name, price, quota, description, pkg_id))
@@ -768,13 +768,7 @@ import re as _re
 from helpers_py.username_validator import validate_username
 
 async def set_username_api(request):
-    """
-    POST /api/auth/set-username
-    Body: { "username": "ten_mong_muon" }
 
-    Cho phép người dùng đặt tên đăng nhập lần đầu tiên (chỉ 1 lần).
-    Sau khi đặt, username bị khóa vĩnh viễn (username_da_dat = 1).
-    """
     conn = None
     try:
         is_valid, role_or_err = verify_session(request)
@@ -784,7 +778,7 @@ async def set_username_api(request):
         data = await request.json()
         new_username = (data.get("username") or "").strip().lower()
 
-        # Validate qua bộ lọc 3 lớp (format + nhạy cảm + trùng route)
+
         valid, reason = validate_username(new_username)
         if not valid:
             return JSONResponse({"error": reason}, status_code=400)
@@ -792,7 +786,7 @@ async def set_username_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
 
-        # Lấy thông tin user hiện tại
+
         cursor.execute("SELECT id, ten_dang_nhap, username_da_dat FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
         row = cursor.fetchone()
         if not row:
@@ -800,14 +794,14 @@ async def set_username_api(request):
 
         user = dict(row)
 
-        # Kiểm tra đã đặt username chưa
+
         if user.get("username_da_dat") == 1 and user.get("ten_dang_nhap"):
             return JSONResponse(
                 {"error": "Tên đăng nhập đã được đặt trước đó và không thể thay đổi."},
                 status_code=400
             )
 
-        # Kiểm tra trùng username
+
         cursor.execute("SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ? AND id != ?", (new_username, role_or_err.user_id))
         if cursor.fetchone():
             return JSONResponse(
@@ -815,7 +809,7 @@ async def set_username_api(request):
                 status_code=409
             )
 
-        # Lưu username và khóa lại
+
         cursor.execute(
             "UPDATE tai_khoan SET ten_dang_nhap = ?, username_da_dat = 1, updated_at = datetime('now', 'localtime') WHERE id = ?",
             (new_username, role_or_err.user_id)

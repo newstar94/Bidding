@@ -48,14 +48,14 @@ def create_excel_template(import_type):
         cell.fill = header_fill
         cell.alignment = center_align
         cell.border = thin_border
-        
+
     for r in range(2, 52):
         ws.row_dimensions[r].height = 22
         for col_idx in range(1, len(cols) + 1):
             cell = ws.cell(row=r, column=col_idx)
             cell.border = thin_border
 
-    # Data validations
+
     for col_idx, col_name in enumerate(cols, start=1):
         if col_name in options_ranges:
             col_letter = get_column_letter(col_idx)
@@ -81,7 +81,7 @@ def create_mothau_template(case_type, lot_codes):
     options_map = {
         'Loại nhà thầu': ['Độc lập', 'Liên danh']
     }
-    
+
     if case_type == 'TU_VAN':
         headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Hiệu lực E-HSĐXKT (ngày)', 'Thời gian thực hiện (ngày)']
     elif case_type == '1G2T_NO_LOT':
@@ -125,14 +125,14 @@ def create_mothau_template(case_type, lot_codes):
         cell.fill = header_fill
         cell.alignment = center_align
         cell.border = thin_border
-        
+
     for r in range(2, 52):
         ws.row_dimensions[r].height = 22
         for col_idx in range(1, len(headers) + 1):
             cell = ws.cell(row=r, column=col_idx)
             cell.border = thin_border
 
-    # Data validations
+
     for col_idx, col_name in enumerate(headers, start=1):
         if col_name in options_ranges:
             col_letter = get_column_letter(col_idx)
@@ -156,7 +156,7 @@ def create_opening_fin_template(pkg_id_clean, org_name):
     """Tạo template Excel mở đề xuất tài chính."""
     conn = database.get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         SELECT ma_dinh_danh, ten_nha_thau, gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia,
                hieu_luc_hsdt, thoi_gian_thuc_hien,
@@ -166,34 +166,34 @@ def create_opening_fin_template(pkg_id_clean, org_name):
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()
-    
+
     qualified_bids = []
     for b in bids:
         danh_gia_hop_le = b[7]
         danh_gia_nang_luc = b[8]
         danh_gia_ky_thuat = b[9]
         danh_gia_ket_luan = b[10]
-        
+
         is_qualified = False
         if danh_gia_ket_luan:
             is_qualified = (danh_gia_ket_luan == 'Đạt')
         else:
             is_qualified = (danh_gia_hop_le == 'Đạt' and danh_gia_nang_luc == 'Đạt' and danh_gia_ky_thuat != 'Không đạt' and danh_gia_ky_thuat != '')
-            
+
         if is_qualified:
             qualified_bids.append(b)
 
     headers = [
-        'Mã định danh', 
-        'Tên nhà thầu (Nhập chính xác)', 
-        'Mã phần lô', 
+        'Mã định danh',
+        'Tên nhà thầu (Nhập chính xác)',
+        'Mã phần lô',
         'Tên phần lô (Tự động điền)',
-        'Giá dự thầu (VND)', 
-        'Tỷ lệ giảm giá (%)', 
-        'Giá sau giảm giá (nếu có)', 
-        'Hiệu lực E-HSDT (ngày)', 
-        'Giá trị ĐB DT (VND)', 
-        'Hiệu lực ĐB (ngày)', 
+        'Giá dự thầu (VND)',
+        'Tỷ lệ giảm giá (%)',
+        'Giá sau giảm giá (nếu có)',
+        'Hiệu lực E-HSDT (ngày)',
+        'Giá trị ĐB DT (VND)',
+        'Hiệu lực ĐB (ngày)',
         'Thời gian thực hiện (ngày)'
     ]
 
@@ -215,12 +215,12 @@ def create_opening_fin_template(pkg_id_clean, org_name):
         cell.fill = header_fill
         cell.alignment = center_align
         cell.border = thin_border
-        
+
     for idx, bid in enumerate(qualified_bids, start=2):
         ws.row_dimensions[idx].height = 22
         ws.cell(row=idx, column=1, value=bid[0])
         ws.cell(row=idx, column=2, value=bid[1])
-        # Columns 3 and 4 (Lot code and Lot name) are empty by default for manual entry if needed
+
         ws.cell(row=idx, column=5, value=bid[2] or "")
         ws.cell(row=idx, column=6, value=bid[3] or "")
         ws.cell(row=idx, column=7, value=bid[4] or "")
@@ -240,16 +240,16 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
     """Tạo file mẫu nhập liệu đánh giá HSDT (kỹ thuật hoặc tài chính)."""
     conn = database.get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("SELECT linh_vuc, phuong_thuc_lua_chon, phan_lo FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
     gt_row = cursor.fetchone()
     if not gt_row:
         conn.close()
         raise ValueError("Package not found")
-        
+
     linh_vuc, phuong_thuc_lua_chon, phan_lo = gt_row
     lot_codes = fetch_package_lot_codes(cursor, pkg_id_clean, org_name)
-    
+
     cursor.execute("""
         SELECT loai_nha_thau, ma_phan_lo, ten_phan_lo, ma_dinh_danh, ten_nha_thau,
                gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia, hieu_luc_hsdt,
@@ -264,7 +264,7 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()
-    
+
     is_tu_van = linh_vuc == 'Tư vấn'
     is_1g2t = phuong_thuc_lua_chon == 'Một giai đoạn hai túi hồ sơ'
     is_1g1t = phuong_thuc_lua_chon == 'Một giai đoạn một túi hồ sơ'
@@ -272,9 +272,9 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
 
     headers = []
     options_map = {}
-    
+
     if eval_type == 'technical':
-        # Đánh giá kỹ thuật
+
         if has_phan_lo:
             headers = [
                 'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
@@ -289,15 +289,15 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
                 'Đánh giá năng lực kinh nghiệm', 'Làm rõ năng lực kinh nghiệm (nếu có)', 'Nguyên nhân không đạt năng lực (nếu có)',
                 'Đánh giá kỹ thuật', 'Làm rõ kỹ thuật (nếu có)', 'Nguyên nhân không đạt kỹ thuật (nếu có)'
             ]
-        
+
         options_map = {
             'Đánh giá tính hợp lệ': ['Đạt', 'Không đạt'],
             'Đánh giá năng lực kinh nghiệm': ['Đạt', 'Không đạt'],
             'Đánh giá kỹ thuật': ['Đạt', 'Không đạt']
         }
-        
+
     else:
-        # Đánh giá tài chính
+
         if has_phan_lo:
             headers = [
                 'Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)',
@@ -342,15 +342,15 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
         cell.fill = header_fill
         cell.alignment = center_align
         cell.border = thin_border
-        
+
     for idx, bid in enumerate(bids, start=2):
         ws.row_dimensions[idx].height = 22
-        
-        # Mapped fields
-        # bids fields:
-        # 0: loai_nha_thau, 1: ma_phan_lo, 2: ten_phan_lo, 3: ma_dinh_danh, 4: ten_nha_thau,
-        # 5: gia_du_thau, 6: ty_le_giam_gia, 7: gia_sau_giam_gia, 8: hieu_luc_hsdt...
-        
+
+
+
+
+
+
         if eval_type == 'technical':
             if has_phan_lo:
                 row_vals = [
@@ -379,12 +379,12 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
                     bid[5] or "", bid[6] or "", bid[7] or "",
                     bid[22] or "", bid[21] or ""
                 ]
-                
+
         for col_idx, val in enumerate(row_vals, start=1):
             ws.cell(row=idx, column=col_idx, value=val)
             ws.cell(row=idx, column=col_idx).border = thin_border
 
-    # Data validations
+
     for col_idx, col_name in enumerate(headers, start=1):
         if col_name in options_ranges:
             col_letter = get_column_letter(col_idx)
@@ -408,15 +408,15 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
     """Tạo file mẫu nhập kết quả lựa chọn nhà thầu phê duyệt."""
     conn = database.get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("SELECT nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau, thoi_gian_hop_dong FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
     gt_row = cursor.fetchone()
     if not gt_row:
         conn.close()
         raise ValueError("Package not found")
-        
+
     nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau, thoi_gian_hop_dong = gt_row
-    
+
     cursor.execute("""
         SELECT loai_nha_thau, ma_phan_lo, ten_phan_lo, ma_dinh_danh, ten_nha_thau,
                gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia,
@@ -428,16 +428,16 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
     conn.close()
 
     headers = [
-        'Loại nhà thầu', 
-        'Mã nhà thầu', 
-        'Tên nhà thầu (Nhập chính xác)', 
-        'Kết quả', 
-        'Lý do trượt thầu (nếu có)', 
-        'Giá trúng thầu (VND)', 
-        'Thời gian thực hiện gói thầu (ngày)', 
+        'Loại nhà thầu',
+        'Mã nhà thầu',
+        'Tên nhà thầu (Nhập chính xác)',
+        'Kết quả',
+        'Lý do trượt thầu (nếu có)',
+        'Giá trúng thầu (VND)',
+        'Thời gian thực hiện gói thầu (ngày)',
         'Thời gian thực hiện hợp đồng (ngày)'
     ]
-    
+
     options_map = {
         'Kết quả': ['Trúng thầu', 'Trượt thầu']
     }
@@ -470,23 +470,23 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
         cell.fill = header_fill
         cell.alignment = center_align
         cell.border = thin_border
-        
+
     for idx, bid in enumerate(bids, start=2):
         ws.row_dimensions[idx].height = 22
-        
+
         is_winner = False
         if nha_thau_trung_thau_id:
             is_winner = (bid[3] == nha_thau_trung_thau_id)
-            
+
         status = 'Trúng thầu' if is_winner else 'Trượt thầu'
         val_gia = gia_trung_thau if is_winner else ""
         val_time_gt = thoi_gian_goi_thau if is_winner else ""
         val_time_hd = thoi_gian_hop_dong if is_winner else ""
-        
+
         row_vals = [
             bid[0], bid[3], bid[4], status, "", val_gia, val_time_gt, val_time_hd
         ]
-        
+
         for col_idx, val in enumerate(row_vals, start=1):
             ws.cell(row=idx, column=col_idx, value=val)
             ws.cell(row=idx, column=col_idx).border = thin_border
@@ -511,14 +511,14 @@ def create_phanlo_excel(phan_lo_list):
     wb = Workbook()
     ws = wb.active
     ws.title = "Phan Lo"
-    
+
     headers = ['Mã phần lô', 'Tên phần lô', 'Giá trị phần lô (VND)', 'Bảo đảm dự thầu (VND)', 'Thời gian thực hiện (ngày)']
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     center_align = Alignment(horizontal="center", vertical="center")
     border_side = Side(border_style="thin", color="D9D9D9")
     thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-    
+
     ws.append(headers)
     ws.row_dimensions[1].height = 28
     for col_idx in range(1, len(headers) + 1):
@@ -527,7 +527,7 @@ def create_phanlo_excel(phan_lo_list):
         cell.fill = header_fill
         cell.alignment = center_align
         cell.border = thin_border
-        
+
     for idx, item in enumerate(phan_lo_list, start=2):
         ws.row_dimensions[idx].height = 22
         ws.cell(row=idx, column=1, value=item.get('maPhanLo', ''))
@@ -537,12 +537,12 @@ def create_phanlo_excel(phan_lo_list):
         ws.cell(row=idx, column=5, value=item.get('thoiGianThucHien', 0))
         for col_idx in range(1, len(headers) + 1):
             ws.cell(row=idx, column=col_idx).border = thin_border
-            
+
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
         col_letter = get_column_letter(col[0].column)
         ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-        
+
     return wb
 
 def create_tuychonmuathem_excel(tuy_chon_list):
@@ -550,14 +550,14 @@ def create_tuychonmuathem_excel(tuy_chon_list):
     wb = Workbook()
     ws = wb.active
     ws.title = "Tuy Chon Mua Them"
-    
+
     headers = ['Hạng mục', 'Đơn vị', 'Số lượng', 'Tỷ lệ phần trăm (%)', 'Giá trị ước tính']
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     center_align = Alignment(horizontal="center", vertical="center")
     border_side = Side(border_style="thin", color="D9D9D9")
     thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-    
+
     ws.append(headers)
     ws.row_dimensions[1].height = 28
     for col_idx in range(1, len(headers) + 1):
@@ -566,7 +566,7 @@ def create_tuychonmuathem_excel(tuy_chon_list):
         cell.fill = header_fill
         cell.alignment = center_align
         cell.border = thin_border
-        
+
     for idx, item in enumerate(tuy_chon_list, start=2):
         ws.row_dimensions[idx].height = 22
         ws.cell(row=idx, column=1, value=item.get('hangMuc', ''))
@@ -576,10 +576,10 @@ def create_tuychonmuathem_excel(tuy_chon_list):
         ws.cell(row=idx, column=5, value=item.get('giaTriUocTinh', 0))
         for col_idx in range(1, len(headers) + 1):
             ws.cell(row=idx, column=col_idx).border = thin_border
-            
+
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
         col_letter = get_column_letter(col[0].column)
         ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-        
+
     return wb

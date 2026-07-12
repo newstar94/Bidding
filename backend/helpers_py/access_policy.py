@@ -151,7 +151,7 @@ def authorize_payload_key_write(role_str, payload_key):
     if is_manager_role(role_str):
         return AccessDecision(True)
     if payload_key in WRITE_PROTECTED_KEYS:
-        return AccessDecision(False, f"Khong co quyen dong bo {payload_key}.")
+        return AccessDecision(False, f"Không có quyền đồng bộ {payload_key}.")
     return AccessDecision(True)
 
 
@@ -164,16 +164,16 @@ def authorize_record_write(cursor, role_str, user_id, owner_id, payload_key, tab
 
     module_name = TABLE_TO_MODULE.get(table_name)
     if not has_module_permission(cursor, role_str, user_id, owner_id, module_name, "edit"):
-        return AccessDecision(False, f"Khong co quyen sua module {module_name or table_name}.")
+        return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
 
     record_id = clean_id(item.get("id")) if isinstance(item, dict) else clean_id(item)
     if table_name == "thong_tin_mo_thau":
         if not _assigned_for_table(cursor, owner_id, user_id, table_name, item):
-            return AccessDecision(False, "Khong co quyen sua ban ghi chua duoc phan cong.")
+            return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
     elif table_name in ASSIGNED_TABLE_TYPES:
         is_existing = bool(record_id) and _table_record_exists(cursor, owner_id, table_name, record_id)
         if is_existing and not _assigned_for_table(cursor, owner_id, user_id, table_name, item):
-            return AccessDecision(False, "Khong co quyen sua ban ghi chua duoc phan cong.")
+            return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
 
     return AccessDecision(True)
 

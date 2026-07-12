@@ -23,7 +23,7 @@ SCHEMA_DINH_NGHIA = {
             "goi_dich_vu_id": "TEXT",
             "ngay_bat_dau_goi": "TEXT",
             "ngay_het_han_goi": "TEXT",
-            "han_su_dung_token": "INTEGER",  # Unix timestamp — nhất quán với created_at (ISO string cũ sẽ expire ngay khi migrate)
+            "han_su_dung_token": "INTEGER",
             "thong_tin_thiet_bi_cuoi": "TEXT",
             "da_xac_minh": "INTEGER DEFAULT 0",
             "ma_xac_minh": "TEXT",
@@ -360,7 +360,7 @@ SCHEMA_DINH_NGHIA = {
         ]
     },
     "chuyen_gia": {
-        "json_fields": [],  # cv_* fields được detect bằng prefix convention
+        "json_fields": [],
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
@@ -464,9 +464,9 @@ SCHEMA_DINH_NGHIA = {
             "loai_doi_tuong": "type"
         }
     },
-        # Note: id_nhan_vien references tai_khoan.id but FK constraint omitted intentionally
-        # because tai_khoan uses ON DELETE CASCADE would auto-delete assignments,
-        # which may not always be desired (employee re-assignment scenarios).
+
+
+
     "trang_thai_ho_so_giay": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
@@ -479,12 +479,12 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
     },
-    # =============================================================================
-    # Bảng Snapshot: Lưu thông tin mở thầu TẠI THỜI ĐIỂM tổ chức đấu thầu.
-    # Các trường ten_nha_thau, loai_nha_thau, thanh_vien_lien_danh được denormalize
-    # có chủ đích (Snapshot Pattern) — đảm bảo hồ sơ pháp lý không thay đổi theo
-    # dữ liệu cập nhật sau này của bảng nha_thau. Đây là yêu cầu nghiệp vụ bắt buộc.
-    # =============================================================================
+
+
+
+
+
+
     "thong_tin_mo_thau": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
@@ -657,9 +657,9 @@ SCHEMA_DINH_NGHIA = {
             "UNIQUE(owner_id, source_table, source_column)"
         ]
     },
-    # Bảng ma_tran_phan_quyen: lưu phân quyền theo module của từng nhân viên trong tổ chức.
-    # Trước đây chỉ lưu trên IndexedDB client-side, dẫn đến mất dữ liệu khi đổi thiết bị.
-    # Nay đồng bộ lên server để đảm bảo bền vững.
+
+
+
     "ma_tran_phan_quyen": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
@@ -711,8 +711,3 @@ SCHEMA_DINH_NGHIA = {
         }
     }
 }
-
-# Cấu hình field_map chuyển đổi snake_case sang camelCase khi gửi dữ liệu lên client
-# Tất cả định nghĩa ánh xạ trường đặc biệt đã được hợp nhất trực tiếp vào SCHEMA_DINH_NGHIA
-
-

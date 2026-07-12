@@ -9,14 +9,14 @@ from helpers import (
 )
 from helpers_py.id_utils import stable_org_id
 
-# Configuration from environment
+
 _SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
 SESSION_EXPIRY_HOURS = int(os.environ.get("SESSION_EXPIRY_HOURS", "12"))
 SESSION_REMEMBER_EXPIRY_HOURS = int(os.environ.get("SESSION_REMEMBER_EXPIRY_HOURS", "720"))
 SESSION_INACTIVITY_TIMEOUT_HOURS = int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10"))
 
-# Rate Limiter settings
-_rate_limit_store = defaultdict(list)   # ip -> [timestamps]
+
+_rate_limit_store = defaultdict(list)
 RATE_LIMIT_MAX = 5
 RATE_LIMIT_WINDOW = 60
 
@@ -35,11 +35,11 @@ def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
     """
     now = time.time()
     window_start = now - RATE_LIMIT_WINDOW
-    
-    # 1) In-memory check
+
+
     _rate_limit_store[ip] = [t for t in _rate_limit_store[ip] if t > window_start]
-    
-    # 2) DB-backed check
+
+
     try:
         from helpers import database as _db
         conn = _db.get_connection()
@@ -54,10 +54,10 @@ def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
                 db_timestamps = []
         else:
             db_timestamps = list(_rate_limit_store[ip])
-        
+
         all_timestamps = sorted(set(list(_rate_limit_store[ip]) + db_timestamps))
         all_timestamps = [t for t in all_timestamps if t > window_start]
-        
+
         if len(all_timestamps) >= RATE_LIMIT_MAX:
             conn.close()
             _rate_limit_store[ip] = all_timestamps
@@ -67,7 +67,7 @@ def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
             conn.close()
             _rate_limit_store[ip] = all_timestamps
             return True
-        
+
         all_timestamps.append(now)
         cur.execute(
             "INSERT INTO sys_config (config_key, config_value) VALUES (?, ?) "
@@ -78,12 +78,12 @@ def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
         conn.close()
         _rate_limit_store[ip] = all_timestamps
     except Exception:
-        # Fallback
+
         if len(_rate_limit_store[ip]) >= RATE_LIMIT_MAX:
             return False
         if consume_attempt:
             _rate_limit_store[ip].append(now)
-    
+
     return True
 
 def record_rate_limit_failure(ip: str) -> bool:
@@ -97,7 +97,7 @@ def generate_otp() -> str:
 def get_user_org_names(cursor, user_id):
     """Lấy danh sách tên các tổ chức của user."""
     cursor.execute("""
-        SELECT tc.ten_to_chuc 
+        SELECT tc.ten_to_chuc
         FROM thanh_vien_to_chuc tvtc
         JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
         WHERE tvtc.user_id = ?
@@ -108,16 +108,16 @@ def get_user_org_names(cursor, user_id):
 def update_user_organizations(cursor, user_id, organization_name, user_role='employee'):
     """Cập nhật tổ chức của người dùng."""
     new_orgs = [o.strip() for o in organization_name.split(',') if o.strip()]
-    
+
     cursor.execute("""
-        SELECT tc.id, tc.ten_to_chuc 
+        SELECT tc.id, tc.ten_to_chuc
         FROM thanh_vien_to_chuc tvtc
         JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
         WHERE tvtc.user_id = ?
     """, (user_id,))
     current_assoc = {row['ten_to_chuc']: row['id'] for row in cursor.fetchall()}
-    
-    # 1. Add new associations
+
+
     for org_name in new_orgs:
         if org_name not in current_assoc:
             cursor.execute("SELECT id FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
@@ -130,7 +130,7 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
                     "INSERT OR IGNORE INTO to_chuc (id, ten_to_chuc, quan_ly_id) VALUES (?, ?, ?)",
                     (org_id, org_name, user_id)
                 )
-            
+
             role_in_org = 'employee'
             if 'super_admin' in user_role:
                 role_in_org = 'super_admin'
@@ -140,8 +140,8 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
                 "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
                 (user_id, org_id, role_in_org)
             )
-            
-    # 2. Remove old associations
+
+
     removed_any = False
     for org_name, org_id in current_assoc.items():
         if org_name not in new_orgs:

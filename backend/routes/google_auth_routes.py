@@ -31,10 +31,10 @@ from helpers_py.id_utils import generate_record_id
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
-# URL xac minh token Google (tokeninfo endpoint — khong can thu vien ben ngoai)
+
 _GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo?id_token={token}"
 
-# Bang chuyen doi ky tu Unicode co dau sang ASCII (tieng Viet)
+
 _UNICODE_MAP = str.maketrans(
     "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
     "ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ",
@@ -46,23 +46,18 @@ from helpers_py.username_validator import validate_username as _validate_usernam
 
 
 def _generate_suggested_username(name: str, email: str, cursor) -> str:
-    """
-    Sinh username goi y tu email dang nhap Google:
-    - Lay toan bo phan phia truoc @ cua email
-    - Chuyen thuong, thay the ky tu dac biet bang '_'
-    - Neu trung -> tu dong them _[ky tu ngau nhien]
-    """
+
     import re as _re_u
     import random as _random
 
     email_prefix = email.split('@')[0].lower()
     base = _re_u.sub(r'[^a-z0-9_]', '_', email_prefix)
     base = _re_u.sub(r'_+', '_', base).strip('_')
-    
+
     if len(base) < 3:
         base = 'user'
 
-    # Neu base bi reserved/sensitive thi them suffix '_u' de tranh
+
     ok, _ = _validate_username(base)
     if not ok:
         base = (base[:26] + '_u').strip('_')
@@ -77,19 +72,15 @@ def _generate_suggested_username(name: str, email: str, cursor) -> str:
                     break
         except Exception:
             break
-        
+
         rand_suffix = ''.join(_random.choice('abcdefghijklmnopqrstuvwxyz0123456789') for _ in range(4))
         candidate = f"{base[:25]}_{rand_suffix}"
-        
+
     return candidate
 
 
 def _verify_google_token(id_token: str):
-    """
-    Xac minh Google ID Token bang Google tokeninfo endpoint.
-    Tra ve payload (dict) neu hop le, None neu khong hop le.
-    Kiem tra: aud == GOOGLE_CLIENT_ID, exp > now.
-    """
+
     if not id_token or not GOOGLE_CLIENT_ID:
         return None
     try:
@@ -100,12 +91,12 @@ def _verify_google_token(id_token: str):
     except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, Exception):
         return None
 
-    # Kiem tra aud khop voi Client ID cua ung dung
+
     aud = payload.get("aud", "")
     if aud != GOOGLE_CLIENT_ID:
         return None
 
-    # Kiem tra token chua het han
+
     try:
         if int(payload.get("exp", 0)) < int(time.time()):
             return None
@@ -123,12 +114,7 @@ def _add_background_audit(bg_tasks, action, **kwargs):
 
 
 async def google_login_api(request):
-    """
-    POST /api/auth/google-login
-    Body: { "credential": "<google_id_token>" }
 
-    Xac minh Google ID Token -> tim hoac tao tai khoan -> tra session cookie.
-    """
     conn = None
     bg_tasks = None
     pending_audits = []
@@ -137,32 +123,32 @@ async def google_login_api(request):
         rate_key = f"google_login:{ip}"
         if not check_rate_limit(rate_key, consume_attempt=False):
             return JSONResponse(
-                {"error": "Qua nhieu yeu cau dang nhap. Vui long thu lai sau 60 giay."},
+                {"error": "Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau 60 giây."},
                 status_code=429,
             )
 
         if not GOOGLE_CLIENT_ID:
             return JSONResponse(
-                {"error": "Dang nhap Google chua duoc cau hinh tren may chu."},
+                {"error": "Đăng nhập Google chưa được cấu hình trên máy chủ."},
                 status_code=503,
             )
 
         try:
             data = await request.json()
         except Exception:
-            return JSONResponse({"error": "Du lieu yeu cau khong hop le."}, status_code=400)
+            return JSONResponse({"error": "Dữ liệu yêu cầu không hợp lệ."}, status_code=400)
 
         credential = (data.get("credential") or "").strip()
         if not credential:
             record_rate_limit_failure(rate_key)
-            return JSONResponse({"error": "Thieu Google credential."}, status_code=400)
+            return JSONResponse({"error": "Thiếu thông tin xác thực Google."}, status_code=400)
 
         payload = _verify_google_token(credential)
         if not payload:
             record_rate_limit_failure(rate_key)
             log_audit("auth.google_login_failed", request=request, metadata={"reason": "invalid_token"})
             return JSONResponse(
-                {"error": "Token Google khong hop le hoac da het han. Vui long thu lai."},
+                {"error": "Token Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại."},
                 status_code=401,
             )
 
@@ -174,18 +160,18 @@ async def google_login_api(request):
 
         if not google_id or not email:
             record_rate_limit_failure(rate_key)
-            return JSONResponse({"error": "Khong lay duoc thong tin tu tai khoan Google."}, status_code=400)
+            return JSONResponse({"error": "Không lấy được thông tin từ tài khoản Google."}, status_code=400)
 
         if not email_verified:
             return JSONResponse(
-                {"error": "Email Google chua duoc xac minh. Vui long xac minh email Google truoc."},
+                {"error": "Email Google chưa được xác minh. Vui lòng xác minh email Google trước."},
                 status_code=400,
             )
 
         conn = database.get_connection()
         cursor = conn.cursor()
 
-        # 1. Tim user theo google_id truoc
+
         user = None
         try:
             cursor.execute("SELECT * FROM tai_khoan WHERE google_id = ?", (google_id,))
@@ -195,8 +181,8 @@ async def google_login_api(request):
         except Exception:
             pass
 
-        # 2. Tim theo email neu chua co — dong bo tai khoan cu
-        account_linked = False  # Flag: tai khoan cu vua duoc lien ket
+
+        account_linked = False
         if not user:
             cursor.execute(
                 "SELECT * FROM tai_khoan WHERE email != '' AND lower(email) = ?",
@@ -206,8 +192,8 @@ async def google_login_api(request):
             if row:
                 user = dict(row)
                 account_linked = True
-                # Lien ket google_id vao tai khoan cu.
-                # username_da_dat = 1 neu da co ten_dang_nhap, nguoc lai giu 0 de buoc dat username.
+
+
                 already_has_username = bool(user.get("ten_dang_nhap"))
                 try:
                     cursor.execute(
@@ -233,18 +219,18 @@ async def google_login_api(request):
                 ))
 
         else:
-            account_linked = False  # Khong phai link, khong phai moi (da co google_id)
+            account_linked = False
 
-        # 3. Chua co -> tao tai khoan moi tu dong
+
         if not user:
             import secrets as _secrets
             from helpers import hash_password as _hash_password
 
-            # Sinh mat khau tam (10 ky tu an toan)
-            temp_password = _secrets.token_urlsafe(8)  # ~11 ky tu base64url
+
+            temp_password = _secrets.token_urlsafe(8)
             temp_password_hash = _hash_password(temp_password)
 
-            # ID co tien to "user-" nhat quan voi cac tai khoan khac
+
             new_id = generate_record_id("tai_khoan")
 
             try:
@@ -256,7 +242,7 @@ async def google_login_api(request):
                     (new_id, temp_password_hash, name, email, picture, google_id),
                 )
             except Exception:
-                # Fallback neu cot google_id hoac username_da_dat chua ton tai trong schema cu
+
                 cursor.execute(
                     """INSERT INTO tai_khoan
                        (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
@@ -278,7 +264,7 @@ async def google_login_api(request):
                 },
             ))
 
-            # Khởi tạo BackgroundTasks và lập lịch gửi email
+
             bg_tasks = BackgroundTasks()
             try:
                 from helpers import gui_email as _gui_email
@@ -324,12 +310,12 @@ async def google_login_api(request):
                 log_error(_e, "google_login_send_temp_password_email")
 
 
-        # Tai khoan chua xac minh -> tu xac minh qua Google
+
         if not user.get("da_xac_minh"):
             cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE id = ?", (user["id"],))
             user["da_xac_minh"] = 1
 
-        # Tao session token
+
         session_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         device_info = json.dumps({
@@ -362,10 +348,10 @@ async def google_login_api(request):
         )
 
         effective_roles = list(get_effective_roles(user["vai_tro"]))
-        # Chỉ cần username = NULL là phải đặt; tài khoản cũ có username rồi không hỏi lại
+
         needs_username = not user.get("ten_dang_nhap")
 
-        # Sinh username goi y chi khi can dat username
+
         suggested_username = ""
         if needs_username:
             suggested_username = _generate_suggested_username(user.get("ho_ten", ""), email, cursor)
@@ -397,7 +383,7 @@ async def google_login_api(request):
     except Exception as e:
         log_error(e, "google_login_api")
         return JSONResponse(
-            {"error": "Da xay ra loi khi dang nhap bang Google. Vui long thu lai sau."},
+            {"error": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại sau."},
             status_code=500,
         )
     finally:

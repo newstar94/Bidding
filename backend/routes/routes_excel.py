@@ -70,7 +70,7 @@ async def import_excel_api(request):
         form = await request.form()
         file_obj = form.get('file')
         import_type = form.get('type')
-        
+
         if not file_obj or not import_type:
             return JSONResponse({"error": "Missing file or type parameter"}, status_code=400)
 
@@ -142,7 +142,7 @@ async def export_opening_fin_template_api(request):
 
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
-        
+
         if not package_id:
             return JSONResponse({"error": "Missing package_id parameter"}, status_code=400)
 
@@ -177,7 +177,7 @@ async def export_danhgiahsdt_template_api(request):
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
         eval_type = request.query_params.get('eval_type', 'technical')
-        
+
         if not package_id:
             return JSONResponse({"error": "Missing package_id parameter"}, status_code=400)
 
@@ -213,7 +213,7 @@ async def export_ketquaqd_template_api(request):
 
         package_id = request.query_params.get('package_id', '')
         package_name = request.query_params.get('package_name', 'GoiThau')
-        
+
         if not package_id:
             return JSONResponse({"error": "Missing package_id parameter"}, status_code=400)
 
@@ -245,10 +245,10 @@ async def export_phanlo_excel_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         data = await request.json()
         phan_lo_list = data.get('phanLoList', [])
-        
+
         wb = excel_service.create_phanlo_excel(phan_lo_list)
 
         out_stream = BytesIO()
@@ -269,10 +269,10 @@ async def export_tuychonmuathem_excel_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-            
+
         data = await request.json()
         tuy_chon_list = data.get('tuyChonList', [])
-        
+
         wb = excel_service.create_tuychonmuathem_excel(tuy_chon_list)
 
         out_stream = BytesIO()

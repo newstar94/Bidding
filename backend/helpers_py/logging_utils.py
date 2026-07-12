@@ -13,7 +13,7 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 def log_error(e_or_msg, context="System", level="ERROR"):
     log_file = os.path.join(project_root, "sync_error.log")
     try:
-        # Xoay vòng file log nếu > 5MB
+
         if os.path.exists(log_file) and os.path.getsize(log_file) > 5 * 1024 * 1024:
             try:
                 backup_file = log_file + ".1"
@@ -42,7 +42,7 @@ def log_error(e_or_msg, context="System", level="ERROR"):
 
 
 def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, target_id=None, request=None, metadata=None):
-    """Ghi audit log best-effort cho thao tac quan trong."""
+
     conn = None
     try:
         ip_address = None
@@ -122,4 +122,3 @@ class ErrorLoggingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             log_error(e, f"HTTP {request.method} {request.url.path}")
             raise e
-

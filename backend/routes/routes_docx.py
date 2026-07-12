@@ -461,7 +461,7 @@ def _parse_formula_date(value):
             return datetime.strptime(text, fmt).date()
         except ValueError:
             pass
-    raise ValueError(f'Khong doc duoc ngay thang: {value}')
+    raise ValueError(f'Không đọc được ngày tháng: {value}')
 
 
 def _format_formula_date(value):
@@ -679,7 +679,7 @@ def apply_computed_mappings(context, mappings_rows):
                 progressed = True
             except ValueError as exc:
                 if 'chua co gia tri' not in str(exc):
-                    context[ten_bien] = f'-- Loi cong thuc: {exc}'
+                    context[ten_bien] = f'-- Lỗi công thức: {exc}'
                     variables[ten_bien] = context[ten_bien]
                     del pending[ten_bien]
                     progressed = True
@@ -687,11 +687,11 @@ def apply_computed_mappings(context, mappings_rows):
             break
 
     for ten_bien, formula in pending.items():
-        context[ten_bien] = '-- Loi cong thuc: vong lap hoac thieu bien nguon'
+        context[ten_bien] = '-- Lỗi công thức: vòng lặp hoặc thiếu biến nguồn'
 
 def apply_custom_mappings(context, mappings_rows):
     from helpers import VietnameseFloat
-    # Mapping table name to context keys
+
     table_to_context = {
         'ke_hoach_lcnt': ['ke_hoach'],
         'goi_thau': ['goi_thau', 'goi_thau_versions', 'goi_thau'],
@@ -703,7 +703,7 @@ def apply_custom_mappings(context, mappings_rows):
         'goi_dich_vu': ['goi_dich_vu']
     }
 
-    # helper to format values
+
     def format_mapped_value(val, col_name):
         if val is None:
             return '--'
@@ -760,7 +760,7 @@ def apply_custom_mappings(context, mappings_rows):
                     resolved_val = value
         return val_found, resolved_val
 
-    # 1. First pass: Handle custom list mappings (where source_column is empty/null or '*')
+
     for ten_bien, src_table, src_column in mappings_rows:
         ten_bien = ten_bien.lower()
         if not src_column or src_column == '*' or src_column == '':
@@ -774,7 +774,7 @@ def apply_custom_mappings(context, mappings_rows):
                         context[ten_bien] = [dict(context[key])]
                         break
             else:
-                # Handle sub-lists or nested attributes (e.g. phan_lo_list, thanh_vien_lien_danh)
+
                 found = False
                 if src_table in context and isinstance(context[src_table], list):
                     context[ten_bien] = list(context[src_table])
@@ -798,7 +798,7 @@ def apply_custom_mappings(context, mappings_rows):
                             if found:
                                 break
 
-    # 2. Second pass: Handle custom field mappings (where source_column is specified)
+
     for ten_bien, src_table, src_column in mappings_rows:
         ten_bien = ten_bien.lower()
         if src_column and src_column != '*' and src_column != '':
@@ -807,7 +807,7 @@ def apply_custom_mappings(context, mappings_rows):
                     context[ten_bien] = format_mapped_value(context.get(src_column), src_column)
                 continue
 
-            # Group related contractor/bid tables to self-identify contractor type
+
             entity_keys = {
                 'ke_hoach_lcnt': ['ke_hoach'],
                 'goi_thau': ['goi_thau', 'goi_thau_versions'],
@@ -918,7 +918,7 @@ def apply_custom_mappings(context, mappings_rows):
             if val_found:
                 context[ten_bien] = resolved_val
             else:
-                # Fallback for investor
+
                 if src_table == 'chu_dau_tu':
                     if src_column == 'ten_chu_dau_tu':
                         context[ten_bien] = context.get('investor_name', '--')
@@ -936,12 +936,12 @@ async def export_plan_api(request):
         if not _can_export_record(role_or_err, org_name, "kehoach", "ke_hoach_lcnt", plan_id):
             return JSONResponse({"error": "Ban khong co quyen xuat ke hoach nay."}, status_code=403)
 
-        # Build context from service
+
         unified_context = docx_service.build_plan_context(plan_id, user_id, org_name)
         enrich_context_with_lot_summaries(unified_context)
         enrich_context_with_filtered_bidders(unified_context)
 
-        # Load mappings
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE owner_id = ?", (org_name,))
@@ -980,12 +980,12 @@ async def export_report_api(request):
         if not _can_export_record(role_or_err, org_name, "goithau", "goi_thau", package_id):
             return JSONResponse({"error": "Ban khong co quyen xuat goi thau nay."}, status_code=403)
 
-        # Build context from service
+
         unified_context = docx_service.build_report_context(package_id, user_id, org_name, type_param)
         enrich_context_with_lot_summaries(unified_context)
         enrich_context_with_filtered_bidders(unified_context)
 
-        # Load mappings
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE owner_id = ?", (org_name,))
@@ -1150,26 +1150,26 @@ async def save_word_mapping_api(request):
             return JSONResponse({"error": "Vui lòng nhập đầy đủ thông tin!"}, status_code=400)
 
         if source_table == COMPUTED_SOURCE_TABLE and not source_column:
-            return JSONResponse({"error": "Vui long nhap cong thuc cho bien ket qua!"}, status_code=400)
+            return JSONResponse({"error": "Vui lòng nhập công thức cho biến kết quả!"}, status_code=400)
 
         id_param = data.get('id')
 
         conn = database.get_connection()
         cursor = conn.cursor()
 
-        # Check if record for this (source_table, source_column) already exists.
-        # Computed variables are identified by name; two variables may reasonably reuse the same formula.
+
+
         row_by_data = None
         if source_table != COMPUTED_SOURCE_TABLE:
             cursor.execute("SELECT id FROM cau_hinh_bien_word WHERE source_table = ? AND source_column = ? AND owner_id = ?", (source_table, source_column, org_name))
             row_by_data = cursor.fetchone()
 
-        # Check if record for this ten_bien already exists
+
         cursor.execute("SELECT id FROM cau_hinh_bien_word WHERE ten_bien = ? AND owner_id = ?", (ten_bien, org_name))
         row_by_name = cursor.fetchone()
         if id_param:
-            # We are updating a specific record
-            # To avoid duplicates, delete any OTHER record that matches the target (source_table, source_column) or ten_bien
+
+
             if row_by_data and row_by_data[0] != id_param:
                 cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ?", (row_by_data[0],))
             if row_by_name and row_by_name[0] != id_param:
@@ -1182,9 +1182,9 @@ async def save_word_mapping_api(request):
             """, (ten_bien, source_table, source_column, mo_ta, id_param, org_name))
             mapping_id = id_param
         else:
-            # We are creating a new record
+
             if row_by_data:
-                # Overwrite by updating its ten_bien and mo_ta
+
                 mapping_id = row_by_data[0]
                 cursor.execute("""
                     UPDATE cau_hinh_bien_word
@@ -1192,7 +1192,7 @@ async def save_word_mapping_api(request):
                     WHERE id = ?
                 """, (ten_bien, mo_ta, mapping_id))
             elif row_by_name:
-                # Overwrite by updating its source_table and source_column
+
                 mapping_id = row_by_name[0]
                 cursor.execute("""
                     UPDATE cau_hinh_bien_word
@@ -1200,7 +1200,7 @@ async def save_word_mapping_api(request):
                     WHERE id = ?
                 """, (source_table, source_column, mo_ta, mapping_id))
             else:
-                # Insert new
+
                 mapping_id = generate_record_id("cau_hinh_bien_word")
                 cursor.execute("""
                     INSERT INTO cau_hinh_bien_word (id, ten_bien, source_table, source_column, mo_ta, owner_id)

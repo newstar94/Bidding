@@ -1,7 +1,3 @@
-/* ==========================================================================
-   BiddingFlow - PlanView (Re-export entry-point)
-   ========================================================================== */
-
-export * from './KeHoachView.js';
-export * from './GoiThauView.js';
-export * from './view_helpers.js';
+export * from "./KeHoachView.js";
+export * from "./GoiThauView.js";
+export * from "./view_helpers.js";
