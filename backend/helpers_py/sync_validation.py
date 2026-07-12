@@ -12,11 +12,12 @@ LEGACY_PACKAGE_STATUS_ALIASES = {
     "Huỷ thầu": "Hủy thầu"
 }
 DEFAULT_PAPER_STATUS_COLOR = "#64748b"
+PLAIN_TEXT_FIELDS = {"thoi_gian_bat_dau_to_chuc"}
 DATE_KEYS_BY_TABLE = {
     table_name: [
         json_key_for_column(table_name, col)
         for col in table_spec.get("columns", {}).keys()
-        if is_datetime_column(col)
+        if is_datetime_column(col) and col not in PLAIN_TEXT_FIELDS
     ]
     for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
 }

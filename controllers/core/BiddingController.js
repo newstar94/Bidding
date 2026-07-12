@@ -5,6 +5,7 @@ export class BiddingController {
     this.view = view;
     this.tempChuyenGiaImageBase64 = "";
     this.tempChuyenGiaSignatureBase64 = "";
+    this.tempNhaThauStampBase64 = "";
     this.packageWizard = {
       active: false,
       planId: null,
@@ -100,7 +101,7 @@ export class BiddingController {
           if (id === "modal-goithau") {
             this.setupConditionalUI?.();
           }
-          if (id === "modal-chuyengia") {
+          if (["modal-chuyengia", "modal-nhathau"].includes(id)) {
             this.setupFileUploads?.();
           }
           if (["modal-manager-employee", "modal-detail-system-user", "modal-edit-package"].includes(id)) {

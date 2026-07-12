@@ -1,4 +1,10 @@
 import { applySyncPayload } from "./syncMergeUtils.js";
+export function collectCommittedMutationKeys(payload = {}) {
+  return new Set([
+    ...Object.keys(payload.upserts || {}),
+    ...(payload.deletions || []).map((item) => item?.table).filter(Boolean)
+  ]);
+}
 export function scheduleBackgroundSync(delay = 500) {
   if (this._backgroundSyncTimer) {
     this._backgroundSyncQueued = true;
@@ -32,12 +38,14 @@ export function setupAutoSyncBackground() {
   this.setupWebSocketConnection();
 }
 function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
-  if (!changedKeys || changedKeys.size === 0 || !controller.view) return;
+  if (!changedKeys || changedKeys.size === 0 || !controller.view) return Promise.resolve();
+  const renderPromises = [];
   const renderIfChanged = (keys, renderFn, requiredElementId = null) => {
     if (keys.some((key) => changedKeys.has(key)) && typeof renderFn === "function" && (!requiredElementId || document.getElementById(requiredElementId))) {
-      Promise.resolve(renderFn.call(controller.view)).catch((err) => {
+      const renderPromise = Promise.resolve(renderFn.call(controller.view)).catch((err) => {
         console.error(`Failed to render changed state${requiredElementId ? ` for ${requiredElementId}` : ""}:`, err);
       });
+      renderPromises.push(renderPromise);
     }
   };
   renderIfChanged(["dashboardSummary", "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments", "thongtinmothau"], controller.view.renderDashboard, "tab-dashboard");
@@ -52,6 +60,7 @@ function renderChangedState(controller, changedKeys, { isBackground = false } = 
       controller.handlePathRouting(window.location.pathname, false, true);
     });
   }
+  return Promise.all(renderPromises);
 }
 function showSyncErrorReport(controller, errors) {
   if (!controller || !Array.isArray(errors) || errors.length === 0) return;
@@ -89,11 +98,24 @@ const DETAIL_ROUTE_TABLE = {
   "chudautu-detail": "chudautu",
   "nhathau-detail": "nhathau"
 };
-function detailRecordExists(model, tableKey, lookup) {
+export function detailRecordExists(model, tableKey, lookup) {
   const needle = String(decodeURIComponent(lookup || "")).toLowerCase();
   const cleanNeedle = needle.replace(/[\/-]/g, "");
   const list = Array.isArray(model.state[tableKey]) ? model.state[tableKey] : [];
+  const completenessFields = {
+    goithau: ["giaGoiThau", "hinhThucLuaChon"],
+    kehoach: ["tenDuAnDuToan", "pheDuyet"],
+    hopdong: ["ngayKy", "giaTri"],
+    chudautu: ["diaChi", "daiDienCdt"],
+    nhathau: ["diaChi", "nguoiDaiDien"]
+  };
+  const hasMeaningfulValue = (value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") return Object.keys(value).length > 0;
+    return value !== void 0 && value !== null && value !== "";
+  };
   return list.some((item) => {
+    const isMatch = (() => {
     if (String(item.id || "").toLowerCase() === needle) return true;
     if (tableKey === "goithau" && String(item.maGoiThau || "").toLowerCase() === needle) return true;
     if (tableKey === "kehoach" && encodeURIComponent(String(item.maKeHoach || "")).toLowerCase() === needle) return true;
@@ -101,6 +123,11 @@ function detailRecordExists(model, tableKey, lookup) {
     if (tableKey === "chudautu" && String(item.maChuDauTu || "").toLowerCase() === needle) return true;
     if (tableKey === "nhathau" && String(item.maNhaThau || "").toLowerCase() === needle) return true;
     return false;
+    })();
+    if (!isMatch) return false;
+    if (item.referenceOnly === true) return false;
+    if (item.referenceOnly === false) return true;
+    return hasMeaningfulValue(item.ownerId) || (completenessFields[tableKey] || []).some((field) => hasMeaningfulValue(item[field]));
   });
 }
 export async function fetchRecordByLookup(tableKey, lookup) {
@@ -113,7 +140,8 @@ export async function fetchRecordByLookup(tableKey, lookup) {
   if (!response.ok) return null;
   const data = await response.json();
   if (!data || !data.item) return null;
-  const record = typeof this.model.normalizeRecordKeys === "function" ? this.model.normalizeRecordKeys(data.item, tableKey) : data.item;
+  const normalized = typeof this.model.normalizeRecordKeys === "function" ? this.model.normalizeRecordKeys(data.item, tableKey) : data.item;
+  const record = { ...normalized, referenceOnly: false };
   if (!Array.isArray(this.model.state[tableKey])) {
     this.model.state[tableKey] = [];
   }
@@ -291,6 +319,14 @@ export function autoSync() {
         console.info(`[Sync] Đã xóa ${data.orphanedIds.length} record mồ côi khỏi IndexedDB:`, data.orphanedIds);
       }
     }
+    const committedKeys = collectCommittedMutationKeys(payload);
+    const deletedKeys = new Set((payload.deletions || []).map((item) => item?.table).filter(Boolean));
+    deletedKeys.forEach((key) => {
+      if (this.model?.currentPage && Object.prototype.hasOwnProperty.call(this.model.currentPage, key)) {
+        this.model.currentPage[key] = 1;
+      }
+    });
+    await renderChangedState(this, committedKeys);
     return { ok: true, status, data };
   }).catch((err) => {
     console.error("Error auto sync:", err);
@@ -358,7 +394,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
         localStorage.setItem("bf_last_sync_timestamp", dbData.timestamp.toString());
       }
       localStorage.setItem("bf_last_fetch_time", Date.now().toString());
-      renderChangedState(this, changedKeys, { isBackground });
+      await renderChangedState(this, changedKeys, { isBackground });
       this.updateSyncStatusDisplay(Date.now());
       if (!isBackground) {
         const cleanPath = window.location.pathname.startsWith("/") ? window.location.pathname.substring(1) : window.location.pathname;

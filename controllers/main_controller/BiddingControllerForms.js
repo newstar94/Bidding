@@ -123,6 +123,21 @@ export function setupFileUploads() {
     alertInvalid: alertInvalidImage,
     alertTooLarge
   });
+  bindImageUploadPreview({
+    uploadZone: document.getElementById("nt-upload-zone-dau"),
+    fileInput: document.getElementById("nt-anhdau"),
+    previewContainer: document.getElementById("nt-preview-container-dau"),
+    previewImg: document.getElementById("nt-anh-preview-dau"),
+    removeBtn: document.getElementById("btn-nt-remove-file-dau"),
+    onLoad: (dataUrl) => {
+      this.tempNhaThauStampBase64 = dataUrl;
+    },
+    onRemove: () => {
+      this.tempNhaThauStampBase64 = "";
+    },
+    alertInvalid: alertInvalidImage,
+    alertTooLarge
+  });
 }
 export function setupActionListeners() {
   onById("search-kehoach", "input", debounce(() => {

@@ -1,5 +1,6 @@
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
 import { bindCurrencyElement } from "../main_controller/domUtils.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export async function deleteKeHoach(id) {
   const targetPlan = this.model.state.kehoach.find((k) => k.id === id);
   if (!targetPlan) return;
@@ -41,7 +42,6 @@ export async function deleteKeHoach(id) {
         });
       }
       await this.model.persistData("kehoach");
-      this.view.renderKeHoachTable();
       await this.autoSync();
       await this.view.customAlert("Thành công", "Đã xóa phiên bản kế hoạch gần nhất!", "check-circle");
       return;
@@ -58,7 +58,6 @@ export async function deleteKeHoach(id) {
       this.model.state.kehoach = this.model.state.kehoach.filter((kh) => (kh.rootId || kh.id) !== rootId);
       this.model.markDeleted("kehoach", relatedIds);
       await this.model.persistData("kehoach");
-      this.view.renderKeHoachTable();
       await this.autoSync();
       await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của kế hoạch!", "check-circle");
       return;
@@ -82,22 +81,20 @@ export async function deleteKeHoach(id) {
       this.model.state.kehoach = this.model.state.kehoach.filter((kh) => kh.id !== id);
       this.model.markDeleted("kehoach", id);
       await this.model.persistData("kehoach");
-      this.view.renderKeHoachTable();
       await this.autoSync();
     }
   }
 }
-export function editKeHoach(id) {
+export async function editKeHoach(id) {
   if (!document.getElementById("modal-kehoach")) {
-    this.ensureLazyModal?.("modal-kehoach").then(() => this.editKeHoach(id));
-    return;
+    await this.ensureLazyModal?.("modal-kehoach");
   }
   const modal = document.getElementById("modal-kehoach");
   const form = document.getElementById("form-kehoach");
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
   const latestCDTs = this.model.getLatestChuDauTu() || [];
-  cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+  cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
   // The plan modal is lazy-loaded, so this select does not exist when the
   // application's one-time conditional handlers are registered.
   cdtSelect.onchange = (event) => {
@@ -468,18 +465,16 @@ export function openPlanBreakdownModal(planId) {
   this.renderBreakdownPackagesList(planId);
   const btnAddPkg = document.getElementById("btn-breakdown-add-package");
   if (btnAddPkg) {
-    btnAddPkg.onclick = () => {
-      this.editGoiThau(null);
-      setTimeout(() => {
-        const planSelect = document.getElementById("gt-kehoachid");
-        if (planSelect) {
-          planSelect.value = planId;
-          planSelect.setAttribute("readonly", "true");
-          planSelect.style.pointerEvents = "none";
-          planSelect.style.background = "var(--neutral-soft)";
-          planSelect.dispatchEvent(new Event("change"));
-        }
-      }, 100);
+    btnAddPkg.onclick = async () => {
+      await this.editGoiThau(null);
+      const planSelect = document.getElementById("gt-kehoachid");
+      if (planSelect) {
+        planSelect.value = planId;
+        planSelect.setAttribute("readonly", "true");
+        planSelect.style.pointerEvents = "none";
+        planSelect.style.background = "var(--neutral-soft)";
+        planSelect.dispatchEvent(new Event("change"));
+      }
     };
   }
   const btnSave = document.getElementById("btn-save-plan-breakdown");
@@ -519,8 +514,8 @@ export function renderBreakdownPackagesList(planId) {
     const trangThaiBadge = this.getStatusBadge ? this.getStatusBadge(gt.trangThai) : gt.trangThai;
     return `
             <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding: 10px 14px; font-weight: 700; color: var(--text-muted);">${this.model.getPackageBaseCode(gt.maGoiThau) || "--"}</td>
-                <td style="padding: 10px 14px; font-weight: 600; color: var(--text-main);">${gt.tenGoiThau}</td>
+                <td style="padding: 10px 14px; font-weight: 700; color: var(--text-muted);">${escapeHtml(this.model.getPackageBaseCode(gt.maGoiThau) || "--")}</td>
+                <td style="padding: 10px 14px; font-weight: 600; color: var(--text-main);">${escapeHtml(gt.tenGoiThau)}</td>
                 <td style="padding: 10px 14px; font-weight: 700; text-align: right; color: var(--primary);">${this.model.formatCurrency(gt.giaGoiThau)}</td>
                 <td style="padding: 10px 14px; font-weight: 500; color: var(--text-muted);">${hinhThuc}</td>
                 <td style="padding: 10px 14px;">${trangThaiBadge}</td>
@@ -539,22 +534,22 @@ export function addBreakdownRow(type, data = null) {
   row.style.borderBottom = "1px solid var(--border-color)";
   if (type === "dathuchien") {
     row.innerHTML = `
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${data?.tenCongViec || ""}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
+            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${data?.donViThucHien || ""}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-doc" value="${data?.vanBanPheDuyet || ""}" placeholder="Văn bản phê duyệt..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
+            <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
+            <td style="padding: 6px 10px;"><input type="text" class="breakdown-doc" value="${escapeHtml(data?.vanBanPheDuyet || "")}" placeholder="Văn bản phê duyệt..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"dathuchien"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
         `;
   } else if (type === "khongapdung") {
     row.innerHTML = `
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${data?.tenCongViec || ""}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
+            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${data?.donViThucHien || ""}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
+            <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"khongapdung"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
         `;
   } else if (type === "chuadudieuKien") {
     row.innerHTML = `
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${data?.tenCongViec || ""}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
+            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
             <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
             <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"chuadudieuKien"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
         `;
@@ -737,8 +732,8 @@ export async function savePlanBreakdown() {
           });
         }
       });
-      this.model.persistData("goithau");
-      this.model.persistData("thongtinmothau");
+      await this.model.persistData("goithau");
+      await this.model.persistData("thongtinmothau");
     } else {
       const currentKh = this.model.state.kehoach.find((k) => k.id === planId);
       if (currentKh) {
@@ -769,8 +764,8 @@ export async function savePlanBreakdown() {
     this.recalculatePlanTotal(finalPlanId);
   }
   this.updateBreakdownTotal(finalPlanId);
-  this.model.persistData("kehoach");
-  this.model.persistData("goithau");
+  await this.model.persistData("kehoach");
+  await this.model.persistData("goithau");
   this.backupKeHoachState = null;
   this.backupGoiThauState = null;
   this.tempPlanData = null;
@@ -778,9 +773,10 @@ export async function savePlanBreakdown() {
   if (hasModalReturnState("kehoach-detail") && finalPlanId) {
     updateModalReturnAction(finalPlanId);
   }
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) return;
   this.closeModal("modal-plan-breakdown");
   this.view.renderKeHoachTable();
   this.view.renderGoiThauTable();
   await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");
-  this.autoSync();
 }

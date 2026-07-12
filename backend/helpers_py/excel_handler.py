@@ -108,6 +108,8 @@ ENTITY_SCHEMA = {
         {'field': 'noiMoTaiKhoan',        'label': 'Nơi mở tài khoản',            'aliases': ['Nơi mở tài khoản', 'noiMoTaiKhoan']},
         {'field': 'thanhVienLienDanh',    'label': 'Thành viên liên danh',        'aliases': ['Thành viên liên danh', 'thanhVienLienDanh']},
         {'field': 'maNganHang',           'label': 'Mã ngân hàng',                'aliases': ['Mã ngân hàng', 'maNganHang']},
+        {'field': 'anhDau',               'label': 'Ảnh dấu (Base64)',            'aliases': ['Ảnh dấu', 'Ảnh dấu (Base64)', 'anhDau']},
+        {'field': 'tenAnhDau',            'label': 'Tên ảnh dấu',                 'aliases': ['Tên ảnh dấu', 'tenAnhDau']},
     ],
     'chuyengia': [
         {'field': 'hoTen',                'label': 'Họ tên',                     'aliases': ['Họ tên', 'Họ và tên', 'hoTen']},

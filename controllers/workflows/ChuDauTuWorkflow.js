@@ -1,6 +1,7 @@
 import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
 import { applyRawAddressToAddressControls, composeInternalAddress } from "../utils/PartnerHelpers.js";
 import { bindPartnerTaxCodeLookup } from "./partnerTaxLookup.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export async function deleteChuDauTu(id) {
   const hasPlans = this.model.state.kehoach.some((k) => k.chuDauTuId === id);
   if (hasPlans) {
@@ -20,7 +21,6 @@ export async function deleteChuDauTu(id) {
     this.model.state.chudautu = this.model.state.chudautu.filter((c) => c.id !== id);
     this.model.markDeleted("chudautu", id);
     await this.model.persistData("chudautu");
-    this.view.renderChuDauTuTable();
     await this.autoSync();
   }
 }
@@ -298,7 +298,7 @@ export async function handleChuDauTuSubmit(e) {
   if (planModal && planModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("kh-chudautuid");
     if (cdtSelect) {
-      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${c.id}">${c.tenChuDauTu}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.tenChuDauTu)}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
       cdtSelect.value = data.id;
     }
   }
@@ -306,7 +306,7 @@ export async function handleChuDauTuSubmit(e) {
   if (contractModal && contractModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("hd-chudautuid");
     if (cdtSelect) {
-      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu || ""}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
       cdtSelect.value = data.id;
       cdtSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }

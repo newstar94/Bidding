@@ -1,4 +1,4 @@
-import { escapeHtml, formatDate, safeImageSrc } from "../view_helpers.js";
+import { escapeHtml, formatDateOnly, safeImageSrc } from "../view_helpers.js";
 import { cachePaginatedRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 export async function renderChuyenGiaTable() {
@@ -81,7 +81,7 @@ export async function renderChuyenGiaTable() {
       const expertCccd = escapeHtml(displayedCg.soCCCD || "");
       const certificateNo = escapeHtml(displayedCg.soChungChi || "");
       const certificateIssuer = escapeHtml(displayedCg.donViCapChungChi || "--");
-      const certificateDate = escapeHtml(displayedCg.ngayCapChungChi ? formatDate(displayedCg.ngayCapChungChi) : "--");
+      const certificateDate = escapeHtml(displayedCg.ngayCapChungChi ? formatDateOnly(displayedCg.ngayCapChungChi) : "--");
       const optionsHtml = allVersions.map((v) => {
         const label = escapeHtml(String(parseInt(v.phienBan || 0)).padStart(2, "0"));
         const isSel = v.id === displayedCg.id ? "selected" : "";
@@ -138,10 +138,10 @@ export function showChuyenGiaDetails(id) {
   if (!cg) return;
   const displayName = escapeHtml(cg.hoTen || "");
   const cccd = escapeHtml(cg.soCCCD || "--");
-  const cccdDate = escapeHtml(cg.ngayCapCCCD ? formatDate(cg.ngayCapCCCD) : "--");
+  const cccdDate = escapeHtml(cg.ngayCapCCCD ? formatDateOnly(cg.ngayCapCCCD) : "--");
   const cccdIssuer = escapeHtml(cg.noiCapCCCD || "--");
   const certificateNo = escapeHtml(cg.soChungChi || "--");
-  const certificateDate = escapeHtml(cg.ngayCapChungChi ? formatDate(cg.ngayCapChungChi) : "--");
+  const certificateDate = escapeHtml(cg.ngayCapChungChi ? formatDateOnly(cg.ngayCapChungChi) : "--");
   const certificateIssuer = escapeHtml(cg.donViCapChungChi || "--");
   const expertId = escapeHtml(cg.id);
   const signatureSrc = safeImageSrc(cg.anhChuKy);

@@ -11,6 +11,8 @@ export function bindImageUploadPreview(config) {
     alertTooLarge
   } = config;
   if (!uploadZone || !fileInput || !previewContainer || !previewImg) return;
+  if (fileInput.__bfImageUploadBound) return;
+  fileInput.__bfImageUploadBound = true;
   const handleFile = (file) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {

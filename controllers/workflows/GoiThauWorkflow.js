@@ -1,5 +1,6 @@
 import { validateExtensionRows } from "./packageValidation.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
 import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
 export function openPackageWizardStep() {
@@ -57,7 +58,6 @@ export async function deleteGoiThau(id) {
       this.renderBreakdownPackagesList(breakdownPlanId);
       this.updateBreakdownTotal(breakdownPlanId);
     }
-    this.view.renderGoiThauTable();
     try {
       await this.autoSync();
     } catch (e) {
@@ -79,7 +79,6 @@ export async function deleteGoiThau(id) {
       this.renderBreakdownPackagesList(breakdownPlanId);
       this.updateBreakdownTotal(breakdownPlanId);
     }
-    this.view.renderGoiThauTable();
     try {
       await this.autoSync();
     } catch (e) {
@@ -90,10 +89,9 @@ export async function deleteGoiThau(id) {
     }
   }
 }
-export function editGoiThau(id, isReadOnly = false) {
+export async function editGoiThau(id, isReadOnly = false) {
   if (!document.getElementById("modal-goithau")) {
-    this.ensureLazyModal?.("modal-goithau").then(() => this.editGoiThau(id, isReadOnly));
-    return;
+    await this.ensureLazyModal?.("modal-goithau");
   }
   const modal = document.getElementById("modal-goithau");
   const form = document.getElementById("form-goithau");
@@ -101,7 +99,7 @@ export function editGoiThau(id, isReadOnly = false) {
   resetPackageFormEditableState(form);
   setPackageSubTableActionsVisible(true);
   const khSelect = document.getElementById("gt-kehoachid");
-  khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${k.id}" data-search="${k.maKeHoach || ""} ${k.tenKeHoach || ""}">${k.tenKeHoach}${this.model.getPendingLabel("kehoach", k.id)}</option>`).join("");
+  khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${escapeHtml(k.id)}" data-search="${escapeHtml(`${k.maKeHoach || ""} ${k.tenKeHoach || ""}`)}">${escapeHtml(k.tenKeHoach)}${escapeHtml(this.model.getPendingLabel("kehoach", k.id))}</option>`).join("");
   khSelect.disabled = false;
   this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch LCNT...");
   const ntSelect = document.getElementById("gt-nhathautrungthauid");
@@ -110,7 +108,7 @@ export function editGoiThau(id, isReadOnly = false) {
     filteredBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(id));
   }
   if (filteredBids.length > 0) {
-    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu trúng thầu --</option>' + filteredBids.map((b) => `<option value="${b.nhaThauId}" data-search="${b.maNhaThau || ""} ${b.tenNhaThau || ""}">${b.tenNhaThau}</option>`).join("");
+    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu trúng thầu --</option>' + filteredBids.map((b) => `<option value="${escapeHtml(b.nhaThauId)}" data-search="${escapeHtml(`${b.maNhaThau || ""} ${b.tenNhaThau || ""}`)}">${escapeHtml(b.tenNhaThau)}</option>`).join("");
   } else {
     ntSelect.innerHTML = '<option value="">-- (Chưa có nhà thầu tham gia mở thầu) --</option>';
   }
@@ -146,7 +144,7 @@ export function editGoiThau(id, isReadOnly = false) {
       const roleLabel = roleLabelMap[e.role] || e.role;
       const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === e.name.toLowerCase().trim());
       const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
-      return `<option value="${e.id}" data-search="${e.name} ${roleLabel} ${e.email || ""} ${extraSearch}">${e.name} — ${roleLabel}${e.email ? " (" + e.email + ")" : ""}</option>`;
+      return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${e.name} ${roleLabel} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(e.name)} — ${escapeHtml(roleLabel)}${e.email ? ` (${escapeHtml(e.email)})` : ""}</option>`;
     }).join("");
     empDropdown.innerHTML = '<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml;
     restoreEmpValue();
@@ -170,11 +168,11 @@ export function editGoiThau(id, isReadOnly = false) {
   }
   const toChuyenGiaTbody = document.getElementById("to-chuyengia-tbody");
   toChuyenGiaTbody.innerHTML = this.model.state.chuyengia.map((cg) => `
-        <tr data-expert-id="${cg.id}">
+        <tr data-expert-id="${escapeHtml(cg.id)}">
             <td style="text-align: center; vertical-align: middle;">
-                <input type="checkbox" name="tochuyengia-select" value="${cg.id}" style="width: 18px; height: 18px; min-width: auto; cursor: pointer; display: inline-block;">
+                <input type="checkbox" name="tochuyengia-select" value="${escapeHtml(cg.id)}" style="width: 18px; height: 18px; min-width: auto; cursor: pointer; display: inline-block;">
             </td>
-            <td style="font-weight: 600; padding: 10px 14px; vertical-align: middle; color: var(--text-main); text-align: left !important;">${cg.hoTen} <small class="text-muted" style="display: block;">Số CC: ${cg.soChungChi}</small></td>
+            <td style="font-weight: 600; padding: 10px 14px; vertical-align: middle; color: var(--text-main); text-align: left !important;">${escapeHtml(cg.hoTen)} <small class="text-muted" style="display: block;">Số CC: ${escapeHtml(cg.soChungChi)}</small></td>
             <td style="vertical-align: middle;">
                 <select name="tochuyengia-chucvu" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-family: var(--font-primary); font-size: 0.84rem; font-weight: 600;" disabled>
                     <option value="Tổ viên">Tổ viên</option>
@@ -188,11 +186,11 @@ export function editGoiThau(id, isReadOnly = false) {
     `).join("");
   const toThamDinhTbody = document.getElementById("to-thamdinh-tbody");
   toThamDinhTbody.innerHTML = this.model.state.chuyengia.map((cg) => `
-        <tr data-expert-id="${cg.id}">
+        <tr data-expert-id="${escapeHtml(cg.id)}">
             <td style="text-align: center; vertical-align: middle;">
-                <input type="checkbox" name="tothamdinh-select" value="${cg.id}" style="width: 18px; height: 18px; min-width: auto; cursor: pointer; display: inline-block;">
+                <input type="checkbox" name="tothamdinh-select" value="${escapeHtml(cg.id)}" style="width: 18px; height: 18px; min-width: auto; cursor: pointer; display: inline-block;">
             </td>
-            <td style="font-weight: 600; padding: 10px 14px; vertical-align: middle; color: var(--text-main); text-align: left !important;">${cg.hoTen} <small class="text-muted" style="display: block;">Số CC: ${cg.soChungChi}</small></td>
+            <td style="font-weight: 600; padding: 10px 14px; vertical-align: middle; color: var(--text-main); text-align: left !important;">${escapeHtml(cg.hoTen)} <small class="text-muted" style="display: block;">Số CC: ${escapeHtml(cg.soChungChi)}</small></td>
             <td style="vertical-align: middle;">
                 <select name="tothamdinh-chucvu" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-family: var(--font-primary); font-size: 0.84rem; font-weight: 600;" disabled>
                     <option value="Tổ viên">Tổ viên</option>
@@ -1004,7 +1002,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
           }
           return h;
         });
-        this.model.persistData("hopdong");
+        await this.model.persistData("hopdong");
       }
       if (Array.isArray(this.model.state.thongtinmothau)) {
         const oldBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(id));
@@ -1014,7 +1012,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
           goiThauId: newGtId
         }));
         this.model.state.thongtinmothau = [...this.model.state.thongtinmothau, ...newBids];
-        this.model.persistData("thongtinmothau");
+        await this.model.persistData("thongtinmothau");
       }
       const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
       if (assignedEmpId) {
@@ -1119,9 +1117,10 @@ export async function restoreCanceledPackage(id) {
   );
   if (!confirmed) return;
   gt.trangThai = previousState;
-  this.model.persistData("goithau");
+  await this.model.persistData("goithau");
   this.view.renderGoiThauTable();
-  this.autoSync();
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) return;
   await this.view.customAlert("Thành công", "Đã khôi phục trạng thái gói thầu thành công.", "check-circle");
 }
 export async function checkAndInheritCanceledPackage(planId) {

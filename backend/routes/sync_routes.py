@@ -72,6 +72,11 @@ from .sync_service import parse_sync_read_window
 active_connections = {}
 
 
+def _public_upload_path(value):
+    path = str(value or "").strip()
+    return "/" + path if path.startswith("uploads/") else path
+
+
 
 
 
@@ -331,6 +336,14 @@ async def sync_api(request):
 
 
         validation_errors = []
+        skipped_invalid_records = set()
+        incoming_ids_by_table = {}
+        for _payload_key, _table_name, _items in iter_sync_table_payloads(data):
+            incoming_ids_by_table.setdefault(_table_name, set()).update(
+                str(get_clean_id(_table_name, _item.get("id")))
+                for _item in _items
+                if isinstance(_item, dict) and get_clean_id(_table_name, _item.get("id"))
+            )
         incoming_paper_status_names = {
             str(item.get("name") or item.get("tenTrangThai") or "").strip()
             for item in data.get("custompaperstatuses", [])
@@ -362,7 +375,18 @@ async def sync_api(request):
                     incoming_paper_status_names
                 )
                 item_errors.extend(pure_errors)
-                item_errors.extend(validate_owner_scoped_references(cursor, org_name, table_name, item))
+                reference_errors = validate_owner_scoped_references(
+                    cursor,
+                    org_name,
+                    table_name,
+                    item,
+                    incoming_ids_by_table,
+                )
+                if table_name == "phan_cong_nhan_su" and reference_errors:
+                    skipped_invalid_records.add((table_name, str(c_id)))
+                    orphaned_ids.append({"table": table_name, "id": c_id})
+                    continue
+                item_errors.extend(reference_errors)
                 for status_name in requested_paper_statuses:
                     cursor.execute(
                         "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ?",
@@ -492,6 +516,9 @@ async def sync_api(request):
 
 
             for item in items:
+                item_id_for_skip = get_clean_id(table_name, item.get("id")) if isinstance(item, dict) else None
+                if (table_name, str(item_id_for_skip)) in skipped_invalid_records:
+                    continue
                 item = canonicalize_payload_item(table_name, item)
                 try:
                     db_row_data = {}
@@ -561,7 +588,12 @@ async def sync_api(request):
                                 if table_name == "chuyen_gia" and col in ["anh_chung_chi", "anh_chu_ky"] and val:
                                     ext_suffix = "cert" if col == "anh_chung_chi" else "sig"
                                     expert_id = clean_id(item.get('id'))
-                                    val = save_base64_image(val, "chuyen_gia", f"{expert_id}_{ext_suffix}")
+                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/uploads/") else val
+                                    val = save_base64_image(normalized_image, "chuyen_gia", f"{expert_id}_{ext_suffix}")
+                                elif table_name == "nha_thau" and col == "anh_dau" and val:
+                                    contractor_id = clean_id(item.get('id'))
+                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/uploads/") else val
+                                    val = save_base64_image(normalized_image, "nha_thau", f"{contractor_id}_stamp")
 
 
                                 if val is None and "NOT NULL" in col_type_upper:
@@ -895,7 +927,9 @@ async def get_all_data_api(request):
 
         nhathau = []
         for row in query_table("nha_thau"):
-            nhathau.append(map_db_to_json("nha_thau", dict(row)))
+            row_dict = dict(row)
+            row_dict["anh_dau"] = _public_upload_path(row_dict.get("anh_dau"))
+            nhathau.append(map_db_to_json("nha_thau", row_dict))
         attach_child_rows_to_items(cursor, "nha_thau", nhathau, owner_id=org_name)
 
 
@@ -1020,7 +1054,15 @@ async def get_all_data_api(request):
         # are paginated. Return an authoritative ID manifest so the client can
         # remove stale IndexedDB rows without downloading complete records.
         record_manifest = {}
+        reference_data = {}
         if is_full_initial_fetch:
+            reference_columns = {
+                "chudautu": ["id", "id_goc", "phien_ban", "is_latest", "ma_chu_dau_tu", "ten_chu_dau_tu", "ma_so_thue"],
+                "kehoach": ["id", "id_goc", "phien_ban", "is_latest", "ma_ke_hoach", "ten_ke_hoach", "chu_dau_tu_id"],
+                "goithau": ["id", "id_goc", "phien_ban", "is_latest", "ma_goi_thau", "ten_goi_thau", "ke_hoach_id", "trang_thai"],
+                "nhathau": ["id", "id_goc", "phien_ban", "is_latest", "ma_nha_thau", "ten_nha_thau", "ma_so_thue", "loai_nha_thau"],
+                "chuyengia": ["id", "id_goc", "phien_ban", "is_latest", "ho_ten", "so_cccd", "so_chung_chi"],
+            }
             for payload_key, table_name in TABLE_KEYS.items():
                 if table_name not in heavy_tables:
                     continue
@@ -1041,6 +1083,35 @@ async def get_all_data_api(request):
                     manifest_items,
                 )
                 record_manifest[payload_key] = [item["id"] for item in manifest_items]
+
+                selected_columns = reference_columns.get(payload_key)
+                if not selected_columns:
+                    continue
+                cursor.execute(
+                    f"SELECT {', '.join(selected_columns)} FROM {table_name} "
+                    "WHERE owner_id = ? AND is_latest = 1",
+                    (org_name,)
+                )
+                reference_items = []
+                for row in cursor.fetchall():
+                    row_dict = dict(row)
+                    reference_item = {
+                        json_key_for_column(table_name, column): row_dict.get(column)
+                        for column in selected_columns
+                    }
+                    # The client must never treat these lightweight dropdown
+                    # records as complete detail/edit records.
+                    reference_item["referenceOnly"] = True
+                    reference_items.append(reference_item)
+                reference_data[payload_key] = filter_items_for_read(
+                    cursor,
+                    role_str,
+                    user_id,
+                    org_name,
+                    payload_key,
+                    table_name,
+                    reference_items,
+                )
 
         if not is_manager_role(role_str):
             deletions = [
@@ -1069,6 +1140,7 @@ async def get_all_data_api(request):
             "useServerSidePagination": use_server_pagination,
             "paginatedKeys": paginated_payload_keys if use_server_pagination else [],
             "recordManifest": record_manifest,
+            "referenceData": reference_data,
             "dashboardSummary": dashboard_summary,
             "partial": is_partial_response,
             "timestamp": current_time,
@@ -1164,6 +1236,8 @@ async def record_api(request):
         if not can_read_record(cursor, role_str, user_id, org_name, table_key, table_name, row_dict):
             return JSONResponse({"error": "Không có quyền đọc bản ghi này."}, status_code=403)
 
+        if table_name == "nha_thau":
+            row_dict["anh_dau"] = _public_upload_path(row_dict.get("anh_dau"))
         item = map_db_to_json(table_name, row_dict)
         items = [item]
         if table_name in {"ke_hoach_lcnt", "goi_thau", "nha_thau"}:
@@ -1456,6 +1530,8 @@ async def paginate_api(request):
                 sig_path = row_dict.get("anh_chu_ky", "")
                 row_dict["anh_chung_chi"] = "/" + img_path if img_path and img_path.startswith("uploads") else img_path
                 row_dict["anh_chu_ky"] = "/" + sig_path if sig_path and sig_path.startswith("uploads") else sig_path
+            elif table_name == "nha_thau":
+                row_dict["anh_dau"] = _public_upload_path(row_dict.get("anh_dau"))
 
             item = map_db_to_json(table_name, row_dict)
 

@@ -27,7 +27,7 @@ export function isBasicExcelImportType(type) {
 export function isBusinessExcelImportType(type) {
   return BUSINESS_IMPORT_TYPES.has(type);
 }
-export function saveBasicExcelImport(controller, type, validRows) {
+export async function saveBasicExcelImport(controller, type, validRows) {
   if (!isBasicExcelImportType(type)) return null;
   if (type === "plan" || type === "kehoach") {
     const mappedData = validRows.map((row) => {
@@ -50,8 +50,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
       };
     });
     controller.model.state.kehoach.push(...mappedData);
-    controller.model.persistData("kehoach");
-    controller.view.renderKeHoachTable();
+    await controller.model.persistData("kehoach");
     return mappedData.length;
   }
   if (type === "package" || type === "goithau") {
@@ -93,9 +92,8 @@ export function saveBasicExcelImport(controller, type, validRows) {
       };
     });
     controller.model.state.goithau.push(...mappedData);
-    controller.model.persistData("goithau");
+    await controller.model.persistData("goithau");
     [...new Set(mappedData.map((gt) => gt.keHoachId).filter(Boolean))].forEach((pid) => controller.recalculatePlanTotal(pid));
-    controller.view.renderGoiThauTable();
     return mappedData.length;
   }
   if (type === "chudautu") {
@@ -128,8 +126,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
       };
     });
     upsertById(controller.model.state.chudautu, mappedData);
-    controller.model.persistData("chudautu");
-    controller.view.renderChuDauTuTable();
+    await controller.model.persistData("chudautu");
     return mappedData.length;
   }
   if (type === "nhathau") {
@@ -159,12 +156,13 @@ export function saveBasicExcelImport(controller, type, validRows) {
         soTaiKhoan: row.soTaiKhoan || "",
         noiMoTaiKhoan: row.noiMoTaiKhoan || "",
         maNganHang: row.maNganHang || "",
+        anhDau: row.anhDau || (existing ? existing.anhDau || "" : ""),
+        tenAnhDau: row.tenAnhDau || (existing ? existing.tenAnhDau || "" : ""),
         thanhVienLienDanh: existing ? existing.thanhVienLienDanh : []
       };
     });
     upsertById(controller.model.state.nhathau, mappedData);
-    controller.model.persistData("nhathau");
-    controller.view.renderNhaThauTable();
+    await controller.model.persistData("nhathau");
     return mappedData.length;
   }
   if (type === "chuyengia") {
@@ -194,8 +192,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
       };
     });
     upsertById(controller.model.state.chuyengia, mappedData);
-    controller.model.persistData("chuyengia");
-    controller.view.renderChuyenGiaTable();
+    await controller.model.persistData("chuyengia");
     return mappedData.length;
   }
   if (type === "hopdong") {
@@ -226,8 +223,7 @@ export function saveBasicExcelImport(controller, type, validRows) {
       };
     });
     upsertById(controller.model.state.hopdong, mappedData);
-    controller.model.persistData("hopdong");
-    controller.view.renderHopDongTable();
+    await controller.model.persistData("hopdong");
     return mappedData.length;
   }
   return null;
@@ -268,14 +264,12 @@ function ensureContractorForOpeningImport(controller, row) {
       thanhVienLienDanh: []
     };
     controller.model.state.nhathau.push(foundNt);
-    controller.model.persistData("nhathau");
   } else if (foundNt && row.loaiNhaThau && foundNt.loaiNhaThau !== row.loaiNhaThau) {
     foundNt.loaiNhaThau = row.loaiNhaThau;
-    controller.model.persistData("nhathau");
   }
   return foundNt;
 }
-function saveOpeningImport(controller, validRows) {
+async function saveOpeningImport(controller, validRows) {
   const select = document.getElementById("mothau-goithau-select");
   const gtId = select ? select.value : "";
   if (!gtId) return 0;
@@ -305,7 +299,10 @@ function saveOpeningImport(controller, validRows) {
       loaiNhaThau: foundNt ? foundNt.loaiNhaThau : row.loaiNhaThau
     });
   });
-  controller.model.persistData("thongtinmothau");
+  await Promise.all([
+    controller.model.persistData("nhathau"),
+    controller.model.persistData("thongtinmothau")
+  ]);
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (goiThau) {
     const tbody = document.getElementById("mothau-table-tbody");
@@ -321,7 +318,7 @@ function saveOpeningImport(controller, validRows) {
   }
   return validRows.length;
 }
-function saveEvaluationImport(controller, validRows) {
+async function saveEvaluationImport(controller, validRows) {
   const select = document.getElementById("danhgiahsdt-goithau-select");
   const gtId = select ? select.value : "";
   if (!gtId) return 0;
@@ -352,11 +349,11 @@ function saveEvaluationImport(controller, validRows) {
     bid.nguyenNhanKhongDatNangLuc = bid.danhGiaNangLuc === "Không đạt" ? row.nguyenNhanKhongDatNangLuc || "" : "";
     bid.nguyenNhanKhongDatKyThuat = bid.danhGiaKyThuat === "Không đạt" ? row.nguyenNhanKhongDatKyThuat || "" : "";
   });
-  controller.model.persistData("thongtinmothau");
+  await controller.model.persistData("thongtinmothau");
   controller.renderDanhGiaHsdtPanel();
   return validRows.length;
 }
-function saveAwardResultImport(controller, validRows) {
+async function saveAwardResultImport(controller, validRows) {
   const gtId = controller._currentResultPackageId;
   if (!gtId) return 0;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
@@ -411,12 +408,14 @@ function saveAwardResultImport(controller, validRows) {
     goiThau.thoiGianHopDong = "";
     goiThau.trangThai = "Hủy thầu";
   }
-  controller.model.persistData("goithau");
-  controller.model.persistData("thongtinmothau");
+  await Promise.all([
+    controller.model.persistData("goithau"),
+    controller.model.persistData("thongtinmothau")
+  ]);
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
-function saveOpeningFinancialImport(controller, validRows) {
+async function saveOpeningFinancialImport(controller, validRows) {
   const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
   const gtId = select ? select.value : controller._currentPackageId || "";
   if (!gtId) return 0;
@@ -431,16 +430,18 @@ function saveOpeningFinancialImport(controller, validRows) {
     bid.hieuLucHsdt = row.hieuLucHsdt || 0;
     bid.thoiGianThucHien = row.thoiGianThucHien || bid.thoiGianThucHien || defaultDuration || "";
   });
-  controller.model.persistData("thongtinmothau");
-  controller.model.persistData("goithau");
+  await Promise.all([
+    controller.model.persistData("thongtinmothau"),
+    controller.model.persistData("goithau")
+  ]);
   controller.view.showPackageDetails(gtId);
   return validRows.length;
 }
-export function saveBusinessExcelImport(controller, type, validRows) {
+export async function saveBusinessExcelImport(controller, type, validRows) {
   if (!isBusinessExcelImportType(type)) return null;
-  if (type === "mothau") return saveOpeningImport(controller, validRows);
-  if (type === "danhgiahsdt") return saveEvaluationImport(controller, validRows);
-  if (type === "ketquaqd") return saveAwardResultImport(controller, validRows);
-  if (type === "opening_fin") return saveOpeningFinancialImport(controller, validRows);
+  if (type === "mothau") return await saveOpeningImport(controller, validRows);
+  if (type === "danhgiahsdt") return await saveEvaluationImport(controller, validRows);
+  if (type === "ketquaqd") return await saveAwardResultImport(controller, validRows);
+  if (type === "opening_fin") return await saveOpeningFinancialImport(controller, validRows);
   return null;
 }

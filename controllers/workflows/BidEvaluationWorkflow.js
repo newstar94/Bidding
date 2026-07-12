@@ -3,6 +3,7 @@ import { bindCurrencyElement } from "../main_controller/domUtils.js";
 import { setVisible } from "../main_controller/formStateUtils.js";
 import { validateRequiredEvaluationReportFields } from "./bidEvaluationValidation.js";
 import { addEvaluationLetterRow, renderEvaluationSummary } from "./bidEvaluationRender.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export function renderDanhGiaHsdtPanel() {
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
   if (!select) return;
@@ -11,7 +12,7 @@ export function renderDanhGiaHsdtPanel() {
     if (g.id === selectedVal) return true;
     return g.trangThai === "Đang chấm thầu" || g.trangThai === "Đã có kết quả";
   });
-  select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${g.id}" data-search="${g.maGoiThau || ""} ${g.tenGoiThau || ""}">${g.tenGoiThau} (${g.maGoiThau || "Chưa có mã"})</option>`).join("");
+  select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join("");
   if (selectedVal && targetPackages.some((g) => g.id === selectedVal)) {
     select.value = selectedVal;
   } else {
@@ -1122,9 +1123,9 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
     if (finalConclusion === "Đạt" || finalConclusion === "Đạt (Xếp hạng 1)" || finalConclusion.startsWith("Đạt")) {
       cell.innerHTML = `<span class="badge badge-success" style="font-weight:700;">Đạt</span>`;
     } else if (finalConclusion && finalConclusion.startsWith("Không đạt")) {
-      cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${finalConclusion}</span>`;
+      cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${escapeHtml(finalConclusion)}</span>`;
     } else {
-      cell.innerHTML = `<span>${finalConclusion || "--"}</span>`;
+      cell.innerHTML = `<span>${escapeHtml(finalConclusion || "--")}</span>`;
     }
   } else {
     if (status === "fixed_pass") {
@@ -1133,7 +1134,7 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
       }
     } else if (status === "fixed_fail") {
       if (cell.textContent.trim() !== conclusion || !cell.querySelector(".badge-danger")) {
-        cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${conclusion}</span>`;
+        cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${escapeHtml(conclusion)}</span>`;
       }
     } else if (status === "user_select") {
       const existingSelect = cell.querySelector(".mt-dg-ketluan");
@@ -1252,7 +1253,7 @@ export async function saveDanhGiaHsdt() {
   } else {
     gt.danhGiaHsdtMetadata = JSON.stringify(activeBlock);
   }
-  this.model.persistData("goithau");
+  await this.model.persistData("goithau");
   const rows = this.view.getActiveElement("danhgiahsdt-table-tbody").querySelectorAll("tr");
   const updatedBidsList = [];
   rows.forEach((tr) => {
@@ -1356,9 +1357,10 @@ export async function saveDanhGiaHsdt() {
       }
     }
   });
-  this.model.persistData("thongtinmothau");
+  await this.model.persistData("thongtinmothau");
   this.view.renderGoiThauTable();
-  this.autoSync();
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) return;
   const stepKey = this.currentDanhGiaTab === "financial" ? "eval_fin" : "eval_tech";
   if (this.view._editingState) {
     this.view._editingState[stepKey] = false;

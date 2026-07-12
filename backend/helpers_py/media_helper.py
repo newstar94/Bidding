@@ -8,7 +8,7 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 
 _load_image_cache: dict = {}
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
-ALLOWED_IMAGE_SUBFOLDERS = {"chuyen_gia"}
+ALLOWED_IMAGE_SUBFOLDERS = {"chuyen_gia", "nha_thau"}
 ALLOWED_IMAGE_MIME_TO_EXT = {
     "image/png": "png",
     "image/jpeg": "jpg",
@@ -71,7 +71,7 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
             img.verify()
             img = Image.open(io.BytesIO(file_data))
             max_size = 1200
-            if "sig" in filename_prefix:
+            if "sig" in filename_prefix or "stamp" in filename_prefix:
                 max_size = 600
 
             if img.width > max_size or img.height > max_size:

@@ -1,5 +1,6 @@
 import { parseBidDateTime } from "./dateParseUtils.js";
 import { bindCurrencyElement } from "../main_controller/domUtils.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 function normalizeSubRowValue(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -25,11 +26,11 @@ export function addPhanLoRow(data = {}) {
   const displayStyle = linhVuc !== "Tư vấn" && !isDirectOrSpecial ? "" : "display: none;";
   const requiredAttr = isBaoDamRequired ? "required" : "";
   tr.innerHTML = `
-        <td><input type="text" class="pl-code-input" value="${code}" placeholder="Mã phần lô..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="pl-name-input" value="${name}" placeholder="Nhập tên Lô/Phần..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="text" class="pl-code-input" value="${escapeHtml(code)}" placeholder="Mã phần lô..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="text" class="pl-name-input" value="${escapeHtml(name)}" placeholder="Nhập tên Lô/Phần..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td><input type="text" class="pl-price-input" value="${price ? this.model.formatVND(price) : ""}" placeholder="Nhập giá trị Lô (VND)..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td class="col-baodam-phanlo-cell" style="${displayStyle}"><input type="text" class="pl-baodam-input mt-format-vnd" ${requiredAttr} value="${baoDamVal ? this.model.formatVND(baoDamVal) : ""}" placeholder="Bảo đảm dự thầu..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="pl-duration-input" value="${duration}" placeholder="Ví dụ: 90 ngày..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="text" class="pl-duration-input" value="${escapeHtml(duration)}" placeholder="Ví dụ: 90 ngày..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-pl-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
   const priceInput = tr.querySelector(".pl-price-input");
@@ -92,10 +93,10 @@ export function addTuyChonMuaThemRow(data = {}) {
   const tyLe = data.tyLe || data.percent || "";
   const giaTriUocTinh = data.giaTriUocTinh || data.price || 0;
   tr.innerHTML = `
-        <td><input type="text" class="tc-name-input" value="${hangMuc}" placeholder="Tên tùy chọn mua thêm..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="tc-unit-input" value="${donVi}" placeholder="Ví dụ: Cái, Bộ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="number" class="tc-quantity-input" value="${soLuong}" placeholder="Khối lượng..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="number" class="tc-percent-input" value="${tyLe}" placeholder="Tỷ lệ %..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="text" class="tc-name-input" value="${escapeHtml(hangMuc)}" placeholder="Tên tùy chọn mua thêm..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="text" class="tc-unit-input" value="${escapeHtml(donVi)}" placeholder="Ví dụ: Cái, Bộ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="number" class="tc-quantity-input" value="${escapeHtml(soLuong)}" placeholder="Khối lượng..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="number" class="tc-percent-input" value="${escapeHtml(tyLe)}" placeholder="Tỷ lệ %..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td><input type="text" class="tc-price-input" value="${giaTriUocTinh ? this.model.formatVND(giaTriUocTinh) : ""}" placeholder="Giá trị (VND)..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-tc-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
@@ -200,7 +201,7 @@ export function addGiaHanRow(data = {}) {
   tr.innerHTML = `
         <td class="gh-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">Lần ...</td>
         <td><input type="text" class="gh-time-input flatpickr-datetime" value="${data.thoiGianDongThau ? this.model.formatDate(data.thoiGianDongThau) : ""}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="gh-reason-input" value="${data.lyDoGiaHan || ""}" placeholder="Nhập lý do gia hạn..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="text" class="gh-reason-input" value="${escapeHtml(data.lyDoGiaHan || "")}" placeholder="Nhập lý do gia hạn..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-gh-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
   const timeInput = tr.querySelector(".gh-time-input");
@@ -257,7 +258,7 @@ export function addYeuCauLamRoRow(data = {}) {
   tr.innerHTML = `
         <td class="yc-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">...</td>
         <td><input type="text" class="yc-time-input flatpickr-datetime" value="${data.thoiGianYeuCau ? this.model.formatDate(data.thoiGianYeuCau) : ""}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
-        <td><input type="text" class="yc-content-input" value="${data.noiDungYeuCau || ""}" placeholder="Nhập nội dung yêu cầu làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
+        <td><input type="text" class="yc-content-input" value="${escapeHtml(data.noiDungYeuCau || "")}" placeholder="Nhập nội dung yêu cầu làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-yc-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
   tr.querySelector(".remove-yc-row-btn").addEventListener("click", () => {
@@ -311,7 +312,7 @@ export function addTraLoiLamRoRow(data = {}) {
   tr.innerHTML = `
         <td class="tl-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">...</td>
         <td><input type="text" class="tl-time-input flatpickr-datetime" value="${data.thoiGianTraLoi ? this.model.formatDate(data.thoiGianTraLoi) : ""}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
-        <td><input type="text" class="tl-content-input" value="${data.noiDungTraLoi || ""}" placeholder="Nhập nội dung trả lời làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
+        <td><input type="text" class="tl-content-input" value="${escapeHtml(data.noiDungTraLoi || "")}" placeholder="Nhập nội dung trả lời làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-tl-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
   tr.querySelector(".remove-tl-row-btn").addEventListener("click", () => {

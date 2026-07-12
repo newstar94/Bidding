@@ -37,7 +37,6 @@ export async function deleteChuyenGia(id) {
     this.model.state.chuyengia = this.model.state.chuyengia.filter((cg) => cg.id !== id);
     this.model.markDeleted("chuyengia", id);
     await this.model.persistData("chuyengia");
-    this.view.renderChuyenGiaTable();
     await this.autoSync();
   }
 }
@@ -250,8 +249,8 @@ export async function handleChuyenGiaSubmit(e) {
     data.updatedAt = this.model.getCurrentDateTimeString();
     this.model.state.chuyengia.push(data);
   }
-  this.model.persistData("chuyengia");
+  await this.model.persistData("chuyengia");
   this.view.closeModal("modal-chuyengia");
   this.view.renderChuyenGiaTable();
-  this.autoSync();
+  await this.autoSync();
 }

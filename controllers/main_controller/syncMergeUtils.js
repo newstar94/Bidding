@@ -17,8 +17,34 @@ export function mergeIncomingRecords(model, key, incoming) {
     }
   });
 }
+const hasMeaningfulValue = (value) => {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value).length > 0;
+  return value !== void 0 && value !== null && value !== "";
+};
+export function mergeReferenceRecords(model, key, incoming) {
+  if (!Array.isArray(model.state[key])) {
+    model.state[key] = [];
+  }
+  incoming.forEach((item) => {
+    const referenceItem = { ...item, referenceOnly: true };
+    const idx = model.state[key].findIndex((x) => String(x.id) === String(referenceItem.id));
+    if (idx === -1) {
+      model.state[key].push(referenceItem);
+      return;
+    }
+    const existing = model.state[key][idx] || {};
+    const referenceKeys = new Set([...Object.keys(referenceItem), "referenceOnly"]);
+    const hasFullRecordFields = existing.referenceOnly === false || Object.entries(existing).some(
+      ([field, value]) => !referenceKeys.has(field) && hasMeaningfulValue(value)
+    );
+    model.state[key][idx] = hasFullRecordFields
+      ? { ...referenceItem, ...existing, referenceOnly: false }
+      : { ...existing, ...referenceItem, referenceOnly: true };
+  });
+}
 export function applySyncPayload(model, dbData, options = {}) {
-  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "syncVersion", "dashboardSummary", "partial"]);
+  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "dashboardSummary", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
   const replacementsByTable = {};
@@ -36,7 +62,7 @@ export function applySyncPayload(model, dbData, options = {}) {
     model.dashboardSummary = null;
   }
   const shouldSkipEmptyPaginatedStore = (key, incoming) => {
-    return useServerSidePagination && paginatedKeys.has(key) && Array.isArray(incoming) && incoming.length === 0 && Array.isArray(model.state[key]) && model.state[key].length > 0;
+    return useServerSidePagination && paginatedKeys.has(key) && Array.isArray(incoming) && incoming.length === 0;
   };
   const applyIncoming = () => Object.keys(dbData).forEach((key) => {
     if (metadataKeys.has(key) || !Array.isArray(dbData[key])) return;
@@ -59,6 +85,22 @@ export function applySyncPayload(model, dbData, options = {}) {
     model.suspendMutationTracking(applyIncoming);
   } else {
     applyIncoming();
+  }
+  const applyReferenceData = () => Object.entries(dbData.referenceData || {}).forEach(([key, records]) => {
+    if (!Array.isArray(records) || records.length === 0) return;
+    const incoming = normalizeIncomingRecords(model, key, records);
+    mergeReferenceRecords(model, key, incoming);
+    changedKeys.add(key);
+    const recordsToPersist = incoming.map((item) => {
+      const stored = model.state[key].find((record) => String(record.id) === String(item.id));
+      return stored || item;
+    });
+    upsertsByTable[key] = [...(upsertsByTable[key] || []), ...recordsToPersist];
+  });
+  if (typeof model.suspendMutationTracking === "function") {
+    model.suspendMutationTracking(applyReferenceData);
+  } else {
+    applyReferenceData();
   }
   const mutationQueue = typeof model.getMutationQueue === "function" ? model.getMutationQueue() : null;
   Object.entries(dbData.recordManifest || {}).forEach(([key, serverRecordIds]) => {

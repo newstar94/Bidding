@@ -9,6 +9,16 @@ import {
   parseOpeningImport
 } from "./excelImportAdapters.js";
 import { isBasicExcelImportType, saveBasicExcelImport, saveBusinessExcelImport } from "./excelSaveAdapters.js";
+const IMPORT_STATE_KEY = {
+  plan: "kehoach",
+  kehoach: "kehoach",
+  package: "goithau",
+  goithau: "goithau",
+  chudautu: "chudautu",
+  nhathau: "nhathau",
+  chuyengia: "chuyengia",
+  hopdong: "hopdong"
+};
 export function setupExcelImportEvents() {
   document.querySelectorAll(".btn-download-excel-template-direct").forEach((btn) => {
     if (btn._hasExcelListener) return;
@@ -354,18 +364,23 @@ export async function saveExcelImport() {
     );
     if (!proceed) return;
   }
-  const basicImportCount = saveBasicExcelImport(this, type, validRows);
+  const basicImportCount = await saveBasicExcelImport(this, type, validRows);
   if (basicImportCount !== null) {
     count = basicImportCount;
+    const stateKey = IMPORT_STATE_KEY[type];
+    if (stateKey && this.model.currentPage) {
+      this.model.currentPage[stateKey] = 1;
+    }
   } else {
-    const businessImportCount = saveBusinessExcelImport(this, type, validRows);
+    const businessImportCount = await saveBusinessExcelImport(this, type, validRows);
     if (businessImportCount !== null) {
       count = businessImportCount;
     }
   }
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) return;
   this.view.closeModal("modal-excel-preview");
   await this.view.customAlert("Nhập khẩu thành công", `Đã nhập khẩu thành công ${count} dòng dữ liệu vào hệ thống!`, "check-circle");
-  this.autoSync();
 }
 export function exportPhatHanhPhanLoExcel(gt) {
   const rows = [];

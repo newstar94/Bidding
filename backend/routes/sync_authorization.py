@@ -17,8 +17,9 @@ def get_owner_type(cursor, owner_id):
     return "user"
 
 
-def validate_owner_scoped_references(cursor, owner_id, table_name, item):
+def validate_owner_scoped_references(cursor, owner_id, table_name, item, incoming_ids_by_table=None):
     errors = []
+    incoming_ids_by_table = incoming_ids_by_table or {}
     if table_name in {"phan_cong_nhan_su", "ma_tran_phan_quyen"}:
         emp_id = clean_id(get_payload_value(table_name, item, "id_nhan_vien" if table_name == "phan_cong_nhan_su" else "emp_id"))
         if emp_id and str(emp_id) != str(owner_id):
@@ -34,6 +35,9 @@ def validate_owner_scoped_references(cursor, owner_id, table_name, item):
         target_type = str(get_payload_value(table_name, item, "loai_doi_tuong") or "").strip()
         target_table = {"kehoach": "ke_hoach_lcnt", "goithau": "goi_thau", "hopdong": "hop_dong"}.get(target_type)
         if target_id and target_table:
+            if str(target_id) in incoming_ids_by_table.get(target_table, set()):
+                target_table = None
+        if target_id and target_table:
             cursor.execute(
                 f"SELECT 1 FROM {target_table} WHERE owner_id = ? AND id = ? LIMIT 1",
                 (owner_id, target_id),
@@ -44,6 +48,8 @@ def validate_owner_scoped_references(cursor, owner_id, table_name, item):
     for col_name, ref_table in OWNER_SCOPED_REFERENCES.get(table_name, []):
         ref_id = clean_id(get_payload_value(table_name, item, col_name))
         if not ref_id:
+            continue
+        if str(ref_id) in incoming_ids_by_table.get(ref_table, set()):
             continue
         cursor.execute(
             f"SELECT 1 FROM {ref_table} WHERE owner_id = ? AND id = ? LIMIT 1",

@@ -7,7 +7,6 @@ DATETIME_COLUMNS = {
     "thoi_gian_dong_thau",
     "thoi_gian_mo_thau",
     "thoi_gian_mo_ehsdxtc",
-    "thoi_gian_bat_dau_to_chuc",
     "thoi_gian",
 }
 

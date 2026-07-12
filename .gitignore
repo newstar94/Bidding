@@ -24,32 +24,54 @@ uploads/
 Thumbs.db
 Desktop.ini
 
-# Local editor/agent metadata
+# Local editor metadata
 .vscode/
-.agents/
 
 # Scratch files
 scratch/
 
 # Tool caches
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.nyc_output/
+coverage/
 test-results/
 playwright-report/
 blob-report/
+playwright/.cache/
 
-# Local automation testing files
+# Local test suite and runner configuration (not shipped to production)
 tests/
-docs/testing.md
 playwright.config.js
 pytest.ini
+
+# Test output is ignored above; test sources and runner configuration are tracked.
 
 # Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # Vite cache & build
 .vite/
 dist/
 .pw-bidding-profile/
+
+# Temporary and local-only files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.pid
+*.pid.lock
+*.local
+.idea/

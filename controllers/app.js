@@ -92,7 +92,7 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
   }, { once: true });
   document.head.appendChild(script);
 });
-window.addEventListener("DOMContentLoaded", async () => {
+const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
   if ("serviceWorker" in navigator && window.__BF_APP_DEBUG__ === false) {
     navigator.serviceWorker.register("/service-worker.js").catch(() => {
@@ -121,4 +121,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (loaded) window.lucide.createIcons();
     });
   });
-});
+};
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", bootstrapApplication, { once: true });
+} else {
+  bootstrapApplication();
+}

@@ -1,4 +1,4 @@
-import { initCustomSelect } from "../view_helpers.js";
+import { escapeHtml, initCustomSelect, safeImageSrc } from "../view_helpers.js";
 import { sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 export async function renderNhaThauTable() {
@@ -195,6 +195,8 @@ export function renderNhaThauVersionDetails(versionId) {
     `;
   const addressParts = (nt.diaChi || "").split(" | ");
   const addressStr = addressParts.filter(Boolean).join(", ");
+  const stampSrc = safeImageSrc(nt.anhDau);
+  const stampFileName = escapeHtml(nt.tenAnhDau || "Ảnh dấu nhà thầu");
   let detailsHtml = "";
   const isJV = nt.loaiNhaThau === "Liên danh";
   if (isJV) {
@@ -303,6 +305,17 @@ export function renderNhaThauVersionDetails(versionId) {
                 <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${nt.tenNhaThau || "Nhà thầu chưa có tên"}</h4>
             </div>
             ${detailsHtml}
+            ${stampSrc ? `
+              <div style="margin-top: 24px;">
+                <h5 class="detail-sub-title">Ảnh dấu nhà thầu</h5>
+                <div class="file-preview-container" style="display: inline-flex; max-width: 360px;">
+                  <a href="${stampSrc}" target="_blank" rel="noopener noreferrer" title="Xem ảnh dấu">
+                    <img src="${stampSrc}" alt="${stampFileName}" style="max-height: 180px; max-width: 320px; object-fit: contain;">
+                  </a>
+                  <div class="text-muted" style="font-size: 0.8rem;">${stampFileName}</div>
+                </div>
+              </div>
+            ` : ""}
         </div>
     `;
   const contentEl = document.getElementById("fullpage-nhathau-content");

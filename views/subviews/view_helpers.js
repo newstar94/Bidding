@@ -96,6 +96,17 @@ export function formatDate(dateStr) {
   }
   return `${day}/${month}/${year}`;
 }
+export function formatDateOnly(dateStr) {
+  if (!dateStr) return "--";
+  const str = String(dateStr).trim();
+  const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymdMatch) return `${ymdMatch[3]}/${ymdMatch[2]}/${ymdMatch[1]}`;
+  const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (dmyMatch) return `${dmyMatch[1]}/${dmyMatch[2]}/${dmyMatch[3]}`;
+  const parsed = dateStr instanceof Date ? dateStr : new Date(dateStr);
+  if (Number.isNaN(parsed.getTime())) return str;
+  return `${String(parsed.getDate()).padStart(2, "0")}/${String(parsed.getMonth() + 1).padStart(2, "0")}/${parsed.getFullYear()}`;
+}
 export function initCustomSelect(selectId) {
   const select = document.getElementById(selectId);
   if (!select) return;

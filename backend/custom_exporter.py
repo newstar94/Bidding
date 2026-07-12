@@ -811,7 +811,7 @@ def generate_report_from_custom_template(template_path, context, custom_vars=[])
                             res[k] = mask_sensitive(v)
                         elif isinstance(v, list):
                             res[k] = [mask_sensitive(x) if isinstance(x, dict) else x for x in v]
-                        elif any(sub in str(k).lower() for sub in ['cccd', 'cmt', 'passport', 'token', 'mat_khau', 'password', 'anh_chung_chi', 'anh_chu_ky', 'signature', 'base64']):
+                        elif any(sub in str(k).lower() for sub in ['cccd', 'cmt', 'passport', 'token', 'mat_khau', 'password', 'anh_chung_chi', 'anh_chu_ky', 'anh_dau', 'signature', 'base64']):
                             res[k] = '[MASKED]'
                         else:
                             res[k] = v

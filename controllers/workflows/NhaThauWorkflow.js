@@ -1,6 +1,24 @@
 import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
 import { applyRawAddressToAddressControls, composeInternalAddress } from "../utils/PartnerHelpers.js";
 import { bindPartnerTaxCodeLookup } from "./partnerTaxLookup.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+const safeStampSrc = (value) => {
+  const src = String(value || "").trim();
+  if (/^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) return src;
+  if (/^\/uploads\/nha_thau\/[a-z0-9._-]+$/i.test(src)) return src;
+  return "";
+};
+const setNhaThauStampPreview = (value, isReadOnly = false) => {
+  const uploadZone = document.getElementById("nt-upload-zone-dau");
+  const previewContainer = document.getElementById("nt-preview-container-dau");
+  const previewImg = document.getElementById("nt-anh-preview-dau");
+  const removeBtn = document.getElementById("btn-nt-remove-file-dau");
+  const src = safeStampSrc(value);
+  if (previewImg) previewImg.src = src;
+  if (previewContainer) previewContainer.style.display = src ? "flex" : "none";
+  if (uploadZone) uploadZone.style.display = src || isReadOnly ? "none" : "flex";
+  if (removeBtn) removeBtn.style.display = isReadOnly ? "none" : "";
+};
 export async function deleteNhaThau(id) {
   const nt = this.model.state.nhathau.find((n) => n.id === id);
   if (!nt) return;
@@ -51,7 +69,6 @@ export async function deleteNhaThau(id) {
     this.model.state.nhathau = this.model.state.nhathau.filter((n) => n.id !== id);
     this.model.markDeleted("nhathau", id);
     await this.model.persistData("nhathau");
-    this.view.renderNhaThauTable();
     await this.autoSync();
   }
 }
@@ -117,6 +134,8 @@ export async function editNhaThau(id, isReadOnly = false) {
       if (document.getElementById("nt-sotaikhoan")) document.getElementById("nt-sotaikhoan").value = nt.soTaiKhoan || "";
       if (document.getElementById("nt-noimotaikhoan")) document.getElementById("nt-noimotaikhoan").value = nt.noiMoTaiKhoan || "";
       if (document.getElementById("nt-manganhang")) document.getElementById("nt-manganhang").value = nt.maNganHang || "";
+      this.tempNhaThauStampBase64 = safeStampSrc(nt.anhDau);
+      setNhaThauStampPreview(this.tempNhaThauStampBase64, isReadOnly);
     } else {
       window._nhaThauViewOnly = false;
       this.switchTab("nhathau", "taomoi", true);
@@ -128,6 +147,8 @@ export async function editNhaThau(id, isReadOnly = false) {
       await this.initAddressDropdowns("nt-tinh", "nt-xa", "", "", false);
       const idInput = document.getElementById("form-nhathau-id");
       if (idInput) idInput.value = "";
+      this.tempNhaThauStampBase64 = "";
+      setNhaThauStampPreview("", false);
     }
     const partnerCodeInput = document.getElementById("nt-ma");
     const partnerTaxInput = document.getElementById("nt-mst");
@@ -310,6 +331,10 @@ export async function handleNhaThauSubmit(e) {
   const huyenName = huyenSelect.options[huyenSelect.selectedIndex]?.getAttribute("data-name") || "";
   const diachichitiet = document.getElementById("nt-diachichitiet").value.trim();
   const diaChiCombined = composeInternalAddress(diachichitiet, huyenName, tinhName);
+  const currentNtForStamp = id ? this.model.state.nhathau.find((n) => n.id === id) : null;
+  const stampValue = safeStampSrc(this.tempNhaThauStampBase64);
+  const stampIsNewUpload = stampValue.startsWith("data:image/");
+  const stampExt = stampValue ? this.model.getFileExtensionFromBase64(stampValue) : "";
   let data = {
     maNhaThau,
     tenNhaThau,
@@ -325,7 +350,13 @@ export async function handleNhaThauSubmit(e) {
     diaChiGoc: form.dataset.diaChiGoc || "",
     soTaiKhoan: document.getElementById("nt-sotaikhoan").value.trim(),
     noiMoTaiKhoan: document.getElementById("nt-noimotaikhoan").value.trim(),
-    maNganHang: document.getElementById("nt-manganhang").value.trim()
+    maNganHang: document.getElementById("nt-manganhang").value.trim(),
+    anhDau: stampValue,
+    tenAnhDau: stampValue
+      ? stampIsNewUpload
+        ? `DAU_${maNhaThau || "NHA_THAU"}.${stampExt}`
+        : currentNtForStamp?.tenAnhDau || `DAU_${maNhaThau || "NHA_THAU"}.${stampExt}`
+      : ""
   };
   if (id) {
     const currentNt = this.model.state.nhathau.find((n) => n.id === id);
@@ -379,7 +410,7 @@ export async function handleNhaThauSubmit(e) {
   if (contractModal && contractModal.classList.contains("active")) {
     const ntSelect = document.getElementById("hd-nhathauid");
     if (ntSelect) {
-      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${n.id}" data-search="${n.maNhaThau || ""} ${n.tenNhaThau || ""}">${n.tenNhaThau || ""}${this.model.getPendingLabel("nhathau", n.id)}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
+      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
       ntSelect.value = data.id;
       ntSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }

@@ -1,4 +1,6 @@
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
+
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export async function deleteHopDong(id) {
   const targetHd = this.model.state.hopdong.find((h) => h.id === id);
   if (!targetHd) return;
@@ -42,7 +44,6 @@ export async function deleteHopDong(id) {
       });
     }
     await this.model.persistData("hopdong");
-    this.view.renderHopDongTable();
     try {
       await this.autoSync();
     } catch (e) {
@@ -53,7 +54,6 @@ export async function deleteHopDong(id) {
     this.model.state.hopdong = this.model.state.hopdong.filter((h) => (h.rootId || h.id) !== rootId);
     this.model.markDeleted("hopdong", relatedIds);
     await this.model.persistData("hopdong");
-    this.view.renderHopDongTable();
     try {
       await this.autoSync();
     } catch (e) {
@@ -64,10 +64,10 @@ export async function deleteHopDong(id) {
     }
   }
 }
-export function editHopDong(id) {
+export async function editHopDong(id) {
   if (!document.getElementById("modal-hopdong")) {
-    this.ensureLazyModal?.("modal-hopdong").then(() => this.editHopDong(id));
-    return;
+    await this.ensureLazyModal?.("modal-hopdong");
+    return this.editHopDong(id);
   }
   try {
     const form = document.getElementById("form-hopdong");
@@ -92,15 +92,15 @@ export function editHopDong(id) {
     coQdSelect.onchange = toggleQdFields;
     const cdtSelect = document.getElementById("hd-chudautuid");
     const chudautuList = this.model.getLatestChuDauTu();
-    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu || ""}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
     this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
     const ntSelect = document.getElementById("hd-nhathauid");
     const nhathauList = this.model.getLatestNhaThau();
-    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${n.id}" data-search="${n.maNhaThau || ""} ${n.tenNhaThau || ""}">${n.tenNhaThau || ""}${this.model.getPendingLabel("nhathau", n.id)}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
+    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
     this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu...");
     const khSelect = document.getElementById("hd-kehoachid");
     const planList = typeof this.model.getLatestPlans === "function" ? this.model.getLatestPlans() : Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : [];
-    khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${kh.id}" data-search="${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}">${kh.tenKeHoach || ""}${this.model.getPendingLabel("kehoach", kh.id)}</option>`).join("");
+    khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${escapeHtml(kh.id)}" data-search="${escapeHtml(`${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}`)}">${escapeHtml(kh.tenKeHoach || "")}${escapeHtml(this.model.getPendingLabel("kehoach", kh.id))}</option>`).join("");
     this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch...");
     const getPlanVersionIds = (selectedPlanId) => {
       if (!selectedPlanId) return [];
@@ -123,8 +123,8 @@ export function editHopDong(id) {
       } else {
         gtContainer.innerHTML = filteredGoithau.map((g) => `
                     <label class="checkbox-item" style="display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer; font-size:0.85rem;">
-                         <input type="checkbox" name="hd-goithau-checkbox" value="${g.id}" ${checkedIds.includes(g.id) ? "checked" : ""}>
-                         <span><strong>${g.maGoiThau || ""}</strong> - ${g.tenGoiThau || ""}</span>
+                         <input type="checkbox" name="hd-goithau-checkbox" value="${escapeHtml(g.id)}" ${checkedIds.includes(g.id) ? "checked" : ""}>
+                         <span><strong>${escapeHtml(g.maGoiThau || "")}</strong> - ${escapeHtml(g.tenGoiThau || "")}</span>
                     </label>
                 `).join("");
       }
@@ -150,7 +150,7 @@ export function editHopDong(id) {
       if (versionSelect && versionGroup) {
         versionSelect.innerHTML = versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
-          return `<option value="${v.id}">${label}</option>`;
+          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
         }).join("");
         versionGroup.style.display = "flex";
         versionSelect.onchange = (e) => {
@@ -158,12 +158,12 @@ export function editHopDong(id) {
           if (selectedVerCdt && confirmContainer && confirmInfo) {
             confirmContainer.style.display = "block";
             confirmInfo.innerHTML = `
-                            <strong>Mã:</strong> ${selectedVerCdt.maChuDauTu || "--"}<br>
-                            <strong>Tên:</strong> ${selectedVerCdt.tenChuDauTu || "--"}<br>
-                            <strong>MST:</strong> ${selectedVerCdt.maSoThue || "--"}<br>
-                            <strong>Người ký:</strong> ${selectedVerCdt.danhXung || "Ông"} ${selectedVerCdt.daiDienCdt || "--"} (${selectedVerCdt.chucVuDaiDien || "--"})<br>
-                            <strong>Địa chỉ:</strong> ${(selectedVerCdt.diaChi || "").replace(/\s*\|\s*/g, ", ")}<br>
-                            <strong>Tài khoản:</strong> ${selectedVerCdt.soTaiKhoan || "--"} tại ${selectedVerCdt.noiMoTaiKhoan || "--"}
+                            <strong>Mã:</strong> ${escapeHtml(selectedVerCdt.maChuDauTu || "--")}<br>
+                            <strong>Tên:</strong> ${escapeHtml(selectedVerCdt.tenChuDauTu || "--")}<br>
+                            <strong>MST:</strong> ${escapeHtml(selectedVerCdt.maSoThue || "--")}<br>
+                            <strong>Người ký:</strong> ${escapeHtml(selectedVerCdt.danhXung || "Ông")} ${escapeHtml(selectedVerCdt.daiDienCdt || "--")} (${escapeHtml(selectedVerCdt.chucVuDaiDien || "--")})<br>
+                            <strong>Địa chỉ:</strong> ${escapeHtml((selectedVerCdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}<br>
+                            <strong>Tài khoản:</strong> ${escapeHtml(selectedVerCdt.soTaiKhoan || "--")} tại ${escapeHtml(selectedVerCdt.noiMoTaiKhoan || "--")}
                         `;
           }
         };
@@ -198,7 +198,7 @@ export function editHopDong(id) {
       if (versionSelect && versionGroup) {
         versionSelect.innerHTML = versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
-          return `<option value="${v.id}">${label}</option>`;
+          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
         }).join("");
         versionGroup.style.display = "flex";
         versionSelect.onchange = (e) => {
@@ -207,17 +207,17 @@ export function editHopDong(id) {
             confirmContainer.style.display = "block";
             const isJV = selectedVerNt.loaiNhaThau === "Liên danh";
             let detailsHtml = `
-                            <strong>Mã:</strong> ${selectedVerNt.maNhaThau || "--"}<br>
-                            <strong>Tên:</strong> ${selectedVerNt.tenNhaThau || "--"}<br>
-                            <strong>MST:</strong> ${selectedVerNt.maSoThue || "--"}<br>
-                            <strong>Người đại diện:</strong> ${selectedVerNt.danhXung || "Ông"} ${selectedVerNt.nguoiDaiDien || "--"}<br>
-                            <strong>Địa chỉ:</strong> ${(selectedVerNt.diaChi || "").replace(/\s*\|\s*/g, ", ")}<br>
-                            <strong>Tài khoản:</strong> ${selectedVerNt.soTaiKhoan || "--"} tại ${selectedVerNt.noiMoTaiKhoan || "--"}
+                            <strong>Mã:</strong> ${escapeHtml(selectedVerNt.maNhaThau || "--")}<br>
+                            <strong>Tên:</strong> ${escapeHtml(selectedVerNt.tenNhaThau || "--")}<br>
+                            <strong>MST:</strong> ${escapeHtml(selectedVerNt.maSoThue || "--")}<br>
+                            <strong>Người đại diện:</strong> ${escapeHtml(selectedVerNt.danhXung || "Ông")} ${escapeHtml(selectedVerNt.nguoiDaiDien || "--")}<br>
+                            <strong>Địa chỉ:</strong> ${escapeHtml((selectedVerNt.diaChi || "").replace(/\s*\|\s*/g, ", "))}<br>
+                            <strong>Tài khoản:</strong> ${escapeHtml(selectedVerNt.soTaiKhoan || "--")} tại ${escapeHtml(selectedVerNt.noiMoTaiKhoan || "--")}
                         `;
             if (isJV) {
               const members = selectedVerNt.thanhVienLienDanh || [];
               const memberDetails = members.map((m, idx) => `
-                                <div>+ TV ${idx + 1}: ${m.tenNhaThau || "--"} (MST: ${m.maSoThue || "--"}, Đại diện: ${m.danhXung || "Ông"} ${m.nguoiDaiDien || "--"})</div>
+                                <div>+ TV ${idx + 1}: ${escapeHtml(m.tenNhaThau || "--")} (MST: ${escapeHtml(m.maSoThue || "--")}, Đại diện: ${escapeHtml(m.danhXung || "Ông")} ${escapeHtml(m.nguoiDaiDien || "--")})</div>
                             `).join("");
               detailsHtml += `<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-color);">
                                 <strong>Thành viên Liên danh (${members.length}):</strong>
@@ -271,7 +271,7 @@ export function editHopDong(id) {
         const roleLabel = _roleLabelMap[e.role] || e.role;
         const matchedExpert = this.model.state.chuyengia.find((cg) => cg.hoTen.toLowerCase().trim() === e.name.toLowerCase().trim());
         const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
-        return `<option value="${e.id}" data-search="${e.name} ${roleLabel} ${e.email || ""} ${extraSearch}">${e.name} — ${roleLabel}${e.email ? " (" + e.email + ")" : ""}</option>`;
+        return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${e.name} ${roleLabel} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(e.name)} — ${escapeHtml(roleLabel)}${e.email ? ` (${escapeHtml(e.email)})` : ""}</option>`;
       }).join("");
       empDropdown.innerHTML = '<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml;
       restoreHdEmpValue();
@@ -297,7 +297,7 @@ export function editHopDong(id) {
     if (statusSelect) {
       const orgId = "1";
       const orgStatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses.filter((s) => s.orgId === orgId) : [];
-      statusSelect.innerHTML = '<option value="">-- Chọn Trạng thái --</option>' + orgStatuses.map((s) => `<option value="${s.name}">${s.name}</option>`).join("");
+      statusSelect.innerHTML = '<option value="">-- Chọn Trạng thái --</option>' + orgStatuses.map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join("");
     }
     if (id) {
       captureModalReturnState(this.model.state.activetab || "hopdong", this.model.state.activeaction || null);
@@ -308,6 +308,12 @@ export function editHopDong(id) {
       document.getElementById("hd-ten").value = hd.tenHopDong;
       document.getElementById("hd-so").value = hd.soHopDong;
       document.getElementById("hd-ngayky").value = this.model.formatForDateInput(hd.ngayKy);
+      const relatedRecordsToLoad = [
+        ["chudautu", hd.chuDauTuId],
+        ["nhathau", hd.nhaThauId],
+        ["kehoach", hd.keHoachId]
+      ].filter(([table, recordId]) => recordId && !this.model.state[table]?.some((item) => String(item.id) === String(recordId)));
+      await Promise.all(relatedRecordsToLoad.map(([table, recordId]) => this.fetchRecordByLookup(table, recordId)));
       const currentCdt = this.model.state.chudautu.find((c) => c.id === hd.chuDauTuId);
       if (currentCdt) {
         const rootId = currentCdt.rootId || currentCdt.id;
@@ -521,11 +527,11 @@ export async function handleHopDongSubmit(e) {
       await this.model.addRecord("assignments", { id: window.generateRecordId("assignments"), empId: assignedEmpId, targetId: finalHdId, type: "hopdong" });
     }
   }
-  this.model.persistData("hopdong");
+  await this.model.persistData("hopdong");
   if (hasModalReturnState("hopdong-detail") && finalHdId) {
     updateModalReturnAction(finalHdId);
   }
   this.closeModal("modal-hopdong");
   this.view.renderHopDongTable();
-  this.autoSync();
+  await this.autoSync();
 }

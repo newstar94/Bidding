@@ -1,5 +1,6 @@
 import { authFetchDownload } from "../utils/workflow_helpers.js";
 import { makeSearchableSelect } from "../utils/PartnerHelpers.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
   if (templateInput) {
@@ -158,6 +159,8 @@ export function setupWordTemplatesEvents() {
       { value: "so_tai_khoan", label: "Số tài khoản nhà thầu" },
       { value: "noi_mo_tai_khoan", label: "Nơi mở tài khoản nhà thầu" },
       { value: "ma_ngan_hang", label: "Mã ngân hàng nhà thầu" },
+      { value: "anh_dau", label: "Ảnh dấu nhà thầu" },
+      { value: "ten_anh_dau", label: "Tên ảnh dấu nhà thầu" },
       { value: "phien_ban", label: "Phiên bản dữ liệu" }
     ],
     "hop_dong": [
@@ -462,7 +465,7 @@ export function setupWordTemplatesEvents() {
     ];
     box.innerHTML = suggestions.map((item) => {
       const formula = item.formula.replaceAll("__var__", variableName);
-      return `<button type="button" class="btn btn-outline btn-sm btn-wmc-suggestion" data-formula="${formula.replace(/"/g, "&quot;")}" style="padding: 4px 8px; font-size: 0.74rem;">${item.label}</button>`;
+      return `<button type="button" class="btn btn-outline btn-sm btn-wmc-suggestion" data-formula="${escapeHtml(formula)}" style="padding: 4px 8px; font-size: 0.74rem;">${escapeHtml(item.label)}</button>`;
     }).join("");
     box.style.display = "flex";
   };
@@ -527,7 +530,7 @@ export function setupWordTemplatesEvents() {
     const match = mappings.find((m) => m.sourceTable === table && m.sourceColumn === column);
     statusDiv.style.display = "block";
     if (match) {
-      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success" style="background:var(--success); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Đã có {${match.tenBien}}</span>`;
+      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success" style="background:var(--success); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Đã có {${escapeHtml(match.tenBien)}}</span>`;
       if (inputVar && !document.getElementById("wm-id").value) {
         inputVar.value = match.tenBien;
       }
@@ -548,7 +551,7 @@ export function setupWordTemplatesEvents() {
     const match = mappings.find((m) => m.sourceTable === table && (!m.sourceColumn || m.sourceColumn === "*"));
     statusDiv.style.display = "block";
     if (match) {
-      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success" style="background:var(--success); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Đã có {#${match.tenBien}}</span>`;
+      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success" style="background:var(--success); color:#fff; padding:2px 6px; border-radius:4px; font-weight:700;">Đã có {#${escapeHtml(match.tenBien)}}</span>`;
       if (inputVar && !document.getElementById("wml-id").value) {
         inputVar.value = match.tenBien;
       }
@@ -1012,7 +1015,7 @@ export async function loadWordMappings() {
     this.model.state.wordMappings = [];
     const tbody = document.getElementById("dictionary-table-body");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted" style="padding: 24px;">Không tải được danh sách biến Word: ${err.message || err}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted" style="padding: 24px;">Không tải được danh sách biến Word: ${escapeHtml(err.message || err)}</td></tr>`;
     }
   }
 }

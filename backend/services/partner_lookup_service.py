@@ -1,6 +1,6 @@
+import os
 import threading
 import time
-import os
 import urllib.request
 import urllib.error
 import json
@@ -371,11 +371,11 @@ def run_partner_lookup_worker():
                             dia_chi = CASE WHEN dia_chi IS NULL OR dia_chi = '' THEN ? ELSE dia_chi END,
                             dia_chi_goc = CASE WHEN dia_chi_goc IS NULL OR dia_chi_goc = '' THEN ? ELSE dia_chi_goc END,
                             ten_viet_tat = CASE WHEN ten_viet_tat IS NULL OR ten_viet_tat = '' THEN ? ELSE ten_viet_tat END,
-                            ma_so_thue = ?,
+                            ma_so_thue = CASE WHEN ? != '' THEN ? ELSE ma_so_thue END,
                             sync_version = ?,
                             updated_at = datetime('now', 'localtime')
                         WHERE id = ?
-                    """, (new_name, new_address, new_address_raw, new_short_name, returned_tax_code, new_sync_ver, c_id))
+                    """, (new_name, new_address, new_address_raw, new_short_name, returned_tax_code, returned_tax_code, new_sync_ver, c_id))
 
 
                     cursor.execute("""

@@ -1,3 +1,4 @@
+/* Generated from backend/helpers_py/schema.py. Do not edit by hand. */
 export const SCHEMA_CONTRACT = {
   "clientTableMap": {
     "assignments": "phan_cong_nhan_su",
@@ -19,6 +20,7 @@ export const SCHEMA_CONTRACT = {
     "anh_chu_ky": "anhChuKy",
     "anh_chung_chi": "anhChungChi",
     "anh_dai_dien": "anhDaiDien",
+    "anh_dau": "anhDau",
     "bao_dam_du_thau": "baoDamDuThau",
     "chu_dau_tu_id": "chuDauTuId",
     "chuc_vu": "chucVu",
@@ -170,6 +172,7 @@ export const SCHEMA_CONTRACT = {
     "target_type": "targetType",
     "ten_anh_chu_ky": "tenAnhChuKy",
     "ten_anh_chung_chi": "tenAnhChungChi",
+    "ten_anh_dau": "tenAnhDau",
     "ten_bien": "tenBien",
     "ten_chu_dau_tu": "tenChuDauTu",
     "ten_cong_viec": "tenCongViec",
@@ -1213,11 +1216,14 @@ export const SCHEMA_CONTRACT = {
         "so_tai_khoan",
         "noi_mo_tai_khoan",
         "ma_ngan_hang",
+        "anh_dau",
+        "ten_anh_dau",
         "sync_version",
         "created_at",
         "updated_at"
       ],
       "fieldMap": {
+        "anh_dau": "anhDau",
         "chuc_vu_dai_dien": "chucVuDaiDien",
         "created_at": "createdAt",
         "danh_xung": "danhXung",
@@ -1239,12 +1245,14 @@ export const SCHEMA_CONTRACT = {
         "so_dien_thoai": "soDienThoai",
         "so_tai_khoan": "soTaiKhoan",
         "sync_version": "syncVersion",
+        "ten_anh_dau": "tenAnhDau",
         "ten_nha_thau": "tenNhaThau",
         "ten_viet_tat": "tenVietTat",
         "updated_at": "updatedAt"
       },
       "jsonFields": [],
       "reverseFieldMap": {
+        "anhDau": "anh_dau",
         "chucVuDaiDien": "chuc_vu_dai_dien",
         "createdAt": "created_at",
         "danhXung": "danh_xung",
@@ -1266,6 +1274,7 @@ export const SCHEMA_CONTRACT = {
         "soDienThoai": "so_dien_thoai",
         "soTaiKhoan": "so_tai_khoan",
         "syncVersion": "sync_version",
+        "tenAnhDau": "ten_anh_dau",
         "tenNhaThau": "ten_nha_thau",
         "tenVietTat": "ten_viet_tat",
         "updatedAt": "updated_at"
@@ -1760,9 +1769,11 @@ export const SCHEMA_CONTRACT = {
   },
   "version": 1
 };
+
 export const CLIENT_TABLE_MAP = SCHEMA_CONTRACT.clientTableMap;
 export const COMMON_FIELD_NAME_OVERRIDES = SCHEMA_CONTRACT.commonFieldMap;
 export const FIELD_MAP_BY_TABLE = Object.fromEntries(
   Object.entries(SCHEMA_CONTRACT.tables).map(([table, spec]) => [table, spec.fieldMap || {}])
 );
+
 export const resolveSchemaTable = (type) => CLIENT_TABLE_MAP[type] || type;

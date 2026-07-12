@@ -165,6 +165,8 @@ SCHEMA_DINH_NGHIA = {
             "so_tai_khoan": "TEXT",
             "noi_mo_tai_khoan": "TEXT",
             "ma_ngan_hang": "TEXT",
+            "anh_dau": "TEXT",
+            "ten_anh_dau": "TEXT",
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"

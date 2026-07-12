@@ -421,7 +421,7 @@ async def protected_upload_api(request):
     if not file_path.startswith(uploads_root + os.sep) or not os.path.isfile(file_path):
         return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
 
-    if not rel_path.startswith('chuyen_gia/'):
+    if not rel_path.startswith(('chuyen_gia/', 'nha_thau/')):
         return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
 
     conn = None
@@ -431,15 +431,21 @@ async def protected_upload_api(request):
         filename = os.path.basename(rel_path)
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT 1 FROM chuyen_gia
-            WHERE owner_id = ? AND (anh_chung_chi = ? OR anh_chu_ky = ?)
-            """,
-            (owner_id, stored_path, stored_path)
-        )
+        if rel_path.startswith('nha_thau/'):
+            cursor.execute(
+                "SELECT 1 FROM nha_thau WHERE owner_id = ? AND anh_dau = ?",
+                (owner_id, stored_path)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT 1 FROM chuyen_gia
+                WHERE owner_id = ? AND (anh_chung_chi = ? OR anh_chu_ky = ?)
+                """,
+                (owner_id, stored_path, stored_path)
+            )
         allowed = cursor.fetchone() is not None
-        if not allowed and '_opt_' in filename:
+        if not allowed and rel_path.startswith('chuyen_gia/') and '_opt_' in filename:
             original_prefix = filename.split('_opt_', 1)[0]
             cursor.execute(
                 """

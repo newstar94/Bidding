@@ -19,6 +19,7 @@ import {
 import { renderOpeningSummary } from "./bidProcessRender.js";
 import { parseVietnamAddress } from "../utils/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "./partnerTaxLookup.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 function normalizeContractorLookupCode(value) {
   return normalizeTaxCodeForCompare(value);
 }
@@ -198,9 +199,10 @@ export async function moThauGoiThau(id) {
   const ymdStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
   gt.thoiGianMoThau = ymdStr;
   gt.trangThai = "Đã mở thầu";
-  this.model.persistData("goithau");
+  await this.model.persistData("goithau");
   this.view.renderGoiThauTable();
-  this.autoSync();
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) return;
   await this.view.customAlert(
     "Thành công",
     `Đã tiến hành mở thầu thành công cho gói thầu "${gt.tenGoiThau}". Trạng thái hiện tại: Đã mở thầu. Hãy tiến hành điền thông tin mở thầu và lưu lại!`,
@@ -302,10 +304,11 @@ export async function handlePhatHanhHsmtSubmit(e) {
       gt.giaTriDamBaoDuThau = 0;
     }
     gt.trangThai = "Đang mời thầu";
-    this.model.persistData("goithau");
+    await this.model.persistData("goithau");
     this.view.closeModal("modal-phathanh-hsmt");
     this.view.showPackageDetails(id);
-    this.autoSync();
+    const syncResult = await this.autoSync();
+    if (!syncResult?.ok) return;
     await this.view.customAlert("Thành công", "Đã phát hành HSMT và chuyển gói thầu sang trạng thái Đang mời thầu!", "check-circle");
   }
 }
@@ -326,7 +329,7 @@ export function renderMoThauPanel() {
     }
     return true;
   });
-  select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${g.id}" data-search="${g.maGoiThau || ""} ${g.tenGoiThau || ""}">${g.tenGoiThau} (${g.maGoiThau || "Chưa có mã"})</option>`).join("");
+  select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join("");
   if (selectedVal && targetPackages.some((g) => g.id === selectedVal)) {
     select.value = selectedVal;
   } else {
@@ -1421,15 +1424,16 @@ export async function saveThongTinMoThau() {
   });
   this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) !== String(gtId));
   this.model.state.thongtinmothau.push(...tempBids);
-  this.model.persistData("thongtinmothau");
+  await this.model.persistData("thongtinmothau");
   gt.trangThai = "Đang chấm thầu";
-  this.model.persistData("goithau");
+  await this.model.persistData("goithau");
   const stepKey = is1G2T ? "opening_tech" : "opening";
   if (this.view._editingState) {
     this.view._editingState[stepKey] = false;
   }
   this.view.renderGoiThauTable();
-  this.autoSync();
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) return;
   const successMsg = isDirectOrSpecial ? "Đã lưu thành công dữ liệu nhà thầu" : `Đã lưu toàn bộ thông tin mở thầu (E-HSDT / E-HSĐXKT) của gói thầu "${gt.tenGoiThau}" thành công! Trạng thái gói thầu đã được chuyển sang Đang chấm thầu.`;
   await this.view.customAlert("Lưu thành công", successMsg, "check-circle");
   this.renderMoThauPanel();
@@ -1524,10 +1528,10 @@ export async function saveKetQuaChiDinhThau(gtId) {
       gt.thoiGianMoThau = this.model.getCurrentDateTimeString();
     }
     gt.trangThai = "Đang chấm thầu";
-    this.model.persistData("goithau");
+    await this.model.persistData("goithau");
     applyAutoPassedEvaluation({ gt, bids: tempBids, model: this.model });
-    this.model.persistData("thongtinmothau");
-    this.model.persistData("goithau");
+    await this.model.persistData("thongtinmothau");
+    await this.model.persistData("goithau");
     applyResultRowsToBids(tbodyResult, this.model);
     applyAwardResultToPackage({ gt, bids: tempBids, winnerRows, tbodyResult, model: this.model });
     applyAwardMetadata({
@@ -1549,10 +1553,11 @@ export async function saveKetQuaChiDinhThau(gtId) {
     gt.soQuyetDinhKetQua = decNo;
     gt.ngayQuyetDinhKetQua = decDate;
     gt.trangThai = "Đã có kết quả";
-    this.model.persistData("goithau");
-    this.model.persistData("thongtinmothau");
+    await this.model.persistData("goithau");
+    await this.model.persistData("thongtinmothau");
     this.view.renderGoiThauTable();
-    this.autoSync();
+    const syncResult = await this.autoSync();
+    if (!syncResult?.ok) return;
     await this.view.customAlert(
       "Chúc mừng",
       `Đã lưu và phê duyệt kết quả lựa chọn nhà thầu cho gói thầu "${gt.tenGoiThau}" thành công!`,
@@ -1571,8 +1576,8 @@ export async function saveKetQuaChiDinhThau(gtId) {
     );
     this.model.state.thongtinmothau.push(...snapshotBids);
     try {
-      this.model.persistData("goithau");
-      this.model.persistData("thongtinmothau");
+      await this.model.persistData("goithau");
+      await this.model.persistData("thongtinmothau");
     } catch (rollbackErr) {
       console.error("[saveKetQuaChiDinhThau] Rollback failed:", rollbackErr);
     }
