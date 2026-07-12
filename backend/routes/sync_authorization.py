@@ -57,4 +57,21 @@ def validate_owner_scoped_references(cursor, owner_id, table_name, item, incomin
         )
         if not cursor.fetchone():
             errors.append(f"Tham chieu {col_name}={ref_id} khong thuoc owner hien tai.")
+
+    if table_name == "thong_tin_mo_thau":
+        for member in item.get("thanhVienLienDanh") or []:
+            if not isinstance(member, dict):
+                continue
+            contractor_id = clean_id(
+                member.get("thanhVienNhaThauId")
+                or member.get("thanh_vien_nha_thau_id")
+            )
+            if not contractor_id or str(contractor_id) in incoming_ids_by_table.get("nha_thau", set()):
+                continue
+            cursor.execute(
+                "SELECT 1 FROM nha_thau WHERE owner_id = ? AND id = ? LIMIT 1",
+                (owner_id, contractor_id),
+            )
+            if not cursor.fetchone():
+                errors.append(f"Thanh vien lien danh nha_thau_id={contractor_id} khong thuoc owner hien tai.")
     return errors

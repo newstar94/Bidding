@@ -178,6 +178,7 @@ SCHEMA_DINH_NGHIA = {
             "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
             "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "nha_thau_id": "TEXT NOT NULL",
+            "thanh_vien_nha_thau_id": "TEXT",
             "ten_nha_thau": "TEXT",
             "ma_nha_thau": "TEXT",
             "ma_so_thue": "TEXT",
@@ -197,7 +198,8 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE CASCADE"
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (thanh_vien_nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
         ]
     },
     "goi_thau": {
@@ -569,6 +571,7 @@ SCHEMA_DINH_NGHIA = {
             "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
             "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
             "thong_tin_mo_thau_id": "TEXT NOT NULL",
+            "thanh_vien_nha_thau_id": "TEXT",
             "ten_nha_thau": "TEXT",
             "ma_nha_thau": "TEXT",
             "ma_so_thue": "TEXT",
@@ -588,7 +591,8 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE"
+            "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (thanh_vien_nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
         ]
     },
     "to_chuc": {

@@ -1,5 +1,5 @@
 import { escapeHtml, initCustomSelect, safeImageSrc } from "../view_helpers.js";
-import { sortRecords } from "../tableDataUtils.js";
+import { cachePaginatedRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 export async function renderNhaThauTable() {
   const tableBody = document.getElementById("nhathau-table").querySelector("tbody");
@@ -19,7 +19,7 @@ export async function renderNhaThauTable() {
       const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
       if (res.ok) {
         const data = await res.json();
-        slicedData = data.items;
+        slicedData = cachePaginatedRecords(this.model, "nhathau", data.items);
         totalItems = data.totalItems;
       }
     } catch (e) {

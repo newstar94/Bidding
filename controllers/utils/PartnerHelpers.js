@@ -4,6 +4,22 @@ function addressCacheRoot() {
 function normalizeAddressToken(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().replace(/[.,;:()]/g, " ").replace(/\s+/g, " ").trim();
 }
+const VIETNAM_COUNTRY_ALIASES = new Set([
+  "viet nam",
+  "vietnam",
+  "nuoc viet nam",
+  "cong hoa xa hoi chu nghia viet nam"
+]);
+function isVietnamCountryPart(value) {
+  return VIETNAM_COUNTRY_ALIASES.has(normalizeAddressToken(value));
+}
+export function stripVietnamCountrySuffix(parts) {
+  const cleaned = [...(parts || [])];
+  while (cleaned.length > 0 && isVietnamCountryPart(cleaned[cleaned.length - 1])) {
+    cleaned.pop();
+  }
+  return cleaned;
+}
 function stripAdminPrefix(value, type) {
   const text = normalizeAddressToken(value);
   if (type === "province") {
@@ -104,7 +120,7 @@ export async function parseVietnamAddress(rawAddress) {
   if (!raw) {
     return { detail: "", wardName: "", provinceName: "", wardCode: "", provinceCode: "", formattedAddress: "", rawAddress: "" };
   }
-  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+  const parts = stripVietnamCountrySuffix(raw.split(",").map((part) => part.trim()).filter(Boolean));
   if (parts.length === 0) {
     return { detail: raw, wardName: "", provinceName: "", wardCode: "", provinceCode: "", formattedAddress: composeInternalAddress(raw, "", ""), rawAddress: raw };
   }

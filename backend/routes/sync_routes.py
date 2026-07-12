@@ -1087,10 +1087,34 @@ async def get_all_data_api(request):
                 selected_columns = reference_columns.get(payload_key)
                 if not selected_columns:
                     continue
+                reference_where = "owner_id = ? AND is_latest = 1"
+                if table_name == "nha_thau":
+                    reference_where = """
+                        owner_id = ? AND (
+                            is_latest = 1
+                            OR id IN (
+                                SELECT nha_thau_id FROM thong_tin_mo_thau
+                                WHERE owner_id = ? AND COALESCE(nha_thau_id, '') != ''
+                            )
+                            OR id IN (
+                                SELECT thanh_vien_nha_thau_id
+                                FROM thong_tin_mo_thau_lien_danh_thanh_vien
+                                WHERE owner_id = ? AND COALESCE(thanh_vien_nha_thau_id, '') != ''
+                            )
+                            OR id IN (
+                                SELECT nha_thau_trung_thau_id FROM goi_thau
+                                WHERE owner_id = ? AND COALESCE(nha_thau_trung_thau_id, '') != ''
+                            )
+                            OR id IN (
+                                SELECT nha_thau_id FROM hop_dong
+                                WHERE owner_id = ? AND COALESCE(nha_thau_id, '') != ''
+                            )
+                        )
+                    """
+                reference_params = (org_name,) if table_name != "nha_thau" else (org_name, org_name, org_name, org_name, org_name)
                 cursor.execute(
-                    f"SELECT {', '.join(selected_columns)} FROM {table_name} "
-                    "WHERE owner_id = ? AND is_latest = 1",
-                    (org_name,)
+                    f"SELECT {', '.join(selected_columns)} FROM {table_name} WHERE {reference_where}",
+                    reference_params,
                 )
                 reference_items = []
                 for row in cursor.fetchall():

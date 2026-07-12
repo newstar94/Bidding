@@ -1,5 +1,5 @@
 import { formatDate, formatCurrency, initCustomSelect } from "../view_helpers.js";
-import { parseYearMonth, sortRecords } from "../tableDataUtils.js";
+import { cachePaginatedRecords, parseYearMonth, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
@@ -45,7 +45,7 @@ export async function renderHopDongTable() {
       const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`);
       if (res.ok) {
         const data = await res.json();
-        slicedData = data.items;
+        slicedData = cachePaginatedRecords(this.model, "hopdong", data.items);
         totalItems = data.totalItems;
       }
     } catch (e) {

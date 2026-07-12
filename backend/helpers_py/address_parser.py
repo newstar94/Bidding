@@ -7,6 +7,12 @@ import urllib.request
 PROVINCES_API_BASE = "https://provinces.open-api.vn/api/v2"
 _PROVINCES_CACHE = None
 _WARDS_CACHE = {}
+VIETNAM_COUNTRY_ALIASES = {
+    "viet nam",
+    "vietnam",
+    "nuoc viet nam",
+    "cong hoa xa hoi chu nghia viet nam",
+}
 
 
 def _normalize(value):
@@ -22,6 +28,13 @@ def _strip_prefix(value, kind):
     if kind == "province":
         return re.sub(r"^(tinh|thanh pho|tp|t p)\s+", "", text).strip()
     return re.sub(r"^(phuong|xa|thi tran|tt)\s+", "", text).strip()
+
+
+def strip_vietnam_country_suffix(parts):
+    cleaned = list(parts or [])
+    while cleaned and _normalize(cleaned[-1]) in VIETNAM_COUNTRY_ALIASES:
+        cleaned.pop()
+    return cleaned
 
 
 def _fetch_json(url):
@@ -110,7 +123,9 @@ def parse_vietnam_address_to_internal(raw_address):
     if not raw:
         return ""
 
-    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    parts = strip_vietnam_country_suffix(
+        [part.strip() for part in raw.split(",") if part.strip()]
+    )
     if not parts:
         return compose_internal_address(raw, "", "")
 

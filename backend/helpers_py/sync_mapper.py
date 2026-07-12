@@ -405,6 +405,7 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, owne
             owner_id,
             owner_type,
             parent_id,
+            clean_id(_first_value(row, "thanhVienNhaThauId", "thanh_vien_nha_thau_id", "nhaThauId")),
             _first_value(row, "tenNhaThau", "ten_nha_thau", default=""),
             _first_value(row, "maNhaThau", "ma_nha_thau", default=""),
             _first_value(row, "maSoThue", "ma_so_thue", default=""),
@@ -425,11 +426,12 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, owne
     if rows:
         cursor.executemany(f"""
             INSERT INTO {child_table} (
-                id, owner_id, owner_type, {parent_col}, ten_nha_thau, ma_nha_thau, ma_so_thue,
+                id, owner_id, owner_type, {parent_col}, thanh_vien_nha_thau_id,
+                ten_nha_thau, ma_nha_thau, ma_so_thue,
                 vai_tro, nguoi_dai_dien, danh_xung, so_dien_thoai, email, dia_chi, dia_chi_goc,
                 so_tai_khoan, noi_mo_tai_khoan, ma_ngan_hang, sort_order,
                 sync_version, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
 
 
@@ -455,6 +457,7 @@ def attach_child_rows_to_items(cursor, table_name, items, owner_id=None, naming=
         _attach_members(cursor, by_id, parent_ids, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", owner_id, naming)
     elif table_name == "thong_tin_mo_thau":
         _attach_members(cursor, by_id, parent_ids, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", owner_id, naming)
+        _enrich_opening_bid_contractor_versions(cursor, by_id, owner_id, naming)
     return items
 
 
@@ -546,6 +549,69 @@ def _attach_members(cursor, by_id, parent_ids, child_table, parent_col, owner_id
         item = by_id.get(row.get(parent_col))
         if item:
             item[key].append(_format_member_child(row, naming))
+
+
+def _enrich_opening_bid_contractor_versions(cursor, by_id, owner_id, naming):
+    member_key = "thanhVienLienDanh" if naming == "camel" else "thanh_vien_lien_danh"
+    bid_contractor_key = "nhaThauId" if naming == "camel" else "nha_thau_id"
+    bid_type_key = "loaiNhaThau" if naming == "camel" else "loai_nha_thau"
+    bid_name_key = "tenNhaThau" if naming == "camel" else "ten_nha_thau"
+    member_contractor_key = "thanhVienNhaThauId" if naming == "camel" else "thanh_vien_nha_thau_id"
+    contractor_ids = set()
+    for bid in by_id.values():
+        contractor_id = clean_id(bid.get(bid_contractor_key))
+        if contractor_id:
+            contractor_ids.add(contractor_id)
+        for member in bid.get(member_key) or []:
+            member_id = clean_id(member.get(member_contractor_key))
+            if member_id:
+                contractor_ids.add(member_id)
+    if not contractor_ids:
+        return
+
+    placeholders = ", ".join(["?"] * len(contractor_ids))
+    params = list(contractor_ids)
+    owner_filter = ""
+    if owner_id is not None:
+        owner_filter = " AND owner_id = ?"
+        params.append(owner_id)
+    cursor.execute(
+        f"SELECT * FROM nha_thau WHERE id IN ({placeholders}){owner_filter}",
+        params,
+    )
+    contractors = {clean_id(row["id"]): dict(row) for row in cursor.fetchall()}
+
+    member_fields = [
+        ("ten_nha_thau", "tenNhaThau"),
+        ("ma_nha_thau", "maNhaThau"),
+        ("ma_so_thue", "maSoThue"),
+        ("nguoi_dai_dien", "nguoiDaiDien"),
+        ("danh_xung", "danhXung"),
+        ("so_dien_thoai", "soDienThoai"),
+        ("email", "email"),
+        ("dia_chi", "diaChi"),
+        ("dia_chi_goc", "diaChiGoc"),
+        ("so_tai_khoan", "soTaiKhoan"),
+        ("noi_mo_tai_khoan", "noiMoTaiKhoan"),
+        ("ma_ngan_hang", "maNganHang"),
+    ]
+    for bid in by_id.values():
+        contractor = contractors.get(clean_id(bid.get(bid_contractor_key)))
+        is_joint_venture = str(bid.get(bid_type_key) or "").strip().lower() == "liên danh"
+        if contractor and not is_joint_venture:
+            bid[bid_name_key] = normalize_organization_name(contractor.get("ten_nha_thau") or "")
+        for member in bid.get(member_key) or []:
+            member_contractor = contractors.get(clean_id(member.get(member_contractor_key)))
+            if not member_contractor:
+                continue
+            for snake_key, camel_key in member_fields:
+                target_key = snake_key if naming == "snake" else camel_key
+                value = member_contractor.get(snake_key)
+                if snake_key == "ten_nha_thau":
+                    value = normalize_organization_name(value)
+                elif snake_key == "nguoi_dai_dien":
+                    value = normalize_person_name(value)
+                member[target_key] = value or ""
 
 
 def _fetch_lots(cursor, parent_id, owner_id):
@@ -657,6 +723,7 @@ def _format_member_child(row, naming):
         naming,
         [
             ("id", "id"),
+            ("thanh_vien_nha_thau_id", "thanhVienNhaThauId"),
             ("ten_nha_thau", "tenNhaThau"),
             ("ma_nha_thau", "maNhaThau"),
             ("ma_so_thue", "maSoThue"),

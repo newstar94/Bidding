@@ -3,6 +3,7 @@ import { bindCurrencyElement } from "../main_controller/domUtils.js";
 import { setVisible } from "../main_controller/formStateUtils.js";
 import { validateRequiredEvaluationReportFields } from "./bidEvaluationValidation.js";
 import { addEvaluationLetterRow, renderEvaluationSummary } from "./bidEvaluationRender.js";
+import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "./contractorVersionBinding.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export function renderDanhGiaHsdtPanel() {
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
@@ -764,27 +765,17 @@ export function renderDanhGiaHsdtPanel() {
           finalHieuLucDamBao = finalHieuLucDamBao + " ngày";
         }
         let maNhaThauHienThi = bid.maNhaThau || bid.maDinhDanh || "--";
-        let tenNhaThauHienThi = bid.tenNhaThau || "--";
+        let tenNhaThauHienThi = resolveBidContractorName(this.model, bid) || "--";
         const isJVBid = bid.loaiNhaThau === "Liên danh";
-        const latestList = this.model.getLatestNhaThau();
-        let matchedNt = null;
-        if (bid.nhaThauId) {
-          matchedNt = latestList.find((n) => n.id === bid.nhaThauId || n.rootId === bid.nhaThauId);
-        }
-        if (!matchedNt && maNhaThauHienThi !== "--") {
-          matchedNt = latestList.find((n) => n.maNhaThau && n.maNhaThau.trim().toLowerCase() === maNhaThauHienThi.trim().toLowerCase());
-        }
+        const matchedNt = getExactContractorVersion(this.model, bid.nhaThauId);
         if (matchedNt) {
           maNhaThauHienThi = matchedNt.maNhaThau || maNhaThauHienThi;
-          if (!bid.tenNhaThau) {
-            tenNhaThauHienThi = matchedNt.tenNhaThau;
-          }
         }
         let contractorDisplayHtml = "";
         if (isJVBid) {
           const jvKey = `${gtId}_eval_bidder_${bid.id}`;
           setJvData(jvKey, {
-            members: bid.thanhVienLienDanh || [],
+            members: resolveBidJointVentureMembers(this.model, bid),
             leadName: tenNhaThauHienThi,
             leadCode: maNhaThauHienThi
           });
@@ -1025,9 +1016,10 @@ export function renderDanhGiaHsdtPanel() {
         if (jvViewLink) {
           jvViewLink.addEventListener("click", (e) => {
             e.preventDefault();
-            const subMembers = (bid.thanhVienLienDanh || []).filter((m) => m.vaiTro !== "Đứng đầu liên danh" && (m.maNhaThau || m.maSoThue) !== bid.maNhaThau);
-            const leadM = (bid.thanhVienLienDanh || []).find((m) => m.vaiTro === "Đứng đầu liên danh") || { tenNhaThau: bid.tenNhaThau, maNhaThau: bid.maNhaThau, maSoThue: "" };
-            window.openMoThauJVViewModal(subMembers, leadM.tenNhaThau, leadM.maNhaThau || leadM.maSoThue);
+            const resolvedMembers = resolveBidJointVentureMembers(this.model, bid);
+            const subMembers = resolvedMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh" && (m.maNhaThau || m.maSoThue) !== bid.maNhaThau);
+            const leadM = resolvedMembers.find((m) => m.vaiTro === "Đứng đầu liên danh") || { tenNhaThau: resolveBidContractorName(this.model, bid), maNhaThau: bid.maNhaThau, maSoThue: "" };
+            window.openMoThauJVViewModal(subMembers, leadM.tenNhaThau, leadM.maNhaThau || leadM.maSoThue, leadM.thanhVienNhaThauId || "");
           });
         }
         tbody.appendChild(tr);

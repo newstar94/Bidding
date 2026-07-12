@@ -38,7 +38,10 @@ export function sortRecords(records, field, order = "asc") {
   return records;
 }
 export function cachePaginatedRecords(model, key, records) {
-  const normalized = typeof model?.normalizeRecordKeys === "function" ? (records || []).map((record) => model.normalizeRecordKeys(record, key)) : records || [];
+  const normalized = (typeof model?.normalizeRecordKeys === "function"
+    ? (records || []).map((record) => model.normalizeRecordKeys(record, key))
+    : records || []
+  ).map((record) => ({ ...record, referenceOnly: false }));
   if (!Array.isArray(model.state[key])) {
     model.state[key] = [];
   }

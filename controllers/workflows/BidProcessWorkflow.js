@@ -19,6 +19,7 @@ import {
 import { renderOpeningSummary } from "./bidProcessRender.js";
 import { parseVietnamAddress } from "../utils/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "./partnerTaxLookup.js";
+import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "./contractorVersionBinding.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 function normalizeContractorLookupCode(value) {
   return normalizeTaxCodeForCompare(value);
@@ -836,7 +837,7 @@ export function showNhaThauDetailsAndCloseJV(ntId) {
     window.showNhaThauDetails(ntId);
   }
 }
-export function openMoThauJVViewModal(members, leadName, leadCode) {
+export function openMoThauJVViewModal(members, leadName, leadCode, leadContractorVersionId = "") {
   const modalId = "modal-mothau-jv-view";
   let modal = document.getElementById(modalId);
   if (modal) modal.remove();
@@ -859,25 +860,12 @@ export function openMoThauJVViewModal(members, leadName, leadCode) {
   body.className = "modal-body";
   body.style.padding = "20px";
   const appController = getAppController();
-  const contractorList = appController?.model?.getLatestNhaThau?.() || appController?.model?.state?.nhathau || [];
-  const matchedContractor = findContractorByCode(contractorList, leadCode);
-  const fallbackMembers = Array.isArray(matchedContractor?.thanhVienLienDanh) ? matchedContractor.thanhVienLienDanh : [];
-  const visibleMembers = getJointVentureSubMembers((members || []).length > 0 ? members : fallbackMembers, leadCode);
+  const matchedContractor = getExactContractorVersion(appController?.model, leadContractorVersionId);
+  const visibleMembers = getJointVentureSubMembers(members || [], leadCode);
   const resolvedLeadName = leadName || resolveLeadMemberName(matchedContractor, leadCode);
   const displayLeadName = resolvedLeadName || "Chưa cập nhật";
   const displayLeadCode = leadCode || "Chưa cập nhật";
-  const findNhaThauId = (code, name) => {
-    const list = contractorList;
-    let found = null;
-    if (code && code !== "Chưa cập nhật") {
-      found = list.find((n) => n.maNhaThau && n.maNhaThau.trim().toLowerCase() === code.trim().toLowerCase() || n.maSoThue && n.maSoThue.trim().toLowerCase() === code.trim().toLowerCase());
-    }
-    if (!found && name && name !== "Chưa cập nhật") {
-      found = list.find((n) => n.tenNhaThau && n.tenNhaThau.trim().toLowerCase() === name.trim().toLowerCase());
-    }
-    return found ? found.id : null;
-  };
-  const leadNtId = findNhaThauId(displayLeadCode, displayLeadName);
+  const leadNtId = leadContractorVersionId || null;
   const leadCodeHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadCode}</a>` : displayLeadCode;
   const leadNameHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadName}</a>` : displayLeadName;
   let membersHtml = "";
@@ -886,7 +874,7 @@ export function openMoThauJVViewModal(members, leadName, leadCode) {
   } else {
     membersHtml = visibleMembers.map((m, idx) => {
       const memberCode = m.maNhaThau || m.maSoThue || "";
-      const memberNtId = findNhaThauId(memberCode, m.tenNhaThau);
+      const memberNtId = m.thanhVienNhaThauId || null;
       const mCodeHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${memberCode || "--"}</a>` : memberCode || "--";
       const mNameHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${m.tenNhaThau || "--"}</a>` : m.tenNhaThau || "--";
       return `
@@ -943,15 +931,12 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", bidData.id || window.generateRecordId("thongtinmothau"));
   let ntCode = bidData.maNhaThau || "";
-  let ntName = bidData.tenNhaThau || "";
+  let ntName = resolveBidContractorName(this.model, bidData) || "";
   let ntType = bidData.loaiNhaThau || "Độc lập";
-  let jvMembers = bidData.thanhVienLienDanh || [];
+  let jvMembers = resolveBidJointVentureMembers(this.model, bidData);
   const latestNhaThauList = this.model.getLatestNhaThau();
-  let foundNt = null;
-  if (bidData.nhaThauId) {
-    foundNt = latestNhaThauList.find((n) => n.id === bidData.nhaThauId || n.rootId === bidData.nhaThauId);
-  }
-  if (!foundNt && ntCode) {
+  let foundNt = getExactContractorVersion(this.model, bidData.nhaThauId);
+  if (!bidData.nhaThauId && !foundNt && ntCode) {
     foundNt = findContractorByCode(latestNhaThauList, ntCode);
   }
   if (foundNt) {
@@ -972,6 +957,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     return role.includes("đứng") && role.includes("đầu") || (m.maNhaThau || m.maSoThue) && normalizeContractorLookupCode(m.maNhaThau || m.maSoThue) === normalizeContractorLookupCode(ntCode);
   });
   tr._leadMemberName = leadM ? leadM.tenNhaThau : "";
+  tr._leadMemberContractorId = leadM?.thanhVienNhaThauId || foundNt?.id || "";
   if (!tr._leadMemberName && ntCode) {
     const foundLeadNt = findContractorByCode(latestNhaThauList, ntCode);
     if (foundLeadNt) {
@@ -1342,7 +1328,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (jvViewLink) {
     jvViewLink.addEventListener("click", (e) => {
       e.preventDefault();
-      this.openMoThauJVViewModal(tr._thanhVienLienDanh || [], tr._leadMemberName || ntName, ntCode);
+      this.openMoThauJVViewModal(tr._thanhVienLienDanh || [], tr._leadMemberName || ntName, ntCode, tr._leadMemberContractorId || "");
     });
   }
   if (typeof this.unifyTableInputsHeight === "function") {

@@ -1,7 +1,8 @@
 import { initCustomSelect, renderEmptyRow } from "../view_helpers.js";
-import { parseYearMonth, sortRecords } from "../tableDataUtils.js";
+import { cachePaginatedRecords, parseYearMonth, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { setJvData } from "./jvDataStore.js";
+import { resolveBidContractorName, resolveBidJointVentureMembers } from "../../../controllers/workflows/contractorVersionBinding.js";
 export async function renderGoiThauTable() {
   const tableBody = document.getElementById("goithau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-goithau").value.toLowerCase();
@@ -51,7 +52,7 @@ export async function renderGoiThauTable() {
       const res = await fetch(`/api/paginate?table=goithau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&trangThai=${encodeURIComponent(filterTrangThai)}&hinhThuc=${encodeURIComponent(filterHinhThuc)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`);
       if (res.ok) {
         const data = await res.json();
-        slicedData = data.items;
+        slicedData = cachePaginatedRecords(this.model, "goithau", data.items);
         totalItems = data.totalItems;
       }
     } catch (e) {
@@ -122,11 +123,11 @@ export async function renderGoiThauTable() {
       const kh = this.model.getLatestPlan(displayedGt.keHoachId);
       const nt = displayedGt.nhaThauTrungThauId ? this.model.state.nhathau.find((n) => n.id === displayedGt.nhaThauTrungThauId) : null;
       const matchBid = displayedGt.nhaThauTrungThauId ? this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(displayedGt.nhaThauTrungThauId)) : null;
-      const ntDisplayName = matchBid ? matchBid.tenNhaThau : nt ? nt.tenNhaThau : "--";
+      const ntDisplayName = matchBid ? resolveBidContractorName(this.model, matchBid) : nt ? nt.tenNhaThau : "--";
       const isWinnerJV = matchBid && matchBid.loaiNhaThau === "Liên danh";
       let ntLink;
       if (isWinnerJV) {
-        const allJvMembers = matchBid.thanhVienLienDanh || [];
+        const allJvMembers = resolveBidJointVentureMembers(this.model, matchBid);
         const leadMember = allJvMembers.find((m) => m.vaiTro === "Đứng đầu liên danh");
         const leadName = leadMember?.tenNhaThau || ntDisplayName;
         const leadCode = leadMember?.maSoThue || nt?.maSoThue || nt?.maNhaThau || matchBid.maDinhDanh || matchBid.maNhaThau || "";
@@ -153,11 +154,11 @@ export async function renderGoiThauTable() {
             window._lotWinnersMap[displayedGt.id] = winningLots.map((pl) => {
               const bidderInfo = this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
               const ntInfo = this.model.state.nhathau.find((n) => n.id === pl.nhaThauTrungThauId);
-              const ntName = bidderInfo ? bidderInfo.tenNhaThau : ntInfo ? ntInfo.tenNhaThau : "Nhà thầu #" + pl.nhaThauTrungThauId;
+              const ntName = bidderInfo ? resolveBidContractorName(this.model, bidderInfo) : ntInfo ? ntInfo.tenNhaThau : "Nhà thầu #" + pl.nhaThauTrungThauId;
               const isJV = bidderInfo && bidderInfo.loaiNhaThau === "Liên danh";
               let jvData = null;
               if (isJV) {
-                const allJvMembers = bidderInfo.thanhVienLienDanh || [];
+                const allJvMembers = resolveBidJointVentureMembers(this.model, bidderInfo);
                 const leadMember = allJvMembers.find((m) => m.vaiTro === "Đứng đầu liên danh");
                 const leadName = leadMember?.tenNhaThau || ntName;
                 const leadCode = leadMember?.maSoThue || ntInfo?.maSoThue || ntInfo?.maNhaThau || bidderInfo.maDinhDanh || bidderInfo.maNhaThau || "";
@@ -180,11 +181,11 @@ export async function renderGoiThauTable() {
             const singleWinnerId = uniqueWinnerIds[0];
             const singleWinnerNt = this.model.state.nhathau.find((n) => String(n.id) === String(singleWinnerId));
             const singleWinnerBid = this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(singleWinnerId));
-            const name = singleWinnerBid ? singleWinnerBid.tenNhaThau : singleWinnerNt ? singleWinnerNt.tenNhaThau : "Nhà thầu #" + singleWinnerId;
+            const name = singleWinnerBid ? resolveBidContractorName(this.model, singleWinnerBid) : singleWinnerNt ? singleWinnerNt.tenNhaThau : "Nhà thầu #" + singleWinnerId;
             const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
             let link;
             if (singleWinnerBid && singleWinnerBid.loaiNhaThau === "Liên danh") {
-              const allJvMembers = singleWinnerBid.thanhVienLienDanh || [];
+              const allJvMembers = resolveBidJointVentureMembers(this.model, singleWinnerBid);
               const leadMember = allJvMembers.find((m) => m.vaiTro === "Đứng đầu liên danh");
               const leadName = leadMember?.tenNhaThau || name;
               const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || "";

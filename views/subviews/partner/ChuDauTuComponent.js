@@ -1,5 +1,5 @@
 import { escapeHtml, initCustomSelect, renderEmptyRow, safeAttr } from "../view_helpers.js";
-import { sortRecords } from "../tableDataUtils.js";
+import { cachePaginatedRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 export async function renderChuDauTuTable() {
   const tableBody = document.getElementById("chudautu-table").querySelector("tbody");
@@ -19,7 +19,7 @@ export async function renderChuDauTuTable() {
       const res = await fetch(`/api/paginate?table=chudautu&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
       if (res.ok) {
         const data = await res.json();
-        slicedData = data.items;
+        slicedData = cachePaginatedRecords(this.model, "chudautu", data.items);
         totalItems = data.totalItems;
       }
     } catch (e) {

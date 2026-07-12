@@ -187,6 +187,7 @@ export const SCHEMA_CONTRACT = {
     "ten_to_chuc": "tenToChuc",
     "ten_viet_tat": "tenVietTat",
     "ten_viet_tat_don_vi_trinh": "tenVietTatDonViTrinh",
+    "thanh_vien_nha_thau_id": "thanhVienNhaThauId",
     "thoi_gian": "thoiGian",
     "thoi_gian_bat_dau_to_chuc": "thoiGianBatDauToChuc",
     "thoi_gian_dong_thau": "thoiGianDongThau",
@@ -1286,6 +1287,7 @@ export const SCHEMA_CONTRACT = {
         "owner_id",
         "owner_type",
         "nha_thau_id",
+        "thanh_vien_nha_thau_id",
         "ten_nha_thau",
         "ma_nha_thau",
         "ma_so_thue",
@@ -1324,6 +1326,7 @@ export const SCHEMA_CONTRACT = {
         "sort_order": "sortOrder",
         "sync_version": "syncVersion",
         "ten_nha_thau": "tenNhaThau",
+        "thanh_vien_nha_thau_id": "thanhVienNhaThauId",
         "updated_at": "updatedAt",
         "vai_tro": "vaiTro"
       },
@@ -1348,6 +1351,7 @@ export const SCHEMA_CONTRACT = {
         "sortOrder": "sort_order",
         "syncVersion": "sync_version",
         "tenNhaThau": "ten_nha_thau",
+        "thanhVienNhaThauId": "thanh_vien_nha_thau_id",
         "updatedAt": "updated_at",
         "vaiTro": "vai_tro"
       }
@@ -1643,6 +1647,7 @@ export const SCHEMA_CONTRACT = {
         "owner_id",
         "owner_type",
         "thong_tin_mo_thau_id",
+        "thanh_vien_nha_thau_id",
         "ten_nha_thau",
         "ma_nha_thau",
         "ma_so_thue",
@@ -1680,6 +1685,7 @@ export const SCHEMA_CONTRACT = {
         "sort_order": "sortOrder",
         "sync_version": "syncVersion",
         "ten_nha_thau": "tenNhaThau",
+        "thanh_vien_nha_thau_id": "thanhVienNhaThauId",
         "thong_tin_mo_thau_id": "thongTinMoThauId",
         "updated_at": "updatedAt",
         "vai_tro": "vaiTro"
@@ -1704,6 +1710,7 @@ export const SCHEMA_CONTRACT = {
         "sortOrder": "sort_order",
         "syncVersion": "sync_version",
         "tenNhaThau": "ten_nha_thau",
+        "thanhVienNhaThauId": "thanh_vien_nha_thau_id",
         "thongTinMoThauId": "thong_tin_mo_thau_id",
         "updatedAt": "updated_at",
         "vaiTro": "vai_tro"

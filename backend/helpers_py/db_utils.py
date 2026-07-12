@@ -4,6 +4,7 @@ from .id_utils import generate_record_id, stable_org_id
 from .word_defaults import ensure_default_word_mappings_for_all_orgs
 import os
 import uuid
+import re
 from .db_helper import database
 
 DB_SCHEMA_VERSION = 1
@@ -102,6 +103,73 @@ def _sync_table_schema(cursor, table_name: str, table_spec: dict):
         return "rebuilt"
     finally:
         cursor.execute("PRAGMA legacy_alter_table = OFF")
+
+
+def _normalize_contractor_code(value):
+    return re.sub(r"[^a-z0-9]", "", str(value or "").strip().lower())
+
+
+def _backfill_member_contractor_versions(cursor):
+    cursor.execute("""
+        SELECT id, owner_id, ma_nha_thau, ma_so_thue, phien_ban,
+               COALESCE(created_at, updated_at, '') AS created_at
+        FROM nha_thau
+    """)
+    candidates_by_code = {}
+    for row in cursor.fetchall():
+        candidate = dict(row)
+        for raw_code in (candidate.get("ma_nha_thau"), candidate.get("ma_so_thue")):
+            code = _normalize_contractor_code(raw_code)
+            if code:
+                candidates_by_code.setdefault((candidate.get("owner_id"), code), {})[candidate["id"]] = candidate
+
+    def choose(owner_id, raw_code, reference_time):
+        code = _normalize_contractor_code(raw_code)
+        candidates = list(candidates_by_code.get((owner_id, code), {}).values())
+        if not candidates:
+            return None
+        older = [item for item in candidates if not reference_time or (item.get("created_at") or "") <= reference_time]
+        pool = older or candidates
+        if older:
+            return max(pool, key=lambda item: (int(item.get("phien_ban") or 0), item.get("created_at") or ""))["id"]
+        return min(pool, key=lambda item: (int(item.get("phien_ban") or 0), item.get("created_at") or ""))["id"]
+
+    specs = [
+        (
+            "thong_tin_mo_thau_lien_danh_thanh_vien",
+            """
+                SELECT member.id, member.owner_id, member.ma_nha_thau, member.ma_so_thue,
+                       COALESCE(bid.created_at, bid.updated_at, '') AS reference_time
+                FROM thong_tin_mo_thau_lien_danh_thanh_vien member
+                JOIN thong_tin_mo_thau bid ON bid.id = member.thong_tin_mo_thau_id
+                WHERE COALESCE(member.thanh_vien_nha_thau_id, '') = ''
+            """,
+        ),
+        (
+            "nha_thau_lien_danh_thanh_vien",
+            """
+                SELECT member.id, member.owner_id, member.ma_nha_thau, member.ma_so_thue,
+                       COALESCE(parent.created_at, parent.updated_at, '') AS reference_time
+                FROM nha_thau_lien_danh_thanh_vien member
+                JOIN nha_thau parent ON parent.id = member.nha_thau_id
+                WHERE COALESCE(member.thanh_vien_nha_thau_id, '') = ''
+            """,
+        ),
+    ]
+    for table_name, select_sql in specs:
+        cursor.execute(select_sql)
+        for row in cursor.fetchall():
+            item = dict(row)
+            contractor_id = choose(
+                item.get("owner_id"),
+                item.get("ma_nha_thau") or item.get("ma_so_thue"),
+                item.get("reference_time") or "",
+            )
+            if contractor_id:
+                cursor.execute(
+                    f"UPDATE {table_name} SET thanh_vien_nha_thau_id = ? WHERE id = ?",
+                    (contractor_id, item["id"]),
+                )
 
 
 def _ensure_schema_version_tables(cursor):
@@ -511,6 +579,7 @@ def khoi_tao_va_di_tru_he_thong():
             action = _sync_table_schema(cursor, table_name, table_spec)
             schema_actions.append((table_name, action))
         cursor.execute("PRAGMA foreign_keys = ON")
+        _backfill_member_contractor_versions(cursor)
 
         cursor.execute("SELECT COUNT(*) FROM goi_dich_vu")
         if cursor.fetchone()[0] == 0:

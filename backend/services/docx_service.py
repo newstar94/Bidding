@@ -54,7 +54,13 @@ def enrich_bids_with_contractor_fields(cursor, bids):
 
     placeholders = ','.join(['?'] * len(contractor_ids))
     cursor.execute(
-        f"SELECT id, ten_viet_tat FROM nha_thau WHERE id IN ({placeholders})",
+        f"""
+            SELECT id, ten_nha_thau, ten_viet_tat, ma_nha_thau, ma_so_thue,
+                   nguoi_dai_dien, chuc_vu_dai_dien, danh_xung, dia_chi,
+                   dia_chi_goc, so_dien_thoai, email, so_tai_khoan,
+                   noi_mo_tai_khoan, ma_ngan_hang
+            FROM nha_thau WHERE id IN ({placeholders})
+        """,
         contractor_ids,
     )
     contractors = {row['id']: dict(row) for row in cursor.fetchall()}
@@ -62,8 +68,18 @@ def enrich_bids_with_contractor_fields(cursor, bids):
         if not isinstance(bid, dict):
             continue
         contractor = contractors.get(str(bid.get('nha_thau_id') or '').strip())
-        if contractor and not bid.get('ten_viet_tat'):
-            bid['ten_viet_tat'] = contractor.get('ten_viet_tat') or ''
+        if not contractor:
+            continue
+        is_joint_venture = str(bid.get('loai_nha_thau') or '').strip().lower() == 'liên danh'
+        if not is_joint_venture:
+            bid['ten_nha_thau'] = contractor.get('ten_nha_thau') or bid.get('ten_nha_thau') or ''
+        for field in (
+            'ten_viet_tat', 'ma_nha_thau', 'ma_so_thue', 'nguoi_dai_dien',
+            'chuc_vu_dai_dien', 'danh_xung', 'dia_chi', 'dia_chi_goc',
+            'so_dien_thoai', 'email', 'so_tai_khoan', 'noi_mo_tai_khoan',
+            'ma_ngan_hang',
+        ):
+            bid[field] = contractor.get(field) or ''
     return bids
 
 def extract_evaluation_dates(pkg):

@@ -29,10 +29,42 @@ Tiêu chí hoàn thành:
 - Khi không phát sinh nhà thầu cần tra cứu, không có truy vấn kiểm tra định kỳ.
 - Các bài kiểm thử API, JavaScript và build production đều đạt.
 
-## 2. Gói thầu vẫn bị từ chối khi đồng bộ
+## 2. Ngày áp dụng và khóa phiên bản đối tác theo giai đoạn
 
 Trạng thái: Đang xử lý
 
-- `thoiGianBatDauToChuc` vẫn bị một nhánh kiểm tra coi là ngày/giờ dù trường này phải nhận văn bản như `Quý II, 2026`.
-- Gói thầu có `keHoachId` không thuộc owner hiện tại làm phát sinh lỗi tham chiếu khi đồng bộ.
-- Cần xác định dữ liệu kế hoạch hợp lệ theo owner, xử lý bản ghi tham chiếu cũ an toàn và bổ sung kiểm thử hồi quy.
+### 2.1. Ngày áp dụng của phiên bản
+
+- Mọi phiên bản Nhà thầu và Chủ đầu tư, kể cả phiên bản `00`, phải có `Ngày áp dụng`.
+- Mặc định tự điền bằng ngày tạo phiên bản và cho phép người dùng chỉnh sửa.
+- Phiên bản áp dụng cho một ngày nghiệp vụ là phiên bản có `Ngày áp dụng` gần nhất nhưng không vượt quá ngày nghiệp vụ.
+- Nếu ngày nghiệp vụ sớm hơn `Ngày áp dụng` của phiên bản `00`, vẫn dùng phiên bản `00`.
+- Cần cập nhật schema, migration, form thêm/sửa, chi tiết, danh sách, Excel và Word mapping liên quan.
+
+### 2.2. Khóa phiên bản Nhà thầu theo giai đoạn gói thầu
+
+- Mở thầu khóa ID phiên bản Nhà thầu độc lập và từng thành viên liên danh tại ngày mở thầu.
+- Đánh giá E-HSDT tiếp tục dùng phiên bản đã khóa ở mở thầu.
+- Kết quả LCNT khóa riêng phiên bản tại ngày phê duyệt kết quả; không làm thay đổi dữ liệu mở thầu/đánh giá.
+- Tên liên danh giữ nguyên theo gói thầu; tên và thông tin từng thành viên lấy từ đúng phiên bản trong DB.
+- Không được tự lấy phiên bản mới nhất theo `rootId` khi hiển thị dữ liệu lịch sử.
+
+### 2.3. Khóa phiên bản đối tác theo giai đoạn hợp đồng
+
+- Hợp đồng khóa phiên bản Nhà thầu và Chủ đầu tư tại ngày ký.
+- Thanh lý hợp đồng khóa riêng phiên bản đối tác tại ngày thanh lý, không làm thay đổi thông tin của tài liệu hợp đồng đã ký.
+- Giao diện tự chọn phiên bản theo ngày, chỉ hiển thị nhãn phiên bản và cho phép đổi trong trường hợp ngoại lệ; không bắt người dùng chọn ở luồng thông thường.
+
+### 2.4. Xuất Word đúng phiên bản
+
+- Biên bản mở thầu và báo cáo đánh giá dùng liên kết phiên bản mở thầu.
+- Báo cáo kết quả dùng liên kết phiên bản kết quả.
+- Hợp đồng dùng liên kết phiên bản ngày ký.
+- Biên bản thanh lý dùng liên kết phiên bản ngày thanh lý.
+- Word không được truy vấn phiên bản mới nhất thay cho phiên bản đã khóa.
+
+### 2.5. Dữ liệu cũ và kiểm thử
+
+- Backfill `Ngày áp dụng` từ ngày tạo phiên bản.
+- Backfill liên kết thành viên liên danh theo phiên bản tồn tại tại ngày nghiệp vụ gần nhất.
+- Kiểm thử độc lập/liên danh, phiên bản `00 → 01`, ngày trước phiên bản `00`, kết quả khác mở thầu, thanh lý khác hợp đồng, Word, Excel, API và build production.

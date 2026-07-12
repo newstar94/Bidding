@@ -138,19 +138,20 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
   });
   return foundNt;
 }
-function collectJvMembers(row, foundNt, maNhaThau) {
+function collectJvMembers(row, foundNt, maNhaThau, contractorVersions) {
   const bidJvMembers = [{
-    tenNhaThau: row._leadMemberName || foundNt.tenNhaThau || `Thành viên đứng đầu ${maNhaThau}`,
+    thanhVienNhaThauId: foundNt?.id || "",
+    tenNhaThau: foundNt?.tenNhaThau || row._leadMemberName || `Thành viên đứng đầu ${maNhaThau}`,
     maNhaThau: foundNt?.maNhaThau || maNhaThau,
     maSoThue: normalizeTaxCodeForStorage(foundNt?.maSoThue),
     vaiTro: "Đứng đầu liên danh",
-    nguoiDaiDien: normalizePersonName(row._leadMemberLookupData?.nguoiDaiDien),
-    danhXung: row._leadMemberLookupData?.danhXung || "Ông",
-    soDienThoai: row._leadMemberLookupData?.soDienThoai || "",
-    email: row._leadMemberLookupData?.email || "",
-    diaChi: row._leadMemberLookupData?.diaChi || foundNt?.diaChi || "",
-    diaChiGoc: row._leadMemberLookupData?.diaChiGoc || foundNt?.diaChiGoc || "",
-    tenVietTat: row._leadMemberLookupData?.tenVietTat || foundNt?.tenVietTat || ""
+    nguoiDaiDien: normalizePersonName(foundNt?.nguoiDaiDien || row._leadMemberLookupData?.nguoiDaiDien),
+    danhXung: foundNt?.danhXung || row._leadMemberLookupData?.danhXung || "Ông",
+    soDienThoai: foundNt?.soDienThoai || row._leadMemberLookupData?.soDienThoai || "",
+    email: foundNt?.email || row._leadMemberLookupData?.email || "",
+    diaChi: foundNt?.diaChi || row._leadMemberLookupData?.diaChi || "",
+    diaChiGoc: foundNt?.diaChiGoc || row._leadMemberLookupData?.diaChiGoc || "",
+    tenVietTat: foundNt?.tenVietTat || row._leadMemberLookupData?.tenVietTat || ""
   }];
   const rowMembers = Array.isArray(row._thanhVienLienDanh) ? row._thanhVienLienDanh : [];
   const fallbackMembers = Array.isArray(foundNt?.thanhVienLienDanh) ? foundNt.thanhVienLienDanh : [];
@@ -161,18 +162,20 @@ function collectJvMembers(row, foundNt, maNhaThau) {
     const normalizedMemberCode = normalizeOpeningCode(m.maNhaThau || m.maSoThue);
     if (!normalizedMemberCode || seenCodes.has(normalizedMemberCode)) return;
     seenCodes.add(normalizedMemberCode);
+    const memberContractor = findLatestContractorByCode(contractorVersions, m.maNhaThau || m.maSoThue);
     bidJvMembers.push({
-      tenNhaThau: m.tenNhaThau,
-      maNhaThau: m.maNhaThau || m.maSoThue || "",
-      maSoThue: normalizeTaxCodeForStorage(m.maSoThue),
+      thanhVienNhaThauId: memberContractor?.id || "",
+      tenNhaThau: memberContractor?.tenNhaThau || m.tenNhaThau,
+      maNhaThau: memberContractor?.maNhaThau || m.maNhaThau || m.maSoThue || "",
+      maSoThue: normalizeTaxCodeForStorage(memberContractor?.maSoThue || m.maSoThue),
       vaiTro: "Thành viên liên danh",
-      nguoiDaiDien: normalizePersonName(m.nguoiDaiDien),
-      danhXung: m.danhXung || "Ông",
-      soDienThoai: m.soDienThoai || "",
-      email: m.email || "",
-      diaChi: m.diaChi || "",
-      diaChiGoc: m.diaChiGoc || "",
-      tenVietTat: m.tenVietTat || ""
+      nguoiDaiDien: normalizePersonName(memberContractor?.nguoiDaiDien || m.nguoiDaiDien),
+      danhXung: memberContractor?.danhXung || m.danhXung || "Ông",
+      soDienThoai: memberContractor?.soDienThoai || m.soDienThoai || "",
+      email: memberContractor?.email || m.email || "",
+      diaChi: memberContractor?.diaChi || m.diaChi || "",
+      diaChiGoc: memberContractor?.diaChiGoc || m.diaChiGoc || "",
+      tenVietTat: memberContractor?.tenVietTat || m.tenVietTat || ""
     });
   });
   return bidJvMembers;
@@ -242,7 +245,7 @@ export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecia
     const isJointVenture = isJointVentureType(loaiNhaThau);
     const resolvedTenNhaThau = isJointVenture ? tenNhaThau : foundNt ? foundNt.tenNhaThau : tenNhaThau;
     const tyLeGiamGiaRaw = row.querySelector(".mt-ty-le-giam-gia")?.value || "0";
-    const bidJvMembers = isJointVenture ? collectJvMembers(row, foundNt, maNhaThau) : [];
+    const bidJvMembers = isJointVenture ? collectJvMembers(row, foundNt, maNhaThau, latestNhaThauList) : [];
     return {
       id,
       goiThauId: gtId,
