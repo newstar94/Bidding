@@ -1030,7 +1030,7 @@ export class BiddingView {
         inputEl.classList.add("flatpickr-datetime");
         inputEl.placeholder = "dd/MM/yyyy HH:mm";
         if (defaultValue) {
-          inputEl.value = this.model.formatDate(defaultValue);
+          inputEl.value = this.model.formatForDatetimeLocal(defaultValue);
         }
         this.initFlatpickr(inputContainer);
       } else {
@@ -1046,7 +1046,7 @@ export class BiddingView {
       const onOk = async () => {
         let val = inputEl.value;
         if (isDatePicker && val) {
-          val = this.model.formatDate(val);
+          val = this.model.formatForDatetimeLocal(val);
         }
         if (validateFn) {
           const errorMsg = await validateFn(val);

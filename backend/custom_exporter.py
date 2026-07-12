@@ -198,6 +198,26 @@ def normalize_date_str(val_str):
 
     return val_str
 
+
+DATETIME_FIELD_NAMES = {
+    'thoi_gian_dang_tai', 'thoi_gian_dang_ma', 'thoi_gian_dong_thau',
+    'thoi_gian_mo_thau', 'thoi_gian_mo_ehsdxtc', 'thoi_gian_yeu_cau',
+    'thoi_gian_tra_loi', 'thoi_gian', 'current_time',
+}
+
+
+def is_datetime_field_name(key_name):
+    key = str(key_name or '').strip().strip('{}')
+    key = re.sub(r'(?<!^)(?=[A-Z])', '_', key).lower()
+    return key in DATETIME_FIELD_NAMES or any(
+        key.endswith(suffix)
+        for suffix in (
+            'thoi_gian_dang_tai', 'thoi_gian_dang_ma', 'thoi_gian_dong_thau',
+            'thoi_gian_mo_thau', 'thoi_gian_mo_ehsdxtc', 'thoi_gian_yeu_cau',
+            'thoi_gian_tra_loi',
+        )
+    )
+
 def format_vietnamese_datetime(val_str, key_name=None):
     if not isinstance(val_str, str):
         return val_str
@@ -209,16 +229,9 @@ def format_vietnamese_datetime(val_str, key_name=None):
         d, m, y, hh, mm = dt_match.groups()
         m_int = int(m)
         m_str = f"{m_int:02d}" if m_int in [1, 2] else str(m_int)
-        if hh == "00" and mm == "00":
-            is_datetime_field = False
-            if key_name:
-                key_lower = str(key_name).lower()
-                datetime_keywords = ['dong_thau', 'mo_thau', 'dang_tai', 'dang_ma', 'thoi_gian']
-                if any(kw in key_lower for kw in datetime_keywords):
-                    is_datetime_field = True
-            if not is_datetime_field:
-                return f"ngày {d} tháng {m_str} năm {y}"
-        return f"{hh} giờ {mm} phút ngày {d}/{m_str}/{y}"
+        if is_datetime_field_name(key_name):
+            return f"{hh}:{mm} ngày {d}/{m_str}/{y}"
+        return f"ngày {d} tháng {m_str} năm {y}"
 
 
     d_match = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', val_str)
@@ -248,6 +261,11 @@ class SmartDate(str):
                 m_speech_t = re.search(r'(\d{1,2})\s+giờ\s+(\d{1,2})\s+phút\s+ngày\s+(\d{1,2})/(\d{1,2})/(\d{4})', s)
                 if m_speech_t:
                     hh, mm, d, m, y = m_speech_t.groups()
+                    return datetime(int(y), int(m), int(d), int(hh), int(mm))
+
+                m_compact_t = re.search(r'(\d{1,2}):(\d{2})\s+ngày\s+(\d{1,2})/(\d{1,2})/(\d{4})', s)
+                if m_compact_t:
+                    hh, mm, d, m, y = m_compact_t.groups()
                     return datetime(int(y), int(m), int(d), int(hh), int(mm))
 
                 m_dt = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{1,2})', s)

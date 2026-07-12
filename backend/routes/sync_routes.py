@@ -806,6 +806,10 @@ async def sync_api(request):
 
         current_sync_version = get_current_sync_version(cursor, org_name)
         response_data = {"status": "success", "timestamp": current_time, "syncVersion": current_sync_version}
+        if data.get("includeDashboardSummary") is True:
+            response_data["dashboardSummary"] = build_dashboard_summary(
+                cursor, org_name, role_str, user_id
+            )
         if orphaned_ids:
             response_data["orphanedIds"] = orphaned_ids
         if client_mutation_id:

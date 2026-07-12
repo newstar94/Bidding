@@ -466,7 +466,8 @@ def _parse_formula_date(value):
 
 def _format_formula_date(value):
     if isinstance(value, (datetime, date)):
-        return value.strftime('%d/%m/%Y')
+        month = f'{value.month:02d}' if value.month in (1, 2) else str(value.month)
+        return f'{value.day:02d}/{month}/{value.year:04d}'
     return value
 
 
@@ -634,7 +635,8 @@ class _FormulaEvaluator(ast.NodeVisitor):
 
 def _format_date_custom(day, fmt):
     fmt = str(fmt or 'dd/MM/yyyy')
-    return fmt.replace('dd', f'{day.day:02d}').replace('MM', f'{day.month:02d}').replace('yyyy', f'{day.year:04d}')
+    month = f'{day.month:02d}' if day.month in (1, 2) else str(day.month)
+    return fmt.replace('dd', f'{day.day:02d}').replace('MM', month).replace('yyyy', f'{day.year:04d}')
 
 
 def _to_comparable(value):

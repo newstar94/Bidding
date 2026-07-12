@@ -5,6 +5,19 @@ export function collectCommittedMutationKeys(payload = {}) {
     ...(payload.deletions || []).map((item) => item?.table).filter(Boolean)
   ]);
 }
+const DASHBOARD_SUMMARY_KEYS = new Set([
+  "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments"
+]);
+export function mutationAffectsDashboard(payload = {}) {
+  return [...collectCommittedMutationKeys(payload)].some((key) => DASHBOARD_SUMMARY_KEYS.has(key));
+}
+export function applyDashboardSummaryAfterMutation(model, payload = {}, responseData = {}) {
+  if (!model || !mutationAffectsDashboard(payload)) return false;
+  model.dashboardSummary = responseData.dashboardSummary && responseData.dashboardSummary.counts
+    ? responseData.dashboardSummary
+    : null;
+  return true;
+}
 export function scheduleBackgroundSync(delay = 500) {
   if (this._backgroundSyncTimer) {
     this._backgroundSyncQueued = true;
@@ -182,6 +195,10 @@ export function autoSync() {
     return Promise.resolve({ ok: true, skipped: true });
   }
   const { payload, snapshot } = mutationBatch;
+  const shouldRefreshDashboardSummary = mutationAffectsDashboard(payload);
+  if (shouldRefreshDashboardSummary) {
+    payload.includeDashboardSummary = true;
+  }
   return fetch("/api/sync", {
     method: "POST",
     headers: {
@@ -320,6 +337,10 @@ export function autoSync() {
       }
     }
     const committedKeys = collectCommittedMutationKeys(payload);
+    if (applyDashboardSummaryAfterMutation(this.model, payload, data)) {
+      committedKeys.add("dashboardSummary");
+      if (this.view) this.view._dashboardAggregateCache = null;
+    }
     const deletedKeys = new Set((payload.deletions || []).map((item) => item?.table).filter(Boolean));
     deletedKeys.forEach((key) => {
       if (this.model?.currentPage && Object.prototype.hasOwnProperty.call(this.model.currentPage, key)) {

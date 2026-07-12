@@ -303,7 +303,7 @@ export function renderContractVersionDetails(versionId) {
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Ngày quyết định chỉ định</div>
-                        <div class="detail-value">${hd.ngayKy ? formatDate(hd.ngayQdChiDinh) : "--"}</div>
+                        <div class="detail-value">${hd.ngayQdChiDinh ? formatDate(hd.ngayQdChiDinh) : "--"}</div>
                     </div>
                 ` : ""}
             </div>

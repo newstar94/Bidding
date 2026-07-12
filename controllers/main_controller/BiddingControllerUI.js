@@ -65,8 +65,9 @@ export function setupSidebar() {
       sidebar.classList.remove("active");
     });
   });
-  const options = { weekday: "long", year: "numeric", month: "2-digit", day: "2-digit" };
-  this.view.elements.currentDateSpan.textContent = (/* @__PURE__ */ new Date()).toLocaleDateString("vi-VN", options);
+  const currentDate = /* @__PURE__ */ new Date();
+  const weekday = currentDate.toLocaleDateString("vi-VN", { weekday: "long" });
+  this.view.elements.currentDateSpan.textContent = `${weekday}, ${this.model.formatDate(currentDate)}`;
   const profileCard = document.querySelector(".profile-card");
   if (profileCard) {
     profileCard.style.cursor = "pointer";

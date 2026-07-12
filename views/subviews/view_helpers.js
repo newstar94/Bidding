@@ -1,4 +1,5 @@
 export { getAuthDownloadUrl, authFetchDownload } from "../../controllers/utils/workflow_helpers.js";
+import { formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "../utils/formatters.js";
 export function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -43,69 +44,10 @@ export function formatCurrency(value) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(num);
 }
 export function formatDate(dateStr) {
-  if (!dateStr) return "--";
-  let year = null, month = null, day = null, hours = "00", minutes = "00";
-  let hasTime = false;
-  if (dateStr instanceof Date) {
-    const d = dateStr;
-    day = String(d.getDate()).padStart(2, "0");
-    month = String(d.getMonth() + 1).padStart(2, "0");
-    year = d.getFullYear();
-    hours = String(d.getHours()).padStart(2, "0");
-    minutes = String(d.getMinutes()).padStart(2, "0");
-    hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
-  } else {
-    const str = String(dateStr).trim();
-    const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
-    let dmyMatch = null;
-    if (!ymdMatch) {
-      const resolvedDmy = str.replace(/\s*-\s*/, " ").trim();
-      dmyMatch = resolvedDmy.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[T\s](\d{2}):(\d{2}))?/);
-    }
-    if (ymdMatch) {
-      year = ymdMatch[1];
-      month = ymdMatch[2];
-      day = ymdMatch[3];
-      if (ymdMatch[4] !== void 0) {
-        hours = ymdMatch[4];
-        minutes = ymdMatch[5];
-        hasTime = true;
-      }
-    } else if (dmyMatch) {
-      day = dmyMatch[1];
-      month = dmyMatch[2];
-      year = dmyMatch[3];
-      if (dmyMatch[4] !== void 0) {
-        hours = dmyMatch[4];
-        minutes = dmyMatch[5];
-        hasTime = true;
-      }
-    } else {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      day = String(d.getDate()).padStart(2, "0");
-      month = String(d.getMonth() + 1).padStart(2, "0");
-      year = d.getFullYear();
-      hours = String(d.getHours()).padStart(2, "0");
-      minutes = String(d.getMinutes()).padStart(2, "0");
-      hasTime = /[T\s]\d{1,2}:\d{2}/.test(String(dateStr));
-    }
-  }
-  if (hasTime) {
-    return `${hours}:${minutes} ngày ${day}/${month}/${year}`;
-  }
-  return `${day}/${month}/${year}`;
+  return formatDisplayDate(dateStr);
 }
 export function formatDateOnly(dateStr) {
-  if (!dateStr) return "--";
-  const str = String(dateStr).trim();
-  const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (ymdMatch) return `${ymdMatch[3]}/${ymdMatch[2]}/${ymdMatch[1]}`;
-  const dmyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (dmyMatch) return `${dmyMatch[1]}/${dmyMatch[2]}/${dmyMatch[3]}`;
-  const parsed = dateStr instanceof Date ? dateStr : new Date(dateStr);
-  if (Number.isNaN(parsed.getTime())) return str;
-  return `${String(parsed.getDate()).padStart(2, "0")}/${String(parsed.getMonth() + 1).padStart(2, "0")}/${parsed.getFullYear()}`;
+  return formatDisplayDateOnly(dateStr);
 }
 export function initCustomSelect(selectId) {
   const select = document.getElementById(selectId);
