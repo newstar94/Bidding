@@ -1,4 +1,5 @@
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
+import { selectPartnerVersionForDate } from "./contractorVersionBinding.js";
 
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export async function deleteHopDong(id) {
@@ -91,10 +92,12 @@ export async function editHopDong(id) {
     };
     coQdSelect.onchange = toggleQdFields;
     const cdtSelect = document.getElementById("hd-chudautuid");
+    document.getElementById("hd-chudautu-version-select").dataset.manualOverride = "";
     const chudautuList = this.model.getLatestChuDauTu();
     cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
     this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
     const ntSelect = document.getElementById("hd-nhathauid");
+    document.getElementById("hd-nhathau-version-select").dataset.manualOverride = "";
     const nhathauList = this.model.getLatestNhaThau();
     ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
     this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu...");
@@ -150,10 +153,12 @@ export async function editHopDong(id) {
       if (versionSelect && versionGroup) {
         versionSelect.innerHTML = versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
-          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
+          const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
+          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
         }).join("");
         versionGroup.style.display = "flex";
         versionSelect.onchange = (e) => {
+          if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
           const selectedVerCdt = this.model.state.chudautu.find((c) => c.id === e.target.value);
           if (selectedVerCdt && confirmContainer && confirmInfo) {
             confirmContainer.style.display = "block";
@@ -198,10 +203,12 @@ export async function editHopDong(id) {
       if (versionSelect && versionGroup) {
         versionSelect.innerHTML = versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
-          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)}</option>`;
+          const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
+          return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
         }).join("");
         versionGroup.style.display = "flex";
         versionSelect.onchange = (e) => {
+          if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
           const selectedVerNt = this.model.state.nhathau.find((n) => n.id === e.target.value);
           if (selectedVerNt && confirmContainer && confirmInfo) {
             confirmContainer.style.display = "block";
@@ -308,6 +315,7 @@ export async function editHopDong(id) {
       document.getElementById("hd-ten").value = hd.tenHopDong;
       document.getElementById("hd-so").value = hd.soHopDong;
       document.getElementById("hd-ngayky").value = this.model.formatForDateInput(hd.ngayKy);
+      document.getElementById("hd-ngaythanhly").value = this.model.formatForDateInput(hd.ngayThanhLy);
       const relatedRecordsToLoad = [
         ["chudautu", hd.chuDauTuId],
         ["nhathau", hd.nhaThauId],
@@ -375,6 +383,7 @@ export async function editHopDong(id) {
       document.getElementById("form-hopdong-id").value = "";
       const ngayKyInp = document.getElementById("hd-ngayky");
       if (ngayKyInp) ngayKyInp.value = "";
+      document.getElementById("hd-ngaythanhly").value = "";
       cdtSelect.value = "";
       cdtSelect.dispatchEvent(new Event("change"));
       handleCdtChange("");
@@ -412,8 +421,18 @@ export async function handleHopDongSubmit(e) {
   const tenHopDong = document.getElementById("hd-ten").value.trim();
   const soHopDong = document.getElementById("hd-so").value.trim();
   const ngayKy = document.getElementById("hd-ngayky").value;
-  const chuDauTuId = document.getElementById("hd-chudautu-version-select").value || document.getElementById("hd-chudautuid").value;
-  const nhaThauId = document.getElementById("hd-nhathau-version-select").value || document.getElementById("hd-nhathauid").value;
+  const ngayKyYmd = ngayKy ? this.model.convertDMYToYMD(ngayKy) : "";
+  const currentHdForBinding = id ? this.model.state.hopdong.find((h) => h.id === id) : null;
+  const selectedChuDauTuId = document.getElementById("hd-chudautu-version-select").value || document.getElementById("hd-chudautuid").value;
+  const selectedNhaThauId = document.getElementById("hd-nhathau-version-select").value || document.getElementById("hd-nhathauid").value;
+  const preserveCdtBinding = currentHdForBinding && currentHdForBinding.ngayKy === ngayKyYmd && currentHdForBinding.chuDauTuId === selectedChuDauTuId;
+  const preserveNtBinding = currentHdForBinding && currentHdForBinding.ngayKy === ngayKyYmd && currentHdForBinding.nhaThauId === selectedNhaThauId;
+  const cdtManualOverride = document.getElementById("hd-chudautu-version-select").dataset.manualOverride === "1";
+  const ntManualOverride = document.getElementById("hd-nhathau-version-select").dataset.manualOverride === "1";
+  const chuDauTuId = preserveCdtBinding || cdtManualOverride ? selectedChuDauTuId : selectPartnerVersionForDate(this.model.state.chudautu || [], selectedChuDauTuId, ngayKyYmd)?.id || selectedChuDauTuId;
+  const nhaThauId = preserveNtBinding || ntManualOverride ? selectedNhaThauId : selectPartnerVersionForDate(this.model.state.nhathau || [], selectedNhaThauId, ngayKyYmd)?.id || selectedNhaThauId;
+  const ngayThanhLyRaw = document.getElementById("hd-ngaythanhly").value;
+  const ngayThanhLy = ngayThanhLyRaw ? this.model.convertDMYToYMD(ngayThanhLyRaw) : "";
   const keHoachId = document.getElementById("hd-kehoachid").value;
   const giaTri = this.model.parseVND(document.getElementById("hd-giatri").value);
   if (giaTri < 0) {
@@ -460,9 +479,12 @@ export async function handleHopDongSubmit(e) {
   let data = {
     tenHopDong,
     soHopDong,
-    ngayKy: ngayKy ? this.model.convertDMYToYMD(ngayKy) : "",
+    ngayKy: ngayKyYmd,
     chuDauTuId,
     nhaThauId,
+    ngayThanhLy,
+    chuDauTuThanhLyId: ngayThanhLy ? selectPartnerVersionForDate(this.model.state.chudautu || [], chuDauTuId, ngayThanhLy)?.id || chuDauTuId : "",
+    nhaThauThanhLyId: ngayThanhLy ? selectPartnerVersionForDate(this.model.state.nhathau || [], nhaThauId, ngayThanhLy)?.id || nhaThauId : "",
     keHoachId,
     giaTri,
     loaiHopDong,

@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "python -m compileall -q backend scripts && npm run build && npm run test:api",
+    "check": "python -m compileall -q backend scripts && npm run build && npm run test:unit && npm run test:api",
     "generate:schema": "python scripts/generate_schema_contract.py",
     "build": "vite build",
     "build:secure": "vite build --mode secure",
     "test": "npm run test:api && npm run test:e2e",
     "test:api": "python -m pytest tests/api",
+    "test:unit": "node --test tests/unit/*.test.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:install-browsers": "playwright install"

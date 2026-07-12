@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import datetime
 
 from .schema import SCHEMA_DINH_NGHIA
 from .sync_mapper import json_key_for_column
@@ -38,6 +39,10 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
     incoming_paper_status_names = incoming_paper_status_names or set()
     errors = []
     paper_statuses_to_seed = set()
+
+    if table_name in {"chu_dau_tu", "nha_thau"} and not str(item.get("ngayApDung") or "").strip():
+        created_at = str(item.get("createdAt") or "").strip()
+        item["ngayApDung"] = created_at[:10] if parse_datetime_value(created_at) else datetime.now().strftime("%Y-%m-%d")
 
     if table_name == "chu_dau_tu":
         if not str(item.get("tenChuDauTu") or "").strip():

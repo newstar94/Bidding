@@ -817,6 +817,12 @@ async def sync_api(request):
 
 
         broadcast_websocket_event(org_name, {"event": "db_changed"})
+        if isinstance(data.get("nhathau"), list) and data.get("nhathau"):
+            try:
+                from services.partner_lookup_service import request_partner_enrichment
+                request_partner_enrichment()
+            except Exception as enrichment_error:
+                log_sync_error(f"Không thể kích hoạt bổ sung thông tin nhà thầu: {enrichment_error}")
         return JSONResponse(response_data)
     except OrgPermissionError as e:
         if conn:
@@ -1057,10 +1063,10 @@ async def get_all_data_api(request):
         reference_data = {}
         if is_full_initial_fetch:
             reference_columns = {
-                "chudautu": ["id", "id_goc", "phien_ban", "is_latest", "ma_chu_dau_tu", "ten_chu_dau_tu", "ma_so_thue"],
+                "chudautu": ["id", "id_goc", "phien_ban", "is_latest", "ngay_ap_dung", "ma_chu_dau_tu", "ten_chu_dau_tu", "ma_so_thue"],
                 "kehoach": ["id", "id_goc", "phien_ban", "is_latest", "ma_ke_hoach", "ten_ke_hoach", "chu_dau_tu_id"],
                 "goithau": ["id", "id_goc", "phien_ban", "is_latest", "ma_goi_thau", "ten_goi_thau", "ke_hoach_id", "trang_thai"],
-                "nhathau": ["id", "id_goc", "phien_ban", "is_latest", "ma_nha_thau", "ten_nha_thau", "ma_so_thue", "loai_nha_thau"],
+                "nhathau": ["id", "id_goc", "phien_ban", "is_latest", "ngay_ap_dung", "ma_nha_thau", "ten_nha_thau", "ma_so_thue", "loai_nha_thau"],
                 "chuyengia": ["id", "id_goc", "phien_ban", "is_latest", "ho_ten", "so_cccd", "so_chung_chi"],
             }
             for payload_key, table_name in TABLE_KEYS.items():
@@ -1088,30 +1094,11 @@ async def get_all_data_api(request):
                 if not selected_columns:
                     continue
                 reference_where = "owner_id = ? AND is_latest = 1"
-                if table_name == "nha_thau":
-                    reference_where = """
-                        owner_id = ? AND (
-                            is_latest = 1
-                            OR id IN (
-                                SELECT nha_thau_id FROM thong_tin_mo_thau
-                                WHERE owner_id = ? AND COALESCE(nha_thau_id, '') != ''
-                            )
-                            OR id IN (
-                                SELECT thanh_vien_nha_thau_id
-                                FROM thong_tin_mo_thau_lien_danh_thanh_vien
-                                WHERE owner_id = ? AND COALESCE(thanh_vien_nha_thau_id, '') != ''
-                            )
-                            OR id IN (
-                                SELECT nha_thau_trung_thau_id FROM goi_thau
-                                WHERE owner_id = ? AND COALESCE(nha_thau_trung_thau_id, '') != ''
-                            )
-                            OR id IN (
-                                SELECT nha_thau_id FROM hop_dong
-                                WHERE owner_id = ? AND COALESCE(nha_thau_id, '') != ''
-                            )
-                        )
-                    """
-                reference_params = (org_name,) if table_name != "nha_thau" else (org_name, org_name, org_name, org_name, org_name)
+                if table_name in {"chu_dau_tu", "nha_thau"}:
+                    # Date-based stage binding needs the lightweight identity of
+                    # every version; full details remain paginated/lazy-loaded.
+                    reference_where = "owner_id = ?"
+                reference_params = (org_name,)
                 cursor.execute(
                     f"SELECT {', '.join(selected_columns)} FROM {table_name} WHERE {reference_where}",
                     reference_params,

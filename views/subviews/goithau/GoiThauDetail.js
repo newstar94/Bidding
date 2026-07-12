@@ -3,7 +3,7 @@ import { bindCurrencyElement } from "../../../controllers/main_controller/domUti
 import { getAppController } from "../../../controllers/main_controller/controllerRef.js";
 import { setFieldFeedback } from "../../../controllers/main_controller/formStateUtils.js";
 import { validateExtensionRows } from "../../../controllers/workflows/packageValidation.js";
-import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "../../../controllers/workflows/contractorVersionBinding.js";
+import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, selectContractorVersionForDate } from "../../../controllers/workflows/contractorVersionBinding.js";
 import { setJvData } from "./jvDataStore.js";
 export function checkBidQualified(b) {
   if (!b) return false;
@@ -1641,9 +1641,24 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
       }
       const soBctdResult = metadata.result.soBctdKetQua || "";
       const ngayBctdResult = metadata.result.ngayBctdKetQua || "";
+      const resultBindings = new Map((metadata.result.contractorBindings || []).map((item) => [String(item.bidId || ""), item]));
+      const bindResultVersion = (bid) => {
+        const binding = resultBindings.get(String(bid.id || ""));
+        if (!binding) return bid;
+        const memberIds = binding.memberVersionIds || [];
+        return {
+          ...bid,
+          nhaThauId: binding.contractorVersionId || bid.nhaThauId,
+          tenNhaThau: bid.loaiNhaThau === "Liên danh" ? binding.jointVentureName || bid.tenNhaThau : bid.tenNhaThau,
+          thanhVienLienDanh: (bid.thanhVienLienDanh || []).map((member, index) => ({
+            ...member,
+            thanhVienNhaThauId: memberIds[index] || member.thanhVienNhaThauId
+          }))
+        };
+      };
       const allBidsForResult = this.model.state.thongtinmothau.filter(
         (b) => String(b.goiThauId) === String(gt.id) && checkBidQualified(b)
-      );
+      ).map(bindResultVersion);
       const isAwarded = gt.trangThai === "Đã có kết quả";
       if (isAwarded) {
         if (!gt.nhaThauTrungThauId && allBidsForResult.length === 1) {
@@ -1665,7 +1680,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         if (hasMultipleWinners) {
           window._lotWinnersMap = window._lotWinnersMap || {};
           window._lotWinnersMap[gt.id] = winningLots.map((pl) => {
-            const bidderInfo = this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(gt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
+            const bidderInfo = allBidsForResult.find((b) => String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
             const ntInfo = this.model.state.nhathau.find((n) => n.id === pl.nhaThauTrungThauId);
             const ntName = bidderInfo ? resolveBidContractorName(this.model, bidderInfo) : ntInfo ? ntInfo.tenNhaThau : "Nhà thầu #" + pl.nhaThauTrungThauId;
             const isJV = bidderInfo && bidderInfo.loaiNhaThau === "Liên danh";
@@ -1734,7 +1749,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             winnerDisplayHtml = `<h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">Chưa xác định</h5>`;
           }
         }
-        const allBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
+        const allBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id)).map(bindResultVersion);
         allBids.sort((a, b) => {
           const codeA = String(a.maPhanLo || "").toLowerCase();
           const codeB = String(b.maPhanLo || "").toLowerCase();
@@ -1989,7 +2004,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             lucide.createIcons();
             const dbId = id;
             const headers = {};
-            fetch(`/api/export-report/${dbId}`, { headers }).then((r) => {
+            fetch(`/api/export-report/${dbId}?type=result`, { headers }).then((r) => {
               if (!r.ok) throw new Error("Không thể xuất báo cáo");
               return r.blob();
             }).then((b) => {
@@ -2773,6 +2788,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 (n) => n.maNhaThau && code && n.maNhaThau.toLowerCase() === code.toLowerCase() || n.tenNhaThau && name && n.tenNhaThau.toLowerCase() === name.toLowerCase()
               ) || null;
             };
+            const resolveResultContractorId = (versionId) => selectContractorVersionForDate(this.model, versionId, decDate)?.id || versionId || "";
             tbodyApprove.querySelectorAll("tr").forEach((tr) => {
               const bidId = tr.getAttribute("data-approve-bid-id");
               let bid = this.model.state.thongtinmothau.find((b) => b.id === bidId);
@@ -2799,6 +2815,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     rootId: newNtId,
                     phienBan: "00",
                     isLatest: 1,
+                    ngayApDung: decDate,
                     maNhaThau: maNhaThau || "NT-" + window.generateUUID().toString().substr(8),
                     tenNhaThau,
                     loaiNhaThau: loaiNt,
@@ -2894,6 +2911,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     const foundWinnerNt = resolveApprovalContractor(lotWinnerTr, wMa, wTen);
                     wId = foundWinnerNt ? foundWinnerNt.id : lotWinnerTr.getAttribute("data-approve-bid-id");
                   }
+                  wId = resolveResultContractorId(wId);
                   pl.nhaThauTrungThauId = wId ? isNaN(wId) ? wId : parseInt(wId) : "";
                   pl.giaTrungThau = this.model.parseVND(lotWinnerTr.querySelector(".row-gia-trung")?.value || "0");
                   pl.thoiGianGoiThau = lotWinnerTr.querySelector(".row-tg-goithau")?.value.trim() || "";
@@ -2915,6 +2933,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                   const foundWinnerNt = resolveApprovalContractor(firstWinner, wMa, wTen);
                   wId = foundWinnerNt ? foundWinnerNt.id : firstWinner.getAttribute("data-approve-bid-id");
                 }
+                wId = resolveResultContractorId(wId);
                 gt.nhaThauTrungThauId = wId ? isNaN(wId) ? wId : parseInt(wId) : "";
                 gt.giaTrungThau = winnerRows.reduce((sum, tr) => sum + this.model.parseVND(tr.querySelector(".row-gia-trung")?.value || "0"), 0);
                 winnerIdStr = wId || "none";
@@ -2942,6 +2961,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 durPkg = winnerTr.querySelector(".row-tg-goithau")?.value.trim() || "";
                 durCtr = winnerTr.querySelector(".row-tg-hopdong")?.value.trim() || "";
               }
+              winnerIdStr = winnerIdStr === "none" ? winnerIdStr : resolveResultContractorId(winnerIdStr);
               gt.nhaThauTrungThauId = winnerIdStr === "none" ? "" : isNaN(winnerIdStr) ? winnerIdStr : parseInt(winnerIdStr);
               gt.giaTrungThau = finalPrice;
               gt.thoiGianGoiThau = winnerIdStr === "none" ? "" : durPkg;
@@ -2955,6 +2975,16 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             if (!meta.result) meta.result = {};
             meta.result.soBctdKetQua = soBctdResultVal;
             meta.result.ngayBctdKetQua = ngayBctdResultVal;
+            meta.result.contractorBindings = winnerRows.map((row) => {
+              const bidId = row.getAttribute("data-approve-bid-id") || "";
+              const bid = this.model.state.thongtinmothau.find((item) => String(item.id) === String(bidId));
+              return {
+                bidId,
+                jointVentureName: bid?.loaiNhaThau === "Liên danh" ? bid.tenNhaThau || "" : "",
+                contractorVersionId: resolveResultContractorId(row.getAttribute("data-nt-id") || bid?.nhaThauId || ""),
+                memberVersionIds: (bid?.thanhVienLienDanh || []).map((member) => resolveResultContractorId(member.thanhVienNhaThauId)).filter(Boolean)
+              };
+            });
             const hasActualWinner = gt.phanLo === "Có" ? (typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || []).some((pl) => pl.nhaThauTrungThauId) : winnerIdStr !== "none" && !!gt.nhaThauTrungThauId;
             if (!hasActualWinner) {
               if (!meta.cancelDetails) meta.cancelDetails = {};

@@ -86,6 +86,11 @@ def _sync_table_schema(cursor, table_name: str, table_spec: dict):
             if expected_type != current_type:
                 rebuild_needed = True
                 break
+            expected_not_null = "NOT NULL" in col_def.upper()
+            current_not_null = bool(current_cols[col_name][3])
+            if expected_not_null and not current_not_null:
+                rebuild_needed = True
+                break
 
     if not rebuild_needed:
         return "unchanged"
@@ -112,7 +117,7 @@ def _normalize_contractor_code(value):
 def _backfill_member_contractor_versions(cursor):
     cursor.execute("""
         SELECT id, owner_id, ma_nha_thau, ma_so_thue, phien_ban,
-               COALESCE(created_at, updated_at, '') AS created_at
+               COALESCE(NULLIF(ngay_ap_dung, ''), substr(COALESCE(created_at, updated_at, ''), 1, 10)) AS effective_date
         FROM nha_thau
     """)
     candidates_by_code = {}
@@ -128,20 +133,22 @@ def _backfill_member_contractor_versions(cursor):
         candidates = list(candidates_by_code.get((owner_id, code), {}).values())
         if not candidates:
             return None
-        older = [item for item in candidates if not reference_time or (item.get("created_at") or "") <= reference_time]
+        reference_date = str(reference_time or "")[:10]
+        older = [item for item in candidates if not reference_date or (item.get("effective_date") or "") <= reference_date]
         pool = older or candidates
         if older:
-            return max(pool, key=lambda item: (int(item.get("phien_ban") or 0), item.get("created_at") or ""))["id"]
-        return min(pool, key=lambda item: (int(item.get("phien_ban") or 0), item.get("created_at") or ""))["id"]
+            return max(pool, key=lambda item: (item.get("effective_date") or "", int(item.get("phien_ban") or 0)))["id"]
+        return min(pool, key=lambda item: (int(item.get("phien_ban") or 0), item.get("effective_date") or ""))["id"]
 
     specs = [
         (
             "thong_tin_mo_thau_lien_danh_thanh_vien",
             """
                 SELECT member.id, member.owner_id, member.ma_nha_thau, member.ma_so_thue,
-                       COALESCE(bid.created_at, bid.updated_at, '') AS reference_time
+                       COALESCE(pkg.thoi_gian_mo_thau, pkg.thoi_gian_mo_ehsdxtc, bid.created_at, bid.updated_at, '') AS reference_time
                 FROM thong_tin_mo_thau_lien_danh_thanh_vien member
                 JOIN thong_tin_mo_thau bid ON bid.id = member.thong_tin_mo_thau_id
+                JOIN goi_thau pkg ON pkg.id = bid.goi_thau_id
                 WHERE COALESCE(member.thanh_vien_nha_thau_id, '') = ''
             """,
         ),
@@ -149,7 +156,7 @@ def _backfill_member_contractor_versions(cursor):
             "nha_thau_lien_danh_thanh_vien",
             """
                 SELECT member.id, member.owner_id, member.ma_nha_thau, member.ma_so_thue,
-                       COALESCE(parent.created_at, parent.updated_at, '') AS reference_time
+                       COALESCE(parent.ngay_ap_dung, parent.created_at, parent.updated_at, '') AS reference_time
                 FROM nha_thau_lien_danh_thanh_vien member
                 JOIN nha_thau parent ON parent.id = member.nha_thau_id
                 WHERE COALESCE(member.thanh_vien_nha_thau_id, '') = ''
@@ -170,6 +177,19 @@ def _backfill_member_contractor_versions(cursor):
                     f"UPDATE {table_name} SET thanh_vien_nha_thau_id = ? WHERE id = ?",
                     (contractor_id, item["id"]),
                 )
+
+
+def _backfill_partner_effective_dates(cursor):
+    """Every partner version must have a deterministic effective date."""
+    for table_name in ("chu_dau_tu", "nha_thau"):
+        _assert_safe_table(table_name)
+        cursor.execute(
+            f"""
+            UPDATE {table_name}
+            SET ngay_ap_dung = substr(COALESCE(NULLIF(created_at, ''), NULLIF(updated_at, ''), datetime('now', 'localtime')), 1, 10)
+            WHERE COALESCE(ngay_ap_dung, '') = ''
+            """
+        )
 
 
 def _ensure_schema_version_tables(cursor):
@@ -579,6 +599,7 @@ def khoi_tao_va_di_tru_he_thong():
             action = _sync_table_schema(cursor, table_name, table_spec)
             schema_actions.append((table_name, action))
         cursor.execute("PRAGMA foreign_keys = ON")
+        _backfill_partner_effective_dates(cursor)
         _backfill_member_contractor_versions(cursor)
 
         cursor.execute("SELECT COUNT(*) FROM goi_dich_vu")

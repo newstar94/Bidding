@@ -88,6 +88,7 @@ export async function renderNhaThauTable() {
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
                             ${esc(displayedNt.tenNhaThau || "")}
+                            <div style="font-size:0.75rem; font-weight:normal; color:var(--primary); margin-top:2px;">Áp dụng: ${esc(displayedNt.ngayApDung ? this.model.formatDate(displayedNt.ngayApDung) : "--")}</div>
                             ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
                             <div style="margin-top: 4px;"><span class="badge badge-info">Liên danh (${members.length} TV)</span></div>
                             <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--primary-soft); white-space: normal !important;">
@@ -127,6 +128,7 @@ export async function renderNhaThauTable() {
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
                             ${esc(displayedNt.tenNhaThau || "")}
+                            <div style="font-size:0.75rem; font-weight:normal; color:var(--primary); margin-top:2px;">Áp dụng: ${esc(displayedNt.ngayApDung ? this.model.formatDate(displayedNt.ngayApDung) : "--")}</div>
                             ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
                         </td>
                         <td>${esc(displayedNt.maSoThue || "--")}</td>
@@ -204,6 +206,10 @@ export function renderNhaThauVersionDetails(versionId) {
     detailsHtml = `
             <div class="detail-grid" style="margin-bottom: 24px;">
                 <div class="detail-item">
+                    <div class="detail-label">Ngày áp dụng</div>
+                    <div class="detail-value fw-bold">${nt.ngayApDung ? this.model.formatDate(nt.ngayApDung) : "--"}</div>
+                </div>
+                <div class="detail-item">
                     <div class="detail-label">Loại nhà thầu</div>
                     <div class="detail-value"><span class="badge badge-info">Liên danh (${members.length} thành viên)</span></div>
                 </div>
@@ -241,6 +247,10 @@ export function renderNhaThauVersionDetails(versionId) {
   } else {
     detailsHtml = `
             <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Ngày áp dụng</div>
+                    <div class="detail-value fw-bold">${nt.ngayApDung ? this.model.formatDate(nt.ngayApDung) : "--"}</div>
+                </div>
                 <div class="detail-item">
                     <div class="detail-label">Loại nhà thầu</div>
                     <div class="detail-value"><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">Độc lập</span></div>

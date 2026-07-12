@@ -1,7 +1,7 @@
 import hashlib
 
 
-WORD_DEFAULT_MAPPINGS_VERSION = 6
+WORD_DEFAULT_MAPPINGS_VERSION = 7
 WORD_DEFAULT_SEED_PREFIX = "__word_defaults_seeded_v"
 
 
@@ -9,6 +9,7 @@ WORD_SINGLE_SOURCES = {
     "chu_dau_tu": [
         "ma_chu_dau_tu",
         "ten_chu_dau_tu",
+        "ngay_ap_dung",
         "ten_viet_tat",
         "ma_so_thue",
         "chuc_vu_nguoi_dung_dau",
@@ -93,6 +94,7 @@ WORD_SINGLE_SOURCES = {
     "nha_thau": [
         "ma_nha_thau",
         "ten_nha_thau",
+        "ngay_ap_dung",
         "ten_viet_tat",
         "loai_nha_thau",
         "ma_so_thue",
@@ -155,6 +157,7 @@ WORD_SINGLE_SOURCES = {
         "ten_hop_dong",
         "so_hop_dong",
         "ngay_ky",
+        "ngay_thanh_ly",
         "gia_tri",
         "loai_hop_dong",
         "thoi_gian_thuc_hien",
@@ -203,6 +206,7 @@ WORD_SINGLE_PREFIXES = {
 WORD_SINGLE_NAME_OVERRIDES = {
     ("chu_dau_tu", "ma_chu_dau_tu"): "ma_cdt",
     ("chu_dau_tu", "ten_chu_dau_tu"): "ten_cdt",
+    ("chu_dau_tu", "ngay_ap_dung"): "ngay_ap_dung_cdt",
     ("chu_dau_tu", "ten_viet_tat"): "ten_tat_cdt",
     ("chu_dau_tu", "ma_so_thue"): "mst_cdt",
     ("chu_dau_tu", "chuc_vu_nguoi_dung_dau"): "chuc_vu_nguoi_dung_dau_cdt",
@@ -275,6 +279,7 @@ WORD_SINGLE_NAME_OVERRIDES = {
 
     ("nha_thau", "ma_nha_thau"): "ma_nt",
     ("nha_thau", "ten_nha_thau"): "ten_nt",
+    ("nha_thau", "ngay_ap_dung"): "ngay_ap_dung_nt",
     ("nha_thau", "ten_viet_tat"): "ten_tat_nt",
     ("nha_thau", "loai_nha_thau"): "loai_nt",
     ("nha_thau", "ma_so_thue"): "mst_nt",
@@ -333,6 +338,8 @@ WORD_SINGLE_NAME_OVERRIDES = {
 
     ("hop_dong", "ten_hop_dong"): "ten_hd",
     ("hop_dong", "so_hop_dong"): "so_hd",
+    ("hop_dong", "ngay_ky"): "ngay_ky_hd",
+    ("hop_dong", "ngay_thanh_ly"): "ngay_thanh_ly_hd",
     ("hop_dong", "loai_hop_dong"): "loai_hd",
     ("hop_dong", "thoi_gian_thuc_hien"): "tg_thuc_hien_hd",
     ("hop_dong", "trang_thai_ho_so"): "trang_thai_hs_hd",

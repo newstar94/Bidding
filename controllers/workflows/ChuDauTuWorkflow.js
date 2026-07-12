@@ -2,6 +2,10 @@ import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode
 import { applyRawAddressToAddressControls, composeInternalAddress } from "../utils/PartnerHelpers.js";
 import { bindPartnerTaxCodeLookup } from "./partnerTaxLookup.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+const todayYmd = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 export async function deleteChuDauTu(id) {
   const hasPlans = this.model.state.kehoach.some((k) => k.chuDauTuId === id);
   if (hasPlans) {
@@ -40,6 +44,7 @@ export async function editChuDauTu(id) {
     document.getElementById("cdt-mst").value = cdt.maSoThue || "";
     document.getElementById("cdt-ten").value = cdt.tenChuDauTu;
     document.getElementById("cdt-tenviettat").value = cdt.tenVietTat || "";
+    document.getElementById("cdt-ngayapdung").value = this.model.formatForDateInput(cdt.ngayApDung || String(cdt.createdAt || "").slice(0, 10));
     document.getElementById("cdt-chucvunguoidungdau").value = cdt.chucVuNguoiDungDau || "";
     document.getElementById("cdt-daidiencdt").value = normalizePersonName(cdt.daiDienCdt);
     document.getElementById("cdt-chucvudaidien").value = cdt.chucVuDaiDien || "";
@@ -64,6 +69,7 @@ export async function editChuDauTu(id) {
     document.getElementById("form-chudautu-id").value = "";
     document.getElementById("cdt-coquanchuquan").value = "";
     document.getElementById("cdt-diachichitiet").value = "";
+    document.getElementById("cdt-ngayapdung").value = this.model.formatForDateInput(todayYmd());
     await this.initAddressDropdowns("cdt-tinh", "cdt-xa", "", "");
   }
   bindPartnerTaxCodeLookup({
@@ -245,6 +251,7 @@ export async function handleChuDauTuSubmit(e) {
     email: document.getElementById("cdt-email").value.trim(),
     maQHNS: document.getElementById("cdt-maqhns").value.trim(),
     coQuanChuQuan: document.getElementById("cdt-coquanchuquan").value.trim()
+    ,ngayApDung: this.model.convertDMYToYMD(document.getElementById("cdt-ngayapdung").value) || todayYmd()
   };
   if (id) {
     const currentCdt = this.model.state.chudautu.find((c) => c.id === id);
@@ -265,7 +272,10 @@ export async function handleChuDauTuSubmit(e) {
       data.rootId = rootId;
       data.phienBan = nextVerStr;
       data.isLatest = 1;
-      data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
+      data.createdAt = this.model.getCurrentDateTimeString();
+      if (data.ngayApDung === (currentCdt.ngayApDung || String(currentCdt.createdAt || "").slice(0, 10))) {
+        data.ngayApDung = todayYmd();
+      }
       data.updatedAt = this.model.getCurrentDateTimeString();
       this.model.state.chudautu.push(data);
     } else {

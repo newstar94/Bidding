@@ -5,7 +5,13 @@ from helpers_py.sync_mapper import get_payload_value
 OWNER_SCOPED_REFERENCES = {
     "ke_hoach_lcnt": [("chu_dau_tu_id", "chu_dau_tu")],
     "goi_thau": [("ke_hoach_id", "ke_hoach_lcnt"), ("nha_thau_trung_thau_id", "nha_thau")],
-    "hop_dong": [("chu_dau_tu_id", "chu_dau_tu"), ("nha_thau_id", "nha_thau"), ("ke_hoach_id", "ke_hoach_lcnt")],
+    "hop_dong": [
+        ("chu_dau_tu_id", "chu_dau_tu"),
+        ("nha_thau_id", "nha_thau"),
+        ("chu_dau_tu_thanh_ly_id", "chu_dau_tu"),
+        ("nha_thau_thanh_ly_id", "nha_thau"),
+        ("ke_hoach_id", "ke_hoach_lcnt"),
+    ],
     "thong_tin_mo_thau": [("goi_thau_id", "goi_thau"), ("nha_thau_id", "nha_thau")],
 }
 

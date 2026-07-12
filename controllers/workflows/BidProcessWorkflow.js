@@ -930,6 +930,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (!tbody) return;
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", bidData.id || window.generateRecordId("thongtinmothau"));
+  tr.dataset.contractorVersionId = bidData.nhaThauId || "";
   let ntCode = bidData.maNhaThau || "";
   let ntName = resolveBidContractorName(this.model, bidData) || "";
   let ntType = bidData.loaiNhaThau || "Độc lập";

@@ -17,6 +17,7 @@ PARTNER_LOOKUP_RETRY_SECONDS = 6 * 60 * 60
 _partner_lookup_attempts = {}
 _partner_worker_started = False
 _partner_worker_lock = threading.Lock()
+_partner_work_event = threading.Event()
 
 
 def _worker_debug(message):
@@ -272,11 +273,11 @@ def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
     return None
 
 def run_partner_lookup_worker():
-    _worker_debug("[Partner Worker] Started background contractor/investor lookup worker.")
+    _worker_debug("[Partner Worker] Started on-demand contractor/investor lookup worker.")
     while True:
         try:
-
-            time.sleep(30)
+            _partner_work_event.wait()
+            _partner_work_event.clear()
 
             conn = database.get_connection()
             cursor = conn.cursor()
@@ -298,7 +299,7 @@ def run_partner_lookup_worker():
                     (ma_so_thue IS NOT NULL AND ma_so_thue != '')
                     OR (ma_nha_thau IS NOT NULL AND ma_nha_thau != '')
                   )
-                LIMIT 5
+                LIMIT 100
             """)
             candidate_rows = cursor.fetchall()
             now = time.monotonic()
@@ -311,6 +312,9 @@ def run_partner_lookup_worker():
                     continue
                 _partner_lookup_attempts[attempt_key] = now
                 rows.append(row)
+
+            has_more_work = len(rows) > 5
+            rows = rows[:5]
 
             if not rows:
                 conn.close()
@@ -411,6 +415,9 @@ def run_partner_lookup_worker():
                         """, (c_id,))
                         conn.commit()
 
+            if has_more_work:
+                _partner_work_event.set()
+
             conn.close()
         except Exception as e:
             print(f"[Partner Worker] Error in worker loop: {e}", flush=True)
@@ -427,3 +434,9 @@ def start_partner_background_service():
         _partner_worker_started = True
         worker = threading.Thread(target=run_partner_lookup_worker, daemon=True)
         worker.start()
+
+
+def request_partner_enrichment():
+    """Wake the single worker only after partner data has actually been saved."""
+    start_partner_background_service()
+    _partner_work_event.set()

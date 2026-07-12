@@ -71,6 +71,7 @@ export async function renderChuDauTuTable() {
                 </td>
                 <td style="min-width: 220px; max-width: 320px;" class="fw-bold text-wrap">
                     ${esc(displayedCdt.tenChuDauTu || "")}
+                    <div style="font-size:0.75rem; font-weight:normal; color:var(--primary); margin-top:2px;">Áp dụng: ${esc(displayedCdt.ngayApDung ? this.model.formatDate(displayedCdt.ngayApDung) : "--")}</div>
                     ${displayedCdt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedCdt.tenVietTat)}</div>` : ""}
                     ${displayedCdt.coQuanChuQuan ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">CQ chủ quản: ${esc(displayedCdt.coQuanChuQuan)}</div>` : ""}
                 </td>
@@ -159,6 +160,10 @@ export function renderChuDauTuVersionDetails(versionId) {
             </div>
 
             <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Ngày áp dụng</div>
+                    <div class="detail-value fw-bold">${cdt.ngayApDung ? this.model.formatDate(cdt.ngayApDung) : "--"}</div>
+                </div>
                 <div class="detail-item">
                     <div class="detail-label">Mã số thuế</div>
                     <div class="detail-value fw-bold">${cdt.maSoThue || "--"}</div>

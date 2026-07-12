@@ -757,12 +757,7 @@ async def lifespan(app):
             except Exception as start_err:
                 log_error(start_err, "prewarm_image_cache")
 
-        if ENABLE_PARTNER_LOOKUP_WORKER:
-            try:
-                from services.partner_lookup_service import start_partner_background_service
-                start_partner_background_service()
-            except Exception as start_err:
-                log_error(start_err, "start_partner_background_service")
+        # Partner enrichment is started on demand after a contractor is saved.
 
     threading.Thread(
         target=_start_optional_background_services,

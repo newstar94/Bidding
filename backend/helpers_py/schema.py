@@ -49,6 +49,7 @@ SCHEMA_DINH_NGHIA = {
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "ngay_ap_dung": "TEXT NOT NULL DEFAULT (date('now', 'localtime'))",
             "ma_chu_dau_tu": "TEXT",
             "ten_chu_dau_tu": "TEXT NOT NULL",
             "ten_viet_tat": "TEXT",
@@ -150,6 +151,7 @@ SCHEMA_DINH_NGHIA = {
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "ngay_ap_dung": "TEXT NOT NULL DEFAULT (date('now', 'localtime'))",
             "ma_nha_thau": "TEXT",
             "ten_nha_thau": "TEXT NOT NULL",
             "ten_viet_tat": "TEXT",
@@ -406,6 +408,9 @@ SCHEMA_DINH_NGHIA = {
             "ngay_ky": "TEXT",
             "chu_dau_tu_id": "TEXT",
             "nha_thau_id": "TEXT",
+            "ngay_thanh_ly": "TEXT",
+            "chu_dau_tu_thanh_ly_id": "TEXT",
+            "nha_thau_thanh_ly_id": "TEXT",
             "ke_hoach_id": "TEXT",
             "gia_tri": "REAL",
             "loai_hop_dong": "TEXT",
@@ -422,6 +427,8 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
             "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL",
+            "FOREIGN KEY (chu_dau_tu_thanh_ly_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
+            "FOREIGN KEY (nha_thau_thanh_ly_id) REFERENCES nha_thau(id) ON DELETE SET NULL",
             "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE SET NULL"
         ],
         "field_map": {

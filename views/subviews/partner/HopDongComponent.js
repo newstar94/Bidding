@@ -208,6 +208,8 @@ export function renderContractVersionDetails(versionId) {
   }
   const cdt = this.model.state.chudautu.find((c) => c.id === hd.chuDauTuId);
   const nt = this.model.state.nhathau.find((n) => n.id === hd.nhaThauId);
+  const liquidationCdt = this.model.state.chudautu.find((c) => c.id === hd.chuDauTuThanhLyId);
+  const liquidationNt = this.model.state.nhathau.find((n) => n.id === hd.nhaThauThanhLyId);
   const kh = this.model.getLatestPlan(hd.keHoachId);
   const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : this.model.state.goithau || [];
   const linkedPkgs = (hd.goiThauIds || []).map((gtId) => {
@@ -268,6 +270,10 @@ export function renderContractVersionDetails(versionId) {
                     <div class="detail-value">${hd.ngayKy ? formatDate(hd.ngayKy) : "--"}</div>
                 </div>
                 <div class="detail-item">
+                    <div class="detail-label">Ngày thanh lý hợp đồng</div>
+                    <div class="detail-value">${hd.ngayThanhLy ? formatDate(hd.ngayThanhLy) : "Chưa thanh lý"}</div>
+                </div>
+                <div class="detail-item">
                     <div class="detail-label">Giá trị hợp đồng</div>
                     <div class="detail-value text-blue fw-bold" style="font-size: 1.15rem;">${formatCurrency(hd.giaTri)}</div>
                 </div>
@@ -314,6 +320,15 @@ export function renderContractVersionDetails(versionId) {
                     </div>
                 ` : '<div class="text-muted"><small>Không tìm thấy thông tin chủ đầu tư.</small></div>'}
             </div>
+
+            ${hd.ngayThanhLy ? `
+            <div class="detail-sub-section" style="margin-top: 24px;">
+                <h5 class="detail-sub-title">Thông tin đối tác tại thời điểm thanh lý</h5>
+                <div class="associated-item">
+                    <div><strong>Chủ đầu tư:</strong> ${liquidationCdt?.tenChuDauTu || "--"} (phiên bản ${liquidationCdt?.phienBan || "--"})</div>
+                    <div><strong>Nhà thầu:</strong> ${liquidationNt?.tenNhaThau || "--"} (phiên bản ${liquidationNt?.phienBan || "--"})</div>
+                </div>
+            </div>` : ""}
 
             <div class="detail-sub-section" style="margin-top: 24px;">
                 <h5 class="detail-sub-title">Thông tin Nhà thầu trúng thầu</h5>

@@ -61,6 +61,7 @@ export function setupWordTemplatesEvents() {
     "chu_dau_tu": [
       { value: "ma_chu_dau_tu", label: "Mã chủ đầu tư" },
       { value: "ten_chu_dau_tu", label: "Tên chủ đầu tư" },
+      { value: "ngay_ap_dung", label: "Ngày áp dụng" },
       { value: "ten_viet_tat", label: "Tên viết tắt chủ đầu tư" },
       { value: "ma_so_thue", label: "Mã số thuế chủ đầu tư" },
       { value: "chuc_vu_nguoi_dung_dau", label: "Chức vụ người đứng đầu (ví dụ: Giám đốc)" },
@@ -147,6 +148,7 @@ export function setupWordTemplatesEvents() {
     "nha_thau": [
       { value: "ma_nha_thau", label: "Mã nhà thầu" },
       { value: "ten_nha_thau", label: "Tên nhà thầu" },
+      { value: "ngay_ap_dung", label: "Ngày áp dụng" },
       { value: "ten_viet_tat", label: "Tên viết tắt nhà thầu" },
       { value: "loai_nha_thau", label: "Loại nhà thầu (Độc lập/Liên danh)" },
       { value: "ma_so_thue", label: "Mã số thuế nhà thầu" },
@@ -167,6 +169,7 @@ export function setupWordTemplatesEvents() {
       { value: "ten_hop_dong", label: "Tên hợp đồng" },
       { value: "so_hop_dong", label: "Số hợp đồng" },
       { value: "ngay_ky", label: "Ngày ký hợp đồng" },
+      { value: "ngay_thanh_ly", label: "Ngày thanh lý hợp đồng" },
       { value: "gia_tri", label: "Giá trị hợp đồng" },
       { value: "loai_hop_dong", label: "Loại hợp đồng" },
       { value: "thoi_gian_thuc_hien", label: "Thời gian thực hiện hợp đồng (ngày)" },

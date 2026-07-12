@@ -1,4 +1,5 @@
 import { normalizePersonName, normalizeTaxCodeForCompare, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
+import { getExactContractorVersion, selectContractorVersionForDate } from "./contractorVersionBinding.js";
 function normalizeOpeningCode(value) {
   return normalizeTaxCodeForCompare(value);
 }
@@ -22,8 +23,11 @@ function isLeadMember(member, leadCode) {
   return role.includes("đứng") && role.includes("đầu") || normalizedLeadCode && normalizeOpeningCode(member?.maNhaThau || member?.maSoThue) === normalizedLeadCode;
 }
 function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} }) {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   return {
     id,
+    rootId: id,
     maNhaThau,
     tenNhaThau,
     loaiNhaThau: "Độc lập",
@@ -39,7 +43,10 @@ function createIndependentContractor({ id, maNhaThau, tenNhaThau, member = {} })
     noiMoTaiKhoan: member.noiMoTaiKhoan || "",
     maNganHang: member.maNganHang || "",
     thanhVienLienDanh: [],
-    phienBan: 0
+    phienBan: "00",
+    isLatest: 1,
+    ngayApDung: today,
+    createdAt: `${today} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`
   };
 }
 function mergeContractorLookupData(target, source = {}) {
@@ -58,8 +65,11 @@ function mergeContractorLookupData(target, source = {}) {
   if (source.soDienThoai && !target.soDienThoai) target.soDienThoai = source.soDienThoai;
   if (source.email && !target.email) target.email = source.email;
 }
-function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row }) {
-  let foundNt = findLatestContractorByCode(latestNhaThauList, maNhaThau);
+function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row, businessDate }) {
+  const bound = getExactContractorVersion(model, row.dataset.contractorVersionId);
+  const boundMatchesCode = bound && normalizeOpeningCode(bound.maNhaThau || bound.maSoThue) === normalizeOpeningCode(maNhaThau);
+  const candidate = boundMatchesCode ? bound : findLatestContractorByCode(latestNhaThauList, maNhaThau);
+  let foundNt = boundMatchesCode ? bound : candidate ? selectContractorVersionForDate(model, candidate.id, businessDate) : null;
   if (!isJointVentureType(loaiNhaThau)) {
     if (!foundNt) {
       foundNt = createIndependentContractor({
@@ -138,7 +148,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
   });
   return foundNt;
 }
-function collectJvMembers(row, foundNt, maNhaThau, contractorVersions) {
+function collectJvMembers(row, foundNt, maNhaThau, contractorVersions, model, businessDate) {
   const bidJvMembers = [{
     thanhVienNhaThauId: foundNt?.id || "",
     tenNhaThau: foundNt?.tenNhaThau || row._leadMemberName || `Thành viên đứng đầu ${maNhaThau}`,
@@ -162,7 +172,9 @@ function collectJvMembers(row, foundNt, maNhaThau, contractorVersions) {
     const normalizedMemberCode = normalizeOpeningCode(m.maNhaThau || m.maSoThue);
     if (!normalizedMemberCode || seenCodes.has(normalizedMemberCode)) return;
     seenCodes.add(normalizedMemberCode);
-    const memberContractor = findLatestContractorByCode(contractorVersions, m.maNhaThau || m.maSoThue);
+    const exactMember = getExactContractorVersion(model, m.thanhVienNhaThauId);
+    const candidate = exactMember || findLatestContractorByCode(contractorVersions, m.maNhaThau || m.maSoThue);
+    const memberContractor = exactMember || (candidate ? selectContractorVersionForDate(model, candidate.id, businessDate) : null);
     bidJvMembers.push({
       thanhVienNhaThauId: memberContractor?.id || "",
       tenNhaThau: memberContractor?.tenNhaThau || m.tenNhaThau,
@@ -236,16 +248,18 @@ export function validateOpeningJointVentureMembers(rows) {
 }
 export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecial }) {
   const latestNhaThauList = model.getLatestNhaThau();
+  const gt = (model.state.goithau || []).find((item) => String(item.id) === String(gtId));
+  const businessDate = gt?.thoiGianMoThau || gt?.thoiGianMoEhsdxtc || gt?.ngayQuyetDinh || gt?.createdAt || "";
   return Array.from(rows || []).map((row) => {
     const id = row.getAttribute("data-id");
     const maNhaThau = row.querySelector(".mt-ma-nha-thau")?.value.trim() || "";
     const tenNhaThau = row.querySelector(".mt-ten-nha-thau")?.value.trim() || "";
     const loaiNhaThau = row.querySelector(".mt-loai-nha-thau")?.value || "Độc lập";
-    const foundNt = ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row });
+    const foundNt = ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loaiNhaThau, row, businessDate });
     const isJointVenture = isJointVentureType(loaiNhaThau);
     const resolvedTenNhaThau = isJointVenture ? tenNhaThau : foundNt ? foundNt.tenNhaThau : tenNhaThau;
     const tyLeGiamGiaRaw = row.querySelector(".mt-ty-le-giam-gia")?.value || "0";
-    const bidJvMembers = isJointVenture ? collectJvMembers(row, foundNt, maNhaThau, latestNhaThauList) : [];
+    const bidJvMembers = isJointVenture ? collectJvMembers(row, foundNt, maNhaThau, latestNhaThauList, model, businessDate) : [];
     return {
       id,
       goiThauId: gtId,

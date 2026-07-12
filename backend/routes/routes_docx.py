@@ -997,7 +997,7 @@ async def export_report_api(request):
         custom_vars_list = [row[0].lower() for row in mappings_rows]
 
         active_tpl = custom_exporter.get_active_template(user_id)
-        if type_param == 'contract':
+        if type_param in ('contract', 'liquidation'):
             if active_tpl != 'mau_hop_dong_lcnt.docx':
                 active_tpl = 'mau_hop_dong_lcnt.docx'
 
@@ -1005,8 +1005,9 @@ async def export_report_api(request):
 
         docx_stream = custom_exporter.generate_report_from_custom_template(tpl_path, unified_context, custom_vars_list)
 
-        if type_param == 'contract':
-            filename = f"Hop_dong_{unified_context['hop_dong'].get('so_hop_dong', 'LCNT')}.docx"
+        if type_param in ('contract', 'liquidation'):
+            prefix = "Thanh_ly_hop_dong" if type_param == 'liquidation' else "Hop_dong"
+            filename = f"{prefix}_{unified_context['hop_dong'].get('so_hop_dong', 'LCNT')}.docx"
         elif type_param in ['hsmt', 'opening']:
             filename = f"{type_param.upper()}_{unified_context['goi_thau']['ma_goi_thau']}.docx"
         else:

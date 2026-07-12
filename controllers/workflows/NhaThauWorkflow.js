@@ -2,6 +2,10 @@ import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode
 import { applyRawAddressToAddressControls, composeInternalAddress } from "../utils/PartnerHelpers.js";
 import { bindPartnerTaxCodeLookup } from "./partnerTaxLookup.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+const todayYmd = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 const safeStampSrc = (value) => {
   const src = String(value || "").trim();
   if (/^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) return src;
@@ -115,6 +119,7 @@ export async function editNhaThau(id, isReadOnly = false) {
       if (tenInput) tenInput.value = nt.tenNhaThau || "";
       const tenVietTatInput = document.getElementById("nt-tenviettat");
       if (tenVietTatInput) tenVietTatInput.value = nt.tenVietTat || "";
+      if (document.getElementById("nt-ngayapdung")) document.getElementById("nt-ngayapdung").value = this.model.formatForDateInput(nt.ngayApDung || String(nt.createdAt || "").slice(0, 10));
       if (document.getElementById("nt-mst")) document.getElementById("nt-mst").value = nt.maSoThue || "";
       if (document.getElementById("nt-nguoidaidien")) document.getElementById("nt-nguoidaidien").value = normalizePersonName(nt.nguoiDaiDien);
       if (document.getElementById("nt-chucvudaidien")) document.getElementById("nt-chucvudaidien").value = nt.chucVuDaiDien || "";
@@ -144,6 +149,7 @@ export async function editNhaThau(id, isReadOnly = false) {
       form.reset();
       form.dataset.diaChiGoc = "";
       if (document.getElementById("nt-diachichitiet")) document.getElementById("nt-diachichitiet").value = "";
+      if (document.getElementById("nt-ngayapdung")) document.getElementById("nt-ngayapdung").value = this.model.formatForDateInput(todayYmd());
       await this.initAddressDropdowns("nt-tinh", "nt-xa", "", "", false);
       const idInput = document.getElementById("form-nhathau-id");
       if (idInput) idInput.value = "";
@@ -356,7 +362,8 @@ export async function handleNhaThauSubmit(e) {
       ? stampIsNewUpload
         ? `DAU_${maNhaThau || "NHA_THAU"}.${stampExt}`
         : currentNtForStamp?.tenAnhDau || `DAU_${maNhaThau || "NHA_THAU"}.${stampExt}`
-      : ""
+      : "",
+    ngayApDung: this.model.convertDMYToYMD(document.getElementById("nt-ngayapdung").value) || todayYmd()
   };
   if (id) {
     const currentNt = this.model.state.nhathau.find((n) => n.id === id);
@@ -377,7 +384,10 @@ export async function handleNhaThauSubmit(e) {
       data.rootId = rootId;
       data.phienBan = nextVerStr;
       data.isLatest = 1;
-      data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
+      data.createdAt = this.model.getCurrentDateTimeString();
+      if (data.ngayApDung === (currentNt.ngayApDung || String(currentNt.createdAt || "").slice(0, 10))) {
+        data.ngayApDung = todayYmd();
+      }
       data.updatedAt = this.model.getCurrentDateTimeString();
       this.model.state.nhathau.push(data);
     } else {

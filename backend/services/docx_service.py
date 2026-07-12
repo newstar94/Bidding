@@ -6,7 +6,7 @@ from helpers import (
     _org_cache_invalidate_by_user_id
 )
 import custom_exporter
-from helpers_py.sync_mapper import attach_child_rows, attach_child_rows_to_items
+from helpers_py.sync_mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
 
 def to_snake_case(s):
     import re
@@ -223,6 +223,30 @@ def build_report_context(package_id, user_id, org_name, type_param):
     cursor.execute("SELECT * FROM thong_tin_mo_thau WHERE goi_thau_id = ? AND owner_id = ?", (package_id, org_name))
     bids = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
     attach_child_rows_to_items(cursor, "thong_tin_mo_thau", bids, owner_id=org_name, naming="snake")
+    if type_param == 'result':
+        try:
+            result_meta = json.loads(pkg.get('danh_gia_hsdt_metadata') or '{}').get('result', {})
+        except (TypeError, ValueError, json.JSONDecodeError):
+            result_meta = {}
+        bindings = {
+            str(item.get('bidId') or ''): item
+            for item in result_meta.get('contractorBindings', [])
+            if isinstance(item, dict)
+        }
+        for bid in bids:
+            binding = bindings.get(str(bid.get('id') or ''))
+            if binding and binding.get('contractorVersionId'):
+                bid['nha_thau_id'] = binding['contractorVersionId']
+                for member, member_id in zip(
+                    bid.get('thanh_vien_lien_danh') or [],
+                    binding.get('memberVersionIds') or [],
+                ):
+                    member['thanh_vien_nha_thau_id'] = member_id
+        if pkg.get('nha_thau_trung_thau_id'):
+            winning_ids = {str(pkg['nha_thau_trung_thau_id'])}
+            winning_ids.update(str(item.get('nha_thau_trung_thau_id')) for item in pkg.get('phan_lo_list', []) if item.get('nha_thau_trung_thau_id'))
+            bids = [bid for bid in bids if str(bid.get('nha_thau_id')) in winning_ids or str(bindings.get(str(bid.get('id') or ''), {}).get('contractorVersionId')) in winning_ids]
+        _enrich_opening_bid_contractor_versions(cursor, {str(bid.get('id')): bid for bid in bids}, org_name, 'snake')
     enrich_bids_with_contractor_fields(cursor, bids)
 
 
@@ -235,7 +259,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
         extract_evaluation_dates(v)
 
     contract_data = {}
-    if type_param == 'contract':
+    if type_param in ('contract', 'liquidation'):
         cursor.execute("""
             SELECT hd.*
             FROM hop_dong hd
@@ -252,6 +276,21 @@ def build_report_context(package_id, user_id, org_name, type_param):
                 (org_name, contract_data.get('id'))
             )
             contract_data['goi_thau_ids'] = [r[0] for r in cursor.fetchall()]
+            investor_id = contract_data.get('chu_dau_tu_thanh_ly_id') if type_param == 'liquidation' else contract_data.get('chu_dau_tu_id')
+            contractor_id = contract_data.get('nha_thau_thanh_ly_id') if type_param == 'liquidation' else contract_data.get('nha_thau_id')
+            if investor_id:
+                cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ? AND owner_id = ?", (investor_id, org_name))
+                row_inv = cursor.fetchone()
+                if row_inv:
+                    inv_data = parse_json_fields(dict(row_inv))
+                    investor_name = inv_data.get('ten_chu_dau_tu', '--')
+                    investor_address = inv_data.get('dia_chi', '')
+            if contractor_id:
+                cursor.execute("SELECT * FROM nha_thau WHERE id = ? AND owner_id = ?", (contractor_id, org_name))
+                row_contractor = cursor.fetchone()
+                if row_contractor:
+                    bids = [parse_json_fields(dict(row_contractor))]
+                    attach_child_rows_to_items(cursor, "nha_thau", bids, owner_id=org_name, naming="snake")
 
 
     cursor.execute("""
