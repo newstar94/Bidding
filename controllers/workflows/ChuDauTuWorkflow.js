@@ -264,7 +264,6 @@ export async function handleChuDauTuSubmit(e) {
       data.id = window.generateRecordId("chudautu");
       data.rootId = rootId;
       data.phienBan = nextVerStr;
-      data.phienBan = nextVerStr;
       data.isLatest = 1;
       data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
@@ -272,7 +271,6 @@ export async function handleChuDauTuSubmit(e) {
     } else {
       data.id = id;
       data.rootId = currentCdt.rootId || currentCdt.id;
-      data.phienBan = currentCdt.phienBan || "00";
       data.phienBan = currentCdt.phienBan || "00";
       data.isLatest = currentCdt.isLatest !== void 0 ? currentCdt.isLatest : 1;
       data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
@@ -284,7 +282,6 @@ export async function handleChuDauTuSubmit(e) {
     const newId = window.generateRecordId("chudautu");
     data.id = newId;
     data.rootId = newId;
-    data.phienBan = "00";
     data.phienBan = "00";
     data.isLatest = 1;
     data.createdAt = this.model.getCurrentDateTimeString();

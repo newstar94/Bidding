@@ -50,10 +50,15 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const enableObfuscation = mode === 'secure' || env.ENABLE_JS_OBFUSCATION === 'true';
   const enableDebugProtection = env.ENABLE_JS_DEBUG_PROTECTION === 'true';
+  const isProductionBuild = mode === 'production' || mode === 'secure';
 
   return {
     root: '.',
     plugins: enableObfuscation ? [obfuscatorPlugin({ debugProtection: enableDebugProtection })] : [],
+    esbuild: isProductionBuild ? {
+      drop: ['debugger'],
+      pure: ['console.log', 'console.debug', 'console.table']
+    } : {},
     build: {
       manifest: true,
       outDir: 'dist',

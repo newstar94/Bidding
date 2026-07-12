@@ -1,5 +1,6 @@
 import threading
 import time
+import os
 import urllib.request
 import urllib.error
 import json
@@ -16,6 +17,11 @@ PARTNER_LOOKUP_RETRY_SECONDS = 6 * 60 * 60
 _partner_lookup_attempts = {}
 _partner_worker_started = False
 _partner_worker_lock = threading.Lock()
+
+
+def _worker_debug(message):
+    if os.environ.get("APP_DEBUG", "False").lower() == "true":
+        print(message, flush=True)
 
 def extract_clean_tax_code(val):
     if not val:
@@ -266,7 +272,7 @@ def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
     return None
 
 def run_partner_lookup_worker():
-    print("[Partner Worker] Started background contractor/investor lookup worker.", flush=True)
+    _worker_debug("[Partner Worker] Started background contractor/investor lookup worker.")
     while True:
         try:
 
@@ -310,7 +316,7 @@ def run_partner_lookup_worker():
                 conn.close()
                 continue
 
-            print(f"[Partner Worker] Found {len(rows)} contractors to lookup.", flush=True)
+            _worker_debug(f"[Partner Worker] Found {len(rows)} contractors to lookup.")
 
             for row in rows:
                 c_id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau = row[:5]
@@ -329,7 +335,7 @@ def run_partner_lookup_worker():
                         conn.commit()
                     continue
 
-                print(f"[Partner Worker] Querying info for org={org_code or '-'}, tax={tax_code or '-'}...", flush=True)
+                _worker_debug(f"[Partner Worker] Querying info for org={org_code or '-'}, tax={tax_code or '-'}...")
                 info = lookup_partner_info(
                     tax_code or "",
                     org_code=org_code,
@@ -343,7 +349,7 @@ def run_partner_lookup_worker():
                     new_short_name = (info.get("short_name") or "").strip()
                     returned_tax_code = (info.get("tax_code") or "").strip()
 
-                    print(f"[Partner Worker] Found company info via {info['source']}: {new_name}", flush=True)
+                    _worker_debug(f"[Partner Worker] Found company info via {info['source']}: {new_name}")
 
 
                     cursor.execute(
@@ -395,7 +401,7 @@ def run_partner_lookup_worker():
                     except Exception:
                         pass
                 else:
-                    print(f"[Partner Worker] No info found for org={org_code or '-'}, tax={tax_code or '-' }.", flush=True)
+                    _worker_debug(f"[Partner Worker] No info found for org={org_code or '-'}, tax={tax_code or '-' }.")
 
                     if ten_nha_thau is None or ten_nha_thau == '' or ten_nha_thau.startswith('Nhà thầu'):
                         cursor.execute("""

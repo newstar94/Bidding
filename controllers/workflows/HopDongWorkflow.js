@@ -486,7 +486,6 @@ export async function handleHopDongSubmit(e) {
       data.id = window.generateRecordId("hopdong");
       data.rootId = rootId;
       data.phienBan = nextVerStr;
-      data.phienBan = nextVerStr;
       data.isLatest = 1;
       data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
@@ -495,7 +494,6 @@ export async function handleHopDongSubmit(e) {
     } else {
       data.id = id;
       data.rootId = currentHd.rootId || currentHd.id;
-      data.phienBan = currentHd.phienBan || "00";
       data.phienBan = currentHd.phienBan || "00";
       data.isLatest = currentHd.isLatest !== void 0 ? currentHd.isLatest : 1;
       data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();
@@ -507,7 +505,6 @@ export async function handleHopDongSubmit(e) {
     const newId = window.generateRecordId("hopdong");
     data.id = newId;
     data.rootId = newId;
-    data.phienBan = "00";
     data.phienBan = "00";
     data.isLatest = 1;
     data.createdAt = this.model.getCurrentDateTimeString();

@@ -226,7 +226,6 @@ export async function handleChuyenGiaSubmit(e) {
       data.id = window.generateRecordId("chuyengia");
       data.rootId = rootId;
       data.phienBan = nextVerStr;
-      data.phienBan = nextVerStr;
       data.isLatest = 1;
       data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
@@ -234,7 +233,6 @@ export async function handleChuyenGiaSubmit(e) {
     } else {
       data.id = id;
       data.rootId = currentCg.rootId || currentCg.id;
-      data.phienBan = currentCg.phienBan || "00";
       data.phienBan = currentCg.phienBan || "00";
       data.isLatest = currentCg.isLatest !== void 0 ? currentCg.isLatest : 1;
       data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
@@ -246,7 +244,6 @@ export async function handleChuyenGiaSubmit(e) {
     const newId = window.generateRecordId("chuyengia");
     data.id = newId;
     data.rootId = newId;
-    data.phienBan = "00";
     data.phienBan = "00";
     data.isLatest = 1;
     data.createdAt = this.model.getCurrentDateTimeString();

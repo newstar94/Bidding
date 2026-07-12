@@ -345,7 +345,6 @@ export async function handleNhaThauSubmit(e) {
       data.id = window.generateRecordId("nhathau");
       data.rootId = rootId;
       data.phienBan = nextVerStr;
-      data.phienBan = nextVerStr;
       data.isLatest = 1;
       data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
@@ -353,7 +352,6 @@ export async function handleNhaThauSubmit(e) {
     } else {
       data.id = id;
       data.rootId = currentNt.rootId || currentNt.id;
-      data.phienBan = currentNt.phienBan || "00";
       data.phienBan = currentNt.phienBan || "00";
       data.isLatest = currentNt.isLatest !== void 0 ? currentNt.isLatest : 1;
       data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
@@ -365,7 +363,6 @@ export async function handleNhaThauSubmit(e) {
     const newId = window.generateRecordId("nhathau");
     data.id = newId;
     data.rootId = newId;
-    data.phienBan = "00";
     data.phienBan = "00";
     data.isLatest = 1;
     data.createdAt = this.model.getCurrentDateTimeString();

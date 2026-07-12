@@ -207,15 +207,6 @@ export function autoSync() {
         if (changedKeys.size > 0) {
           renderChangedState(this, changedKeys, { isBackground: true });
         }
-        const TABLE_LABELS = {
-          "chu_dau_tu": "Chủ đầu tư",
-          "ke_hoach_lcnt": "Kế hoạch LCNT",
-          "goi_thau": "Gói thầu",
-          "nha_thau": "Nhà thầu",
-          "chuyen_gia": "Chuyên gia",
-          "hop_dong": "Hợp đồng",
-          "thong_tin_mo_thau": "Thông tin mở thầu"
-        };
         const categorized = {
           missing: [],
           format: [],
