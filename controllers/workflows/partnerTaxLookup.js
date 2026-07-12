@@ -3,6 +3,7 @@ import {
   normalizeProcurementOrgCode,
   normalizeVietnamTaxCode
 } from "../main_controller/domUtils.js";
+import { getJson } from "../api/apiClient.js";
 const LOOKUP_DELAY_MS = 400;
 export async function lookupPartnerInfo({ orgCode = "", taxCode = "", partnerRole = "NT", signal } = {}) {
   const normalizedOrgCode = normalizeProcurementOrgCode(orgCode);
@@ -11,10 +12,13 @@ export async function lookupPartnerInfo({ orgCode = "", taxCode = "", partnerRol
   const query = new URLSearchParams({ role: partnerRole });
   if (normalizedOrgCode) query.set("orgCode", normalizedOrgCode);
   if (isVietnamTaxCode(normalizedTaxCode)) query.set("code", normalizedTaxCode);
-  const response = await fetch(`/api/lookup-tax-code?${query}`, { signal });
-  if (!response.ok) return null;
-  const data = await response.json();
-  return data?.name ? data : null;
+  try {
+    const data = await getJson(`/api/lookup-tax-code?${query}`, { signal });
+    return data?.name ? data : null;
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    return null;
+  }
 }
 export function getPartnerLookupInput(value) {
   const orgCode = normalizeProcurementOrgCode(value);

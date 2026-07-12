@@ -1,0 +1,42 @@
+function resolveControl(root, target) {
+  if (!target) return null;
+  if (typeof target !== "string") return target;
+  return root?.getElementById?.(target) || root?.querySelector?.(`#${CSS?.escape ? CSS.escape(target) : target}`) || null;
+}
+
+export function clearFormValidation(form) {
+  form?.querySelectorAll?.(".form-group.invalid, .invalid")?.forEach((element) => element.classList.remove("invalid"));
+}
+
+export function setFormValues(root, data, mapping) {
+  Object.entries(mapping || {}).forEach(([dataKey, config]) => {
+    const descriptor = typeof config === "string" ? { target: config } : config;
+    const control = resolveControl(root, descriptor.target);
+    if (!control) return;
+    const raw = data?.[dataKey];
+    const value = descriptor.format ? descriptor.format(raw, data) : raw;
+    if (control.type === "checkbox") {
+      control.checked = Boolean(value);
+    } else {
+      control.value = value ?? descriptor.defaultValue ?? "";
+    }
+  });
+}
+
+export function collectFormValues(root, mapping) {
+  const result = {};
+  Object.entries(mapping || {}).forEach(([dataKey, config]) => {
+    const descriptor = typeof config === "string" ? { target: config } : config;
+    const control = resolveControl(root, descriptor.target);
+    if (!control) return;
+    const raw = control.type === "checkbox" ? control.checked : control.value;
+    result[dataKey] = descriptor.parse ? descriptor.parse(raw, control) : raw;
+  });
+  return result;
+}
+
+export function resetFormState(form, { values = null, root = document, mapping = null } = {}) {
+  form?.reset?.();
+  clearFormValidation(form);
+  if (values && mapping) setFormValues(root, values, mapping);
+}

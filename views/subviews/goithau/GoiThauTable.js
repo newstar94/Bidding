@@ -1,5 +1,5 @@
 import { initCustomSelect, renderEmptyRow } from "../view_helpers.js";
-import { cachePaginatedRecords, parseYearMonth, sortRecords } from "../tableDataUtils.js";
+import { collectYearMonthOptions, loadPaginatedRecords, matchesYearMonth, paginateRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { setJvData } from "./jvDataStore.js";
 import { resolveBidContractorName, resolveBidJointVentureMembers } from "../../../controllers/workflows/contractorVersionBinding.js";
@@ -14,18 +14,7 @@ export async function renderGoiThauTable() {
   if (yearSelect && monthSelect) {
     const prevYear = yearSelect.value;
     const prevMonth = monthSelect.value;
-    const years = /* @__PURE__ */ new Set();
-    const months = /* @__PURE__ */ new Set();
-    allPackages.forEach((gt) => {
-      const dateVal = gt.ngayQuyetDinh;
-      if (dateVal) {
-        const parsed = parseYearMonth(dateVal);
-        if (parsed.year) years.add(parsed.year);
-        if (parsed.month) months.add(parsed.month);
-      }
-    });
-    const sortedYears = Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    const sortedMonths = Array.from(months).sort((a, b) => parseInt(b) - parseInt(a));
+    const { years: sortedYears, months: sortedMonths } = collectYearMonthOptions(allPackages, (gt) => gt.ngayQuyetDinh);
     yearSelect.innerHTML = '<option value="">Năm</option>' + sortedYears.map((y) => `<option value="${y}">${y}</option>`).join("");
     monthSelect.innerHTML = '<option value="">Tháng</option>' + sortedMonths.map((m) => `<option value="${m}">Tháng ${m}</option>`).join("");
     if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
@@ -49,12 +38,13 @@ export async function renderGoiThauTable() {
       tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
     }
     try {
-      const res = await fetch(`/api/paginate?table=goithau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&trangThai=${encodeURIComponent(filterTrangThai)}&hinhThuc=${encodeURIComponent(filterHinhThuc)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`);
-      if (res.ok) {
-        const data = await res.json();
-        slicedData = cachePaginatedRecords(this.model, "goithau", data.items);
-        totalItems = data.totalItems;
-      }
+      const data = await loadPaginatedRecords(this.model, "goithau", {
+        page: currentPage, pageSize, search: searchVal,
+        trangThai: filterTrangThai, hinhThuc: filterHinhThuc,
+        sortBy, sortOrder, nam: filterNam, thang: filterThang
+      });
+      slicedData = data.items;
+      totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated packages", e);
     }
@@ -64,29 +54,12 @@ export async function renderGoiThauTable() {
       const matchesSearch = gt.maGoiThau.toLowerCase().includes(searchVal) || gt.tenGoiThau.toLowerCase().includes(searchVal);
       const matchesTrangThai = !filterTrangThai || gt.trangThai === filterTrangThai;
       const matchesHinhThuc = !filterHinhThuc || gt.hinhThucLuaChon === filterHinhThuc;
-      let matchesYear = true;
-      let matchesMonth = true;
-      const dateVal = gt.ngayQuyetDinh;
-      if (dateVal) {
-        const parsed = parseYearMonth(dateVal);
-        if (filterNam) {
-          matchesYear = parsed.year === filterNam;
-        }
-        if (filterThang) {
-          matchesMonth = parsed.month === filterThang;
-        }
-      } else {
-        if (filterNam || filterThang) {
-          matchesYear = false;
-          matchesMonth = false;
-        }
-      }
-      return matchesSearch && matchesTrangThai && matchesHinhThuc && matchesYear && matchesMonth;
+      return matchesSearch && matchesTrangThai && matchesHinhThuc
+        && matchesYearMonth(gt.ngayQuyetDinh, filterNam, filterThang);
     });
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
-    const startIndex = (currentPage - 1) * pageSize;
-    slicedData = filtered.slice(startIndex, startIndex + pageSize);
+    slicedData = paginateRecords(filtered, currentPage, pageSize);
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);

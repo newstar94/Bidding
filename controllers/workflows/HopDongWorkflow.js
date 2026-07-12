@@ -1,13 +1,13 @@
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
 import { selectPartnerVersionForDate } from "./contractorVersionBinding.js";
-
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+import { removeAllVersions, removeLatestVersion } from "../domain/VersionedEntityService.js";
+import { persistAndSync } from "../domain/MutationService.js";
+import { escapeHtml } from "../../views/subviews/view_helpers.js";
 export async function deleteHopDong(id) {
   const targetHd = this.model.state.hopdong.find((h) => h.id === id);
   if (!targetHd) return;
   const rootId = targetHd.rootId || targetHd.id;
   const relatedHds = this.model.state.hopdong.filter((h) => (h.rootId || h.id) === rootId);
-  const relatedIds = relatedHds.map((h) => h.id);
   let deleteConfirmed = false;
   let deleteChoice = null;
   if (relatedHds.length >= 2) {
@@ -28,22 +28,10 @@ export async function deleteHopDong(id) {
     deleteConfirmed = true;
   }
   if (deleteChoice === 1) {
-    const maxVer = Math.max(...relatedHds.map((h) => parseInt(h.phienBan) || 0));
-    const latestHd = relatedHds.find((h) => (parseInt(h.phienBan) || 0) === maxVer);
-    if (!latestHd) return;
-    this.model.state.hopdong = this.model.state.hopdong.filter((h) => h.id !== latestHd.id);
-    this.model.markDeleted("hopdong", latestHd.id);
-    const remainingRelated = relatedHds.filter((h) => h.id !== latestHd.id);
-    if (remainingRelated.length > 0) {
-      const nextMaxVer = Math.max(...remainingRelated.map((h) => parseInt(h.phienBan) || 0));
-      remainingRelated.forEach((h) => {
-        if ((parseInt(h.phienBan) || 0) === nextMaxVer) {
-          h.isLatest = 1;
-        } else {
-          h.isLatest = 0;
-        }
-      });
-    }
+    const result = removeLatestVersion(this.model.state.hopdong, targetHd);
+    if (!result.removed.length) return;
+    this.model.state.hopdong = result.records;
+    this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
     await this.model.persistData("hopdong");
     try {
       await this.autoSync();
@@ -52,8 +40,9 @@ export async function deleteHopDong(id) {
     }
     await this.view.customAlert("Thành công", "Đã xóa phiên bản hợp đồng gần nhất!", "check-circle");
   } else if (deleteChoice === 2 || deleteConfirmed) {
-    this.model.state.hopdong = this.model.state.hopdong.filter((h) => (h.rootId || h.id) !== rootId);
-    this.model.markDeleted("hopdong", relatedIds);
+    const result = removeAllVersions(this.model.state.hopdong, targetHd);
+    this.model.state.hopdong = result.records;
+    this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
     await this.model.persistData("hopdong");
     try {
       await this.autoSync();
@@ -549,11 +538,13 @@ export async function handleHopDongSubmit(e) {
       await this.model.addRecord("assignments", { id: window.generateRecordId("assignments"), empId: assignedEmpId, targetId: finalHdId, type: "hopdong" });
     }
   }
-  await this.model.persistData("hopdong");
   if (hasModalReturnState("hopdong-detail") && finalHdId) {
     updateModalReturnAction(finalHdId);
   }
-  this.closeModal("modal-hopdong");
-  this.view.renderHopDongTable();
-  await this.autoSync();
+  await persistAndSync(this, "hopdong", {
+    afterPersist: () => {
+      this.closeModal("modal-hopdong");
+      this.view.renderHopDongTable();
+    }
+  });
 }

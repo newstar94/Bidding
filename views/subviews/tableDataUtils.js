@@ -1,3 +1,5 @@
+import { getJson } from "../../controllers/api/apiClient.js";
+
 export function parseYearMonth(dateStr) {
   if (!dateStr) return { year: null, month: null };
   const cleaned = String(dateStr).replace(/\s*-\s*/, " ").trim();
@@ -22,6 +24,43 @@ export function parseYearMonth(dateStr) {
     };
   }
   return { year: null, month: null };
+}
+export function collectYearMonthOptions(records, getDate) {
+  const years = new Set();
+  const months = new Set();
+  (records || []).forEach((record) => {
+    const parsed = parseYearMonth(getDate(record));
+    if (parsed.year) years.add(parsed.year);
+    if (parsed.month) months.add(parsed.month);
+  });
+  return {
+    years: [...years].sort((a, b) => Number(b) - Number(a)),
+    months: [...months].sort((a, b) => Number(b) - Number(a))
+  };
+}
+
+export function matchesYearMonth(value, year = "", month = "") {
+  if (!year && !month) return true;
+  const parsed = parseYearMonth(value);
+  if (!parsed.year || !parsed.month) return false;
+  return (!year || parsed.year === String(year)) && (!month || parsed.month === String(month));
+}
+
+export function paginateRecords(records, currentPage, pageSize) {
+  const startIndex = (Math.max(1, Number(currentPage) || 1) - 1) * pageSize;
+  return (records || []).slice(startIndex, startIndex + pageSize);
+}
+
+export async function loadPaginatedRecords(model, table, params = {}) {
+  const query = new URLSearchParams({ table });
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) query.set(key, String(value));
+  });
+  const data = await getJson(`/api/paginate?${query}`);
+  return {
+    items: cachePaginatedRecords(model, table, data?.items || []),
+    totalItems: Number(data?.totalItems || 0)
+  };
 }
 export function sortRecords(records, field, order = "asc") {
   if (!field) return records;

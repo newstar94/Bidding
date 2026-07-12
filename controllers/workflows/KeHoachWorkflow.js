@@ -1,6 +1,7 @@
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
 import { bindCurrencyElement } from "../main_controller/domUtils.js";
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+import { removeAllVersions, removeLatestVersion } from "../domain/VersionedEntityService.js";
+import { escapeHtml } from "../../views/subviews/view_helpers.js";
 export async function deleteKeHoach(id) {
   const targetPlan = this.model.state.kehoach.find((k) => k.id === id);
   if (!targetPlan) return;
@@ -16,8 +17,8 @@ export async function deleteKeHoach(id) {
     );
     if (choice === null) return;
     if (choice === 1) {
-      const maxVer = Math.max(...relatedPlans.map((k) => parseInt(k.phienBan) || 0));
-      const latestKh = relatedPlans.find((k) => (parseInt(k.phienBan) || 0) === maxVer);
+      const preview = removeLatestVersion(this.model.state.kehoach, targetPlan);
+      const latestKh = preview.removed[0];
       if (!latestKh) return;
       const hasPkgLatest = this.model.state.goithau.some((gt) => gt.keHoachId === latestKh.id);
       if (hasPkgLatest) {
@@ -28,19 +29,8 @@ export async function deleteKeHoach(id) {
         );
         return;
       }
-      this.model.state.kehoach = this.model.state.kehoach.filter((kh) => kh.id !== latestKh.id);
-      this.model.markDeleted("kehoach", latestKh.id);
-      const remainingRelated = relatedPlans.filter((kh) => kh.id !== latestKh.id);
-      if (remainingRelated.length > 0) {
-        const nextMaxVer = Math.max(...remainingRelated.map((k) => parseInt(k.phienBan) || 0));
-        remainingRelated.forEach((kh) => {
-          if ((parseInt(kh.phienBan) || 0) === nextMaxVer) {
-            kh.isLatest = 1;
-          } else {
-            kh.isLatest = 0;
-          }
-        });
-      }
+      this.model.state.kehoach = preview.records;
+      this.model.markDeleted("kehoach", preview.removed.map((item) => item.id));
       await this.model.persistData("kehoach");
       await this.autoSync();
       await this.view.customAlert("Thành công", "Đã xóa phiên bản kế hoạch gần nhất!", "check-circle");
@@ -55,8 +45,9 @@ export async function deleteKeHoach(id) {
         );
         return;
       }
-      this.model.state.kehoach = this.model.state.kehoach.filter((kh) => (kh.rootId || kh.id) !== rootId);
-      this.model.markDeleted("kehoach", relatedIds);
+      const result = removeAllVersions(this.model.state.kehoach, targetPlan);
+      this.model.state.kehoach = result.records;
+      this.model.markDeleted("kehoach", result.removed.map((item) => item.id));
       await this.model.persistData("kehoach");
       await this.autoSync();
       await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của kế hoạch!", "check-circle");

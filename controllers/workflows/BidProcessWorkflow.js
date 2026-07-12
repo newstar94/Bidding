@@ -1,4 +1,5 @@
 import { getAppController } from "../main_controller/controllerRef.js";
+import { escapeHtml } from "../../views/subviews/view_helpers.js";
 import { bindCurrencyElement, debounce, normalizeTaxCodeForCompare } from "../main_controller/domUtils.js";
 import { setFieldFeedback } from "../main_controller/formStateUtils.js";
 import {
@@ -21,7 +22,6 @@ import { parseVietnamAddress } from "../utils/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "./partnerTaxLookup.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "./contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 function normalizeContractorLookupCode(value) {
   return normalizeTaxCodeForCompare(value);
 }

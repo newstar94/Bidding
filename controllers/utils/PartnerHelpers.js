@@ -249,32 +249,14 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
   xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
   xaSelect.disabled = true;
   tinhSelect.disabled = isDisabled;
-  if (!window._vietnamProvinces || !Array.isArray(window._vietnamProvinces) || window._vietnamProvinces.length === 0) {
-    window._vietnamProvinces = null;
-    try {
-      const res = await fetch("/api/address/provinces");
-      if (res.ok) {
-        const data = await res.json();
-        window._vietnamProvinces = Array.isArray(data) ? data : null;
-        if (!window._vietnamProvinces || window._vietnamProvinces.length === 0) {
-          console.error("Provinces API returned empty data");
-          tinhSelect.innerHTML = '<option value="">Lỗi: Dữ liệu tỉnh thành trống</option>';
-          return;
-        }
-      } else {
-        console.error("Failed to fetch provinces, status:", res.status);
-        tinhSelect.innerHTML = '<option value="">Lỗi tải danh sách tỉnh thành</option>';
-        return;
-      }
-    } catch (err) {
-      console.error("Error loading provinces:", err);
-      tinhSelect.innerHTML = '<option value="">Không thể tải danh sách tỉnh thành</option>';
-      return;
-    }
+  const provinces = await ensureVietnamProvinces();
+  if (!provinces.length) {
+    tinhSelect.innerHTML = '<option value="">Không thể tải danh sách tỉnh thành</option>';
+    return;
   }
-  tinhSelect.innerHTML = '<option value="">-- Chọn Tỉnh/Thành phố --</option>' + window._vietnamProvinces.map((p) => `<option value="${p.code}" data-name="${p.name}">${p.name}</option>`).join("");
+  tinhSelect.innerHTML = '<option value="">-- Chọn Tỉnh/Thành phố --</option>' + provinces.map((p) => `<option value="${p.code}" data-name="${escapeOptionText(p.name)}">${escapeOptionText(p.name)}</option>`).join("");
   if (currentTinhName) {
-    const foundProvince = window._vietnamProvinces.find((p) => p.name === currentTinhName);
+    const foundProvince = provinces.find((p) => p.name === currentTinhName);
     if (foundProvince) {
       tinhSelect.value = foundProvince.code;
     } else {
@@ -295,24 +277,8 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
     }
     xaSelect.innerHTML = '<option value="">Đang tải...</option>';
     xaSelect.disabled = true;
-    window._vietnamWards = window._vietnamWards || {};
-    if (!window._vietnamWards[provinceCode] || !Array.isArray(window._vietnamWards[provinceCode])) {
-      try {
-        const res = await fetch(`/api/address/wards/${provinceCode}`);
-        if (res.ok) {
-          const data = await res.json();
-          window._vietnamWards[provinceCode] = Array.isArray(data) ? data : [];
-        } else {
-          xaSelect.innerHTML = '<option value="">Lỗi tải dữ liệu</option>';
-          return;
-        }
-      } catch (err) {
-        xaSelect.innerHTML = '<option value="">Lỗi tải dữ liệu</option>';
-        return;
-      }
-    }
-    const wards = window._vietnamWards[provinceCode];
-    xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>' + wards.map((w) => `<option value="${w.code}" data-name="${w.name}">${w.name}</option>`).join("");
+    const wards = await ensureVietnamWards(provinceCode);
+    xaSelect.innerHTML = renderWardOptions(wards);
     xaSelect.disabled = isDisabled;
     if (selectWardName) {
       const foundWard = wards.find((w) => w.name === selectWardName);

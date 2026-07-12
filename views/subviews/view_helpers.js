@@ -31,9 +31,12 @@ export function renderEmptyRow(colspan, message, icon = "inbox") {
         </tr>
     `;
 }
-export function safeImageSrc(value) {
+export function safeImageSrc(value, cacheKey = "") {
   const src = String(value || "").trim();
-  if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) return src;
+  if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) {
+    const token = String(cacheKey || "").trim();
+    return token ? `${src}?v=${encodeURIComponent(token)}` : src;
+  }
   if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
   return "";
 }

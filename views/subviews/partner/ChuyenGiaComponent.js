@@ -1,6 +1,7 @@
 import { escapeHtml, formatDateOnly, safeImageSrc } from "../view_helpers.js";
-import { cachePaginatedRecords, sortRecords } from "../tableDataUtils.js";
+import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
+import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
 export async function renderChuyenGiaTable() {
   const table = document.getElementById("chuyengia-table");
   if (!table) return;
@@ -25,12 +26,12 @@ export async function renderChuyenGiaTable() {
       tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
     }
     try {
-      const res = await fetch(`/api/paginate?table=chuyengia&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await loadPaginatedRecords(this.model, "chuyengia", {
+        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
+      });
       if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
-      slicedData = cachePaginatedRecords(this.model, "chuyengia", data.items);
-      totalItems = Number(data.totalItems || 0);
+      slicedData = data.items;
+      totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated experts", e);
       if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
@@ -49,8 +50,7 @@ export async function renderChuyenGiaTable() {
     );
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
-    const startIndex = (currentPage - 1) * pageSize;
-    slicedData = filtered.slice(startIndex, startIndex + pageSize);
+    slicedData = paginateRecords(filtered, currentPage, pageSize);
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -68,30 +68,21 @@ export async function renderChuyenGiaTable() {
     if (pag) pag.innerHTML = "";
   } else {
     renderVirtualTable(tableBody, slicedData, (cg) => {
-      const root = cg.rootId || cg.id;
-      const allVersions = cg.allVersions || this.model.state.chuyengia.filter((x) => (x.rootId || x.id) === root).sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (!this.model.state.selectedChuyenGiaVersion) {
         this.model.state.selectedChuyenGiaVersion = {};
       }
-      const selectedId = this.model.state.selectedChuyenGiaVersion[root] || cg.id;
-      const displayedCg = this.model.state.chuyengia.find((x) => x.id === selectedId) || cg;
+      const { rootId: root, versions, displayed: displayedCg } = resolveVersionedRow(
+        this.model.state.chuyengia, cg, this.model.state.selectedChuyenGiaVersion
+      );
       const displayedId = escapeHtml(displayedCg.id);
-      const rootAttr = escapeHtml(root);
       const expertName = escapeHtml(displayedCg.hoTen || "");
       const expertCccd = escapeHtml(displayedCg.soCCCD || "");
       const certificateNo = escapeHtml(displayedCg.soChungChi || "");
       const certificateIssuer = escapeHtml(displayedCg.donViCapChungChi || "--");
       const certificateDate = escapeHtml(displayedCg.ngayCapChungChi ? formatDateOnly(displayedCg.ngayCapChungChi) : "--");
-      const optionsHtml = allVersions.map((v) => {
-        const label = escapeHtml(String(parseInt(v.phienBan || 0)).padStart(2, "0"));
-        const isSel = v.id === displayedCg.id ? "selected" : "";
-        return `<option value="${escapeHtml(v.id)}" ${isSel}>${label}</option>`;
-      }).join("");
-      const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-expert-version" data-root="${rootAttr}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
-                    ${optionsHtml}
-                </select>
-            `;
+      const dropdownHtml = renderVersionSelector({
+        versions, selectedId: displayedCg.id, rootId: root, changeAction: "change-expert-version"
+      });
       return `
             <tr>
                 <td class="fw-bold">
@@ -144,8 +135,9 @@ export function showChuyenGiaDetails(id) {
   const certificateDate = escapeHtml(cg.ngayCapChungChi ? formatDateOnly(cg.ngayCapChungChi) : "--");
   const certificateIssuer = escapeHtml(cg.donViCapChungChi || "--");
   const expertId = escapeHtml(cg.id);
-  const signatureSrc = safeImageSrc(cg.anhChuKy);
-  const certificateSrc = safeImageSrc(cg.anhChungChi);
+  const imageVersion = cg.updatedAt || cg.createdAt;
+  const signatureSrc = safeImageSrc(cg.anhChuKy, imageVersion);
+  const certificateSrc = safeImageSrc(cg.anhChungChi, imageVersion);
   const avatarInitial = escapeHtml(String(cg.hoTen || "?").split(" ").map((w) => w[0]).pop().toUpperCase());
   const certFileName = escapeHtml(cg.tenAnhChungChi || (cg.soCCCD ? `CC_${cg.soCCCD}.png` : "--"));
   const sigFileName = escapeHtml(cg.tenAnhChuKy || (cg.soCCCD ? `CK_${cg.soCCCD}.png` : "--"));

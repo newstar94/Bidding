@@ -1,11 +1,11 @@
 import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
 import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../utils/PartnerHelpers.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
-const todayYmd = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-};
+import { persistAndSync } from "../domain/MutationService.js";
+import { clearFormValidation, resetFormState, setFormValues } from "../forms/FormBinder.js";
+import { escapeHtml } from "../../views/subviews/view_helpers.js";
+import { getCurrentDateYmd } from "../../views/utils/formatters.js";
+const todayYmd = getCurrentDateYmd;
 export async function deleteChuDauTu(id) {
   const hasPlans = this.model.state.kehoach.some((k) => k.chuDauTuId === id);
   if (hasPlans) {
@@ -33,22 +33,30 @@ export async function editChuDauTu(id) {
     await this.ensureLazyModal?.("modal-chudautu");
   }
   const form = document.getElementById("form-chudautu");
-  form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
+  clearFormValidation(form);
   if (id) {
     this.switchTab("chudautu", "chinhsua", true);
     document.getElementById("modal-chudautu-title").textContent = "Cập nhật Chủ đầu tư";
     const cdt = this.model.state.chudautu.find((c) => c.id === id);
     form.dataset.diaChiGoc = cdt.diaChiGoc || "";
-    document.getElementById("form-chudautu-id").value = cdt.id;
-    document.getElementById("cdt-ma").value = cdt.maChuDauTu;
-    document.getElementById("cdt-mst").value = cdt.maSoThue || "";
-    document.getElementById("cdt-ten").value = cdt.tenChuDauTu;
-    document.getElementById("cdt-tenviettat").value = cdt.tenVietTat || "";
-    document.getElementById("cdt-ngayapdung").value = this.model.formatForDateInput(cdt.ngayApDung || String(cdt.createdAt || "").slice(0, 10));
-    document.getElementById("cdt-chucvunguoidungdau").value = cdt.chucVuNguoiDungDau || "";
-    document.getElementById("cdt-daidiencdt").value = normalizePersonName(cdt.daiDienCdt);
-    document.getElementById("cdt-chucvudaidien").value = cdt.chucVuDaiDien || "";
-    document.getElementById("cdt-danhxung").value = cdt.danhXung || "Ông";
+    setFormValues(document, cdt, {
+      id: "form-chudautu-id",
+      maChuDauTu: "cdt-ma",
+      maSoThue: "cdt-mst",
+      tenChuDauTu: "cdt-ten",
+      tenVietTat: "cdt-tenviettat",
+      ngayApDung: { target: "cdt-ngayapdung", format: (value) => this.model.formatForDateInput(value || String(cdt.createdAt || "").slice(0, 10)) },
+      chucVuNguoiDungDau: "cdt-chucvunguoidungdau",
+      daiDienCdt: { target: "cdt-daidiencdt", format: normalizePersonName },
+      chucVuDaiDien: "cdt-chucvudaidien",
+      danhXung: { target: "cdt-danhxung", defaultValue: "Ông" },
+      soDienThoai: "cdt-sdt",
+      soTaiKhoan: "cdt-sotaikhoan",
+      noiMoTaiKhoan: "cdt-noimotaikhoan",
+      email: "cdt-email",
+      maQHNS: "cdt-maqhns",
+      coQuanChuQuan: "cdt-coquanchuquan"
+    });
     const storedAddress = parseStoredInternalAddress(cdt.diaChi || "");
     if (storedAddress.requiresLookup) {
       await this.initAddressDropdowns("cdt-tinh", "cdt-xa", "", "");
@@ -61,16 +69,10 @@ export async function editChuDauTu(id) {
       document.getElementById("cdt-diachichitiet").value = storedAddress.detail;
       await this.initAddressDropdowns("cdt-tinh", "cdt-xa", storedAddress.provinceName, storedAddress.wardName);
     }
-    document.getElementById("cdt-sdt").value = cdt.soDienThoai;
-    document.getElementById("cdt-sotaikhoan").value = cdt.soTaiKhoan || "";
-    document.getElementById("cdt-noimotaikhoan").value = cdt.noiMoTaiKhoan || "";
-    document.getElementById("cdt-email").value = cdt.email || "";
-    document.getElementById("cdt-maqhns").value = cdt.maQHNS || "";
-    document.getElementById("cdt-coquanchuquan").value = cdt.coQuanChuQuan || "";
   } else {
     this.switchTab("chudautu", "taomoi", true);
     document.getElementById("modal-chudautu-title").textContent = "Thêm Chủ đầu tư mới";
-    form.reset();
+    resetFormState(form);
     form.dataset.diaChiGoc = "";
     document.getElementById("form-chudautu-id").value = "";
     document.getElementById("cdt-coquanchuquan").value = "";
@@ -313,10 +315,12 @@ export async function handleChuDauTuSubmit(e) {
   }
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await this.model.persistData("chudautu");
-  this.view.closeModal("modal-chudautu");
-  this.view.renderChuDauTuTable();
-  await this.autoSync();
+  await persistAndSync(this, "chudautu", {
+    afterPersist: () => {
+      this.view.closeModal("modal-chudautu");
+      this.view.renderChuDauTuTable();
+    }
+  });
   const planModal = document.getElementById("modal-kehoach");
   if (planModal && planModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("kh-chudautuid");

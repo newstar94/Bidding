@@ -1,7 +1,8 @@
 import { escapeHtml, initCustomSelect, safeImageSrc } from "../view_helpers.js";
-import { cachePaginatedRecords, sortRecords } from "../tableDataUtils.js";
+import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { resolveContractorVersion } from "../../../controllers/workflows/contractorVersionBinding.js";
+import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
 export async function renderNhaThauTable() {
   const tableBody = document.getElementById("nhathau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-nhathau").value.toLowerCase();
@@ -17,12 +18,11 @@ export async function renderNhaThauTable() {
       tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
     }
     try {
-      const res = await fetch(`/api/paginate?table=nhathau&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
-      if (res.ok) {
-        const data = await res.json();
-        slicedData = cachePaginatedRecords(this.model, "nhathau", data.items);
-        totalItems = data.totalItems;
-      }
+      const data = await loadPaginatedRecords(this.model, "nhathau", {
+        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
+      });
+      slicedData = data.items;
+      totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated contractors", e);
     }
@@ -33,8 +33,7 @@ export async function renderNhaThauTable() {
     );
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
-    const startIndex = (currentPage - 1) * pageSize;
-    slicedData = filtered.slice(startIndex, startIndex + pageSize);
+    slicedData = paginateRecords(filtered, currentPage, pageSize);
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -53,23 +52,15 @@ export async function renderNhaThauTable() {
   } else {
     const esc = window.escapeHTML || ((value) => String(value ?? ""));
     renderVirtualTable(tableBody, slicedData, (n) => {
-      const root = n.rootId || n.id;
-      const allVersions = n.allVersions || this.model.state.nhathau.filter((x) => (x.rootId || x.id) === root).sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (!this.model.state.selectedNhaThauVersion) {
         this.model.state.selectedNhaThauVersion = {};
       }
-      const selectedId = this.model.state.selectedNhaThauVersion[root] || n.id;
-      const displayedNt = this.model.state.nhathau.find((x) => x.id === selectedId) || n;
-      const optionsHtml = allVersions.map((v) => {
-        const label = String(parseInt(v.phienBan || 0)).padStart(2, "0");
-        const isSel = v.id === displayedNt.id ? "selected" : "";
-        return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
-      }).join("");
-      const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-contractor-version" data-root="${esc(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
-                    ${optionsHtml}
-                </select>
-            `;
+      const { rootId: root, versions, displayed: displayedNt } = resolveVersionedRow(
+        this.model.state.nhathau, n, this.model.state.selectedNhaThauVersion
+      );
+      const dropdownHtml = renderVersionSelector({
+        versions, selectedId: displayedNt.id, rootId: root, changeAction: "change-contractor-version"
+      });
       const isJV = displayedNt.loaiNhaThau === "Liên danh";
       if (isJV) {
         const members = displayedNt.thanhVienLienDanh || [];
@@ -196,7 +187,7 @@ export function renderNhaThauVersionDetails(versionId) {
     `;
   const addressParts = (nt.diaChi || "").split(" | ");
   const addressStr = addressParts.filter(Boolean).join(", ");
-  const stampSrc = safeImageSrc(nt.anhDau);
+  const stampSrc = safeImageSrc(nt.anhDau, nt.updatedAt || nt.createdAt);
   const stampFileName = escapeHtml(nt.tenAnhDau || "Ảnh dấu nhà thầu");
   let detailsHtml = "";
   const isJV = nt.loaiNhaThau === "Liên danh";

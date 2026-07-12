@@ -1,6 +1,6 @@
 import { parseBidDateTime } from "./dateParseUtils.js";
 import { bindCurrencyElement } from "../main_controller/domUtils.js";
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+import { escapeHtml } from "../../views/subviews/view_helpers.js";
 function normalizeSubRowValue(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }

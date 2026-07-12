@@ -1,4 +1,5 @@
 import { getJvData } from "/views/subviews/goithau/jvDataStore.js";
+import { safeImageSrc } from "/views/subviews/view_helpers.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -798,15 +799,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     window.showChuyenGiaDetails = (id) => this.view.showChuyenGiaDetails(id);
     window.showChuDauTuDetails = (id) => this.view.showChuDauTuDetails(id);
     window.showNhaThauDetails = (id) => this.view.showNhaThauDetails(id);
-    const getSafeImageSrc = (value) => {
-      const src = String(value || "").trim();
-      if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) return src;
-      if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
-      return "";
-    };
     window.zoomCertificateImage = (id) => {
       const cg = this.model.state.chuyengia.find((c) => c.id === id);
-      const safeSrc = getSafeImageSrc(cg?.anhChungChi);
+      const safeSrc = safeImageSrc(cg?.anhChungChi, cg?.updatedAt || cg?.createdAt);
       if (!safeSrc) return;
       const lightbox = document.createElement("div");
       lightbox.className = "certificate-lightbox";
@@ -821,7 +816,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     };
     window.zoomSignatureImage = (id) => {
       const cg = this.model.state.chuyengia.find((c) => c.id === id);
-      const safeSrc = getSafeImageSrc(cg?.anhChuKy);
+      const safeSrc = safeImageSrc(cg?.anhChuKy, cg?.updatedAt || cg?.createdAt);
       if (!safeSrc) return;
       const lightbox = document.createElement("div");
       lightbox.className = "certificate-lightbox";

@@ -4,7 +4,7 @@ import { setVisible } from "../main_controller/formStateUtils.js";
 import { validateRequiredEvaluationReportFields } from "./bidEvaluationValidation.js";
 import { addEvaluationLetterRow, renderEvaluationSummary } from "./bidEvaluationRender.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "./contractorVersionBinding.js";
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+import { escapeHtml } from "../../views/subviews/view_helpers.js";
 export function renderDanhGiaHsdtPanel() {
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
   if (!select) return;

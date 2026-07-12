@@ -1,3 +1,6 @@
+import { safeImageSrc } from "../../views/subviews/view_helpers.js";
+import { rememberSelectedVersion } from "../domain/VersionedEntityService.js";
+
 const safeExpertImageSrc = (value) => {
   const src = String(value || "").trim();
   if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) return src;
@@ -80,7 +83,7 @@ export function editChuyenGia(id) {
     const certificateImageSrc = safeExpertImageSrc(cg.anhChungChi);
     if (certificateImageSrc) {
       this.tempChuyenGiaImageBase64 = certificateImageSrc;
-      previewImg.src = certificateImageSrc;
+      previewImg.src = safeImageSrc(certificateImageSrc, cg.updatedAt || cg.createdAt);
       previewContainer.style.display = "flex";
       uploadZone.style.display = "none";
     } else {
@@ -92,7 +95,7 @@ export function editChuyenGia(id) {
     const signatureImageSrc = safeExpertImageSrc(cg.anhChuKy);
     if (signatureImageSrc) {
       this.tempChuyenGiaSignatureBase64 = signatureImageSrc;
-      previewImgChuky.src = signatureImageSrc;
+      previewImgChuky.src = safeImageSrc(signatureImageSrc, cg.updatedAt || cg.createdAt);
       previewContainerChuky.style.display = "flex";
       uploadZoneChuky.style.display = "none";
     } else {
@@ -249,6 +252,7 @@ export async function handleChuyenGiaSubmit(e) {
     data.updatedAt = this.model.getCurrentDateTimeString();
     this.model.state.chuyengia.push(data);
   }
+  rememberSelectedVersion(this.model.state, "selectedChuyenGiaVersion", data);
   await this.model.persistData("chuyengia");
   this.view.closeModal("modal-chuyengia");
   this.view.renderChuyenGiaTable();

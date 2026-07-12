@@ -1,6 +1,7 @@
 import { escapeHtml, formatDate, formatCurrency, initCustomSelect } from "../view_helpers.js";
-import { cachePaginatedRecords, parseYearMonth, sortRecords } from "../tableDataUtils.js";
+import { collectYearMonthOptions, loadPaginatedRecords, matchesYearMonth, paginateRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
+import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
@@ -10,17 +11,7 @@ export async function renderHopDongTable() {
   if (yearSelect && monthSelect) {
     const prevYear = yearSelect.value;
     const prevMonth = monthSelect.value;
-    const years = /* @__PURE__ */ new Set();
-    const months = /* @__PURE__ */ new Set();
-    allContracts.forEach((h) => {
-      if (h.ngayKy) {
-        const parsed = parseYearMonth(h.ngayKy);
-        if (parsed.year) years.add(parsed.year);
-        if (parsed.month) months.add(parsed.month);
-      }
-    });
-    const sortedYears = Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    const sortedMonths = Array.from(months).sort((a, b) => parseInt(b) - parseInt(a));
+    const { years: sortedYears, months: sortedMonths } = collectYearMonthOptions(allContracts, (h) => h.ngayKy);
     yearSelect.innerHTML = '<option value="">Năm</option>' + sortedYears.map((y) => `<option value="${y}">${y}</option>`).join("");
     monthSelect.innerHTML = '<option value="">Tháng</option>' + sortedMonths.map((m) => `<option value="${m}">Tháng ${m}</option>`).join("");
     if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
@@ -42,12 +33,12 @@ export async function renderHopDongTable() {
       tableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
     }
     try {
-      const res = await fetch(`/api/paginate?table=hopdong&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}&nam=${encodeURIComponent(filterNam)}&thang=${encodeURIComponent(filterThang)}`);
-      if (res.ok) {
-        const data = await res.json();
-        slicedData = cachePaginatedRecords(this.model, "hopdong", data.items);
-        totalItems = data.totalItems;
-      }
+      const data = await loadPaginatedRecords(this.model, "hopdong", {
+        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
+        nam: filterNam, thang: filterThang
+      });
+      slicedData = data.items;
+      totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated contracts", e);
     }
@@ -55,28 +46,11 @@ export async function renderHopDongTable() {
     const latestHopDong = this.model.getLatestHopDong();
     const filtered = latestHopDong.filter((h) => {
       const matchesSearch = (h.soHopDong || "").toLowerCase().includes(searchVal) || (h.tenHopDong || "").toLowerCase().includes(searchVal);
-      let matchesYear = true;
-      let matchesMonth = true;
-      if (h.ngayKy) {
-        const parsed = parseYearMonth(h.ngayKy);
-        if (filterNam) {
-          matchesYear = parsed.year === filterNam;
-        }
-        if (filterThang) {
-          matchesMonth = parsed.month === filterThang;
-        }
-      } else {
-        if (filterNam || filterThang) {
-          matchesYear = false;
-          matchesMonth = false;
-        }
-      }
-      return matchesSearch && matchesYear && matchesMonth;
+      return matchesSearch && matchesYearMonth(h.ngayKy, filterNam, filterThang);
     });
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
-    const startIndex = (currentPage - 1) * pageSize;
-    slicedData = filtered.slice(startIndex, startIndex + pageSize);
+    slicedData = paginateRecords(filtered, currentPage, pageSize);
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -94,23 +68,15 @@ export async function renderHopDongTable() {
     if (pag) pag.innerHTML = "";
   } else {
     renderVirtualTable(tableBody, slicedData, (h) => {
-      const root = h.rootId || h.id;
-      const allVersions = h.allVersions || this.model.state.hopdong.filter((x) => (x.rootId || x.id) === root).sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (!this.model.state.selectedHopDongVersion) {
         this.model.state.selectedHopDongVersion = {};
       }
-      const selectedId = this.model.state.selectedHopDongVersion[root] || h.id;
-      const displayedHd = this.model.state.hopdong.find((x) => x.id === selectedId) || h;
-      const optionsHtml = allVersions.map((v) => {
-        const label = String(parseInt(v.phienBan || 0)).padStart(2, "0");
-        const isSel = v.id === displayedHd.id ? "selected" : "";
-        return `<option value="${v.id}" ${isSel}>${label}</option>`;
-      }).join("");
-      const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-contract-version" data-root="${root}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
-                    ${optionsHtml}
-                </select>
-            `;
+      const { rootId: root, versions, displayed: displayedHd } = resolveVersionedRow(
+        this.model.state.hopdong, h, this.model.state.selectedHopDongVersion
+      );
+      const dropdownHtml = renderVersionSelector({
+        versions, selectedId: displayedHd.id, rootId: root, changeAction: "change-contract-version"
+      });
       const chudautuList = Array.isArray(this.model.state.chudautu) ? this.model.state.chudautu : [];
       const cdt = chudautuList.find((c) => c.id === displayedHd.chuDauTuId);
       const cdtName = cdt ? cdt.tenChuDauTu : "--";

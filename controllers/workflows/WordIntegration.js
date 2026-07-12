@@ -1,6 +1,6 @@
 import { authFetchDownload } from "../utils/workflow_helpers.js";
 import { makeSearchableSelect } from "../utils/PartnerHelpers.js";
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+import { escapeHtml } from "../../views/subviews/view_helpers.js";
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
   if (templateInput) {

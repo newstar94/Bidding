@@ -254,6 +254,9 @@ export function getCurrentDateTimeString() {
   const seconds = String(d.getSeconds()).padStart(2, "0");
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
+export function getCurrentDateYmd(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 export function getPackageBaseCode(code) {
   return code || "";
 }

@@ -1,6 +1,7 @@
 import { escapeHtml, initCustomSelect, renderEmptyRow, safeAttr } from "../view_helpers.js";
-import { cachePaginatedRecords, sortRecords } from "../tableDataUtils.js";
+import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
+import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
 export async function renderChuDauTuTable() {
   const tableBody = document.getElementById("chudautu-table").querySelector("tbody");
   const searchVal = document.getElementById("search-chudautu").value.toLowerCase();
@@ -16,12 +17,11 @@ export async function renderChuDauTuTable() {
       tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
     }
     try {
-      const res = await fetch(`/api/paginate?table=chudautu&page=${currentPage}&pageSize=${pageSize}&search=${encodeURIComponent(searchVal)}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
-      if (res.ok) {
-        const data = await res.json();
-        slicedData = cachePaginatedRecords(this.model, "chudautu", data.items);
-        totalItems = data.totalItems;
-      }
+      const data = await loadPaginatedRecords(this.model, "chudautu", {
+        page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
+      });
+      slicedData = data.items;
+      totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated investors", e);
     }
@@ -32,8 +32,7 @@ export async function renderChuDauTuTable() {
     );
     sortRecords(filtered, sortBy, sortOrder);
     totalItems = filtered.length;
-    const startIndex = (currentPage - 1) * pageSize;
-    slicedData = filtered.slice(startIndex, startIndex + pageSize);
+    slicedData = paginateRecords(filtered, currentPage, pageSize);
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
@@ -43,23 +42,15 @@ export async function renderChuDauTuTable() {
   } else {
     renderVirtualTable(tableBody, slicedData, (c) => {
       const esc = escapeHtml;
-      const root = c.rootId || c.id;
-      const allVersions = c.allVersions || this.model.state.chudautu.filter((x) => (x.rootId || x.id) === root).sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (!this.model.state.selectedChuDauTuVersion) {
         this.model.state.selectedChuDauTuVersion = {};
       }
-      const selectedId = this.model.state.selectedChuDauTuVersion[root] || c.id;
-      const displayedCdt = this.model.state.chudautu.find((x) => x.id === selectedId) || c;
-      const optionsHtml = allVersions.map((v) => {
-        const label = String(parseInt(v.phienBan || 0)).padStart(2, "0");
-        const isSel = v.id === displayedCdt.id ? "selected" : "";
-        return `<option value="${safeAttr(v.id)}" ${isSel}>${esc(label)}</option>`;
-      }).join("");
-      const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-investor-version" data-root="${safeAttr(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
-                    ${optionsHtml}
-                </select>
-            `;
+      const { rootId: root, versions, displayed: displayedCdt } = resolveVersionedRow(
+        this.model.state.chudautu, c, this.model.state.selectedChuDauTuVersion
+      );
+      const dropdownHtml = renderVersionSelector({
+        versions, selectedId: displayedCdt.id, rootId: root, changeAction: "change-investor-version"
+      });
       return `
             <tr>
                 <td>

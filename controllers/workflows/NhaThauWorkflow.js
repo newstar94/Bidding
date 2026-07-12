@@ -1,24 +1,25 @@
 import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
 import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../utils/PartnerHelpers.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
-const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
-const todayYmd = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-};
+import { persistAndSync } from "../domain/MutationService.js";
+import { clearFormValidation, resetFormState, setFormValues } from "../forms/FormBinder.js";
+import { escapeHtml, safeImageSrc } from "../../views/subviews/view_helpers.js";
+import { rememberSelectedVersion } from "../domain/VersionedEntityService.js";
+import { getCurrentDateYmd } from "../../views/utils/formatters.js";
+const todayYmd = getCurrentDateYmd;
 const safeStampSrc = (value) => {
   const src = String(value || "").trim();
   if (/^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) return src;
   if (/^\/uploads\/nha_thau\/[a-z0-9._-]+$/i.test(src)) return src;
   return "";
 };
-const setNhaThauStampPreview = (value, isReadOnly = false) => {
+const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "") => {
   const uploadZone = document.getElementById("nt-upload-zone-dau");
   const previewContainer = document.getElementById("nt-preview-container-dau");
   const previewImg = document.getElementById("nt-anh-preview-dau");
   const removeBtn = document.getElementById("btn-nt-remove-file-dau");
   const src = safeStampSrc(value);
-  if (previewImg) previewImg.src = src;
+  if (previewImg) previewImg.src = safeImageSrc(src, cacheKey);
   if (previewContainer) previewContainer.style.display = src ? "flex" : "none";
   if (uploadZone) uploadZone.style.display = src || isReadOnly ? "none" : "flex";
   if (removeBtn) removeBtn.style.display = isReadOnly ? "none" : "";
@@ -83,7 +84,7 @@ export async function editNhaThau(id, isReadOnly = false) {
   try {
     const form = document.getElementById("form-nhathau");
     if (!form) throw new Error("Không tìm thấy form nhập nhà thầu (form-nhathau)");
-    form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
+    clearFormValidation(form);
     const inputs = form.querySelectorAll("input, select, textarea");
     inputs.forEach((inp) => {
       inp.disabled = isReadOnly;
@@ -111,21 +112,22 @@ export async function editNhaThau(id, isReadOnly = false) {
       const nt = this.model.state.nhathau.find((n) => n.id === id);
       if (!nt) throw new Error("Không tìm thấy dữ liệu nhà thầu với ID " + id);
       form.dataset.diaChiGoc = nt.diaChiGoc || "";
-      const idInput = document.getElementById("form-nhathau-id");
-      if (idInput) idInput.value = nt.id;
-      const maInput = document.getElementById("nt-ma");
-      if (maInput) maInput.value = nt.maNhaThau || "";
-      const tenInput = document.getElementById("nt-ten");
-      if (tenInput) tenInput.value = nt.tenNhaThau || "";
-      const tenVietTatInput = document.getElementById("nt-tenviettat");
-      if (tenVietTatInput) tenVietTatInput.value = nt.tenVietTat || "";
-      if (document.getElementById("nt-ngayapdung")) document.getElementById("nt-ngayapdung").value = this.model.formatForDateInput(nt.ngayApDung || String(nt.createdAt || "").slice(0, 10));
-      if (document.getElementById("nt-mst")) document.getElementById("nt-mst").value = nt.maSoThue || "";
-      if (document.getElementById("nt-nguoidaidien")) document.getElementById("nt-nguoidaidien").value = normalizePersonName(nt.nguoiDaiDien);
-      if (document.getElementById("nt-chucvudaidien")) document.getElementById("nt-chucvudaidien").value = nt.chucVuDaiDien || "";
-      if (document.getElementById("nt-danhxung")) document.getElementById("nt-danhxung").value = nt.danhXung || "Ông";
-      if (document.getElementById("nt-sdt")) document.getElementById("nt-sdt").value = nt.soDienThoai || "";
-      if (document.getElementById("nt-email")) document.getElementById("nt-email").value = nt.email || "";
+      setFormValues(document, nt, {
+        id: "form-nhathau-id",
+        maNhaThau: "nt-ma",
+        tenNhaThau: "nt-ten",
+        tenVietTat: "nt-tenviettat",
+        ngayApDung: { target: "nt-ngayapdung", format: (value) => this.model.formatForDateInput(value || String(nt.createdAt || "").slice(0, 10)) },
+        maSoThue: "nt-mst",
+        nguoiDaiDien: { target: "nt-nguoidaidien", format: normalizePersonName },
+        chucVuDaiDien: "nt-chucvudaidien",
+        danhXung: { target: "nt-danhxung", defaultValue: "Ông" },
+        soDienThoai: "nt-sdt",
+        email: "nt-email",
+        soTaiKhoan: "nt-sotaikhoan",
+        noiMoTaiKhoan: "nt-noimotaikhoan",
+        maNganHang: "nt-manganhang"
+      });
       const storedAddress = parseStoredInternalAddress(nt.diaChi || "");
       if (storedAddress.requiresLookup) {
         await this.initAddressDropdowns("nt-tinh", "nt-xa", "", "", isReadOnly);
@@ -142,17 +144,14 @@ export async function editNhaThau(id, isReadOnly = false) {
         if (document.getElementById("nt-tinh")) document.getElementById("nt-tinh").disabled = true;
         if (document.getElementById("nt-xa")) document.getElementById("nt-xa").disabled = true;
       }
-      if (document.getElementById("nt-sotaikhoan")) document.getElementById("nt-sotaikhoan").value = nt.soTaiKhoan || "";
-      if (document.getElementById("nt-noimotaikhoan")) document.getElementById("nt-noimotaikhoan").value = nt.noiMoTaiKhoan || "";
-      if (document.getElementById("nt-manganhang")) document.getElementById("nt-manganhang").value = nt.maNganHang || "";
       this.tempNhaThauStampBase64 = safeStampSrc(nt.anhDau);
-      setNhaThauStampPreview(this.tempNhaThauStampBase64, isReadOnly);
+      setNhaThauStampPreview(this.tempNhaThauStampBase64, isReadOnly, nt.updatedAt || nt.createdAt);
     } else {
       window._nhaThauViewOnly = false;
       this.switchTab("nhathau", "taomoi", true);
       const titleEl = document.getElementById("modal-nhathau-title");
       if (titleEl) titleEl.textContent = "Thêm Nhà thầu mới";
-      form.reset();
+      resetFormState(form);
       form.dataset.diaChiGoc = "";
       if (document.getElementById("nt-diachichitiet")) document.getElementById("nt-diachichitiet").value = "";
       if (document.getElementById("nt-ngayapdung")) document.getElementById("nt-ngayapdung").value = this.model.formatForDateInput(todayYmd());
@@ -421,12 +420,15 @@ export async function handleNhaThauSubmit(e) {
     data.updatedAt = this.model.getCurrentDateTimeString();
     this.model.state.nhathau.push(data);
   }
+  rememberSelectedVersion(this.model.state, "selectedNhaThauVersion", data);
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
-  await this.model.persistData("nhathau");
-  this.view.closeModal("modal-nhathau");
-  this.view.renderNhaThauTable();
-  await this.autoSync();
+  await persistAndSync(this, "nhathau", {
+    afterPersist: () => {
+      this.view.closeModal("modal-nhathau");
+      this.view.renderNhaThauTable();
+    }
+  });
   const contractModal = document.getElementById("modal-hopdong");
   if (contractModal && contractModal.classList.contains("active")) {
     const ntSelect = document.getElementById("hd-nhathauid");
