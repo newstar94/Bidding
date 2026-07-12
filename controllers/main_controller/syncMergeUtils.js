@@ -18,7 +18,7 @@ export function mergeIncomingRecords(model, key, incoming) {
   });
 }
 export function applySyncPayload(model, dbData, options = {}) {
-  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "syncVersion", "dashboardSummary", "partial"]);
+  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "syncVersion", "dashboardSummary", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
   const replacementsByTable = {};
@@ -60,6 +60,24 @@ export function applySyncPayload(model, dbData, options = {}) {
   } else {
     applyIncoming();
   }
+  const mutationQueue = typeof model.getMutationQueue === "function" ? model.getMutationQueue() : null;
+  Object.entries(dbData.recordManifest || {}).forEach(([key, serverRecordIds]) => {
+    if (!Array.isArray(serverRecordIds) || !Array.isArray(model.state[key])) return;
+    const serverIds = new Set(serverRecordIds.map((id) => String(id)));
+    const pendingIds = new Set(Object.keys(mutationQueue?.upserts?.[key] || {}).map((id) => String(id)));
+    const removedIds = [];
+    model.state[key] = model.state[key].filter((item) => {
+      const id = String(item?.id || "");
+      const keep = serverIds.has(id) || pendingIds.has(id);
+      if (!keep && id) removedIds.push(id);
+      return keep;
+    });
+    if (removedIds.length > 0) {
+      changedKeys.add(key);
+      if (!deletionsByTable[key]) deletionsByTable[key] = [];
+      deletionsByTable[key].push(...removedIds);
+    }
+  });
   if (!isFullInitialSync) {
     (dbData.deletions || []).forEach((del) => {
       const key = del.table;

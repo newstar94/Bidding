@@ -11,6 +11,12 @@ from helpers import database
 from helpers_py.address_parser import compose_external_address, parse_vietnam_address_to_internal
 from helpers_py.text_utils import normalize_organization_name, normalize_person_name
 
+
+PARTNER_LOOKUP_RETRY_SECONDS = 6 * 60 * 60
+_partner_lookup_attempts = {}
+_partner_worker_started = False
+_partner_worker_lock = threading.Lock()
+
 def extract_clean_tax_code(val):
     if not val:
         return None
@@ -272,14 +278,14 @@ def run_partner_lookup_worker():
 
 
             cursor.execute("""
-                SELECT id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau
+                SELECT id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau,
+                       dia_chi, dia_chi_goc, ten_viet_tat
                 FROM nha_thau
                 WHERE (
                     ten_nha_thau IS NULL OR ten_nha_thau = ''
                     OR ten_nha_thau LIKE 'Nhà thầu%'
                     OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)'
                     OR dia_chi IS NULL OR dia_chi = ''
-                    OR ten_viet_tat IS NULL OR ten_viet_tat = ''
                     OR lower(ma_so_thue) LIKE 'vn%'
                 )
                   AND (
@@ -288,7 +294,17 @@ def run_partner_lookup_worker():
                   )
                 LIMIT 5
             """)
-            rows = cursor.fetchall()
+            candidate_rows = cursor.fetchall()
+            now = time.monotonic()
+            rows = []
+            for row in candidate_rows:
+                signature = tuple(str(value or "").strip() for value in row[2:])
+                attempt_key = (str(row[1]), str(row[0]), signature)
+                last_attempt = _partner_lookup_attempts.get(attempt_key, 0)
+                if now - last_attempt < PARTNER_LOOKUP_RETRY_SECONDS:
+                    continue
+                _partner_lookup_attempts[attempt_key] = now
+                rows.append(row)
 
             if not rows:
                 conn.close()
@@ -297,7 +313,7 @@ def run_partner_lookup_worker():
             print(f"[Partner Worker] Found {len(rows)} contractors to lookup.", flush=True)
 
             for row in rows:
-                c_id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau = row
+                c_id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau = row[:5]
 
 
                 tax_code = extract_clean_tax_code(ma_so_thue)
@@ -398,5 +414,10 @@ def run_partner_lookup_worker():
                 pass
 
 def start_partner_background_service():
-    worker = threading.Thread(target=run_partner_lookup_worker, daemon=True)
-    worker.start()
+    global _partner_worker_started
+    with _partner_worker_lock:
+        if _partner_worker_started:
+            return
+        _partner_worker_started = True
+        worker = threading.Thread(target=run_partner_lookup_worker, daemon=True)
+        worker.start()

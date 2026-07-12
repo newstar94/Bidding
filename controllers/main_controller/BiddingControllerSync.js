@@ -163,7 +163,7 @@ export function autoSync() {
     body: JSON.stringify(payload)
   }).then((res) => {
     return res.json().then((data) => ({ ok: res.ok, status: res.status, data }));
-  }).then(({ ok, status, data }) => {
+  }).then(async ({ ok, status, data }) => {
     if (!ok || data.status === "error") {
       if (status === 409 || data.status === "conflict") {
         console.warn("[Sync Conflict]", data.message || data.error || "Server data changed before local sync.");
@@ -187,6 +187,26 @@ export function autoSync() {
         return { ok: false, status, data, conflict: true };
       }
       if (Array.isArray(data.errors) && data.errors.length > 0) {
+        const rejectedRecords = typeof this.model?.discardRejectedMutations === "function" ? this.model.discardRejectedMutations(data.errors) : [];
+        const changedKeys = new Set();
+        for (const rejected of rejectedRecords) {
+          let serverRecord = null;
+          try {
+            serverRecord = await this.fetchRecordByLookup(rejected.type, rejected.conflictingId || rejected.id);
+          } catch (error) {
+            console.error("Failed to restore rejected record from SQLite:", error);
+          }
+          if (Array.isArray(this.model.state[rejected.type]) && (!serverRecord || String(serverRecord.id) !== rejected.id)) {
+            this.model.state[rejected.type] = this.model.state[rejected.type].filter(
+              (item) => String(item.id) !== rejected.id
+            );
+            await this.model.db?.deleteRecord?.(rejected.type, rejected.id);
+          }
+          changedKeys.add(rejected.type);
+        }
+        if (changedKeys.size > 0) {
+          renderChangedState(this, changedKeys, { isBackground: true });
+        }
         const TABLE_LABELS = {
           "chu_dau_tu": "Chủ đầu tư",
           "ke_hoach_lcnt": "Kế hoạch LCNT",
@@ -245,7 +265,7 @@ export function autoSync() {
           this.view.showToast("Lỗi đồng bộ", data.error || data.message || "Đồng bộ thất bại", "error");
         }
       }
-      return;
+      return { ok: false, status, data, validation: Array.isArray(data.errors) && data.errors.length > 0 };
     }
     if (data.timestamp) {
       localStorage.setItem("bf_last_sync_timestamp", data.timestamp);
@@ -341,6 +361,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       await persistencePromise;
       if (!dbData.partial && dbData.syncVersion !== void 0 && dbData.syncVersion !== null) {
         localStorage.setItem("bf_last_sync_version", dbData.syncVersion.toString());
+        this.model?.rebasePendingMutationQueue?.(dbData.syncVersion);
       }
       if (!dbData.partial && dbData.timestamp) {
         localStorage.setItem("bf_last_sync_timestamp", dbData.timestamp.toString());

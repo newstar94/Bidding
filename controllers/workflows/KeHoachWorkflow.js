@@ -97,7 +97,14 @@ export function editKeHoach(id) {
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
   const latestCDTs = this.model.getLatestChuDauTu() || [];
-  cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+  cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+  // The plan modal is lazy-loaded, so this select does not exist when the
+  // application's one-time conditional handlers are registered.
+  cdtSelect.onchange = (event) => {
+    if (event.target.value !== "__NEW_INVESTOR__") return;
+    event.target.value = "";
+    void this.editChuDauTu(null);
+  };
   this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
   const loaiHinhSelect = document.getElementById("kh-loaihinh");
   const projectFields = document.getElementById("kh-project-fields");

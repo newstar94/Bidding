@@ -372,8 +372,19 @@ export async function handleNhaThauSubmit(e) {
     data.updatedAt = this.model.getCurrentDateTimeString();
     this.model.state.nhathau.push(data);
   }
-  this.model.persistData("nhathau");
+  // Persisting also queues the record for server sync, so it must finish
+  // before autoSync builds its payload.
+  await this.model.persistData("nhathau");
   this.view.closeModal("modal-nhathau");
   this.view.renderNhaThauTable();
-  this.autoSync();
+  await this.autoSync();
+  const contractModal = document.getElementById("modal-hopdong");
+  if (contractModal && contractModal.classList.contains("active")) {
+    const ntSelect = document.getElementById("hd-nhathauid");
+    if (ntSelect) {
+      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${n.id}" data-search="${n.maNhaThau || ""} ${n.tenNhaThau || ""}">${n.tenNhaThau || ""}${this.model.getPendingLabel("nhathau", n.id)}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
+      ntSelect.value = data.id;
+      ntSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
 }

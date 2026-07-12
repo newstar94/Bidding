@@ -101,7 +101,7 @@ export function editGoiThau(id, isReadOnly = false) {
   resetPackageFormEditableState(form);
   setPackageSubTableActionsVisible(true);
   const khSelect = document.getElementById("gt-kehoachid");
-  khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${k.id}" data-search="${k.maKeHoach || ""} ${k.tenKeHoach || ""}">${k.tenKeHoach}</option>`).join("");
+  khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${k.id}" data-search="${k.maKeHoach || ""} ${k.tenKeHoach || ""}">${k.tenKeHoach}${this.model.getPendingLabel("kehoach", k.id)}</option>`).join("");
   khSelect.disabled = false;
   this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch LCNT...");
   const ntSelect = document.getElementById("gt-nhathautrungthauid");

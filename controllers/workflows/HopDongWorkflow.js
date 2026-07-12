@@ -92,15 +92,15 @@ export function editHopDong(id) {
     coQdSelect.onchange = toggleQdFields;
     const cdtSelect = document.getElementById("hd-chudautuid");
     const chudautuList = this.model.getLatestChuDauTu();
-    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu || ""}</option>`).join("");
+    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu || ""}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
     this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
     const ntSelect = document.getElementById("hd-nhathauid");
     const nhathauList = this.model.getLatestNhaThau();
-    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${n.id}" data-search="${n.maNhaThau || ""} ${n.tenNhaThau || ""}">${n.tenNhaThau || ""}</option>`).join("");
+    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${n.id}" data-search="${n.maNhaThau || ""} ${n.tenNhaThau || ""}">${n.tenNhaThau || ""}${this.model.getPendingLabel("nhathau", n.id)}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
     this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu...");
     const khSelect = document.getElementById("hd-kehoachid");
     const planList = typeof this.model.getLatestPlans === "function" ? this.model.getLatestPlans() : Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : [];
-    khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${kh.id}" data-search="${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}">${kh.tenKeHoach || ""}</option>`).join("");
+    khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${kh.id}" data-search="${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}">${kh.tenKeHoach || ""}${this.model.getPendingLabel("kehoach", kh.id)}</option>`).join("");
     this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch...");
     const getPlanVersionIds = (selectedPlanId) => {
       if (!selectedPlanId) return [];
@@ -172,6 +172,12 @@ export function editHopDong(id) {
       }
     };
     cdtSelect.onchange = (e) => {
+      if (e.target.value === "__NEW_INVESTOR__") {
+        e.target.value = "";
+        void this.editChuDauTu(null);
+        queueMicrotask(() => e.target.dispatchEvent(new Event("change", { bubbles: true })));
+        return;
+      }
       handleCdtChange(e.target.value);
     };
     const handleNtChange = (selectedNtId, selectVersionId = null) => {
@@ -226,6 +232,12 @@ export function editHopDong(id) {
       }
     };
     ntSelect.onchange = (e) => {
+      if (e.target.value === "__NEW_CONTRACTOR__") {
+        e.target.value = "";
+        void this.editNhaThau(null);
+        queueMicrotask(() => e.target.dispatchEvent(new Event("change", { bubbles: true })));
+        return;
+      }
       handleNtChange(e.target.value);
     };
     const _roleLabelMap = { super_admin: "Super Admin / Quản lý / Chuyên viên", manager: "Quản lý / Chuyên viên", employee: "Chuyên viên" };

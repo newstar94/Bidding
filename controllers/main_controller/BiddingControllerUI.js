@@ -548,12 +548,18 @@ export async function closeModal(modalId) {
       this.switchTab(destTab, destAction, true);
     }
   } else if (modalId === "modal-chudautu") {
-    this.switchTab("chudautu", null, true);
+    const contractModal = document.getElementById("modal-hopdong");
+    if (!contractModal || !contractModal.classList.contains("active")) {
+      this.switchTab("chudautu", null, true);
+    }
   } else if (modalId === "modal-nhathau") {
     if (window._nhaThauViewOnly) {
       window._nhaThauViewOnly = false;
     } else {
-      this.switchTab("nhathau", null, true);
+      const contractModal = document.getElementById("modal-hopdong");
+      if (!contractModal || !contractModal.classList.contains("active")) {
+        this.switchTab("nhathau", null, true);
+      }
     }
   } else if (modalId === "modal-chuyengia") {
     this.switchTab("chuyengia", null, true);

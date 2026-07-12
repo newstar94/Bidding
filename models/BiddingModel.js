@@ -1,10 +1,14 @@
 import * as formatters from "/views/utils/formatters.js";
 import { normalizeOrganizationName } from "/controllers/main_controller/domUtils.js";
 import {
+  CLIENT_TABLE_MAP,
   COMMON_FIELD_NAME_OVERRIDES,
   FIELD_MAP_BY_TABLE,
   resolveSchemaTable
 } from "/models/schemaContract.js";
+const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
+  Object.entries(CLIENT_TABLE_MAP).map(([stateKey, tableName]) => [tableName, stateKey])
+);
 const RECORD_ID_PREFIXES = {
   user: "user-",
   organization: "org-",
@@ -563,6 +567,54 @@ export class BiddingModel {
     queue.revision = Number.isFinite(Number(queue.revision)) ? Number(queue.revision) : 0;
     return queue;
   }
+  isRecordPending(type, recordId) {
+    if (!type || !recordId) return false;
+    const queue = this.getMutationQueue();
+    return Object.prototype.hasOwnProperty.call(queue.upserts?.[type] || {}, recordId);
+  }
+  getPendingLabel(type, recordId) {
+    return this.isRecordPending(type, recordId) ? " (Chờ đồng bộ)" : "";
+  }
+  discardRejectedMutations(errors) {
+    const queue = this.getMutationQueue();
+    const rejectedByRecord = /* @__PURE__ */ new Map();
+    (errors || []).forEach((error) => {
+      const type = STATE_KEY_BY_SERVER_TABLE[error?.table] || error?.table;
+      const id = String(error?.id || "");
+      if (!type || !id) return;
+      if (queue.upserts?.[type]?.[id]) {
+        delete queue.upserts[type][id];
+        if (Object.keys(queue.upserts[type]).length === 0) delete queue.upserts[type];
+      }
+      const key = `${type}:${id}`;
+      const existing = rejectedByRecord.get(key);
+      rejectedByRecord.set(key, {
+        type,
+        id,
+        conflictingId: String(error?.conflictingId || existing?.conflictingId || "")
+      });
+    });
+    const rejected = Array.from(rejectedByRecord.values());
+    if (rejected.length > 0) {
+      queue.clientMutationId = createUUID();
+      this._touchMutationQueue(queue);
+      this._saveMutationQueue(queue);
+    }
+    return rejected;
+  }
+  rebasePendingMutationQueue(syncVersion) {
+    if (syncVersion === void 0 || syncVersion === null || syncVersion === "") return;
+    const queue = this.getMutationQueue();
+    const hasUpserts = Object.values(queue.upserts || {}).some(
+      (records) => records && Object.keys(records).length > 0
+    );
+    const hasDeletes = Array.isArray(queue.deletes) && queue.deletes.length > 0;
+    if (!hasUpserts && !hasDeletes) return;
+    queue.baseSyncVersion = String(syncVersion);
+    queue.clientMutationId = createUUID();
+    this._touchMutationQueue(queue);
+    this._saveMutationQueue(queue);
+  }
   _saveMutationQueue(queue) {
     const hasDirtyTables = Object.keys(queue.dirtyTables || {}).some((key) => queue.dirtyTables[key]);
     const hasUpserts = Object.values(queue.upserts || {}).some((items) => items && Object.keys(items).length > 0);
@@ -710,6 +762,11 @@ export class BiddingModel {
       if (Array.isArray(this.state[type])) {
         this.normalizeRecords(type, this.state[type]);
       }
+      // Queue the current state before the first await. Callers that start an
+      // immediate sync must not be able to build a payload without this write.
+      if (options.trackMutation !== false) {
+        this.markTableDirty(type);
+      }
       if (options.trackMutation !== false && this._isSyncedStateKey(type)) {
         await this.trackDeletions(type);
       }
@@ -725,9 +782,6 @@ export class BiddingModel {
         } catch (err) {
           console.error("Failed to persist data for type:", type, err);
         }
-      }
-      if (options.trackMutation !== false) {
-        this.markTableDirty(type);
       }
     }
   }

@@ -983,11 +983,28 @@ export function setupAuth() {
       this.setupGoogleSignIn();
     }
   };
-  if (typeof google !== "undefined" && google.accounts) {
-    initGoogle();
+  const loadGoogleIdentity = () => {
+    if (typeof google !== "undefined" && google.accounts) {
+      initGoogle();
+      return;
+    }
+    const existingScript = document.querySelector("script[data-bf-google-identity]");
+    if (existingScript) return;
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.dataset.bfGoogleIdentity = "true";
+    script.addEventListener("load", initGoogle, { once: true });
+    script.addEventListener("error", () => {
+      console.warn("Google Sign-In could not be loaded.");
+    }, { once: true });
+    document.head.appendChild(script);
+  };
+  if (document.readyState === "complete") {
+    setTimeout(loadGoogleIdentity, 0);
   } else {
-    window.addEventListener("load", initGoogle, { once: true });
-    setTimeout(initGoogle, 1500);
+    window.addEventListener("load", () => setTimeout(loadGoogleIdentity, 0), { once: true });
   }
 }
 export function setupGoogleSignIn() {

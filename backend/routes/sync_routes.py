@@ -376,13 +376,15 @@ async def sync_api(request):
                     ma = item.get("maChuDauTu")
                     mst = item.get("maSoThue")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT 1 FROM chu_dau_tu WHERE owner_id = ? AND ma_chu_dau_tu = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
-                        if cursor.fetchone():
-                            item_errors.append(f"Mã chủ đầu tư '{ma}' đã tồn tại.")
+                        cursor.execute("SELECT id FROM chu_dau_tu WHERE owner_id = ? AND ma_chu_dau_tu = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        conflict = cursor.fetchone()
+                        if conflict:
+                            item_errors.append({"message": f"Mã chủ đầu tư '{ma}' đã tồn tại.", "conflictingId": conflict[0]})
                     if mst and str(mst).strip():
-                        cursor.execute("SELECT 1 FROM chu_dau_tu WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
-                        if cursor.fetchone():
-                            item_errors.append(f"Mã số thuế '{mst}' đã tồn tại.")
+                        cursor.execute("SELECT id FROM chu_dau_tu WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        conflict = cursor.fetchone()
+                        if conflict:
+                            item_errors.append({"message": f"Mã số thuế '{mst}' đã tồn tại.", "conflictingId": conflict[0]})
 
                 elif table_name == "ke_hoach_lcnt":
                     ma = item.get("maKeHoach")
@@ -402,13 +404,15 @@ async def sync_api(request):
                     ma = item.get("maNhaThau")
                     mst = item.get("maSoThue")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT 1 FROM nha_thau WHERE owner_id = ? AND ma_nha_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
-                        if cursor.fetchone():
-                            item_errors.append(f"Mã nhà thầu '{ma}' đã tồn tại.")
+                        cursor.execute("SELECT id FROM nha_thau WHERE owner_id = ? AND ma_nha_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        conflict = cursor.fetchone()
+                        if conflict:
+                            item_errors.append({"message": f"Mã nhà thầu '{ma}' đã tồn tại.", "conflictingId": conflict[0]})
                     if mst and str(mst).strip():
-                        cursor.execute("SELECT 1 FROM nha_thau WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
-                        if cursor.fetchone():
-                            item_errors.append(f"Mã số thuế '{mst}' đã tồn tại.")
+                        cursor.execute("SELECT id FROM nha_thau WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        conflict = cursor.fetchone()
+                        if conflict:
+                            item_errors.append({"message": f"Mã số thuế '{mst}' đã tồn tại.", "conflictingId": conflict[0]})
 
                 elif table_name == "chuyen_gia":
                     cccd = item.get("soCCCD")
@@ -437,11 +441,15 @@ async def sync_api(request):
                 if item_errors:
                     display_name = item.get("tenChuDauTu") or item.get("tenKeHoach") or item.get("tenGoiThau") or item.get("tenNhaThau") or item.get("hoTen") or item.get("tenHopDong") or item.get("id")
                     for err in item_errors:
-                        validation_errors.append({
+                        error_detail = err if isinstance(err, dict) else {"message": err}
+                        validation_error = {
                             "table": table_name,
                             "id": item.get("id"),
-                            "message": f"[{display_name}]: {err}"
-                        })
+                            "message": f"[{display_name}]: {error_detail.get('message', '')}"
+                        }
+                        if error_detail.get("conflictingId"):
+                            validation_error["conflictingId"] = error_detail["conflictingId"]
+                        validation_errors.append(validation_error)
 
         if validation_errors:
             log_error(f"Validation errors during sync: {validation_errors}", "SyncAPI")
@@ -1008,6 +1016,32 @@ async def get_all_data_api(request):
         thongtinmothau = filter_items_for_read(cursor, role_str, user_id, org_name, "thongtinmothau", "thong_tin_mo_thau", thongtinmothau)
         permissionmatrix = filter_items_for_read(cursor, role_str, user_id, org_name, "permissionmatrix", "ma_tran_phan_quyen", permissionmatrix)
 
+        # Heavy tables are omitted from a full bootstrap response because they
+        # are paginated. Return an authoritative ID manifest so the client can
+        # remove stale IndexedDB rows without downloading complete records.
+        record_manifest = {}
+        if is_full_initial_fetch:
+            for payload_key, table_name in TABLE_KEYS.items():
+                if table_name not in heavy_tables:
+                    continue
+                if is_partial_response and payload_key not in requested_keys:
+                    continue
+                cursor.execute(
+                    f"SELECT id FROM {table_name} WHERE owner_id = ?",
+                    (org_name,)
+                )
+                manifest_items = [{"id": row[0]} for row in cursor.fetchall()]
+                manifest_items = filter_items_for_read(
+                    cursor,
+                    role_str,
+                    user_id,
+                    org_name,
+                    payload_key,
+                    table_name,
+                    manifest_items,
+                )
+                record_manifest[payload_key] = [item["id"] for item in manifest_items]
+
         if not is_manager_role(role_str):
             deletions = [
                 item for item in deletions
@@ -1034,6 +1068,7 @@ async def get_all_data_api(request):
             "deletions": deletions,
             "useServerSidePagination": use_server_pagination,
             "paginatedKeys": paginated_payload_keys if use_server_pagination else [],
+            "recordManifest": record_manifest,
             "dashboardSummary": dashboard_summary,
             "partial": is_partial_response,
             "timestamp": current_time,

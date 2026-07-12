@@ -291,16 +291,27 @@ export async function handleChuDauTuSubmit(e) {
     data.updatedAt = this.model.getCurrentDateTimeString();
     this.model.state.chudautu.push(data);
   }
-  this.model.persistData("chudautu");
+  // Persisting also queues the record for server sync, so it must finish
+  // before autoSync builds its payload.
+  await this.model.persistData("chudautu");
   this.view.closeModal("modal-chudautu");
   this.view.renderChuDauTuTable();
-  this.autoSync();
+  await this.autoSync();
   const planModal = document.getElementById("modal-kehoach");
   if (planModal && planModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("kh-chudautuid");
     if (cdtSelect) {
-      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${c.id}">${c.tenChuDauTu}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${c.id}">${c.tenChuDauTu}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
       cdtSelect.value = data.id;
+    }
+  }
+  const contractModal = document.getElementById("modal-hopdong");
+  if (contractModal && contractModal.classList.contains("active")) {
+    const cdtSelect = document.getElementById("hd-chudautuid");
+    if (cdtSelect) {
+      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${c.id}" data-search="${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}">${c.tenChuDauTu || ""}${this.model.getPendingLabel("chudautu", c.id)}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+      cdtSelect.value = data.id;
+      cdtSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
 }

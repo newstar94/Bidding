@@ -714,12 +714,17 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.setupFileUploads();
       this.loadHolidaysInBackground();
     }, { timeout: 600, delay: 100 });
+    const reconcileWorkspace = async () => {
+      await this.autoSync();
+      await this.forceSyncData(true, true, false);
+      await this.autoSync();
+    };
     if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
       this._initialSyncStarted = true;
-      this.schedulePostStartupTask(() => this.forceSyncData(true, true, true), { timeout: 750, delay: 150 });
+      this.schedulePostStartupTask(reconcileWorkspace, { timeout: 750, delay: 150 });
     } else if (!this._initialSyncStarted) {
       this._initialSyncStarted = true;
-      this.schedulePostStartupTask(() => this.forceSyncData(true, true, true), { timeout: 2400, delay: 700 });
+      this.schedulePostStartupTask(reconcileWorkspace, { timeout: 2400, delay: 700 });
     }
     this.schedulePostStartupTask(() => {
       this.setupAutoSyncBackground();
