@@ -5,6 +5,7 @@ from .word_defaults import ensure_default_word_mappings_for_all_orgs
 import os
 import uuid
 import re
+import json
 from .db_helper import database
 
 DB_SCHEMA_VERSION = 1
@@ -189,6 +190,41 @@ def _backfill_partner_effective_dates(cursor):
             SET ngay_ap_dung = substr(COALESCE(NULLIF(created_at, ''), NULLIF(updated_at, ''), datetime('now', 'localtime')), 1, 10)
             WHERE COALESCE(ngay_ap_dung, '') = ''
             """
+        )
+
+
+def _clear_competitive_quotation_appraisal(cursor):
+    """Remove legacy appraisal data that is not applicable to competitive quotations."""
+    cursor.execute("SELECT id, hinh_thuc_lua_chon, danh_gia_hsdt_metadata FROM goi_thau")
+    for row in cursor.fetchall():
+        item = dict(row)
+        if str(item.get("hinh_thuc_lua_chon") or "").strip().lower() != "chào hàng cạnh tranh":
+            continue
+        raw_metadata = item.get("danh_gia_hsdt_metadata")
+        try:
+            metadata = json.loads(raw_metadata) if raw_metadata else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            metadata = {}
+        if isinstance(metadata.get("technical"), dict):
+            metadata["technical"].pop("soBctdKt", None)
+            metadata["technical"].pop("ngayBctdKt", None)
+        if isinstance(metadata.get("result"), dict):
+            metadata["result"].pop("soBctdKetQua", None)
+            metadata["result"].pop("ngayBctdKetQua", None)
+        cursor.execute(
+            """
+            UPDATE goi_thau
+            SET yeu_cau_tham_dinh_hsmt = 'Không',
+                so_bao_cao_tham_dinh_hsmt = '',
+                ngay_bao_cao_tham_dinh_hsmt = '',
+                danh_gia_hsdt_metadata = ?
+            WHERE id = ?
+            """,
+            (json.dumps(metadata, ensure_ascii=False), item["id"]),
+        )
+        cursor.execute(
+            "DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'tham_dinh'",
+            (item["id"],),
         )
 
 
@@ -601,6 +637,7 @@ def khoi_tao_va_di_tru_he_thong():
         cursor.execute("PRAGMA foreign_keys = ON")
         _backfill_partner_effective_dates(cursor)
         _backfill_member_contractor_versions(cursor)
+        _clear_competitive_quotation_appraisal(cursor)
 
         cursor.execute("SELECT COUNT(*) FROM goi_dich_vu")
         if cursor.fetchone()[0] == 0:

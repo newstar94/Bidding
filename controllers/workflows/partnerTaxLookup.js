@@ -22,11 +22,43 @@ export function getPartnerLookupInput(value) {
   const taxCode = normalizeVietnamTaxCode(value);
   return isVietnamTaxCode(taxCode) ? { orgCode: "", taxCode } : null;
 }
+export function findStoredPartnerLookupData(records, { orgCode = "", taxCode = "", partnerRole = "NT" } = {}) {
+  const normalizedOrgCode = normalizeProcurementOrgCode(orgCode);
+  const normalizedTaxCode = normalizeVietnamTaxCode(taxCode);
+  const isContractor = partnerRole === "NT";
+  const record = (records || []).find((item) => {
+    const recordOrgCode = normalizeProcurementOrgCode(isContractor ? item.maNhaThau : item.maChuDauTu);
+    const recordTaxCode = normalizeVietnamTaxCode(item.maSoThue);
+    return normalizedOrgCode && recordOrgCode === normalizedOrgCode
+      || isVietnamTaxCode(normalizedTaxCode) && recordTaxCode === normalizedTaxCode;
+  });
+  if (!record) return null;
+  const internalAddress = String(record.diaChi || "").replace(/\s*\|\s*/gu, ", ");
+  return {
+    source: "DB",
+    org_code: isContractor ? record.maNhaThau || "" : record.maChuDauTu || "",
+    tax_code: record.maSoThue || "",
+    name: isContractor ? record.tenNhaThau || "" : record.tenChuDauTu || "",
+    short_name: record.tenVietTat || "",
+    representative_name: isContractor ? record.nguoiDaiDien || "" : record.daiDienCdt || "",
+    representative_position: record.chucVuDaiDien || "",
+    phone: record.soDienThoai || "",
+    email: record.email || "",
+    address: record.diaChiGoc || internalAddress,
+    bank_account: record.soTaiKhoan || "",
+    bank_name: record.noiMoTaiKhoan || "",
+    bank_code: record.maNganHang || "",
+    head_position: record.chucVuNguoiDungDau || "",
+    budget_code: record.maQHNS || "",
+    parent_agency: record.coQuanChuQuan || ""
+  };
+}
 export function bindPartnerTaxCodeLookup({
   codeInput,
   taxInput,
   applyLookupData,
   clearLookupData,
+  resolveLocalData,
   partnerRole = "NT"
 }) {
   if (!codeInput || !taxInput || typeof applyLookupData !== "function") return null;
@@ -61,6 +93,15 @@ export function bindPartnerTaxCodeLookup({
     activeLookupKey = lookupKey;
     setLoading(true);
     try {
+      const localData = typeof resolveLocalData === "function"
+        ? await resolveLocalData({ orgCode: normalizedOrgCode, taxCode: normalizedTaxCode, partnerRole })
+        : null;
+      if (localData?.name && requestController === currentController) {
+        taxInput.value = localData.tax_code || (normalizedOrgCode ? "" : normalizedTaxCode);
+        await applyLookupData(localData);
+        lastSuccessfulKey = lookupKey;
+        return;
+      }
       const data = await lookupPartnerInfo({
         orgCode: normalizedOrgCode,
         taxCode: normalizedTaxCode,

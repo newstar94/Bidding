@@ -1,6 +1,6 @@
 import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
-import { applyRawAddressToAddressControls, composeInternalAddress } from "../utils/PartnerHelpers.js";
-import { bindPartnerTaxCodeLookup } from "./partnerTaxLookup.js";
+import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../utils/PartnerHelpers.js";
+import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 const todayYmd = () => {
   const now = new Date();
@@ -49,12 +49,18 @@ export async function editChuDauTu(id) {
     document.getElementById("cdt-daidiencdt").value = normalizePersonName(cdt.daiDienCdt);
     document.getElementById("cdt-chucvudaidien").value = cdt.chucVuDaiDien || "";
     document.getElementById("cdt-danhxung").value = cdt.danhXung || "Ông";
-    const parts = (cdt.diaChi || "").split(" | ");
-    const details = parts[0] || "";
-    const huyen = parts[1] || "";
-    const tinh = parts[2] || "";
-    document.getElementById("cdt-diachichitiet").value = details;
-    await this.initAddressDropdowns("cdt-tinh", "cdt-xa", tinh, huyen);
+    const storedAddress = parseStoredInternalAddress(cdt.diaChi || "");
+    if (storedAddress.requiresLookup) {
+      await this.initAddressDropdowns("cdt-tinh", "cdt-xa", "", "");
+      await applyRawAddressToAddressControls(cdt.diaChiGoc || cdt.diaChi || "", {
+        detailInputId: "cdt-diachichitiet",
+        provinceSelectId: "cdt-tinh",
+        wardSelectId: "cdt-xa"
+      });
+    } else {
+      document.getElementById("cdt-diachichitiet").value = storedAddress.detail;
+      await this.initAddressDropdowns("cdt-tinh", "cdt-xa", storedAddress.provinceName, storedAddress.wardName);
+    }
     document.getElementById("cdt-sdt").value = cdt.soDienThoai;
     document.getElementById("cdt-sotaikhoan").value = cdt.soTaiKhoan || "";
     document.getElementById("cdt-noimotaikhoan").value = cdt.noiMoTaiKhoan || "";
@@ -76,6 +82,7 @@ export async function editChuDauTu(id) {
     codeInput: document.getElementById("cdt-ma"),
     taxInput: document.getElementById("cdt-mst"),
     partnerRole: "CDT",
+    resolveLocalData: (lookup) => findStoredPartnerLookupData(this.model.getLatestChuDauTu(), lookup),
     clearLookupData: () => {
       document.getElementById("cdt-ten").value = "";
       document.getElementById("cdt-tenviettat").value = "";
@@ -99,6 +106,12 @@ export async function editChuDauTu(id) {
       document.getElementById("cdt-daidiencdt").value = normalizePersonName(data.representative_name || "");
       document.getElementById("cdt-chucvudaidien").value = data.representative_position || "";
       document.getElementById("cdt-sdt").value = data.phone || "";
+      document.getElementById("cdt-email").value = data.email || "";
+      document.getElementById("cdt-sotaikhoan").value = data.bank_account || "";
+      document.getElementById("cdt-noimotaikhoan").value = data.bank_name || "";
+      document.getElementById("cdt-chucvunguoidungdau").value = data.head_position || "";
+      document.getElementById("cdt-maqhns").value = data.budget_code || "";
+      document.getElementById("cdt-coquanchuquan").value = data.parent_agency || "";
       if (data.address) {
         form.dataset.diaChiGoc = data.address;
         await applyRawAddressToAddressControls(data.address, {

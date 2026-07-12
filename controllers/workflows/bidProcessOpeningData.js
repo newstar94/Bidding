@@ -17,6 +17,20 @@ function findLatestContractorByCode(latestNhaThauList, code) {
 function isJointVentureType(value) {
   return String(value || "").trim().toLowerCase() === "liên danh";
 }
+export function resolveOpeningLookupNames(loaiNhaThau, currentBidName, lookupMemberName, currentLeadName = "") {
+  const bidName = String(currentBidName || "").trim();
+  const lookupName = String(lookupMemberName || "").trim();
+  if (isJointVentureType(loaiNhaThau)) {
+    return {
+      bidName,
+      leadMemberName: lookupName || String(currentLeadName || "").trim()
+    };
+  }
+  return {
+    bidName: lookupName || bidName,
+    leadMemberName: String(currentLeadName || "").trim()
+  };
+}
 function isLeadMember(member, leadCode) {
   const role = String(member?.vaiTro || "").trim().toLowerCase();
   const normalizedLeadCode = normalizeOpeningCode(leadCode);

@@ -93,7 +93,7 @@ export function triggerExcelImport(type) {
   if (type === "mothau" || type === "danhgiahsdt") {
     const select = document.getElementById(type + "-goithau-select");
     if (!select || !select.value) {
-      this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu trước khi nhập file Excel!", "alert-triangle");
+      this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu trước khi nhập file Excel!", "alert-triangle", select);
       return;
     }
   }

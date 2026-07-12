@@ -1,4 +1,4 @@
-import { formatDate, formatCurrency, initCustomSelect } from "../view_helpers.js";
+import { escapeHtml, formatDate, formatCurrency, initCustomSelect } from "../view_helpers.js";
 import { cachePaginatedRecords, parseYearMonth, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 export async function renderHopDongTable() {
@@ -117,6 +117,9 @@ export async function renderHopDongTable() {
       const nhathauList = Array.isArray(this.model.state.nhathau) ? this.model.state.nhathau : [];
       const nt = nhathauList.find((n) => n.id === displayedHd.nhaThauId);
       const ntName = nt ? nt.tenNhaThau : "--";
+      const ntNameHtml = nt?.id
+        ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(nt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu">${escapeHtml(ntName)}</a>`
+        : escapeHtml(ntName);
       const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : Array.isArray(this.model.state.goithau) ? this.model.state.goithau : [];
       const linkedPkgs = (displayedHd.goiThauIds || []).map((gtId) => {
         const gt = goithauList.find((g) => g.id === gtId);
@@ -139,7 +142,7 @@ export async function renderHopDongTable() {
                     <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${displayedHd.tenHopDong}</td>
                     <td>${displayedHd.ngayKy ? formatDate(displayedHd.ngayKy) : "--"}</td>
                     <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${cdtName}</td>
-                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${ntName}</td>
+                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${ntNameHtml}</td>
                     <td class="fw-bold text-blue">${formatCurrency(displayedHd.giaTri)}</td>
                     <td><span class="badge badge-info">${displayedHd.loaiHopDong || "Trọn gói"}</span></td>
                     <td><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${displayedHd.phanLoai || "Tư vấn"}</span></td>

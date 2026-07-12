@@ -135,7 +135,8 @@ export async function renderGoiThauTable() {
         setJvData(displayedGt.id, {
           members: subMembers,
           leadName,
-          leadCode
+          leadCode,
+          leadContractorVersionId: leadMember?.thanhVienNhaThauId || matchBid.nhaThauId || ""
         });
         ntLink = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(ntDisplayName)}</a>`;
       } else if (nt) {
@@ -163,7 +164,12 @@ export async function renderGoiThauTable() {
                 const leadName = leadMember?.tenNhaThau || ntName;
                 const leadCode = leadMember?.maSoThue || ntInfo?.maSoThue || ntInfo?.maNhaThau || bidderInfo.maDinhDanh || bidderInfo.maNhaThau || "";
                 const subMembers = allJvMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh");
-                jvData = { members: subMembers, leadName, leadCode };
+                jvData = {
+                  members: subMembers,
+                  leadName,
+                  leadCode,
+                  leadContractorVersionId: leadMember?.thanhVienNhaThauId || bidderInfo.nhaThauId || ""
+                };
               }
               return {
                 maPhanLo: pl.maPhanLo,
@@ -190,7 +196,12 @@ export async function renderGoiThauTable() {
               const leadName = leadMember?.tenNhaThau || name;
               const leadCode = leadMember?.maSoThue || singleWinnerNt?.maSoThue || singleWinnerNt?.maNhaThau || singleWinnerBid.maDinhDanh || singleWinnerBid.maNhaThau || "";
               const subMembers = allJvMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh");
-              setJvData(displayedGt.id, { members: subMembers, leadName, leadCode });
+              setJvData(displayedGt.id, {
+                members: subMembers,
+                leadName,
+                leadCode,
+                leadContractorVersionId: leadMember?.thanhVienNhaThauId || singleWinnerBid.nhaThauId || ""
+              });
               link = `<a href="#" data-bf-action="show-jv" data-id="${esc(displayedGt.id)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${esc(name)}</a>`;
             } else if (singleWinnerNt) {
               link = `<a href="#" data-bf-action="show-contractor" data-id="${esc(singleWinnerNt.id)}" class="text-blue fw-bold link-hover">${esc(name)}</a>`;

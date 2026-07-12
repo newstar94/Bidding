@@ -4,6 +4,7 @@ import * as Partner from "/views/subviews/PartnerView.js";
 import * as SystemUser from "/views/subviews/SystemUserView.js";
 import { escapeHtml, initCustomSelect, syncCustomSelectDisabled } from "../subviews/view_helpers.js";
 import { ensureFlatpickrLoaded } from "/controllers/utils/externalAssets.js";
+import { focusInvalidControl } from "/controllers/main_controller/formStateUtils.js";
 window.initCustomSelect = initCustomSelect;
 window.syncCustomSelectDisabled = syncCustomSelectDisabled;
 export class BiddingView {
@@ -906,12 +907,14 @@ export class BiddingView {
         const root = activePane || document;
         if (typeof focusTarget === "string") {
           elements = Array.from(root.querySelectorAll(focusTarget));
+          if (elements.length === 0 && root !== document) elements = Array.from(document.querySelectorAll(focusTarget));
         } else if (focusTarget instanceof HTMLElement) {
           elements = [focusTarget];
         } else if (focusTarget.length !== void 0) {
           Array.from(focusTarget).forEach((item) => {
             if (typeof item === "string") {
-              elements.push(...root.querySelectorAll(item));
+              const matches = Array.from(root.querySelectorAll(item));
+              elements.push(...(matches.length > 0 || root === document ? matches : document.querySelectorAll(item)));
             } else if (item instanceof HTMLElement) {
               elements.push(item);
             }
@@ -963,11 +966,7 @@ export class BiddingView {
       lucide.createIcons();
       const triggerFocus = () => {
         if (invalidEls.length > 0) {
-          const firstInvalid = invalidEls[0];
-          firstInvalid.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-          setTimeout(() => {
-            firstInvalid.focus({ preventScroll: true });
-          }, 300);
+          focusInvalidControl(invalidEls[0]);
         }
       };
       const onOk = () => {
@@ -1156,22 +1155,13 @@ export class BiddingView {
     });
     if (!isValid) {
       if (invalidInputs.length > 0) {
-        const firstInvalid = invalidInputs[0];
-        firstInvalid.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-        setTimeout(() => {
-          if (firstInvalid.tagName === "SELECT" && firstInvalid.style.display === "none") {
-            const wrapper = firstInvalid.parentNode.querySelector(`.custom-select-wrapper[data-select-id="${firstInvalid.id}"]`);
-            const customInput = wrapper ? wrapper.querySelector(".custom-select-search") : null;
-            if (customInput) {
-              customInput.focus({ preventScroll: true });
-              return;
-            }
-          }
-          firstInvalid.focus({ preventScroll: true });
-        }, 300);
+        focusInvalidControl(invalidInputs[0]);
       }
     }
     return isValid;
+  }
+  focusInvalidControl(input, options) {
+    return focusInvalidControl(input, options);
   }
   getActiveElement(id) {
     const activePane = document.querySelector(".tab-pane.active");

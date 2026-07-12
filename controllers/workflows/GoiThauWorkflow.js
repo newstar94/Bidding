@@ -3,6 +3,7 @@ import { captureModalReturnState, hasModalReturnState, updateModalReturnAction }
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
 import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
+import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 export function openPackageWizardStep() {
   if (!this.packageWizard.active) return;
   if (!document.getElementById("modal-goithau")) {
@@ -623,7 +624,9 @@ export async function handleGoiThauSubmit(e) {
   });
   const extensionValidation = validateExtensionRows(mainDongThauStr, extensionInputRows);
   if (!extensionValidation.valid) {
-    await this.view.customAlert("Dữ liệu không hợp lệ", extensionValidation.error, "alert-triangle");
+    const extensionRow = document.querySelectorAll("#gt-giahan-tbody tr")[extensionValidation.rowIndex];
+    const extensionInput = extensionRow?.querySelector(extensionValidation.field === "reason" ? ".gh-reason-input" : ".gh-time-input");
+    await this.view.customAlert("Dữ liệu không hợp lệ", extensionValidation.error, "alert-triangle", extensionInput);
     return;
   }
   const ghRows = extensionValidation.rows;
@@ -665,8 +668,7 @@ export async function handleGoiThauSubmit(e) {
           }, { once: true });
         }
       }
-      inputEl.scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(() => inputEl.focus({ preventScroll: true }), 300);
+      this.view.focusInvalidControl(inputEl);
       return;
     }
   }
@@ -728,7 +730,8 @@ export async function handleGoiThauSubmit(e) {
   if (isChuyenGiaVisible) {
     const hasLeaderChuyenGia = toChuyenGia.some((cg) => cg.chucVu === "Tổ trưởng");
     if (!hasLeaderChuyenGia) {
-      await this.view.customAlert("Lỗi kiểm tra", "Tổ chuyên gia chấm thầu bắt buộc phải có 1 Tổ trưởng!", "x-circle");
+      const target = document.querySelector('#to-chuyengia-tbody select[name="tochuyengia-chucvu"]') || toChuyenGiaSection;
+      await this.view.customAlert("Lỗi kiểm tra", "Tổ chuyên gia chấm thầu bắt buộc phải có 1 Tổ trưởng!", "x-circle", target);
       return;
     }
   }
@@ -737,7 +740,8 @@ export async function handleGoiThauSubmit(e) {
   if (isThamDinhVisible) {
     const hasLeaderThamDinh = toThamDinh.some((cg) => cg.chucVu === "Tổ trưởng");
     if (!hasLeaderThamDinh) {
-      await this.view.customAlert("Lỗi kiểm tra", "Tổ thẩm định bắt buộc phải có 1 Tổ trưởng!", "x-circle");
+      const target = document.querySelector('#to-thamdinh-tbody select[name="tothamdinh-chucvu"]') || toThamDinhSection;
+      await this.view.customAlert("Lỗi kiểm tra", "Tổ thẩm định bắt buộc phải có 1 Tổ trưởng!", "x-circle", target);
       return;
     }
   }
@@ -911,12 +915,13 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     thoiGianMoThau: formattedDate3,
     thoiGianMoEhsdxtc: formattedDate5,
     toChuyenGia,
-    toThamDinh,
+    toThamDinh: isCompetitiveQuotationPackage({ hinhThucLuaChon: formVals.hinhThucLuaChon }) ? [] : toThamDinh,
     giaTriDamBaoDuThau: linhVuc === "Tư vấn" ? 0 : isPhanLo ? collectedPhanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0) : this.model.parseVND(formVals.giaTriDamBaoDuThau || "0"),
     hieuLucHsdt: formVals.hieuLucHsdt,
     hieuLucDamBaoDuThau: formVals.hieuLucDamBaoDuThau,
     tyLeBaoDamHopDong: formVals.tyLeBaoDamHopDong
   };
+  clearCompetitiveQuotationAppraisal(gtData);
   if (gtData.trangThai === "Đã có kết quả") {
     if (!isPhanLo) {
       gtData.nhaThauTrungThauId = formVals.nhaThauTrungThauId;
@@ -978,7 +983,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
         this.model.state.selectedPackageVersion = {};
       }
       this.model.state.selectedPackageVersion[rootId] = newGtId;
-      this.model.state.goithau.push({
+      const newPackageVersion = {
         id: newGtId,
         maGoiThau: inputCode,
         phienBan: nextVersion,
@@ -987,7 +992,9 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
         createdAt: oldGt.createdAt || this.model.getCurrentDateTimeString(),
         updatedAt: this.model.getCurrentDateTimeString(),
         ...gtData
-      });
+      };
+      clearCompetitiveQuotationAppraisal(newPackageVersion);
+      this.model.state.goithau.push(newPackageVersion);
       if (Array.isArray(this.model.state.hopdong)) {
         this.model.state.hopdong = this.model.state.hopdong.map((h) => {
           if (h.goiThauIds && h.goiThauIds.includes(id)) {
@@ -1021,6 +1028,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     } else {
       oldGt.maGoiThau = inputCode;
       Object.assign(oldGt, gtData);
+      clearCompetitiveQuotationAppraisal(oldGt);
       oldGt.updatedAt = this.model.getCurrentDateTimeString();
       const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
       const oldAssignments = this.model.state.assignments.filter((a) => a.targetId === id && a.type === "goithau");
@@ -1036,7 +1044,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     finalGtId = newGtId;
     const formEl = document.getElementById("form-goithau");
     const rebidFrom = formEl ? formEl.getAttribute("data-rebid-from") : null;
-    this.model.state.goithau.push({
+    const newPackage = {
       id: newGtId,
       maGoiThau: inputCode,
       phienBan: "00",
@@ -1047,7 +1055,9 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
       isRebid: !!rebidFrom,
       rebidFromPackageId: rebidFrom || null,
       ...gtData
-    });
+    };
+    clearCompetitiveQuotationAppraisal(newPackage);
+    this.model.state.goithau.push(newPackage);
     const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
     if (assignedEmpId) {
       await this.model.addRecord("assignments", { id: window.generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });

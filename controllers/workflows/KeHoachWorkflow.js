@@ -324,8 +324,7 @@ export async function handleKeHoachSubmit(e) {
           }, { once: true });
         }
       }
-      inputEl.scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(() => inputEl.focus({ preventScroll: true }), 300);
+      this.view.focusInvalidControl(inputEl);
       return;
     }
   }

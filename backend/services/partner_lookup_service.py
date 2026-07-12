@@ -139,7 +139,6 @@ def _build_muasamcong_partner_info(data, org_code, area_names=None):
         "representative_name": normalize_person_name(data.get("repName")),
         "representative_position": clean_text(data.get("repPosition")),
         "phone": clean_text(data.get("officePhone")),
-        "website": clean_text(data.get("officeWeb")),
         "business_type": clean_text(data.get("businessType")),
         "businesses": data.get("businesses") or [],
         "procurement_data": data,

@@ -1,6 +1,6 @@
 import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
-import { applyRawAddressToAddressControls, composeInternalAddress } from "../utils/PartnerHelpers.js";
-import { bindPartnerTaxCodeLookup } from "./partnerTaxLookup.js";
+import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../utils/PartnerHelpers.js";
+import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 const todayYmd = () => {
   const now = new Date();
@@ -126,12 +126,18 @@ export async function editNhaThau(id, isReadOnly = false) {
       if (document.getElementById("nt-danhxung")) document.getElementById("nt-danhxung").value = nt.danhXung || "Ông";
       if (document.getElementById("nt-sdt")) document.getElementById("nt-sdt").value = nt.soDienThoai || "";
       if (document.getElementById("nt-email")) document.getElementById("nt-email").value = nt.email || "";
-      const parts = (nt.diaChi || "").split(" | ");
-      const details = parts[0] || "";
-      const huyen = parts[1] || "";
-      const tinh = parts[2] || "";
-      if (document.getElementById("nt-diachichitiet")) document.getElementById("nt-diachichitiet").value = details;
-      await this.initAddressDropdowns("nt-tinh", "nt-xa", tinh, huyen, isReadOnly);
+      const storedAddress = parseStoredInternalAddress(nt.diaChi || "");
+      if (storedAddress.requiresLookup) {
+        await this.initAddressDropdowns("nt-tinh", "nt-xa", "", "", isReadOnly);
+        await applyRawAddressToAddressControls(nt.diaChiGoc || nt.diaChi || "", {
+          detailInputId: "nt-diachichitiet",
+          provinceSelectId: "nt-tinh",
+          wardSelectId: "nt-xa"
+        });
+      } else {
+        if (document.getElementById("nt-diachichitiet")) document.getElementById("nt-diachichitiet").value = storedAddress.detail;
+        await this.initAddressDropdowns("nt-tinh", "nt-xa", storedAddress.provinceName, storedAddress.wardName, isReadOnly);
+      }
       if (isReadOnly) {
         if (document.getElementById("nt-tinh")) document.getElementById("nt-tinh").disabled = true;
         if (document.getElementById("nt-xa")) document.getElementById("nt-xa").disabled = true;
@@ -164,6 +170,7 @@ export async function editNhaThau(id, isReadOnly = false) {
         codeInput: partnerCodeInput,
         taxInput: partnerTaxInput,
         partnerRole: "NT",
+        resolveLocalData: (lookup) => findStoredPartnerLookupData(this.model.getLatestNhaThau(), lookup),
         clearLookupData: () => {
           document.getElementById("nt-ten").value = "";
           document.getElementById("nt-tenviettat").value = "";
@@ -188,6 +195,10 @@ export async function editNhaThau(id, isReadOnly = false) {
           document.getElementById("nt-nguoidaidien").value = normalizePersonName(data.representative_name || "");
           document.getElementById("nt-chucvudaidien").value = data.representative_position || "";
           document.getElementById("nt-sdt").value = data.phone || "";
+          document.getElementById("nt-email").value = data.email || "";
+          document.getElementById("nt-sotaikhoan").value = data.bank_account || "";
+          document.getElementById("nt-noimotaikhoan").value = data.bank_name || "";
+          document.getElementById("nt-manganhang").value = data.bank_code || "";
           if (data.address) {
             form.dataset.diaChiGoc = data.address;
             await applyRawAddressToAddressControls(data.address, {

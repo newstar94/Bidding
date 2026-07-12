@@ -62,7 +62,10 @@ function downloadFinancialOpeningTemplate(controller) {
 }
 function requirePackage(controller, gtId, message) {
   if (!gtId) {
-    controller.view.customAlert("Chưa chọn Gói thầu", message, "alert-triangle");
+    const select = document.getElementById("result-goithau-select")
+      || document.getElementById("danhgiahsdt-goithau-select")
+      || document.getElementById("mothau-goithau-select");
+    controller.view.customAlert("Chưa chọn Gói thầu", message, "alert-triangle", select);
     return null;
   }
   return controller.model.state.goithau.find((g) => String(g.id) === String(gtId)) || null;

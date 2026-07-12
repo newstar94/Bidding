@@ -1,6 +1,7 @@
 import { escapeHtml, initCustomSelect, safeImageSrc } from "../view_helpers.js";
 import { cachePaginatedRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
+import { resolveContractorVersion } from "../../../controllers/workflows/contractorVersionBinding.js";
 export async function renderNhaThauTable() {
   const tableBody = document.getElementById("nhathau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-nhathau").value.toLowerCase();
@@ -87,8 +88,7 @@ export async function renderNhaThauTable() {
                             </div>
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
-                            ${esc(displayedNt.tenNhaThau || "")}
-                            <div style="font-size:0.75rem; font-weight:normal; color:var(--primary); margin-top:2px;">Áp dụng: ${esc(displayedNt.ngayApDung ? this.model.formatDate(displayedNt.ngayApDung) : "--")}</div>
+                            <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu">${esc(displayedNt.tenNhaThau || "")}</a>
                             ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
                             <div style="margin-top: 4px;"><span class="badge badge-info">Liên danh (${members.length} TV)</span></div>
                             <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--primary-soft); white-space: normal !important;">
@@ -127,8 +127,7 @@ export async function renderNhaThauTable() {
                             </div>
                         </td>
                         <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
-                            ${esc(displayedNt.tenNhaThau || "")}
-                            <div style="font-size:0.75rem; font-weight:normal; color:var(--primary); margin-top:2px;">Áp dụng: ${esc(displayedNt.ngayApDung ? this.model.formatDate(displayedNt.ngayApDung) : "--")}</div>
+                            <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu">${esc(displayedNt.tenNhaThau || "")}</a>
                             ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
                         </td>
                         <td>${esc(displayedNt.maSoThue || "--")}</td>
@@ -227,11 +226,17 @@ export function renderNhaThauVersionDetails(versionId) {
             <div class="associated-list">
                 ${members.map((m, index) => {
       const memberAddress = (m.diaChi || "").split(" | ").filter(Boolean).join(", ");
+      const memberContractor = resolveContractorVersion(this.model, m);
+      const memberId = escapeHtml(memberContractor?.id || "");
+      const memberName = escapeHtml(memberContractor?.tenNhaThau || m.tenNhaThau || "--");
+      const memberCode = escapeHtml(memberContractor?.maNhaThau || memberContractor?.maSoThue || m.maNhaThau || m.maSoThue || "--");
+      const nameHtml = memberId ? `<a href="#" data-bf-action="show-contractor" data-id="${memberId}" class="text-blue link-hover">${memberName}</a>` : memberName;
+      const codeHtml = memberId ? `<a href="#" data-bf-action="show-contractor" data-id="${memberId}" class="text-blue link-hover">${memberCode}</a>` : memberCode;
       return `
                         <div class="associated-item" style="flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px;">
                             <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
-                                <strong style="font-size: 0.95rem; color: var(--text-main);">${index + 1}. ${m.tenNhaThau} ${index === 0 ? '<span class="badge badge-primary" style="margin-left: 8px; font-size: 0.7rem;">Trưởng Liên danh</span>' : ""}</strong>
-                                <span class="badge badge-secondary" style="background-color: var(--primary-soft); color: var(--primary); font-weight: 600;">MST: ${m.maSoThue || "--"}</span>
+                                <strong style="font-size: 0.95rem; color: var(--text-main);">${index + 1}. ${nameHtml} ${index === 0 ? '<span class="badge badge-primary" style="margin-left: 8px; font-size: 0.7rem;">Trưởng Liên danh</span>' : ""}</strong>
+                                <span class="badge badge-secondary" style="background-color: var(--primary-soft); color: var(--primary); font-weight: 600;">Mã/MST: ${codeHtml}</span>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; margin-top: 4px; font-size: 0.85rem;">
                                 <div><span class="text-muted">Đại diện:</span> ${m.danhXung || "Ông"} ${m.nguoiDaiDien || "--"} (${m.chucVu || "--"})</div>
@@ -294,10 +299,6 @@ export function renderNhaThauVersionDetails(versionId) {
                 <div class="detail-item">
                     <div class="detail-label">Mã ngân hàng</div>
                     <div class="detail-value">${nt.maNganHang || "--"}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Website</div>
-                    <div class="detail-value">${nt.website ? `<a href="${nt.website}" target="_blank" class="text-blue link-hover">${nt.website}</a>` : "--"}</div>
                 </div>
             </div>
         `;

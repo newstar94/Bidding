@@ -3,7 +3,7 @@ import { bindCurrencyElement } from "../main_controller/domUtils.js";
 import { setVisible } from "../main_controller/formStateUtils.js";
 import { validateRequiredEvaluationReportFields } from "./bidEvaluationValidation.js";
 import { addEvaluationLetterRow, renderEvaluationSummary } from "./bidEvaluationRender.js";
-import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "./contractorVersionBinding.js";
+import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "./contractorVersionBinding.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 export function renderDanhGiaHsdtPanel() {
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
@@ -767,7 +767,7 @@ export function renderDanhGiaHsdtPanel() {
         let maNhaThauHienThi = bid.maNhaThau || bid.maDinhDanh || "--";
         let tenNhaThauHienThi = resolveBidContractorName(this.model, bid) || "--";
         const isJVBid = bid.loaiNhaThau === "Liên danh";
-        const matchedNt = getExactContractorVersion(this.model, bid.nhaThauId);
+        const matchedNt = getExactContractorVersion(this.model, bid.nhaThauId) || resolveContractorVersion(this.model, bid);
         if (matchedNt) {
           maNhaThauHienThi = matchedNt.maNhaThau || maNhaThauHienThi;
         }
@@ -777,11 +777,15 @@ export function renderDanhGiaHsdtPanel() {
           setJvData(jvKey, {
             members: resolveBidJointVentureMembers(this.model, bid),
             leadName: tenNhaThauHienThi,
-            leadCode: maNhaThauHienThi
+            leadCode: maNhaThauHienThi,
+            leadContractorVersionId: bid.nhaThauId || ""
           });
           contractorDisplayHtml = `<a href="#" class="mt-jv-view-link text-success fw-bold link-hover" data-jv-key="${jvKey}" title="Xem thành viên liên danh">👥 ${tenNhaThauHienThi}</a>`;
         } else {
-          contractorDisplayHtml = `<span class="fw-bold">${tenNhaThauHienThi}</span>`;
+          const contractorId = matchedNt?.id || "";
+          contractorDisplayHtml = contractorId
+            ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractorId)}" class="text-blue fw-bold link-hover">${escapeHtml(tenNhaThauHienThi)}</a>`
+            : `<span class="fw-bold">${escapeHtml(tenNhaThauHienThi)}</span>`;
         }
         let cellHtml = "";
         if (gt.phanLo === "Có") {
@@ -1154,7 +1158,10 @@ export async function saveDanhGiaHsdt() {
   const select = this.view.getActiveElement("danhgiahsdt-goithau-select");
   if (!select) return;
   const gtId = select.value;
-  if (!gtId) return;
+  if (!gtId) {
+    this.view.focusInvalidControl(select);
+    return;
+  }
   const gt = this.model.state.goithau.find((g) => g.id === gtId);
   if (!gt) return;
   const inpSo = this.view.getActiveElement("danhgiahsdt-so-baocao");
@@ -1174,8 +1181,7 @@ export async function saveDanhGiaHsdt() {
   });
   if (!reportValidation.valid) {
     const first = reportValidation.errorInputs[0];
-    first.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-    setTimeout(() => first.focus({ preventScroll: true }), 300);
+    this.view.focusInvalidControl(first);
     return;
   }
   const collectLetters = (containerId) => {

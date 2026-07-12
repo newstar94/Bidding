@@ -1,9 +1,30 @@
 export function debounce(fn, delay = 300) {
   let timer;
-  return (...args) => {
+  let pendingArgs = null;
+  const debounced = (...args) => {
     clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
+    pendingArgs = args;
+    timer = setTimeout(() => {
+      timer = null;
+      const callArgs = pendingArgs;
+      pendingArgs = null;
+      fn(...callArgs);
+    }, delay);
   };
+  debounced.flush = () => {
+    if (!timer || !pendingArgs) return;
+    clearTimeout(timer);
+    timer = null;
+    const callArgs = pendingArgs;
+    pendingArgs = null;
+    fn(...callArgs);
+  };
+  debounced.cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+    pendingArgs = null;
+  };
+  return debounced;
 }
 export function onById(id, eventName, handler, options) {
   const element = document.getElementById(id);

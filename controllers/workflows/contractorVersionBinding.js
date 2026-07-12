@@ -1,3 +1,5 @@
+import { normalizeTaxCodeForCompare } from "../main_controller/domUtils.js";
+
 export function isJointVentureBid(bid) {
   return String(bid?.loaiNhaThau || "").trim().toLowerCase() === "liên danh";
 }
@@ -7,6 +9,26 @@ export function getExactContractorVersion(model, contractorVersionId) {
   return (model?.state?.nhathau || []).find(
     (contractor) => String(contractor.id) === String(contractorVersionId)
   ) || null;
+}
+
+export function findContractorVersionByCode(model, code) {
+  const normalizedCode = normalizeTaxCodeForCompare(code);
+  if (!normalizedCode) return null;
+  const matches = (model?.state?.nhathau || []).filter((contractor) =>
+    normalizeTaxCodeForCompare(contractor.maNhaThau) === normalizedCode
+    || normalizeTaxCodeForCompare(contractor.maSoThue) === normalizedCode
+  );
+  if (!matches.length) return null;
+  return matches.sort((a, b) => {
+    const latestDiff = Number(b.isLatest || 0) - Number(a.isLatest || 0);
+    if (latestDiff) return latestDiff;
+    return (Number.parseInt(b.phienBan || "0", 10) || 0) - (Number.parseInt(a.phienBan || "0", 10) || 0);
+  })[0];
+}
+
+export function resolveContractorVersion(model, contractor = {}) {
+  return getExactContractorVersion(model, contractor.contractorVersionId || contractor.thanhVienNhaThauId || contractor.nhaThauId)
+    || findContractorVersionByCode(model, contractor.maNhaThau || contractor.maSoThue || contractor.code);
 }
 
 function dateOnly(value) {

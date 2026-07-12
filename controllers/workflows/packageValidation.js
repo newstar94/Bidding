@@ -11,6 +11,8 @@ export function validateExtensionRows(mainClosingTime, rows) {
       return {
         valid: false,
         error: `Vui lòng nhập đầy đủ thông tin gia hạn ở dòng Lần ${displayIndex}!`,
+        rowIndex: index,
+        field: !timeStr ? "time" : "reason",
         rows: acceptedRows
       };
     }
@@ -19,6 +21,8 @@ export function validateExtensionRows(mainClosingTime, rows) {
       return {
         valid: false,
         error: `Thời gian gia hạn Lần ${displayIndex} không hợp lệ!`,
+        rowIndex: index,
+        field: "time",
         rows: acceptedRows
       };
     }
@@ -27,6 +31,8 @@ export function validateExtensionRows(mainClosingTime, rows) {
         return {
           valid: false,
           error: `Thời gian gia hạn Lần 1 (${timeStr}) phải lớn hơn thời gian đóng thầu gốc (${mainClosingTime})!`,
+          rowIndex: index,
+          field: "time",
           rows: acceptedRows
         };
       }
@@ -37,6 +43,8 @@ export function validateExtensionRows(mainClosingTime, rows) {
         return {
           valid: false,
           error: `Thời gian gia hạn Lần ${displayIndex} (${timeStr}) phải lớn hơn thời gian gia hạn Lần ${index} (${previousTimeStr})!`,
+          rowIndex: index,
+          field: "time",
           rows: acceptedRows
         };
       }

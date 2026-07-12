@@ -855,7 +855,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     window.phatHanhHsmtGoiThau = (id) => runWorkflow("phatHanhHsmtGoiThau", id);
     window.enforceSingleLeader = (tbodyId, roleName) => runWorkflow("enforceSingleLeader", tbodyId, roleName);
     window.openMoThauJVManager = (tr) => runWorkflow("openMoThauJVManager", tr);
-    window.openMoThauJVViewModal = (members, leadName, leadCode) => runWorkflow("openMoThauJVViewModal", members, leadName, leadCode);
+    window.openMoThauJVViewModal = (members, leadName, leadCode, leadContractorVersionId = "") => runWorkflow("openMoThauJVViewModal", members, leadName, leadCode, leadContractorVersionId);
     window.showNhaThauDetailsAndCloseJV = (ntId) => runWorkflow("showNhaThauDetailsAndCloseJV", ntId);
     window.editChuDauTu = (id) => runWorkflow("editChuDauTu", id);
     window.deleteChuDauTu = (id) => runWorkflow("deleteChuDauTu", id);
@@ -1134,7 +1134,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           if (getJvData(id)) {
             event.preventDefault();
             const data = getJvData(id);
-            this.executeCommand("openMoThauJVViewModal", data.members, data.leadName, data.leadCode);
+            this.executeCommand("openMoThauJVViewModal", data.members, data.leadName, data.leadCode, data.leadContractorVersionId || "");
           }
           return;
         case "show-lot-winners":

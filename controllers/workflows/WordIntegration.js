@@ -672,6 +672,7 @@ export function setupWordTemplatesEvents() {
   if (formWm) {
     formWm.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!this.view.validateForm(formWm)) return;
       const id = document.getElementById("wm-id").value;
       const tenBien = document.getElementById("wm-ten-bien").value.trim();
       const sourceTable = tableSelect.value;
@@ -725,7 +726,7 @@ export function setupWordTemplatesEvents() {
         const labelTable = tableNames[duplicate.sourceTable] || duplicate.sourceTable;
         const isList = !duplicate.sourceColumn || duplicate.sourceColumn === "*";
         const labelColumn = isList ? "Biến danh sách (Vòng lặp)" : duplicate.sourceColumn;
-        await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, "alert-triangle");
+        await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, "alert-triangle", document.getElementById("wm-ten-bien"));
         return;
       }
       try {
@@ -753,6 +754,7 @@ export function setupWordTemplatesEvents() {
   if (formWml) {
     formWml.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!this.view.validateForm(formWml)) return;
       const id = document.getElementById("wml-id").value;
       const tenBien = document.getElementById("wml-ten-bien").value.trim();
       const sourceTable = document.getElementById("wml-source-table").value;
@@ -806,7 +808,7 @@ export function setupWordTemplatesEvents() {
         const labelTable = tableNames[duplicate.sourceTable] || duplicate.sourceTable;
         const isList = !duplicate.sourceColumn || duplicate.sourceColumn === "*";
         const labelColumn = isList ? "Biến danh sách (Vòng lặp)" : duplicate.sourceColumn;
-        await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{#${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, "alert-triangle");
+        await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{#${tenBien}}</strong> đã trùng với biến ánh xạ của:<br><strong>Bảng: ${labelTable} &rarr; Cột: ${labelColumn}</strong>.`, "alert-triangle", document.getElementById("wml-ten-bien"));
         return;
       }
       try {
@@ -834,6 +836,7 @@ export function setupWordTemplatesEvents() {
   if (formWmc) {
     formWmc.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!this.view.validateForm(formWmc)) return;
       const id = document.getElementById("wmc-id").value;
       const tenBien = document.getElementById("wmc-ten-bien").value.trim();
       const formulaInput = document.getElementById("wmc-formula");
@@ -845,16 +848,16 @@ export function setupWordTemplatesEvents() {
       const selfReference = referencedVariables.has(tenBien.toLowerCase());
       const missingVariables = [...referencedVariables].filter((name) => !availableVariables.has(name));
       if (selfReference) {
-        await this.view.customAlert("Công thức không hợp lệ", `Biến <strong>{${tenBien}}</strong> không được tự tham chiếu chính nó.`, "alert-triangle");
+        await this.view.customAlert("Công thức không hợp lệ", `Biến <strong>{${tenBien}}</strong> không được tự tham chiếu chính nó.`, "alert-triangle", formulaInput);
         return;
       }
       if (missingVariables.length) {
-        await this.view.customAlert("Biến không tồn tại", `Các biến sau chưa có trong danh sách ánh xạ: <strong>${missingVariables.map((name) => `{${name}}`).join(", ")}</strong>.`, "alert-triangle");
+        await this.view.customAlert("Biến không tồn tại", `Các biến sau chưa có trong danh sách ánh xạ: <strong>${missingVariables.map((name) => `{${name}}`).join(", ")}</strong>.`, "alert-triangle", formulaInput);
         return;
       }
       const duplicate = (this.model.state.wordMappings || []).find((m) => m.tenBien.toLowerCase() === tenBien.toLowerCase() && m.id !== id);
       if (duplicate) {
-        await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{${tenBien}}</strong> đã tồn tại.`, "alert-triangle");
+        await this.view.customAlert("Trùng tên biến", `Tên biến <strong>{${tenBien}}</strong> đã tồn tại.`, "alert-triangle", document.getElementById("wmc-ten-bien"));
         return;
       }
       try {

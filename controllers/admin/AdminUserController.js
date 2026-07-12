@@ -579,11 +579,11 @@ export function setupRBACEvents() {
       const newPassword = document.getElementById("profile-new-password").value;
       const confirmPassword = document.getElementById("profile-confirm-password").value;
       if (newPassword.length < 6) {
-        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới cần tối thiểu 6 ký tự!", "alert-triangle");
+        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới cần tối thiểu 6 ký tự!", "alert-triangle", document.getElementById("profile-new-password"));
         return;
       }
       if (newPassword !== confirmPassword) {
-        await this.view.customAlert("Lỗi mật khẩu", "Xác nhận mật khẩu mới không trùng khớp!", "alert-triangle");
+        await this.view.customAlert("Lỗi mật khẩu", "Xác nhận mật khẩu mới không trùng khớp!", "alert-triangle", document.getElementById("profile-confirm-password"));
         return;
       }
       try {

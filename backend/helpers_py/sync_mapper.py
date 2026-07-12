@@ -44,6 +44,24 @@ def canonicalize_payload_item(table_name, item):
         normalized["tenChuDauTu"] = normalize_organization_name(normalized["tenChuDauTu"])
     elif table_name == "nha_thau" and normalized.get("tenNhaThau"):
         normalized["tenNhaThau"] = normalize_organization_name(normalized["tenNhaThau"])
+    elif table_name == "goi_thau" and str(normalized.get("hinhThucLuaChon") or "").strip().lower() == "chào hàng cạnh tranh":
+        normalized["yeuCauThamDinhHsmt"] = "Không"
+        normalized["soBaoCaoThamDinhHsmt"] = ""
+        normalized["ngayBaoCaoThamDinhHsmt"] = ""
+        normalized["toThamDinh"] = []
+        raw_metadata = normalized.get("danhGiaHsdtMetadata")
+        try:
+            metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) and raw_metadata.strip() else raw_metadata
+        except (TypeError, ValueError, json.JSONDecodeError):
+            metadata = None
+        if isinstance(metadata, dict):
+            if isinstance(metadata.get("technical"), dict):
+                metadata["technical"].pop("soBctdKt", None)
+                metadata["technical"].pop("ngayBctdKt", None)
+            if isinstance(metadata.get("result"), dict):
+                metadata["result"].pop("soBctdKetQua", None)
+                metadata["result"].pop("ngayBctdKetQua", None)
+            normalized["danhGiaHsdtMetadata"] = json.dumps(metadata, ensure_ascii=False) if isinstance(raw_metadata, str) else metadata
     return normalized
 
 

@@ -1,6 +1,7 @@
 import { getAppController } from "/controllers/main_controller/controllerRef.js";
 import { bindCurrencyElement } from "/controllers/main_controller/domUtils.js";
 import { getExcelPreviewFieldError } from "./excelPreviewValidation.js";
+import { isCompetitiveQuotationPackage } from "/controllers/workflows/packageAppraisal.js";
 export function renderExcelPreview(rows, importType) {
   const formatDateToDMY = (str) => {
     if (!str) return "";
@@ -359,7 +360,10 @@ export function populatePhathanhHsmtForm(gt, model) {
   setVal("phathanh-ngayquyetdinh", gt.ngayQuyetDinh ? model.formatForDateInput(gt.ngayQuyetDinh) : "");
   setVal("phathanh-thoigiandangtai", gt.thoiGianDangTai ? model.formatForDatetimeLocal(gt.thoiGianDangTai) : "");
   setVal("phathanh-thoigiandongthau", gt.thoiGianDongThau ? model.formatForDatetimeLocal(gt.thoiGianDongThau) : "");
-  const hasAudit = gt.yeuCauThamDinhHsmt === "Có";
+  const isCompetitiveQuotation = isCompetitiveQuotationPackage(gt);
+  const appraisalSection = document.getElementById("phathanh-thamdinh-section");
+  if (appraisalSection) appraisalSection.style.display = isCompetitiveQuotation ? "none" : "block";
+  const hasAudit = !isCompetitiveQuotation && gt.yeuCauThamDinhHsmt === "Có";
   const auditRadios = document.querySelectorAll('input[name="phathanh-yeucauthamdinh"]');
   auditRadios.forEach((radio) => {
     radio.checked = radio.value === "Có" && hasAudit || radio.value === "Không" && !hasAudit;
@@ -441,6 +445,8 @@ export function getPhathanhHsmtFormData(model) {
     return el ? el.value.trim() : "";
   };
   const id = getVal("phathanh-gt-id");
+  const gt = (model?.state?.goithau || []).find((item) => String(item.id) === String(id));
+  const isCompetitiveQuotation = isCompetitiveQuotationPackage(gt);
   const maGoiThauVal = getVal("phathanh-magoithau");
   const hieuLucHsdtVal = parseInt(getVal("phathanh-hieuluchsdt")) || 0;
   const giaTriDamBaoVal = model.parseVND(getVal("phathanh-giatribaomothau"));
@@ -468,7 +474,7 @@ export function getPhathanhHsmtFormData(model) {
     });
   });
   const auditRadioChecked = document.querySelector('input[name="phathanh-yeucauthamdinh"]:checked');
-  const yeuCauThamDinhHsmt = auditRadioChecked ? auditRadioChecked.value : "Không";
+  const yeuCauThamDinhHsmt = isCompetitiveQuotation ? "Không" : auditRadioChecked ? auditRadioChecked.value : "Không";
   const soBaoCaoThamDinhHsmt = yeuCauThamDinhHsmt === "Có" ? getVal("phathanh-sobaocaothamdinh") : "";
   const ngayBaoCaoThamDinhHsmt = yeuCauThamDinhHsmt === "Có" ? getVal("phathanh-ngaybaocaothamdinh") : "";
   return {

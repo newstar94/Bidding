@@ -45,3 +45,34 @@ export function setFieldFeedback(input, { state = "clear", message = "", color =
     errorEl.style.display = message ? "block" : "";
   }
 }
+
+export function getVisibleInvalidControl(input) {
+  if (!input) return null;
+  const flatpickrInput = input._flatpickr?.altInput;
+  if (flatpickrInput) return flatpickrInput;
+  const parent = input.parentNode;
+  if (input.id && parent?.querySelector) {
+    const searchableWrapper = parent.querySelector(`.custom-select-wrapper[data-select-id="${input.id}"]`);
+    const searchableInput = searchableWrapper?.querySelector?.(".custom-select-search");
+    if (searchableInput) return searchableInput;
+    const customSelectContainer = parent.querySelector(`.custom-select-container[data-target="${input.id}"]`);
+    const customSelectTrigger = customSelectContainer?.querySelector?.(".custom-select-trigger");
+    if (customSelectTrigger) return customSelectTrigger;
+    if (searchableWrapper) return searchableWrapper;
+    if (customSelectContainer) return customSelectContainer;
+  }
+  return input;
+}
+
+export function focusInvalidControl(input, { delay = 300 } = {}) {
+  const visibleControl = getVisibleInvalidControl(input);
+  if (!visibleControl) return null;
+  visibleControl.scrollIntoView?.({ behavior: "smooth", block: "center", inline: "center" });
+  setTimeout(() => {
+    if (!visibleControl.hasAttribute?.("tabindex") && typeof visibleControl.focus === "function" && !/^(INPUT|SELECT|TEXTAREA|BUTTON|A)$/.test(visibleControl.tagName || "")) {
+      visibleControl.setAttribute?.("tabindex", "-1");
+    }
+    visibleControl.focus?.({ preventScroll: true });
+  }, delay);
+  return visibleControl;
+}

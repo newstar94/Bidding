@@ -28,7 +28,8 @@ export async function parseOpeningFinancialImport(controller, rows) {
   }
   const { gtId, goiThau } = findOpeningPackage(controller);
   if (!goiThau) {
-    await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle");
+    const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
+    await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle", select);
     return null;
   }
   return rows.map((row) => {
@@ -67,7 +68,7 @@ export async function parseBidEvaluationImport(controller, rows) {
   const gtId = select ? select.value : "";
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (!goiThau) {
-    await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle");
+    await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle", select);
     return null;
   }
   const hasPhanLo = goiThau.phanLo === "Có";
@@ -141,7 +142,8 @@ export async function parseAwardResultImport(controller, rows) {
   const gtId = controller._currentResultPackageId;
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (!goiThau) {
-    await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle");
+    const select = document.getElementById("result-goithau-select") || document.getElementById("danhgiahsdt-goithau-select") || document.getElementById("mothau-goithau-select");
+    await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle", select);
     return null;
   }
   return rows.map((row) => {
@@ -202,7 +204,10 @@ export async function parseOpeningImport(controller, rows) {
   const select = document.getElementById("mothau-goithau-select");
   const gtId = select ? select.value : "";
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
-  if (!goiThau) return null;
+  if (!goiThau) {
+    await controller.view.customAlert("Thất bại", "Vui lòng chọn gói thầu trước khi nhập Excel!", "alert-triangle", select);
+    return null;
+  }
   const hasPhanLo = goiThau.phanLo === "Có";
   return rows.map((row) => {
     const maNhaThau = String(row["Mã nhà thầu"] || row["Mã định danh"] || row["Mã nhà thầu"] || row["Mã số thuế"] || row["Mã"] || "").trim();

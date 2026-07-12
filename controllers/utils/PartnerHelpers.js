@@ -91,6 +91,17 @@ function findAdministrativeMatch(parts, candidates, type) {
   }
   return null;
 }
+function findPrefixedAdministrativePart(parts, type, excludedIndexes = new Set()) {
+  const prefix = type === "province"
+    ? /^(tỉnh|thành phố|tp\.?)(?:\s|$)/iu
+    : /^(phường|xã|thị trấn|tt\.?)(?:\s|$)/iu;
+  for (let idx = parts.length - 1; idx >= 0; idx--) {
+    if (!excludedIndexes.has(idx) && prefix.test(String(parts[idx] || "").trim())) {
+      return { name: String(parts[idx] || "").trim(), partIndex: idx };
+    }
+  }
+  return null;
+}
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -115,6 +126,25 @@ export function composeInternalAddress(detail = "", wardName = "", provinceName 
   const cleanDetail = stripAdministrativeSuffix(detail, wardName, provinceName);
   return `${cleanDetail} | ${String(wardName || "").trim()} | ${String(provinceName || "").trim()}`;
 }
+export function parseStoredInternalAddress(storedAddress) {
+  const raw = String(storedAddress || "").trim();
+  const parts = raw.split(/\s*\|\s*/u);
+  const wardName = String(parts[1] || "").trim();
+  const provinceName = String(parts[2] || "").trim();
+  if (parts.length >= 3 && (wardName || provinceName)) {
+    const detailWithoutCountry = stripVietnamCountrySuffix(
+      String(parts[0] || "").split(",").map((part) => part.trim()).filter(Boolean)
+    ).join(", ");
+    return {
+      detail: stripAdministrativeSuffix(detailWithoutCountry, wardName, provinceName),
+      wardName,
+      provinceName,
+      requiresLookup: false,
+      rawAddress: raw
+    };
+  }
+  return { detail: raw, wardName: "", provinceName: "", requiresLookup: true, rawAddress: raw };
+}
 export async function parseVietnamAddress(rawAddress) {
   const raw = String(rawAddress || "").trim();
   if (!raw) {
@@ -127,23 +157,23 @@ export async function parseVietnamAddress(rawAddress) {
   const provinces = await ensureVietnamProvinces();
   const provinceMatch = findAdministrativeMatch(parts, provinces, "province");
   const province = provinceMatch?.item || null;
+  const provinceFallback = findPrefixedAdministrativePart(parts, "province");
+  const provincePartIndex = provinceMatch?.partIndex >= 0 ? provinceMatch.partIndex : provinceFallback?.partIndex ?? -1;
   let ward = null;
   let wardMatch = null;
   if (province?.code) {
     const wards = await ensureVietnamWards(province.code);
-    const partsWithoutProvince = parts.filter((_, idx) => idx !== provinceMatch.partIndex);
-    wardMatch = findAdministrativeMatch(partsWithoutProvince, wards, "ward");
+    wardMatch = findAdministrativeMatch(parts, wards, "ward");
     ward = wardMatch?.item || null;
-    if (wardMatch && provinceMatch.partIndex >= 0 && wardMatch.partIndex >= provinceMatch.partIndex) {
-      wardMatch = { ...wardMatch, partIndex: wardMatch.partIndex + 1 };
-    }
   }
+  const wardFallback = findPrefixedAdministrativePart(parts, "ward", new Set([provincePartIndex]));
+  const wardPartIndex = wardMatch?.partIndex >= 0 ? wardMatch.partIndex : wardFallback?.partIndex ?? -1;
   const removeIndexes = /* @__PURE__ */ new Set();
-  if (provinceMatch?.partIndex >= 0) removeIndexes.add(provinceMatch.partIndex);
-  if (wardMatch?.partIndex >= 0) removeIndexes.add(wardMatch.partIndex);
+  if (provincePartIndex >= 0) removeIndexes.add(provincePartIndex);
+  if (wardPartIndex >= 0) removeIndexes.add(wardPartIndex);
   const matchedDetail = parts.filter((_, idx) => !removeIndexes.has(idx)).join(", ").trim() || raw;
-  const wardName = ward?.name || "";
-  const provinceName = province?.name || "";
+  const wardName = ward?.name || wardFallback?.name || "";
+  const provinceName = province?.name || provinceFallback?.name || "";
   const detail = stripAdministrativeSuffix(matchedDetail, wardName, provinceName);
   return {
     detail,

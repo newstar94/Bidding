@@ -113,6 +113,41 @@ def extract_evaluation_dates(pkg):
             pass
     return pkg
 
+def is_competitive_quotation_package(pkg):
+    return str((pkg or {}).get('hinh_thuc_lua_chon') or (pkg or {}).get('hinhThucLuaChon') or '').strip().lower() == 'chào hàng cạnh tranh'
+
+def clear_competitive_quotation_appraisal(pkg):
+    if not pkg or not is_competitive_quotation_package(pkg):
+        return pkg
+    for key, value in (
+        ('yeu_cau_tham_dinh_hsmt', 'Không'),
+        ('so_bao_cao_tham_dinh_hsmt', ''),
+        ('ngay_bao_cao_tham_dinh_hsmt', ''),
+        ('yeuCauThamDinhHsmt', 'Không'),
+        ('soBaoCaoThamDinhHsmt', ''),
+        ('ngayBaoCaoThamDinhHsmt', ''),
+        ('to_tham_dinh', []),
+        ('toThamDinh', []),
+    ):
+        pkg[key] = value
+    metadata_key = 'danh_gia_hsdt_metadata' if 'danh_gia_hsdt_metadata' in pkg else 'danhGiaHsdtMetadata'
+    raw_metadata = pkg.get(metadata_key)
+    try:
+        metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) and raw_metadata.strip() else raw_metadata
+    except (TypeError, ValueError, json.JSONDecodeError):
+        metadata = None
+    if isinstance(metadata, dict):
+        technical = metadata.get('technical')
+        if isinstance(technical, dict):
+            technical.pop('soBctdKt', None)
+            technical.pop('ngayBctdKt', None)
+        result = metadata.get('result')
+        if isinstance(result, dict):
+            result.pop('soBctdKetQua', None)
+            result.pop('ngayBctdKetQua', None)
+        pkg[metadata_key] = json.dumps(metadata, ensure_ascii=False) if isinstance(raw_metadata, str) else metadata
+    return pkg
+
 def build_plan_context(plan_id, user_id, org_name):
     """Truy vấn CSDL để xây dựng ngữ cảnh đầy đủ phục vụ xuất file Word Kế hoạch LCNT."""
     conn = database.get_connection()
@@ -157,6 +192,7 @@ def build_plan_context(plan_id, user_id, org_name):
     attach_child_rows_to_items(cursor, "goi_thau", goi_thau_list, owner_id=org_name, naming="snake")
     for gt in goi_thau_list:
         extract_evaluation_dates(gt)
+        clear_competitive_quotation_appraisal(gt)
     conn.close()
 
     unified_context = {
@@ -186,6 +222,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
     pkg = parse_json_fields(dict(row_pkg))
     attach_child_rows(cursor, "goi_thau", pkg, owner_id=org_name, naming="snake")
     extract_evaluation_dates(pkg)
+    clear_competitive_quotation_appraisal(pkg)
 
     plan = {}
     investor_name = '--'
@@ -257,6 +294,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
     attach_child_rows_to_items(cursor, "goi_thau", goi_thau_versions, owner_id=org_name, naming="snake")
     for v in goi_thau_versions:
         extract_evaluation_dates(v)
+        clear_competitive_quotation_appraisal(v)
 
     contract_data = {}
     if type_param in ('contract', 'liquidation'):
@@ -309,6 +347,8 @@ def build_report_context(package_id, user_id, org_name, type_param):
         WHERE gtcg.owner_id = ? AND cg.owner_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'tham_dinh'
     """, (org_name, org_name, package_id))
     to_tham_dinh = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
+    if is_competitive_quotation_package(pkg):
+        to_tham_dinh = []
 
     conn.close()
 

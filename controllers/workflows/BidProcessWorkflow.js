@@ -1,5 +1,5 @@
 import { getAppController } from "../main_controller/controllerRef.js";
-import { bindCurrencyElement, normalizeTaxCodeForCompare } from "../main_controller/domUtils.js";
+import { bindCurrencyElement, debounce, normalizeTaxCodeForCompare } from "../main_controller/domUtils.js";
 import { setFieldFeedback } from "../main_controller/formStateUtils.js";
 import {
   canSaveOpeningInfo,
@@ -8,7 +8,7 @@ import {
   isNextEvaluationStepSaved,
   validateOpeningTime
 } from "./bidProcessValidation.js";
-import { collectOpeningBidsFromRows, validateOpeningJointVentureMembers, validateOpeningRows } from "./bidProcessOpeningData.js";
+import { collectOpeningBidsFromRows, resolveOpeningLookupNames, validateOpeningJointVentureMembers, validateOpeningRows } from "./bidProcessOpeningData.js";
 import {
   applyAutoPassedEvaluation,
   applyAwardMetadata,
@@ -19,7 +19,8 @@ import {
 import { renderOpeningSummary } from "./bidProcessRender.js";
 import { parseVietnamAddress } from "../utils/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "./partnerTaxLookup.js";
-import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers } from "./contractorVersionBinding.js";
+import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "./contractorVersionBinding.js";
+import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
 function normalizeContractorLookupCode(value) {
   return normalizeTaxCodeForCompare(value);
@@ -56,7 +57,15 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
     const existing = findContractorByCode(latestContractors, code);
     if (existing) {
       row._leadMemberLookupData = await mapPartnerLookupToContractor(code, existing);
-      if (nameInput && !nameInput.value.trim()) nameInput.value = existing.tenNhaThau || "";
+      const names = resolveOpeningLookupNames(
+        row.querySelector(".mt-loai-nha-thau")?.value,
+        nameInput?.value,
+        existing.tenNhaThau,
+        row._leadMemberName
+      );
+      if (nameInput) nameInput.value = names.bidName;
+      row._leadMemberName = names.leadMemberName;
+      return;
     }
     const lookupInput = getPartnerLookupInput(code);
     if (!lookupInput) return;
@@ -66,10 +75,14 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
       if (!info?.name) return;
       row._leadMemberLookupData = await mapPartnerLookupToContractor(code, info);
       if (codeInput && info.org_code) codeInput.value = info.org_code;
-      if (nameInput) nameInput.value = info.name;
-      if (row.querySelector(".mt-loai-nha-thau")?.value === "Liên danh") {
-        row._leadMemberName = info.name;
-      }
+      const names = resolveOpeningLookupNames(
+        row.querySelector(".mt-loai-nha-thau")?.value,
+        nameInput?.value,
+        info.name,
+        row._leadMemberName
+      );
+      if (nameInput) nameInput.value = names.bidName;
+      row._leadMemberName = names.leadMemberName;
     } catch (error) {
       console.error("Contractor lookup before saving bid opening failed:", error);
     } finally {
@@ -284,6 +297,7 @@ export async function handlePhatHanhHsmtSubmit(e) {
     gt.yeuCauThamDinhHsmt = yeuCauThamDinhHsmt;
     gt.soBaoCaoThamDinhHsmt = soBaoCaoThamDinhHsmt;
     gt.ngayBaoCaoThamDinhHsmt = ngayBaoCaoThamDinhHsmt ? this.model.convertDMYToYMD(ngayBaoCaoThamDinhHsmt) : "";
+    clearCompetitiveQuotationAppraisal(gt);
     gt.thoiGianMoThau = "";
     gt.hieuLucHsdt = hieuLucHsdtVal;
     gt.hieuLucDamBaoDuThau = hieuLucHsdtVal + 30;
@@ -572,7 +586,8 @@ export function openMoThauJVManager(tr) {
   const leadCode = (tr.querySelector(".mt-ma-nha-thau") || tr.querySelector(".row-ma-nha-thau"))?.value.trim() || "";
   const controller = getAppController();
   const latestNhaThauListJV = controller?.model?.getLatestNhaThau?.() || [];
-  const fallbackContractor = findContractorByCode(latestNhaThauListJV, leadCode);
+  const boundLeadContractor = getExactContractorVersion(controller?.model, tr._leadMemberContractorId || tr.dataset.contractorVersionId);
+  const fallbackContractor = boundLeadContractor || findContractorByCode(latestNhaThauListJV, leadCode);
   const rowMembers = Array.isArray(tr._thanhVienLienDanh) ? tr._thanhVienLienDanh : [];
   const fallbackMembers = Array.isArray(fallbackContractor?.thanhVienLienDanh) ? fallbackContractor.thanhVienLienDanh : [];
   const members = getJointVentureSubMembers(rowMembers.length > 0 ? rowMembers : fallbackMembers, leadCode);
@@ -658,18 +673,24 @@ export function openMoThauJVManager(tr) {
   };
   const fillLeadNameFromCode = async () => {
     if (!leadCode || !leadNameInput) return;
-    const localName = resolveLeadMemberName(findContractorByCode(latestNhaThauListJV, leadCode), leadCode);
+    const localContractor = getExactContractorVersion(controller?.model, tr._leadMemberContractorId || tr.dataset.contractorVersionId)
+      || findContractorByCode(latestNhaThauListJV, leadCode);
+    const localName = resolveLeadMemberName(localContractor, leadCode);
     if (localName) {
-      if (!leadNameInput.value.trim()) leadNameInput.value = localName;
+      leadNameInput.value = localName;
+      leadNameInput.dataset.autofilled = "1";
       tr._leadMemberName = localName;
       tr._leadMemberLookupData = {
         tenNhaThau: localName,
-        maNhaThau: findContractorByCode(latestNhaThauListJV, leadCode)?.maNhaThau || leadCode,
-        maSoThue: findContractorByCode(latestNhaThauListJV, leadCode)?.maSoThue || "",
-        diaChi: findContractorByCode(latestNhaThauListJV, leadCode)?.diaChi || "",
-        diaChiGoc: findContractorByCode(latestNhaThauListJV, leadCode)?.diaChiGoc || "",
-        tenVietTat: findContractorByCode(latestNhaThauListJV, leadCode)?.tenVietTat || ""
+        maNhaThau: localContractor?.maNhaThau || leadCode,
+        maSoThue: localContractor?.maSoThue || "",
+        diaChi: localContractor?.diaChi || "",
+        diaChiGoc: localContractor?.diaChiGoc || "",
+        tenVietTat: localContractor?.tenVietTat || "",
+        thanhVienNhaThauId: localContractor?.id || ""
       };
+      tr._leadMemberContractorId = localContractor?.id || tr._leadMemberContractorId || "";
+      return;
     }
     const apiInfo = await lookupInfoByTaxCode(leadCode, leadNameInput);
     if (apiInfo?.tenNhaThau) {
@@ -733,7 +754,7 @@ export function openMoThauJVManager(tr) {
           maSoThue: found.maSoThue || "",
           tenNhaThau: found.tenNhaThau || ""
         };
-        if (!allowOnlineLookup) return;
+        return;
       }
       if (allowOnlineLookup) {
         const apiInfo = await lookupInfoByTaxCode(code, mstInput);
@@ -860,23 +881,30 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   body.className = "modal-body";
   body.style.padding = "20px";
   const appController = getAppController();
-  const matchedContractor = getExactContractorVersion(appController?.model, leadContractorVersionId);
+  const matchedContractor = resolveContractorVersion(appController?.model, {
+    contractorVersionId: leadContractorVersionId,
+    code: leadCode
+  });
   const visibleMembers = getJointVentureSubMembers(members || [], leadCode);
-  const resolvedLeadName = leadName || resolveLeadMemberName(matchedContractor, leadCode);
-  const displayLeadName = resolvedLeadName || "Chưa cập nhật";
-  const displayLeadCode = leadCode || "Chưa cập nhật";
-  const leadNtId = leadContractorVersionId || null;
-  const leadCodeHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadCode}</a>` : displayLeadCode;
-  const leadNameHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadName}</a>` : displayLeadName;
+  const resolvedLeadName = matchedContractor?.tenNhaThau || resolveLeadMemberName(matchedContractor, leadCode) || leadName;
+  const displayLeadName = escapeHtml(resolvedLeadName || "Chưa cập nhật");
+  const displayLeadCode = escapeHtml(matchedContractor?.maNhaThau || matchedContractor?.maSoThue || leadCode || "Chưa cập nhật");
+  const leadNtId = matchedContractor?.id || null;
+  const leadIdAttr = escapeHtml(leadNtId || "");
+  const leadCodeHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadCode}</a>` : displayLeadCode;
+  const leadNameHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadName}</a>` : displayLeadName;
   let membersHtml = "";
   if (visibleMembers.length === 0) {
     membersHtml = `<div style="text-align: center; color: var(--text-muted); padding: 12px;"><small>Không có Thành viên liên danh</small></div>`;
   } else {
     membersHtml = visibleMembers.map((m, idx) => {
-      const memberCode = m.maNhaThau || m.maSoThue || "";
-      const memberNtId = m.thanhVienNhaThauId || null;
-      const mCodeHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${memberCode || "--"}</a>` : memberCode || "--";
-      const mNameHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberNtId}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${m.tenNhaThau || "--"}</a>` : m.tenNhaThau || "--";
+      const memberContractor = resolveContractorVersion(appController?.model, m);
+      const memberCode = escapeHtml(memberContractor?.maNhaThau || memberContractor?.maSoThue || m.maNhaThau || m.maSoThue || "--");
+      const memberName = escapeHtml(memberContractor?.tenNhaThau || m.tenNhaThau || "--");
+      const memberNtId = memberContractor?.id || null;
+      const memberIdAttr = escapeHtml(memberNtId || "");
+      const mCodeHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${memberCode}</a>` : memberCode;
+      const mNameHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${memberName}</a>` : memberName;
       return `
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-nested, rgba(0,0,0,0.01)); margin-bottom: 8px;">
                     <div>
@@ -1215,40 +1243,64 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const inputMa = tr.querySelector(".mt-ma-nha-thau");
   const inputTen = tr.querySelector(".mt-ten-nha-thau");
   if (inputMa && inputTen) {
-    const handleCodeChange = async (e) => {
+    let lookupRequestId = 0;
+    const runRemoteLookup = async (code) => {
+      const lookupInput = getPartnerLookupInput(code);
+      if (!lookupInput || !tr.isConnected || inputMa.value.trim() !== code) return;
+      const requestId = ++lookupRequestId;
+      try {
+        inputMa.style.opacity = "0.7";
+        const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
+        if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
+        if (data?.name) {
+          const lookupData = await createLookupMemberData(code, data);
+          if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
+          inputMa.value = data.org_code || code;
+          tr._leadMemberLookupData = lookupData;
+          const names = resolveOpeningLookupNames(
+            tr.querySelector(".mt-loai-nha-thau")?.value,
+            inputTen.value,
+            data.name,
+            tr._leadMemberName
+          );
+          inputTen.value = names.bidName;
+          tr._leadMemberName = names.leadMemberName;
+        }
+      } catch (err) {
+        console.error("New-contractor tax-code lookup during bid opening failed: ", err);
+      } finally {
+        if (requestId === lookupRequestId) inputMa.style.opacity = "1";
+      }
+    };
+    const scheduleRemoteLookup = debounce((code) => {
+      runRemoteLookup(code);
+    }, 450);
+    const handleCodeChange = () => {
       const code = inputMa.value.trim();
-      if (!code) return;
+      lookupRequestId++;
+      if (!code) {
+        inputMa.style.opacity = "1";
+        return;
+      }
       const latestList = this.model.getLatestNhaThau();
       const matched = findContractorByCode(latestList, code);
       if (matched) {
-        inputTen.value = matched.tenNhaThau || "";
-        if (tr.querySelector(".mt-loai-nha-thau")?.value === "Liên danh") {
-          tr._leadMemberName = matched.tenNhaThau || "";
-        }
+        const names = resolveOpeningLookupNames(
+          tr.querySelector(".mt-loai-nha-thau")?.value,
+          inputTen.value,
+          matched.tenNhaThau,
+          tr._leadMemberName
+        );
+        inputTen.value = names.bidName;
+        tr._leadMemberName = names.leadMemberName;
+        scheduleRemoteLookup.cancel();
+        return;
       }
-      if (e.type === "change") {
-        try {
-          inputMa.style.opacity = "0.7";
-          const lookupInput = getPartnerLookupInput(code);
-          if (!lookupInput) return;
-          const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
-          if (data?.name) {
-            inputMa.value = data.org_code || code;
-            inputTen.value = data.name;
-            tr._leadMemberLookupData = await createLookupMemberData(code, data);
-            if (tr.querySelector(".mt-loai-nha-thau")?.value === "Liên danh") {
-              tr._leadMemberName = data.name;
-            }
-          }
-        } catch (err) {
-          console.error("New-contractor tax-code lookup during bid opening failed: ", err);
-        } finally {
-          inputMa.style.opacity = "1";
-        }
-      }
+      scheduleRemoteLookup(code);
     };
     inputMa.addEventListener("input", handleCodeChange);
-    inputMa.addEventListener("change", handleCodeChange);
+    inputMa.addEventListener("blur", () => scheduleRemoteLookup.flush());
+    inputMa.addEventListener("pointerleave", () => scheduleRemoteLookup.flush());
   }
   const inputPkgDuration = tr.querySelector(".mt-thoi-gian-thuc-hien");
   const inputCtrDuration = tr.querySelector(".mt-thoi-gian-thuc-hien-hop-dong");
@@ -1341,7 +1393,7 @@ export async function saveThongTinMoThau() {
   if (!select) return;
   const gtId = select.value;
   if (!gtId) {
-    await this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu để lưu!", "alert-triangle");
+    await this.view.customAlert("Chưa chọn gói thầu", "Vui lòng chọn một gói thầu để lưu!", "alert-triangle", select);
     return;
   }
   const gt = this.model.state.goithau.find((g) => g.id === gtId);
@@ -1498,8 +1550,7 @@ export async function saveKetQuaChiDinhThau(gtId) {
   }).forEach((fieldId) => validateField(fieldId, requiredAwardValues[fieldId]));
   if (hasError) {
     if (errorInputs[0]) {
-      errorInputs[0].scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(() => errorInputs[0].focus({ preventScroll: true }), 300);
+      this.view.focusInvalidControl(errorInputs[0]);
     }
     return;
   }
@@ -1537,6 +1588,7 @@ export async function saveKetQuaChiDinhThau(gtId) {
         dateTkq: this.model.convertDMYToYMD(dateTkqRaw)
       }
     });
+    clearCompetitiveQuotationAppraisal(gt);
     gt.soQuyetDinhKetQua = decNo;
     gt.ngayQuyetDinhKetQua = decDate;
     gt.trangThai = "Đã có kết quả";

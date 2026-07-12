@@ -3,8 +3,29 @@ import { bindCurrencyElement } from "../../../controllers/main_controller/domUti
 import { getAppController } from "../../../controllers/main_controller/controllerRef.js";
 import { setFieldFeedback } from "../../../controllers/main_controller/formStateUtils.js";
 import { validateExtensionRows } from "../../../controllers/workflows/packageValidation.js";
-import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, selectContractorVersionForDate } from "../../../controllers/workflows/contractorVersionBinding.js";
+import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion, selectContractorVersionForDate } from "../../../controllers/workflows/contractorVersionBinding.js";
 import { setJvData } from "./jvDataStore.js";
+import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "../../../controllers/workflows/packageAppraisal.js";
+const escapeHtml = (value) => window.escapeHTML(value == null ? "" : value);
+
+function renderBidContractorLink(model, bid, jvKey) {
+  const name = escapeHtml(resolveBidContractorName(model, bid) || bid?.tenNhaThau || "--");
+  if (String(bid?.loaiNhaThau || "").trim().toLowerCase() === "liên danh") {
+    const allMembers = resolveBidJointVentureMembers(model, bid);
+    const leadMember = allMembers.find((member) => member.vaiTro === "Đứng đầu liên danh");
+    setJvData(jvKey, {
+      members: allMembers.filter((member) => member.vaiTro !== "Đứng đầu liên danh"),
+      leadName: leadMember?.tenNhaThau || bid.tenNhaThau || "",
+      leadCode: leadMember?.maNhaThau || leadMember?.maSoThue || bid.maNhaThau || bid.maDinhDanh || "",
+      leadContractorVersionId: leadMember?.thanhVienNhaThauId || bid.nhaThauId || ""
+    });
+    return `<a href="#" data-bf-action="show-jv" data-id="${escapeHtml(jvKey)}" class="text-success fw-bold link-hover" title="Xem thành viên liên danh">👥 ${name}</a>`;
+  }
+  const contractor = resolveContractorVersion(model, bid);
+  return contractor?.id
+    ? `<a href="#" data-bf-action="show-contractor" data-id="${escapeHtml(contractor.id)}" class="text-blue fw-bold link-hover">${name}</a>`
+    : `<span class="fw-bold">${name}</span>`;
+}
 export function checkBidQualified(b) {
   if (!b) return false;
   const kl = String(b.danhGiaKetLuan || "").trim().toLowerCase();
@@ -599,6 +620,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               const valNgayBaoCao = document.getElementById("ip-ngaybaocaothamdinh")?.value || "";
               if (valYeuCauThamDinh === "Có") {
                 let hasErr = false;
+                const errorInputs = [];
                 const inpSo = document.getElementById("ip-sobaocaothamdinh");
                 const inpNgay = document.getElementById("ip-ngaybaocaothamdinh");
                 if (inpSo) {
@@ -607,6 +629,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     inpSo.style.setProperty("border", "1px solid #ef4444", "important");
                     if (errEl) errEl.style.display = "block";
                     hasErr = true;
+                    errorInputs.push(inpSo);
                   } else {
                     inpSo.style.removeProperty("border");
                     if (errEl) errEl.style.display = "none";
@@ -622,6 +645,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     inpNgay.style.setProperty("border", "1px solid #ef4444", "important");
                     if (errEl) errEl.style.display = "block";
                     hasErr = true;
+                    errorInputs.push(inpNgay);
                   } else {
                     inpNgay.style.removeProperty("border");
                     if (errEl) errEl.style.display = "none";
@@ -631,9 +655,13 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     if (errEl) errEl.style.display = "none";
                   };
                 }
-                if (hasErr) return;
+                if (hasErr) {
+                  this.focusInvalidControl(errorInputs[0]);
+                  return;
+                }
               }
               const gtData = {
+                hinhThucLuaChon: gt.hinhThucLuaChon,
                 thoiGianDangTai: valDangTai ? this.model.convertDMYHMSToYMDHMS(valDangTai) : "",
                 thoiGianDongThau: valDongThau ? this.model.convertDMYHMSToYMDHMS(valDongThau) : "",
                 thoiGianMoThau: valMoThau ? this.model.convertDMYHMSToYMDHMS(valMoThau) : "",
@@ -646,6 +674,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 soBaoCaoThamDinhHsmt: valYeuCauThamDinh === "Không" ? "" : valSoBaoCao,
                 ngayBaoCaoThamDinhHsmt: valYeuCauThamDinh === "Không" || !valNgayBaoCao ? "" : this.model.convertDMYToYMD(valNgayBaoCao)
               };
+              clearCompetitiveQuotationAppraisal(gtData);
               const oldTimeDang = gt.thoiGianDangTai ? String(gt.thoiGianDangTai).trim() : "";
               const newTimeDang = String(gtData.thoiGianDangTai || "").trim();
               const oldTimeDong = gt.thoiGianDongThau ? String(gt.thoiGianDongThau).trim() : "";
@@ -688,7 +717,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                 this.model.state.selectedPackageVersion[rootId] = newGtId;
                 const latestPlan2 = this.model.getLatestPlan(gt.keHoachId);
                 const latestPlanId = latestPlan2 ? latestPlan2.id : gt.keHoachId;
-                this.model.state.goithau.push({
+                const newPackageVersion = {
                   ...gt,
                   ...gtData,
                   keHoachId: latestPlanId,
@@ -698,7 +727,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                   rootId,
                   createdAt: gt.createdAt || this.model.getCurrentDateTimeString(),
                   updatedAt: this.model.getCurrentDateTimeString()
-                });
+                };
+                clearCompetitiveQuotationAppraisal(newPackageVersion);
+                this.model.state.goithau.push(newPackageVersion);
                 if (Array.isArray(this.model.state.hopdong)) {
                   this.model.state.hopdong = this.model.state.hopdong.map((h) => {
                     if (h.goiThauIds && h.goiThauIds.includes(id)) {
@@ -731,6 +762,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                   gt.keHoachId = latestPlan2.id;
                 }
                 Object.assign(gt, gtData);
+                clearCompetitiveQuotationAppraisal(gt);
                 gt.updatedAt = this.model.getCurrentDateTimeString();
               }
               await this.model.persistData("goithau");
@@ -980,7 +1012,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               }));
               const extensionValidation = validateExtensionRows(gt.thoiGianDongThau || "", extensionInputRows);
               if (!extensionValidation.valid) {
-                await this.customAlert("Dữ liệu không hợp lệ", extensionValidation.error, "alert-triangle");
+                const extensionRow = document.querySelectorAll("#gt-giahan-tbody tr")[extensionValidation.rowIndex];
+                const extensionInput = extensionRow?.querySelector(extensionValidation.field === "reason" ? ".gh-reason-input" : ".gh-time-input");
+                await this.customAlert("Dữ liệu không hợp lệ", extensionValidation.error, "alert-triangle", extensionInput);
                 appController?.validateGiaHanRealtime?.();
                 return;
               }
@@ -1292,7 +1326,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                               <td>${b.tenPhanLo || "--"}</td>
                                           ` : ""}
                                           <td>${b.maNhaThau || b.maDinhDanh || "--"}</td>
-                                          <td>${b.tenNhaThau || "--"}</td>
+                                          <td>${renderBidContractorLink(this.model, b, `${gt.id}_qualified_${b.id}`)}</td>
                                           ${hasTechScore ? `<td style="text-align: center;">${b.danhGiaKyThuat || "--"}</td>` : ""}
                                           <td style="text-align: center;">
                                               <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 4px;">Đạt kỹ thuật</span>
@@ -1335,14 +1369,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               const valSoBctd = inpSoBctd ? inpSoBctd.value.trim() : "";
               const valNgayBctdRaw = inpNgayBctd ? inpNgayBctd.value.trim() : "";
               let hasErr = false;
+              const errorInputs = [];
               if (!valSo) {
                 hasErr = true;
+                errorInputs.push(inpSo);
                 setFieldFeedback(inpSo, { state: "invalid", message: inpSo.closest(".form-group")?.querySelector(".error-text")?.textContent || "" });
               } else {
                 setFieldFeedback(inpSo);
               }
               if (!valNgayRaw) {
                 hasErr = true;
+                errorInputs.push(inpNgay);
                 setFieldFeedback(inpNgay, { state: "invalid", message: inpNgay.closest(".form-group")?.querySelector(".error-text")?.textContent || "" });
               } else {
                 setFieldFeedback(inpNgay);
@@ -1350,6 +1387,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               if (inpSoBctd) {
                 if (!valSoBctd) {
                   hasErr = true;
+                  errorInputs.push(inpSoBctd);
                   setFieldFeedback(inpSoBctd, { state: "invalid", message: inpSoBctd.closest(".form-group")?.querySelector(".error-text")?.textContent || "" });
                 } else {
                   setFieldFeedback(inpSoBctd);
@@ -1358,16 +1396,24 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               if (inpNgayBctd) {
                 if (!valNgayBctdRaw) {
                   hasErr = true;
+                  errorInputs.push(inpNgayBctd);
                   setFieldFeedback(inpNgayBctd, { state: "invalid", message: inpNgayBctd.closest(".form-group")?.querySelector(".error-text")?.textContent || "" });
                 } else {
                   setFieldFeedback(inpNgayBctd);
                 }
               }
-              if (hasErr) return;
+              if (hasErr) {
+                this.focusInvalidControl(errorInputs[0]);
+                return;
+              }
               metadata2.technical.soQdPheDuyetKt = valSo;
               metadata2.technical.ngayQdPheDuyetKt = this.model.convertDMYToYMD(valNgayRaw);
               if (inpSoBctd) metadata2.technical.soBctdKt = valSoBctd;
               if (inpNgayBctd) metadata2.technical.ngayBctdKt = this.model.convertDMYToYMD(valNgayBctdRaw);
+              if (isCompetitiveQuotationPackage(gt)) {
+                delete metadata2.technical.soBctdKt;
+                delete metadata2.technical.ngayBctdKt;
+              }
               metadata2.technical.qualifiedSaved = true;
               gt.danhGiaHsdtMetadata = JSON.stringify(metadata2);
               this.model.persistData("goithau");
@@ -1512,7 +1558,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                                     <td>${b.tenPhanLo || "--"}</td>
                                                 ` : ""}
                                                 <td>${b.maNhaThau || b.maDinhDanh || "--"}</td>
-                                                <td>${b.tenNhaThau}</td>
+                                                <td>${renderBidContractorLink(this.model, b, `${gt.id}_financial_readonly_${b.id}`)}</td>
                                                 ${hasTechScore ? `<td style="text-align:center;">${b.danhGiaKyThuat || "--"}</td>` : ""}
                                                 <td>${valGiaDuThau || "--"}</td>
                                                 <td style="text-align:right;">${valTyLeGiam}</td>
@@ -1528,7 +1574,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                                     <td>${b.tenPhanLo || "--"}</td>
                                                 ` : ""}
                                                 <td>${b.maNhaThau || b.maDinhDanh || "--"}</td>
-                                                <td>${b.tenNhaThau}</td>
+                                                <td>${renderBidContractorLink(this.model, b, `${gt.id}_financial_edit_${b.id}`)}</td>
                                                 ${hasTechScore ? `<td style="text-align:center;">${b.danhGiaKyThuat || "--"}</td>` : ""}
                                                 <td><input type="text" class="form-control op-gia-du-thau" value="${valGiaDuThau}" placeholder="Nhập giá..." style="padding:4px 8px; font-size:0.8rem;"></td>
                                                 <td><input type="text" class="form-control op-ty-le-giam" value="${valTyLeGiam}" placeholder="0" style="text-align:right; padding:4px 8px; font-size:0.8rem;"></td>
@@ -1694,7 +1740,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               jvData = {
                 members: subMembers,
                 leadName,
-                leadCode
+                leadCode,
+                leadContractorVersionId: leadMember?.thanhVienNhaThauId || bidderInfo.nhaThauId || ""
               };
             }
             return {
@@ -1724,7 +1771,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               setJvData(gt.id, {
                 members: subMembers,
                 leadName: leadMember?.tenNhaThau || resolveBidContractorName(this.model, currentWinnerBid),
-                leadCode: leadMember?.maSoThue || winnerNt?.maSoThue || winnerNt?.maNhaThau || currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau || ""
+                leadCode: leadMember?.maSoThue || winnerNt?.maSoThue || winnerNt?.maNhaThau || currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau || "",
+                leadContractorVersionId: leadMember?.thanhVienNhaThauId || currentWinnerBid.nhaThauId || ""
               });
               winnerDisplayHtml = `
                                 <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -1841,11 +1889,12 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             setJvData(jvKey, {
               members: subMembers,
               leadName,
-              leadCode
+              leadCode,
+              leadContractorVersionId: leadMember?.thanhVienNhaThauId || b.nhaThauId || ""
             });
             contractorHtml = `<a href="#" data-bf-action="show-jv" data-id="${jvKey}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${b.tenNhaThau || "--"}</a>`;
           } else {
-            contractorHtml = `<span class="fw-bold">${b.tenNhaThau || "--"}</span>`;
+            contractorHtml = renderBidContractorLink(this.model, b, `${gt.id}_result_contractor_${idx}`);
           }
           if (isPhanLo) {
             return `
@@ -1926,13 +1975,13 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Thời gian thực hiện</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${gt.thoiGianGoiThau || "--"}</h5>
                             </div>
-                            ${soBctdResult ? `
+                            ${gt.hinhThucLuaChon !== "Chào hàng cạnh tranh" && soBctdResult ? `
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Số BCTĐ kết quả</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${soBctdResult}</h5>
                             </div>
                             ` : ""}
-                            ${ngayBctdResult ? `
+                            ${gt.hinhThucLuaChon !== "Chào hàng cạnh tranh" && ngayBctdResult ? `
                             <div>
                                 <span class="text-muted" style="font-size:0.75rem; font-weight:700; text-transform:uppercase;">Ngày BCTĐ kết quả</span>
                                 <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--text-main);">${this.model.formatDate(ngayBctdResult)}</h5>
@@ -2772,8 +2821,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
             if (hasError) {
               if (errorInputs.length > 0) {
                 const first = errorInputs[0];
-                first.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-                setTimeout(() => first.focus({ preventScroll: true }), 300);
+                this.focusInvalidControl(first);
               }
               return;
             }
@@ -2992,6 +3040,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               meta.cancelDetails.ngayQuyetDinhHuyThau = decDate;
               meta.cancelDetails.lyDoHuyThau = "Tất cả các hồ sơ dự thầu không đáp ứng yêu cầu của hồ sơ mời thầu. Hủy thầu theo quy định tại Điểm a Khoản 1 Điều 17 Luật Đấu thầu số 22/2023/QH15 ngày 23 tháng 6 năm 2023, sửa đổi, bổ sung tại Luật số 57/2024/QH15, Luật số 90/2025/QH15.";
               gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+              clearCompetitiveQuotationAppraisal(gt);
               gt.soQuyetDinhKetQua = decNo;
               gt.ngayQuyetDinhKetQua = decDate;
               this.model.persistData("goithau");
@@ -3004,6 +3053,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               return;
             }
             gt.danhGiaHsdtMetadata = JSON.stringify(meta);
+            clearCompetitiveQuotationAppraisal(gt);
             gt.soQuyetDinhKetQua = decNo;
             gt.ngayQuyetDinhKetQua = decDate;
             gt.trangThai = "Đã có kết quả";
@@ -3157,7 +3207,12 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
           const decDate = document.getElementById("cancel-dec-date").value.trim();
           const reason = document.getElementById("cancel-reason").value.trim();
           if (!decNo || !decDate || !reason) {
-            await this.customAlert("Thiếu thông tin", "Vui lòng điền đầy đủ Số quyết định, Ngày quyết định và Lý do hủy thầu.", "alert-triangle");
+            const firstInvalid = !decNo
+              ? document.getElementById("cancel-dec-no")
+              : !decDate
+                ? document.getElementById("cancel-dec-date")
+                : document.getElementById("cancel-reason");
+            await this.customAlert("Thiếu thông tin", "Vui lòng điền đầy đủ Số quyết định, Ngày quyết định và Lý do hủy thầu.", "alert-triangle", firstInvalid);
             return;
           }
           const formattedDecDate = decDate ? this.model.convertDMYToYMD(decDate) : "";
