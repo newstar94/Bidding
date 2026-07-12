@@ -684,6 +684,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     ].filter(Boolean);
     const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
     const initialTabName = this.getTabNameForPath(initialPath) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
+    if (["bieumau", "mothau", "danhgiahsdt"].includes(initialTabName) && !this._workflowModulesReady) {
+      await this.ensureWorkflowModules();
+    }
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
       await this.ensureLazyTab(initialTabName);
     }

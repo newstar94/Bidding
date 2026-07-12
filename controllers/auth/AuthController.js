@@ -461,16 +461,29 @@ export function setupAuth() {
     document.getElementById("login-password").value = "";
     hideInitLoader();
   };
-  const showCachedWorkspace = () => {
+  const showCachedWorkspace = async () => {
     overlay.style.display = "none";
     document.querySelector(".app-container").style.filter = "none";
     this.view.updateActiveUserProfileDisplay();
-    if (typeof this.handlePathRouting === "function") {
-      this.handlePathRouting(window.location.pathname, false, true);
-    } else {
+    try {
+      const initialTab = this.getTabNameForPath?.(window.location.pathname) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
+      if (["bieumau", "mothau", "danhgiahsdt"].includes(initialTab) && !this._workflowModulesReady) {
+        await this.ensureWorkflowModules();
+      }
+      if (!document.getElementById(`tab-${initialTab}`) && this.lazyTabPartials?.[initialTab]) {
+        await this.ensureLazyTab(initialTab);
+      }
+      if (typeof this.handlePathRouting === "function") {
+        this.handlePathRouting(window.location.pathname, false, true);
+      } else {
+        this.switchTab(initialTab);
+      }
+    } catch (error) {
+      console.error("Failed to restore the initial workspace route:", error);
       this.switchTab(this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
+    } finally {
+      hideInitLoader();
     }
-    hideInitLoader();
   };
   const applySessionUser = (user) => {
     if (!user) return;
@@ -532,7 +545,9 @@ export function setupAuth() {
     const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
     const canShowLocalFirst = typeof this.hasLocalDataForRoute === "function" ? this.hasLocalDataForRoute(initialPath) : hasLocalWorkspaceData();
     if (canShowLocalFirst) {
-      requestAnimationFrame(showCachedWorkspace);
+      requestAnimationFrame(() => {
+        void showCachedWorkspace();
+      });
     }
     const sessionCheckStartedAt = Date.now();
     const precheckedSession = this._initialSessionData;
