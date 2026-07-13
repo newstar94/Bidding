@@ -342,8 +342,17 @@ export function switchTab(tabName, action = null, updateState = true) {
   }
   this.view.elements.navButtons = document.querySelectorAll(".nav-btn");
   this.view.elements.tabPanes = document.querySelectorAll(".tab-pane");
+  const parentNavigationTab = {
+    mothau: "goithau",
+    danhgiahsdt: "goithau",
+    "goithau-detail": "goithau",
+    "kehoach-detail": "kehoach",
+    "hopdong-detail": "hopdong",
+    "chudautu-detail": "chudautu",
+    "nhathau-detail": "nhathau"
+  }[tabName] || tabName;
   this.view.elements.navButtons.forEach((btn) => {
-    if (btn.getAttribute("data-tab") === tabName) {
+    if (btn.getAttribute("data-tab") === parentNavigationTab) {
       btn.classList.add("active");
     } else {
       btn.classList.remove("active");

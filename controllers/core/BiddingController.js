@@ -6,6 +6,7 @@ import { hasHolidays, setHolidays } from "/controllers/state/runtimeState.js";
 import { APP_DEBUG } from "/controllers/core/appConfig.js";
 import { setAppController } from "/controllers/main_controller/controllerRef.js";
 import { hideInitLoader, isAuthTransitionActive } from "/controllers/auth/authRuntimeState.js";
+import { reconcileRouteDataAtStartup } from "/controllers/core/startupReconciliation.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -219,6 +220,7 @@ export class BiddingController {
       this.measureStartup("app module to DOM ready", "app-module-start", "dom-content-loaded"),
       this.measureStartup("model init", "init:start", "model:init"),
       this.measureStartup("critical ui setup", "model:init", "ui:critical"),
+      this.measureStartup("initial route data", "route-data-sync:start", "route-data-sync:end"),
       this.measureStartup("route render", "ui:critical", "route:rendered"),
       this.measureStartup("app module to hide loader", "app-module-start", "loader:hidden"),
       this.measureStartup("time to hide loader", "init:start", "loader:hidden")
@@ -256,6 +258,9 @@ export class BiddingController {
       }
     };
     requestAnimationFrame(() => requestAnimationFrame(scheduleIdle));
+  }
+  async reconcileInitialRouteData() {
+    return reconcileRouteDataAtStartup(this);
   }
   ensureWorkflowModules() {
     if (!this._workflowModulesPromise) {
@@ -708,17 +713,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     window.addEventListener("popstate", (e) => {
       this.handlePathRouting(window.location.pathname, false);
     });
-    const hasUsableLocalData = this.hasLocalDataForRoute(window.location.pathname);
     const initialPath = window.location.pathname;
-    const initialParts = initialPath.startsWith("/") ? initialPath.substring(1).split("/").filter(Boolean) : [];
-    const detailRoutePaths = [
-      this.routeMap["goithau-detail"],
-      this.routeMap["kehoach-detail"],
-      this.routeMap["hopdong-detail"],
-      this.routeMap["chudautu-detail"],
-      this.routeMap["nhathau-detail"]
-    ].filter(Boolean);
-    const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
     const initialTabName = this.getTabNameForPath(initialPath) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
     const routePreparationTasks = [this.view.ensureViewModules(initialTabName)];
     if (["mothau", "danhgiahsdt"].includes(initialTabName) && !this._workflowModulesReady) {
@@ -727,6 +722,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
       routePreparationTasks.push(this.ensureLazyTab(initialTabName));
     }
+    routePreparationTasks.push(this.reconcileInitialRouteData());
     await Promise.all(routePreparationTasks);
     await this.handlePathRouting(window.location.pathname, false, true);
     this.markStartup("route:rendered");
@@ -739,20 +735,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.setupFileUploads();
       this.loadHolidaysInBackground();
     }, { timeout: 600, delay: 100 });
-    const reconcileWorkspace = async () => {
-      await this.autoSync();
-      await this.forceSyncData(true, true, false);
-      await this.autoSync();
-    };
-    if ((!hasUsableLocalData || shouldWaitForDetailData) && !this._initialSyncStarted) {
-      this._initialSyncStarted = true;
-      this.schedulePostStartupTask(reconcileWorkspace, { timeout: 750, delay: 150 });
-    } else if (!this._initialSyncStarted) {
-      this._initialSyncStarted = true;
-      this.schedulePostStartupTask(reconcileWorkspace, { timeout: 2400, delay: 700 });
-    }
+    this._initialSyncStarted = true;
     this.schedulePostStartupTask(() => {
       this.setupAutoSyncBackground();
+      this.scheduleBackgroundSync?.(300);
       this.loadInitDataInBackground();
     }, { timeout: 2500, delay: 900 });
   }
