@@ -3,15 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Bắt buộc giữ lại các module Python được biên dịch sẵn vì không có file nguồn .py tương ứng
-!models/*.cpython-314.pyc
-!controllers/*.cpython-314.pyc
-
 # Cấu hình môi trường chứa thông tin nhạy cảm
 .env
 
 # Database SQLite (Bỏ qua file DB thay đổi cục bộ)
-models/bidding.db
+backend/db/bidding.db
 
 # Log files
 *.log

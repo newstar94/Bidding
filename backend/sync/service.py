@@ -5,7 +5,7 @@ import traceback
 
 from starlette.responses import JSONResponse
 
-from helpers import (
+from backend.shared.helpers import (
     OrgPermissionError,
     SCHEMA_DINH_NGHIA,
     _assert_safe_table,
@@ -21,34 +21,34 @@ from helpers import (
     save_base64_image,
     verify_session,
 )
-from helpers_py.access_policy import authorize_record_write, is_manager_role
-from helpers_py.date_utils import is_datetime_column, normalize_datetime_value
-from helpers_py.id_utils import generate_record_id
-from helpers_py.sync_mapper import (
+from backend.shared.access_policy import authorize_record_write, is_manager_role
+from backend.shared.date_utils import is_datetime_column, normalize_datetime_value
+from backend.db.id_utils import generate_record_id
+from backend.sync.mapper import (
     canonicalize_payload_item,
     db_column_for_json_key,
     get_payload_value,
     json_key_for_column,
     save_child_payloads,
 )
-from helpers_py.text_utils import normalize_person_name
-from routes.sync_queries import (
+from backend.shared.text_utils import normalize_person_name
+from backend.sync.queries import (
     ALLOWED_ORPHAN_TABLES,
     OWNER_TYPES,
     SYNCED_TABLES,
     TABLE_KEYS,
     build_dashboard_summary,
 )
-from sync.ownership import get_owner_type, validate_owner_scoped_references
-from sync.repository import (
+from backend.sync.ownership import get_owner_type, validate_owner_scoped_references
+from backend.sync.repository import (
     DELETED_RECORD_UPSERT_SQL,
     VERSIONED_TABLES,
     defer_version_latest_flag,
     get_current_sync_version,
     next_sync_version,
 )
-from sync.serializer import iter_sync_table_payloads, rollback_sync_response
-from sync.validator import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
+from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
+from backend.sync.validator import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
 
 
 @dataclass(frozen=True)
@@ -663,7 +663,7 @@ async def process_sync_request(request, broadcast_callback=None):
             broadcast_callback(org_name, {"event": "db_changed"})
         if isinstance(data.get("nhathau"), list) and data.get("nhathau"):
             try:
-                from services.partner_lookup_service import request_partner_enrichment
+                from backend.partners.partner_lookup_service import request_partner_enrichment
                 request_partner_enrichment()
             except Exception as enrichment_error:
                 log_sync_error(f"Không thể kích hoạt bổ sung thông tin nhà thầu: {enrichment_error}")

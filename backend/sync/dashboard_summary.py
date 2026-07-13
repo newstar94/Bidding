@@ -1,7 +1,7 @@
 """Dashboard projections derived from synchronized records."""
 
-from helpers_py.access_policy import can_read_table, is_manager_role
-from helpers_py.sync_mapper import map_db_to_json
+from backend.shared.access_policy import can_read_table, is_manager_role
+from backend.sync.mapper import map_db_to_json
 
 
 def build_dashboard_summary(cursor, owner_id, role_str, user_id):

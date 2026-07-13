@@ -3,10 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const sourceRoots = ["controllers", "features", "models", "views"];
+const sourceRoots = ["frontend", "views"];
 const ignoredSegments = new Set(["vendor"]);
 const entries = [
-  path.join(root, "controllers", "app.js"),
+  path.join(root, "frontend", "app", "app.js"),
   // Registered by URL at runtime, so it is an independent browser entry.
   path.join(root, "views", "service-worker.js")
 ];
@@ -47,7 +47,10 @@ function collectImports(filePath) {
   return imports;
 }
 
-const allModules = sourceRoots.flatMap((directory) => walk(path.join(root, directory)));
+const allModules = sourceRoots
+  .map((directory) => path.join(root, directory))
+  .filter((directory) => fs.existsSync(directory))
+  .flatMap((directory) => walk(directory));
 const reachable = new Set();
 const queue = [...entries];
 while (queue.length) {

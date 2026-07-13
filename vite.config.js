@@ -69,7 +69,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: enableObfuscation ? 4096 : 1024,
       rolldownOptions: {
         input: {
-          app: path.resolve(__dirname, 'controllers/app.js')
+          app: path.resolve(__dirname, 'frontend/app/app.js')
         },
         output: {
           codeSplitting: false,
@@ -81,9 +81,8 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
-        '/models': path.resolve(__dirname, 'models'),
-        '/views': path.resolve(__dirname, 'views'),
-        '/controllers': path.resolve(__dirname, 'controllers')
+        '/frontend': path.resolve(__dirname, 'frontend'),
+        '/views': path.resolve(__dirname, 'views')
       }
     }
   };

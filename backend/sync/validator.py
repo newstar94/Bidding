@@ -1,6 +1,6 @@
 """Validation facade for synchronization payloads and ownership."""
 
-from helpers_py.sync_validation import (
+from backend.sync.payload_validation import (
     DATE_KEYS_BY_TABLE,
     DEFAULT_PAPER_STATUS_COLOR,
     validate_sync_item,

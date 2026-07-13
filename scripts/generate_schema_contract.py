@@ -4,15 +4,15 @@ import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT))
 
-from helpers_py.schema_contract import build_schema_contract
-from helpers_py.word_defaults import build_default_word_mappings
+from backend.documents.schema_contract import build_schema_contract
+from backend.documents.word_defaults import build_default_word_mappings
 
 
 def main():
     contract = build_schema_contract(build_default_word_mappings())
-    output = ROOT / "models" / "schemaContract.js"
+    output = ROOT / "frontend" / "documents" / "schemaContract.js"
     payload = json.dumps(contract, ensure_ascii=True, indent=2, sort_keys=True)
     output.write_text(
         "/* Generated from backend field/schema manifests. Do not edit by hand. */\n"

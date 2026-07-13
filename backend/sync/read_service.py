@@ -6,26 +6,26 @@ from datetime import datetime
 
 from starlette.responses import JSONResponse
 
-from helpers import OrgPermissionError, _assert_safe_table, database, get_active_org, verify_session
-from helpers_py.access_policy import (
+from backend.shared.helpers import OrgPermissionError, _assert_safe_table, database, get_active_org, verify_session
+from backend.shared.access_policy import (
     can_read_record,
     can_read_table,
     filter_items_for_read,
     is_manager_role,
 )
-from helpers_py.sync_mapper import (
+from backend.sync.mapper import (
     attach_child_rows_to_items,
     json_key_for_column,
     map_db_to_json,
 )
-from routes.sync_queries import (
+from backend.sync.queries import (
     TABLE_KEYS,
     build_dashboard_summary,
     get_contract_package_ids as _get_contract_package_ids,
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
-from sync.repository import get_current_sync_version
-from sync.service import parse_sync_read_window
+from backend.sync.repository import get_current_sync_version
+from backend.sync.service import parse_sync_read_window
 
 
 def _public_upload_path(value):

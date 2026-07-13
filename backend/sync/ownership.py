@@ -1,5 +1,5 @@
-from helpers import clean_id
-from helpers_py.sync_mapper import get_payload_value
+from backend.shared.helpers import clean_id
+from backend.sync.mapper import get_payload_value
 
 
 OWNER_SCOPED_REFERENCES = {

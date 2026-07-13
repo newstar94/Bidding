@@ -1,6 +1,6 @@
 from starlette.responses import JSONResponse
 
-from routes.sync_queries import TABLE_KEYS
+from backend.sync.queries import TABLE_KEYS
 
 
 def iter_sync_table_payloads(data, table_keys=TABLE_KEYS):

@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-from helpers import database
+from backend.shared.helpers import database
 
 
 active_connections = {}

@@ -50,17 +50,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
-models_dir = os.path.join(project_root, 'models')
-backend_dir = os.path.join(project_root, 'backend')
-helpers_py_dir = os.path.join(backend_dir, 'helpers_py')
-routes_dir = os.path.join(backend_dir, 'routes')
-
-
 sys.path.insert(0, project_root)
-sys.path.append(models_dir)
-sys.path.append(backend_dir)
-sys.path.append(helpers_py_dir)
-sys.path.append(routes_dir)
 
 
 env_path = os.path.join(project_root, '.env')
@@ -222,7 +212,7 @@ def compile_html(file_path):
 
     if not APP_DEBUG:
         compiled = re.sub(
-            r'\s*<link\s+rel="modulepreload"\s+href="/(?:controllers|models|views)/[^"]+">\s*',
+            r'\s*<link\s+rel="modulepreload"\s+href="/(?:frontend|views)/[^"]+">\s*',
             '\n',
             compiled
         )
@@ -232,13 +222,13 @@ def compile_html(file_path):
             try:
                 with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
                     manifest = json.load(manifest_file)
-                bundle_file = manifest.get('controllers/app.js', {}).get('file')
+                bundle_file = manifest.get('frontend/app/app.js', {}).get('file')
                 if bundle_file:
                     bundle_src = f"/dist/{bundle_file}"
             except Exception as exc:
                 log_error(exc, "frontend_manifest")
         compiled = re.sub(
-            r'<script\s+type="module"\s+src="/controllers/app\.js(?:\?v=[^"]*)?"></script>',
+            r'<script\s+type="module"\s+src="/frontend/app/app\.js(?:\?v=[^"]*)?"></script>',
             f'<script type="module" src="{bundle_src}"></script>',
             compiled
         )
@@ -267,16 +257,27 @@ def _workspace_preload_tag(session_bootstrap):
     if not session_bootstrap.get("valid"):
         return ""
     if APP_DEBUG:
-        workspace_src = "/controllers/workspaceBootstrap.js"
+        workspace_src = "/frontend/app/workspaceBootstrap.js"
         preload_sources = [workspace_src]
         try:
             workspace_path = os.path.join(project_root, workspace_src.lstrip("/").replace("/", os.sep))
             with open(workspace_path, 'r', encoding='utf-8') as workspace_file:
                 source = workspace_file.read()
-            preload_sources.extend(re.findall(
-                r'(?:import|export)\s+(?:[^\"\']*?\s+from\s+)?[\"\'](/(?:controllers|features|models|views)/[^\"\']+\.js)[\"\']',
+            import_specifiers = re.findall(
+                r'(?:import|export)\s+(?:[^\"\']*?\s+from\s+)?[\"\']([^\"\']+\.js)[\"\']',
                 source,
-            ))
+            )
+            workspace_directory = os.path.dirname(workspace_src)
+            for specifier in import_specifiers:
+                if specifier.startswith('/'):
+                    resolved = os.path.normpath(specifier).replace('\\', '/')
+                elif specifier.startswith('.'):
+                    resolved = os.path.normpath(os.path.join(workspace_directory, specifier)).replace('\\', '/')
+                else:
+                    continue
+                if not resolved.startswith('/'):
+                    resolved = f'/{resolved}'
+                preload_sources.append(resolved)
         except Exception as exc:
             log_error(exc, "workspace_preload_source")
         return "\n".join(
@@ -288,8 +289,8 @@ def _workspace_preload_tag(session_bootstrap):
     try:
         with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
             manifest = json.load(manifest_file)
-        workspace_entry = 'controllers/workspaceBootstrap.js'
-        app_entry = 'controllers/app.js'
+        workspace_entry = 'frontend/app/workspaceBootstrap.js'
+        app_entry = 'frontend/app/app.js'
         pending = [workspace_entry if workspace_entry in manifest else app_entry]
         visited = set()
         preload_files = []
@@ -346,7 +347,7 @@ async def index(request):
         }
     )
 
-from helpers import (
+from backend.shared.helpers import (
     log_error,
     ErrorLoggingMiddleware,
     OrgPermissionError,
@@ -355,17 +356,17 @@ from helpers import (
     get_active_org
 )
 
-from routes.otp_routes import (
+from backend.auth.otp_routes import (
     register_api,
     verify_email_api,
     resend_code_api,
     forgot_password_api
 )
-from routes.org_routes import (
+from backend.api.org_routes import (
     add_user_to_org_api,
     remove_user_from_org_api
 )
-from routes.auth_routes import (
+from backend.auth.auth_routes import (
     login_api,
     check_session_api,
     update_profile_api,
@@ -380,16 +381,16 @@ from routes.auth_routes import (
     update_system_package_api,
     set_username_api
 )
-from routes.auth_routes import build_session_bootstrap
-from routes.google_auth_routes import google_login_api
-from routes.sync_routes import (
+from backend.auth.auth_routes import build_session_bootstrap
+from backend.auth.google_auth_routes import google_login_api
+from backend.sync.api import (
     sync_websocket_endpoint,
     sync_api,
     get_all_data_api,
     record_api,
     paginate_api
 )
-from routes.export_routes import (
+from backend.documents.export_routes import (
     export_plan_api,
     export_report_api,
     list_templates_api,
@@ -407,7 +408,7 @@ from routes.export_routes import (
     export_tuychonmuathem_excel_api,
     export_opening_fin_template_api
 )
-from routes.address_routes import (
+from backend.partners.address_routes import (
     get_provinces_api,
     get_wards_api,
     lookup_tax_code_api
@@ -627,9 +628,7 @@ routes = [
 
 if APP_DEBUG:
     routes.extend([
-        Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
-        Mount("/features", app=SafeStaticFiles(directory=os.path.join(project_root, 'features')), name="features"),
-        Mount("/models", app=SafeStaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
+        Mount("/frontend", app=SafeStaticFiles(directory=os.path.join(project_root, 'frontend')), name="frontend"),
         Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
         Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")
     ])
@@ -793,7 +792,7 @@ async def lifespan(app):
 
 
     try:
-        from helpers import khoi_tao_va_di_tru_he_thong
+        from backend.shared.helpers import khoi_tao_va_di_tru_he_thong
         khoi_tao_va_di_tru_he_thong()
     except Exception as db_err:
         log_error(db_err, "startup_database_init")
@@ -805,7 +804,7 @@ async def lifespan(app):
 
         if ENABLE_IMAGE_CACHE_PREWARM:
             try:
-                from custom_exporter import prewarm_image_cache
+                from backend.documents.custom_exporter import prewarm_image_cache
                 prewarm_image_cache()
             except Exception as start_err:
                 log_error(start_err, "prewarm_image_cache")
@@ -819,8 +818,8 @@ async def lifespan(app):
     ).start()
 
 
-    from helpers_py.auth_helper import _session_cache_cleanup
-    from helpers import _org_cache_cleanup
+    from backend.auth.auth_helper import _session_cache_cleanup
+    from backend.shared.helpers import _org_cache_cleanup
     def _run_cache_cleanup():
         import time as _time
         _cleanup_cycle = 0
@@ -835,7 +834,7 @@ async def lifespan(app):
 
             if _cleanup_cycle % 6 == 0:
                 try:
-                    from helpers import database as _db
+                    from backend.shared.helpers import database as _db
                     _conn = _db.get_connection()
 
 

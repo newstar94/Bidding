@@ -4,7 +4,7 @@ import traceback
 
 from starlette.responses import JSONResponse
 
-from helpers import (
+from backend.shared.helpers import (
     SCHEMA_DINH_NGHIA,
     OrgPermissionError,
     _assert_safe_table,
@@ -12,13 +12,13 @@ from helpers import (
     get_active_org,
     verify_session,
 )
-from helpers_py.access_policy import can_read_table, is_manager_role
-from helpers_py.sync_mapper import (
+from backend.shared.access_policy import can_read_table, is_manager_role
+from backend.sync.mapper import (
     attach_child_rows_to_items,
     db_column_for_json_key,
     map_db_to_json,
 )
-from routes.sync_queries import (
+from backend.sync.queries import (
     FTS_SEARCH_TABLES,
     TABLE_KEYS,
     build_fts_match_query,

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const SCAN_DIRS = ["controllers", "features", "models", "views"];
+const SCAN_DIRS = ["frontend", "views"];
 const ALLOWED_GLOBAL_ASSIGNMENTS = new Set(["lucide", "fetch"]);
 const errors = [];
 
@@ -33,10 +33,12 @@ function inspect(filePath) {
   });
 }
 
-SCAN_DIRS.forEach((directory) => walk(path.join(ROOT, directory)));
+SCAN_DIRS
+  .map((directory) => path.join(ROOT, directory))
+  .filter((directory) => fs.existsSync(directory))
+  .forEach(walk);
 if (errors.length) {
   console.error(errors.join("\n"));
   process.exit(1);
 }
 console.log("JavaScript static checks passed.");
-
