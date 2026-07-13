@@ -428,16 +428,17 @@ export function setupAuth() {
     this.view.updateActiveUserProfileDisplay();
     try {
       const initialTab = this.getTabNameForPath?.(window.location.pathname) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
-      if (["bieumau", "mothau", "danhgiahsdt"].includes(initialTab) && !this._workflowModulesReady) {
+      await this.view.ensureViewModules(initialTab);
+      if (["mothau", "danhgiahsdt"].includes(initialTab) && !this._workflowModulesReady) {
         await this.ensureWorkflowModules();
       }
       if (!document.getElementById(`tab-${initialTab}`) && this.lazyTabPartials?.[initialTab]) {
         await this.ensureLazyTab(initialTab);
       }
       if (typeof this.handlePathRouting === "function") {
-        this.handlePathRouting(window.location.pathname, false, true);
+        await this.handlePathRouting(window.location.pathname, false, true);
       } else {
-        this.switchTab(initialTab);
+        await this.switchTab(initialTab);
       }
     } catch (error) {
       console.error("Failed to restore the initial workspace route:", error);
@@ -505,14 +506,18 @@ export function setupAuth() {
     ].filter(Boolean);
     const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1];
     const canShowLocalFirst = typeof this.hasLocalDataForRoute === "function" ? this.hasLocalDataForRoute(initialPath) : hasLocalWorkspaceData();
-    if (canShowLocalFirst) {
+    const sessionCheckStartedAt = Date.now();
+    const precheckedSession = this._initialSessionData;
+    delete this._initialSessionData;
+    const routeManagedByWorkspaceBootstrap = precheckedSession?.valid === true;
+    if (routeManagedByWorkspaceBootstrap) {
+      setAuthSessionActive(true);
+      applySessionUser(precheckedSession.user);
+    } else if (canShowLocalFirst) {
       requestAnimationFrame(() => {
         void showCachedWorkspace();
       });
     }
-    const sessionCheckStartedAt = Date.now();
-    const precheckedSession = this._initialSessionData;
-    delete this._initialSessionData;
     const sessionPromise = precheckedSession !== void 0 ? Promise.resolve(precheckedSession) : fetch("/api/auth/check-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -531,7 +536,9 @@ export function setupAuth() {
         if (loaderText) loaderText.textContent = "Đang tải...";
         setAuthSessionActive(true);
         const previousUserId = sessionStorage.getItem("bf_user_id");
-        applySessionUser(data.user);
+        if (!routeManagedByWorkspaceBootstrap) {
+          applySessionUser(data.user);
+        }
         if (data.user?.id && previousUserId !== String(data.user.id)) {
           await this.model.init({ priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname) });
         }
@@ -553,8 +560,8 @@ export function setupAuth() {
             data.user.account_linked || false
           );
         } else {
-          if (!canShowLocalFirst && !shouldWaitForDetailData) {
-            showCachedWorkspace();
+          if (!routeManagedByWorkspaceBootstrap && !canShowLocalFirst && !shouldWaitForDetailData) {
+            void showCachedWorkspace();
           }
           refreshWorkspaceInBackground();
         }
@@ -741,6 +748,9 @@ export function setupAuth() {
         await this.forceSyncData();
       } catch (err) {
         console.error("Failed to load initial data from SQLite after login:", err);
+      }
+      if (typeof this.setupWebSocketConnection === "function") {
+        this.setupWebSocketConnection();
       }
       this.view.updateActiveUserProfileDisplay();
       if (typeof this.renderWorkspaceSwitcher === "function") {
@@ -989,6 +999,9 @@ export function setupGoogleSignIn() {
       await this.forceSyncData();
     } catch (err) {
       console.error("Failed sync after Google login:", err);
+    }
+    if (typeof this.setupWebSocketConnection === "function") {
+      this.setupWebSocketConnection();
     }
     this.view.updateActiveUserProfileDisplay();
     if (typeof this.renderWorkspaceSwitcher === "function") this.renderWorkspaceSwitcher();

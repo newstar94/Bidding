@@ -1,12 +1,14 @@
-const CACHE_NAME = "biddingflow-shell-v7";
+const CACHE_NAME = "biddingflow-shell-v8";
 const APP_SHELL = [
   "/",
-  "/style.css?v=6.14",
-  "/css/variables.css",
+  "/style.css?v=6.15",
+  "/css/variables.css?v=6.15",
   "/css/base.css",
   "/css/components.css?v=6.14",
   "/css/views.css",
   "/css/toast.css",
+  "/vendor/fonts/plus-jakarta-sans-latin.woff2",
+  "/vendor/fonts/plus-jakarta-sans-vietnamese.woff2",
   "/vendor/lucide/lucide.min.js?v=1.21.0.1"
 ];
 self.addEventListener("install", (event) => {

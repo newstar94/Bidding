@@ -9,6 +9,10 @@ export function collectCommittedMutationKeys(payload = {}) {
 const DASHBOARD_SUMMARY_KEYS = new Set([
   "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments"
 ]);
+const NON_RETRYABLE_WEBSOCKET_CLOSE_CODES = new Set([1000, 4001, 4003, 4401, 4403]);
+export function shouldReconnectWebSocket(closeCode) {
+  return !NON_RETRYABLE_WEBSOCKET_CLOSE_CODES.has(Number(closeCode));
+}
 export function mutationAffectsDashboard(payload = {}) {
   return [...collectCommittedMutationKeys(payload)].some((key) => DASHBOARD_SUMMARY_KEYS.has(key));
 }
@@ -402,7 +406,19 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       }
     }
     if (!response.ok) {
-      throw new Error(`Không thể đồng bộ dữ liệu: HTTP ${response.status}`);
+      let errorDetail = "";
+      try {
+        const errorPayload = await response.clone().json();
+        errorDetail = errorPayload?.error || errorPayload?.message || "";
+      } catch (e) {
+        try {
+          errorDetail = (await response.clone().text()).trim();
+        } catch (textError) {
+          errorDetail = "";
+        }
+      }
+      const detailSuffix = errorDetail ? ` - ${errorDetail}` : "";
+      throw new Error(`Không thể đồng bộ dữ liệu: HTTP ${response.status}${detailSuffix}`);
     }
     if (response.ok) {
       const dbData = await response.json();
@@ -471,6 +487,10 @@ export function setupWebSocketConnection() {
   if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
     return;
   }
+  if (this._wsReconnectTimer) {
+    clearTimeout(this._wsReconnectTimer);
+    this._wsReconnectTimer = null;
+  }
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}/ws/sync`;
   const debug = APP_DEBUG;
@@ -487,6 +507,12 @@ export function setupWebSocketConnection() {
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
+      if (msg.type === "ping") {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "pong" }));
+        }
+        return;
+      }
       if (msg.event === "db_changed") {
         if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
         this.scheduleBackgroundSync(300);
@@ -496,11 +522,31 @@ export function setupWebSocketConnection() {
     }
   };
   ws.onclose = (event) => {
+    if (this.ws === ws) {
+      this.ws = null;
+    }
+    if (!shouldReconnectWebSocket(event.code)) {
+      if (this._wsReconnectTimer) {
+        clearTimeout(this._wsReconnectTimer);
+        this._wsReconnectTimer = null;
+      }
+      this._wsRetryDelay = 5e3;
+      if (debug) {
+        console.warn(`WebSocket connection closed permanently for this session (code: ${event.code || "unknown"}). A new login is required before reconnecting.`);
+      }
+      return;
+    }
     const currentDelay = this._wsRetryDelay || 5e3;
     const nextDelay = Math.min(6e4, Math.round(currentDelay * 1.5));
     this._wsRetryDelay = nextDelay;
     if (debug) console.log(`WebSocket connection closed (code: ${event.code || "unknown"}, reason: ${event.reason || "none"}). Reconnecting in ${Math.round(nextDelay / 1e3)}s...`);
-    setTimeout(() => this.setupWebSocketConnection(), nextDelay);
+    if (this._wsReconnectTimer) {
+      clearTimeout(this._wsReconnectTimer);
+    }
+    this._wsReconnectTimer = setTimeout(() => {
+      this._wsReconnectTimer = null;
+      this.setupWebSocketConnection();
+    }, nextDelay);
   };
   ws.onerror = (err) => {
     console.error("WebSocket error:", err);

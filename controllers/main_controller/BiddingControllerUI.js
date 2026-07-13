@@ -211,14 +211,13 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
   if (action && typeof this.ensureDetailRecordLoaded === "function") {
     const pendingDetailLoad = this.ensureDetailRecordLoaded(tabName, action);
     if (pendingDetailLoad) {
-      pendingDetailLoad.then((record) => {
+      return pendingDetailLoad.then((record) => {
         if (record) {
-          this.handlePathRouting(pathname, updateState, isInit);
+          return this.handlePathRouting(pathname, updateState, isInit);
         } else {
-          this.switchTab(tabName, action, updateState);
+          return this.switchTab(tabName, action, updateState);
         }
       });
-      return;
     }
   }
   const guardedRoute = guardTabAccess(this, tabName, action, true);
@@ -270,33 +269,30 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
       history.replaceState({ tab: tabName, action }, "", path);
     }
   }
-  this.switchTab(tabName, action, updateState);
+  return this.switchTab(tabName, action, updateState);
 }
 export function switchTab(tabName, action = null, updateState = true) {
   const guardedRoute = guardTabAccess(this, tabName, action, updateState);
   tabName = guardedRoute.tabName;
   action = guardedRoute.action;
   if (!this.view.areViewModulesReady(tabName)) {
-    this.view.ensureViewModules(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+    return this.view.ensureViewModules(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
       console.error("Failed to load view module:", tabName, err);
       this.view?.showToast?.("KhÃ´ng táº£i Ä‘Æ°á»£c giao diá»‡n", "Vui lÃ²ng táº£i láº¡i trang vÃ  thá»­ láº¡i.", "error");
     });
-    return;
   }
   const workflowTabs = ["mothau", "danhgiahsdt"];
   if (!this._workflowModulesReady && (action === "taomoi" || workflowTabs.includes(tabName))) {
-    this.ensureWorkflowModules().then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+    return this.ensureWorkflowModules().then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
       console.error("Failed to load workflow module:", tabName, err);
       this.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
     });
-    return;
   }
   if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
-    this.ensureLazyTab(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+    return this.ensureLazyTab(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
       console.error("Failed to lazy-load tab:", tabName, err);
       this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
     });
-    return;
   }
   this.model.state.activetab = tabName;
   this.model.state.activeaction = action;

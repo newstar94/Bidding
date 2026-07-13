@@ -727,7 +727,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
       await this.ensureLazyTab(initialTabName);
     }
-    this.handlePathRouting(window.location.pathname, false, true);
+    await this.handlePathRouting(window.location.pathname, false, true);
     this.markStartup("route:rendered");
     hideInitLoader();
     this.markStartup("loader:hidden");
@@ -816,12 +816,26 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.model.state.selectedHopDongVersion[root] = selectedId;
       this.view.renderHopDongTable();
     };
-    const showPackageDetails = (id) => this.view.showPackageDetails(id);
-    const showKeHoachDetails = (id) => this.view.showKeHoachDetails(id);
-    const showHopDongDetails = (id) => this.view.showHopDongDetails(id);
-    const showChuyenGiaDetails = (id) => this.view.showChuyenGiaDetails(id);
-    const showChuDauTuDetails = (id) => this.view.showChuDauTuDetails(id);
-    const showNhaThauDetails = (id) => this.view.showNhaThauDetails(id);
+    const invokeLazyViewMethod = async (tabName, methodName, ...args) => {
+      try {
+        await this.view.ensureViewModules(tabName);
+        const method = this.view?.[methodName];
+        if (typeof method !== "function") {
+          throw new TypeError(`View method ${methodName} is unavailable after loading ${tabName}`);
+        }
+        return method.apply(this.view, args);
+      } catch (error) {
+        console.error(`Failed to execute view method ${methodName}:`, error);
+        this.view?.showToast?.("Không thể mở thông tin chi tiết", "Vui lòng thử lại hoặc tải lại trang.", "error");
+        return void 0;
+      }
+    };
+    const showPackageDetails = (id) => invokeLazyViewMethod("goithau-detail", "showPackageDetails", id);
+    const showKeHoachDetails = (id) => invokeLazyViewMethod("kehoach-detail", "showKeHoachDetails", id);
+    const showHopDongDetails = (id) => invokeLazyViewMethod("hopdong-detail", "showHopDongDetails", id);
+    const showChuyenGiaDetails = (id) => invokeLazyViewMethod("chuyengia", "showChuyenGiaDetails", id);
+    const showChuDauTuDetails = (id) => invokeLazyViewMethod("chudautu-detail", "showChuDauTuDetails", id);
+    const showNhaThauDetails = (id) => invokeLazyViewMethod("nhathau-detail", "showNhaThauDetails", id);
     const zoomCertificateImage = (id) => {
       const cg = this.model.state.chuyengia.find((c) => c.id === id);
       const safeSrc = safeImageSrc(cg?.anhChungChi, cg?.updatedAt || cg?.createdAt);

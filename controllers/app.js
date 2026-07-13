@@ -6,19 +6,6 @@ const startupMark = (name) => {
   }
 };
 startupMark("app-module-start");
-const loadOptionalWebFont = () => {
-  if (document.querySelector("link[data-bf-google-font]")) return;
-  const fontLink = document.createElement("link");
-  fontLink.rel = "stylesheet";
-  fontLink.href = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap";
-  fontLink.dataset.bfGoogleFont = "true";
-  document.head.appendChild(fontLink);
-};
-if (document.readyState === "complete") {
-  setTimeout(loadOptionalWebFont, 0);
-} else {
-  window.addEventListener("load", () => setTimeout(loadOptionalWebFont, 0), { once: true });
-}
 const readSessionBootstrap = () => {
   try {
     const node = document.getElementById("bf-session-bootstrap");
