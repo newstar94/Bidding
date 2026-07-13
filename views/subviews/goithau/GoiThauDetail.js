@@ -14,10 +14,10 @@ import { renderOpeningPanel } from "../../../features/packages/detail/panels/Ope
 import { renderInvitationPanel } from "../../../features/packages/detail/panels/InvitationPanel.js";
 import { renderTechnicalEvaluationPanel } from "../../../features/packages/detail/panels/TechnicalEvaluationPanel.js";
 import { renderFinancialEvaluationPanel } from "../../../features/packages/detail/panels/FinancialEvaluationPanel.js";
-import { bindFinancialOpeningRows, collectFinancialOpeningRows, renderFinancialOpeningTable } from "../../../features/packages/detail/panels/FinancialOpeningPanel.js";
+import { bindFinancialOpeningRows, collectFinancialOpeningRows, markFinancialOpeningInvalid, renderFinancialOpeningTable, validateFinancialOpeningRows } from "../../../features/packages/detail/panels/FinancialOpeningPanel.js";
 import { savePackageCancellation } from "../../../controllers/workflows/packageCancellation.js";
 import { savePackageInvitationInfo } from "../../../controllers/workflows/packageInvitation.js";
-import { savePackageFinancialOpening } from "../../../controllers/workflows/packageFinancialOpening.js";
+import { savePackageFinancialOpening, validateFinancialOpeningTime } from "../../../controllers/workflows/packageFinancialOpening.js";
 import { saveQualifiedApproval } from "../../../controllers/workflows/packageEvaluationProgress.js";
 import { resolvePackageDetailState } from "../../../features/packages/detail/PackageDetailState.js";
 import { renderPackageTabHeaders } from "../../../features/packages/detail/PackageDetailCoordinator.js";
@@ -653,6 +653,30 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
               const openingTime = inputOpFinTime?.value
                 ? this.model.convertDMYHMSToYMDHMS(inputOpFinTime.value)
                 : "";
+              inputOpFinTime?.classList.remove("field-invalid");
+              inputOpFinTime?.removeAttribute("aria-invalid");
+              inputOpFinTime?.addEventListener("input", () => {
+                inputOpFinTime.classList.remove("field-invalid");
+                inputOpFinTime.removeAttribute("aria-invalid");
+              }, { once: true });
+              const timeValidation = validateFinancialOpeningTime({
+                required: Boolean(inputOpFinTime),
+                rawValue: inputOpFinTime?.value || "",
+                convertedValue: openingTime,
+                technicalOpeningTime: gt.thoiGianMoThau || ""
+              });
+              const rowValidation = validateFinancialOpeningRows(rows, {
+                parseVND: (value) => this.model.parseVND(value),
+                isConsulting: gt.linhVuc === "Tư vấn"
+              });
+              const invalidInputs = [...(!timeValidation.valid && inputOpFinTime ? [inputOpFinTime] : []), ...rowValidation.invalidInputs];
+              if (!timeValidation.valid || !rowValidation.valid) {
+                markFinancialOpeningInvalid(invalidInputs);
+                const messages = [timeValidation.message, ...rowValidation.errors].filter(Boolean);
+                await this.customAlert("Dữ liệu không hợp lệ", messages.join("\n"), "alert-triangle", invalidInputs[0]);
+                this.focusInvalidControl(invalidInputs[0]);
+                return;
+              }
               await savePackageFinancialOpening(
                 appController || this,
                 gt,

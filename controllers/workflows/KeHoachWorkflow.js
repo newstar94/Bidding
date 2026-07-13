@@ -433,7 +433,7 @@ export async function handleKeHoachSubmit(e) {
   this.view.closeModal("modal-kehoach");
   this.openPlanBreakdownModal(targetPlanId);
 }
-export function openPlanBreakdownModal(planId) {
+export async function openPlanBreakdownModal(planId) {
   if (!document.getElementById("modal-plan-breakdown")) {
     this.ensureLazyModal?.("modal-plan-breakdown").then(() => this.openPlanBreakdownModal(planId));
     return;
@@ -507,6 +507,25 @@ export function openPlanBreakdownModal(planId) {
   this.updateBreakdownTotal(planId);
   this.view.openModal("modal-plan-breakdown");
   lucide.createIcons();
+  await this.loadBreakdownPackageDetails(planId);
+}
+export async function loadBreakdownPackageDetails(planId) {
+  if (!planId || typeof this.fetchRecordByLookup !== "function") return;
+  const packages = this.model.getLatestPackagesForPlan(planId);
+  const incompletePackages = packages.filter((gt) => gt.referenceOnly === true ||
+    gt.giaGoiThau === void 0 || gt.giaGoiThau === null ||
+    gt.hinhThucLuaChon === void 0 || gt.hinhThucLuaChon === null || gt.hinhThucLuaChon === "");
+  if (incompletePackages.length === 0) return;
+  await Promise.all(incompletePackages.map((gt) =>
+    this.fetchRecordByLookup("goithau", gt.id || gt.maGoiThau).catch((error) => {
+      console.error("Failed to load package details for plan breakdown:", error);
+      return null;
+    })
+  ));
+  if (String(document.getElementById("breakdown-plan-id")?.value || "") !== String(planId)) return;
+  this.renderBreakdownPackagesList(planId);
+  this.updateBreakdownTotal(planId);
+  lucide.createIcons();
 }
 export function renderBreakdownPackagesList(planId) {
   const tbody = document.getElementById("tbody-breakdown-goithau");
@@ -518,16 +537,19 @@ export function renderBreakdownPackagesList(planId) {
   }
   tbody.innerHTML = pkgs.map((gt) => {
     const hinhThuc = gt.hinhThucLuaChon || "--";
-    const trangThaiBadge = this.getStatusBadge ? this.getStatusBadge(gt.trangThai) : gt.trangThai;
+    const getStatusBadge = this.view?.getStatusBadge || this.getStatusBadge;
+    const trangThaiBadge = typeof getStatusBadge === "function"
+      ? getStatusBadge.call(this.view || this, gt.trangThai)
+      : escapeHtml(gt.trangThai || "--");
     return `
             <tr style="border-bottom: 1px solid var(--border-color);">
                 <td style="padding: 10px 14px; font-weight: 700; color: var(--text-muted);">${escapeHtml(this.model.getPackageBaseCode(gt.maGoiThau) || "--")}</td>
                 <td style="padding: 10px 14px; font-weight: 600; color: var(--text-main);">${escapeHtml(gt.tenGoiThau)}</td>
                 <td style="padding: 10px 14px; font-weight: 700; text-align: right; color: var(--primary);">${this.model.formatCurrency(gt.giaGoiThau)}</td>
-                <td style="padding: 10px 14px; font-weight: 500; color: var(--text-muted);">${hinhThuc}</td>
+                <td style="padding: 10px 14px; font-weight: 500; color: var(--text-muted);">${escapeHtml(hinhThuc)}</td>
                 <td style="padding: 10px 14px;">${trangThaiBadge}</td>
                 <td style="padding: 10px 14px; text-align: center;">
-                    ${gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" ? `<button type="button" class="btn btn-outline btn-sm" data-bf-action="show-package" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm" data-bf-action="edit-package" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Sửa</button>`}
+                    ${gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" ? `<button type="button" class="btn btn-outline btn-sm" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm" data-bf-action="edit-package" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Sửa</button>`}
                 </td>
             </tr>
         `;
@@ -612,7 +634,7 @@ export function updateBreakdownTotal(planId) {
   const labelTitle = isProject ? "Tổng mức đầu tư" : "Tổng dự toán";
   const totalSpan = document.getElementById("breakdown-total-display");
   if (totalSpan) {
-    totalSpan.innerHTML = `<strong>${labelTitle}:</strong> <span class="text-blue" style="font-size:1.05rem; font-weight: 700;">${this.model.formatCurrency(kh.tongMucDauTu)}</span>`;
+    totalSpan.innerHTML = `<strong>${labelTitle}:</strong> <span class="text-blue" style="font-size: inherit; font-weight: 700;">${this.model.formatCurrency(kh.tongMucDauTu)}</span>`;
   }
 }
 export function recalculatePlanTotal(planId) {

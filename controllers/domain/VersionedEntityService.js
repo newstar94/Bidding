@@ -10,7 +10,9 @@ export function getVersionFamily(records, target) {
 
 export function getNextVersion(records, target) {
   const family = getVersionFamily(records, target);
-  const next = family.length ? Math.max(...family.map(versionNumber)) + 1 : 0;
+  const metadataVersions = Array.isArray(target?.allVersions) ? target.allVersions : [];
+  const knownVersions = [...family, ...metadataVersions];
+  const next = knownVersions.length ? Math.max(...knownVersions.map(versionNumber)) + 1 : 0;
   return String(next).padStart(2, "0");
 }
 

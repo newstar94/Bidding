@@ -1,28 +1,45 @@
 export function getPackageDeleteContext(goithauList, targetId) {
-  const targetPackage = goithauList.find((g) => g.id === targetId);
+  const targetPackage = goithauList.find((g) => String(g.id) === String(targetId));
   if (!targetPackage) return null;
   const rootId = targetPackage.rootId || targetPackage.id;
-  const relatedPackages = goithauList.filter((gt) => (gt.rootId || gt.id) === rootId);
-  const relatedIds = relatedPackages.map((gt) => gt.id);
-  const versionCount = new Set(relatedPackages.map((g) => g.phienBan || "00")).size;
+  const relatedPackages = goithauList.filter((gt) => String(gt.rootId || gt.id) === String(rootId));
+  const versionRefsById = new Map();
+  const metadataVersions = Array.isArray(targetPackage.allVersions) ? targetPackage.allVersions : [];
+  metadataVersions.forEach((version) => {
+    if (!version?.id) return;
+    versionRefsById.set(String(version.id), {
+      id: version.id,
+      phienBan: version.phienBan || "00"
+    });
+  });
+  relatedPackages.forEach((version) => {
+    if (!version?.id) return;
+    versionRefsById.set(String(version.id), version);
+  });
+  const versionRefs = Array.from(versionRefsById.values());
+  const relatedIds = versionRefs.map((gt) => gt.id);
+  const versionCount = new Set(versionRefs.map((g) => g.phienBan || "00")).size;
   const planIds = [...new Set(relatedPackages.map((gt) => gt.keHoachId))];
   return {
     targetPackage,
     rootId,
     relatedPackages,
+    versionRefs,
     relatedIds,
     versionCount,
     planIds
   };
 }
 export function deleteLatestPackageVersion(model, context) {
-  const maxVersion = Math.max(...context.relatedPackages.map((g) => parseInt(g.phienBan) || 0));
-  const latestPackages = context.relatedPackages.filter((g) => (parseInt(g.phienBan) || 0) === maxVersion);
+  const versionRefs = context.versionRefs?.length ? context.versionRefs : context.relatedPackages;
+  const maxVersion = Math.max(...versionRefs.map((g) => parseInt(g.phienBan) || 0));
+  const latestPackages = versionRefs.filter((g) => (parseInt(g.phienBan) || 0) === maxVersion);
   const latestIds = latestPackages.map((g) => g.id);
-  model.state.goithau = model.state.goithau.filter((gt) => !latestIds.includes(gt.id));
+  const latestIdSet = new Set(latestIds.map(String));
+  model.state.goithau = model.state.goithau.filter((gt) => !latestIdSet.has(String(gt.id)));
   model.markDeleted("goithau", latestIds);
-  const latestBidIds = (model.state.thongtinmothau || []).filter((b) => latestIds.includes(String(b.goiThauId))).map((b) => b.id);
-  model.state.thongtinmothau = model.state.thongtinmothau.filter((b) => !latestIds.includes(String(b.goiThauId)));
+  const latestBidIds = (model.state.thongtinmothau || []).filter((b) => latestIdSet.has(String(b.goiThauId))).map((b) => b.id);
+  model.state.thongtinmothau = model.state.thongtinmothau.filter((b) => !latestIdSet.has(String(b.goiThauId)));
   model.markDeleted("thongtinmothau", latestBidIds);
   const remainingRelated = context.relatedPackages.filter((gt) => !latestIds.includes(gt.id));
   context.planIds.forEach((planId) => {
@@ -35,9 +52,13 @@ export function deleteLatestPackageVersion(model, context) {
   });
 }
 export function deleteAllPackageVersions(model, context) {
-  model.state.goithau = model.state.goithau.filter((gt) => (gt.rootId || gt.id) !== context.rootId);
+  const relatedIdSet = new Set(context.relatedIds.map(String));
+  model.state.goithau = model.state.goithau.filter((gt) => (
+    String(gt.rootId || gt.id) !== String(context.rootId)
+    && !relatedIdSet.has(String(gt.id))
+  ));
   model.markDeleted("goithau", context.relatedIds);
-  const relatedBidIds = (model.state.thongtinmothau || []).filter((b) => context.relatedIds.includes(String(b.goiThauId))).map((b) => b.id);
-  model.state.thongtinmothau = model.state.thongtinmothau.filter((b) => !context.relatedIds.includes(String(b.goiThauId)));
+  const relatedBidIds = (model.state.thongtinmothau || []).filter((b) => relatedIdSet.has(String(b.goiThauId))).map((b) => b.id);
+  model.state.thongtinmothau = model.state.thongtinmothau.filter((b) => !relatedIdSet.has(String(b.goiThauId)));
   model.markDeleted("thongtinmothau", relatedBidIds);
 }

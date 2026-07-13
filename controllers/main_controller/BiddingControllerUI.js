@@ -510,7 +510,8 @@ export function renderTabData(tabName, action = null) {
   this.view.createIconsScoped(activePane);
   this.view.enhanceVisibleContent(activePane);
 }
-export async function closeModal(modalId) {
+export async function closeModal(modalId, options = {}) {
+  const restoreRoute = options?.restoreRoute !== false;
   if (modalId === "modal-goithau" && this.packageWizard.active) {
     const confirmed = await this.view.customConfirm(
       "Xác nhận hủy",
@@ -541,6 +542,7 @@ export async function closeModal(modalId) {
     this.autoSync();
   }
   this.view.closeModal(modalId);
+  if (!restoreRoute) return;
   if (modalId === "modal-kehoach") {
     const { tab: destTab, action: destAction } = consumeModalReturnState("kehoach");
     this.switchTab(destTab, destAction, true);

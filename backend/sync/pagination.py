@@ -123,6 +123,17 @@ async def paginate_records(request):
             query_params.append(plan_snapshot_id)
         elif table_name in versioned_tables:
             query_parts.append("is_latest = 1")
+            if table_name == "goi_thau":
+                query_parts.append("""
+                    (
+                        ke_hoach_id IS NULL
+                        OR ke_hoach_id IN (
+                            SELECT id FROM ke_hoach_lcnt
+                            WHERE owner_id = ? AND is_latest = 1
+                        )
+                    )
+                """)
+                query_params.append(org_name)
 
         def add_like_search_filter():
             search_like = f"%{search}%"
@@ -339,4 +350,3 @@ async def paginate_records(request):
                 conn.close()
             except Exception:
                 pass
-

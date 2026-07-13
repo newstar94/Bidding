@@ -60,14 +60,19 @@ export async function deleteGoiThau(id) {
       this.updateBreakdownTotal(breakdownPlanId);
     }
     try {
-      await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
         afterPersist: () => {
           this.view.renderGoiThauTable();
           this.view.renderKeHoachTable();
         }
       });
+      if (!syncResult?.ok) {
+        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang được giữ trong hàng chờ đồng bộ. Vui lòng kiểm tra kết nối và đồng bộ lại dữ liệu.", "alert-triangle");
+        return;
+      }
     } catch (e) {
-      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
+      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Thao tác xóa vẫn được giữ trong hàng chờ đồng bộ.", "x-circle");
+      return;
     }
     await this.view.customAlert("Thành công", "Đã xóa phiên bản gói thầu gần nhất!", "check-circle");
   } else if (deleteChoice === 2 || deleteConfirmed) {
@@ -84,18 +89,21 @@ export async function deleteGoiThau(id) {
       this.updateBreakdownTotal(breakdownPlanId);
     }
     try {
-      await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
         afterPersist: () => {
           this.view.renderGoiThauTable();
           this.view.renderKeHoachTable();
         }
       });
+      if (!syncResult?.ok) {
+        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang được giữ trong hàng chờ đồng bộ. Vui lòng kiểm tra kết nối và đồng bộ lại dữ liệu.", "alert-triangle");
+        return;
+      }
     } catch (e) {
-      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
+      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Thao tác xóa vẫn được giữ trong hàng chờ đồng bộ.", "x-circle");
+      return;
     }
-    if (deleteChoice === 2) {
-      await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của gói thầu!", "check-circle");
-    }
+    await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của gói thầu!", "check-circle");
   }
 }
 export async function editGoiThau(id, isReadOnly = false) {

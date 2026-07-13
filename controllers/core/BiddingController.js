@@ -1098,6 +1098,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       const value = target.dataset.value;
       const call = (fn, ...args) => {
         event.preventDefault();
+        const modalId = target.dataset.closeBefore;
+        if (modalId) {
+          return this.closeModal(modalId, { restoreRoute: false }).then(() => this.executeCommand(fn, ...args));
+        }
         return this.executeCommand(fn, ...args);
       };
       switch (action) {

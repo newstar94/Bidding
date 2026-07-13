@@ -39,7 +39,14 @@ function findContractorByCode(list, code) {
     (n) => normalizeContractorLookupCode(n.maNhaThau) === normalizedCode || normalizeContractorLookupCode(n.maSoThue) === normalizedCode
   ) || null;
 }
-async function mapPartnerLookupToContractor(code, info = {}) {
+export function resolveOpeningLeadContractor(model, contractors, code, boundId = "") {
+  const normalizedCode = normalizeContractorLookupCode(code);
+  const bound = getExactContractorVersion(model, boundId);
+  const boundCode = normalizeContractorLookupCode(bound?.maNhaThau || bound?.maSoThue);
+  if (bound && normalizedCode && boundCode === normalizedCode) return bound;
+  return findContractorByCode(contractors, code);
+}
+export async function mapPartnerLookupToContractor(code, info = {}) {
   const rawAddress = info.address || info.diaChiGoc || "";
   const parsedAddress = rawAddress ? await parseVietnamAddress(rawAddress) : null;
   return {
@@ -593,8 +600,12 @@ export function openMoThauJVManager(tr) {
   const leadCode = (tr.querySelector(".mt-ma-nha-thau") || tr.querySelector(".row-ma-nha-thau"))?.value.trim() || "";
   const controller = getAppController();
   const latestNhaThauListJV = controller?.model?.getLatestNhaThau?.() || [];
-  const boundLeadContractor = getExactContractorVersion(controller?.model, tr._leadMemberContractorId || tr.dataset.contractorVersionId);
-  const fallbackContractor = boundLeadContractor || findContractorByCode(latestNhaThauListJV, leadCode);
+  const fallbackContractor = resolveOpeningLeadContractor(
+    controller?.model,
+    latestNhaThauListJV,
+    leadCode,
+    tr._leadMemberContractorId || tr.dataset.contractorVersionId
+  );
   const rowMembers = Array.isArray(tr._thanhVienLienDanh) ? tr._thanhVienLienDanh : [];
   const fallbackMembers = Array.isArray(fallbackContractor?.thanhVienLienDanh) ? fallbackContractor.thanhVienLienDanh : [];
   const members = getJointVentureSubMembers(rowMembers.length > 0 ? rowMembers : fallbackMembers, leadCode);
@@ -620,7 +631,10 @@ export function openMoThauJVManager(tr) {
   body.className = "modal-body";
   body.style.padding = "20px";
   const foundLeadNt = fallbackContractor;
-  const leadName = tr._leadMemberName || resolveLeadMemberName(foundLeadNt, leadCode);
+  const currentLeadCode = normalizeContractorLookupCode(leadCode);
+  const leadName = tr._leadMemberCode === currentLeadCode
+    ? tr._leadMemberName || resolveLeadMemberName(foundLeadNt, leadCode)
+    : resolveLeadMemberName(foundLeadNt, leadCode);
   const displayLeadCode = leadCode || "Chưa nhập";
   body.innerHTML = `
         <div style="background: var(--primary-soft); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 20px;">
@@ -661,16 +675,13 @@ export function openMoThauJVManager(tr) {
   document.body.appendChild(modal);
   const listContainer = document.getElementById("mothau-jv-members-list");
   const leadNameInput = document.getElementById("jv-input-lead-name");
-  const createLookupMemberData2 = async (code, info = {}) => {
-    return mapPartnerLookupToContractor(code, info);
-  };
   const lookupInfoByTaxCode = async (code, inputToDim) => {
     const lookupInput = getPartnerLookupInput(code);
     if (!lookupInput) return null;
     try {
       if (inputToDim) inputToDim.style.opacity = "0.7";
       const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
-      return data ? await createLookupMemberData2(code, data) : null;
+      return data ? await mapPartnerLookupToContractor(code, data) : null;
     } catch (err) {
       console.error("Tax-code lookup during bid opening failed: ", err);
       return null;
@@ -680,8 +691,12 @@ export function openMoThauJVManager(tr) {
   };
   const fillLeadNameFromCode = async () => {
     if (!leadCode || !leadNameInput) return;
-    const localContractor = getExactContractorVersion(controller?.model, tr._leadMemberContractorId || tr.dataset.contractorVersionId)
-      || findContractorByCode(latestNhaThauListJV, leadCode);
+    const localContractor = resolveOpeningLeadContractor(
+      controller?.model,
+      latestNhaThauListJV,
+      leadCode,
+      tr._leadMemberContractorId || tr.dataset.contractorVersionId
+    );
     const localName = resolveLeadMemberName(localContractor, leadCode);
     if (localName) {
       leadNameInput.value = localName;
@@ -696,7 +711,9 @@ export function openMoThauJVManager(tr) {
         tenVietTat: localContractor?.tenVietTat || "",
         thanhVienNhaThauId: localContractor?.id || ""
       };
-      tr._leadMemberContractorId = localContractor?.id || tr._leadMemberContractorId || "";
+      tr._leadMemberContractorId = localContractor?.id || "";
+      tr.dataset.contractorVersionId = localContractor?.id || "";
+      tr._leadMemberCode = normalizeContractorLookupCode(leadCode);
       return;
     }
     const apiInfo = await lookupInfoByTaxCode(leadCode, leadNameInput);
@@ -706,6 +723,9 @@ export function openMoThauJVManager(tr) {
       }
       tr._leadMemberName = apiInfo.tenNhaThau;
       tr._leadMemberLookupData = apiInfo;
+      tr._leadMemberContractorId = "";
+      tr.dataset.contractorVersionId = "";
+      tr._leadMemberCode = normalizeContractorLookupCode(leadCode);
     }
   };
   const addMemberRow = (member = { tenNhaThau: "", maSoThue: "" }) => {
@@ -968,6 +988,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   });
   tr._leadMemberName = leadM ? leadM.tenNhaThau : "";
   tr._leadMemberContractorId = leadM?.thanhVienNhaThauId || foundNt?.id || "";
+  tr._leadMemberCode = normalizeContractorLookupCode(ntCode);
   if (!tr._leadMemberName && ntCode) {
     const foundLeadNt = findContractorByCode(latestNhaThauList, ntCode);
     if (foundLeadNt) {
@@ -1234,10 +1255,13 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
         if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
         if (data?.name) {
-          const lookupData = await createLookupMemberData(code, data);
+          const lookupData = await mapPartnerLookupToContractor(code, data);
           if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
           inputMa.value = data.org_code || code;
           tr._leadMemberLookupData = lookupData;
+          tr._leadMemberContractorId = "";
+          tr.dataset.contractorVersionId = "";
+          tr._leadMemberCode = normalizeContractorLookupCode(inputMa.value);
           const names = resolveOpeningLookupNames(
             tr.querySelector(".mt-loai-nha-thau")?.value,
             inputTen.value,
@@ -1259,6 +1283,14 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
     const handleCodeChange = () => {
       const code = inputMa.value.trim();
       lookupRequestId++;
+      const normalizedCode = normalizeContractorLookupCode(code);
+      if (normalizedCode !== tr._leadMemberCode) {
+        tr._leadMemberName = "";
+        tr._leadMemberLookupData = null;
+        tr._leadMemberContractorId = "";
+        tr.dataset.contractorVersionId = "";
+        tr._leadMemberCode = normalizedCode;
+      }
       if (!code) {
         inputMa.style.opacity = "1";
         return;
@@ -1266,6 +1298,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       const latestList = this.model.getLatestNhaThau();
       const matched = findContractorByCode(latestList, code);
       if (matched) {
+        tr._leadMemberContractorId = matched.id || "";
+        tr.dataset.contractorVersionId = matched.id || "";
+        tr._leadMemberLookupData = matched;
         const names = resolveOpeningLookupNames(
           tr.querySelector(".mt-loai-nha-thau")?.value,
           inputTen.value,

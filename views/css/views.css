@@ -1768,3 +1768,30 @@ table th {
 .is-hidden { display: none !important; }
 .icon-sm { width: 14px; height: 14px; }
 .icon-md { width: 16px; height: 16px; }
+
+/* Plan work breakdown modal: keep package rows aligned with the main package table. */
+#modal-plan-breakdown .table thead th {
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+#modal-plan-breakdown .table tbody td {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  vertical-align: middle;
+}
+#modal-plan-breakdown #tbody-breakdown-goithau .badge {
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+#modal-plan-breakdown #tbody-breakdown-goithau .badge svg {
+  width: 13px;
+  height: 13px;
+}
+#opening-fin-table .field-invalid,
+#op-fin-thoigianmothau.field-invalid {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
+}

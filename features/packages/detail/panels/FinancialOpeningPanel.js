@@ -59,23 +59,89 @@ export function bindFinancialOpeningRows(container, { parseVND, formatVND } = {}
       const percent = Number.parseFloat(String(discountInput?.value || "0").replace(/,/g, ".")) || 0;
       if (finalPriceInput) finalPriceInput.value = formatVND(base * (1 - percent / 100)) || "";
     };
+    const clearInvalid = (input) => {
+      input?.classList?.remove("field-invalid");
+      input?.removeAttribute?.("aria-invalid");
+    };
     if (priceInput) {
       bindCurrencyElement(priceInput, formatVND);
-      priceInput.addEventListener("input", recalculate);
+      priceInput.addEventListener("input", () => {
+        clearInvalid(priceInput);
+        recalculate();
+      });
     }
-    discountInput?.addEventListener("input", recalculate);
+    discountInput?.addEventListener("input", () => {
+      clearInvalid(discountInput);
+      recalculate();
+    });
+    row.querySelector(".op-hieu-luc-hsdt")?.addEventListener("input", (event) => clearInvalid(event.currentTarget));
   });
   return rows;
+}
+
+function parseDiscount(value) {
+  const normalized = String(value ?? "").trim().replace(/,/g, ".");
+  if (!normalized || !/^-?\d+(?:\.\d+)?$/.test(normalized)) return Number.NaN;
+  return Number.parseFloat(normalized);
+}
+
+function parseValidityDays(value) {
+  const normalized = String(value ?? "").trim();
+  const match = normalized.match(/^(\d+)\s*(?:ngày)?$/i);
+  return match ? Number.parseInt(match[1], 10) : Number.NaN;
+}
+
+export function validateFinancialOpeningRows(rows, { parseVND, isConsulting = false } = {}) {
+  const invalidInputs = [];
+  const errors = [];
+  const addError = (input, message) => {
+    if (input && !invalidInputs.includes(input)) invalidInputs.push(input);
+    errors.push(message);
+  };
+
+  (rows || []).forEach((row, index) => {
+    const rowNumber = index + 1;
+    const priceInput = row.querySelector?.(".op-gia-du-thau");
+    const discountInput = row.querySelector?.(".op-ty-le-giam");
+    const validityInput = row.querySelector?.(".op-hieu-luc-hsdt");
+    const priceRaw = String(priceInput?.value ?? "").trim();
+    const price = priceRaw ? Number(parseVND?.(priceRaw)) : Number.NaN;
+    const discount = parseDiscount(discountInput?.value);
+
+    if (!Number.isFinite(price) || price <= 0) {
+      addError(priceInput, `Dòng ${rowNumber}: Giá dự thầu phải lớn hơn 0.`);
+    }
+    if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+      addError(discountInput, `Dòng ${rowNumber}: Tỷ lệ giảm giá phải từ 0 đến 100%.`);
+    }
+    if (isConsulting) {
+      const validityDays = parseValidityDays(validityInput?.value);
+      if (!Number.isInteger(validityDays) || validityDays <= 0) {
+        addError(validityInput, `Dòng ${rowNumber}: Hiệu lực E-HSĐXTC phải là số ngày lớn hơn 0.`);
+      }
+    }
+  });
+
+  return { valid: errors.length === 0, invalidInputs, errors };
+}
+
+export function markFinancialOpeningInvalid(inputs = []) {
+  inputs.forEach((input) => {
+    input?.classList?.add("field-invalid");
+    input?.setAttribute?.("aria-invalid", "true");
+  });
 }
 
 export function collectFinancialOpeningRows(rows, { parseVND } = {}) {
   return (rows || []).map((row) => {
     const validityInput = row.querySelector(".op-hieu-luc-hsdt");
+    const giaDuThau = parseVND(row.querySelector(".op-gia-du-thau")?.value || "");
+    const tyLeGiamGia = Number.parseFloat(String(row.querySelector(".op-ty-le-giam")?.value || "0").replace(/,/g, ".")) || 0;
     return {
       id: row.getAttribute("data-opening-bid-id"),
-      giaDuThau: parseVND(row.querySelector(".op-gia-du-thau")?.value || ""),
-      tyLeGiamGia: Number.parseFloat(String(row.querySelector(".op-ty-le-giam")?.value || "0").replace(/,/g, ".")) || 0,
-      giaSauGiamGia: parseVND(row.querySelector(".op-gia-sau-giam")?.value || ""),
+      giaDuThau,
+      tyLeGiamGia,
+      giaSauGiamGia: giaDuThau * (1 - tyLeGiamGia / 100),
       hieuLucHsdt: validityInput ? Number.parseInt(validityInput.value, 10) || 0 : null
     };
   });

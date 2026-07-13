@@ -1,7 +1,7 @@
 import { authFetchDownload } from "../../../../views/subviews/view_helpers.js";
 import { bindCurrencyElement } from "../../../../controllers/main_controller/domUtils.js";
 import { setFieldFeedback } from "../../../../controllers/main_controller/formStateUtils.js";
-import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, selectContractorVersionForDate } from "../../../../controllers/workflows/contractorVersionBinding.js";
+import { findContractorVersionByCode, getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, selectContractorVersionForDate } from "../../../../controllers/workflows/contractorVersionBinding.js";
 import { setJvData } from "../../../../views/subviews/goithau/jvDataStore.js";
 import { clearCompetitiveQuotationAppraisal } from "../../../../controllers/workflows/packageAppraisal.js";
 import { checkBidQualified } from "../PackageTabs.js";
@@ -12,6 +12,46 @@ import { reopenPackageAwardResult } from "../../../../controllers/workflows/pack
 import { executeAppCommand } from "../../../../controllers/core/commandBus.js";
 import { getHolidays, getLotWinnersStore } from "../../../../controllers/state/runtimeState.js";
 import { generateRecordId, generateUUID } from "../../../../models/idUtils.js";
+
+function isLeadJointVentureMember(member) {
+  return String(member?.vaiTro || "").trim().toLocaleLowerCase("vi-VN") === "đứng đầu liên danh";
+}
+
+function normalizeContractorCode(value) {
+  return String(value || "").trim().toLocaleLowerCase("vi-VN");
+}
+
+export function buildAwardJointVentureViewData(model, bid = {}) {
+  const resolvedMembers = resolveBidJointVentureMembers(model, bid);
+  const bidCode = normalizeContractorCode(bid.maNhaThau || bid.maDinhDanh);
+  const bidContractorId = String(bid.nhaThauId || "");
+  const leadMember = resolvedMembers.find(isLeadJointVentureMember)
+    || resolvedMembers.find((member) => String(member.thanhVienNhaThauId || "") === bidContractorId)
+    || resolvedMembers.find((member) => normalizeContractorCode(member.maNhaThau || member.maSoThue || member.maDinhDanh) === bidCode);
+  const requestedLeadContractorId = leadMember?.thanhVienNhaThauId || bid.nhaThauId || "";
+  const leadContractor = getExactContractorVersion(model, requestedLeadContractorId)
+    || findContractorVersionByCode(model, leadMember?.maNhaThau || leadMember?.maSoThue || bid.maNhaThau || bid.maDinhDanh);
+  const leadContractorVersionId = leadMember?.thanhVienNhaThauId || leadContractor?.id || bid.nhaThauId || "";
+  const leadCode = leadMember?.maNhaThau
+    || leadMember?.maSoThue
+    || leadMember?.maDinhDanh
+    || leadContractor?.maNhaThau
+    || leadContractor?.maSoThue
+    || bid.maNhaThau
+    || bid.maDinhDanh
+    || "";
+  const leadName = leadMember?.tenNhaThau
+    || leadContractor?.tenNhaThau
+    || (bid.loaiNhaThau === "Liên danh" ? "" : resolveBidContractorName(model, bid))
+    || "";
+  const leadCodeNormalized = normalizeContractorCode(leadCode);
+  const members = resolvedMembers.filter((member) => {
+    if (member === leadMember || isLeadJointVentureMember(member)) return false;
+    const memberCode = normalizeContractorCode(member.maNhaThau || member.maSoThue || member.maDinhDanh);
+    return !leadCodeNormalized || memberCode !== leadCodeNormalized;
+  });
+  return { members, leadName, leadCode, leadContractorVersionId };
+}
 
 export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, isEditable, appController }) {
       const is1G2T2 = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
@@ -71,17 +111,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             const isJV = bidderInfo && bidderInfo.loaiNhaThau === "Liên danh";
             let jvData = null;
             if (isJV) {
-              const allJvMembers = resolveBidJointVentureMembers(view.model, bidderInfo);
-              const leadMember = allJvMembers.find((m) => m.vaiTro === "Đứng đầu liên danh");
-              const leadName = leadMember?.tenNhaThau || ntName;
-              const leadCode = leadMember?.maSoThue || ntInfo?.maSoThue || ntInfo?.maNhaThau || bidderInfo.maDinhDanh || bidderInfo.maNhaThau || "";
-              const subMembers = allJvMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh");
-              jvData = {
-                members: subMembers,
-                leadName,
-                leadCode,
-                leadContractorVersionId: leadMember?.thanhVienNhaThauId || bidderInfo.nhaThauId || ""
-              };
+              jvData = buildAwardJointVentureViewData(view.model, bidderInfo);
             }
             return {
               maPhanLo: pl.maPhanLo,
@@ -103,16 +133,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           const currentWinnerBid = allBidsForResult.find((b) => String(b.nhaThauId) === String(finalWinnerId)) || winnerBid;
           if (currentWinnerBid) {
             if (currentWinnerBid.loaiNhaThau === "Liên danh") {
-              const allJvMembers = resolveBidJointVentureMembers(view.model, currentWinnerBid);
-              const leadMember = allJvMembers.find((m) => m.vaiTro === "Đứng đầu liên danh");
-              const subMembers = allJvMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh");
-              const winnerNt = view.model.state.nhathau.find((n) => String(n.id) === String(currentWinnerBid.nhaThauId));
-              setJvData(gt.id, {
-                members: subMembers,
-                leadName: leadMember?.tenNhaThau || resolveBidContractorName(view.model, currentWinnerBid),
-                leadCode: leadMember?.maSoThue || winnerNt?.maSoThue || winnerNt?.maNhaThau || currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau || "",
-                leadContractorVersionId: leadMember?.thanhVienNhaThauId || currentWinnerBid.nhaThauId || ""
-              });
+              setJvData(gt.id, buildAwardJointVentureViewData(view.model, currentWinnerBid));
               winnerDisplayHtml = `
                                 <div style="display: flex; flex-direction: column; gap: 4px;">
                                     <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
@@ -219,18 +240,8 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           const isJV = b.loaiNhaThau === "Liên danh";
           let contractorHtml = "";
           if (isJV) {
-            const allJvMembers = b.thanhVienLienDanh || [];
-            const leadMember = allJvMembers.find((m) => m.vaiTro === "Đứng đầu liên danh");
-            const leadName = leadMember?.tenNhaThau || b.tenNhaThau;
-            const leadCode = leadMember?.maSoThue || b.maDinhDanh || b.maNhaThau || "";
-            const subMembers = allJvMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh");
             const jvKey = `${gt.id}_result_bidder_${idx}`;
-            setJvData(jvKey, {
-              members: subMembers,
-              leadName,
-              leadCode,
-              leadContractorVersionId: leadMember?.thanhVienNhaThauId || b.nhaThauId || ""
-            });
+            setJvData(jvKey, buildAwardJointVentureViewData(view.model, b));
             contractorHtml = `<a href="#" data-bf-action="show-jv" data-id="${jvKey}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${b.tenNhaThau || "--"}</a>`;
           } else {
             contractorHtml = renderBidContractorLink(view.model, b, `${gt.id}_result_contractor_${idx}`);
@@ -472,7 +483,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                          <div class="row-jv-members-container" style="margin-top: 4px;">
                                               <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; display: inline-flex; align-items: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
                                                   <i data-lucide="users" style="width: 12px; height: 12px;"></i>
-                                                  <span class="row-jv-btn-text">Thành viên liên danh (${(b.thanhVienLienDanh || []).filter((m) => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau).length})</span>
+                                                  <span class="row-jv-btn-text">Xem thành viên liên danh (${(b.thanhVienLienDanh || []).filter((m) => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau).length})</span>
                                               </button>
                                          </div>
                                     ` : ""}
@@ -717,11 +728,11 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           allBids.forEach((b) => {
             const tr = tbodyApprove.querySelector(`tr[data-approve-bid-id="${b.id}"]`);
             if (tr) {
-              const resolvedMembers = resolveBidJointVentureMembers(view.model, b);
-              const leadMember = resolvedMembers.find((m) => m.vaiTro === "Đứng đầu liên danh");
-              tr._thanhVienLienDanh = resolvedMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau);
-              tr._leadMemberName = leadMember?.tenNhaThau || resolveBidContractorName(view.model, b) || "";
-              tr._leadMemberContractorId = leadMember?.thanhVienNhaThauId || b.nhaThauId || "";
+              const jvViewData = buildAwardJointVentureViewData(view.model, b);
+              tr._jointVentureViewData = jvViewData;
+              tr._thanhVienLienDanh = jvViewData.members;
+              tr._leadMemberName = jvViewData.leadName;
+              tr._leadMemberContractorId = jvViewData.leadContractorVersionId;
             }
           });
           const initRowListeners2 = (tr) => {
@@ -748,7 +759,20 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             if (btnManage) {
               btnManage.addEventListener("click", (e) => {
                 e.preventDefault();
-                executeAppCommand("openMoThauJVManager", tr);
+                const storedViewData = tr._jointVentureViewData || {};
+                const viewData = {
+                  members: storedViewData.members || tr._thanhVienLienDanh || [],
+                  leadName: storedViewData.leadName || tr._leadMemberName || tr.querySelector(".row-ten-nha-thau")?.value.trim() || "",
+                  leadCode: storedViewData.leadCode || tr.querySelector(".row-ma-nha-thau")?.value.trim() || "",
+                  leadContractorVersionId: storedViewData.leadContractorVersionId || tr._leadMemberContractorId || ""
+                };
+                executeAppCommand(
+                  "openMoThauJVViewModal",
+                  viewData.members,
+                  viewData.leadName,
+                  viewData.leadCode,
+                  viewData.leadContractorVersionId
+                );
               });
             }
             const inputMa = tr.querySelector(".row-ma-nha-thau");
@@ -1343,6 +1367,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           }
           tr._thanhVienLienDanh = [];
           tr._leadMemberName = "";
+          tr._jointVentureViewData = { members: [], leadName: "", leadCode: "", leadContractorVersionId: "" };
           tr.innerHTML = `
                         ${lotCells}
                         <td>
@@ -1359,7 +1384,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                             <div class="row-jv-members-container" style="margin-top: 4px; display: none;">
                                 <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
                                     <i data-lucide="users" style="width: 12px; height: 12px;"></i>
-                                    <span class="row-jv-btn-text">Thành viên liên danh (0)</span>
+                                    <span class="row-jv-btn-text">Xem thành viên liên danh (0)</span>
                                 </button>
                             </div>
                         </td>
@@ -1380,7 +1405,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           if (window.lucide) {
             window.lucide.createIcons();
           }
-          initRowListeners(tr);
+          initRowListeners2(tr);
         };
       }
 }

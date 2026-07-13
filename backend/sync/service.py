@@ -42,6 +42,8 @@ from routes.sync_queries import (
 from sync.ownership import get_owner_type, validate_owner_scoped_references
 from sync.repository import (
     DELETED_RECORD_UPSERT_SQL,
+    VERSIONED_TABLES,
+    defer_version_latest_flag,
     get_current_sync_version,
     next_sync_version,
 )
@@ -346,7 +348,7 @@ async def process_sync_request(request, broadcast_callback=None):
             columns = list(table_spec["columns"].keys())
 
 
-            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau", "chuyen_gia", "hop_dong"] and items:
+            if table_name in VERSIONED_TABLES and items:
                 updated_versioned_tables.add(table_name)
 
 
@@ -448,6 +450,8 @@ async def process_sync_request(request, broadcast_callback=None):
                         db_row_data["id"] = generate_record_id(table_name)
                     if not item.get("id"):
                         item["id"] = db_row_data["id"]
+
+                    defer_version_latest_flag(table_name, db_row_data)
 
                     if table_name == "phan_cong_nhan_su":
 
@@ -621,7 +625,7 @@ async def process_sync_request(request, broadcast_callback=None):
                             )
 
 
-                            if table_name in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "goi_thau", "chuyen_gia", "hop_dong"]:
+                            if table_name in VERSIONED_TABLES:
                                 updated_versioned_tables.add(table_name)
 
 
