@@ -5,6 +5,7 @@ import * as Auth from "/controllers/auth/AuthController.js";
 import * as MainUI from "/controllers/main_controller/BiddingControllerUI.js";
 import * as MainForms from "/controllers/main_controller/BiddingControllerForms.js";
 import * as MainSync from "/controllers/main_controller/BiddingControllerSync.js";
+import * as IntegrationBridges from "/controllers/workflows/IntegrationWorkflowBridges.js";
 import { installPrototypeModules } from "/controllers/core/moduleRegistry.js";
 export async function bootstrapWorkspace(initialSession) {
   const effectiveRoles = initialSession?.user?.effective_roles || [];
@@ -19,6 +20,7 @@ export async function bootstrapWorkspace(initialSession) {
     { name: "main-ui", module: MainUI },
     { name: "main-forms", module: MainForms },
     { name: "main-sync", module: MainSync },
+    { name: "integration-bridges", module: IntegrationBridges },
   ]);
   const model = new BiddingModel();
   const view = new BiddingView(model);

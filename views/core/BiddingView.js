@@ -1,6 +1,3 @@
-import * as Dashboard from "/views/subviews/DashboardView.js";
-import * as Plan from "/views/subviews/PlanView.js";
-import * as Partner from "/views/subviews/PartnerView.js";
 import * as SystemUser from "/views/subviews/SystemUserView.js";
 import { escapeHtml, initCustomSelect, syncCustomSelectDisabled } from "../subviews/view_helpers.js";
 import { ensureFlatpickrLoaded } from "/controllers/utils/externalAssets.js";
@@ -9,6 +6,35 @@ import { validateForm as validateConfiguredForm } from "/controllers/forms/FormV
 import { installPrototypeModules } from "/controllers/core/moduleRegistry.js";
 import { executeAppCommand } from "/controllers/core/commandBus.js";
 import { getAppController } from "/controllers/main_controller/controllerRef.js";
+
+const VIEW_MODULE_LOADERS = Object.freeze({
+  dashboard: () => import("/views/subviews/DashboardView.js"),
+  plan: () => import("/views/subviews/PlanView.js"),
+  partner: () => import("/views/subviews/PartnerView.js")
+});
+
+const VIEW_MODULES_BY_TAB = Object.freeze({
+  dashboard: ["dashboard"],
+  "superadmin-dashboard": ["dashboard"],
+  kehoach: ["plan"],
+  "kehoach-detail": ["plan"],
+  goithau: ["plan"],
+  "goithau-detail": ["plan"],
+  mothau: ["plan"],
+  danhgiahsdt: ["plan"],
+  chudautu: ["partner"],
+  "chudautu-detail": ["partner"],
+  nhathau: ["partner"],
+  "nhathau-detail": ["partner"],
+  chuyengia: ["partner"],
+  hopdong: ["partner"],
+  "hopdong-detail": ["partner"],
+  bieumau: ["partner"]
+});
+
+const installedViewModules = new Set(["system-user"]);
+const pendingViewModules = new Map();
+
 export class BiddingView {
   constructor(model) {
     this.model = model;
@@ -1111,6 +1137,28 @@ export class BiddingView {
   validateForm(form) {
     return validateConfiguredForm(form).valid;
   }
+  getRequiredViewModules(tabName) {
+    return VIEW_MODULES_BY_TAB[tabName] || [];
+  }
+  areViewModulesReady(tabName) {
+    return this.getRequiredViewModules(tabName).every((moduleName) => installedViewModules.has(moduleName));
+  }
+  async ensureViewModules(tabName) {
+    const moduleNames = this.getRequiredViewModules(tabName);
+    await Promise.all(moduleNames.map((moduleName) => {
+      if (installedViewModules.has(moduleName)) return null;
+      if (!pendingViewModules.has(moduleName)) {
+        const loader = VIEW_MODULE_LOADERS[moduleName];
+        if (!loader) return null;
+        const pending = loader().then((module) => {
+          installPrototypeModules(BiddingView, [{ name: `${moduleName}-view`, module }]);
+          installedViewModules.add(moduleName);
+        }).finally(() => pendingViewModules.delete(moduleName));
+        pendingViewModules.set(moduleName, pending);
+      }
+      return pendingViewModules.get(moduleName);
+    }));
+  }
   focusInvalidControl(input, options) {
     return focusInvalidControl(input, options);
   }
@@ -1188,8 +1236,5 @@ export class BiddingView {
   }
 }
 installPrototypeModules(BiddingView, [
-  { name: "dashboard-view", module: Dashboard },
-  { name: "plan-view", module: Plan },
-  { name: "partner-view", module: Partner },
   { name: "system-user-view", module: SystemUser },
 ]);

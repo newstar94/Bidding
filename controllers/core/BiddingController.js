@@ -211,6 +211,9 @@ export class BiddingController {
   }
   publishStartupMetrics() {
     const metrics = [
+      Number.isFinite(this._startupTimes?.["loader:hidden"])
+        ? { name: "navigation to hide loader", duration: Math.round(this._startupTimes["loader:hidden"]) }
+        : null,
       this.measureStartup("session check", "session-check-start", "session-check-end"),
       this.measureStartup("workspace module import", "workspace-import-start", "workspace-import-end"),
       this.measureStartup("app module to DOM ready", "app-module-start", "dom-content-loaded"),
@@ -220,6 +223,13 @@ export class BiddingController {
       this.measureStartup("app module to hide loader", "app-module-start", "loader:hidden"),
       this.measureStartup("time to hide loader", "init:start", "loader:hidden")
     ].filter(Boolean);
+    try {
+      window.performance?.measure?.("bf:navigation to hide loader", {
+        start: 0,
+        end: "bf:loader:hidden"
+      });
+    } catch (e) {
+    }
     const perfDebugEnabled = APP_DEBUG
       || localStorage.getItem("bf_perf_debug") === "true"
       || new URLSearchParams(window.location.search).get("bf_perf_debug") === "true";
@@ -710,7 +720,8 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     ].filter(Boolean);
     const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
     const initialTabName = this.getTabNameForPath(initialPath) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
-    if (["bieumau", "mothau", "danhgiahsdt"].includes(initialTabName) && !this._workflowModulesReady) {
+    await this.view.ensureViewModules(initialTabName);
+    if (["mothau", "danhgiahsdt"].includes(initialTabName) && !this._workflowModulesReady) {
       await this.ensureWorkflowModules();
     }
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {

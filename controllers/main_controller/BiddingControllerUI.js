@@ -276,7 +276,14 @@ export function switchTab(tabName, action = null, updateState = true) {
   const guardedRoute = guardTabAccess(this, tabName, action, updateState);
   tabName = guardedRoute.tabName;
   action = guardedRoute.action;
-  const workflowTabs = ["bieumau", "mothau", "danhgiahsdt"];
+  if (!this.view.areViewModulesReady(tabName)) {
+    this.view.ensureViewModules(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+      console.error("Failed to load view module:", tabName, err);
+      this.view?.showToast?.("KhÃ´ng táº£i Ä‘Æ°á»£c giao diá»‡n", "Vui lÃ²ng táº£i láº¡i trang vÃ  thá»­ láº¡i.", "error");
+    });
+    return;
+  }
+  const workflowTabs = ["mothau", "danhgiahsdt"];
   if (!this._workflowModulesReady && (action === "taomoi" || workflowTabs.includes(tabName))) {
     this.ensureWorkflowModules().then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
       console.error("Failed to load workflow module:", tabName, err);
