@@ -1,9 +1,9 @@
 import os
 import base64
+import glob
 import re
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))
+from backend.shared.paths import IMAGE_DIR
 
 
 _load_image_cache: dict = {}
@@ -20,6 +20,84 @@ def _safe_file_part(value: str, fallback: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or fallback))
     safe = safe.strip("._")
     return safe or fallback
+
+
+def public_image_path(value: str) -> str:
+    path = str(value or "").strip()
+    return "/" + path if path.startswith("images/") else path
+
+
+def normalize_managed_image_path(value: str) -> str:
+    """Return the canonical DB path for an application-managed image."""
+    path = str(value or "").strip().lstrip("/")
+    return path if path.startswith("images/") else ""
+
+
+def _managed_image_file(value: str) -> str:
+    managed_path = normalize_managed_image_path(value)
+    if not managed_path:
+        return ""
+    images_root = os.path.realpath(IMAGE_DIR)
+    file_path = os.path.realpath(
+        os.path.join(images_root, managed_path.removeprefix("images/"))
+    )
+    if not file_path.startswith(images_root + os.sep):
+        return ""
+    return file_path
+
+
+def remove_unreferenced_image_files(cursor, candidates) -> list[str]:
+    """Delete managed images only after no DB version references them.
+
+    The lookup deliberately spans every owner and every version. This keeps an
+    older file whenever a historical contractor/expert version still uses it.
+    """
+    removed = []
+    managed_paths = {
+        path
+        for path in (normalize_managed_image_path(value) for value in candidates or [])
+        if path
+    }
+    for managed_path in managed_paths:
+        cursor.execute(
+            """
+            SELECT (
+                EXISTS(SELECT 1 FROM nha_thau WHERE anh_dau = ?)
+                OR EXISTS(
+                    SELECT 1 FROM chuyen_gia
+                    WHERE anh_chung_chi = ? OR anh_chu_ky = ?
+                )
+            )
+            """,
+            (managed_path, managed_path, managed_path),
+        )
+        row = cursor.fetchone()
+        if row and bool(row[0]):
+            continue
+
+        file_path = _managed_image_file(managed_path)
+        if not file_path:
+            continue
+
+        related_files = [file_path]
+        stem, _ext = os.path.splitext(file_path)
+        related_files.extend(glob.glob(f"{glob.escape(stem)}_opt_*"))
+        for related_path in related_files:
+            if not os.path.isfile(related_path):
+                continue
+            try:
+                os.remove(related_path)
+                removed.append(related_path)
+            except OSError:
+                continue
+
+        stale_cache_keys = [
+            key for key in _load_image_cache
+            if isinstance(key, tuple) and key and key[0] == managed_path
+        ]
+        for key in stale_cache_keys:
+            _load_image_cache.pop(key, None)
+    return removed
 
 def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> str:
     if not base64_str:
@@ -49,18 +127,18 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         raise ValueError("Chỉ cho phép ảnh PNG, JPG hoặc WebP")
 
     try:
-        uploads_root = os.path.realpath(os.path.join(project_root, "templates", "uploads"))
-        upload_dir = os.path.realpath(os.path.join(uploads_root, subfolder))
-        if not upload_dir.startswith(uploads_root + os.sep):
+        images_root = os.path.realpath(IMAGE_DIR)
+        image_dir = os.path.realpath(os.path.join(images_root, subfolder))
+        if not image_dir.startswith(images_root + os.sep):
             raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
-        os.makedirs(upload_dir, exist_ok=True)
+        os.makedirs(image_dir, exist_ok=True)
 
         file_data = base64.b64decode(data_str, validate=True)
         if len(file_data) > MAX_IMAGE_UPLOAD_BYTES:
             raise ValueError("Dung lượng ảnh vượt quá giới hạn 5MB cho phép!")
         filename = f"{_safe_file_part(filename_prefix, 'image')}.{ext}"
-        filepath = os.path.realpath(os.path.join(upload_dir, filename))
-        if not filepath.startswith(upload_dir + os.sep):
+        filepath = os.path.realpath(os.path.join(image_dir, filename))
+        if not filepath.startswith(image_dir + os.sep):
             raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
 
         try:
@@ -93,7 +171,7 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
         except Exception as pil_err:
             raise ValueError("Nội dung ảnh không hợp lệ") from pil_err
 
-        return f"uploads/{subfolder}/{filename}"
+        return f"images/{subfolder}/{filename}"
     except Exception as e:
         print(f"Error saving base64 image: {e}")
         return base64_str
@@ -101,24 +179,18 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
 def load_base64_image(db_value: str) -> str:
     if not db_value or not isinstance(db_value, str):
         return ""
-    if not db_value.startswith("uploads/"):
+    if not db_value.startswith("images/"):
         return db_value
 
     try:
-        filepath = os.path.join(
-            project_root,
-            db_value.replace("uploads/", "templates/uploads/", 1)
-        )
+        filepath = os.path.join(IMAGE_DIR, db_value.removeprefix("images/"))
         if not os.path.exists(filepath):
             return db_value
         mtime = os.path.getmtime(filepath)
         cache_key = (db_value, mtime)
     except Exception:
         cache_key = (db_value, 0)
-        filepath = os.path.join(
-            project_root,
-            db_value.replace("uploads/", "templates/uploads/", 1)
-        )
+        filepath = os.path.join(IMAGE_DIR, db_value.removeprefix("images/"))
 
     if cache_key in _load_image_cache:
         return _load_image_cache[cache_key]

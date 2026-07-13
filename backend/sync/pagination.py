@@ -13,6 +13,7 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.access_policy import can_read_table, is_manager_role
+from backend.shared.media_helper import public_image_path
 from backend.sync.mapper import (
     attach_child_rows_to_items,
     db_column_for_json_key,
@@ -25,11 +26,6 @@ from backend.sync.queries import (
     get_contract_package_ids as _get_contract_package_ids,
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
-
-
-def _public_upload_path(value):
-    path = str(value or "").strip()
-    return "/" + path if path.startswith("uploads/") else path
 
 
 async def paginate_records(request):
@@ -304,10 +300,10 @@ async def paginate_records(request):
             if table_name == "chuyen_gia":
                 img_path = row_dict.get("anh_chung_chi", "")
                 sig_path = row_dict.get("anh_chu_ky", "")
-                row_dict["anh_chung_chi"] = "/" + img_path if img_path and img_path.startswith("uploads") else img_path
-                row_dict["anh_chu_ky"] = "/" + sig_path if sig_path and sig_path.startswith("uploads") else sig_path
+                row_dict["anh_chung_chi"] = public_image_path(img_path)
+                row_dict["anh_chu_ky"] = public_image_path(sig_path)
             elif table_name == "nha_thau":
-                row_dict["anh_dau"] = _public_upload_path(row_dict.get("anh_dau"))
+                row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
 
             item = map_db_to_json(table_name, row_dict)
 

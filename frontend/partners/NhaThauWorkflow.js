@@ -20,7 +20,7 @@ const todayYmd = getCurrentDateYmd;
 const safeStampSrc = (value) => {
   const src = String(value || "").trim();
   if (/^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) return src;
-  if (/^\/uploads\/nha_thau\/[a-z0-9._-]+$/i.test(src)) return src;
+  if (/^\/images\/nha_thau\/[a-z0-9._-]+$/i.test(src)) return src;
   return "";
 };
 const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "") => {

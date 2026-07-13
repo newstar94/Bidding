@@ -9,14 +9,6 @@ from backend.shared.helpers import database
 active_connections = {}
 
 
-def _public_upload_path(value):
-    path = str(value or "").strip()
-    return "/" + path if path.startswith("uploads/") else path
-
-
-
-
-
 async def sync_websocket_endpoint(websocket):
 
 
@@ -183,7 +175,5 @@ def disconnect_user_websockets(user_id):
                 sockets.discard(ws)
         if not active_connections.get(owner_id):
             active_connections.pop(owner_id, None)
-
-
 
 

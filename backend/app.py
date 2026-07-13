@@ -44,13 +44,11 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-
-
-
-
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
+
+from backend.shared.paths import IMAGE_DIR, WORD_TEMPLATE_DIR
 
 
 env_path = os.path.join(project_root, '.env')
@@ -460,7 +458,7 @@ class ProductionViewStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
-async def protected_upload_api(request):
+async def protected_image_api(request):
     is_valid, role_or_err = verify_session(request)
     if not is_valid:
         return JSONResponse({"error": role_or_err}, status_code=403)
@@ -469,9 +467,9 @@ async def protected_upload_api(request):
     if rel_path.startswith('/') or '..' in rel_path.split('/'):
         return JSONResponse({"error": "Đường dẫn không hợp lệ"}, status_code=400)
 
-    uploads_root = os.path.realpath(os.path.join(project_root, 'templates', 'uploads'))
-    file_path = os.path.realpath(os.path.join(uploads_root, rel_path))
-    if not file_path.startswith(uploads_root + os.sep) or not os.path.isfile(file_path):
+    images_root = os.path.realpath(IMAGE_DIR)
+    file_path = os.path.realpath(os.path.join(images_root, rel_path))
+    if not file_path.startswith(images_root + os.sep) or not os.path.isfile(file_path):
         return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
 
     if not rel_path.startswith(('chuyen_gia/', 'nha_thau/')):
@@ -480,7 +478,7 @@ async def protected_upload_api(request):
     conn = None
     try:
         owner_id = get_active_org(request, role_or_err.user_id)
-        stored_path = 'uploads/' + rel_path
+        stored_path = 'images/' + rel_path
         filename = os.path.basename(rel_path)
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -505,7 +503,7 @@ async def protected_upload_api(request):
                 SELECT 1 FROM chuyen_gia
                 WHERE owner_id = ? AND (anh_chung_chi LIKE ? OR anh_chu_ky LIKE ?)
                 """,
-                (owner_id, f'uploads/chuyen_gia/{original_prefix}.%', f'uploads/chuyen_gia/{original_prefix}.%')
+                (owner_id, f'images/chuyen_gia/{original_prefix}.%', f'images/chuyen_gia/{original_prefix}.%')
             )
             allowed = cursor.fetchone() is not None
         if not allowed:
@@ -513,7 +511,7 @@ async def protected_upload_api(request):
     except OrgPermissionError as e:
         return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
-        log_error(e, "protected_upload_api")
+        log_error(e, "protected_image_api")
         return JSONResponse({"error": "Không thể kiểm tra quyền truy cập tệp"}, status_code=500)
     finally:
         if conn:
@@ -526,12 +524,13 @@ async def protected_upload_api(request):
 
 dist_dir = os.path.join(project_root, 'dist')
 os.makedirs(dist_dir, exist_ok=True)
-os.makedirs(os.path.join(project_root, 'templates', 'uploads'), exist_ok=True)
+os.makedirs(IMAGE_DIR, exist_ok=True)
+os.makedirs(WORD_TEMPLATE_DIR, exist_ok=True)
 
 routes = [
     Route("/", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),
-    Route("/uploads/{file_path:path}", protected_upload_api, methods=["GET"]),
+    Route("/images/{file_path:path}", protected_image_api, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),
     Route("/api/paginate", paginate_api, methods=["GET"]),
     Route("/api/record", record_api, methods=["GET"]),
@@ -847,7 +846,7 @@ async def lifespan(app):
                     pass
 
                 try:
-                    _cg_dir = os.path.join(project_root, 'templates', 'uploads', 'chuyen_gia')
+                    _cg_dir = os.path.join(IMAGE_DIR, 'chuyen_gia')
                     if os.path.exists(_cg_dir):
                         for _fname in os.listdir(_cg_dir):
                             if "_opt_" in _fname:

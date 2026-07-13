@@ -34,7 +34,7 @@ export function renderEmptyRow(colspan, message, icon = "inbox") {
 }
 export function safeImageSrc(value, cacheKey = "") {
   const src = String(value || "").trim();
-  if (/^\/uploads\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) {
+  if (/^\/images\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) {
     const token = String(cacheKey || "").trim();
     return token ? `${src}?v=${encodeURIComponent(token)}` : src;
   }

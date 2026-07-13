@@ -13,6 +13,7 @@ from backend.shared.access_policy import (
     filter_items_for_read,
     is_manager_role,
 )
+from backend.shared.media_helper import public_image_path
 from backend.sync.mapper import (
     attach_child_rows_to_items,
     json_key_for_column,
@@ -26,11 +27,6 @@ from backend.sync.queries import (
 )
 from backend.sync.repository import get_current_sync_version
 from backend.sync.service import parse_sync_read_window
-
-
-def _public_upload_path(value):
-    path = str(value or "").strip()
-    return "/" + path if path.startswith("uploads/") else path
 
 
 async def read_sync_data(request):
@@ -113,15 +109,15 @@ async def read_sync_data(request):
             img_path = row_dict.get("anh_chung_chi", "")
             sig_path = row_dict.get("anh_chu_ky", "")
             item = map_db_to_json("chuyen_gia", row_dict)
-            item["anhChungChi"] = "/" + img_path if img_path and img_path.startswith("uploads") else img_path
-            item["anhChuKy"] = "/" + sig_path if sig_path and sig_path.startswith("uploads") else sig_path
+            item["anhChungChi"] = public_image_path(img_path)
+            item["anhChuKy"] = public_image_path(sig_path)
             chuyengia.append(item)
 
 
         nhathau = []
         for row in query_table("nha_thau"):
             row_dict = dict(row)
-            row_dict["anh_dau"] = _public_upload_path(row_dict.get("anh_dau"))
+            row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
             nhathau.append(map_db_to_json("nha_thau", row_dict))
         attach_child_rows_to_items(cursor, "nha_thau", nhathau, owner_id=org_name)
 
@@ -435,7 +431,7 @@ async def read_single_record(request):
             return JSONResponse({"error": "Không có quyền đọc bản ghi này."}, status_code=403)
 
         if table_name == "nha_thau":
-            row_dict["anh_dau"] = _public_upload_path(row_dict.get("anh_dau"))
+            row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
         item = map_db_to_json(table_name, row_dict)
         items = [item]
         if table_name in {"ke_hoach_lcnt", "goi_thau", "nha_thau"}:
@@ -464,4 +460,3 @@ async def read_single_record(request):
                 conn.close()
             except Exception:
                 pass
-

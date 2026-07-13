@@ -9,6 +9,8 @@ from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Inches
 from datetime import datetime
 
+from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
+
 
 _IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
 
@@ -375,10 +377,8 @@ def format_context_dates(data):
     elif isinstance(data, list):
         for item in data:
             format_context_dates(item)
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-TEMPLATE_DIR = os.path.join(project_root, 'templates')
-CONFIG_PATH = os.path.join(TEMPLATE_DIR, 'config.json')
+project_root = str(PROJECT_ROOT)
+TEMPLATE_DIR = str(WORD_TEMPLATE_DIR)
 
 def get_user_template_dir(user_id=None):
     if user_id:
@@ -701,24 +701,24 @@ def optimize_image_for_docx(filepath, max_width=800):
 def prewarm_image_cache():
 
     try:
-        uploads_dir = os.path.join(project_root, 'templates', 'uploads', 'chuyen_gia')
-        if not os.path.exists(uploads_dir):
+        images_dir = os.path.join(IMAGE_DIR, 'chuyen_gia')
+        if not os.path.exists(images_dir):
             return
 
         tasks = []
-        for fname in os.listdir(uploads_dir):
+        for fname in os.listdir(images_dir):
 
             if '_opt_' in fname:
                 continue
             if not any(fname.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp']):
                 continue
 
-            fpath = os.path.join(uploads_dir, fname)
+            fpath = os.path.join(images_dir, fname)
             max_w = 1200 if '_cert' in fname else 300
 
 
             name_no_ext, _ = os.path.splitext(fname)
-            cache_path = os.path.join(uploads_dir, f"{name_no_ext}_opt_{max_w}.jpg")
+            cache_path = os.path.join(images_dir, f"{name_no_ext}_opt_{max_w}.jpg")
             if os.path.exists(cache_path) and os.path.getmtime(cache_path) >= os.path.getmtime(fpath):
                 continue
 
@@ -752,9 +752,8 @@ def _collect_image_tasks(data, project_root, tasks=None):
             if isinstance(v, str):
 
                 norm_v = v.lstrip('/')
-                if norm_v.startswith('uploads/'):
-                    resolved_path = norm_v.replace('uploads/', 'templates/uploads/', 1)
-                    filepath = os.path.join(project_root, resolved_path)
+                if norm_v.startswith('images/'):
+                    filepath = os.path.join(IMAGE_DIR, norm_v.removeprefix('images/'))
                     if os.path.exists(filepath):
 
                         data[k] = norm_v

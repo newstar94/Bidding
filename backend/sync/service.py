@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import re
 import traceback
 
 from starlette.responses import JSONResponse
@@ -24,6 +25,10 @@ from backend.shared.helpers import (
 from backend.shared.access_policy import authorize_record_write, is_manager_role
 from backend.shared.date_utils import is_datetime_column, normalize_datetime_value
 from backend.db.id_utils import generate_record_id
+from backend.shared.media_helper import (
+    normalize_managed_image_path,
+    remove_unreferenced_image_files,
+)
 from backend.sync.mapper import (
     canonicalize_payload_item,
     db_column_for_json_key,
@@ -94,6 +99,9 @@ async def process_sync_request(request, broadcast_callback=None):
         log_error(msg, "SyncAPI")
 
     conn = None
+    transaction_committed = False
+    newly_written_images = set()
+    image_cleanup_candidates = set()
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -422,15 +430,43 @@ async def process_sync_request(request, broadcast_callback=None):
                                         val = default_match.group(1)
 
 
-                                if table_name == "chuyen_gia" and col in ["anh_chung_chi", "anh_chu_ky"] and val:
+                                is_expert_image = table_name == "chuyen_gia" and col in {
+                                    "anh_chung_chi", "anh_chu_ky"
+                                }
+                                is_contractor_image = table_name == "nha_thau" and col == "anh_dau"
+                                previous_image = ""
+                                if is_expert_image or is_contractor_image:
+                                    record_id = get_clean_id(table_name, item.get("id"))
+                                    if record_id:
+                                        cursor.execute(
+                                            f"SELECT {col} FROM {table_name} "
+                                            "WHERE owner_id = ? AND id = ? LIMIT 1",
+                                            (org_name, record_id),
+                                        )
+                                        previous_row = cursor.fetchone()
+                                        if previous_row:
+                                            previous_image = normalize_managed_image_path(previous_row[0])
+
+                                is_new_image_data = isinstance(val, str) and val.startswith("data:image")
+                                if is_expert_image and val:
                                     ext_suffix = "cert" if col == "anh_chung_chi" else "sig"
                                     expert_id = clean_id(item.get('id'))
-                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/uploads/") else val
+                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/images/") else val
                                     val = save_base64_image(normalized_image, "chuyen_gia", f"{expert_id}_{ext_suffix}")
-                                elif table_name == "nha_thau" and col == "anh_dau" and val:
+                                elif is_contractor_image and val:
                                     contractor_id = clean_id(item.get('id'))
-                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/uploads/") else val
+                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/images/") else val
                                     val = save_base64_image(normalized_image, "nha_thau", f"{contractor_id}_stamp")
+
+                                if is_expert_image or is_contractor_image:
+                                    current_image = normalize_managed_image_path(val)
+                                    if is_new_image_data and current_image:
+                                        newly_written_images.add(current_image)
+                                    if previous_image and previous_image != current_image:
+                                        # An empty value intentionally removes the image. A failed
+                                        # conversion keeps the old file until the write is corrected.
+                                        if not val or current_image:
+                                            image_cleanup_candidates.add(previous_image)
 
 
                                 if val is None and "NOT NULL" in col_type_upper:
@@ -598,9 +634,23 @@ async def process_sync_request(request, broadcast_callback=None):
                         table_name = TABLE_KEYS[tbl_key]
                         c_id = get_clean_id(table_name, rec_id)
                         if c_id:
-                            cursor.execute(f"SELECT 1 FROM {table_name} WHERE owner_id = ? AND id = ? LIMIT 1", (org_name, c_id))
-                            if not cursor.fetchone():
+                            image_columns = {
+                                "nha_thau": ("anh_dau",),
+                                "chuyen_gia": ("anh_chung_chi", "anh_chu_ky"),
+                            }.get(table_name, ())
+                            selected_columns = ", ".join(image_columns) if image_columns else "1"
+                            cursor.execute(
+                                f"SELECT {selected_columns} FROM {table_name} "
+                                "WHERE owner_id = ? AND id = ? LIMIT 1",
+                                (org_name, c_id),
+                            )
+                            existing_row = cursor.fetchone()
+                            if not existing_row:
                                 continue
+                            for image_value in existing_row if image_columns else ():
+                                managed_path = normalize_managed_image_path(image_value)
+                                if managed_path:
+                                    image_cleanup_candidates.add(managed_path)
                             access_decision = authorize_record_write(
                                 cursor,
                                 role_str,
@@ -657,6 +707,15 @@ async def process_sync_request(request, broadcast_callback=None):
                 (org_name, client_mutation_id, json.dumps(response_data))
             )
         conn.commit()
+        transaction_committed = True
+
+        try:
+            remove_unreferenced_image_files(
+                cursor,
+                image_cleanup_candidates | newly_written_images,
+            )
+        except Exception as cleanup_error:
+            log_sync_error(f"KhÃ´ng thá»ƒ dá»n áº£nh khÃ´ng cÃ²n tham chiáº¿u: {cleanup_error}")
 
 
         if broadcast_callback:
@@ -689,3 +748,16 @@ async def process_sync_request(request, broadcast_callback=None):
                 conn.close()
             except Exception:
                 pass
+        if not transaction_committed and newly_written_images:
+            cleanup_conn = None
+            try:
+                cleanup_conn = database.get_connection()
+                remove_unreferenced_image_files(
+                    cleanup_conn.cursor(),
+                    newly_written_images,
+                )
+            except Exception as cleanup_error:
+                log_sync_error(f"KhÃ´ng thá»ƒ dá»n áº£nh sau khi rollback: {cleanup_error}")
+            finally:
+                if cleanup_conn:
+                    cleanup_conn.close()

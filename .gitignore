@@ -7,13 +7,17 @@ __pycache__/
 .env
 
 # Database SQLite (Bỏ qua file DB thay đổi cục bộ)
-backend/db/bidding.db
+data/bidding.db
+data/bidding.db-*
+backend/db/bidding.db*
 
 # Log files
 *.log
 
-# Uploaded assets
-uploads/
+# Runtime images and user-specific Word templates
+data/templates/images/
+data/templates/words/config.json
+data/templates/words/*/
 
 # OS files
 .DS_Store

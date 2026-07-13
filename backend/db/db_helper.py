@@ -1,14 +1,16 @@
 import os
 import sqlite3
 
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
+from backend.shared.paths import DATA_DIR, PROJECT_ROOT
 
 
 class SQLiteDatabase:
     def __init__(self, db_path=None):
-        default_path = os.path.join(current_dir, "bidding.db")
-        self.db_path = os.path.abspath(db_path or os.environ.get("BIDDING_DB_PATH") or default_path)
+        default_path = DATA_DIR / "bidding.db"
+        configured_path = db_path or os.environ.get("BIDDING_DB_PATH") or default_path
+        if not os.path.isabs(configured_path):
+            configured_path = PROJECT_ROOT / configured_path
+        self.db_path = os.path.abspath(configured_path)
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
     def get_connection(self):
