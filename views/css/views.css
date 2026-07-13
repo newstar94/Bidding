@@ -262,6 +262,9 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
+.detail-code.partner-identity-code {
+  text-transform: none;
+}
 .detail-title {
   font-size: 1.35rem;
   font-weight: 800;

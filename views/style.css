@@ -1,5 +1,5 @@
-@import "/css/variables.css?v=6.15";
+@import "/css/variables.css?v=6.16";
 @import "/css/base.css";
-@import "/css/components.css?v=6.14";
-@import "/css/views.css";
+@import "/css/components.css?v=6.16";
+@import "/css/views.css?v=6.16";
 @import "/css/toast.css";

@@ -5,26 +5,25 @@ import JavaScriptObfuscator from 'javascript-obfuscator';
 function obfuscatorPlugin({ debugProtection = false } = {}) {
   const obfuscate = code => JavaScriptObfuscator.obfuscate(code, {
     compact: true,
-    controlFlowFlattening: true,
-    controlFlowFlatteningThreshold: 0.35,
-    deadCodeInjection: true,
-    deadCodeInjectionThreshold: 0.08,
+    // Keep the production source difficult to read without making every page
+    // pay a large decode/evaluation cost before the app can start.
+    controlFlowFlattening: false,
+    deadCodeInjection: false,
     debugProtection,
     debugProtectionInterval: debugProtection ? 3000 : 0,
     disableConsoleOutput: false,
     identifierNamesGenerator: 'hexadecimal',
     log: false,
-    numbersToExpressions: true,
+    numbersToExpressions: false,
     renameGlobals: false,
     selfDefending: true,
     simplify: true,
     sourceMap: false,
-    splitStrings: true,
-    splitStringsChunkLength: 8,
-    stringArray: true,
-    stringArrayCallsTransform: true,
-    stringArrayEncoding: ['rc4'],
-    stringArrayThreshold: 0.55,
+    splitStrings: false,
+    stringArray: false,
+    stringArrayCallsTransform: false,
+    stringArrayEncoding: [],
+    stringArrayThreshold: 0.35,
     transformObjectKeys: false,
     unicodeEscapeSequence: false
   }).getObfuscatedCode();
@@ -64,15 +63,17 @@ export default defineConfig(({ mode }) => {
       manifest: true,
       outDir: 'dist',
       emptyOutDir: true,
+      cssCodeSplit: false,
       sourcemap: false,
       minify: 'esbuild',
       chunkSizeWarningLimit: enableObfuscation ? 4096 : 1024,
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           app: path.resolve(__dirname, 'controllers/app.js')
         },
         output: {
-          entryFileNames: 'assets/[name]-[hash].js',
+          codeSplitting: false,
+          entryFileNames: 'assets/appbundle.js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]'
         }

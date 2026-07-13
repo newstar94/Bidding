@@ -11,7 +11,7 @@
     "lint:js": "node scripts/lint_js.mjs",
     "lint:py": "python scripts/lint_python.py",
     "generate:schema": "python scripts/generate_schema_contract.py",
-    "build": "vite build",
+    "build": "vite build --mode secure",
     "build:secure": "vite build --mode secure",
     "test": "npm run test:api && npm run test:e2e",
     "test:api": "python -m pytest tests/api",

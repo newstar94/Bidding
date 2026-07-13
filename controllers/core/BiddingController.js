@@ -720,13 +720,14 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     ].filter(Boolean);
     const shouldWaitForDetailData = detailRoutePaths.includes(initialParts[0]) && !!initialParts[1] && !hasUsableLocalData;
     const initialTabName = this.getTabNameForPath(initialPath) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
-    await this.view.ensureViewModules(initialTabName);
+    const routePreparationTasks = [this.view.ensureViewModules(initialTabName)];
     if (["mothau", "danhgiahsdt"].includes(initialTabName) && !this._workflowModulesReady) {
-      await this.ensureWorkflowModules();
+      routePreparationTasks.push(this.ensureWorkflowModules());
     }
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
-      await this.ensureLazyTab(initialTabName);
+      routePreparationTasks.push(this.ensureLazyTab(initialTabName));
     }
+    await Promise.all(routePreparationTasks);
     await this.handlePathRouting(window.location.pathname, false, true);
     this.markStartup("route:rendered");
     hideInitLoader();

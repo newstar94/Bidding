@@ -226,7 +226,7 @@ def compile_html(file_path):
             '\n',
             compiled
         )
-        bundle_src = "/dist/controllers/app.bundle.js"
+        bundle_src = "/dist/assets/appbundle.js"
         manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
         if os.path.exists(manifest_path):
             try:
@@ -288,7 +288,9 @@ def _workspace_preload_tag(session_bootstrap):
     try:
         with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
             manifest = json.load(manifest_file)
-        pending = ['controllers/workspaceBootstrap.js']
+        workspace_entry = 'controllers/workspaceBootstrap.js'
+        app_entry = 'controllers/app.js'
+        pending = [workspace_entry if workspace_entry in manifest else app_entry]
         visited = set()
         preload_files = []
         while pending:
@@ -448,7 +450,7 @@ class ProductionViewStaticFiles(StaticFiles):
             normalized == "style.css"
             or normalized == "service-worker.js"
             or (normalized.startswith("css/") and normalized.endswith(".css"))
-            or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css")))
+            or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css", ".woff2", ".woff", ".ttf")))
             or (normalized.startswith("tabs/") and normalized.endswith(".html"))
             or (normalized.startswith("modals/") and normalized.endswith(".html"))
         )

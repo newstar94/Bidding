@@ -63,7 +63,7 @@ export async function renderChuDauTuTable() {
             <tr>
                 <td>
                     <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" data-bf-action="show-investor" data-id="${safeAttr(displayedCdt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedCdt.maChuDauTu || "")}</span></a>
+                        <a href="#" data-bf-action="show-investor" data-id="${safeAttr(displayedCdt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code partner-identity-code" style="margin: 0; line-height: 1;">${esc(displayedCdt.maChuDauTu || "")}</span></a>
                         <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                         ${dropdownHtml}
                     </div>
@@ -138,7 +138,7 @@ export function renderChuDauTuVersionDetails(versionId) {
             <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${cdt.maChuDauTu || "--"}</span>
+                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${cdt.maChuDauTu || "--"}</span>
                         <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
                         ${versionSelectHtml}
                     </div>

@@ -1,4 +1,6 @@
 import { APP_DEBUG } from "./core/appConfig.js";
+import { bootstrapWorkspace } from "./workspaceBootstrap.js";
+import { bootstrapAuthShell } from "./auth/AuthShell.js";
 const startupMark = (name) => {
   try {
     performance.mark(`bf:${name}`);
@@ -95,11 +97,9 @@ const bootstrapApplication = async () => {
   const initialSession = await checkInitialSession();
   if (initialSession?.valid) {
     startupMark("workspace-import-start");
-    const { bootstrapWorkspace } = await import("/controllers/workspaceBootstrap.js");
     startupMark("workspace-import-end");
     await bootstrapWorkspace(initialSession);
   } else {
-    const { bootstrapAuthShell } = await import("/controllers/auth/AuthShell.js");
     await bootstrapAuthShell(initialSession);
   }
   requestAnimationFrame(() => {

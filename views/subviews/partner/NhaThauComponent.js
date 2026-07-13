@@ -72,7 +72,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || "")}</span></a>
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code partner-identity-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || "")}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -102,7 +102,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || "")}</span></a>
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code partner-identity-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || "")}</span></a>
                                 <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -278,7 +278,7 @@ export function renderNhaThauVersionDetails(versionId) {
             <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${nt.maNhaThau || "--"}</span>
+                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${nt.maNhaThau || "--"}</span>
                         <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
                         ${versionSelectHtml}
                     </div>

@@ -76,7 +76,7 @@ export function renderDashboard() {
                 </tr>
             `).join("");
     }
-    lucide.createIcons();
+    this.createIconsScoped(document.getElementById("tab-dashboard"));
     return;
   }
   const listSignature = (items, fields) => (items || []).map((item) => fields.map((field) => item[field] ?? "").join(":")).join("|");
@@ -173,7 +173,7 @@ export function renderDashboard() {
             </tr>
         `).join("");
   }
-  lucide.createIcons();
+  this.createIconsScoped(document.getElementById("tab-dashboard"));
 }
 export function renderSuperAdminDashboard() {
   fetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
@@ -253,6 +253,6 @@ export function renderSuperAdminDashboard() {
         }).join("");
       }
     }
-    lucide.createIcons();
+    this.createIconsScoped(document.getElementById("tab-superadmin-dashboard"));
   });
 }

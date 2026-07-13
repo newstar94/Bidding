@@ -1,11 +1,10 @@
-const CACHE_NAME = "biddingflow-shell-v8";
+const CACHE_NAME = "biddingflow-shell-v10";
 const APP_SHELL = [
   "/",
-  "/style.css?v=6.15",
-  "/css/variables.css?v=6.15",
+  "/css/variables.css?v=6.16",
   "/css/base.css",
-  "/css/components.css?v=6.14",
-  "/css/views.css",
+  "/css/components.css?v=6.16",
+  "/css/views.css?v=6.16",
   "/css/toast.css",
   "/vendor/fonts/plus-jakarta-sans-latin.woff2",
   "/vendor/fonts/plus-jakarta-sans-vietnamese.woff2",
@@ -29,6 +28,9 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/") {
     return;
   }
+  // appbundle.js has a stable name. Let the browser perform HTTP revalidation
+  // so a deployment never boots a stale bundle from the service-worker cache.
+  if (url.pathname === "/dist/assets/appbundle.js") return;
   if (url.pathname.endsWith(".css") || url.pathname.startsWith("/dist/") || url.pathname.startsWith("/vendor/")) {
     event.respondWith(
       caches.match(request).then((cached) => {
