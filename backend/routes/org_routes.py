@@ -11,12 +11,8 @@ from helpers import (
     log_error,
     OrgPermissionError
 )
-from .sync_routes import (
-    DELETED_RECORD_UPSERT_SQL,
-    broadcast_websocket_event,
-    disconnect_user_websockets,
-    next_sync_version
-)
+from .sync_routes import broadcast_websocket_event, disconnect_user_websockets
+from sync.repository import DELETED_RECORD_UPSERT_SQL, next_sync_version
 
 async def add_user_to_org_api(request):
     try:

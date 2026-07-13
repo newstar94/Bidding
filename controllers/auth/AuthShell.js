@@ -72,6 +72,7 @@ ${message}`);
     _workspaceDeferredUntilReload: true
   };
   Object.assign(controller, Auth);
-  window.appController = controller;
+  setAppController(controller);
   controller.setupAuth();
 }
+import { setAppController } from "../main_controller/controllerRef.js";

@@ -54,6 +54,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: '.',
+    base: '/dist/',
     plugins: enableObfuscation ? [obfuscatorPlugin({ debugProtection: enableDebugProtection })] : [],
     esbuild: isProductionBuild ? {
       drop: ['debugger'],

@@ -1,6 +1,10 @@
-import { formatCurrency, formatDate, initCustomSelect, renderEmptyRow } from "./view_helpers.js";
-import { collectYearMonthOptions, loadPaginatedRecords, matchesYearMonth, paginateRecords, sortRecords } from "./tableDataUtils.js";
+import { escapeHtml, formatCurrency, formatDate, initCustomSelect } from "./view_helpers.js";
+import { loadPaginatedRecords, paginateRecords, sortRecords } from "./tableDataUtils.js";
+import { matchesYearMonth, populateYearMonthFilters } from "../components/YearMonthFilter.js";
+import { renderTableEmpty, renderTableError, renderTableLoading } from "../components/EntityTable.js";
+import { renderEntityActions, standardEditDeleteActions } from "../components/EntityActions.js";
 import { clearVirtualTable, renderVirtualTable } from "./virtualTable.js";
+import { executeAppCommand } from "../../controllers/core/commandBus.js";
 export async function renderKeHoachTable() {
   const tableBody = document.getElementById("kehoach-table").querySelector("tbody");
   const searchVal = document.getElementById("search-kehoach").value.toLowerCase();
@@ -8,13 +12,7 @@ export async function renderKeHoachTable() {
   const monthSelect = document.getElementById("filter-kehoach-thang");
   const allPlans = this.model.state.kehoach || [];
   if (yearSelect && monthSelect) {
-    const prevYear = yearSelect.value;
-    const prevMonth = monthSelect.value;
-    const { years: sortedYears, months: sortedMonths } = collectYearMonthOptions(allPlans, (kh) => kh.ngayPheDuyet);
-    yearSelect.innerHTML = '<option value="">Năm</option>' + sortedYears.map((y) => `<option value="${y}">${y}</option>`).join("");
-    monthSelect.innerHTML = '<option value="">Tháng</option>' + sortedMonths.map((m) => `<option value="${m}">Tháng ${m}</option>`).join("");
-    if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
-    if (sortedMonths.includes(prevMonth)) monthSelect.value = prevMonth;
+    populateYearMonthFilters({ records: allPlans, getDate: (kh) => kh.ngayPheDuyet, yearSelect, monthSelect });
     initCustomSelect("filter-kehoach-nam");
     initCustomSelect("filter-kehoach-thang");
   }
@@ -28,9 +26,7 @@ export async function renderKeHoachTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    if (!tableBody.querySelector(".empty-state") && tableBody.children.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
-    }
+    renderTableLoading(tableBody, 10);
     try {
       const data = await loadPaginatedRecords(this.model, "kehoach", {
         page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
@@ -40,6 +36,9 @@ export async function renderKeHoachTable() {
       totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated plans", e);
+      clearVirtualTable(tableBody);
+      renderTableError(tableBody, { colspan: 10, message: "Không thể tải danh sách kế hoạch. Vui lòng thử lại." });
+      return;
     }
   } else {
     const latestPlans = this.model.getFilteredKeHoach();
@@ -53,11 +52,10 @@ export async function renderKeHoachTable() {
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
-    tableBody.innerHTML = renderEmptyRow(10, "Không tìm thấy Kế hoạch lựa chọn nhà thầu nào phù hợp", "file-warning");
     const pag = document.getElementById("kehoach-pagination");
-    if (pag) pag.innerHTML = "";
+    renderTableEmpty(tableBody, { colspan: 10, message: "Không tìm thấy Kế hoạch lựa chọn nhà thầu nào phù hợp", icon: "file-warning", pagination: pag });
   } else {
-    const esc = window.escapeHTML || ((value) => String(value ?? ""));
+    const esc = escapeHtml;
     renderVirtualTable(tableBody, slicedData, (kh) => {
       const root = kh.rootId || kh.id;
       const allVersions = kh.allVersions || this.model.state.kehoach.filter((k) => (k.rootId || k.id) === root).sort((a, b) => parseInt(b.phienBan) - parseInt(a.phienBan));
@@ -78,11 +76,13 @@ export async function renderKeHoachTable() {
                 </select>
             `;
       const isLatest = displayedKh.id === kh.id;
-      const editBtnHtml = isLatest ? `
-                            <button class="action-btn btn-edit" data-bf-action="edit-plan" data-id="${esc(displayedKh.id)}" title="Sửa">
-                                <i data-lucide="edit-2"></i>
-                            </button>
-            ` : ``;
+      const planActions = standardEditDeleteActions({
+        id: displayedKh.id,
+        editCommand: "edit-plan",
+        deleteCommand: "delete-plan"
+      });
+      if (!isLatest) planActions.shift();
+      const actionHtml = renderEntityActions(planActions);
       return `
                 <tr>
                     <td>
@@ -101,19 +101,12 @@ export async function renderKeHoachTable() {
                     <td>${esc(displayedKh.quyetDinhPheDuyet)}</td>
                     <td><span class="fw-bold text-muted">${displayedKh.thoiGianDangMa ? this.model.formatDateWithTime(displayedKh.thoiGianDangMa) : "--"}</span></td>
                     <td class="text-right">
-                        <div class="action-btn-group">
-                            ${editBtnHtml}
-                            <button class="action-btn btn-delete" data-bf-action="delete-plan" data-id="${esc(displayedKh.id)}" title="Xóa">
-                                <i data-lucide="trash-2"></i>
-                            </button>
-                        </div>
+                        ${actionHtml}
                     </td>
                 </tr>
             `;
     }, { colSpan: 10, rowHeight: 82, onRender: () => lucide.createIcons({ root: tableBody }) });
-    if (window.renderTablePagination) {
-      window.renderTablePagination("kehoach-pagination", totalItems, currentPage, pageSize);
-    }
+    executeAppCommand("renderTablePagination", "kehoach-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons();
   this.enhanceTableHeaders("kehoach-table", "kehoach");
@@ -129,7 +122,7 @@ export function showKeHoachDetails(id, isSwitchingVersion = false) {
   id = targetId;
   const detailPane = document.getElementById("tab-kehoach-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
-    window.switchTab("kehoach-detail", id);
+    executeAppCommand("switchTab", "kehoach-detail", id);
     return;
   }
   const kh = this.model.state.kehoach.find((k) => k.id === id);
@@ -164,7 +157,7 @@ export async function renderPlanVersionDetails(versionId) {
     if (isLatest) {
       editBtn.style.display = "flex";
       editBtn.onclick = () => {
-        window.editKeHoach(versionId);
+        executeAppCommand("editKeHoach", versionId);
       };
     } else {
       editBtn.style.display = "none";
@@ -430,7 +423,7 @@ export async function renderPlanVersionDetails(versionId) {
     innerSelect.onchange = (e) => {
       this.renderPlanVersionDetails(e.target.value);
     };
-    if (window.initCustomSelect) window.initCustomSelect("fullpage-kh-version-select");
+    initCustomSelect("fullpage-kh-version-select");
   }
   lucide.createIcons();
 }

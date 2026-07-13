@@ -1,4 +1,4 @@
-import { bindCurrencyElement } from "../main_controller/domUtils.js";
+﻿import { bindCurrencyElement } from "../main_controller/domUtils.js";
 function bindAdminEvent(element, eventName, bindingName, handler) {
   if (!element) return;
   element.__bfBoundEvents = element.__bfBoundEvents || /* @__PURE__ */ new Set();
@@ -327,7 +327,7 @@ export function setupRBACEvents() {
       await this.reloadEmployeesFromDatabase();
       if (!this.model.state.permissionmatrix.some((m) => m.empId === empIdInState)) {
         this.model.state.permissionmatrix.push({
-          id: window.generateRecordId("permissionmatrix"),
+          id: generateRecordId("permissionmatrix"),
           empId: empIdInState,
           kehoach: "view",
           goithau: "view",
@@ -376,7 +376,7 @@ export function setupRBACEvents() {
       const color = document.getElementById("hsg-color").value;
       const data = {
         orgId,
-        id: id || window.generateRecordId("custompaperstatuses"),
+        id: id || generateRecordId("custompaperstatuses"),
         name,
         color
       };
@@ -848,3 +848,4 @@ export function renderWorkspaceSwitcher() {
   };
   registerClick(orgSwitchList);
 }
+import { generateRecordId } from "../../models/idUtils.js";

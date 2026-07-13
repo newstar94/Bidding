@@ -1,5 +1,22 @@
-import { safeImageSrc } from "../../views/subviews/view_helpers.js";
-import { rememberSelectedVersion } from "../domain/VersionedEntityService.js";
+﻿import { safeImageSrc } from "../../views/subviews/view_helpers.js";
+import { collectFormValues, resetFormState, setFormValues } from "../forms/FormBinder.js";
+import { persistAndSync } from "../domain/MutationService.js";
+import {
+  createInitialVersion,
+  createNextVersion,
+  getNextVersion,
+  rememberSelectedVersion
+} from "../domain/VersionedEntityService.js";
+
+const CHUYEN_GIA_FORM_FIELDS = {
+  hoTen: "cg-hoten",
+  soCCCD: "cg-socccd",
+  noiCapCCCD: "cg-noicapcccd",
+  ngayCapCCCD: "cg-ngaycapcccd",
+  soChungChi: "cg-sochungchi",
+  donViCapChungChi: "cg-donvicapchungchi",
+  ngayCapChungChi: "cg-ngaycapchungchi"
+};
 
 const safeExpertImageSrc = (value) => {
   const src = String(value || "").trim();
@@ -39,8 +56,9 @@ export async function deleteChuyenGia(id) {
   if (confirmed) {
     this.model.state.chuyengia = this.model.state.chuyengia.filter((cg) => cg.id !== id);
     this.model.markDeleted("chuyengia", id);
-    await this.model.persistData("chuyengia");
-    await this.autoSync();
+    await persistAndSync(this, "chuyengia", {
+      afterPersist: () => this.view.renderChuyenGiaTable()
+    });
   }
 }
 export function editChuyenGia(id) {
@@ -73,13 +91,11 @@ export function editChuyenGia(id) {
     document.getElementById("modal-chuyengia-title").textContent = "Cập nhật Chuyên gia";
     const cg = this.model.state.chuyengia.find((c) => c.id === id);
     document.getElementById("form-chuyengia-id").value = cg.id;
-    document.getElementById("cg-hoten").value = cg.hoTen;
-    document.getElementById("cg-socccd").value = cg.soCCCD || "";
-    document.getElementById("cg-noicapcccd").value = cg.noiCapCCCD || "";
-    document.getElementById("cg-ngaycapcccd").value = this.model.formatForDateInput(cg.ngayCapCCCD);
-    document.getElementById("cg-sochungchi").value = cg.soChungChi;
-    document.getElementById("cg-donvicapchungchi").value = cg.donViCapChungChi || "";
-    document.getElementById("cg-ngaycapchungchi").value = this.model.formatForDateInput(cg.ngayCapChungChi);
+    setFormValues(document, {
+      ...cg,
+      ngayCapCCCD: this.model.formatForDateInput(cg.ngayCapCCCD),
+      ngayCapChungChi: this.model.formatForDateInput(cg.ngayCapChungChi)
+    }, CHUYEN_GIA_FORM_FIELDS);
     const certificateImageSrc = safeExpertImageSrc(cg.anhChungChi);
     if (certificateImageSrc) {
       this.tempChuyenGiaImageBase64 = certificateImageSrc;
@@ -107,7 +123,7 @@ export function editChuyenGia(id) {
   } else {
     this.switchTab("chuyengia", "taomoi", true);
     document.getElementById("modal-chuyengia-title").textContent = "Thêm Chuyên gia mới";
-    form.reset();
+    resetFormState(form);
     document.getElementById("form-chuyengia-id").value = "";
     document.getElementById("cg-ngaycapcccd").value = "";
     document.getElementById("cg-ngaycapchungchi").value = "";
@@ -125,7 +141,8 @@ export function editChuyenGia(id) {
 export async function handleChuyenGiaSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-chuyengia");
-  const cccdVal = document.getElementById("cg-socccd").value.trim();
+  const formValues = collectFormValues(document, CHUYEN_GIA_FORM_FIELDS);
+  const cccdVal = formValues.soCCCD.trim();
   if (cccdVal !== "" && !/^\d{12}$/.test(cccdVal)) {
     const inputEl = document.getElementById("cg-socccd");
     const formGroup = inputEl.closest(".form-group");
@@ -146,7 +163,7 @@ export async function handleChuyenGiaSubmit(e) {
   }
   if (!this.view.validateForm(form)) return;
   const id = document.getElementById("form-chuyengia-id").value;
-  const soChungChiVal = document.getElementById("cg-sochungchi").value.trim();
+  const soChungChiVal = formValues.soChungChi.trim();
   if (cccdVal) {
     const dupCCCD = this.model.state.chuyengia.some(
       (cg) => cg.id !== id && cg.soCCCD && cg.soCCCD.trim() === cccdVal
@@ -193,18 +210,18 @@ export async function handleChuyenGiaSubmit(e) {
       return;
     }
   }
-  const ngayCapCCCDYMD = this.model.convertDMYToYMD(document.getElementById("cg-ngaycapcccd").value);
-  const ngayCapChungChiYMD = this.model.convertDMYToYMD(document.getElementById("cg-ngaycapchungchi").value);
+  const ngayCapCCCDYMD = this.model.convertDMYToYMD(formValues.ngayCapCCCD);
+  const ngayCapChungChiYMD = this.model.convertDMYToYMD(formValues.ngayCapChungChi);
   const certExt = this.model.getFileExtensionFromBase64(this.tempChuyenGiaImageBase64);
   const sigExt = this.model.getFileExtensionFromBase64(this.tempChuyenGiaSignatureBase64);
   let data = {
-    hoTen: document.getElementById("cg-hoten").value.trim(),
+    hoTen: formValues.hoTen.trim(),
     soCCCD: cccdVal,
     ngayCapCCCD: ngayCapCCCDYMD,
-    noiCapCCCD: document.getElementById("cg-noicapcccd").value.trim(),
+    noiCapCCCD: formValues.noiCapCCCD.trim(),
     soChungChi: soChungChiVal,
     ngayCapChungChi: ngayCapChungChiYMD,
-    donViCapChungChi: document.getElementById("cg-donvicapchungchi").value.trim(),
+    donViCapChungChi: formValues.donViCapChungChi.trim(),
     anhChungChi: this.tempChuyenGiaImageBase64,
     tenAnhChungChi: this.tempChuyenGiaImageBase64 ? `CC_${cccdVal}.${certExt}` : "",
     anhChuKy: this.tempChuyenGiaSignatureBase64,
@@ -212,25 +229,19 @@ export async function handleChuyenGiaSubmit(e) {
   };
   if (id) {
     const currentCg = this.model.state.chuyengia.find((c) => c.id === id);
-    const rootId = currentCg.rootId || currentCg.id;
-    const versions = this.model.state.chuyengia.filter((c) => c.rootId === rootId || c.id === rootId);
-    const maxVerNum = Math.max(...versions.map((v) => parseInt(v.phienBan || 0)));
-    const nextVerStr = String(maxVerNum + 1).padStart(2, "0");
+    const nextVersion = getNextVersion(this.model.state.chuyengia, currentCg);
     const isNewVersion = await this.view.customConfirm(
       "Lưu Chuyên gia",
-      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCg.phienBan || 0)})`,
+      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${Number(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentCg.phienBan || 0)})`,
       "save"
     );
     if (isNewVersion) {
-      versions.forEach((c) => {
-        c.isLatest = 0;
+      const timestamp = this.model.getCurrentDateTimeString();
+      data = createNextVersion(this.model.state.chuyengia, currentCg, data, {
+        id: generateRecordId("chuyengia"),
+        timestamp
       });
-      data.id = window.generateRecordId("chuyengia");
-      data.rootId = rootId;
-      data.phienBan = nextVerStr;
-      data.isLatest = 1;
-      data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
-      data.updatedAt = this.model.getCurrentDateTimeString();
+      data.createdAt = currentCg.createdAt || timestamp;
       this.model.state.chuyengia.push(data);
     } else {
       data.id = id;
@@ -243,18 +254,17 @@ export async function handleChuyenGiaSubmit(e) {
       this.model.state.chuyengia[idx] = data;
     }
   } else {
-    const newId = window.generateRecordId("chuyengia");
-    data.id = newId;
-    data.rootId = newId;
-    data.phienBan = "00";
-    data.isLatest = 1;
-    data.createdAt = this.model.getCurrentDateTimeString();
-    data.updatedAt = this.model.getCurrentDateTimeString();
+    const newId = generateRecordId("chuyengia");
+    data = createInitialVersion(data, {
+      id: newId,
+      timestamp: this.model.getCurrentDateTimeString()
+    });
     this.model.state.chuyengia.push(data);
   }
   rememberSelectedVersion(this.model.state, "selectedChuyenGiaVersion", data);
-  await this.model.persistData("chuyengia");
   this.view.closeModal("modal-chuyengia");
-  this.view.renderChuyenGiaTable();
-  await this.autoSync();
+  await persistAndSync(this, "chuyengia", {
+    afterPersist: () => this.view.renderChuyenGiaTable()
+  });
 }
+import { generateRecordId } from "../../models/idUtils.js";

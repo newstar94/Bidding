@@ -1,8 +1,13 @@
-import { initCustomSelect, renderEmptyRow } from "../view_helpers.js";
-import { collectYearMonthOptions, loadPaginatedRecords, matchesYearMonth, paginateRecords, sortRecords } from "../tableDataUtils.js";
+import { escapeHtml, initCustomSelect } from "../view_helpers.js";
+import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableDataUtils.js";
+import { matchesYearMonth, populateYearMonthFilters } from "../../components/YearMonthFilter.js";
+import { renderTableEmpty, renderTableError, renderTableLoading } from "../../components/EntityTable.js";
+import { renderEntityActions, standardEditDeleteActions } from "../../components/EntityActions.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { setJvData } from "./jvDataStore.js";
 import { resolveBidContractorName, resolveBidJointVentureMembers } from "../../../controllers/workflows/contractorVersionBinding.js";
+import { executeAppCommand } from "../../../controllers/core/commandBus.js";
+import { getLotWinnersStore } from "../../../controllers/state/runtimeState.js";
 export async function renderGoiThauTable() {
   const tableBody = document.getElementById("goithau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-goithau").value.toLowerCase();
@@ -12,13 +17,7 @@ export async function renderGoiThauTable() {
   const monthSelect = document.getElementById("filter-goithau-thang");
   const allPackages = this.model.getLatestPackages();
   if (yearSelect && monthSelect) {
-    const prevYear = yearSelect.value;
-    const prevMonth = monthSelect.value;
-    const { years: sortedYears, months: sortedMonths } = collectYearMonthOptions(allPackages, (gt) => gt.ngayQuyetDinh);
-    yearSelect.innerHTML = '<option value="">Năm</option>' + sortedYears.map((y) => `<option value="${y}">${y}</option>`).join("");
-    monthSelect.innerHTML = '<option value="">Tháng</option>' + sortedMonths.map((m) => `<option value="${m}">Tháng ${m}</option>`).join("");
-    if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
-    if (sortedMonths.includes(prevMonth)) monthSelect.value = prevMonth;
+    populateYearMonthFilters({ records: allPackages, getDate: (gt) => gt.ngayQuyetDinh, yearSelect, monthSelect });
     initCustomSelect("filter-goithau-trangthai");
     initCustomSelect("filter-goithau-hinhthuc");
     initCustomSelect("filter-goithau-nam");
@@ -34,9 +33,7 @@ export async function renderGoiThauTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    if (!tableBody.querySelector(".empty-state") && tableBody.children.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
-    }
+    renderTableLoading(tableBody, 8);
     try {
       const data = await loadPaginatedRecords(this.model, "goithau", {
         page: currentPage, pageSize, search: searchVal,
@@ -47,6 +44,9 @@ export async function renderGoiThauTable() {
       totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated packages", e);
+      clearVirtualTable(tableBody);
+      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách gói thầu. Vui lòng thử lại." });
+      return;
     }
   } else {
     const latestPackages = this.model.getFilteredGoiThau();
@@ -63,11 +63,10 @@ export async function renderGoiThauTable() {
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
-    tableBody.innerHTML = renderEmptyRow(8, "Không tìm thấy Gói thầu nào phù hợp", "archive");
     const pag = document.getElementById("goithau-pagination");
-    if (pag) pag.innerHTML = "";
+    renderTableEmpty(tableBody, { colspan: 8, message: "Không tìm thấy Gói thầu nào phù hợp", icon: "archive", pagination: pag });
   } else {
-    const esc = window.escapeHTML || ((value) => String(value ?? ""));
+    const esc = escapeHtml;
     renderVirtualTable(tableBody, slicedData, (gt) => {
       const root = gt.rootId || gt.id;
       const allRelated = this.model.state.goithau.filter((g) => (g.rootId || g.id) === root);
@@ -124,8 +123,7 @@ export async function renderGoiThauTable() {
           const winningLots = plList.filter((pl) => pl.nhaThauTrungThauId);
           const uniqueWinnerIds = [...new Set(winningLots.map((pl) => String(pl.nhaThauTrungThauId)).filter(Boolean))];
           if (uniqueWinnerIds.length > 1) {
-            window._lotWinnersMap = window._lotWinnersMap || {};
-            window._lotWinnersMap[displayedGt.id] = winningLots.map((pl) => {
+            getLotWinnersStore()[displayedGt.id] = winningLots.map((pl) => {
               const bidderInfo = this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(pl.nhaThauTrungThauId));
               const ntInfo = this.model.state.nhathau.find((n) => n.id === pl.nhaThauTrungThauId);
               const ntName = bidderInfo ? resolveBidContractorName(this.model, bidderInfo) : ntInfo ? ntInfo.tenNhaThau : "Nhà thầu #" + pl.nhaThauTrungThauId;
@@ -203,6 +201,26 @@ export async function renderGoiThauTable() {
             `;
       const isCanceledPackage = displayedGt.trangThai === "Hủy thầu";
       const isCompletedPackage = displayedGt.trangThai === "Đã có kết quả";
+      let packageActions;
+      if (displayedGt.id !== gt.id) {
+        packageActions = [{ id: displayedGt.id, command: "show-package", className: "btn-view", title: "Xem chi tiết Gói thầu", icon: "eye" }];
+      } else if (isCanceledPackage || isCompletedPackage) {
+        packageActions = [
+          isCanceledPackage && {
+            id: displayedGt.id, command: "restore-package", className: "btn-restore",
+            title: "Khôi phục hủy thầu", icon: "rotate-ccw", style: "color: var(--success, #10b981);"
+          },
+          { id: displayedGt.id, command: "view-package", className: "btn-view", title: "Xem chi tiết Gói thầu", icon: "eye" },
+          { id: displayedGt.id, command: "delete-package", className: "btn-delete", title: "Xóa", icon: "trash-2" }
+        ];
+      } else {
+        packageActions = standardEditDeleteActions({
+          id: displayedGt.id,
+          editCommand: "edit-package",
+          deleteCommand: "delete-package"
+        });
+      }
+      const actionHtml = renderEntityActions(packageActions);
       return `
             <tr class="${isCanceledPackage ? "cancelled-package" : ""}">
                 <td>
@@ -219,37 +237,12 @@ export async function renderGoiThauTable() {
                 <td>${this.getStatusBadge(displayedGt.trangThai)}</td>
                 <td style="min-width: 200px; max-width: 300px;" class="text-wrap">${winnerInfoHtml}</td>
                 <td class="text-right">
-                    <div class="action-btn-group">
-                        ${displayedGt.id === gt.id ? isCanceledPackage || isCompletedPackage ? `
-                            ${isCanceledPackage ? `<button class="action-btn btn-restore" data-bf-action="restore-package" data-id="${esc(displayedGt.id)}" title="Khôi phục hủy thầu" style="color: var(--success, #10b981);">
-                                <i data-lucide="rotate-ccw"></i>
-                            </button>` : ""}
-                            <button class="action-btn btn-view" data-bf-action="view-package" data-id="${esc(displayedGt.id)}" title="Xem chi tiết Gói thầu">
-                                <i data-lucide="eye"></i>
-                            </button>
-                            <button class="action-btn btn-delete" data-bf-action="delete-package" data-id="${esc(displayedGt.id)}" title="Xóa">
-                                <i data-lucide="trash-2"></i>
-                            </button>
-                        ` : `
-                            <button class="action-btn btn-edit" data-bf-action="edit-package" data-id="${esc(displayedGt.id)}" title="Sửa">
-                                <i data-lucide="edit-2"></i>
-                            </button>
-                            <button class="action-btn btn-delete" data-bf-action="delete-package" data-id="${esc(displayedGt.id)}" title="Xóa">
-                                <i data-lucide="trash-2"></i>
-                            </button>
-                        ` : `
-                            <button class="action-btn btn-view" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" title="Xem chi tiết Gói thầu">
-                                <i data-lucide="eye"></i>
-                            </button>
-                        `}
-                    </div>
+                    ${actionHtml}
                 </td>
             </tr>
             `;
     }, { colSpan: 8, rowHeight: 88, onRender: () => lucide.createIcons({ root: tableBody }) });
-    if (window.renderTablePagination) {
-      window.renderTablePagination("goithau-pagination", totalItems, currentPage, pageSize);
-    }
+    executeAppCommand("renderTablePagination", "goithau-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("goithau-table", "goithau");

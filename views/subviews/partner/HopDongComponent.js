@@ -1,7 +1,11 @@
 import { escapeHtml, formatDate, formatCurrency, initCustomSelect } from "../view_helpers.js";
-import { collectYearMonthOptions, loadPaginatedRecords, matchesYearMonth, paginateRecords, sortRecords } from "../tableDataUtils.js";
+import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableDataUtils.js";
+import { matchesYearMonth, populateYearMonthFilters } from "../../components/YearMonthFilter.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
+import { renderTableEmpty, renderTableError, renderTableLoading } from "../../components/EntityTable.js";
+import { renderEntityActions, standardEditDeleteActions } from "../../components/EntityActions.js";
+import { executeAppCommand } from "../../../controllers/core/commandBus.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
@@ -9,13 +13,7 @@ export async function renderHopDongTable() {
   const monthSelect = document.getElementById("filter-hopdong-thang");
   const allContracts = this.model.state.hopdong || [];
   if (yearSelect && monthSelect) {
-    const prevYear = yearSelect.value;
-    const prevMonth = monthSelect.value;
-    const { years: sortedYears, months: sortedMonths } = collectYearMonthOptions(allContracts, (h) => h.ngayKy);
-    yearSelect.innerHTML = '<option value="">Năm</option>' + sortedYears.map((y) => `<option value="${y}">${y}</option>`).join("");
-    monthSelect.innerHTML = '<option value="">Tháng</option>' + sortedMonths.map((m) => `<option value="${m}">Tháng ${m}</option>`).join("");
-    if (sortedYears.includes(prevYear)) yearSelect.value = prevYear;
-    if (sortedMonths.includes(prevMonth)) monthSelect.value = prevMonth;
+    populateYearMonthFilters({ records: allContracts, getDate: (h) => h.ngayKy, yearSelect, monthSelect });
     initCustomSelect("filter-hopdong-nam");
     initCustomSelect("filter-hopdong-thang");
   }
@@ -29,9 +27,7 @@ export async function renderHopDongTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    if (!tableBody.querySelector(".empty-state") && tableBody.children.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
-    }
+    renderTableLoading(tableBody, 13);
     try {
       const data = await loadPaginatedRecords(this.model, "hopdong", {
         page: currentPage, pageSize, search: searchVal, sortBy, sortOrder,
@@ -41,6 +37,9 @@ export async function renderHopDongTable() {
       totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated contracts", e);
+      clearVirtualTable(tableBody);
+      renderTableError(tableBody, { colspan: 13, message: "Không thể tải danh sách hợp đồng. Vui lòng thử lại." });
+      return;
     }
   } else {
     const latestHopDong = this.model.getLatestHopDong();
@@ -54,18 +53,8 @@ export async function renderHopDongTable() {
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
-    tableBody.innerHTML = `
-            <tr>
-                <td colspan="13">
-                    <div class="empty-state">
-                        <i data-lucide="file-check-2"></i>
-                        <p>Không tìm thấy Hợp đồng nào phù hợp</p>
-                    </div>
-                </td>
-            </tr>
-        `;
     const pag = document.getElementById("hopdong-pagination");
-    if (pag) pag.innerHTML = "";
+    renderTableEmpty(tableBody, { colspan: 13, message: "Không tìm thấy Hợp đồng nào phù hợp", icon: "file-check-2", pagination: pag });
   } else {
     renderVirtualTable(tableBody, slicedData, (h) => {
       if (!this.model.state.selectedHopDongVersion) {
@@ -96,6 +85,21 @@ export async function renderHopDongTable() {
       const statusObj = custompaperstatuses.find((s) => s.name === displayedHd.trangThaiHoSo);
       const statusColor = statusObj ? statusObj.color : "#6b7280";
       const statusBadge = displayedHd.trangThaiHoSo ? `<span class="status-pill" style="background-color: ${statusColor}; color: white; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.78rem;">${displayedHd.trangThaiHoSo}</span>` : '<span class="text-muted" style="font-size:0.8rem;">Chưa cập nhật</span>';
+      const contractActions = displayedHd.goiThauIds?.length ? [{
+        id: displayedHd.goiThauIds[0],
+        command: "export-contract",
+        className: "btn-export",
+        title: "Xuất hợp đồng",
+        icon: "file-text",
+        style: "color: var(--emerald);",
+        attributes: { "contract-no": displayedHd.soHopDong }
+      }] : [];
+      contractActions.push(...standardEditDeleteActions({
+        id: displayedHd.id,
+        editCommand: "edit-contract",
+        deleteCommand: "delete-contract"
+      }));
+      const actionHtml = renderEntityActions(contractActions, { visible: displayedHd.id === h.id });
       return `
                 <tr>
                     <td>
@@ -115,28 +119,12 @@ export async function renderHopDongTable() {
                     <td>${displayedHd.soNgayThucHien ? isNaN(displayedHd.soNgayThucHien) ? displayedHd.soNgayThucHien : displayedHd.soNgayThucHien + " ngày" : "--"}</td>
                     <td>${statusBadge}</td>
                     <td class="text-right">
-                        <div class="action-btn-group">
-                            ${displayedHd.id === h.id ? `
-                                ${displayedHd.goiThauIds && displayedHd.goiThauIds.length > 0 ? `
-                                <button class="action-btn btn-export" data-bf-action="export-contract" data-id="${displayedHd.goiThauIds[0]}" data-contract-no="${displayedHd.soHopDong}" title="Xuất hợp đồng" style="color: var(--emerald);">
-                                    <i data-lucide="file-text"></i>
-                                </button>
-                                ` : ""}
-                                <button class="action-btn btn-edit" data-bf-action="edit-contract" data-id="${displayedHd.id}" title="Sửa">
-                                    <i data-lucide="edit-2"></i>
-                                </button>
-                                <button class="action-btn btn-delete" data-bf-action="delete-contract" data-id="${displayedHd.id}" title="Xóa">
-                                    <i data-lucide="trash-2"></i>
-                                </button>
-                            ` : ""}
-                        </div>
+                        ${actionHtml}
                     </td>
                 </tr>
             `;
     }, { colSpan: 11, rowHeight: 86, onRender: () => lucide.createIcons({ root: tableBody }) });
-    if (window.renderTablePagination) {
-      window.renderTablePagination("hopdong-pagination", totalItems, currentPage, pageSize);
-    }
+    executeAppCommand("renderTablePagination", "hopdong-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("hopdong-table", "hopdong");
@@ -152,7 +140,7 @@ export function showHopDongDetails(id, isSwitchingVersion = false) {
   id = targetId;
   const detailPane = document.getElementById("tab-hopdong-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
-    window.switchTab("hopdong-detail", id);
+    executeAppCommand("switchTab", "hopdong-detail", id);
     return;
   }
   const hd = this.model.state.hopdong.find((h) => h.id === id);
@@ -169,7 +157,7 @@ export function renderContractVersionDetails(versionId) {
     if (isLatest) {
       editBtn.style.display = "flex";
       editBtn.onclick = () => {
-        window.editHopDong(versionId);
+        executeAppCommand("editHopDong", versionId);
       };
     } else {
       editBtn.style.display = "none";
@@ -348,7 +336,7 @@ export function renderContractVersionDetails(versionId) {
       innerSelect.onchange = (e) => {
         this.renderContractVersionDetails(e.target.value);
       };
-      if (window.initCustomSelect) window.initCustomSelect("fullpage-hd-version-select");
+      initCustomSelect("fullpage-hd-version-select");
     }
     lucide.createIcons();
   }

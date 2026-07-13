@@ -1,6 +1,7 @@
-import { parseBidDateTime } from "./dateParseUtils.js";
+﻿import { parseBidDateTime } from "./dateParseUtils.js";
 import { bindCurrencyElement } from "../main_controller/domUtils.js";
 import { escapeHtml } from "../../views/subviews/view_helpers.js";
+import { initCustomSelect, syncCustomSelectDisabled } from "../../views/subviews/view_helpers.js";
 function normalizeSubRowValue(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -10,7 +11,7 @@ function makeSubRowKey(...values) {
 export function addPhanLoRow(data = {}) {
   const tbody = document.getElementById("phanlo-tbody");
   if (!tbody) return;
-  const rowId = data.id || window.generateRecordId("phanlo");
+  const rowId = data.id || generateRecordId("phanlo");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   const code = data.code || data.maPhanLo || "";
@@ -84,7 +85,7 @@ export function _collectPhanLoRows() {
 export function addTuyChonMuaThemRow(data = {}) {
   const tbody = document.getElementById("tuychonmuathem-tbody");
   if (!tbody) return;
-  const rowId = data.id || window.generateRecordId("tuychonmuathem");
+  const rowId = data.id || generateRecordId("tuychonmuathem");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   const hangMuc = data.hangMuc || data.name || "";
@@ -195,7 +196,7 @@ export function validateGiaHanRealtime() {
 export function addGiaHanRow(data = {}) {
   const tbody = document.getElementById("gt-giahan-tbody");
   if (!tbody) return;
-  const rowId = data.id || window.generateRecordId("giahan");
+  const rowId = data.id || generateRecordId("giahan");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
@@ -252,7 +253,7 @@ export function updateYeuCauLamRoIndices() {
 export function addYeuCauLamRoRow(data = {}) {
   const tbody = document.getElementById("gt-yeucaulamro-tbody");
   if (!tbody) return;
-  const rowId = data.id || window.generateRecordId("yeucaulamro");
+  const rowId = data.id || generateRecordId("yeucaulamro");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
@@ -306,7 +307,7 @@ export function updateTraLoiLamRoIndices() {
 export function addTraLoiLamRoRow(data = {}) {
   const tbody = document.getElementById("gt-traloilamro-tbody");
   if (!tbody) return;
-  const rowId = data.id || window.generateRecordId("traloilamro");
+  const rowId = data.id || generateRecordId("traloilamro");
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
@@ -371,9 +372,7 @@ export function enforceSingleLeader(tbodyId, roleName, changedSelect = null) {
       sel.disabled = true;
       sel.value = "Tổ viên";
     }
-    if (window.syncCustomSelectDisabled) {
-      window.syncCustomSelectDisabled(sel);
-    }
+    syncCustomSelectDisabled(sel);
     if (leaderSelect) {
       if (sel !== leaderSelect) {
         const wasLeader = sel.value === "Tổ trưởng";
@@ -391,8 +390,7 @@ export function enforceSingleLeader(tbodyId, roleName, changedSelect = null) {
         }
       }
     }
-    if (window.initCustomSelect && sel.id) {
-      window.initCustomSelect(sel.id);
-    }
+    if (sel.id) initCustomSelect(sel.id);
   });
 }
+import { generateRecordId } from "../../models/idUtils.js";

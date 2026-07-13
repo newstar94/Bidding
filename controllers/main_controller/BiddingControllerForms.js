@@ -2,6 +2,7 @@ import { bindCurrencyElement, bindCurrencyInput, debounce, onAll, onById } from 
 import { bindImageUploadPreview } from "./fileUploadUtils.js";
 import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisible } from "./formStateUtils.js";
 import { setupInlineExcelControls } from "./inlineExcelControls.js";
+import { initCustomSelect } from "../../views/subviews/view_helpers.js";
 export function updateNguonVonFieldState(planId) {
   const gtNguonVon = document.getElementById("gt-nguonvon");
   if (!gtNguonVon) return;
@@ -468,10 +469,8 @@ export function setupActionListeners() {
           this.handleQuaMangChange();
         }
       }
-      if (window.initCustomSelect) {
-        window.initCustomSelect("gt-phuongthuc");
-        window.initCustomSelect("gt-quatmang");
-      }
+      initCustomSelect("gt-phuongthuc");
+      initCustomSelect("gt-quatmang");
       updatePhuongPhapDanhGiaOptions();
       const toChuyenGiaSection = document.getElementById("to-chuyengia-section");
       const toThamDinhSection = document.getElementById("to-thamdinh-section");
@@ -710,14 +709,14 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
         if (lv === "Tư vấn" || ht2 === "Chào hàng cạnh tranh" || ht2 === "Chỉ định thầu rút gọn" || ht2 === "Lựa chọn nhà thầu trong trường hợp đặc biệt") {
           setDisabled(input, true);
         }
-        if (window.initCustomSelect) initCustomSelect(id);
+        initCustomSelect(id);
       }
       if (id === "gt-quatmang") {
         const ht2 = document.getElementById("gt-hinhthuc")?.value;
         if (ht2 === "Chỉ định thầu rút gọn" || ht2 === "Lựa chọn nhà thầu trong trường hợp đặc biệt") {
           setDisabled(input, true);
         }
-        if (window.initCustomSelect) initCustomSelect(id);
+        initCustomSelect(id);
       }
       const nonConditional = [
         "gt-kehoachid",

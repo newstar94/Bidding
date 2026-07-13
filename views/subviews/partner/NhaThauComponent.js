@@ -3,6 +3,9 @@ import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableData
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { resolveContractorVersion } from "../../../controllers/workflows/contractorVersionBinding.js";
 import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
+import { renderTableEmpty, renderTableError, renderTableLoading } from "../../components/EntityTable.js";
+import { renderEntityActions, standardEditDeleteActions } from "../../components/EntityActions.js";
+import { executeAppCommand } from "../../../controllers/core/commandBus.js";
 export async function renderNhaThauTable() {
   const tableBody = document.getElementById("nhathau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-nhathau").value.toLowerCase();
@@ -14,9 +17,7 @@ export async function renderNhaThauTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    if (!tableBody.querySelector(".empty-state") && tableBody.children.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
-    }
+    renderTableLoading(tableBody, 8);
     try {
       const data = await loadPaginatedRecords(this.model, "nhathau", {
         page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
@@ -25,6 +26,9 @@ export async function renderNhaThauTable() {
       totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated contractors", e);
+      clearVirtualTable(tableBody);
+      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách nhà thầu. Vui lòng thử lại." });
+      return;
     }
   } else {
     const latestNhaThau = this.model.getLatestNhaThau();
@@ -37,20 +41,10 @@ export async function renderNhaThauTable() {
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
-    tableBody.innerHTML = `
-            <tr>
-                <td colspan="8">
-                    <div class="empty-state">
-                        <i data-lucide="shield-alert"></i>
-                        <p>Không tìm thấy Nhà thầu nào phù hợp</p>
-                    </div>
-                </td>
-            </tr>
-        `;
     const pag = document.getElementById("nhathau-pagination");
-    if (pag) pag.innerHTML = "";
+    renderTableEmpty(tableBody, { colspan: 8, message: "Không tìm thấy Nhà thầu nào phù hợp", icon: "shield-alert", pagination: pag });
   } else {
-    const esc = window.escapeHTML || ((value) => String(value ?? ""));
+    const esc = escapeHtml;
     renderVirtualTable(tableBody, slicedData, (n) => {
       if (!this.model.state.selectedNhaThauVersion) {
         this.model.state.selectedNhaThauVersion = {};
@@ -61,6 +55,11 @@ export async function renderNhaThauTable() {
       const dropdownHtml = renderVersionSelector({
         versions, selectedId: displayedNt.id, rootId: root, changeAction: "change-contractor-version"
       });
+      const actionHtml = renderEntityActions(standardEditDeleteActions({
+        id: displayedNt.id,
+        editCommand: "edit-contractor",
+        deleteCommand: "delete-contractor"
+      }), { visible: displayedNt.id === n.id });
       const isJV = displayedNt.loaiNhaThau === "Liên danh";
       if (isJV) {
         const members = displayedNt.thanhVienLienDanh || [];
@@ -91,16 +90,7 @@ export async function renderNhaThauTable() {
                         <td>${contacts}</td>
                         <td>${bankAccs}</td>
                         <td class="text-right">
-                            <div class="action-btn-group">
-                                ${displayedNt.id === n.id ? `
-                                <button class="action-btn btn-edit" data-bf-action="edit-contractor" data-id="${esc(displayedNt.id)}" title="Sửa">
-                                    <i data-lucide="edit-2"></i>
-                                </button>
-                                <button class="action-btn btn-delete" data-bf-action="delete-contractor" data-id="${esc(displayedNt.id)}" title="Xóa">
-                                    <i data-lucide="trash-2"></i>
-                                </button>
-                                ` : ""}
-                            </div>
+                            ${actionHtml}
                         </td>
                     </tr>
                 `;
@@ -126,24 +116,13 @@ export async function renderNhaThauTable() {
                         <td>${contact}</td>
                         <td>${bankAcc}</td>
                         <td class="text-right">
-                            <div class="action-btn-group">
-                                ${displayedNt.id === n.id ? `
-                                <button class="action-btn btn-edit" data-bf-action="edit-contractor" data-id="${esc(displayedNt.id)}" title="Sửa">
-                                    <i data-lucide="edit-2"></i>
-                                </button>
-                                <button class="action-btn btn-delete" data-bf-action="delete-contractor" data-id="${esc(displayedNt.id)}" title="Xóa">
-                                    <i data-lucide="trash-2"></i>
-                                </button>
-                                ` : ""}
-                            </div>
+                            ${actionHtml}
                         </td>
                     </tr>
                 `;
       }
     }, { colSpan: 7, rowHeight: 92, onRender: () => lucide.createIcons({ root: tableBody }) });
-    if (window.renderTablePagination) {
-      window.renderTablePagination("nhathau-pagination", totalItems, currentPage, pageSize);
-    }
+    executeAppCommand("renderTablePagination", "nhathau-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("nhathau-table", "nhathau");
@@ -151,7 +130,7 @@ export async function renderNhaThauTable() {
 export function showNhaThauDetails(id, isSwitchingVersion = false) {
   const detailPane = document.getElementById("tab-nhathau-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
-    window.switchTab("nhathau-detail", id);
+    executeAppCommand("switchTab", "nhathau-detail", id);
     return;
   }
   const nt = this.model.state.nhathau.find((n) => n.id === id);
@@ -170,7 +149,7 @@ export function renderNhaThauVersionDetails(versionId) {
     if (isLatest) {
       editBtn.style.display = "flex";
       editBtn.onclick = () => {
-        window.editNhaThau(versionId);
+        executeAppCommand("editNhaThau", versionId);
       };
     } else {
       editBtn.style.display = "none";
@@ -332,7 +311,7 @@ export function renderNhaThauVersionDetails(versionId) {
       } else {
         innerSelect.onchange = null;
       }
-      if (window.initCustomSelect) window.initCustomSelect("fullpage-nt-version-select");
+      initCustomSelect("fullpage-nt-version-select");
     }
     lucide.createIcons();
   }

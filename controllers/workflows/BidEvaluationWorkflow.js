@@ -1023,7 +1023,7 @@ export function renderDanhGiaHsdtPanel() {
             const resolvedMembers = resolveBidJointVentureMembers(this.model, bid);
             const subMembers = resolvedMembers.filter((m) => m.vaiTro !== "Đứng đầu liên danh" && (m.maNhaThau || m.maSoThue) !== bid.maNhaThau);
             const leadM = resolvedMembers.find((m) => m.vaiTro === "Đứng đầu liên danh") || { tenNhaThau: resolveBidContractorName(this.model, bid), maNhaThau: bid.maNhaThau, maSoThue: "" };
-            window.openMoThauJVViewModal(subMembers, leadM.tenNhaThau, leadM.maNhaThau || leadM.maSoThue, leadM.thanhVienNhaThauId || "");
+            executeAppCommand("openMoThauJVViewModal", subMembers, leadM.tenNhaThau, leadM.maNhaThau || leadM.maSoThue, leadM.thanhVienNhaThauId || "");
           });
         }
         tbody.appendChild(tr);
@@ -1382,3 +1382,4 @@ export async function saveDanhGiaHsdt() {
   }
   await this.view.customAlert("Lưu thành công", `Đã lưu toàn bộ thông tin báo cáo đánh giá của gói thầu "${gt.tenGoiThau}" thành công!`, "check-circle");
 }
+import { executeAppCommand } from "../core/commandBus.js";

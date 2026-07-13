@@ -1,7 +1,5 @@
-const getStore = () => {
-  window._jvDataMap = window._jvDataMap || {};
-  return window._jvDataMap;
-};
+const jvDataMap = Object.create(null);
+const getStore = () => jvDataMap;
 export function setJvData(key, data) {
   if (!key) return;
   getStore()[key] = data;

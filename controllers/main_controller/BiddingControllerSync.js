@@ -1,4 +1,5 @@
 import { applySyncPayload } from "./syncMergeUtils.js";
+import { APP_DEBUG } from "../core/appConfig.js";
 export function collectCommittedMutationKeys(payload = {}) {
   return new Set([
     ...Object.keys(payload.upserts || {}),
@@ -472,7 +473,7 @@ export function setupWebSocketConnection() {
   }
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}/ws/sync`;
-  const debug = window.__BF_APP_DEBUG__ === true;
+  const debug = APP_DEBUG;
   if (debug) console.log("Connecting to WebSocket sync server:", wsUrl);
   const ws = new WebSocket(wsUrl);
   this.ws = ws;

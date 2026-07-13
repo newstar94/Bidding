@@ -2,6 +2,10 @@ import { escapeHtml, formatDateOnly, safeImageSrc } from "../view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
+import { renderTableEmpty, renderTableError, renderTableLoading } from "../../components/EntityTable.js";
+import { renderEntityActions, standardEditDeleteActions } from "../../components/EntityActions.js";
+import { executeAppCommand } from "../../../controllers/core/commandBus.js";
+import { getAppController } from "../../../controllers/main_controller/controllerRef.js";
 export async function renderChuyenGiaTable() {
   const table = document.getElementById("chuyengia-table");
   if (!table) return;
@@ -22,9 +26,7 @@ export async function renderChuyenGiaTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    if (!tableBody.querySelector(".empty-state") && tableBody.children.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
-    }
+    renderTableLoading(tableBody, 7);
     try {
       const data = await loadPaginatedRecords(this.model, "chuyengia", {
         page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
@@ -36,11 +38,7 @@ export async function renderChuyenGiaTable() {
       console.error("Failed to fetch paginated experts", e);
       if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
       clearVirtualTable(tableBody);
-      tableBody.innerHTML = `
-                <tr><td colspan="7" style="text-align:center; padding:28px; color:var(--danger);">
-                    Không thể tải danh sách Chuyên gia. Vui lòng thử lại.
-                </td></tr>
-            `;
+      renderTableError(tableBody, { colspan: 7, message: "Không thể tải danh sách chuyên gia. Vui lòng thử lại." });
       return;
     }
   } else {
@@ -54,18 +52,8 @@ export async function renderChuyenGiaTable() {
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
-    tableBody.innerHTML = `
-            <tr>
-                <td colspan="7">
-                    <div class="empty-state">
-                        <i data-lucide="user-x"></i>
-                        <p>Không tìm thấy Chuyên gia nào phù hợp</p>
-                    </div>
-                </td>
-            </tr>
-        `;
     const pag = document.getElementById("chuyengia-pagination");
-    if (pag) pag.innerHTML = "";
+    renderTableEmpty(tableBody, { colspan: 7, message: "Không tìm thấy Chuyên gia nào phù hợp", icon: "user-x", pagination: pag });
   } else {
     renderVirtualTable(tableBody, slicedData, (cg) => {
       if (!this.model.state.selectedChuyenGiaVersion) {
@@ -76,6 +64,11 @@ export async function renderChuyenGiaTable() {
       );
       const displayedId = escapeHtml(displayedCg.id);
       const expertName = escapeHtml(displayedCg.hoTen || "");
+      const actionHtml = renderEntityActions(standardEditDeleteActions({
+        id: displayedCg.id,
+        editCommand: "edit-expert",
+        deleteCommand: "delete-expert"
+      }), { visible: !isEmployee && displayedCg.id === cg.id });
       const expertCccd = escapeHtml(displayedCg.soCCCD || "");
       const certificateNo = escapeHtml(displayedCg.soChungChi || "");
       const certificateIssuer = escapeHtml(displayedCg.donViCapChungChi || "--");
@@ -97,32 +90,19 @@ export async function renderChuyenGiaTable() {
                 <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${certificateIssuer}</td>
                 <td>${certificateDate}</td>
                 <td class="text-right">
-                    ${isEmployee ? "" : `
-                    <div class="action-btn-group">
-                        ${displayedCg.id === cg.id ? `
-                        <button class="action-btn btn-edit" data-bf-action="edit-expert" data-id="${displayedId}" title="Sửa">
-                            <i data-lucide="edit-2"></i>
-                        </button>
-                        <button class="action-btn btn-delete" data-bf-action="delete-expert" data-id="${displayedId}" title="Xóa">
-                            <i data-lucide="trash-2"></i>
-                        </button>
-                        ` : ""}
-                    </div>
-                    `}
+                    ${actionHtml}
                 </td>
             </tr>
             `;
     }, { colSpan: 7, rowHeight: 76, onRender: () => lucide.createIcons({ root: tableBody }) });
-    if (window.renderTablePagination) {
-      window.renderTablePagination("chuyengia-pagination", totalItems, currentPage, pageSize);
-    }
+    executeAppCommand("renderTablePagination", "chuyengia-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("chuyengia-table", "chuyengia");
 }
 export function showChuyenGiaDetails(id) {
   if (!document.getElementById("modal-detail-chuyengia")) {
-    window.appController?.ensureLazyModal?.("modal-detail-chuyengia").then(() => this.showChuyenGiaDetails(id));
+    getAppController()?.ensureLazyModal?.("modal-detail-chuyengia").then(() => this.showChuyenGiaDetails(id));
     return;
   }
   const cg = this.model.state.chuyengia.find((c) => c.id === id);

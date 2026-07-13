@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "python -m compileall -q backend scripts && npm run build && npm run test:unit && npm run test:api",
+    "check": "npm run lint && npm run audit:modules && npm run audit:dead && python -m compileall -q backend scripts && npm run build -- --emptyOutDir false && npm run test:unit && npm run test:api",
+    "audit:modules": "node scripts/audit_module_references.mjs",
+    "audit:dead": "node scripts/audit_dead_code.mjs",
+    "lint": "npm run lint:js && npm run lint:py",
+    "lint:js": "node scripts/lint_js.mjs",
+    "lint:py": "python scripts/lint_python.py",
     "generate:schema": "python scripts/generate_schema_contract.py",
     "build": "vite build",
     "build:secure": "vite build --mode secure",

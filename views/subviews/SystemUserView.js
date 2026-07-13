@@ -1,4 +1,5 @@
 import { getAppController } from "../../controllers/main_controller/controllerRef.js";
+import { escapeHtml as escapeHTML } from "./view_helpers.js";
 export function updateActiveUserProfileDisplay() {
   const avatar = document.getElementById("header-profile-avatar");
   const h4 = document.getElementById("header-profile-name");

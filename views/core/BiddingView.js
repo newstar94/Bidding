@@ -5,13 +5,14 @@ import * as SystemUser from "/views/subviews/SystemUserView.js";
 import { escapeHtml, initCustomSelect, syncCustomSelectDisabled } from "../subviews/view_helpers.js";
 import { ensureFlatpickrLoaded } from "/controllers/utils/externalAssets.js";
 import { focusInvalidControl } from "/controllers/main_controller/formStateUtils.js";
-window.initCustomSelect = initCustomSelect;
-window.syncCustomSelectDisabled = syncCustomSelectDisabled;
+import { validateForm as validateConfiguredForm } from "/controllers/forms/FormValidation.js";
+import { installPrototypeModules } from "/controllers/core/moduleRegistry.js";
+import { executeAppCommand } from "/controllers/core/commandBus.js";
+import { getAppController } from "/controllers/main_controller/controllerRef.js";
 export class BiddingView {
   constructor(model) {
     this.model = model;
     this.elements = {};
-    window.showToast = (message, type, duration) => this.showToast(message, type, duration);
   }
   initDOM() {
     this.elements = {
@@ -232,7 +233,7 @@ export class BiddingView {
         th.addEventListener("click", (e) => {
           if (e.target.closest("select") || e.target.closest("input") || e.target.closest("button") || e.target.closest("a")) return;
           if (tableKey && field) {
-            window.toggleSortTable(tableKey, field);
+            executeAppCommand("toggleSortTable", tableKey, field);
           } else {
             const currentOrder = th.getAttribute("data-sort-order") === "asc" ? "desc" : "asc";
             ths.forEach((otherTh) => {
@@ -318,8 +319,8 @@ export class BiddingView {
       modal.classList.add("active");
       this.enhanceVisibleContent(modal);
       this.createIconsScoped(modal);
-    } else if (window.appController?.ensureLazyModal) {
-      window.appController.ensureLazyModal(modalId).then(() => this.openModal(modalId)).catch((err) => console.error("Failed to lazy-load modal:", modalId, err));
+    } else if (getAppController()?.ensureLazyModal) {
+      getAppController().ensureLazyModal(modalId).then(() => this.openModal(modalId)).catch((err) => console.error("Failed to lazy-load modal:", modalId, err));
     }
   }
   initFlatpickr(container = document) {
@@ -1108,57 +1109,7 @@ export class BiddingView {
     });
   }
   validateForm(form) {
-    let isValid = true;
-    const requiredInputs = form.querySelectorAll("[required]");
-    const invalidInputs = [];
-    requiredInputs.forEach((input) => {
-      const formGroup = input.closest(".form-group");
-      if (formGroup && formGroup.offsetWidth === 0 && formGroup.offsetHeight === 0) {
-        return;
-      }
-      if (!formGroup && input.offsetWidth === 0 && input.offsetHeight === 0 && input.type !== "hidden") {
-        return;
-      }
-      let inputValid = true;
-      if (input.value.trim() === "") {
-        inputValid = false;
-      } else if (input.type === "number") {
-        const val = parseFloat(input.value);
-        const min = input.getAttribute("min") ? parseFloat(input.getAttribute("min")) : -Infinity;
-        if (isNaN(val) || val < min) {
-          inputValid = false;
-        }
-      } else if (input.type === "email") {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(input.value.trim())) {
-          inputValid = false;
-        }
-      }
-      if (formGroup) {
-        if (!inputValid) {
-          formGroup.classList.add("invalid");
-          invalidInputs.push(input);
-          isValid = false;
-        } else {
-          formGroup.classList.remove("invalid");
-        }
-        const handler = () => {
-          if (input.value.trim() !== "") {
-            formGroup.classList.remove("invalid");
-            input.removeEventListener("input", handler);
-            input.removeEventListener("change", handler);
-          }
-        };
-        input.addEventListener("input", handler);
-        input.addEventListener("change", handler);
-      }
-    });
-    if (!isValid) {
-      if (invalidInputs.length > 0) {
-        focusInvalidControl(invalidInputs[0]);
-      }
-    }
-    return isValid;
+    return validateConfiguredForm(form).valid;
   }
   focusInvalidControl(input, options) {
     return focusInvalidControl(input, options);
@@ -1236,9 +1187,9 @@ export class BiddingView {
     return maps[status] || `<span class="badge">${escapeHtml(status)}</span>`;
   }
 }
-Object.assign(BiddingView.prototype, {
-  ...Dashboard,
-  ...Plan,
-  ...Partner,
-  ...SystemUser
-});
+installPrototypeModules(BiddingView, [
+  { name: "dashboard-view", module: Dashboard },
+  { name: "plan-view", module: Plan },
+  { name: "partner-view", module: Partner },
+  { name: "system-user-view", module: SystemUser },
+]);

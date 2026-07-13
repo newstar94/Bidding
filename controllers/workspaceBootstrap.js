@@ -5,6 +5,7 @@ import * as Auth from "/controllers/auth/AuthController.js";
 import * as MainUI from "/controllers/main_controller/BiddingControllerUI.js";
 import * as MainForms from "/controllers/main_controller/BiddingControllerForms.js";
 import * as MainSync from "/controllers/main_controller/BiddingControllerSync.js";
+import { installPrototypeModules } from "/controllers/core/moduleRegistry.js";
 export async function bootstrapWorkspace(initialSession) {
   const effectiveRoles = initialSession?.user?.effective_roles || [];
   const needsAdmin = effectiveRoles.some((role) => ["manager", "super_admin"].includes(role));
@@ -12,13 +13,13 @@ export async function bootstrapWorkspace(initialSession) {
     setupRBACEvents() {
     }
   };
-  Object.assign(BiddingController.prototype, {
-    ...Auth,
-    ...Admin,
-    ...MainUI,
-    ...MainForms,
-    ...MainSync
-  });
+  installPrototypeModules(BiddingController, [
+    { name: "auth", module: Auth },
+    { name: "admin", module: Admin },
+    { name: "main-ui", module: MainUI },
+    { name: "main-forms", module: MainForms },
+    { name: "main-sync", module: MainSync },
+  ]);
   const model = new BiddingModel();
   const view = new BiddingView(model);
   const controller = new BiddingController(model, view);

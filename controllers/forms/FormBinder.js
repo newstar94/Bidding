@@ -1,7 +1,9 @@
 function resolveControl(root, target) {
   if (!target) return null;
   if (typeof target !== "string") return target;
-  return root?.getElementById?.(target) || root?.querySelector?.(`#${CSS?.escape ? CSS.escape(target) : target}`) || null;
+  return root?.getElementById?.(target)
+    || root?.querySelector?.(`#${globalThis.CSS?.escape ? globalThis.CSS.escape(target) : target}`)
+    || null;
 }
 
 export function clearFormValidation(form) {
@@ -30,9 +32,17 @@ export function collectFormValues(root, mapping) {
     const control = resolveControl(root, descriptor.target);
     if (!control) return;
     const raw = control.type === "checkbox" ? control.checked : control.value;
-    result[dataKey] = descriptor.parse ? descriptor.parse(raw, control) : raw;
+    const parsed = descriptor.parse ? descriptor.parse(raw, control) : raw;
+    result[dataKey] = descriptor.normalize ? descriptor.normalize(parsed, control) : parsed;
   });
   return result;
+}
+
+export function normalizeFormValues(data, schema = {}) {
+  return Object.fromEntries(Object.entries(data || {}).map(([key, value]) => {
+    const normalize = schema[key]?.normalize || schema[key];
+    return [key, typeof normalize === "function" ? normalize(value, data) : value];
+  }));
 }
 
 export function resetFormState(form, { values = null, root = document, mapping = null } = {}) {

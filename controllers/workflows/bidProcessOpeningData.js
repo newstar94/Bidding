@@ -1,4 +1,4 @@
-import { normalizePersonName, normalizeTaxCodeForCompare, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
+﻿import { normalizePersonName, normalizeTaxCodeForCompare, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
 import { getExactContractorVersion, selectContractorVersionForDate } from "./contractorVersionBinding.js";
 function normalizeOpeningCode(value) {
   return normalizeTaxCodeForCompare(value);
@@ -87,7 +87,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
   if (!isJointVentureType(loaiNhaThau)) {
     if (!foundNt) {
       foundNt = createIndependentContractor({
-        id: window.generateRecordId("nhathau"),
+        id: generateRecordId("nhathau"),
         maNhaThau,
         tenNhaThau,
         member: row._leadMemberLookupData || {}
@@ -111,7 +111,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
   }
   if (!foundNt) {
     foundNt = createIndependentContractor({
-      id: window.generateRecordId("nhathau"),
+      id: generateRecordId("nhathau"),
       maNhaThau,
       tenNhaThau: row._leadMemberName || `Thành viên đứng đầu ${maNhaThau}`,
       member: {
@@ -146,7 +146,7 @@ function ensureContractor({ model, latestNhaThauList, maNhaThau, tenNhaThau, loa
     let subNt = findLatestContractorByCode(latestNhaThauList, memberCode);
     if (!subNt) {
       subNt = createIndependentContractor({
-        id: window.generateRecordId("nhathau"),
+        id: generateRecordId("nhathau"),
         maNhaThau: memberCode,
         tenNhaThau: member.tenNhaThau,
         member
@@ -303,3 +303,4 @@ export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecia
     };
   });
 }
+import { generateRecordId } from "../../models/idUtils.js";

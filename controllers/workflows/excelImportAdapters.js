@@ -1,4 +1,4 @@
-function findOpeningPackage(controller) {
+﻿function findOpeningPackage(controller) {
   const select = document.getElementById("mothau-goithau-select") || document.getElementById("danhgiahsdt-goithau-select");
   const gtId = select ? select.value : controller._currentPackageId || "";
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
@@ -165,7 +165,7 @@ export async function parseAwardResultImport(controller, rows) {
         if (foundNt) {
           comment = "Hợp lệ (Nhà thầu mới sẽ được thêm vào danh sách)";
           foundBid = {
-            id: window.generateRecordId("thongtinmothau"),
+            id: generateRecordId("thongtinmothau"),
             nhaThauId: foundNt.id,
             maNhaThau: foundNt.maNhaThau || foundNt.maSoThue || "",
             tenNhaThau: foundNt.tenNhaThau,
@@ -217,7 +217,7 @@ export async function parseOpeningImport(controller, rows) {
     const foundNhaThau = controller.model.state.nhathau.find(
       (n) => n.maNhaThau && maNhaThau && n.maNhaThau.toLowerCase() === maNhaThau.toLowerCase() || n.tenNhaThau && rawNhaThau && n.tenNhaThau.toLowerCase() === rawNhaThau.toLowerCase()
     );
-    const nhaThauId = foundNhaThau ? foundNhaThau.id : window.generateRecordId("nhathau");
+    const nhaThauId = foundNhaThau ? foundNhaThau.id : generateRecordId("nhathau");
     const maPhanLo = String(row["Mã phần lô"] || row["Phần lô"] || row["Mã lô"] || "").trim();
     let tenPhanLo = String(row["Tên phần lô (Tự động điền)"] || row["Tên phần lô"] || row["Tên lô"] || "").trim();
     if (maPhanLo && !tenPhanLo && goiThau.phanLoList) {
@@ -263,3 +263,4 @@ export async function parseOpeningImport(controller, rows) {
     return record;
   });
 }
+import { generateRecordId } from "../../models/idUtils.js";

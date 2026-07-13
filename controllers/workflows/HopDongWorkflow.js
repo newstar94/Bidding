@@ -1,4 +1,4 @@
-import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
+﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
 import { selectPartnerVersionForDate } from "./contractorVersionBinding.js";
 import { removeAllVersions, removeLatestVersion } from "../domain/VersionedEntityService.js";
 import { persistAndSync } from "../domain/MutationService.js";
@@ -500,7 +500,7 @@ export async function handleHopDongSubmit(e) {
       versions.forEach((h) => {
         h.isLatest = 0;
       });
-      data.id = window.generateRecordId("hopdong");
+      data.id = generateRecordId("hopdong");
       data.rootId = rootId;
       data.phienBan = nextVerStr;
       data.isLatest = 1;
@@ -519,7 +519,7 @@ export async function handleHopDongSubmit(e) {
       this.model.state.hopdong[idx] = data;
     }
   } else {
-    const newId = window.generateRecordId("hopdong");
+    const newId = generateRecordId("hopdong");
     data.id = newId;
     data.rootId = newId;
     data.phienBan = "00";
@@ -535,7 +535,7 @@ export async function handleHopDongSubmit(e) {
       await this.model.deleteRecord("assignments", oldA.id);
     }
     if (assignedEmpId) {
-      await this.model.addRecord("assignments", { id: window.generateRecordId("assignments"), empId: assignedEmpId, targetId: finalHdId, type: "hopdong" });
+      await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: finalHdId, type: "hopdong" });
     }
   }
   if (hasModalReturnState("hopdong-detail") && finalHdId) {
@@ -548,3 +548,4 @@ export async function handleHopDongSubmit(e) {
     }
   });
 }
+import { generateRecordId } from "../../models/idUtils.js";

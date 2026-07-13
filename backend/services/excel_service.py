@@ -8,149 +8,142 @@ from helpers import (
 )
 from helpers_py.excel_handler import (
     _schema_to_headers,
-    _schema_to_options
+    _schema_to_options,
+    _schema_to_formats,
 )
 from helpers_py.sync_mapper import fetch_package_lot_codes
 
+
+HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+HEADER_FILL = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+CENTER_ALIGN = Alignment(horizontal="center", vertical="center")
+BORDER_SIDE = Side(border_style="thin", color="D9D9D9")
+THIN_BORDER = Border(left=BORDER_SIDE, right=BORDER_SIDE, top=BORDER_SIDE, bottom=BORDER_SIDE)
+
+
+def _add_dropdown_sheet(workbook, options_map):
+    ranges = {}
+    if not options_map:
+        return ranges
+    sheet = workbook.create_sheet(title="Dropdowns")
+    sheet.sheet_state = "hidden"
+    for option_index, (header, values) in enumerate(options_map.items(), start=1):
+        column_letter = get_column_letter(option_index)
+        for value_index, value in enumerate(values, start=1):
+            sheet.cell(row=value_index, column=option_index, value=value)
+        ranges[header] = f"Dropdowns!${column_letter}$1:${column_letter}${len(values)}"
+    return ranges
+
+
+def _format_cell(cell, field_format):
+    if field_format == "currency":
+        cell.number_format = "#,##0"
+    elif field_format == "date":
+        cell.number_format = "dd/mm/yyyy"
+    elif field_format == "datetime":
+        cell.number_format = 'hh:mm "ngày" dd/mm/yyyy'
+
+
+def _finalize_widths(sheet):
+    for column in sheet.columns:
+        max_len = max(len(str(cell.value or "")) for cell in column)
+        sheet.column_dimensions[get_column_letter(column[0].column)].width = max(max_len + 3, 15)
+
+
+def _build_configured_workbook(
+    title,
+    headers,
+    rows=None,
+    options_map=None,
+    formats_map=None,
+    empty_rows=0,
+    validation_padding=10,
+):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = title
+    rows = list(rows or [])
+    formats_map = formats_map or {}
+    option_ranges = _add_dropdown_sheet(workbook, options_map or {})
+
+    sheet.append(headers)
+    sheet.row_dimensions[1].height = 28
+    for column_index in range(1, len(headers) + 1):
+        cell = sheet.cell(row=1, column=column_index)
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+        cell.alignment = CENTER_ALIGN
+        cell.border = THIN_BORDER
+
+    total_rows = max(len(rows), empty_rows)
+    for row_index in range(2, total_rows + 2):
+        sheet.row_dimensions[row_index].height = 22
+        values = rows[row_index - 2] if row_index - 2 < len(rows) else []
+        for column_index, header in enumerate(headers, start=1):
+            value = values[column_index - 1] if column_index - 1 < len(values) else None
+            cell = sheet.cell(row=row_index, column=column_index, value=value)
+            cell.border = THIN_BORDER
+            _format_cell(cell, formats_map.get(header))
+
+    validation_end = max(2 + len(rows) + validation_padding, 1 + empty_rows)
+    for column_index, header in enumerate(headers, start=1):
+        formula = option_ranges.get(header)
+        if not formula:
+            continue
+        column_letter = get_column_letter(column_index)
+        validation = DataValidation(type="list", formula1=formula, allow_blank=True)
+        validation.error = "Giá trị nhập không hợp lệ, vui lòng chọn từ danh sách"
+        validation.errorTitle = "Lỗi nhập dữ liệu"
+        validation.prompt = "Vui lòng chọn giá trị từ danh sách"
+        validation.promptTitle = header
+        sheet.add_data_validation(validation)
+        validation.add(f"{column_letter}2:{column_letter}{validation_end}")
+
+    _finalize_widths(sheet)
+    return workbook
+
+
+OPENING_TEMPLATE_HEADERS = {
+    "TU_VAN": ["Loại nhà thầu", "Mã nhà thầu", "Tên nhà thầu (Nhập chính xác)", "Hiệu lực E-HSĐXKT (ngày)", "Thời gian thực hiện (ngày)"],
+    "1G2T_NO_LOT": ["Loại nhà thầu", "Mã nhà thầu", "Tên nhà thầu (Nhập chính xác)", "Đảm bảo dự thầu (VND)", "Hiệu lực đảm bảo (ngày)", "Hiệu lực E-HSĐXKT (ngày)"],
+    "1G2T_WITH_LOT": ["Loại nhà thầu", "Mã phần lô", "Tên phần lô (Tự động điền)", "Mã nhà thầu", "Tên nhà thầu (Nhập chính xác)", "Đảm bảo dự thầu (VND)", "Hiệu lực đảm bảo (ngày)", "Hiệu lực E-HSĐXKT (ngày)"],
+    "1G1T_NO_LOT": ["Loại nhà thầu", "Mã nhà thầu", "Tên nhà thầu (Nhập chính xác)", "Giá dự thầu (VND)", "Tỷ lệ giảm giá (%)", "Giá sau giảm giá (nếu có)", "Hiệu lực E-HSDT (ngày)", "Giá trị ĐB DT (VND)", "Hiệu lực ĐB (ngày)", "Thời gian thực hiện (ngày)"],
+    "1G1T_WITH_LOT": ["Loại nhà thầu", "Mã phần lô", "Tên phần lô (Tự động điền)", "Mã nhà thầu", "Tên nhà thầu (Nhập chính xác)", "Giá dự thầu (VND)", "Tỷ lệ giảm (%)", "Giá sau giảm giá (nếu có)", "Hiệu lực E-HSDT (ngày)", "Giá trị ĐB (VND)", "Hiệu lực ĐB", "Thời gian thực hiện (ngày)"],
+}
+
 def create_excel_template(import_type):
-    """Tạo file mẫu Excel nhập liệu cơ bản cho chudautu, kehoach, goithau, nhathau, chuyengia, hopdong..."""
-    cols = _schema_to_headers(import_type)
-    if not cols:
+    """Tạo file mẫu Excel nhập liệu cơ bản theo schema thực thể."""
+    headers = _schema_to_headers(import_type)
+    if not headers:
         raise ValueError(f"Invalid type: {import_type}")
-
-    options_map = _schema_to_options(import_type)
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Nhap Lieu"
-
-    options_ranges = {}
-    if options_map:
-        ws_options = wb.create_sheet(title="Dropdowns")
-        ws_options.sheet_state = 'hidden'
-        for opt_idx, (opt_col_name, opt_values) in enumerate(options_map.items(), start=1):
-            opt_col_letter = get_column_letter(opt_idx)
-            for val_idx, val in enumerate(opt_values, start=1):
-                ws_options.cell(row=val_idx, column=opt_idx, value=val)
-            options_ranges[opt_col_name] = f"Dropdowns!${opt_col_letter}$1:${opt_col_letter}${len(opt_values)}"
-
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center")
-    border_side = Side(border_style="thin", color="D9D9D9")
-    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-
-    ws.append(cols)
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, len(cols) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = thin_border
-
-    for r in range(2, 52):
-        ws.row_dimensions[r].height = 22
-        for col_idx in range(1, len(cols) + 1):
-            cell = ws.cell(row=r, column=col_idx)
-            cell.border = thin_border
-
-
-    for col_idx, col_name in enumerate(cols, start=1):
-        if col_name in options_ranges:
-            col_letter = get_column_letter(col_idx)
-            formula = options_ranges[col_name]
-            dv = DataValidation(type="list", formula1=formula, allow_blank=True)
-            dv.error = 'Giá trị nhập không hợp lệ, vui lòng chọn từ danh sách'
-            dv.errorTitle = 'Lỗi nhập dữ liệu'
-            dv.prompt = 'Vui lòng chọn giá trị từ danh sách'
-            dv.promptTitle = col_name
-            ws.add_data_validation(dv)
-            dv.add(f"{col_letter}2:{col_letter}50")
-
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-
-    return wb
+    return _build_configured_workbook(
+        "Nhap Lieu",
+        headers,
+        options_map=_schema_to_options(import_type),
+        formats_map=_schema_to_formats(import_type),
+        empty_rows=50,
+    )
 
 def create_mothau_template(case_type, lot_codes):
-    """Tạo template Excel mẫu mở thầu."""
-    headers = []
-    options_map = {
-        'Loại nhà thầu': ['Độc lập', 'Liên danh']
+    """Tạo template Excel mẫu mở thầu từ cấu hình cột dùng chung."""
+    headers = OPENING_TEMPLATE_HEADERS.get(case_type)
+    if not headers:
+        raise ValueError(f"Invalid opening template type: {case_type}")
+    options_map = {"Loại nhà thầu": ["Độc lập", "Liên danh"]}
+    if "_WITH_LOT" in case_type and lot_codes:
+        options_map["Mã phần lô"] = lot_codes
+    currency_headers = {
+        header: "currency"
+        for header in headers
+        if "(VND)" in header or header.startswith("Giá sau giảm")
     }
-
-    if case_type == 'TU_VAN':
-        headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Hiệu lực E-HSĐXKT (ngày)', 'Thời gian thực hiện (ngày)']
-    elif case_type == '1G2T_NO_LOT':
-        headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)']
-    elif case_type == '1G2T_WITH_LOT':
-        headers = ['Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Đảm bảo dự thầu (VND)', 'Hiệu lực đảm bảo (ngày)', 'Hiệu lực E-HSĐXKT (ngày)']
-        if lot_codes:
-            options_map['Mã phần lô'] = lot_codes
-    elif case_type == '1G1T_NO_LOT':
-        headers = ['Loại nhà thầu', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Giá dự thầu (VND)', 'Tỷ lệ giảm giá (%)', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSDT (ngày)', 'Giá trị ĐB DT (VND)', 'Hiệu lực ĐB (ngày)', 'Thời gian thực hiện (ngày)']
-    elif case_type == '1G1T_WITH_LOT':
-        headers = ['Loại nhà thầu', 'Mã phần lô', 'Tên phần lô (Tự động điền)', 'Mã nhà thầu', 'Tên nhà thầu (Nhập chính xác)', 'Giá dự thầu (VND)', 'Tỷ lệ giảm (%)', 'Giá sau giảm giá (nếu có)', 'Hiệu lực E-HSDT (ngày)', 'Giá trị ĐB (VND)', 'Hiệu lực ĐB', 'Thời gian thực hiện (ngày)']
-        if lot_codes:
-            options_map['Mã phần lô'] = lot_codes
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Mo Thau"
-
-    options_ranges = {}
-    if options_map:
-        ws_options = wb.create_sheet(title="Dropdowns")
-        ws_options.sheet_state = 'hidden'
-        for opt_idx, (opt_col_name, opt_values) in enumerate(options_map.items(), start=1):
-            opt_col_letter = get_column_letter(opt_idx)
-            for val_idx, val in enumerate(opt_values, start=1):
-                ws_options.cell(row=val_idx, column=opt_idx, value=val)
-            options_ranges[opt_col_name] = f"Dropdowns!${opt_col_letter}$1:${opt_col_letter}${len(opt_values)}"
-
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center")
-    border_side = Side(border_style="thin", color="D9D9D9")
-    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-
-    ws.append(headers)
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = thin_border
-
-    for r in range(2, 52):
-        ws.row_dimensions[r].height = 22
-        for col_idx in range(1, len(headers) + 1):
-            cell = ws.cell(row=r, column=col_idx)
-            cell.border = thin_border
-
-
-    for col_idx, col_name in enumerate(headers, start=1):
-        if col_name in options_ranges:
-            col_letter = get_column_letter(col_idx)
-            formula = options_ranges[col_name]
-            dv = DataValidation(type="list", formula1=formula, allow_blank=True)
-            dv.error = 'Giá trị nhập không hợp lệ, vui lòng chọn từ danh sách'
-            dv.errorTitle = 'Lỗi nhập dữ liệu'
-            dv.prompt = 'Vui lòng chọn giá trị từ danh sách'
-            dv.promptTitle = col_name
-            ws.add_data_validation(dv)
-            dv.add(f"{col_letter}2:{col_letter}50")
-
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-
-    return wb
+    return _build_configured_workbook(
+        "Mo Thau",
+        headers,
+        options_map=options_map,
+        formats_map=currency_headers,
+        empty_rows=50,
+    )
 
 def create_opening_fin_template(pkg_id_clean, org_name):
     """Tạo template Excel mở đề xuất tài chính."""
@@ -197,44 +190,23 @@ def create_opening_fin_template(pkg_id_clean, org_name):
         'Thời gian thực hiện (ngày)'
     ]
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Mo De Xuat Tai Chinh"
-
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center")
-    border_side = Side(border_style="thin", color="D9D9D9")
-    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-
-    ws.append(headers)
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = thin_border
-
-    for idx, bid in enumerate(qualified_bids, start=2):
-        ws.row_dimensions[idx].height = 22
-        ws.cell(row=idx, column=1, value=bid[0])
-        ws.cell(row=idx, column=2, value=bid[1])
-
-        ws.cell(row=idx, column=5, value=bid[2] or "")
-        ws.cell(row=idx, column=6, value=bid[3] or "")
-        ws.cell(row=idx, column=7, value=bid[4] or "")
-        ws.cell(row=idx, column=8, value=bid[5] or "")
-        ws.cell(row=idx, column=11, value=bid[6] or "")
-        for col_idx in range(1, len(headers) + 1):
-            ws.cell(row=idx, column=col_idx).border = thin_border
-
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-
-    return wb
+    rows = [
+        [
+            bid[0], bid[1], "", "", bid[2] or "", bid[3] or "",
+            bid[4] or "", bid[5] or "", "", "", bid[6] or "",
+        ]
+        for bid in qualified_bids
+    ]
+    return _build_configured_workbook(
+        "Mo De Xuat Tai Chinh",
+        headers,
+        rows=rows,
+        formats_map={
+            "Giá dự thầu (VND)": "currency",
+            "Giá sau giảm giá (nếu có)": "currency",
+            "Giá trị ĐB DT (VND)": "currency",
+        },
+    )
 
 def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
     """Tạo file mẫu nhập liệu đánh giá HSDT (kỹ thuật hoặc tài chính)."""
@@ -247,7 +219,7 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
         conn.close()
         raise ValueError("Package not found")
 
-    linh_vuc, phuong_thuc_lua_chon, phan_lo = gt_row
+    _linh_vuc, _phuong_thuc_lua_chon, phan_lo = gt_row
     lot_codes = fetch_package_lot_codes(cursor, pkg_id_clean, org_name)
 
     cursor.execute("""
@@ -265,9 +237,6 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
     bids = cursor.fetchall()
     conn.close()
 
-    is_tu_van = linh_vuc == 'Tư vấn'
-    is_1g2t = phuong_thuc_lua_chon == 'Một giai đoạn hai túi hồ sơ'
-    is_1g1t = phuong_thuc_lua_chon == 'Một giai đoạn một túi hồ sơ'
     has_phan_lo = phan_lo == 'Có'
 
     headers = []
@@ -314,95 +283,49 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
     if has_phan_lo and lot_codes:
         options_map['Mã phần lô'] = lot_codes
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Danh gia HSDT"
-
-    options_ranges = {}
-    if options_map:
-        ws_options = wb.create_sheet(title="Dropdowns")
-        ws_options.sheet_state = 'hidden'
-        for opt_idx, (opt_col_name, opt_values) in enumerate(options_map.items(), start=1):
-            opt_col_letter = get_column_letter(opt_idx)
-            for val_idx, val in enumerate(opt_values, start=1):
-                ws_options.cell(row=val_idx, column=opt_idx, value=val)
-            options_ranges[opt_col_name] = f"Dropdowns!${opt_col_letter}$1:${opt_col_letter}${len(opt_values)}"
-
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center")
-    border_side = Side(border_style="thin", color="D9D9D9")
-    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-
-    ws.append(headers)
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = thin_border
-
-    for idx, bid in enumerate(bids, start=2):
-        ws.row_dimensions[idx].height = 22
-
-
-
-
-
-
-        if eval_type == 'technical':
+    rows = []
+    for bid in bids:
+        if eval_type == "technical":
             if has_phan_lo:
-                row_vals = [
+                row_values = [
                     bid[0], bid[1], bid[2], bid[3], bid[4],
                     bid[15] or "", bid[18] or "", bid[23] or "",
                     bid[16] or "", bid[19] or "", bid[24] or "",
-                    bid[17] or "", bid[20] or "", bid[25] or ""
+                    bid[17] or "", bid[20] or "", bid[25] or "",
                 ]
             else:
-                row_vals = [
+                row_values = [
                     bid[0], bid[3], bid[4],
                     bid[15] or "", bid[18] or "", bid[23] or "",
                     bid[16] or "", bid[19] or "", bid[24] or "",
-                    bid[17] or "", bid[20] or "", bid[25] or ""
+                    bid[17] or "", bid[20] or "", bid[25] or "",
                 ]
+        elif has_phan_lo:
+            row_values = [
+                bid[0], bid[1], bid[2], bid[3], bid[4],
+                bid[5] or "", bid[6] or "", bid[7] or "",
+                bid[22] or "", bid[21] or "",
+            ]
         else:
-            if has_phan_lo:
-                row_vals = [
-                    bid[0], bid[1], bid[2], bid[3], bid[4],
-                    bid[5] or "", bid[6] or "", bid[7] or "",
-                    bid[22] or "", bid[21] or ""
-                ]
-            else:
-                row_vals = [
-                    bid[0], bid[3], bid[4],
-                    bid[5] or "", bid[6] or "", bid[7] or "",
-                    bid[22] or "", bid[21] or ""
-                ]
+            row_values = [
+                bid[0], bid[3], bid[4],
+                bid[5] or "", bid[6] or "", bid[7] or "",
+                bid[22] or "", bid[21] or "",
+            ]
+        rows.append(row_values)
 
-        for col_idx, val in enumerate(row_vals, start=1):
-            ws.cell(row=idx, column=col_idx, value=val)
-            ws.cell(row=idx, column=col_idx).border = thin_border
-
-
-    for col_idx, col_name in enumerate(headers, start=1):
-        if col_name in options_ranges:
-            col_letter = get_column_letter(col_idx)
-            formula = options_ranges[col_name]
-            dv = DataValidation(type="list", formula1=formula, allow_blank=True)
-            dv.error = 'Giá trị nhập không hợp lệ, vui lòng chọn từ danh sách'
-            dv.errorTitle = 'Lỗi nhập dữ liệu'
-            dv.prompt = 'Vui lòng chọn giá trị từ danh sách'
-            dv.promptTitle = col_name
-            ws.add_data_validation(dv)
-            dv.add(f"{col_letter}2:{col_letter}{len(bids) + 10}")
-
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-
-    return wb
+    financial_formats = {
+        header: "currency"
+        for header in headers
+        if "(VND)" in header or header.startswith("Giá sau giảm")
+    }
+    return _build_configured_workbook(
+        "Danh gia HSDT",
+        headers,
+        rows=rows,
+        options_map=options_map,
+        formats_map=financial_formats,
+    )
 
 def create_ketquaqd_template(pkg_id_clean, org_name):
     """Tạo file mẫu nhập kết quả lựa chọn nhà thầu phê duyệt."""
@@ -442,144 +365,67 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
         'Kết quả': ['Trúng thầu', 'Trượt thầu']
     }
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Ket Qua LCNT"
+    rows = []
+    for bid in bids:
+        is_winner = bool(nha_thau_trung_thau_id and bid[3] == nha_thau_trung_thau_id)
+        rows.append([
+            bid[0],
+            bid[3],
+            bid[4],
+            "Trúng thầu" if is_winner else "Trượt thầu",
+            "",
+            gia_trung_thau if is_winner else "",
+            thoi_gian_goi_thau if is_winner else "",
+            thoi_gian_hop_dong if is_winner else "",
+        ])
 
-    options_ranges = {}
-    if options_map:
-        ws_options = wb.create_sheet(title="Dropdowns")
-        ws_options.sheet_state = 'hidden'
-        for opt_idx, (opt_col_name, opt_values) in enumerate(options_map.items(), start=1):
-            opt_col_letter = get_column_letter(opt_idx)
-            for val_idx, val in enumerate(opt_values, start=1):
-                ws_options.cell(row=val_idx, column=opt_idx, value=val)
-            options_ranges[opt_col_name] = f"Dropdowns!${opt_col_letter}$1:${opt_col_letter}${len(opt_values)}"
-
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center")
-    border_side = Side(border_style="thin", color="D9D9D9")
-    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-
-    ws.append(headers)
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = thin_border
-
-    for idx, bid in enumerate(bids, start=2):
-        ws.row_dimensions[idx].height = 22
-
-        is_winner = False
-        if nha_thau_trung_thau_id:
-            is_winner = (bid[3] == nha_thau_trung_thau_id)
-
-        status = 'Trúng thầu' if is_winner else 'Trượt thầu'
-        val_gia = gia_trung_thau if is_winner else ""
-        val_time_gt = thoi_gian_goi_thau if is_winner else ""
-        val_time_hd = thoi_gian_hop_dong if is_winner else ""
-
-        row_vals = [
-            bid[0], bid[3], bid[4], status, "", val_gia, val_time_gt, val_time_hd
-        ]
-
-        for col_idx, val in enumerate(row_vals, start=1):
-            ws.cell(row=idx, column=col_idx, value=val)
-            ws.cell(row=idx, column=col_idx).border = thin_border
-
-    for col_idx, col_name in enumerate(headers, start=1):
-        if col_name in options_ranges:
-            col_letter = get_column_letter(col_idx)
-            formula = options_ranges[col_name]
-            dv = DataValidation(type="list", formula1=formula, allow_blank=True)
-            dv.add(f"{col_letter}2:{col_letter}{len(bids) + 10}")
-            ws.add_data_validation(dv)
-
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-
-    return wb
+    return _build_configured_workbook(
+        "Ket Qua LCNT",
+        headers,
+        rows=rows,
+        options_map=options_map,
+        formats_map={"Giá trúng thầu (VND)": "currency"},
+    )
 
 def create_phanlo_excel(phan_lo_list):
-    """Xuất danh sách phân lô ra Excel."""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Phan Lo"
-
-    headers = ['Mã phần lô', 'Tên phần lô', 'Giá trị phần lô (VND)', 'Bảo đảm dự thầu (VND)', 'Thời gian thực hiện (ngày)']
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center")
-    border_side = Side(border_style="thin", color="D9D9D9")
-    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-
-    ws.append(headers)
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = thin_border
-
-    for idx, item in enumerate(phan_lo_list, start=2):
-        ws.row_dimensions[idx].height = 22
-        ws.cell(row=idx, column=1, value=item.get('maPhanLo', ''))
-        ws.cell(row=idx, column=2, value=item.get('tenPhanLo', ''))
-        ws.cell(row=idx, column=3, value=item.get('giaTriPhanLo', 0))
-        ws.cell(row=idx, column=4, value=item.get('baoDamDuThau', 0))
-        ws.cell(row=idx, column=5, value=item.get('thoiGianThucHien', 0))
-        for col_idx in range(1, len(headers) + 1):
-            ws.cell(row=idx, column=col_idx).border = thin_border
-
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-
-    return wb
+    """Xuất danh sách phân lô bằng builder cấu hình chung."""
+    headers = ["Mã phần lô", "Tên phần lô", "Giá trị phần lô (VND)", "Bảo đảm dự thầu (VND)", "Thời gian thực hiện (ngày)"]
+    rows = [
+        [
+            item.get("maPhanLo", ""),
+            item.get("tenPhanLo", ""),
+            item.get("giaTriPhanLo", 0),
+            item.get("baoDamDuThau", 0),
+            item.get("thoiGianThucHien", 0),
+        ]
+        for item in phan_lo_list
+    ]
+    return _build_configured_workbook(
+        "Phan Lo",
+        headers,
+        rows=rows,
+        formats_map={
+            "Giá trị phần lô (VND)": "currency",
+            "Bảo đảm dự thầu (VND)": "currency",
+        },
+    )
 
 def create_tuychonmuathem_excel(tuy_chon_list):
-    """Xuất danh sách tùy chọn mua thêm ra Excel."""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Tuy Chon Mua Them"
-
-    headers = ['Hạng mục', 'Đơn vị', 'Số lượng', 'Tỷ lệ phần trăm (%)', 'Giá trị ước tính']
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center")
-    border_side = Side(border_style="thin", color="D9D9D9")
-    thin_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
-
-    ws.append(headers)
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        cell.border = thin_border
-
-    for idx, item in enumerate(tuy_chon_list, start=2):
-        ws.row_dimensions[idx].height = 22
-        ws.cell(row=idx, column=1, value=item.get('hangMuc', ''))
-        ws.cell(row=idx, column=2, value=item.get('donVi', ''))
-        ws.cell(row=idx, column=3, value=item.get('soLuong', 0))
-        ws.cell(row=idx, column=4, value=item.get('tyLe', 0))
-        ws.cell(row=idx, column=5, value=item.get('giaTriUocTinh', 0))
-        for col_idx in range(1, len(headers) + 1):
-            ws.cell(row=idx, column=col_idx).border = thin_border
-
-    for col in ws.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
-
-    return wb
+    """Xuất tùy chọn mua thêm bằng builder cấu hình chung."""
+    headers = ["Hạng mục", "Đơn vị", "Số lượng", "Tỷ lệ phần trăm (%)", "Giá trị ước tính"]
+    rows = [
+        [
+            item.get("hangMuc", ""),
+            item.get("donVi", ""),
+            item.get("soLuong", 0),
+            item.get("tyLe", 0),
+            item.get("giaTriUocTinh", 0),
+        ]
+        for item in tuy_chon_list
+    ]
+    return _build_configured_workbook(
+        "Tuy Chon Mua Them",
+        headers,
+        rows=rows,
+        formats_map={"Giá trị ước tính": "currency"},
+    )

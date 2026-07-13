@@ -78,3 +78,21 @@ export function rememberSelectedVersion(state, selectionKey, record) {
   state[selectionKey] = state[selectionKey] || {};
   state[selectionKey][record.rootId || record.id] = record.id;
 }
+
+export function findVersionReferences(targets, relationships = []) {
+  const list = (Array.isArray(targets) ? targets : [targets]).filter(Boolean);
+  const ids = new Set(list.map((record) => String(record.id ?? record)));
+  return (relationships || []).flatMap((relationship) => {
+    const records = relationship.records || [];
+    const matches = relationship.matches || ((record) => ids.has(String(record?.[relationship.foreignKey])));
+    return records.filter((record) => matches(record, ids, list)).map((record) => ({
+      relation: relationship.name || relationship.foreignKey || "reference",
+      record
+    }));
+  });
+}
+
+export function canDeleteVersions(targets, relationships = []) {
+  const references = findVersionReferences(targets, relationships);
+  return { allowed: references.length === 0, references };
+}

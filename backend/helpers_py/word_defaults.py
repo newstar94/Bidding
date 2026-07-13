@@ -1,5 +1,8 @@
 import hashlib
 
+from .field_manifest import build_field_manifest
+from .schema_contract import json_key_for_column
+
 
 WORD_DEFAULT_MAPPINGS_VERSION = 7
 WORD_DEFAULT_SEED_PREFIX = "__word_defaults_seeded_v"
@@ -422,12 +425,17 @@ def _default_single_name(source_table, column):
 
 def build_default_word_mappings():
     mappings = []
+    field_manifest = build_field_manifest(json_key_for_column)
     for source_table, columns in WORD_SINGLE_SOURCES.items():
         for column in columns:
+            field = field_manifest["tables"].get(source_table, {}).get("fields", {}).get(column)
+            if not field:
+                continue
             mappings.append({
                 "ten_bien": _default_single_name(source_table, column),
                 "source_table": source_table,
                 "source_column": column,
+                "format": field["format"],
                 "mo_ta": f"Bien don mac dinh tu schema he thong: {source_table}.{column}",
             })
 

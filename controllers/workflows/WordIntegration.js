@@ -1,6 +1,7 @@
 import { authFetchDownload } from "../utils/workflow_helpers.js";
 import { makeSearchableSelect } from "../utils/PartnerHelpers.js";
 import { escapeHtml } from "../../views/subviews/view_helpers.js";
+import { DEFAULT_WORD_VARIABLES } from "../../models/schemaContract.js";
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
   if (templateInput) {
@@ -348,6 +349,11 @@ export function setupWordTemplatesEvents() {
       { value: "tong_gia_tri_trung_thau", label: "Tổng giá trị trúng thầu" }
     ]
   };
+  DEFAULT_WORD_VARIABLES.forEach((field) => {
+    const columns = MAPPING_COLUMNS[field.sourceTable];
+    if (!columns || columns.some((column) => column.value === field.sourceColumn)) return;
+    columns.push({ value: field.sourceColumn, label: field.label });
+  });
   [
     "ds_phan_lo_co_nha_thau_tham_du",
     "ds_phan_lo_khong_co_nha_thau_tham_du",
@@ -950,8 +956,6 @@ export function setupWordTemplatesEvents() {
     this.registerCommand("editWordMapping", editWordMappingHandler);
     this.registerCommand("deleteWordMapping", deleteWordMappingHandler);
   } else {
-    window.editWordMapping = editWordMappingHandler;
-    window.deleteWordMapping = deleteWordMappingHandler;
   }
 }
 export function setupCopyVariableEvents() {

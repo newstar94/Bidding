@@ -6,49 +6,10 @@ import {
   FIELD_MAP_BY_TABLE,
   resolveSchemaTable
 } from "/models/schemaContract.js";
+import { generateUUID as createUUID } from "/models/idUtils.js";
 const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
   Object.entries(CLIENT_TABLE_MAP).map(([stateKey, tableName]) => [tableName, stateKey])
 );
-const RECORD_ID_PREFIXES = {
-  user: "user-",
-  organization: "org-",
-  org: "org-",
-  chudautu: "cdt-",
-  chu_dau_tu: "cdt-",
-  nhathau: "nt-",
-  nha_thau: "nt-",
-  chuyengia: "cg-",
-  chuyen_gia: "cg-",
-  kehoach: "kh-",
-  ke_hoach_lcnt: "kh-",
-  goithau: "gt-",
-  goi_thau: "gt-",
-  hopdong: "hd-",
-  hop_dong: "hd-",
-  thongtinmothau: "mt-",
-  thong_tin_mo_thau: "mt-",
-  assignments: "asg-",
-  phan_cong_nhan_su: "asg-",
-  custompaperstatuses: "hsg-",
-  trang_thai_ho_so_giay: "hsg-",
-  permissionmatrix: "perm-",
-  ma_tran_phan_quyen: "perm-",
-  phanlo: "pl-",
-  goi_thau_phan_lo: "pl-",
-  tuychonmuathem: "tcmt-",
-  goi_thau_tuy_chon_mua_them: "tcmt-",
-  giahan: "gh-",
-  goi_thau_gia_han: "gh-",
-  lamro: "lr-",
-  yeucaulamro: "lr-",
-  traloilamro: "lr-",
-  goi_thau_lam_ro: "lr-",
-  ke_hoach_cong_viec: "khcv-",
-  nha_thau_lien_danh_thanh_vien: "ntld-",
-  thong_tin_mo_thau_lien_danh_thanh_vien: "mtld-",
-  wordmapping: "wmp-",
-  cau_hinh_bien_word: "wmp-"
-};
 const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
   "chudautu",
   "kehoach",
@@ -63,15 +24,6 @@ const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
 ]);
 const MUTATION_QUEUE_KEY = "bf_mutation_queue";
 const LOCAL_DELETIONS_KEY = "bf_local_deletions";
-function createUUID() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0, v = c === "x" ? r : r & 3 | 8;
-    return v.toString(16);
-  });
-}
 function readLocalJson(key, fallback) {
   if (typeof localStorage === "undefined") return fallback;
   try {
@@ -84,18 +36,6 @@ function writeLocalJson(key, value) {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(key, JSON.stringify(value));
 }
-window.generateUUID = function() {
-  return createUUID();
-};
-window.generateRecordId = function(type) {
-  const key = String(type || "").trim().toLowerCase();
-  const prefix = RECORD_ID_PREFIXES[key] || "";
-  return `${prefix}${createUUID()}`;
-};
-window.escapeHTML = function(str) {
-  if (str === null || str === void 0) return "";
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-};
 class BrowserDB {
   constructor(dbName = "BiddingFlowDB") {
     this.dbName = dbName;

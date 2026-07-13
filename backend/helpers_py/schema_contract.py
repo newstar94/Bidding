@@ -1,4 +1,5 @@
 from .schema import SCHEMA_DINH_NGHIA
+from .field_manifest import build_field_manifest
 from .text_utils import to_camel_case
 
 
@@ -25,7 +26,7 @@ def json_key_for_column(table_name, column_name):
     return field_map.get(column_name) or ("rootId" if column_name == "id_goc" else to_camel_case(column_name))
 
 
-def build_schema_contract():
+def build_schema_contract(word_mappings=None):
     tables = {}
     seen_common = {}
     conflicts = set()
@@ -53,8 +54,9 @@ def build_schema_contract():
     common_field_map["root_id"] = "rootId"
 
     return {
-        "version": 1,
+        "version": 2,
         "clientTableMap": CLIENT_TABLE_MAP,
         "commonFieldMap": dict(sorted(common_field_map.items())),
         "tables": tables,
+        "fieldManifest": build_field_manifest(json_key_for_column, word_mappings),
     }

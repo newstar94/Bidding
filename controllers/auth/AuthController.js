@@ -166,48 +166,11 @@ export function validateUsernameClient(username) {
   }
   return { ok: true, message: "" };
 }
-function setAuthFlowInProgress(isInProgress) {
-  window._bfAuthFlowInProgress = !!isInProgress;
-  window._bfAuthStateChangedAt = Date.now();
-}
-function setAuthSessionActive(isActive) {
-  window._bfAuthSessionActive = !!isActive;
-  window._bfAuthStateChangedAt = Date.now();
-  if (isActive) {
-    setAuthFlowInProgress(false);
-  }
-}
-function isAuthTransitionActive() {
-  return !!window._bfAuthFlowInProgress;
-}
-function isStaleAuthResult(requestStartedAt) {
-  return Number.isFinite(requestStartedAt) && Number.isFinite(window._bfAuthStateChangedAt) && requestStartedAt < window._bfAuthStateChangedAt;
-}
 function hideAuthOverlay() {
   const overlay = document.getElementById("auth-overlay");
   if (overlay) overlay.style.display = "none";
   const appContainer = document.querySelector(".app-container");
   if (appContainer) appContainer.style.filter = "none";
-}
-function hideInitLoader() {
-  const initLoader = document.getElementById("system-init-loader");
-  if (!initLoader) return;
-  initLoader.style.opacity = "0";
-  initLoader.style.visibility = "hidden";
-  initLoader.setAttribute("aria-busy", "false");
-  document.body.classList.remove("bf-init-loading");
-}
-function showInitLoader(message = "Đang tải...") {
-  const initLoader = document.getElementById("system-init-loader");
-  if (!initLoader) return null;
-  document.body.classList.add("bf-init-loading");
-  const messageElement = initLoader.querySelector("#system-init-loader-text");
-  if (messageElement) messageElement.textContent = message;
-  initLoader.style.display = "flex";
-  initLoader.style.opacity = "1";
-  initLoader.style.visibility = "visible";
-  initLoader.setAttribute("aria-busy", "true");
-  return initLoader;
 }
 function reloadWithInitLoader() {
   const initLoader = showInitLoader();
@@ -260,7 +223,7 @@ export function setupActivityTracker() {
   const minimumWriteInterval = 15e3;
   let lastWriteAt = Number(localStorage.getItem("bf_last_activity") || 0);
   const updateActivity = (force = false) => {
-    if (!force && !window._bfAuthSessionActive) return;
+    if (!force && !isAuthSessionActive()) return;
     const now = Date.now();
     if (!force && now - lastWriteAt < minimumWriteInterval) return;
     lastWriteAt = now;
@@ -437,8 +400,6 @@ export function setupAuth() {
   const formRegister = document.getElementById("form-auth-register");
   const formForgot = document.getElementById("form-auth-forgot");
   const formVerify = document.getElementById("form-auth-verify");
-  window.hideInitLoader = hideInitLoader;
-  window.showInitLoader = showInitLoader;
   const hasLocalWorkspaceData = () => {
     if (typeof this.hasLocalWorkspaceData === "function") {
       return this.hasLocalWorkspaceData();
@@ -1008,8 +969,8 @@ export function setupAuth() {
   }
 }
 export function setupGoogleSignIn() {
-  if (window._gsiInitialized) return;
-  window._gsiInitialized = true;
+  if (isGoogleIdentityInitialized()) return;
+  markGoogleIdentityInitialized();
   const clientId = document.querySelector('meta[name="google-client-id"]')?.content?.trim();
   if (clientId === "__GOOGLE_CLIENT_ID__") return;
   if (!clientId) return;
@@ -1284,3 +1245,14 @@ export function setupGoogleSignIn() {
     logo_alignment: "center"
   });
 }
+import {
+  hideInitLoader,
+  isAuthSessionActive,
+  isAuthTransitionActive,
+  isGoogleIdentityInitialized,
+  isStaleAuthResult,
+  markGoogleIdentityInitialized,
+  setAuthFlowInProgress,
+  setAuthSessionActive,
+  showInitLoader,
+} from "./authRuntimeState.js";

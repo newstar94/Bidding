@@ -86,7 +86,7 @@ _RESERVED_ROUTES = frozenset([
     "chudautu-detail", "nhathau-detail",
 
     "api", "auth", "sync", "paginate", "ws", "dist", "views",
-    "controllers", "models", "uploads", "static", "templates",
+    "controllers", "features", "models", "uploads", "static", "templates",
     "holidays", "export", "import", "address",
     "login", "logout", "register", "verify", "forgot", "password",
 

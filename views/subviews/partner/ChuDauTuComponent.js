@@ -1,7 +1,10 @@
-import { escapeHtml, initCustomSelect, renderEmptyRow, safeAttr } from "../view_helpers.js";
+import { escapeHtml, initCustomSelect, safeAttr } from "../view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../virtualTable.js";
 import { renderVersionSelector, resolveVersionedRow } from "../../components/VersionSelector.js";
+import { renderTableEmpty, renderTableError, renderTableLoading } from "../../components/EntityTable.js";
+import { renderEntityActions, standardEditDeleteActions } from "../../components/EntityActions.js";
+import { executeAppCommand } from "../../../controllers/core/commandBus.js";
 export async function renderChuDauTuTable() {
   const tableBody = document.getElementById("chudautu-table").querySelector("tbody");
   const searchVal = document.getElementById("search-chudautu").value.toLowerCase();
@@ -13,9 +16,7 @@ export async function renderChuDauTuTable() {
   const sortBy = sortState.field || "";
   const sortOrder = sortState.order || "asc";
   if (this.model.useServerSidePagination) {
-    if (!tableBody.querySelector(".empty-state") && tableBody.children.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--primary); font-weight: bold;">Đang tải dữ liệu từ máy chủ...</td></tr>`;
-    }
+    renderTableLoading(tableBody, 8);
     try {
       const data = await loadPaginatedRecords(this.model, "chudautu", {
         page: currentPage, pageSize, search: searchVal, sortBy, sortOrder
@@ -24,6 +25,9 @@ export async function renderChuDauTuTable() {
       totalItems = data.totalItems;
     } catch (e) {
       console.error("Failed to fetch paginated investors", e);
+      clearVirtualTable(tableBody);
+      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách chủ đầu tư. Vui lòng thử lại." });
+      return;
     }
   } else {
     const latestChuDauTu = this.model.getLatestChuDauTu();
@@ -36,9 +40,8 @@ export async function renderChuDauTuTable() {
   }
   if (totalItems === 0) {
     clearVirtualTable(tableBody);
-    tableBody.innerHTML = renderEmptyRow(8, "Không tìm thấy Chủ đầu tư nào phù hợp", "building");
     const pag = document.getElementById("chudautu-pagination");
-    if (pag) pag.innerHTML = "";
+    renderTableEmpty(tableBody, { colspan: 8, message: "Không tìm thấy Chủ đầu tư nào phù hợp", icon: "building", pagination: pag });
   } else {
     renderVirtualTable(tableBody, slicedData, (c) => {
       const esc = escapeHtml;
@@ -51,6 +54,11 @@ export async function renderChuDauTuTable() {
       const dropdownHtml = renderVersionSelector({
         versions, selectedId: displayedCdt.id, rootId: root, changeAction: "change-investor-version"
       });
+      const actionHtml = renderEntityActions(standardEditDeleteActions({
+        id: displayedCdt.id,
+        editCommand: "edit-investor",
+        deleteCommand: "delete-investor"
+      }), { visible: displayedCdt.id === c.id });
       return `
             <tr>
                 <td>
@@ -76,23 +84,12 @@ export async function renderChuDauTuTable() {
                     <div style="font-size:0.75rem; color:var(--text-light);">${esc(displayedCdt.noiMoTaiKhoan || "--")}${displayedCdt.maQHNS ? " | QHNS: " + esc(displayedCdt.maQHNS) : ""}</div>
                 </td>
                 <td class="text-right">
-                    <div class="action-btn-group">
-                        ${displayedCdt.id === c.id ? `
-                        <button class="action-btn btn-edit" data-bf-action="edit-investor" data-id="${safeAttr(displayedCdt.id)}" title="Sửa">
-                            <i data-lucide="edit-2"></i>
-                        </button>
-                        <button class="action-btn btn-delete" data-bf-action="delete-investor" data-id="${safeAttr(displayedCdt.id)}" title="Xóa">
-                            <i data-lucide="trash-2"></i>
-                        </button>
-                        ` : ""}
-                    </div>
+                    ${actionHtml}
                 </td>
             </tr>
             `;
     }, { colSpan: 7, rowHeight: 82, onRender: () => lucide.createIcons({ root: tableBody }) });
-    if (window.renderTablePagination) {
-      window.renderTablePagination("chudautu-pagination", totalItems, currentPage, pageSize);
-    }
+    executeAppCommand("renderTablePagination", "chudautu-pagination", totalItems, currentPage, pageSize);
   }
   lucide.createIcons({ root: tableBody });
   this.enhanceTableHeaders("chudautu-table", "chudautu");
@@ -100,7 +97,7 @@ export async function renderChuDauTuTable() {
 export function showChuDauTuDetails(id, isSwitchingVersion = false) {
   const detailPane = document.getElementById("tab-chudautu-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
-    window.switchTab("chudautu-detail", id);
+    executeAppCommand("switchTab", "chudautu-detail", id);
     return;
   }
   const cdt = this.model.state.chudautu.find((c) => c.id === id);
@@ -119,7 +116,7 @@ export function renderChuDauTuVersionDetails(versionId) {
     if (isLatest) {
       editBtn.style.display = "flex";
       editBtn.onclick = () => {
-        window.editChuDauTu(versionId);
+        executeAppCommand("editChuDauTu", versionId);
       };
     } else {
       editBtn.style.display = "none";
@@ -217,7 +214,7 @@ export function renderChuDauTuVersionDetails(versionId) {
       } else {
         innerSelect.onchange = null;
       }
-      if (window.initCustomSelect) window.initCustomSelect("fullpage-cdt-version-select");
+      initCustomSelect("fullpage-cdt-version-select");
     }
     lucide.createIcons();
   }

@@ -1,4 +1,4 @@
-window.__BF_APP_DEBUG__ = document.querySelector('meta[name="bf-app-debug"]')?.content === "true";
+import { APP_DEBUG } from "./core/appConfig.js";
 const startupMark = (name) => {
   try {
     performance.mark(`bf:${name}`);
@@ -94,7 +94,7 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
 });
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
-  if ("serviceWorker" in navigator && window.__BF_APP_DEBUG__ === false) {
+  if ("serviceWorker" in navigator && APP_DEBUG === false) {
     navigator.serviceWorker.register("/service-worker.js").catch(() => {
     });
   }

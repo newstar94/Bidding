@@ -1,7 +1,9 @@
-import { getAppController } from "../main_controller/controllerRef.js";
+﻿import { getAppController } from "../main_controller/controllerRef.js";
 import { escapeHtml } from "../../views/subviews/view_helpers.js";
 import { bindCurrencyElement, debounce, normalizeTaxCodeForCompare } from "../main_controller/domUtils.js";
 import { setFieldFeedback } from "../main_controller/formStateUtils.js";
+import { executeAppCommand } from "../core/commandBus.js";
+import { generateRecordId } from "../../models/idUtils.js";
 import {
   canSaveOpeningInfo,
   getAwardRequiredFieldIds,
@@ -22,6 +24,11 @@ import { parseVietnamAddress } from "../utils/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "./partnerTaxLookup.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "./contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
+import {
+  renderJointVentureModalBody,
+  renderJointVentureModalFooter,
+  renderJointVentureModalHeader
+} from "../../features/packages/detail/components/JointVentureModal.js";
 function normalizeContractorLookupCode(value) {
   return normalizeTaxCodeForCompare(value);
 }
@@ -359,9 +366,9 @@ export function renderMoThauPanel() {
   const handlePackageSelection = () => {
     const gtId = select.value;
     if (!gtId) {
-      summaryContainer.style.display = "none";
-      bidContainer.style.display = "none";
-      emptyState.style.display = "block";
+      summaryContainer.classList.add("is-hidden");
+      bidContainer.classList.add("is-hidden");
+      emptyState.classList.remove("is-hidden");
       return;
     }
     const gt = this.model.state.goithau.find((g) => g.id === gtId);
@@ -399,8 +406,8 @@ export function renderMoThauPanel() {
     if (isEditable) {
       this.view.initFlatpickr(summaryContainer);
     }
-    emptyState.style.display = "none";
-    bidContainer.style.display = "block";
+    emptyState.classList.add("is-hidden");
+    bidContainer.classList.remove("is-hidden");
     const titleEl = document.getElementById("mothau-table-title");
     if (titleEl) {
       titleEl.textContent = isDirectOrSpecial ? "Danh sách Nhà thầu" : "Danh sách Nhà thầu tham dự & Nộp hồ sơ";
@@ -854,9 +861,7 @@ export function openMoThauJVManager(tr) {
 export function showNhaThauDetailsAndCloseJV(ntId) {
   const jvModal = document.getElementById("modal-mothau-jv-view");
   if (jvModal) jvModal.remove();
-  if (window.showNhaThauDetails) {
-    window.showNhaThauDetails(ntId);
-  }
+  executeAppCommand("showNhaThauDetails", ntId);
 }
 export function openMoThauJVViewModal(members, leadName, leadCode, leadContractorVersionId = "") {
   const modalId = "modal-mothau-jv-view";
@@ -873,10 +878,7 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   card.style.margin = "20px auto";
   const header = document.createElement("div");
   header.className = "modal-header";
-  header.innerHTML = `
-        <h3>Thành viên liên danh</h3>
-        <button class="modal-close" id="btn-close-mothau-jv-view">&times;</button>
-    `;
+  header.innerHTML = renderJointVentureModalHeader();
   const body = document.createElement("div");
   body.className = "modal-body";
   body.style.padding = "20px";
@@ -919,31 +921,10 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
             `;
     }).join("");
   }
-  body.innerHTML = `
-        <div style="background: var(--primary-soft); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 20px;">
-            <div style="font-size: 0.78rem; font-weight: 800; color: var(--primary); text-transform: uppercase; margin-bottom: 8px;">Thành viên đứng đầu liên danh</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div>
-                    <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Mã/MST thành viên đứng đầu</div>
-                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${leadCodeHtml}</div>
-                </div>
-                <div>
-                    <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Tên thành viên đứng đầu</div>
-                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${leadNameHtml}</div>
-                </div>
-            </div>
-        </div>
-
-        <h4 style="margin: 0 0 12px 0; font-size: 0.88rem; font-weight: 800;">Danh sách Thành viên liên danh</h4>
-        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; padding-right: 4px;">
-            ${membersHtml}
-        </div>
-    `;
+  body.innerHTML = renderJointVentureModalBody({ leadCodeHtml, leadNameHtml, membersHtml });
   const footer = document.createElement("div");
   footer.className = "modal-footer";
-  footer.innerHTML = `
-        <button type="button" class="btn btn-primary" id="btn-ok-mothau-jv-view">Đóng</button>
-    `;
+  footer.innerHTML = renderJointVentureModalFooter();
   card.appendChild(header);
   card.appendChild(body);
   card.appendChild(footer);
@@ -957,7 +938,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const tbody = document.getElementById("mothau-table-tbody");
   if (!tbody) return;
   const tr = document.createElement("tr");
-  tr.setAttribute("data-id", bidData.id || window.generateRecordId("thongtinmothau"));
+  tr.setAttribute("data-id", bidData.id || generateRecordId("thongtinmothau"));
   tr.dataset.contractorVersionId = bidData.nhaThauId || "";
   let ntCode = bidData.maNhaThau || "";
   let ntName = resolveBidContractorName(this.model, bidData) || "";

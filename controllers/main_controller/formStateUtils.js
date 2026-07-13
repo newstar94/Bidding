@@ -13,9 +13,7 @@ export function setRequired(element, required) {
 export function setDisabled(element, disabled) {
   if (!element) return;
   element.disabled = Boolean(disabled);
-  if (typeof window !== "undefined" && typeof window.syncCustomSelectDisabled === "function" && element.id) {
-    window.syncCustomSelectDisabled(element.id);
-  }
+  if (element.id) syncCustomSelectDisabled(element);
 }
 export function setReadonlyVisual(element, readonly) {
   if (!element) return;
@@ -76,3 +74,4 @@ export function focusInvalidControl(input, { delay = 300 } = {}) {
   }, delay);
   return visibleControl;
 }
+import { syncCustomSelectDisabled } from "../../views/subviews/view_helpers.js";

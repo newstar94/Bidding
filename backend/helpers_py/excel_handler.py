@@ -3,6 +3,9 @@ from io import BytesIO
 import re
 import hashlib
 
+from .field_manifest import build_field_manifest
+from .schema_contract import CLIENT_TABLE_MAP, json_key_for_column
+
 ENTITY_SCHEMA = {
     'chudautu': [
         {'field': 'maChuDauTu',           'label': 'Mã chủ đầu tư',              'aliases': ['Mã chủ đầu tư', 'Mã CĐT', 'maChuDauTu']},
@@ -187,6 +190,21 @@ def _schema_to_options(entity_type):
     if not schema:
         return {}
     return {entry['label']: entry['options'] for entry in schema if entry.get('options')}
+
+def _schema_to_formats(entity_type):
+    """Return Excel formatting metadata from the shared DB field manifest."""
+    schema = ENTITY_SCHEMA.get(entity_type)
+    table_name = CLIENT_TABLE_MAP.get(entity_type)
+    if not schema or not table_name:
+        return {}
+    manifest = build_field_manifest(json_key_for_column)
+    fields = manifest.get('tables', {}).get(table_name, {}).get('fields', {})
+    fields_by_json_key = {item['jsonKey']: item for item in fields.values()}
+    return {
+        entry['label']: fields_by_json_key[entry['field']]['format']
+        for entry in schema
+        if entry['field'] in fields_by_json_key
+    }
 
 def clean_money(val):
     if pd.isna(val):

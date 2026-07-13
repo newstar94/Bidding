@@ -1,5 +1,11 @@
 import { getJvData } from "/views/subviews/goithau/jvDataStore.js";
 import { safeImageSrc } from "/views/subviews/view_helpers.js";
+import { installPrototypeModules } from "/controllers/core/moduleRegistry.js";
+import { setCommandExecutor } from "/controllers/core/commandBus.js";
+import { hasHolidays, setHolidays } from "/controllers/state/runtimeState.js";
+import { APP_DEBUG } from "/controllers/core/appConfig.js";
+import { setAppController } from "/controllers/main_controller/controllerRef.js";
+import { hideInitLoader, isAuthTransitionActive } from "/controllers/auth/authRuntimeState.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -184,11 +190,17 @@ export class BiddingController {
     try {
       const start = this._startupTimes?.[startLabel];
       const end = this._startupTimes?.[endLabel];
+      const measureName = `bf:${name}`;
       if (Number.isFinite(start) && Number.isFinite(end)) {
+        if (window.performance?.measure) {
+          window.performance.measure(measureName, {
+            start,
+            end
+          });
+        }
         return { name, duration: Math.round(end - start) };
       }
       if (!window.performance?.measure) return null;
-      const measureName = `bf:${name}`;
       window.performance.measure(measureName, `bf:${startLabel}`, `bf:${endLabel}`);
       const entries = window.performance.getEntriesByName(measureName);
       const entry = entries[entries.length - 1];
@@ -205,13 +217,14 @@ export class BiddingController {
       this.measureStartup("model init", "init:start", "model:init"),
       this.measureStartup("critical ui setup", "model:init", "ui:critical"),
       this.measureStartup("route render", "ui:critical", "route:rendered"),
+      this.measureStartup("app module to hide loader", "app-module-start", "loader:hidden"),
       this.measureStartup("time to hide loader", "init:start", "loader:hidden")
     ].filter(Boolean);
-    window.__BF_STARTUP_METRICS__ = metrics;
-    window.__BF_RESOURCE_METRICS__ = performance.getEntriesByType?.("resource")
-      ?.filter((entry) => entry.name.includes("/api/") || entry.name.includes("/controllers/") || entry.name.includes("/dist/"))
-      .map((entry) => ({ name: entry.name, duration: Math.round(entry.duration), transferSize: entry.transferSize })) || [];
-    if (window.__BF_APP_DEBUG__ || localStorage.getItem("bf_perf_debug") === "true") {
+    const perfDebugEnabled = APP_DEBUG
+      || localStorage.getItem("bf_perf_debug") === "true"
+      || new URLSearchParams(window.location.search).get("bf_perf_debug") === "true";
+    if (perfDebugEnabled) {
+      console.info(`[Startup Metrics] ${JSON.stringify(metrics)}`);
       console.table(metrics);
     }
   }
@@ -240,7 +253,10 @@ export class BiddingController {
         import("/controllers/workflows/BiddingWorkflows.js"),
         import("/controllers/workflows/PartnerWorkflows.js")
       ]).then(([bidding, partner]) => {
-        Object.assign(BiddingController.prototype, bidding, partner);
+        installPrototypeModules(BiddingController, [
+          { name: "bidding-workflows", module: bidding },
+          { name: "partner-workflows", module: partner },
+        ]);
         this._workflowModulesReady = true;
       }).catch((err) => {
         this._workflowModulesPromise = null;
@@ -269,12 +285,12 @@ export class BiddingController {
     ]);
   }
   loadHolidaysInBackground() {
-    if (window._vietnameseHolidays) return;
+    if (hasHolidays()) return;
     fetch("/api/holidays").then((res) => res.json()).then((data) => {
-      window._vietnameseHolidays = data || {};
+      setHolidays(data);
     }).catch((e) => {
       console.error("Failed to load holidays:", e);
-      window._vietnameseHolidays = {};
+      setHolidays({});
     });
   }
   hasLocalWorkspaceData() {
@@ -394,7 +410,7 @@ export class BiddingController {
     }
     return this.commands;
   }
-  registerCommand(name, handler, { exposeLegacy = true } = {}) {
+  registerCommand(name, handler, { exposeLegacy = false } = {}) {
     if (!name || typeof handler !== "function") return;
     this.ensureCommandRegistry().set(name, handler);
     if (exposeLegacy) {
@@ -405,9 +421,6 @@ export class BiddingController {
     const handler = this.ensureCommandRegistry().get(name);
     if (typeof handler === "function") {
       return handler(...args);
-    }
-    if (typeof window[name] === "function") {
-      return window[name](...args);
     }
     console.warn(`[Command] Missing handler: ${name}`);
     return void 0;
@@ -552,7 +565,7 @@ export class BiddingController {
           console.error("Failed to parse the 403 response:", e);
         }
         if (isSessionError) {
-          if (window._bfAuthFlowInProgress) {
+          if (isAuthTransitionActive()) {
             return response;
           }
           const overlay = document.getElementById("auth-overlay");
@@ -580,7 +593,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         return response;
       }
       if (response.status === 401 && typeof url === "string" && url.startsWith("/api/") && !url.includes("/api/auth/login") && !url.includes("/api/auth/check-session")) {
-        if (window._bfAuthFlowInProgress) {
+        if (isAuthTransitionActive()) {
           return response;
         }
         const overlay = document.getElementById("auth-overlay");
@@ -672,7 +685,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     this.view.initDOM();
     this.setupAuth();
     this.setupActivityTracker();
-    this.registerGlobals();
+    this.registerCommands();
     this.setupTheme();
     this.setupSidebar();
     this.setupTabs();
@@ -705,9 +718,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     }
     this.handlePathRouting(window.location.pathname, false, true);
     this.markStartup("route:rendered");
-    if (typeof window.hideInitLoader === "function") {
-      window.hideInitLoader();
-    }
+    hideInitLoader();
     this.markStartup("loader:hidden");
     this.publishStartupMetrics();
     this.schedulePostStartupTask(() => this.ensureWorkflowModules(), { timeout: 1400, delay: 250 });
@@ -733,9 +744,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.loadInitDataInBackground();
     }, { timeout: 2500, delay: 900 });
   }
-  registerGlobals() {
-    window.appController = this;
-    window.toggleSortTable = (tableKey, field) => {
+  registerCommands() {
+    setAppController(this);
+    setCommandExecutor((name, ...args) => this.executeCommand(name, ...args));
+    const toggleSortTable = (tableKey, field) => {
       const current = this.model.sortState[tableKey] || { field: "", order: "asc" };
       if (current.field === field) {
         current.order = current.order === "asc" ? "desc" : "asc";
@@ -751,55 +763,55 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       else if (tableKey === "chuyengia") this.view.renderChuyenGiaTable();
       else if (tableKey === "hopdong") this.view.renderHopDongTable();
     };
-    window.changePlanRowVersion = (root, selectedId) => {
+    const changePlanRowVersion = (root, selectedId) => {
       if (!this.model.state.selectedPlanVersion) {
         this.model.state.selectedPlanVersion = {};
       }
       this.model.state.selectedPlanVersion[root] = selectedId;
       this.view.renderKeHoachTable();
     };
-    window.changePackageRowVersion = (root, selectedId) => {
+    const changePackageRowVersion = (root, selectedId) => {
       if (!this.model.state.selectedPackageVersion) {
         this.model.state.selectedPackageVersion = {};
       }
       this.model.state.selectedPackageVersion[root] = selectedId;
       this.view.renderGoiThauTable();
     };
-    window.changeChuDauTuRowVersion = (root, selectedId) => {
+    const changeChuDauTuRowVersion = (root, selectedId) => {
       if (!this.model.state.selectedChuDauTuVersion) {
         this.model.state.selectedChuDauTuVersion = {};
       }
       this.model.state.selectedChuDauTuVersion[root] = selectedId;
       this.view.renderChuDauTuTable();
     };
-    window.changeNhaThauRowVersion = (root, selectedId) => {
+    const changeNhaThauRowVersion = (root, selectedId) => {
       if (!this.model.state.selectedNhaThauVersion) {
         this.model.state.selectedNhaThauVersion = {};
       }
       this.model.state.selectedNhaThauVersion[root] = selectedId;
       this.view.renderNhaThauTable();
     };
-    window.changeChuyenGiaRowVersion = (root, selectedId) => {
+    const changeChuyenGiaRowVersion = (root, selectedId) => {
       if (!this.model.state.selectedChuyenGiaVersion) {
         this.model.state.selectedChuyenGiaVersion = {};
       }
       this.model.state.selectedChuyenGiaVersion[root] = selectedId;
       this.view.renderChuyenGiaTable();
     };
-    window.changeHopDongRowVersion = (root, selectedId) => {
+    const changeHopDongRowVersion = (root, selectedId) => {
       if (!this.model.state.selectedHopDongVersion) {
         this.model.state.selectedHopDongVersion = {};
       }
       this.model.state.selectedHopDongVersion[root] = selectedId;
       this.view.renderHopDongTable();
     };
-    window.showPackageDetails = (id) => this.view.showPackageDetails(id);
-    window.showKeHoachDetails = (id) => this.view.showKeHoachDetails(id);
-    window.showHopDongDetails = (id) => this.view.showHopDongDetails(id);
-    window.showChuyenGiaDetails = (id) => this.view.showChuyenGiaDetails(id);
-    window.showChuDauTuDetails = (id) => this.view.showChuDauTuDetails(id);
-    window.showNhaThauDetails = (id) => this.view.showNhaThauDetails(id);
-    window.zoomCertificateImage = (id) => {
+    const showPackageDetails = (id) => this.view.showPackageDetails(id);
+    const showKeHoachDetails = (id) => this.view.showKeHoachDetails(id);
+    const showHopDongDetails = (id) => this.view.showHopDongDetails(id);
+    const showChuyenGiaDetails = (id) => this.view.showChuyenGiaDetails(id);
+    const showChuDauTuDetails = (id) => this.view.showChuDauTuDetails(id);
+    const showNhaThauDetails = (id) => this.view.showNhaThauDetails(id);
+    const zoomCertificateImage = (id) => {
       const cg = this.model.state.chuyengia.find((c) => c.id === id);
       const safeSrc = safeImageSrc(cg?.anhChungChi, cg?.updatedAt || cg?.createdAt);
       if (!safeSrc) return;
@@ -814,7 +826,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       lightbox.onclick = () => lightbox.remove();
       document.body.appendChild(lightbox);
     };
-    window.zoomSignatureImage = (id) => {
+    const zoomSignatureImage = (id) => {
       const cg = this.model.state.chuyengia.find((c) => c.id === id);
       const safeSrc = safeImageSrc(cg?.anhChuKy, cg?.updatedAt || cg?.createdAt);
       if (!safeSrc) return;
@@ -837,31 +849,31 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       await this.ensureWorkflowReady(methodName);
       return this[methodName](...args);
     };
-    window.editKeHoach = (id) => runWorkflow("editKeHoach", id);
-    window.deleteKeHoach = (id) => runWorkflow("deleteKeHoach", id);
-    window.addBreakdownRow = (type) => runWorkflow("addBreakdownRow", type);
-    window.removeBreakdownRow = (btn, type) => runWorkflow("removeBreakdownRow", btn, type);
-    window.editGoiThau = (id, isReadOnly = false) => runWorkflow("editGoiThau", id, isReadOnly);
-    window.deleteGoiThau = (id) => runWorkflow("deleteGoiThau", id);
-    window.restoreCanceledPackage = (id) => runWorkflow("restoreCanceledPackage", id);
-    window.addGiaHanRow = (data) => runWorkflow("addGiaHanRow", data);
-    window.validateGiaHanRealtime = () => runWorkflow("validateGiaHanRealtime");
-    window.moThauGoiThau = (id) => runWorkflow("moThauGoiThau", id);
-    window.phatHanhHsmtGoiThau = (id) => runWorkflow("phatHanhHsmtGoiThau", id);
-    window.enforceSingleLeader = (tbodyId, roleName) => runWorkflow("enforceSingleLeader", tbodyId, roleName);
-    window.openMoThauJVManager = (tr) => runWorkflow("openMoThauJVManager", tr);
-    window.openMoThauJVViewModal = (members, leadName, leadCode, leadContractorVersionId = "") => runWorkflow("openMoThauJVViewModal", members, leadName, leadCode, leadContractorVersionId);
-    window.showNhaThauDetailsAndCloseJV = (ntId) => runWorkflow("showNhaThauDetailsAndCloseJV", ntId);
-    window.editChuDauTu = (id) => runWorkflow("editChuDauTu", id);
-    window.deleteChuDauTu = (id) => runWorkflow("deleteChuDauTu", id);
-    window.editNhaThau = (id, isReadOnly = false) => runWorkflow("editNhaThau", id, isReadOnly);
-    window.deleteNhaThau = (id) => runWorkflow("deleteNhaThau", id);
-    window.editChuyenGia = (id) => runWorkflow("editChuyenGia", id);
-    window.deleteChuyenGia = (id) => runWorkflow("deleteChuyenGia", id);
-    window.editHopDong = (id) => runWorkflow("editHopDong", id);
-    window.deleteHopDong = (id) => runWorkflow("deleteHopDong", id);
-    window.saveKetQuaChiDinhThau = (gtId) => runWorkflow("saveKetQuaChiDinhThau", gtId);
-    window.exportContractFromHopDong = (pkgId, soHopDong) => {
+    const editKeHoach = (id) => runWorkflow("editKeHoach", id);
+    const deleteKeHoach = (id) => runWorkflow("deleteKeHoach", id);
+    const addBreakdownRow = (type) => runWorkflow("addBreakdownRow", type);
+    const removeBreakdownRow = (btn, type) => runWorkflow("removeBreakdownRow", btn, type);
+    const editGoiThau = (id, isReadOnly = false) => runWorkflow("editGoiThau", id, isReadOnly);
+    const deleteGoiThau = (id) => runWorkflow("deleteGoiThau", id);
+    const restoreCanceledPackage = (id) => runWorkflow("restoreCanceledPackage", id);
+    const addGiaHanRow = (data) => runWorkflow("addGiaHanRow", data);
+    const validateGiaHanRealtime = () => runWorkflow("validateGiaHanRealtime");
+    const moThauGoiThau = (id) => runWorkflow("moThauGoiThau", id);
+    const phatHanhHsmtGoiThau = (id) => runWorkflow("phatHanhHsmtGoiThau", id);
+    const enforceSingleLeader = (tbodyId, roleName) => runWorkflow("enforceSingleLeader", tbodyId, roleName);
+    const openMoThauJVManager = (tr) => runWorkflow("openMoThauJVManager", tr);
+    const openMoThauJVViewModal = (members, leadName, leadCode, leadContractorVersionId = "") => runWorkflow("openMoThauJVViewModal", members, leadName, leadCode, leadContractorVersionId);
+    const showNhaThauDetailsAndCloseJV = (ntId) => runWorkflow("showNhaThauDetailsAndCloseJV", ntId);
+    const editChuDauTu = (id) => runWorkflow("editChuDauTu", id);
+    const deleteChuDauTu = (id) => runWorkflow("deleteChuDauTu", id);
+    const editNhaThau = (id, isReadOnly = false) => runWorkflow("editNhaThau", id, isReadOnly);
+    const deleteNhaThau = (id) => runWorkflow("deleteNhaThau", id);
+    const editChuyenGia = (id) => runWorkflow("editChuyenGia", id);
+    const deleteChuyenGia = (id) => runWorkflow("deleteChuyenGia", id);
+    const editHopDong = (id) => runWorkflow("editHopDong", id);
+    const deleteHopDong = (id) => runWorkflow("deleteHopDong", id);
+    const saveKetQuaChiDinhThau = (gtId) => runWorkflow("saveKetQuaChiDinhThau", gtId);
+    const exportContractFromHopDong = (pkgId, soHopDong) => {
       const dbId = pkgId;
       const btn = document.querySelector(`button[onclick*="${pkgId}"][onclick*="${soHopDong}"]`);
       const origHTML = btn ? btn.innerHTML : "";
@@ -902,26 +914,26 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         }
       });
     };
-    window.addJointVentureMemberCard = (data) => this.addJointVentureMemberCard(data);
-    window.removeJointVentureMemberCard = (id) => this.removeJointVentureMemberCard(id);
-    window.switchTab = (tab, action = null, updateState = true) => this.switchTab(tab, action, updateState);
-    window.toggleOrgLock = (id) => this.toggleOrgLock(id);
-    window.renewOrgSubscription = (id) => this.renewOrgSubscription(id);
-    window.editPackageQuota = (pkgId, defaultQuota) => this.editPackageQuota(pkgId, defaultQuota);
-    window.editSystemPackage = (pkgId) => this.editSystemPackage(pkgId);
-    window.togglePackageLock = (id) => this.togglePackageLock(id);
-    window.editEmployee = (id) => this.editEmployee(id);
-    window.deleteEmployee = (id) => this.deleteEmployee(id);
-    window.editHoSoGiayStatus = (id) => this.editHoSoGiayStatus(id);
-    window.deleteHoSoGiayStatus = (id) => this.deleteHoSoGiayStatus(id);
-    window.triggerUpgradePrompt = () => this.triggerUpgradePrompt();
-    window.deleteSystemUser = (id, username) => this.deleteSystemUser(id, username);
-    window.changeUserRole = (id, newRole) => this.changeUserRole(id, newRole);
-    window.changeUserPackage = (id, newPackage) => this.changeUserPackage(id, newPackage);
-    window.toggleUserPackage = (id, packageId, isChecked) => this.toggleUserPackage(id, packageId, isChecked);
-    window.updateUserMetadata = (id, field, value) => this.updateUserMetadata(id, field, value);
-    window.showSystemUserDetail = (id) => this.showSystemUserDetail(id);
-    window.renderTablePagination = (containerId, totalItems, currentPage, pageSize) => {
+    const addJointVentureMemberCard = (data) => this.addJointVentureMemberCard(data);
+    const removeJointVentureMemberCard = (id) => this.removeJointVentureMemberCard(id);
+    const switchTab = (tab, action = null, updateState = true) => this.switchTab(tab, action, updateState);
+    const toggleOrgLock = (id) => this.toggleOrgLock(id);
+    const renewOrgSubscription = (id) => this.renewOrgSubscription(id);
+    const editPackageQuota = (pkgId, defaultQuota) => this.editPackageQuota(pkgId, defaultQuota);
+    const editSystemPackage = (pkgId) => this.editSystemPackage(pkgId);
+    const togglePackageLock = (id) => this.togglePackageLock(id);
+    const editEmployee = (id) => this.editEmployee(id);
+    const deleteEmployee = (id) => this.deleteEmployee(id);
+    const editHoSoGiayStatus = (id) => this.editHoSoGiayStatus(id);
+    const deleteHoSoGiayStatus = (id) => this.deleteHoSoGiayStatus(id);
+    const triggerUpgradePrompt = () => this.triggerUpgradePrompt();
+    const deleteSystemUser = (id, username) => this.deleteSystemUser(id, username);
+    const changeUserRole = (id, newRole) => this.changeUserRole(id, newRole);
+    const changeUserPackage = (id, newPackage) => this.changeUserPackage(id, newPackage);
+    const toggleUserPackage = (id, packageId, isChecked) => this.toggleUserPackage(id, packageId, isChecked);
+    const updateUserMetadata = (id, field, value) => this.updateUserMetadata(id, field, value);
+    const showSystemUserDetail = (id) => this.showSystemUserDetail(id);
+    const renderTablePagination = (containerId, totalItems, currentPage, pageSize) => {
       const container = document.getElementById(containerId);
       if (!container) return;
       const totalPages = Math.ceil(totalItems / pageSize) || 1;
@@ -965,7 +977,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       container.innerHTML = html;
       lucide.createIcons({ root: container });
     };
-    window.handlePageChange = (containerId, pageNum) => {
+    const handlePageChange = (containerId, pageNum) => {
       const tabKey = containerId.split("-")[0];
       this.model.currentPage[tabKey] = pageNum;
       this.model.savePage(tabKey);
@@ -976,72 +988,71 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       else if (tabKey === "chuyengia") this.view.renderChuyenGiaTable();
       else if (tabKey === "hopdong") this.view.renderHopDongTable();
     };
-    [
-      "toggleSortTable",
-      "changePlanRowVersion",
-      "changePackageRowVersion",
-      "changeChuDauTuRowVersion",
-      "changeNhaThauRowVersion",
-      "changeChuyenGiaRowVersion",
-      "changeHopDongRowVersion",
-      "showPackageDetails",
-      "showKeHoachDetails",
-      "showHopDongDetails",
-      "showChuyenGiaDetails",
-      "showChuDauTuDetails",
-      "showNhaThauDetails",
-      "zoomCertificateImage",
-      "zoomSignatureImage",
-      "editKeHoach",
-      "deleteKeHoach",
-      "addBreakdownRow",
-      "removeBreakdownRow",
-      "editGoiThau",
-      "deleteGoiThau",
-      "restoreCanceledPackage",
-      "addGiaHanRow",
-      "validateGiaHanRealtime",
-      "moThauGoiThau",
-      "phatHanhHsmtGoiThau",
-      "enforceSingleLeader",
-      "openMoThauJVManager",
-      "openMoThauJVViewModal",
-      "showNhaThauDetailsAndCloseJV",
-      "editChuDauTu",
-      "deleteChuDauTu",
-      "editNhaThau",
-      "deleteNhaThau",
-      "editChuyenGia",
-      "deleteChuyenGia",
-      "editHopDong",
-      "deleteHopDong",
-      "saveKetQuaChiDinhThau",
-      "exportContractFromHopDong",
-      "addJointVentureMemberCard",
-      "removeJointVentureMemberCard",
-      "switchTab",
-      "toggleOrgLock",
-      "renewOrgSubscription",
-      "editPackageQuota",
-      "editSystemPackage",
-      "togglePackageLock",
-      "editEmployee",
-      "deleteEmployee",
-      "editHoSoGiayStatus",
-      "deleteHoSoGiayStatus",
-      "triggerUpgradePrompt",
-      "deleteSystemUser",
-      "changeUserRole",
-      "changeUserPackage",
-      "toggleUserPackage",
-      "updateUserMetadata",
-      "showSystemUserDetail",
-      "renderTablePagination",
-      "handlePageChange"
-    ].forEach((name) => {
-      if (typeof window[name] === "function") {
-        this.ensureCommandRegistry().set(name, window[name]);
-      }
+    const commandHandlers = {
+      toggleSortTable,
+      changePlanRowVersion,
+      changePackageRowVersion,
+      changeChuDauTuRowVersion,
+      changeNhaThauRowVersion,
+      changeChuyenGiaRowVersion,
+      changeHopDongRowVersion,
+      showPackageDetails,
+      showKeHoachDetails,
+      showHopDongDetails,
+      showChuyenGiaDetails,
+      showChuDauTuDetails,
+      showNhaThauDetails,
+      zoomCertificateImage,
+      zoomSignatureImage,
+      editKeHoach,
+      deleteKeHoach,
+      addBreakdownRow,
+      removeBreakdownRow,
+      editGoiThau,
+      deleteGoiThau,
+      restoreCanceledPackage,
+      addGiaHanRow,
+      validateGiaHanRealtime,
+      moThauGoiThau,
+      phatHanhHsmtGoiThau,
+      enforceSingleLeader,
+      openMoThauJVManager,
+      openMoThauJVViewModal,
+      showNhaThauDetailsAndCloseJV,
+      editChuDauTu,
+      deleteChuDauTu,
+      editNhaThau,
+      deleteNhaThau,
+      editChuyenGia,
+      deleteChuyenGia,
+      editHopDong,
+      deleteHopDong,
+      saveKetQuaChiDinhThau,
+      exportContractFromHopDong,
+      addJointVentureMemberCard,
+      removeJointVentureMemberCard,
+      switchTab,
+      toggleOrgLock,
+      renewOrgSubscription,
+      editPackageQuota,
+      editSystemPackage,
+      togglePackageLock,
+      editEmployee,
+      deleteEmployee,
+      editHoSoGiayStatus,
+      deleteHoSoGiayStatus,
+      triggerUpgradePrompt,
+      deleteSystemUser,
+      changeUserRole,
+      changeUserPackage,
+      toggleUserPackage,
+      updateUserMetadata,
+      showSystemUserDetail,
+      renderTablePagination,
+      handlePageChange,
+    };
+    Object.entries(commandHandlers).forEach(([name, handler]) => {
+      this.registerCommand(name, handler, { exposeLegacy: false });
     });
   }
   setupDelegatedActions() {

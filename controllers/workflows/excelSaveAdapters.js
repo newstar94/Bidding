@@ -1,4 +1,4 @@
-import { normalizePersonName } from "../main_controller/domUtils.js";
+﻿import { normalizePersonName } from "../main_controller/domUtils.js";
 const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong"]);
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
 function ensureYMD(controller, dateStr) {
@@ -31,7 +31,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
   if (!isBasicExcelImportType(type)) return null;
   if (type === "plan" || type === "kehoach") {
     const mappedData = validRows.map((row) => {
-      const planId = window.generateRecordId("kehoach");
+      const planId = generateRecordId("kehoach");
       return {
         id: planId,
         maKeHoach: row.maKeHoach || "",
@@ -57,7 +57,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     const latestPlans = controller.model.getLatestPlans();
     const mappedData = validRows.map((row) => {
       const matchedPlan = latestPlans.find((p) => p.maKeHoach.toLowerCase() === (row.keHoachId || row.maKeHoach || "").toLowerCase());
-      const gtId = window.generateRecordId("goithau");
+      const gtId = generateRecordId("goithau");
       return {
         id: gtId,
         maGoiThau: row.maGoiThau || "",
@@ -92,8 +92,11 @@ export async function saveBasicExcelImport(controller, type, validRows) {
       };
     });
     controller.model.state.goithau.push(...mappedData);
-    await controller.model.persistData("goithau");
     [...new Set(mappedData.map((gt) => gt.keHoachId).filter(Boolean))].forEach((pid) => controller.recalculatePlanTotal(pid));
+    await Promise.all([
+      controller.model.persistData("goithau"),
+      controller.model.persistData("kehoach")
+    ]);
     return mappedData.length;
   }
   if (type === "chudautu") {
@@ -103,7 +106,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
       const existing = controller.model.state.chudautu.find(
         (c) => mst && c.maSoThue && c.maSoThue.trim() === mst || maCdt && c.maChuDauTu && c.maChuDauTu.trim().toLowerCase() === maCdt
       );
-      const targetId = existing ? existing.id : window.generateRecordId("chudautu");
+      const targetId = existing ? existing.id : generateRecordId("chudautu");
       return {
         id: targetId,
         rootId: targetId,
@@ -136,7 +139,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
       const existing = controller.model.state.nhathau.find(
         (n) => mst && n.maSoThue && n.maSoThue.trim() === mst || maNt && n.maNhaThau && n.maNhaThau.trim().toLowerCase() === maNt
       );
-      const targetId = existing ? existing.id : window.generateRecordId("nhathau");
+      const targetId = existing ? existing.id : generateRecordId("nhathau");
       return {
         id: targetId,
         rootId: targetId,
@@ -172,7 +175,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
       const existing = controller.model.state.chuyengia.find(
         (cg) => cccd && cg.soCCCD && cg.soCCCD.trim() === cccd || soChungChi && cg.soChungChi && cg.soChungChi.trim().toLowerCase() === soChungChi
       );
-      const targetId = existing ? existing.id : window.generateRecordId("chuyengia");
+      const targetId = existing ? existing.id : generateRecordId("chuyengia");
       return {
         id: targetId,
         rootId: targetId,
@@ -201,7 +204,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
       const nt = controller.model.state.nhathau.find((n) => n.maNhaThau.toLowerCase() === (row.nhaThauId || "").toLowerCase());
       const soHd = (row.soHopDong || "").trim().toLowerCase();
       const existing = controller.model.state.hopdong.find((h) => h.soHopDong && h.soHopDong.trim().toLowerCase() === soHd);
-      const targetId = existing ? existing.id : window.generateRecordId("hopdong");
+      const targetId = existing ? existing.id : generateRecordId("hopdong");
       return {
         id: targetId,
         rootId: targetId,
@@ -243,13 +246,13 @@ function ensureContractorForOpeningImport(controller, row) {
     (n) => n.maNhaThau && row.maNhaThau && n.maNhaThau.toLowerCase() === row.maNhaThau.toLowerCase() || n.tenNhaThau && row.tenNhaThau && n.tenNhaThau.toLowerCase() === row.tenNhaThau.toLowerCase()
   );
   if (!foundNt && row.tenNhaThau) {
-    const newId = window.generateRecordId("nhathau");
+    const newId = generateRecordId("nhathau");
     foundNt = {
       id: newId,
       rootId: newId,
       phienBan: "00",
       isLatest: 1,
-      maNhaThau: row.maNhaThau || "NT-" + window.generateUUID().toString().substr(8),
+      maNhaThau: row.maNhaThau || "NT-" + generateUUID().toString().substr(8),
       tenNhaThau: row.tenNhaThau,
       loaiNhaThau: row.loaiNhaThau || "Độc lập",
       maSoThue: "",
@@ -278,7 +281,7 @@ async function saveOpeningImport(controller, validRows) {
     const foundNt = ensureContractorForOpeningImport(controller, row);
     const nhaThauId = foundNt ? foundNt.id : row.nhaThauId;
     controller.model.state.thongtinmothau.push({
-      id: row.id || window.generateRecordId("thongtinmothau"),
+      id: row.id || generateRecordId("thongtinmothau"),
       goiThauId: gtId,
       nhaThauId,
       maPhanLo: row.maPhanLo || "",
@@ -365,7 +368,7 @@ async function saveAwardResultImport(controller, validRows) {
       const latestNhaThauList = controller.model.getLatestNhaThau();
       const foundNt = latestNhaThauList.find((n) => n.id === row.nhaThauId);
       bid = {
-        id: row.id || window.generateRecordId("thongtinmothau"),
+        id: row.id || generateRecordId("thongtinmothau"),
         goiThauId: gtId,
         nhaThauId: row.nhaThauId,
         maNhaThau: row.maNhaThau || (foundNt ? foundNt.maNhaThau : ""),
@@ -445,3 +448,4 @@ export async function saveBusinessExcelImport(controller, type, validRows) {
   if (type === "opening_fin") return await saveOpeningFinancialImport(controller, validRows);
   return null;
 }
+import { generateRecordId, generateUUID } from "../../models/idUtils.js";

@@ -1,13 +1,21 @@
-import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
+﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
 import { bindCurrencyElement } from "../main_controller/domUtils.js";
-import { removeAllVersions, removeLatestVersion } from "../domain/VersionedEntityService.js";
+import {
+  canDeleteVersions,
+  createNextVersion,
+  rememberSelectedVersion,
+  removeAllVersions,
+  removeLatestVersion
+} from "../domain/VersionedEntityService.js";
+import { persistAndSync } from "../domain/MutationService.js";
+import { getHolidays } from "../state/runtimeState.js";
+import { generateRecordId } from "../../models/idUtils.js";
 import { escapeHtml } from "../../views/subviews/view_helpers.js";
 export async function deleteKeHoach(id) {
   const targetPlan = this.model.state.kehoach.find((k) => k.id === id);
   if (!targetPlan) return;
   const rootId = targetPlan.rootId || targetPlan.id;
   const relatedPlans = this.model.state.kehoach.filter((kh) => (kh.rootId || kh.id) === rootId);
-  const relatedIds = relatedPlans.map((kh) => kh.id);
   if (relatedPlans.length >= 2) {
     const choice = await this.view.customVersionDeleteChoice(
       "Xác nhận xóa",
@@ -20,8 +28,10 @@ export async function deleteKeHoach(id) {
       const preview = removeLatestVersion(this.model.state.kehoach, targetPlan);
       const latestKh = preview.removed[0];
       if (!latestKh) return;
-      const hasPkgLatest = this.model.state.goithau.some((gt) => gt.keHoachId === latestKh.id);
-      if (hasPkgLatest) {
+      const deletionCheck = canDeleteVersions(latestKh, [{
+        name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
+      }]);
+      if (!deletionCheck.allowed) {
         await this.view.customAlert(
           "Không thể xóa",
           "Không thể xóa phiên bản gần nhất này vì có các Gói thầu đang liên kết trực tiếp với phiên bản này. Vui lòng chuyển hướng hoặc xóa các gói thầu trước.",
@@ -31,13 +41,16 @@ export async function deleteKeHoach(id) {
       }
       this.model.state.kehoach = preview.records;
       this.model.markDeleted("kehoach", preview.removed.map((item) => item.id));
-      await this.model.persistData("kehoach");
-      await this.autoSync();
+      await persistAndSync(this, "kehoach", {
+        afterPersist: () => this.view.renderKeHoachTable()
+      });
       await this.view.customAlert("Thành công", "Đã xóa phiên bản kế hoạch gần nhất!", "check-circle");
       return;
     } else if (choice === 2) {
-      const hasPkgAny = this.model.state.goithau.some((gt) => relatedIds.includes(gt.keHoachId));
-      if (hasPkgAny) {
+      const deletionCheck = canDeleteVersions(relatedPlans, [{
+        name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
+      }]);
+      if (!deletionCheck.allowed) {
         await this.view.customAlert(
           "Không thể xóa",
           "Không thể xóa kế hoạch này vì có các Gói thầu đang liên kết trực tiếp với các phiên bản của kế hoạch này. Vui lòng chuyển hướng hoặc xóa các gói thầu trước.",
@@ -48,14 +61,17 @@ export async function deleteKeHoach(id) {
       const result = removeAllVersions(this.model.state.kehoach, targetPlan);
       this.model.state.kehoach = result.records;
       this.model.markDeleted("kehoach", result.removed.map((item) => item.id));
-      await this.model.persistData("kehoach");
-      await this.autoSync();
+      await persistAndSync(this, "kehoach", {
+        afterPersist: () => this.view.renderKeHoachTable()
+      });
       await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của kế hoạch!", "check-circle");
       return;
     }
   } else {
-    const hasPackage = this.model.state.goithau.some((gt) => relatedIds.includes(gt.keHoachId));
-    if (hasPackage) {
+    const deletionCheck = canDeleteVersions(relatedPlans, [{
+      name: "goithau", records: this.model.state.goithau, foreignKey: "keHoachId"
+    }]);
+    if (!deletionCheck.allowed) {
       await this.view.customAlert(
         "Không thể xóa",
         "Không thể xóa kế hoạch này vì có các Gói thầu đang liên kết trực tiếp với kế hoạch này. Vui lòng chuyển hướng hoặc xóa các gói thầu trước.",
@@ -71,8 +87,9 @@ export async function deleteKeHoach(id) {
     if (confirmed) {
       this.model.state.kehoach = this.model.state.kehoach.filter((kh) => kh.id !== id);
       this.model.markDeleted("kehoach", id);
-      await this.model.persistData("kehoach");
-      await this.autoSync();
+      await persistAndSync(this, "kehoach", {
+        afterPersist: () => this.view.renderKeHoachTable()
+      });
     }
   }
 }
@@ -221,7 +238,7 @@ export async function editKeHoach(id) {
     if (parts.length !== 3) return "";
     let date = new Date(parts[2], parts[1] - 1, parts[0]);
     if (isNaN(date.getTime())) return "";
-    const holidaysData = window._vietnameseHolidays || {};
+    const holidaysData = getHolidays();
     let direction = days < 0 ? -1 : 1;
     let remainingDays = Math.abs(days);
     while (remainingDays > 0) {
@@ -397,7 +414,7 @@ export async function handleKeHoachSubmit(e) {
     }
   } else {
     this.tempPlanAction = "create";
-    const planId = window.generateRecordId("kehoach");
+    const planId = generateRecordId("kehoach");
     targetPlanId = planId;
     this.tempPlanData.id = planId;
     this.model.state.kehoach.push({
@@ -592,8 +609,6 @@ export function updateBreakdownTotal(planId) {
     kh.tongMucDauTu = total;
     kh.isTongMucTuDong = true;
   }
-  this.model.persistData("kehoach");
-  this.view.renderKeHoachTable();
   const labelTitle = isProject ? "Tổng mức đầu tư" : "Tổng dự toán";
   const totalSpan = document.getElementById("breakdown-total-display");
   if (totalSpan) {
@@ -617,8 +632,6 @@ export function recalculatePlanTotal(planId) {
   const isProject = kh.loaiHinhMuaSam === "Dự án";
   kh.tongMucDauTu = isProject ? sumI + sumII + sumIII + sumIV : sumII + sumIII + sumIV;
   kh.isTongMucTuDong = true;
-  this.model.persistData("kehoach");
-  this.view.renderKeHoachTable();
 }
 export async function savePlanBreakdown() {
   const planId = document.getElementById("breakdown-plan-id").value;
@@ -669,35 +682,25 @@ export async function savePlanBreakdown() {
     if (saveAsNewVersion) {
       this.model.state.kehoach = JSON.parse(JSON.stringify(this.backupKeHoachState));
       const oldKh = this.model.state.kehoach.find((k) => k.id === this.tempPlanData.id);
-      const rootId = oldKh.rootId || oldKh.id;
-      const relatedPlans = this.model.state.kehoach.filter((k) => (k.rootId || k.id) === rootId);
-      const maxVersion = Math.max(...relatedPlans.map((k) => parseInt(k.phienBan) || 0));
-      const nextVersion = String(maxVersion + 1).padStart(2, "0");
-      const newId = window.generateRecordId("kehoach");
+      const newId = generateRecordId("kehoach");
       finalPlanId = newId;
-      relatedPlans.forEach((k) => {
-        k.isLatest = 0;
-      });
-      if (!this.model.state.selectedPlanVersion) {
-        this.model.state.selectedPlanVersion = {};
-      }
-      this.model.state.selectedPlanVersion[rootId] = newId;
-      this.model.state.kehoach.push({
+      const timestamp = this.model.getCurrentDateTimeString();
+      const nextPlan = createNextVersion(this.model.state.kehoach, oldKh, {
         ...this.tempPlanData,
-        id: newId,
-        phienBan: nextVersion,
-        isLatest: 1,
-        rootId,
-        createdAt: oldKh.createdAt || this.model.getCurrentDateTimeString(),
-        updatedAt: this.model.getCurrentDateTimeString(),
         cvDaThucHienList: cvDaThucHien,
         cvKhongApDungList: cvKhongApDung,
         cvChuaDuDieuKienList: cvChuaDuDieuKien
+      }, {
+        id: newId,
+        timestamp
       });
+      nextPlan.createdAt = oldKh.createdAt || timestamp;
+      this.model.state.kehoach.push(nextPlan);
+      rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
       const activeUserId = this.model.state.activeuser.id;
       if (activeUserId) {
         await this.model.addRecord("assignments", {
-          id: window.generateRecordId("assignments"),
+          id: generateRecordId("assignments"),
           empId: activeUserId,
           targetId: newId,
           type: "kehoach"
@@ -705,7 +708,7 @@ export async function savePlanBreakdown() {
       }
       const oldPackages = this.model.state.goithau.filter((gt) => gt.keHoachId === oldKh.id);
       oldPackages.forEach((gt) => {
-        const newGtId = window.generateRecordId("goithau");
+        const newGtId = generateRecordId("goithau");
         this.model.state.goithau.push({
           ...gt,
           id: newGtId,
@@ -716,14 +719,12 @@ export async function savePlanBreakdown() {
           relatedBids.forEach((b) => {
             this.model.state.thongtinmothau.push({
               ...b,
-              id: window.generateRecordId("assignments"),
+              id: generateRecordId("assignments"),
               goiThauId: newGtId
             });
           });
         }
       });
-      await this.model.persistData("goithau");
-      await this.model.persistData("thongtinmothau");
     } else {
       const currentKh = this.model.state.kehoach.find((k) => k.id === planId);
       if (currentKh) {
@@ -742,7 +743,7 @@ export async function savePlanBreakdown() {
     const activeUserId = this.model.state.activeuser.id;
     if (activeUserId) {
       await this.model.addRecord("assignments", {
-        id: window.generateRecordId("assignments"),
+        id: generateRecordId("assignments"),
         empId: activeUserId,
         targetId: finalPlanId,
         type: "kehoach"
@@ -754,8 +755,6 @@ export async function savePlanBreakdown() {
     this.recalculatePlanTotal(finalPlanId);
   }
   this.updateBreakdownTotal(finalPlanId);
-  await this.model.persistData("kehoach");
-  await this.model.persistData("goithau");
   this.backupKeHoachState = null;
   this.backupGoiThauState = null;
   this.tempPlanData = null;
@@ -763,10 +762,13 @@ export async function savePlanBreakdown() {
   if (hasModalReturnState("kehoach-detail") && finalPlanId) {
     updateModalReturnAction(finalPlanId);
   }
-  const syncResult = await this.autoSync();
+  const syncResult = await persistAndSync(this, ["kehoach", "goithau", "thongtinmothau"], {
+    afterPersist: () => {
+      this.view.renderKeHoachTable();
+      this.view.renderGoiThauTable();
+    }
+  });
   if (!syncResult?.ok) return;
   this.closeModal("modal-plan-breakdown");
-  this.view.renderKeHoachTable();
-  this.view.renderGoiThauTable();
   await this.view.customAlert("Thành công", "Đã lưu kế hoạch và cấu trúc phân chia chi tiết công việc thành công!", "check-circle");
 }

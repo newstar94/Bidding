@@ -1,4 +1,4 @@
-/* Generated from backend/helpers_py/schema.py. Do not edit by hand. */
+/* Generated from backend field/schema manifests. Do not edit by hand. */
 export const SCHEMA_CONTRACT = {
   "clientTableMap": {
     "assignments": "phan_cong_nhan_su",
@@ -221,6 +221,4074 @@ export const SCHEMA_CONTRACT = {
     "vai_tro_trong_to_chuc": "vaiTroTrongToChuc",
     "van_ban_phe_duyet": "vanBanPheDuyet",
     "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt"
+  },
+  "fieldManifest": {
+    "tables": {
+      "audit_log": {
+        "fields": {
+          "action": {
+            "column": "action",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "action",
+            "label": "Action",
+            "wordVariable": null
+          },
+          "actor_user_id": {
+            "column": "actor_user_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "actorUserId",
+            "label": "Actor user id",
+            "wordVariable": null
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "ip_address": {
+            "column": "ip_address",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ipAddress",
+            "label": "Ip address",
+            "wordVariable": null
+          },
+          "metadata_json": {
+            "column": "metadata_json",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "metadataJson",
+            "label": "Metadata json",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "target_id": {
+            "column": "target_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "targetId",
+            "label": "Target id",
+            "wordVariable": null
+          },
+          "target_type": {
+            "column": "target_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "targetType",
+            "label": "Target type",
+            "wordVariable": null
+          }
+        }
+      },
+      "cau_hinh_bien_word": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "mo_ta": {
+            "column": "mo_ta",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "moTa",
+            "label": "M\u1edf ta",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "source_column": {
+            "column": "source_column",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sourceColumn",
+            "label": "Source column",
+            "wordVariable": null
+          },
+          "source_table": {
+            "column": "source_table",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sourceTable",
+            "label": "Source table",
+            "wordVariable": null
+          },
+          "ten_bien": {
+            "column": "ten_bien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenBien",
+            "label": "T\u00ean bien",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "chu_dau_tu": {
+        "fields": {
+          "chuc_vu_dai_dien": {
+            "column": "chuc_vu_dai_dien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chucVuDaiDien",
+            "label": "Ch\u1ee9c vu \u0111\u1ea1i \u0111i\u1ec7n",
+            "wordVariable": "chuc_vu_dai_dien_cdt"
+          },
+          "chuc_vu_nguoi_dung_dau": {
+            "column": "chuc_vu_nguoi_dung_dau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chucVuNguoiDungDau",
+            "label": "Ch\u1ee9c vu ng\u01b0\u1eddi dung \u0111\u1ea5u",
+            "wordVariable": "chuc_vu_nguoi_dung_dau_cdt"
+          },
+          "co_quan_chu_quan": {
+            "column": "co_quan_chu_quan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "coQuanChuQuan",
+            "label": "Co quan chu quan",
+            "wordVariable": "cq_chu_quan"
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "dai_dien_cdt": {
+            "column": "dai_dien_cdt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "daiDienCdt",
+            "label": "\u0110\u1ea1i \u0111i\u1ec7n cdt",
+            "wordVariable": "dai_dien_cdt"
+          },
+          "danh_xung": {
+            "column": "danh_xung",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhXung",
+            "label": "Danh x\u01b0ng",
+            "wordVariable": "danh_xung_cdt"
+          },
+          "dia_chi": {
+            "column": "dia_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChi",
+            "label": "\u0110\u1ecba ch\u1ec9",
+            "wordVariable": "dia_chi_cdt"
+          },
+          "dia_chi_goc": {
+            "column": "dia_chi_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChiGoc",
+            "label": "\u0110\u1ecba ch\u1ec9 goc",
+            "wordVariable": null
+          },
+          "email": {
+            "column": "email",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "email",
+            "label": "Email",
+            "wordVariable": "email_cdt"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "id_goc": {
+            "column": "id_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "rootId",
+            "label": "Id goc",
+            "wordVariable": null
+          },
+          "is_latest": {
+            "column": "is_latest",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isLatest",
+            "label": "Is latest",
+            "wordVariable": null
+          },
+          "ma_chu_dau_tu": {
+            "column": "ma_chu_dau_tu",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maChuDauTu",
+            "label": "M\u00e3 chu \u0111\u1ea5u tu",
+            "wordVariable": "ma_cdt"
+          },
+          "ma_qhns": {
+            "column": "ma_qhns",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maQHNS",
+            "label": "M\u00e3 qhns",
+            "wordVariable": "cdt_ma_qhns"
+          },
+          "ma_so_thue": {
+            "column": "ma_so_thue",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maSoThue",
+            "label": "M\u00e3 s\u1ed1 thue",
+            "wordVariable": "mst_cdt"
+          },
+          "ngay_ap_dung": {
+            "column": "ngay_ap_dung",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayApDung",
+            "label": "Ng\u00e0y ap dung",
+            "wordVariable": "ngay_ap_dung_cdt"
+          },
+          "noi_mo_tai_khoan": {
+            "column": "noi_mo_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "noiMoTaiKhoan",
+            "label": "Noi m\u1edf t\u00e0i khoan",
+            "wordVariable": "noi_mo_tk_cdt"
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "phien_ban": {
+            "column": "phien_ban",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phienBan",
+            "label": "Phien ban",
+            "wordVariable": null
+          },
+          "so_dien_thoai": {
+            "column": "so_dien_thoai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soDienThoai",
+            "label": "S\u1ed1 \u0111i\u1ec7n thoai",
+            "wordVariable": "sdt_cdt"
+          },
+          "so_tai_khoan": {
+            "column": "so_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soTaiKhoan",
+            "label": "S\u1ed1 t\u00e0i khoan",
+            "wordVariable": "stk_cdt"
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_chu_dau_tu": {
+            "column": "ten_chu_dau_tu",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenChuDauTu",
+            "label": "T\u00ean chu \u0111\u1ea5u tu",
+            "wordVariable": "ten_cdt"
+          },
+          "ten_viet_tat": {
+            "column": "ten_viet_tat",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenVietTat",
+            "label": "T\u00ean viet tat",
+            "wordVariable": "ten_tat_cdt"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "chuyen_gia": {
+        "fields": {
+          "anh_chu_ky": {
+            "column": "anh_chu_ky",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "anhChuKy",
+            "label": "\u1ea2nh chu k\u00fd",
+            "wordVariable": "anh_chu_ky_cg"
+          },
+          "anh_chung_chi": {
+            "column": "anh_chung_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "anhChungChi",
+            "label": "\u1ea2nh chung ch\u1ec9",
+            "wordVariable": "anh_chung_chi_cg"
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "don_vi_cap_chung_chi": {
+            "column": "don_vi_cap_chung_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "donViCapChungChi",
+            "label": "Don vi c\u1ea5p chung ch\u1ec9",
+            "wordVariable": "dv_cap_chung_chi_cg"
+          },
+          "ho_ten": {
+            "column": "ho_ten",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hoTen",
+            "label": "Ho t\u00ean",
+            "wordVariable": "ten_cg"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "id_goc": {
+            "column": "id_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "rootId",
+            "label": "Id goc",
+            "wordVariable": null
+          },
+          "is_latest": {
+            "column": "is_latest",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isLatest",
+            "label": "Is latest",
+            "wordVariable": null
+          },
+          "ngay_cap_cccd": {
+            "column": "ngay_cap_cccd",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayCapCCCD",
+            "label": "Ng\u00e0y c\u1ea5p cccd",
+            "wordVariable": "ngay_cap_cccd_cg"
+          },
+          "ngay_cap_chung_chi": {
+            "column": "ngay_cap_chung_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayCapChungChi",
+            "label": "Ng\u00e0y c\u1ea5p chung ch\u1ec9",
+            "wordVariable": "ngay_cap_chung_chi_cg"
+          },
+          "noi_cap_cccd": {
+            "column": "noi_cap_cccd",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "noiCapCCCD",
+            "label": "Noi c\u1ea5p cccd",
+            "wordVariable": "noi_cap_cccd_cg"
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "phien_ban": {
+            "column": "phien_ban",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phienBan",
+            "label": "Phien ban",
+            "wordVariable": null
+          },
+          "so_cccd": {
+            "column": "so_cccd",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soCCCD",
+            "label": "S\u1ed1 cccd",
+            "wordVariable": "cccd_cg"
+          },
+          "so_chung_chi": {
+            "column": "so_chung_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soChungChi",
+            "label": "S\u1ed1 chung ch\u1ec9",
+            "wordVariable": "so_chung_chi_cg"
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_anh_chu_ky": {
+            "column": "ten_anh_chu_ky",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenAnhChuKy",
+            "label": "T\u00ean \u1ea3nh chu k\u00fd",
+            "wordVariable": "ten_anh_chu_ky_cg"
+          },
+          "ten_anh_chung_chi": {
+            "column": "ten_anh_chung_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenAnhChungChi",
+            "label": "T\u00ean \u1ea3nh chung ch\u1ec9",
+            "wordVariable": "ten_anh_chung_chi_cg"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "deleted_records": {
+        "fields": {
+          "delete_version": {
+            "column": "delete_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "deleteVersion",
+            "label": "Delete version",
+            "wordVariable": null
+          },
+          "deleted_at": {
+            "column": "deleted_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "deletedAt",
+            "label": "Deleted at",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "record_id": {
+            "column": "record_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "recordId",
+            "label": "Record id",
+            "wordVariable": null
+          },
+          "table_name": {
+            "column": "table_name",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tableName",
+            "label": "Table name",
+            "wordVariable": null
+          }
+        }
+      },
+      "goi_dich_vu": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "gia_ca": {
+            "column": "gia_ca",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaCa",
+            "label": "Gi\u00e1 ca",
+            "wordVariable": "gia_goi_dv"
+          },
+          "han_muc_nhan_su": {
+            "column": "han_muc_nhan_su",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hanMucNhanSu",
+            "label": "Han muc nhan su",
+            "wordVariable": "han_muc_nhan_su_dv"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "mo_ta": {
+            "column": "mo_ta",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "moTa",
+            "label": "M\u1edf ta",
+            "wordVariable": "mo_ta_goi_dv"
+          },
+          "ten_goi": {
+            "column": "ten_goi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenGoi",
+            "label": "T\u00ean g\u00f3i",
+            "wordVariable": "ten_goi_dv"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "goi_thau": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "danh_gia_hsdt_metadata": {
+            "column": "danh_gia_hsdt_metadata",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhGiaHsdtMetadata",
+            "label": "Danh gi\u00e1 hsdt metadata",
+            "wordVariable": null
+          },
+          "gia_goi_thau": {
+            "column": "gia_goi_thau",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaGoiThau",
+            "label": "Gi\u00e1 g\u00f3i th\u1ea7u",
+            "wordVariable": "gia_gt"
+          },
+          "gia_tri_dam_bao_du_thau": {
+            "column": "gia_tri_dam_bao_du_thau",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTriDamBaoDuThau",
+            "label": "Gi\u00e1 tr\u1ecb dam b\u1ea3o d\u1ef1 th\u1ea7u",
+            "wordVariable": "gia_tri_bddt"
+          },
+          "gia_trung_thau": {
+            "column": "gia_trung_thau",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTrungThau",
+            "label": "Gi\u00e1 trung th\u1ea7u",
+            "wordVariable": "gia_trung_thau"
+          },
+          "hieu_luc_dam_bao_du_thau": {
+            "column": "hieu_luc_dam_bao_du_thau",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hieuLucDamBaoDuThau",
+            "label": "Hieu luc dam b\u1ea3o d\u1ef1 th\u1ea7u",
+            "wordVariable": "hieu_luc_bddt"
+          },
+          "hieu_luc_hsdt": {
+            "column": "hieu_luc_hsdt",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hieuLucHsdt",
+            "label": "Hieu luc hsdt",
+            "wordVariable": "hieu_luc_hsdt"
+          },
+          "hinh_thuc_lua_chon": {
+            "column": "hinh_thuc_lua_chon",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hinhThucLuaChon",
+            "label": "Hinh th\u1ef1c l\u1ef1a chon",
+            "wordVariable": "hinh_thuc_lcnt"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "id_goc": {
+            "column": "id_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "rootId",
+            "label": "Id goc",
+            "wordVariable": null
+          },
+          "is_latest": {
+            "column": "is_latest",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isLatest",
+            "label": "Is latest",
+            "wordVariable": null
+          },
+          "is_thuoc": {
+            "column": "is_thuoc",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isThuoc",
+            "label": "Is thuoc",
+            "wordVariable": "gt_is_thuoc"
+          },
+          "ke_hoach_id": {
+            "column": "ke_hoach_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "keHoachId",
+            "label": "K\u1ebf hoach id",
+            "wordVariable": null
+          },
+          "linh_vuc": {
+            "column": "linh_vuc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "linhVuc",
+            "label": "Linh vuc",
+            "wordVariable": "gt_linh_vuc"
+          },
+          "loai_hop_dong": {
+            "column": "loai_hop_dong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loaiHopDong",
+            "label": "Loai h\u1ee3p \u0111\u00f3ng",
+            "wordVariable": "loai_hd_gt"
+          },
+          "ma_goi_thau": {
+            "column": "ma_goi_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maGoiThau",
+            "label": "M\u00e3 g\u00f3i th\u1ea7u",
+            "wordVariable": "ma_gt"
+          },
+          "ngay_bao_cao_tham_dinh_hsmt": {
+            "column": "ngay_bao_cao_tham_dinh_hsmt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayBaoCaoThamDinhHsmt",
+            "label": "Ng\u00e0y b\u1ea3o c\u00e1o tham dinh hsmt",
+            "wordVariable": "ngay_bc_tham_dinh_hsmt"
+          },
+          "ngay_quyet_dinh": {
+            "column": "ngay_quyet_dinh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayQuyetDinh",
+            "label": "Ng\u00e0y quy\u1ebft dinh",
+            "wordVariable": "ngay_qd_hsmt"
+          },
+          "ngay_quyet_dinh_ket_qua": {
+            "column": "ngay_quyet_dinh_ket_qua",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayQuyetDinhKetQua",
+            "label": "Ng\u00e0y quy\u1ebft dinh ket qua",
+            "wordVariable": "ngay_qd_kq"
+          },
+          "ngay_trinh_hsmt": {
+            "column": "ngay_trinh_hsmt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayTrinhHsmt",
+            "label": "Ng\u00e0y trinh hsmt",
+            "wordVariable": "ngay_trinh_hsmt"
+          },
+          "nguon_von": {
+            "column": "nguon_von",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguonVon",
+            "label": "Nguon von",
+            "wordVariable": "gt_nguon_von"
+          },
+          "nha_thau_trung_thau_id": {
+            "column": "nha_thau_trung_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nhaThauTrungThauId",
+            "label": "Nh\u00e0 th\u1ea7u trung th\u1ea7u id",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "phan_lo": {
+            "column": "phan_lo",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phanLo",
+            "label": "Phan lo",
+            "wordVariable": "gt_phan_lo"
+          },
+          "phien_ban": {
+            "column": "phien_ban",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phienBan",
+            "label": "Phien ban",
+            "wordVariable": "gt_phien_ban"
+          },
+          "phuong_phap_danh_gia": {
+            "column": "phuong_phap_danh_gia",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phuongPhapDanhGia",
+            "label": "Phuong phap danh gi\u00e1",
+            "wordVariable": "pp_danh_gia"
+          },
+          "phuong_thuc_lua_chon": {
+            "column": "phuong_thuc_lua_chon",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phuongThucLuaChon",
+            "label": "Phuong th\u1ef1c l\u1ef1a chon",
+            "wordVariable": "phuong_thuc_lcnt"
+          },
+          "so_bao_cao_tham_dinh_hsmt": {
+            "column": "so_bao_cao_tham_dinh_hsmt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soBaoCaoThamDinhHsmt",
+            "label": "S\u1ed1 b\u1ea3o c\u00e1o tham dinh hsmt",
+            "wordVariable": "so_bc_tham_dinh_hsmt"
+          },
+          "so_quyet_dinh": {
+            "column": "so_quyet_dinh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soQuyetDinh",
+            "label": "S\u1ed1 quy\u1ebft dinh",
+            "wordVariable": "so_qd_hsmt"
+          },
+          "so_quyet_dinh_ket_qua": {
+            "column": "so_quyet_dinh_ket_qua",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soQuyetDinhKetQua",
+            "label": "S\u1ed1 quy\u1ebft dinh ket qua",
+            "wordVariable": "so_qd_kq"
+          },
+          "so_to_trinh_hsmt": {
+            "column": "so_to_trinh_hsmt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soToTrinhHsmt",
+            "label": "S\u1ed1 to trinh hsmt",
+            "wordVariable": "so_ttr_hsmt"
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_goi_thau": {
+            "column": "ten_goi_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenGoiThau",
+            "label": "T\u00ean g\u00f3i th\u1ea7u",
+            "wordVariable": "ten_gt"
+          },
+          "thoi_gian_bat_dau_to_chuc": {
+            "column": "thoi_gian_bat_dau_to_chuc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianBatDauToChuc",
+            "label": "Th\u1eddi gian bat \u0111\u1ea5u to ch\u1ee9c",
+            "wordVariable": "tg_bat_dau_lcnt"
+          },
+          "thoi_gian_dang_tai": {
+            "column": "thoi_gian_dang_tai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "datetime",
+            "jsonKey": "thoiGianDangTai",
+            "label": "Th\u1eddi gian \u0111\u0103ng t\u00e0i",
+            "wordVariable": "tg_dang_tai_tbmt"
+          },
+          "thoi_gian_dong_thau": {
+            "column": "thoi_gian_dong_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "datetime",
+            "jsonKey": "thoiGianDongThau",
+            "label": "Th\u1eddi gian \u0111\u00f3ng th\u1ea7u",
+            "wordVariable": "tg_dong_thau"
+          },
+          "thoi_gian_goi_thau": {
+            "column": "thoi_gian_goi_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianGoiThau",
+            "label": "Th\u1eddi gian g\u00f3i th\u1ea7u",
+            "wordVariable": "tg_goi_thau"
+          },
+          "thoi_gian_hop_dong": {
+            "column": "thoi_gian_hop_dong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianHopDong",
+            "label": "Th\u1eddi gian h\u1ee3p \u0111\u00f3ng",
+            "wordVariable": "tg_hop_dong"
+          },
+          "thoi_gian_mo_ehsdxtc": {
+            "column": "thoi_gian_mo_ehsdxtc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "datetime",
+            "jsonKey": "thoiGianMoEhsdxtc",
+            "label": "Th\u1eddi gian m\u1edf ehsdxtc",
+            "wordVariable": "tg_mo_ehsdxtc"
+          },
+          "thoi_gian_mo_thau": {
+            "column": "thoi_gian_mo_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "datetime",
+            "jsonKey": "thoiGianMoThau",
+            "label": "Th\u1eddi gian m\u1edf th\u1ea7u",
+            "wordVariable": "tg_mo_thau"
+          },
+          "thoi_gian_thuc_hien": {
+            "column": "thoi_gian_thuc_hien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianThucHien",
+            "label": "Th\u1eddi gian th\u1ef1c hien",
+            "wordVariable": "tg_thuc_hien_gt"
+          },
+          "thoi_gian_to_chuc": {
+            "column": "thoi_gian_to_chuc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianToChuc",
+            "label": "Th\u1eddi gian to ch\u1ee9c",
+            "wordVariable": "tg_to_chuc_lcnt"
+          },
+          "trang_thai": {
+            "column": "trang_thai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "trangThai",
+            "label": "Tr\u1ea1ng thai",
+            "wordVariable": "gt_trang_thai"
+          },
+          "trong_so_ky_thuat": {
+            "column": "trong_so_ky_thuat",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "percent",
+            "jsonKey": "trongSoKyThuat",
+            "label": "Trong s\u1ed1 k\u00fd thuat",
+            "wordVariable": "trong_so_ky_thuat"
+          },
+          "tuy_chon_mua_them": {
+            "column": "tuy_chon_mua_them",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tuyChonMuaThem",
+            "label": "Tuy chon mua them",
+            "wordVariable": "co_mua_them"
+          },
+          "ty_le_bao_dam_hop_dong": {
+            "column": "ty_le_bao_dam_hop_dong",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "percent",
+            "jsonKey": "tyLeBaoDamHopDong",
+            "label": "Ty le b\u1ea3o dam h\u1ee3p \u0111\u00f3ng",
+            "wordVariable": "ty_le_bdhdt"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          },
+          "yeu_cau_tham_dinh_hsmt": {
+            "column": "yeu_cau_tham_dinh_hsmt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "yeuCauThamDinhHsmt",
+            "label": "Yeu cau tham dinh hsmt",
+            "wordVariable": "yc_tham_dinh_hsmt"
+          }
+        }
+      },
+      "goi_thau_chuyen_gia": {
+        "fields": {
+          "chuc_vu": {
+            "column": "chuc_vu",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chucVu",
+            "label": "Ch\u1ee9c vu",
+            "wordVariable": null
+          },
+          "chuyen_gia_id": {
+            "column": "chuyen_gia_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chuyenGiaId",
+            "label": "Chuyen gi\u00e1 id",
+            "wordVariable": null
+          },
+          "cong_viec": {
+            "column": "cong_viec",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "congViec",
+            "label": "Cong viec",
+            "wordVariable": null
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "goi_thau_id": {
+            "column": "goi_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiThauId",
+            "label": "G\u00f3i th\u1ea7u id",
+            "wordVariable": null
+          },
+          "loai": {
+            "column": "loai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loai",
+            "label": "Loai",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          }
+        }
+      },
+      "goi_thau_gia_han": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "goi_thau_id": {
+            "column": "goi_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiThauId",
+            "label": "G\u00f3i th\u1ea7u id",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "ly_do_gia_han": {
+            "column": "ly_do_gia_han",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "lyDoGiaHan",
+            "label": "Ly do gi\u00e1 han",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sort_order": {
+            "column": "sort_order",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sortOrder",
+            "label": "Sort order",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "thoi_gian_dong_thau": {
+            "column": "thoi_gian_dong_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "datetime",
+            "jsonKey": "thoiGianDongThau",
+            "label": "Th\u1eddi gian \u0111\u00f3ng th\u1ea7u",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "goi_thau_lam_ro": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "goi_thau_id": {
+            "column": "goi_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiThauId",
+            "label": "G\u00f3i th\u1ea7u id",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "loai": {
+            "column": "loai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loai",
+            "label": "Loai",
+            "wordVariable": null
+          },
+          "noi_dung": {
+            "column": "noi_dung",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "noiDung",
+            "label": "Noi dung",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sort_order": {
+            "column": "sort_order",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sortOrder",
+            "label": "Sort order",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "thoi_gian": {
+            "column": "thoi_gian",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "datetime",
+            "jsonKey": "thoiGian",
+            "label": "Th\u1eddi gian",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "goi_thau_phan_lo": {
+        "fields": {
+          "bao_dam_du_thau": {
+            "column": "bao_dam_du_thau",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "baoDamDuThau",
+            "label": "B\u1ea3o dam d\u1ef1 th\u1ea7u",
+            "wordVariable": null
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "gia_tri_phan_lo": {
+            "column": "gia_tri_phan_lo",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTriPhanLo",
+            "label": "Gi\u00e1 tr\u1ecb phan lo",
+            "wordVariable": null
+          },
+          "gia_trung_thau": {
+            "column": "gia_trung_thau",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTrungThau",
+            "label": "Gi\u00e1 trung th\u1ea7u",
+            "wordVariable": null
+          },
+          "goi_thau_id": {
+            "column": "goi_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiThauId",
+            "label": "G\u00f3i th\u1ea7u id",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "ma_phan_lo": {
+            "column": "ma_phan_lo",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maPhanLo",
+            "label": "M\u00e3 phan lo",
+            "wordVariable": null
+          },
+          "nha_thau_trung_thau_id": {
+            "column": "nha_thau_trung_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nhaThauTrungThauId",
+            "label": "Nh\u00e0 th\u1ea7u trung th\u1ea7u id",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sort_order": {
+            "column": "sort_order",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sortOrder",
+            "label": "Sort order",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_phan_lo": {
+            "column": "ten_phan_lo",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenPhanLo",
+            "label": "T\u00ean phan lo",
+            "wordVariable": null
+          },
+          "thoi_gian_goi_thau": {
+            "column": "thoi_gian_goi_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianGoiThau",
+            "label": "Th\u1eddi gian g\u00f3i th\u1ea7u",
+            "wordVariable": null
+          },
+          "thoi_gian_hop_dong": {
+            "column": "thoi_gian_hop_dong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianHopDong",
+            "label": "Th\u1eddi gian h\u1ee3p \u0111\u00f3ng",
+            "wordVariable": null
+          },
+          "thoi_gian_thuc_hien": {
+            "column": "thoi_gian_thuc_hien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianThucHien",
+            "label": "Th\u1eddi gian th\u1ef1c hien",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "goi_thau_tuy_chon_mua_them": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "don_vi": {
+            "column": "don_vi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "donVi",
+            "label": "Don vi",
+            "wordVariable": null
+          },
+          "gia_tri_uoc_tinh": {
+            "column": "gia_tri_uoc_tinh",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTriUocTinh",
+            "label": "Gi\u00e1 tr\u1ecb uoc t\u1ec9nh",
+            "wordVariable": null
+          },
+          "goi_thau_id": {
+            "column": "goi_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiThauId",
+            "label": "G\u00f3i th\u1ea7u id",
+            "wordVariable": null
+          },
+          "hang_muc": {
+            "column": "hang_muc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hangMuc",
+            "label": "Hang muc",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "so_luong": {
+            "column": "so_luong",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soLuong",
+            "label": "S\u1ed1 luong",
+            "wordVariable": null
+          },
+          "sort_order": {
+            "column": "sort_order",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sortOrder",
+            "label": "Sort order",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ty_le": {
+            "column": "ty_le",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "percent",
+            "jsonKey": "tyLe",
+            "label": "Ty le",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "hop_dong": {
+        "fields": {
+          "chu_dau_tu_id": {
+            "column": "chu_dau_tu_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chuDauTuId",
+            "label": "Chu \u0111\u1ea5u tu id",
+            "wordVariable": null
+          },
+          "chu_dau_tu_thanh_ly_id": {
+            "column": "chu_dau_tu_thanh_ly_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chuDauTuThanhLyId",
+            "label": "Chu \u0111\u1ea5u tu thanh ly id",
+            "wordVariable": null
+          },
+          "co_qd_chi_dinh": {
+            "column": "co_qd_chi_dinh",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "coQdChiDinh",
+            "label": "Co qd ch\u1ec9 dinh",
+            "wordVariable": "co_qd_chi_dinh"
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "gia_tri": {
+            "column": "gia_tri",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTri",
+            "label": "Gi\u00e1 tr\u1ecb",
+            "wordVariable": "hd_gia_tri"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "id_goc": {
+            "column": "id_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "rootId",
+            "label": "Id goc",
+            "wordVariable": null
+          },
+          "is_latest": {
+            "column": "is_latest",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isLatest",
+            "label": "Is latest",
+            "wordVariable": null
+          },
+          "ke_hoach_id": {
+            "column": "ke_hoach_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "keHoachId",
+            "label": "K\u1ebf hoach id",
+            "wordVariable": null
+          },
+          "loai_hop_dong": {
+            "column": "loai_hop_dong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loaiHopDong",
+            "label": "Loai h\u1ee3p \u0111\u00f3ng",
+            "wordVariable": "loai_hd"
+          },
+          "ngay_ky": {
+            "column": "ngay_ky",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayKy",
+            "label": "Ng\u00e0y k\u00fd",
+            "wordVariable": "ngay_ky_hd"
+          },
+          "ngay_qd_chi_dinh": {
+            "column": "ngay_qd_chi_dinh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayQdChiDinh",
+            "label": "Ng\u00e0y qd ch\u1ec9 dinh",
+            "wordVariable": "ngay_qd_chi_dinh"
+          },
+          "ngay_thanh_ly": {
+            "column": "ngay_thanh_ly",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayThanhLy",
+            "label": "Ng\u00e0y thanh ly",
+            "wordVariable": "ngay_thanh_ly_hd"
+          },
+          "nha_thau_id": {
+            "column": "nha_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nhaThauId",
+            "label": "Nh\u00e0 th\u1ea7u id",
+            "wordVariable": null
+          },
+          "nha_thau_thanh_ly_id": {
+            "column": "nha_thau_thanh_ly_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nhaThauThanhLyId",
+            "label": "Nh\u00e0 th\u1ea7u thanh ly id",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "phan_loai": {
+            "column": "phan_loai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phanLoai",
+            "label": "Phan loai",
+            "wordVariable": "hd_phan_loai"
+          },
+          "phien_ban": {
+            "column": "phien_ban",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phienBan",
+            "label": "Phien ban",
+            "wordVariable": null
+          },
+          "so_hop_dong": {
+            "column": "so_hop_dong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soHopDong",
+            "label": "S\u1ed1 h\u1ee3p \u0111\u00f3ng",
+            "wordVariable": "so_hd"
+          },
+          "so_qd_chi_dinh": {
+            "column": "so_qd_chi_dinh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soQdChiDinh",
+            "label": "S\u1ed1 qd ch\u1ec9 dinh",
+            "wordVariable": "so_qd_chi_dinh"
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_hop_dong": {
+            "column": "ten_hop_dong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenHopDong",
+            "label": "T\u00ean h\u1ee3p \u0111\u00f3ng",
+            "wordVariable": "ten_hd"
+          },
+          "thoi_gian_thuc_hien": {
+            "column": "thoi_gian_thuc_hien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soNgayThucHien",
+            "label": "Th\u1eddi gian th\u1ef1c hien",
+            "wordVariable": "tg_thuc_hien_hd"
+          },
+          "trang_thai_ho_so": {
+            "column": "trang_thai_ho_so",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "trangThaiHoSo",
+            "label": "Tr\u1ea1ng thai ho s\u1ed1",
+            "wordVariable": "trang_thai_hs_hd"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "hop_dong_goi_thau": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "goi_thau_id": {
+            "column": "goi_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiThauId",
+            "label": "G\u00f3i th\u1ea7u id",
+            "wordVariable": null
+          },
+          "hop_dong_id": {
+            "column": "hop_dong_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hopDongId",
+            "label": "H\u1ee3p \u0111\u00f3ng id",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "ke_hoach_cong_viec": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "don_vi_thuc_hien": {
+            "column": "don_vi_thuc_hien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "donViThucHien",
+            "label": "Don vi th\u1ef1c hien",
+            "wordVariable": null
+          },
+          "gia_tri": {
+            "column": "gia_tri",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTri",
+            "label": "Gi\u00e1 tr\u1ecb",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "ke_hoach_id": {
+            "column": "ke_hoach_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "keHoachId",
+            "label": "K\u1ebf hoach id",
+            "wordVariable": null
+          },
+          "loai": {
+            "column": "loai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loai",
+            "label": "Loai",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sort_order": {
+            "column": "sort_order",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sortOrder",
+            "label": "Sort order",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_cong_viec": {
+            "column": "ten_cong_viec",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenCongViec",
+            "label": "T\u00ean cong viec",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          },
+          "van_ban_phe_duyet": {
+            "column": "van_ban_phe_duyet",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "vanBanPheDuyet",
+            "label": "Van ban ph\u00ea duyet",
+            "wordVariable": null
+          }
+        }
+      },
+      "ke_hoach_lcnt": {
+        "fields": {
+          "chu_dau_tu_id": {
+            "column": "chu_dau_tu_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chuDauTuId",
+            "label": "Chu \u0111\u1ea5u tu id",
+            "wordVariable": null
+          },
+          "co_quan_phe_duyet_du_an": {
+            "column": "co_quan_phe_duyet_du_an",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "coQuanPheDuyetDuAn",
+            "label": "Co quan ph\u00ea duyet d\u1ef1 an",
+            "wordVariable": "cq_phe_duyet_du_an"
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "dia_diem_quy_mo": {
+            "column": "dia_diem_quy_mo",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaDiemQuyMo",
+            "label": "\u0110\u1ecba diem quy m\u1edf",
+            "wordVariable": "dia_diem_quy_mo"
+          },
+          "don_vi_trinh_cdt": {
+            "column": "don_vi_trinh_cdt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "donViTrinhCdt",
+            "label": "Don vi trinh cdt",
+            "wordVariable": "don_vi_trinh_cdt"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "id_goc": {
+            "column": "id_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "rootId",
+            "label": "Id goc",
+            "wordVariable": null
+          },
+          "is_latest": {
+            "column": "is_latest",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isLatest",
+            "label": "Is latest",
+            "wordVariable": null
+          },
+          "is_tong_muc_tu_dong": {
+            "column": "is_tong_muc_tu_dong",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isTongMucTuDong",
+            "label": "Is tong muc tu \u0111\u00f3ng",
+            "wordVariable": "tong_muc_tu_dong"
+          },
+          "loai_hinh_mua_sam": {
+            "column": "loai_hinh_mua_sam",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loaiHinhMuaSam",
+            "label": "Loai hinh mua sam",
+            "wordVariable": "loai_mua_sam"
+          },
+          "ma_du_an": {
+            "column": "ma_du_an",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maDuAn",
+            "label": "M\u00e3 d\u1ef1 an",
+            "wordVariable": "ma_du_an"
+          },
+          "ma_ke_hoach": {
+            "column": "ma_ke_hoach",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maKeHoach",
+            "label": "M\u00e3 k\u1ebf hoach",
+            "wordVariable": "ma_kh"
+          },
+          "ngay_phe_duyet": {
+            "column": "ngay_phe_duyet",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayPheDuyet",
+            "label": "Ng\u00e0y ph\u00ea duyet",
+            "wordVariable": "ngay_phe_duyet_kh"
+          },
+          "ngay_phe_duyet_du_toan": {
+            "column": "ngay_phe_duyet_du_toan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayPheDuyetDuToan",
+            "label": "Ng\u00e0y ph\u00ea duyet d\u1ef1 toan",
+            "wordVariable": "ngay_phe_duyet_du_toan"
+          },
+          "ngay_qd_phe_duyet_du_an": {
+            "column": "ngay_qd_phe_duyet_du_an",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayQdPheDuyetDuAn",
+            "label": "Ng\u00e0y qd ph\u00ea duyet d\u1ef1 an",
+            "wordVariable": "ngay_qd_du_an"
+          },
+          "ngay_trinh_du_toan": {
+            "column": "ngay_trinh_du_toan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayTrinhDuToan",
+            "label": "Ng\u00e0y trinh d\u1ef1 toan",
+            "wordVariable": "ngay_trinh_du_toan"
+          },
+          "ngay_trinh_ke_hoach": {
+            "column": "ngay_trinh_ke_hoach",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayTrinhKeHoach",
+            "label": "Ng\u00e0y trinh k\u1ebf hoach",
+            "wordVariable": "ngay_trinh_kh"
+          },
+          "nguon_von": {
+            "column": "nguon_von",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguonVon",
+            "label": "Nguon von",
+            "wordVariable": "kh_nguon_von"
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "phe_duyet": {
+            "column": "phe_duyet",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "pheDuyet",
+            "label": "Ph\u00ea duyet",
+            "wordVariable": "nguoi_phe_duyet_kh"
+          },
+          "phien_ban": {
+            "column": "phien_ban",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phienBan",
+            "label": "Phien ban",
+            "wordVariable": "kh_phien_ban"
+          },
+          "quyet_dinh_phe_duyet": {
+            "column": "quyet_dinh_phe_duyet",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "quyetDinhPheDuyet",
+            "label": "Quy\u1ebft dinh ph\u00ea duyet",
+            "wordVariable": "qd_phe_duyet_kh"
+          },
+          "so_qd_phe_duyet_du_an": {
+            "column": "so_qd_phe_duyet_du_an",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soQdPheDuyetDuAn",
+            "label": "S\u1ed1 qd ph\u00ea duyet d\u1ef1 an",
+            "wordVariable": "so_qd_du_an"
+          },
+          "so_qd_phe_duyet_du_toan": {
+            "column": "so_qd_phe_duyet_du_toan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soQdPheDuyetDuToan",
+            "label": "S\u1ed1 qd ph\u00ea duyet d\u1ef1 toan",
+            "wordVariable": "so_qd_du_toan"
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_du_an_du_toan": {
+            "column": "ten_du_an_du_toan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenDuAnDuToan",
+            "label": "T\u00ean d\u1ef1 an d\u1ef1 toan",
+            "wordVariable": "ten_du_an_du_toan"
+          },
+          "ten_ke_hoach": {
+            "column": "ten_ke_hoach",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenKeHoach",
+            "label": "T\u00ean k\u1ebf hoach",
+            "wordVariable": "ten_kh"
+          },
+          "ten_viet_tat_don_vi_trinh": {
+            "column": "ten_viet_tat_don_vi_trinh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenVietTatDonViTrinh",
+            "label": "T\u00ean viet tat don vi trinh",
+            "wordVariable": "ten_tat_dv_trinh"
+          },
+          "thoi_gian_dang_tai": {
+            "column": "thoi_gian_dang_tai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "datetime",
+            "jsonKey": "thoiGianDangMa",
+            "label": "Th\u1eddi gian \u0111\u0103ng t\u00e0i",
+            "wordVariable": "tg_dang_tai_kh"
+          },
+          "thoi_gian_du_an": {
+            "column": "thoi_gian_du_an",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianDuAn",
+            "label": "Th\u1eddi gian d\u1ef1 an",
+            "wordVariable": "tg_du_an"
+          },
+          "thong_tin_khac": {
+            "column": "thong_tin_khac",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thongTinKhac",
+            "label": "Thong tin khac",
+            "wordVariable": "thong_tin_khac_kh"
+          },
+          "tong_muc_dau_tu": {
+            "column": "tong_muc_dau_tu",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "tongMucDauTu",
+            "label": "Tong muc \u0111\u1ea5u tu",
+            "wordVariable": "tong_muc_dau_tu"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "ma_tran_phan_quyen": {
+        "fields": {
+          "chudautu": {
+            "column": "chudautu",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chudautu",
+            "label": "Chudautu",
+            "wordVariable": null
+          },
+          "chuyengia": {
+            "column": "chuyengia",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chuyengia",
+            "label": "Chuyengia",
+            "wordVariable": null
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "emp_id": {
+            "column": "emp_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "empId",
+            "label": "Emp id",
+            "wordVariable": null
+          },
+          "goithau": {
+            "column": "goithau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goithau",
+            "label": "Goithau",
+            "wordVariable": null
+          },
+          "hopdong": {
+            "column": "hopdong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hopdong",
+            "label": "Hopdong",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "kehoach": {
+            "column": "kehoach",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "kehoach",
+            "label": "Kehoach",
+            "wordVariable": null
+          },
+          "nhathau": {
+            "column": "nhathau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nhathau",
+            "label": "Nhathau",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "thongtinmothau": {
+            "column": "thongtinmothau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thongtinmothau",
+            "label": "Thongtinmothau",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "nha_thau": {
+        "fields": {
+          "anh_dau": {
+            "column": "anh_dau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "anhDau",
+            "label": "\u1ea2nh \u0111\u1ea5u",
+            "wordVariable": "anh_dau_nt"
+          },
+          "chuc_vu_dai_dien": {
+            "column": "chuc_vu_dai_dien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "chucVuDaiDien",
+            "label": "Ch\u1ee9c vu \u0111\u1ea1i \u0111i\u1ec7n",
+            "wordVariable": "chuc_vu_dai_dien_nt"
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "danh_xung": {
+            "column": "danh_xung",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhXung",
+            "label": "Danh x\u01b0ng",
+            "wordVariable": "danh_xung_nt"
+          },
+          "dia_chi": {
+            "column": "dia_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChi",
+            "label": "\u0110\u1ecba ch\u1ec9",
+            "wordVariable": "dia_chi_nt"
+          },
+          "dia_chi_goc": {
+            "column": "dia_chi_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChiGoc",
+            "label": "\u0110\u1ecba ch\u1ec9 goc",
+            "wordVariable": null
+          },
+          "email": {
+            "column": "email",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "email",
+            "label": "Email",
+            "wordVariable": "email_nt"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "id_goc": {
+            "column": "id_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "rootId",
+            "label": "Id goc",
+            "wordVariable": null
+          },
+          "is_latest": {
+            "column": "is_latest",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "isLatest",
+            "label": "Is latest",
+            "wordVariable": null
+          },
+          "loai_nha_thau": {
+            "column": "loai_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loaiNhaThau",
+            "label": "Loai nh\u00e0 th\u1ea7u",
+            "wordVariable": "loai_nt"
+          },
+          "ma_ngan_hang": {
+            "column": "ma_ngan_hang",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maNganHang",
+            "label": "M\u00e3 ngan hang",
+            "wordVariable": "ma_ngan_hang_nt"
+          },
+          "ma_nha_thau": {
+            "column": "ma_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maNhaThau",
+            "label": "M\u00e3 nh\u00e0 th\u1ea7u",
+            "wordVariable": "ma_nt"
+          },
+          "ma_so_thue": {
+            "column": "ma_so_thue",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maSoThue",
+            "label": "M\u00e3 s\u1ed1 thue",
+            "wordVariable": "mst_nt"
+          },
+          "ngay_ap_dung": {
+            "column": "ngay_ap_dung",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayApDung",
+            "label": "Ng\u00e0y ap dung",
+            "wordVariable": "ngay_ap_dung_nt"
+          },
+          "nguoi_dai_dien": {
+            "column": "nguoi_dai_dien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguoiDaiDien",
+            "label": "Ng\u01b0\u1eddi \u0111\u1ea1i \u0111i\u1ec7n",
+            "wordVariable": "dai_dien_nt"
+          },
+          "noi_mo_tai_khoan": {
+            "column": "noi_mo_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "noiMoTaiKhoan",
+            "label": "Noi m\u1edf t\u00e0i khoan",
+            "wordVariable": "noi_mo_tk_nt"
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "phien_ban": {
+            "column": "phien_ban",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "phienBan",
+            "label": "Phien ban",
+            "wordVariable": null
+          },
+          "so_dien_thoai": {
+            "column": "so_dien_thoai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soDienThoai",
+            "label": "S\u1ed1 \u0111i\u1ec7n thoai",
+            "wordVariable": "sdt_nt"
+          },
+          "so_tai_khoan": {
+            "column": "so_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soTaiKhoan",
+            "label": "S\u1ed1 t\u00e0i khoan",
+            "wordVariable": "stk_nt"
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_anh_dau": {
+            "column": "ten_anh_dau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenAnhDau",
+            "label": "T\u00ean \u1ea3nh \u0111\u1ea5u",
+            "wordVariable": "ten_anh_dau_nt"
+          },
+          "ten_nha_thau": {
+            "column": "ten_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenNhaThau",
+            "label": "T\u00ean nh\u00e0 th\u1ea7u",
+            "wordVariable": "ten_nt"
+          },
+          "ten_viet_tat": {
+            "column": "ten_viet_tat",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenVietTat",
+            "label": "T\u00ean viet tat",
+            "wordVariable": "ten_tat_nt"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "nha_thau_lien_danh_thanh_vien": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "danh_xung": {
+            "column": "danh_xung",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhXung",
+            "label": "Danh x\u01b0ng",
+            "wordVariable": null
+          },
+          "dia_chi": {
+            "column": "dia_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChi",
+            "label": "\u0110\u1ecba ch\u1ec9",
+            "wordVariable": null
+          },
+          "dia_chi_goc": {
+            "column": "dia_chi_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChiGoc",
+            "label": "\u0110\u1ecba ch\u1ec9 goc",
+            "wordVariable": null
+          },
+          "email": {
+            "column": "email",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "email",
+            "label": "Email",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "ma_ngan_hang": {
+            "column": "ma_ngan_hang",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maNganHang",
+            "label": "M\u00e3 ngan hang",
+            "wordVariable": null
+          },
+          "ma_nha_thau": {
+            "column": "ma_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maNhaThau",
+            "label": "M\u00e3 nh\u00e0 th\u1ea7u",
+            "wordVariable": null
+          },
+          "ma_so_thue": {
+            "column": "ma_so_thue",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maSoThue",
+            "label": "M\u00e3 s\u1ed1 thue",
+            "wordVariable": null
+          },
+          "nguoi_dai_dien": {
+            "column": "nguoi_dai_dien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguoiDaiDien",
+            "label": "Ng\u01b0\u1eddi \u0111\u1ea1i \u0111i\u1ec7n",
+            "wordVariable": null
+          },
+          "nha_thau_id": {
+            "column": "nha_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nhaThauId",
+            "label": "Nh\u00e0 th\u1ea7u id",
+            "wordVariable": null
+          },
+          "noi_mo_tai_khoan": {
+            "column": "noi_mo_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "noiMoTaiKhoan",
+            "label": "Noi m\u1edf t\u00e0i khoan",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "so_dien_thoai": {
+            "column": "so_dien_thoai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soDienThoai",
+            "label": "S\u1ed1 \u0111i\u1ec7n thoai",
+            "wordVariable": null
+          },
+          "so_tai_khoan": {
+            "column": "so_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soTaiKhoan",
+            "label": "S\u1ed1 t\u00e0i khoan",
+            "wordVariable": null
+          },
+          "sort_order": {
+            "column": "sort_order",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sortOrder",
+            "label": "Sort order",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_nha_thau": {
+            "column": "ten_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenNhaThau",
+            "label": "T\u00ean nh\u00e0 th\u1ea7u",
+            "wordVariable": null
+          },
+          "thanh_vien_nha_thau_id": {
+            "column": "thanh_vien_nha_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thanhVienNhaThauId",
+            "label": "Thanh vien nh\u00e0 th\u1ea7u id",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          },
+          "vai_tro": {
+            "column": "vai_tro",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "vaiTro",
+            "label": "Vai tro",
+            "wordVariable": null
+          }
+        }
+      },
+      "phan_cong_nhan_su": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "id_muc_tieu": {
+            "column": "id_muc_tieu",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "targetId",
+            "label": "Id muc tieu",
+            "wordVariable": null
+          },
+          "id_nhan_vien": {
+            "column": "id_nhan_vien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "empId",
+            "label": "Id nhan vien",
+            "wordVariable": null
+          },
+          "loai_doi_tuong": {
+            "column": "loai_doi_tuong",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "type",
+            "label": "Loai doi tuong",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "sync_metadata": {
+        "fields": {
+          "current_version": {
+            "column": "current_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "currentVersion",
+            "label": "Current version",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "sync_mutations": {
+        "fields": {
+          "client_mutation_id": {
+            "column": "client_mutation_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "clientMutationId",
+            "label": "Client mutation id",
+            "wordVariable": null
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "response_json": {
+            "column": "response_json",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "responseJson",
+            "label": "Response json",
+            "wordVariable": null
+          }
+        }
+      },
+      "tai_khoan": {
+        "fields": {
+          "anh_dai_dien": {
+            "column": "anh_dai_dien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "anhDaiDien",
+            "label": "\u1ea2nh \u0111\u1ea1i \u0111i\u1ec7n",
+            "wordVariable": "tk_anh_dai_dien"
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "da_xac_minh": {
+            "column": "da_xac_minh",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "daXacMinh",
+            "label": "Da xac minh",
+            "wordVariable": "tk_da_xac_minh"
+          },
+          "email": {
+            "column": "email",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "email",
+            "label": "Email",
+            "wordVariable": "tk_email"
+          },
+          "goi_dich_vu_id": {
+            "column": "goi_dich_vu_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiDichVuId",
+            "label": "G\u00f3i dich vu id",
+            "wordVariable": "tk_goi_dich_vu"
+          },
+          "google_id": {
+            "column": "google_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "googleId",
+            "label": "Google id",
+            "wordVariable": null
+          },
+          "han_su_dung_token": {
+            "column": "han_su_dung_token",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hanSuDungToken",
+            "label": "Han su dung token",
+            "wordVariable": null
+          },
+          "han_xac_minh": {
+            "column": "han_xac_minh",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hanXacMinh",
+            "label": "Han xac minh",
+            "wordVariable": null
+          },
+          "ho_ten": {
+            "column": "ho_ten",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hoTen",
+            "label": "Ho t\u00ean",
+            "wordVariable": "tk_ho_ten"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "ma_xac_minh": {
+            "column": "ma_xac_minh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maXacMinh",
+            "label": "M\u00e3 xac minh",
+            "wordVariable": null
+          },
+          "mat_khau": {
+            "column": "mat_khau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "matKhau",
+            "label": "Mat khau",
+            "wordVariable": null
+          },
+          "ngay_bat_dau_goi": {
+            "column": "ngay_bat_dau_goi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayBatDauGoi",
+            "label": "Ng\u00e0y bat \u0111\u1ea5u g\u00f3i",
+            "wordVariable": "tk_ngay_bat_dau_goi"
+          },
+          "ngay_het_han_goi": {
+            "column": "ngay_het_han_goi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "date",
+            "jsonKey": "ngayHetHanGoi",
+            "label": "Ng\u00e0y het han g\u00f3i",
+            "wordVariable": "tk_ngay_het_han_goi"
+          },
+          "ten_dang_nhap": {
+            "column": "ten_dang_nhap",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenDangNhap",
+            "label": "T\u00ean \u0111\u0103ng nhap",
+            "wordVariable": "tk_ten_dang_nhap"
+          },
+          "thong_tin_thiet_bi_cuoi": {
+            "column": "thong_tin_thiet_bi_cuoi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thongTinThietBiCuoi",
+            "label": "Thong tin thiet bi cuoi",
+            "wordVariable": null
+          },
+          "token_phien": {
+            "column": "token_phien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tokenPhien",
+            "label": "Token phien",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          },
+          "username_da_dat": {
+            "column": "username_da_dat",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "usernameDaDat",
+            "label": "Username da dat",
+            "wordVariable": null
+          },
+          "vai_tro": {
+            "column": "vai_tro",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "vaiTro",
+            "label": "Vai tro",
+            "wordVariable": "tk_vai_tro"
+          }
+        }
+      },
+      "thanh_vien_to_chuc": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "to_chuc_id": {
+            "column": "to_chuc_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "toChucId",
+            "label": "To ch\u1ee9c id",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          },
+          "user_id": {
+            "column": "user_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "userId",
+            "label": "User id",
+            "wordVariable": null
+          },
+          "vai_tro_trong_to_chuc": {
+            "column": "vai_tro_trong_to_chuc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "vaiTroTrongToChuc",
+            "label": "Vai tro trong to ch\u1ee9c",
+            "wordVariable": null
+          }
+        }
+      },
+      "thong_tin_mo_thau": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "dam_bao_du_thau": {
+            "column": "dam_bao_du_thau",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "damBaoDuThau",
+            "label": "Dam b\u1ea3o d\u1ef1 th\u1ea7u",
+            "wordVariable": "mt_dam_bao_du_thau"
+          },
+          "danh_gia_hop_le": {
+            "column": "danh_gia_hop_le",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhGiaHopLe",
+            "label": "Danh gi\u00e1 h\u1ee3p le",
+            "wordVariable": "mt_dg_hop_le"
+          },
+          "danh_gia_ket_luan": {
+            "column": "danh_gia_ket_luan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhGiaKetLuan",
+            "label": "Danh gi\u00e1 ket luan",
+            "wordVariable": "mt_dg_ket_luan"
+          },
+          "danh_gia_ky_thuat": {
+            "column": "danh_gia_ky_thuat",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhGiaKyThuat",
+            "label": "Danh gi\u00e1 k\u00fd thuat",
+            "wordVariable": "mt_dg_ky_thuat"
+          },
+          "danh_gia_nang_luc": {
+            "column": "danh_gia_nang_luc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhGiaNangLuc",
+            "label": "Danh gi\u00e1 nang luc",
+            "wordVariable": "mt_dg_nang_luc"
+          },
+          "danh_gia_tai_chinh": {
+            "column": "danh_gia_tai_chinh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhGiaTaiChinh",
+            "label": "Danh gi\u00e1 t\u00e0i chinh",
+            "wordVariable": "mt_dg_tai_chinh"
+          },
+          "gia_du_thau": {
+            "column": "gia_du_thau",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaDuThau",
+            "label": "Gi\u00e1 d\u1ef1 th\u1ea7u",
+            "wordVariable": "mt_gia_du_thau"
+          },
+          "gia_sau_giam_gia": {
+            "column": "gia_sau_giam_gia",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaSauGiamGia",
+            "label": "Gi\u00e1 sau giam gi\u00e1",
+            "wordVariable": "mt_gia_sau_giam_gia"
+          },
+          "gia_tri_dam_bao": {
+            "column": "gia_tri_dam_bao",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "currency",
+            "jsonKey": "giaTriDamBao",
+            "label": "Gi\u00e1 tr\u1ecb dam b\u1ea3o",
+            "wordVariable": "mt_gia_tri_dam_bao"
+          },
+          "goi_thau_id": {
+            "column": "goi_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "goiThauId",
+            "label": "G\u00f3i th\u1ea7u id",
+            "wordVariable": null
+          },
+          "hieu_luc_bao_dam_ngay": {
+            "column": "hieu_luc_bao_dam_ngay",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hieuLucBaoDamNgay",
+            "label": "Hieu luc b\u1ea3o dam ng\u00e0y",
+            "wordVariable": "mt_hieu_luc_bao_dam_ngay"
+          },
+          "hieu_luc_dam_bao": {
+            "column": "hieu_luc_dam_bao",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hieuLucDamBao",
+            "label": "Hieu luc dam b\u1ea3o",
+            "wordVariable": "mt_hieu_luc_dam_bao"
+          },
+          "hieu_luc_hsdt": {
+            "column": "hieu_luc_hsdt",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hieuLucHsdt",
+            "label": "Hieu luc hsdt",
+            "wordVariable": "mt_hieu_luc_hsdt"
+          },
+          "hieu_luc_hsdxt": {
+            "column": "hieu_luc_hsdxt",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "hieuLucHsdxt",
+            "label": "Hieu luc hsdxt",
+            "wordVariable": "mt_hieu_luc_hsdxt"
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "lam_ro_hop_le": {
+            "column": "lam_ro_hop_le",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "lamRoHopLe",
+            "label": "Lam ro h\u1ee3p le",
+            "wordVariable": "mt_lam_ro_hop_le"
+          },
+          "lam_ro_ky_thuat": {
+            "column": "lam_ro_ky_thuat",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "lamRoKyThuat",
+            "label": "Lam ro k\u00fd thuat",
+            "wordVariable": "mt_lam_ro_ky_thuat"
+          },
+          "lam_ro_nang_luc": {
+            "column": "lam_ro_nang_luc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "lamRoNangLuc",
+            "label": "Lam ro nang luc",
+            "wordVariable": "mt_lam_ro_nang_luc"
+          },
+          "lam_ro_tai_chinh": {
+            "column": "lam_ro_tai_chinh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "lamRoTaiChinh",
+            "label": "Lam ro t\u00e0i chinh",
+            "wordVariable": "mt_lam_ro_tai_chinh"
+          },
+          "loai_nha_thau": {
+            "column": "loai_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "loaiNhaThau",
+            "label": "Loai nh\u00e0 th\u1ea7u",
+            "wordVariable": "mt_loai_nt"
+          },
+          "ly_do_truot": {
+            "column": "ly_do_truot",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "lyDoTruot",
+            "label": "Ly do truot",
+            "wordVariable": "mt_ly_do_truot"
+          },
+          "ma_dinh_danh": {
+            "column": "ma_dinh_danh",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maDinhDanh",
+            "label": "M\u00e3 dinh danh",
+            "wordVariable": "mt_ma_dinh_danh"
+          },
+          "ma_phan_lo": {
+            "column": "ma_phan_lo",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maPhanLo",
+            "label": "M\u00e3 phan lo",
+            "wordVariable": "mt_ma_phan_lo"
+          },
+          "nguyen_nhan_khong_dat_hop_le": {
+            "column": "nguyen_nhan_khong_dat_hop_le",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguyenNhanKhongDatHopLe",
+            "label": "Nguyen nhan khong dat h\u1ee3p le",
+            "wordVariable": "mt_nn_khong_dat_hop_le"
+          },
+          "nguyen_nhan_khong_dat_ky_thuat": {
+            "column": "nguyen_nhan_khong_dat_ky_thuat",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguyenNhanKhongDatKyThuat",
+            "label": "Nguyen nhan khong dat k\u00fd thuat",
+            "wordVariable": "mt_nn_khong_dat_ky_thuat"
+          },
+          "nguyen_nhan_khong_dat_nang_luc": {
+            "column": "nguyen_nhan_khong_dat_nang_luc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguyenNhanKhongDatNangLuc",
+            "label": "Nguyen nhan khong dat nang luc",
+            "wordVariable": "mt_nn_khong_dat_nang_luc"
+          },
+          "nha_thau_id": {
+            "column": "nha_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nhaThauId",
+            "label": "Nh\u00e0 th\u1ea7u id",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_nha_thau": {
+            "column": "ten_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenNhaThau",
+            "label": "T\u00ean nh\u00e0 th\u1ea7u",
+            "wordVariable": "mt_ten_nt"
+          },
+          "ten_phan_lo": {
+            "column": "ten_phan_lo",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenPhanLo",
+            "label": "T\u00ean phan lo",
+            "wordVariable": "mt_ten_phan_lo"
+          },
+          "thoi_gian_thuc_hien": {
+            "column": "thoi_gian_thuc_hien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thoiGianThucHien",
+            "label": "Th\u1eddi gian th\u1ef1c hien",
+            "wordVariable": "mt_tg_thuc_hien"
+          },
+          "ty_le_giam_gia": {
+            "column": "ty_le_giam_gia",
+            "dataType": "number",
+            "excelCompatible": true,
+            "format": "percent",
+            "jsonKey": "tyLeGiamGia",
+            "label": "Ty le giam gi\u00e1",
+            "wordVariable": "mt_ty_le_giam_gia"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "thong_tin_mo_thau_lien_danh_thanh_vien": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "danh_xung": {
+            "column": "danh_xung",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "danhXung",
+            "label": "Danh x\u01b0ng",
+            "wordVariable": null
+          },
+          "dia_chi": {
+            "column": "dia_chi",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChi",
+            "label": "\u0110\u1ecba ch\u1ec9",
+            "wordVariable": null
+          },
+          "dia_chi_goc": {
+            "column": "dia_chi_goc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "diaChiGoc",
+            "label": "\u0110\u1ecba ch\u1ec9 goc",
+            "wordVariable": null
+          },
+          "email": {
+            "column": "email",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "email",
+            "label": "Email",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "ma_ngan_hang": {
+            "column": "ma_ngan_hang",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maNganHang",
+            "label": "M\u00e3 ngan hang",
+            "wordVariable": null
+          },
+          "ma_nha_thau": {
+            "column": "ma_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maNhaThau",
+            "label": "M\u00e3 nh\u00e0 th\u1ea7u",
+            "wordVariable": null
+          },
+          "ma_so_thue": {
+            "column": "ma_so_thue",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "maSoThue",
+            "label": "M\u00e3 s\u1ed1 thue",
+            "wordVariable": null
+          },
+          "nguoi_dai_dien": {
+            "column": "nguoi_dai_dien",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "nguoiDaiDien",
+            "label": "Ng\u01b0\u1eddi \u0111\u1ea1i \u0111i\u1ec7n",
+            "wordVariable": null
+          },
+          "noi_mo_tai_khoan": {
+            "column": "noi_mo_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "noiMoTaiKhoan",
+            "label": "Noi m\u1edf t\u00e0i khoan",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "so_dien_thoai": {
+            "column": "so_dien_thoai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soDienThoai",
+            "label": "S\u1ed1 \u0111i\u1ec7n thoai",
+            "wordVariable": null
+          },
+          "so_tai_khoan": {
+            "column": "so_tai_khoan",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "soTaiKhoan",
+            "label": "S\u1ed1 t\u00e0i khoan",
+            "wordVariable": null
+          },
+          "sort_order": {
+            "column": "sort_order",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "sortOrder",
+            "label": "Sort order",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "ten_nha_thau": {
+            "column": "ten_nha_thau",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenNhaThau",
+            "label": "T\u00ean nh\u00e0 th\u1ea7u",
+            "wordVariable": null
+          },
+          "thanh_vien_nha_thau_id": {
+            "column": "thanh_vien_nha_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thanhVienNhaThauId",
+            "label": "Thanh vien nh\u00e0 th\u1ea7u id",
+            "wordVariable": null
+          },
+          "thong_tin_mo_thau_id": {
+            "column": "thong_tin_mo_thau_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "thongTinMoThauId",
+            "label": "Thong tin m\u1edf th\u1ea7u id",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          },
+          "vai_tro": {
+            "column": "vai_tro",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "vaiTro",
+            "label": "Vai tro",
+            "wordVariable": null
+          }
+        }
+      },
+      "to_chuc": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "quan_ly_id": {
+            "column": "quan_ly_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "quanLyId",
+            "label": "Quan ly id",
+            "wordVariable": null
+          },
+          "ten_to_chuc": {
+            "column": "ten_to_chuc",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tenToChuc",
+            "label": "T\u00ean to ch\u1ee9c",
+            "wordVariable": "ten_to_chuc"
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      },
+      "trang_thai_ho_so_giay": {
+        "fields": {
+          "color": {
+            "column": "color",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "color",
+            "label": "Color",
+            "wordVariable": null
+          },
+          "created_at": {
+            "column": "created_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "name": {
+            "column": "name",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "name",
+            "label": "Name",
+            "wordVariable": null
+          },
+          "owner_id": {
+            "column": "owner_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerId",
+            "label": "Owner id",
+            "wordVariable": null
+          },
+          "owner_type": {
+            "column": "owner_type",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "ownerType",
+            "label": "Owner type",
+            "wordVariable": null
+          },
+          "sync_version": {
+            "column": "sync_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "syncVersion",
+            "label": "Sync version",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
+      }
+    },
+    "version": 1
   },
   "tables": {
     "audit_log": {
@@ -1793,13 +5861,27 @@ export const SCHEMA_CONTRACT = {
       }
     }
   },
-  "version": 1
+  "version": 2
 };
 
 export const CLIENT_TABLE_MAP = SCHEMA_CONTRACT.clientTableMap;
 export const COMMON_FIELD_NAME_OVERRIDES = SCHEMA_CONTRACT.commonFieldMap;
 export const FIELD_MAP_BY_TABLE = Object.fromEntries(
   Object.entries(SCHEMA_CONTRACT.tables).map(([table, spec]) => [table, spec.fieldMap || {}])
+);
+
+export const FIELD_MANIFEST = SCHEMA_CONTRACT.fieldManifest;
+export const FIELD_METADATA_BY_TABLE = Object.fromEntries(
+  Object.entries(FIELD_MANIFEST.tables).map(([table, spec]) => [table, spec.fields || {}])
+);
+
+export const DEFAULT_WORD_VARIABLES = Object.entries(FIELD_METADATA_BY_TABLE).flatMap(
+  ([sourceTable, fields]) => Object.values(fields)
+    .filter((field) => field.wordVariable)
+    .map((field) => ({
+      name: field.wordVariable, sourceTable, sourceColumn: field.column,
+      label: field.label, format: field.format
+    }))
 );
 
 export const resolveSchemaTable = (type) => CLIENT_TABLE_MAP[type] || type;

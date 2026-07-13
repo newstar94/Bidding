@@ -1,4 +1,5 @@
 import { consumeModalReturnState } from "./modalReturnState.js";
+import { getContractorViewOnly, setContractorViewOnly } from "../state/runtimeState.js";
 function requiredRoleForTab(tabName) {
   if (tabName === "superadmin-dashboard" || tabName === "superadmin") return "super_admin";
   if (tabName === "managernhanvien" || tabName === "managerhosogiay") return "manager";
@@ -554,8 +555,8 @@ export async function closeModal(modalId) {
       this.switchTab("chudautu", null, true);
     }
   } else if (modalId === "modal-nhathau") {
-    if (window._nhaThauViewOnly) {
-      window._nhaThauViewOnly = false;
+    if (getContractorViewOnly()) {
+      setContractorViewOnly(false);
     } else {
       const contractModal = document.getElementById("modal-hopdong");
       if (!contractModal || !contractModal.classList.contains("active")) {

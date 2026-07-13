@@ -1,11 +1,21 @@
-import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
-import { applyRawAddressToAddressControls, composeInternalAddress, parseStoredInternalAddress } from "../utils/PartnerHelpers.js";
+﻿import { normalizeVietnamTaxCode } from "../main_controller/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 import { persistAndSync } from "../domain/MutationService.js";
-import { clearFormValidation, resetFormState, setFormValues } from "../forms/FormBinder.js";
+import { clearFormValidation } from "../forms/FormBinder.js";
 import { escapeHtml, safeImageSrc } from "../../views/subviews/view_helpers.js";
-import { rememberSelectedVersion } from "../domain/VersionedEntityService.js";
+import { createInitialVersion, createNextVersion, getNextVersion, rememberSelectedVersion } from "../domain/VersionedEntityService.js";
 import { getCurrentDateYmd } from "../../views/utils/formatters.js";
+import { setContractorViewOnly } from "../state/runtimeState.js";
+import { generateRecordId } from "../../models/idUtils.js";
+import {
+  applyPartnerValidationErrors,
+  collectPartnerFormData,
+  createPartnerLookupHandlers,
+  loadPartnerFormData,
+  PARTNER_FORM_CONFIGS,
+  resetPartnerFormData,
+  validatePartnerRecord
+} from "../partners/PartnerFormController.js";
 const todayYmd = getCurrentDateYmd;
 const safeStampSrc = (value) => {
   const src = String(value || "").trim();
@@ -73,8 +83,9 @@ export async function deleteNhaThau(id) {
   if (confirmed) {
     this.model.state.nhathau = this.model.state.nhathau.filter((n) => n.id !== id);
     this.model.markDeleted("nhathau", id);
-    await this.model.persistData("nhathau");
-    await this.autoSync();
+    await persistAndSync(this, "nhathau", {
+      afterPersist: () => this.view.renderNhaThauTable()
+    });
   }
 }
 export async function editNhaThau(id, isReadOnly = false) {
@@ -102,44 +113,20 @@ export async function editNhaThau(id, isReadOnly = false) {
     }
     if (id) {
       if (isReadOnly) {
-        window._nhaThauViewOnly = true;
+        setContractorViewOnly(true);
       } else {
-        window._nhaThauViewOnly = false;
+        setContractorViewOnly(false);
         this.switchTab("nhathau", "chinhsua", true);
       }
       const titleEl = document.getElementById("modal-nhathau-title");
       if (titleEl) titleEl.textContent = isReadOnly ? "Thông tin Nhà thầu (Chỉ xem)" : "Cập nhật Nhà thầu";
       const nt = this.model.state.nhathau.find((n) => n.id === id);
       if (!nt) throw new Error("Không tìm thấy dữ liệu nhà thầu với ID " + id);
-      form.dataset.diaChiGoc = nt.diaChiGoc || "";
-      setFormValues(document, nt, {
-        id: "form-nhathau-id",
-        maNhaThau: "nt-ma",
-        tenNhaThau: "nt-ten",
-        tenVietTat: "nt-tenviettat",
-        ngayApDung: { target: "nt-ngayapdung", format: (value) => this.model.formatForDateInput(value || String(nt.createdAt || "").slice(0, 10)) },
-        maSoThue: "nt-mst",
-        nguoiDaiDien: { target: "nt-nguoidaidien", format: normalizePersonName },
-        chucVuDaiDien: "nt-chucvudaidien",
-        danhXung: { target: "nt-danhxung", defaultValue: "Ông" },
-        soDienThoai: "nt-sdt",
-        email: "nt-email",
-        soTaiKhoan: "nt-sotaikhoan",
-        noiMoTaiKhoan: "nt-noimotaikhoan",
-        maNganHang: "nt-manganhang"
+      await loadPartnerFormData(document, form, nt, PARTNER_FORM_CONFIGS.nhathau, {
+        formatDate: (value) => this.model.formatForDateInput(value),
+        initAddressDropdowns: (...args) => this.initAddressDropdowns(...args),
+        isReadOnly
       });
-      const storedAddress = parseStoredInternalAddress(nt.diaChi || "");
-      if (storedAddress.requiresLookup) {
-        await this.initAddressDropdowns("nt-tinh", "nt-xa", "", "", isReadOnly);
-        await applyRawAddressToAddressControls(nt.diaChiGoc || nt.diaChi || "", {
-          detailInputId: "nt-diachichitiet",
-          provinceSelectId: "nt-tinh",
-          wardSelectId: "nt-xa"
-        });
-      } else {
-        if (document.getElementById("nt-diachichitiet")) document.getElementById("nt-diachichitiet").value = storedAddress.detail;
-        await this.initAddressDropdowns("nt-tinh", "nt-xa", storedAddress.provinceName, storedAddress.wardName, isReadOnly);
-      }
       if (isReadOnly) {
         if (document.getElementById("nt-tinh")) document.getElementById("nt-tinh").disabled = true;
         if (document.getElementById("nt-xa")) document.getElementById("nt-xa").disabled = true;
@@ -147,17 +134,14 @@ export async function editNhaThau(id, isReadOnly = false) {
       this.tempNhaThauStampBase64 = safeStampSrc(nt.anhDau);
       setNhaThauStampPreview(this.tempNhaThauStampBase64, isReadOnly, nt.updatedAt || nt.createdAt);
     } else {
-      window._nhaThauViewOnly = false;
+      setContractorViewOnly(false);
       this.switchTab("nhathau", "taomoi", true);
       const titleEl = document.getElementById("modal-nhathau-title");
       if (titleEl) titleEl.textContent = "Thêm Nhà thầu mới";
-      resetFormState(form);
-      form.dataset.diaChiGoc = "";
-      if (document.getElementById("nt-diachichitiet")) document.getElementById("nt-diachichitiet").value = "";
-      if (document.getElementById("nt-ngayapdung")) document.getElementById("nt-ngayapdung").value = this.model.formatForDateInput(todayYmd());
-      await this.initAddressDropdowns("nt-tinh", "nt-xa", "", "", false);
-      const idInput = document.getElementById("form-nhathau-id");
-      if (idInput) idInput.value = "";
+      await resetPartnerFormData(document, form, PARTNER_FORM_CONFIGS.nhathau, {
+        effectiveDate: this.model.formatForDateInput(todayYmd()),
+        initAddressDropdowns: (...args) => this.initAddressDropdowns(...args)
+      });
       this.tempNhaThauStampBase64 = "";
       setNhaThauStampPreview("", false);
     }
@@ -165,54 +149,17 @@ export async function editNhaThau(id, isReadOnly = false) {
     const partnerTaxInput = document.getElementById("nt-mst");
     partnerCodeInput?.__bfPartnerTaxLookupCleanup?.();
     if (!isReadOnly) {
+      const lookupHandlers = createPartnerLookupHandlers({
+        form,
+        config: PARTNER_FORM_CONFIGS.nhathau.lookup
+      });
       bindPartnerTaxCodeLookup({
         codeInput: partnerCodeInput,
         taxInput: partnerTaxInput,
         partnerRole: "NT",
         resolveLocalData: (lookup) => findStoredPartnerLookupData(this.model.getLatestNhaThau(), lookup),
-        clearLookupData: () => {
-          document.getElementById("nt-ten").value = "";
-          document.getElementById("nt-tenviettat").value = "";
-          document.getElementById("nt-nguoidaidien").value = "";
-          document.getElementById("nt-chucvudaidien").value = "";
-          document.getElementById("nt-sdt").value = "";
-          document.getElementById("nt-email").value = "";
-          document.getElementById("nt-sotaikhoan").value = "";
-          document.getElementById("nt-noimotaikhoan").value = "";
-          document.getElementById("nt-manganhang").value = "";
-          document.getElementById("nt-diachichitiet").value = "";
-          document.getElementById("nt-tinh").value = "";
-          document.getElementById("nt-xa").innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
-          document.getElementById("nt-xa").disabled = true;
-          form.dataset.diaChiGoc = "";
-        },
-        applyLookupData: async (data) => {
-          if (data.org_code) document.getElementById("nt-ma").value = data.org_code;
-          document.getElementById("nt-mst").value = data.tax_code || "";
-          document.getElementById("nt-ten").value = normalizeOrganizationName(data.name);
-          document.getElementById("nt-tenviettat").value = data.short_name || "";
-          document.getElementById("nt-nguoidaidien").value = normalizePersonName(data.representative_name || "");
-          document.getElementById("nt-chucvudaidien").value = data.representative_position || "";
-          document.getElementById("nt-sdt").value = data.phone || "";
-          document.getElementById("nt-email").value = data.email || "";
-          document.getElementById("nt-sotaikhoan").value = data.bank_account || "";
-          document.getElementById("nt-noimotaikhoan").value = data.bank_name || "";
-          document.getElementById("nt-manganhang").value = data.bank_code || "";
-          if (data.address) {
-            form.dataset.diaChiGoc = data.address;
-            await applyRawAddressToAddressControls(data.address, {
-              detailInputId: "nt-diachichitiet",
-              provinceSelectId: "nt-tinh",
-              wardSelectId: "nt-xa"
-            });
-          } else {
-            document.getElementById("nt-diachichitiet").value = "";
-            document.getElementById("nt-tinh").value = "";
-            document.getElementById("nt-xa").innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
-            document.getElementById("nt-xa").disabled = true;
-            form.dataset.diaChiGoc = "";
-          }
-        }
+        clearLookupData: lookupHandlers.clearLookupData,
+        applyLookupData: lookupHandlers.applyLookupData
       });
     }
     this.view.openModal("modal-nhathau");
@@ -234,171 +181,42 @@ export async function handleNhaThauSubmit(e) {
   if (!this.view.validateForm(form)) return;
   const id = document.getElementById("form-nhathau-id").value;
   const maNhaThau = maNhaThauInput.value.trim();
-  const tenNhaThau = normalizeOrganizationName(document.getElementById("nt-ten").value);
-  const maSoThue = maSoThueInput.value.trim();
-  if (maNhaThau) {
-    const latestNhaThau = this.model.getLatestNhaThau();
-    const dupMa = latestNhaThau.some(
-      (n) => n.id !== id && n.rootId !== id && (n.rootId || n.id) !== (this.model.state.nhathau.find((orig) => orig.id === id)?.rootId || id) && n.maNhaThau && n.maNhaThau.trim().toLowerCase() === maNhaThau.toLowerCase()
-    );
-    if (dupMa) {
-      const inputEl = document.getElementById("nt-ma");
-      const formGroup = inputEl.closest(".form-group");
-      if (formGroup) {
-        formGroup.classList.add("invalid");
-        const errText = formGroup.querySelector(".error-text");
-        if (errText) {
-          const originalErr = errText.textContent;
-          errText.textContent = "Mã nhà thầu này đã tồn tại trong hệ thống. Vui lòng nhập mã khác!";
-          inputEl.addEventListener("input", () => {
-            formGroup.classList.remove("invalid");
-            errText.textContent = originalErr;
-          }, { once: true });
-        }
-      }
-      inputEl.focus();
-      return;
-    }
-  }
-  if (maSoThue) {
-    const mstRegex = /^\d{9,14}$|^\d{10}-\d{3}$/;
-    if (!mstRegex.test(maSoThue)) {
-      const inputEl = document.getElementById("nt-mst");
-      const formGroup = inputEl.closest(".form-group");
-      if (formGroup) {
-        formGroup.classList.add("invalid");
-        const errText = formGroup.querySelector(".error-text");
-        if (errText) {
-          const originalErr = errText.textContent;
-          errText.textContent = "Mã số thuế không đúng định dạng (phải gồm từ 9 đến 14 chữ số).";
-          inputEl.addEventListener("input", () => {
-            formGroup.classList.remove("invalid");
-            errText.textContent = originalErr;
-          }, { once: true });
-        }
-      }
-      inputEl.focus();
-      return;
-    }
-    const latestNhaThau = this.model.getLatestNhaThau();
-    const dupMST = latestNhaThau.some(
-      (n) => n.id !== id && n.rootId !== id && (n.rootId || n.id) !== (this.model.state.nhathau.find((orig) => orig.id === id)?.rootId || id) && n.maSoThue && n.maSoThue.trim().toLowerCase() === maSoThue.toLowerCase()
-    );
-    if (dupMST) {
-      const inputEl = document.getElementById("nt-mst");
-      const formGroup = inputEl.closest(".form-group");
-      if (formGroup) {
-        formGroup.classList.add("invalid");
-        const errText = formGroup.querySelector(".error-text");
-        if (errText) {
-          const originalErr = errText.textContent;
-          errText.textContent = "Mã số thuế này đã được đăng ký cho một nhà thầu khác trong hệ thống!";
-          inputEl.addEventListener("input", () => {
-            formGroup.classList.remove("invalid");
-            errText.textContent = originalErr;
-          }, { once: true });
-        }
-      }
-      inputEl.focus();
-      return;
-    }
-  }
-  const phone = document.getElementById("nt-sdt").value.trim();
-  if (phone && !/^[0-9\s+\-()]{9,15}$/.test(phone)) {
-    const inputEl = document.getElementById("nt-sdt");
-    const formGroup = inputEl.closest(".form-group");
-    if (formGroup) {
-      formGroup.classList.add("invalid");
-      const errText = formGroup.querySelector(".error-text");
-      if (errText) {
-        const originalErr = errText.textContent;
-        errText.textContent = "Số điện thoại không đúng định dạng (từ 9 đến 15 chữ số).";
-        inputEl.addEventListener("input", () => {
-          formGroup.classList.remove("invalid");
-          errText.textContent = originalErr;
-        }, { once: true });
-      }
-    }
-    inputEl.focus();
-    return;
-  }
-  const email = document.getElementById("nt-email").value.trim();
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    const inputEl = document.getElementById("nt-email");
-    const formGroup = inputEl.closest(".form-group");
-    if (formGroup) {
-      formGroup.classList.add("invalid");
-      const errText = formGroup.querySelector(".error-text");
-      if (errText) {
-        const originalErr = errText.textContent;
-        errText.textContent = "Email không đúng định dạng.";
-        inputEl.addEventListener("input", () => {
-          formGroup.classList.remove("invalid");
-          errText.textContent = originalErr;
-        }, { once: true });
-      }
-    }
-    inputEl.focus();
-    return;
-  }
-  const tinhSelect = document.getElementById("nt-tinh");
-  const huyenSelect = document.getElementById("nt-xa");
-  const tinhName = tinhSelect.options[tinhSelect.selectedIndex]?.getAttribute("data-name") || "";
-  const huyenName = huyenSelect.options[huyenSelect.selectedIndex]?.getAttribute("data-name") || "";
-  const diachichitiet = document.getElementById("nt-diachichitiet").value.trim();
-  const diaChiCombined = composeInternalAddress(diachichitiet, huyenName, tinhName);
+  const partnerData = collectPartnerFormData(document, form, PARTNER_FORM_CONFIGS.nhathau, {
+    convertDate: (value) => this.model.convertDMYToYMD(value),
+    fallbackDate: todayYmd()
+  });
+  const validationErrors = validatePartnerRecord(partnerData, this.model.state.nhathau, id, PARTNER_FORM_CONFIGS.nhathau);
+  if (!applyPartnerValidationErrors(document, validationErrors, (control) => this.view.focusInvalidControl(control))) return;
   const currentNtForStamp = id ? this.model.state.nhathau.find((n) => n.id === id) : null;
   const stampValue = safeStampSrc(this.tempNhaThauStampBase64);
   const stampIsNewUpload = stampValue.startsWith("data:image/");
   const stampExt = stampValue ? this.model.getFileExtensionFromBase64(stampValue) : "";
   let data = {
-    maNhaThau,
-    tenNhaThau,
-    tenVietTat: document.getElementById("nt-tenviettat").value.trim(),
+    ...partnerData,
     loaiNhaThau: "Độc lập",
-    maSoThue,
-    nguoiDaiDien: normalizePersonName(document.getElementById("nt-nguoidaidien").value),
-    chucVuDaiDien: document.getElementById("nt-chucvudaidien").value.trim(),
-    danhXung: document.getElementById("nt-danhxung").value,
-    soDienThoai: document.getElementById("nt-sdt").value.trim(),
-    email: document.getElementById("nt-email").value.trim(),
-    diaChi: diaChiCombined,
-    diaChiGoc: form.dataset.diaChiGoc || "",
-    soTaiKhoan: document.getElementById("nt-sotaikhoan").value.trim(),
-    noiMoTaiKhoan: document.getElementById("nt-noimotaikhoan").value.trim(),
-    maNganHang: document.getElementById("nt-manganhang").value.trim(),
     anhDau: stampValue,
     tenAnhDau: stampValue
       ? stampIsNewUpload
         ? `DAU_${maNhaThau || "NHA_THAU"}.${stampExt}`
         : currentNtForStamp?.tenAnhDau || `DAU_${maNhaThau || "NHA_THAU"}.${stampExt}`
-      : "",
-    ngayApDung: this.model.convertDMYToYMD(document.getElementById("nt-ngayapdung").value) || todayYmd()
+      : ""
   };
   if (id) {
     const currentNt = this.model.state.nhathau.find((n) => n.id === id);
-    const rootId = currentNt.rootId || currentNt.id;
-    const versions = this.model.state.nhathau.filter((n) => n.rootId === rootId || n.id === rootId);
-    const maxVerNum = Math.max(...versions.map((v) => parseInt(v.phienBan || 0)));
-    const nextVerStr = String(maxVerNum + 1).padStart(2, "0");
+    const nextVersion = getNextVersion(this.model.state.nhathau, currentNt);
     const isNewVersion = await this.view.customConfirm(
       "Lưu Nhà thầu",
-      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${maxVerNum + 1}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentNt.phienBan || 0)})`,
+      `Bạn có muốn lưu các thay đổi này thành một phiên bản mới (V${Number(nextVersion)}) không? (Đồng ý để tạo phiên bản mới, Hủy để ghi đè lên phiên bản hiện tại V${parseInt(currentNt.phienBan || 0)})`,
       "save"
     );
     if (isNewVersion) {
-      versions.forEach((n) => {
-        n.isLatest = 0;
+      const timestamp = this.model.getCurrentDateTimeString();
+      data = createNextVersion(this.model.state.nhathau, currentNt, data, {
+        id: generateRecordId("nhathau"), timestamp
       });
-      data.id = window.generateRecordId("nhathau");
-      data.rootId = rootId;
-      data.phienBan = nextVerStr;
-      data.isLatest = 1;
-      data.createdAt = this.model.getCurrentDateTimeString();
       if (data.ngayApDung === (currentNt.ngayApDung || String(currentNt.createdAt || "").slice(0, 10))) {
         data.ngayApDung = todayYmd();
       }
-      data.updatedAt = this.model.getCurrentDateTimeString();
       this.model.state.nhathau.push(data);
     } else {
       data.id = id;
@@ -411,13 +229,8 @@ export async function handleNhaThauSubmit(e) {
       this.model.state.nhathau[idx] = data;
     }
   } else {
-    const newId = window.generateRecordId("nhathau");
-    data.id = newId;
-    data.rootId = newId;
-    data.phienBan = "00";
-    data.isLatest = 1;
-    data.createdAt = this.model.getCurrentDateTimeString();
-    data.updatedAt = this.model.getCurrentDateTimeString();
+    const newId = generateRecordId("nhathau");
+    data = createInitialVersion(data, { id: newId, timestamp: this.model.getCurrentDateTimeString() });
     this.model.state.nhathau.push(data);
   }
   rememberSelectedVersion(this.model.state, "selectedNhaThauVersion", data);

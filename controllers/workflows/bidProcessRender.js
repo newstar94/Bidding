@@ -11,7 +11,7 @@ export function renderOpeningSummary({
   isLocked
 }) {
   if (!container) return;
-  container.style.display = "block";
+  container.classList.remove("is-hidden");
   container.innerHTML = `
         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem; margin-bottom: 12px;">

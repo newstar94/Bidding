@@ -81,3 +81,4 @@ def validate_owner_scoped_references(cursor, owner_id, table_name, item, incomin
             if not cursor.fetchone():
                 errors.append(f"Thanh vien lien danh nha_thau_id={contractor_id} khong thuoc owner hien tai.")
     return errors
+

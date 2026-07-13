@@ -262,6 +262,55 @@ def _build_index_response_payload():
     return html_content, etag
 
 
+def _workspace_preload_tag(session_bootstrap):
+    """Preload the authenticated workspace graph while the app shell parses."""
+    if not session_bootstrap.get("valid"):
+        return ""
+    if APP_DEBUG:
+        workspace_src = "/controllers/workspaceBootstrap.js"
+        preload_sources = [workspace_src]
+        try:
+            workspace_path = os.path.join(project_root, workspace_src.lstrip("/").replace("/", os.sep))
+            with open(workspace_path, 'r', encoding='utf-8') as workspace_file:
+                source = workspace_file.read()
+            preload_sources.extend(re.findall(
+                r'(?:import|export)\s+(?:[^\"\']*?\s+from\s+)?[\"\'](/(?:controllers|features|models|views)/[^\"\']+\.js)[\"\']',
+                source,
+            ))
+        except Exception as exc:
+            log_error(exc, "workspace_preload_source")
+        return "\n".join(
+            f'<link rel="modulepreload" href="{module_src}">'
+            for module_src in dict.fromkeys(preload_sources)
+        )
+
+    manifest_path = os.path.join(project_root, 'dist', '.vite', 'manifest.json')
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
+            manifest = json.load(manifest_file)
+        pending = ['controllers/workspaceBootstrap.js']
+        visited = set()
+        preload_files = []
+        while pending:
+            manifest_key = pending.pop(0)
+            if manifest_key in visited:
+                continue
+            visited.add(manifest_key)
+            entry = manifest.get(manifest_key, {})
+            bundle_file = entry.get('file')
+            if bundle_file:
+                preload_files.append(bundle_file)
+            pending.extend(entry.get('imports') or [])
+        if preload_files:
+            return "\n".join(
+                f'<link rel="modulepreload" href="/dist/{bundle_file}">'
+                for bundle_file in preload_files
+            )
+    except Exception as exc:
+        log_error(exc, "workspace_preload_manifest")
+    return ""
+
+
 async def index(request):
     """Return the compiled application shell with browser ETag caching."""
     global _index_response_cache
@@ -282,6 +331,7 @@ async def index(request):
     if if_none_match and if_none_match == response_etag:
         return HTMLResponse(content="", status_code=304, headers={"ETag": response_etag, "Vary": "Cookie", "Cache-Control": "private, no-cache"})
     html_content = html_content.replace("__BF_SESSION_BOOTSTRAP__", safe_bootstrap)
+    html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", _workspace_preload_tag(session_bootstrap))
     bootstrap_ms = (time.perf_counter() - bootstrap_started) * 1000
     return HTMLResponse(
         content=html_content,
@@ -576,6 +626,7 @@ routes = [
 if APP_DEBUG:
     routes.extend([
         Mount("/controllers", app=SafeStaticFiles(directory=os.path.join(project_root, 'controllers')), name="controllers"),
+        Mount("/features", app=SafeStaticFiles(directory=os.path.join(project_root, 'features')), name="features"),
         Mount("/models", app=SafeStaticFiles(directory=os.path.join(project_root, 'models')), name="models"),
         Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
         Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")

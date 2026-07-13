@@ -1,5 +1,6 @@
 export { getAuthDownloadUrl, authFetchDownload } from "../../controllers/utils/workflow_helpers.js";
 import { formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "../utils/formatters.js";
+import { hasUnifiedSelectListener, markUnifiedSelectListenerRegistered } from "../../controllers/state/runtimeState.js";
 export function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -56,7 +57,7 @@ export function initCustomSelect(selectId) {
   const select = document.getElementById(selectId);
   if (!select) return;
   select.setAttribute("style", "display: none !important;");
-  if (!window._unifiedSelectClickListenerRegistered) {
+  if (!hasUnifiedSelectListener()) {
     document.addEventListener("click", (e) => {
       document.querySelectorAll(".custom-select-container.open").forEach((w) => {
         const targetId = w.getAttribute("data-target");
@@ -82,7 +83,7 @@ export function initCustomSelect(selectId) {
         }
       });
     }, { capture: true, passive: true });
-    window._unifiedSelectClickListenerRegistered = true;
+    markUnifiedSelectListenerRegistered();
   }
   let wrapper = select.parentElement.querySelector(`.custom-select-container[data-target="${selectId}"]`);
   const options = Array.from(select.options);

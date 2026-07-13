@@ -2,7 +2,9 @@
 
 Ngày lập: 12/07/2026
 
-Trạng thái: Chờ xem xét và phê duyệt
+Trạng thái: Đã hoàn thành và đạt toàn bộ cổng kiểm thử
+
+Quy ước: `V` ở đầu dòng là hạng mục đã hoàn thành và đạt kiểm thử.
 
 ## 1. Mục tiêu
 
@@ -60,23 +62,23 @@ Mức rủi ro: Thấp
 
 ### Công việc
 
-- Bổ sung test cho:
-  - Tạo, sửa, xem và xóa phiên bản kế hoạch.
-  - Tạo, sửa, xem và xóa phiên bản gói thầu.
-  - Mở thầu với nhà thầu độc lập và liên danh.
-  - Giữ nguyên tên liên danh khi tra cứu/lưu.
-  - Đánh giá HSDT một giai đoạn một túi và hai túi hồ sơ.
-  - Khóa/mở khóa báo cáo đánh giá.
-  - Lưu kết quả lựa chọn nhà thầu và khôi phục gói thầu bị hủy.
-  - Lựa chọn đúng phiên bản nhà thầu theo ngày nghiệp vụ.
-  - Xuất Word dùng đúng ngày, phiên bản và tên nhà thầu.
-- Ghi lại payload và state đầu ra của các workflow quan trọng để so sánh trước/sau refactor.
+V Bổ sung test cho:
+  V Tạo, sửa, xem và xóa phiên bản kế hoạch.
+  V Tạo, sửa, xem và xóa phiên bản gói thầu.
+  V Mở thầu với nhà thầu độc lập và liên danh.
+  V Giữ nguyên tên liên danh khi tra cứu/lưu.
+  V Đánh giá HSDT một giai đoạn một túi và hai túi hồ sơ.
+  V Khóa/mở khóa báo cáo đánh giá.
+  V Lưu kết quả lựa chọn nhà thầu và khôi phục gói thầu bị hủy.
+  V Lựa chọn đúng phiên bản nhà thầu theo ngày nghiệp vụ.
+  V Xuất Word dùng đúng ngày, phiên bản và tên nhà thầu.
+V Ghi lại payload và state đầu ra của các workflow quan trọng để so sánh trước/sau refactor.
 
 ### Điều kiện hoàn thành
 
-- Các hành vi quan trọng có test bảo vệ.
-- Toàn bộ test hiện tại và test mới đều đạt.
-- Chưa thay đổi cấu trúc nghiệp vụ hoặc giao diện.
+V Các hành vi quan trọng có test bảo vệ.
+V Toàn bộ test hiện tại và test mới đều đạt.
+V Chưa thay đổi cấu trúc nghiệp vụ hoặc giao diện.
 
 ## Giai đoạn 1 — Chuẩn hóa helper và lớp gọi API
 
@@ -86,26 +88,26 @@ Mức rủi ro: Thấp
 
 ### Công việc
 
-- Tạo `controllers/api/apiClient.js`:
-  - `getJson()`.
-  - `postJson()`.
-  - `putJson()`.
-  - `deleteJson()`.
-  - Xử lý thống nhất lỗi HTTP, JSON lỗi, hết phiên đăng nhập và `AbortSignal`.
-- Thay thế dần các lời gọi `fetch()` trực tiếp, bắt đầu từ module partner và các bảng phân trang.
-- Hợp nhất các helper lặp:
-  - `escapeHtml`.
-  - Ngày hiện tại dạng `yyyy-MM-dd`.
-  - So sánh/chuẩn hóa mã định danh.
-  - Định dạng và parse ngày.
-  - Định dạng tiền tệ.
-- Hợp nhất việc tải/cache tỉnh, phường trong `PartnerHelpers.js`, tránh hai luồng tải danh mục riêng biệt.
+V Tạo `controllers/api/apiClient.js`:
+  V `getJson()`.
+  V `postJson()`.
+  V `putJson()`.
+  V `deleteJson()`.
+  V Xử lý thống nhất lỗi HTTP, JSON lỗi, hết phiên đăng nhập và `AbortSignal`.
+V Thay thế các lời gọi `fetch()` trực tiếp tại module partner và các bảng phân trang.
+V Hợp nhất các helper lặp:
+  V `escapeHtml`.
+  V Ngày hiện tại dạng `yyyy-MM-dd`.
+  V So sánh/chuẩn hóa mã định danh.
+  V Định dạng và parse ngày.
+  V Định dạng tiền tệ.
+V Hợp nhất việc tải/cache tỉnh, phường trong `PartnerHelpers.js`, tránh hai luồng tải danh mục riêng biệt.
 
 ### Điều kiện hoàn thành
 
-- Không thay đổi endpoint hoặc payload.
-- Các module được chuyển đổi không còn tự xử lý lỗi API theo nhiều cách khác nhau.
-- Build, unit test và API test đạt.
+V Không thay đổi endpoint hoặc payload.
+V Các module được chuyển đổi không còn tự xử lý lỗi API theo nhiều cách khác nhau.
+V Build, unit test và API test đạt.
 
 ## Giai đoạn 2 — Tạo bộ thành phần bảng dùng chung
 
@@ -115,36 +117,36 @@ Mức rủi ro: Trung bình
 
 ### Thành phần đề xuất
 
-- `views/components/EntityTable.js`:
-  - Tải trang từ server hoặc lọc dữ liệu local.
-  - Tìm kiếm, sắp xếp và phân trang.
-  - Trạng thái loading, empty và error.
-  - Refresh sau thêm/sửa/xóa/import.
-- `views/components/YearMonthFilter.js`:
-  - Sinh danh sách năm/tháng.
-  - Giữ lựa chọn hiện tại.
-  - Lọc dữ liệu thống nhất.
-- `views/components/VersionSelector.js`:
-  - Tạo danh sách phiên bản.
-  - Chọn phiên bản theo `rootId`.
-  - Phát sự kiện đổi phiên bản.
-- `views/components/EntityActions.js`:
-  - Xem, sửa, xóa và xuất dữ liệu.
+V `views/components/EntityTable.js`:
+  V Tải trang từ server hoặc lọc dữ liệu local.
+  V Tìm kiếm, sắp xếp và phân trang.
+  V Trạng thái loading, empty và error.
+  V Refresh sau thêm/sửa/xóa/import.
+V `views/components/YearMonthFilter.js`:
+  V Sinh danh sách năm/tháng.
+  V Giữ lựa chọn hiện tại.
+  V Lọc dữ liệu thống nhất.
+V `views/components/VersionSelector.js`:
+  V Tạo danh sách phiên bản.
+  V Chọn phiên bản theo `rootId`.
+  V Phát sự kiện đổi phiên bản.
+V `views/components/EntityActions.js`:
+  V Xem, sửa, xóa và xuất dữ liệu.
 
 ### Thứ tự chuyển đổi
 
-1. Chuyên gia.
-2. Chủ đầu tư.
-3. Nhà thầu.
-4. Hợp đồng.
-5. Kế hoạch.
-6. Gói thầu.
+V 1. Chuyên gia.
+V 2. Chủ đầu tư.
+V 3. Nhà thầu.
+V 4. Hợp đồng.
+V 5. Kế hoạch.
+V 6. Gói thầu.
 
 ### Điều kiện hoàn thành
 
-- Các bảng không còn lặp logic phân trang và trạng thái rỗng.
-- Import, thêm, sửa và xóa làm bảng cập nhật ngay.
-- Giao diện và thứ tự dữ liệu không thay đổi.
+V Các bảng không còn lặp logic phân trang và trạng thái rỗng.
+V Import, thêm, sửa và xóa làm bảng cập nhật ngay.
+V Giao diện và thứ tự dữ liệu không thay đổi.
 
 ## Giai đoạn 3 — Chuẩn hóa form và CRUD thực thể có phiên bản
 
@@ -154,40 +156,40 @@ Mức rủi ro: Trung bình
 
 ### Thành phần đề xuất
 
-- `controllers/forms/FormBinder.js`:
-  - Nạp object vào form theo cấu hình trường.
-  - Thu thập form thành object.
-  - Reset form và xóa trạng thái lỗi.
-  - Chuẩn hóa giá trị trước khi lưu.
-- `controllers/forms/FormValidation.js`:
-  - Validate theo cấu hình.
-  - Cuộn và focus trường lỗi đầu tiên.
-  - Quản lý thông báo lỗi thống nhất.
-- `controllers/domain/VersionedEntityService.js`:
-  - Tìm toàn bộ phiên bản theo `rootId`.
-  - Tạo phiên bản tiếp theo.
-  - Đánh dấu `isLatest`.
-  - Xóa phiên bản mới nhất hoặc toàn bộ.
-  - Kiểm tra quan hệ trước khi xóa.
-- `controllers/domain/MutationService.js`:
-  - Cập nhật model.
-  - Ghi IndexedDB.
-  - Đưa vào hàng chờ đồng bộ.
-  - Đồng bộ server.
-  - Refresh các view phụ thuộc.
+V `controllers/forms/FormBinder.js`:
+  V Nạp object vào form theo cấu hình trường.
+  V Thu thập form thành object.
+  V Reset form và xóa trạng thái lỗi.
+  V Chuẩn hóa giá trị trước khi lưu.
+V `controllers/forms/FormValidation.js`:
+  V Validate theo cấu hình.
+  V Cuộn và focus trường lỗi đầu tiên.
+  V Quản lý thông báo lỗi thống nhất.
+V `controllers/domain/VersionedEntityService.js`:
+  V Tìm toàn bộ phiên bản theo `rootId`.
+  V Tạo phiên bản tiếp theo.
+  V Đánh dấu `isLatest`.
+  V Xóa phiên bản mới nhất hoặc toàn bộ.
+  V Kiểm tra quan hệ trước khi xóa.
+V `controllers/domain/MutationService.js`:
+  V Cập nhật model.
+  V Ghi IndexedDB.
+  V Đưa thay đổi/xóa vào hàng chờ đồng bộ trước lần `await` đầu tiên.
+  V Đồng bộ server.
+  V Refresh các view phụ thuộc.
 
 ### Thứ tự áp dụng
 
-1. Chủ đầu tư và nhà thầu.
-2. Hợp đồng.
-3. Kế hoạch.
-4. Gói thầu.
+V 1. Chủ đầu tư và nhà thầu.
+V 2. Hợp đồng.
+V 3. Kế hoạch.
+V 4. Gói thầu.
 
 ### Điều kiện hoàn thành
 
-- Workflow không còn tự lặp quy trình model → persist → sync → refresh.
-- Logic phiên bản chỉ còn một nguồn triển khai.
-- Dữ liệu cũ và dữ liệu mới cho kết quả giống nhau.
+V Workflow không còn tự lặp quy trình model → persist → sync → refresh tại các luồng CRUD thực thể có phiên bản.
+V Logic tạo/xóa phiên bản chỉ còn một nguồn triển khai.
+V Dữ liệu cũ và dữ liệu mới cho kết quả giống nhau theo bộ kiểm thử hiện tại.
 
 ## Giai đoạn 4 — Hợp nhất phần dùng chung của chủ đầu tư và nhà thầu
 
@@ -197,23 +199,23 @@ Mức rủi ro: Trung bình
 
 ### Thành phần đề xuất
 
-- `controllers/partners/PartnerFormController.js`:
-  - Mã định danh và mã số thuế.
-  - Ngày áp dụng.
-  - Địa chỉ chi tiết, phường và tỉnh/thành phố.
-  - Tra cứu theo thứ tự DB → MuaSamCong → VietQR.
-  - Nạp và lưu thông tin liên hệ/ngân hàng.
-- Cấu hình riêng cho chủ đầu tư và nhà thầu chỉ chứa:
-  - ID trường form.
-  - Tên trường model.
-  - Các trường bắt buộc.
-  - Các trường riêng như dấu nhà thầu hoặc cơ quan chủ quản.
+V `controllers/partners/PartnerFormController.js`:
+  V Mã định danh và mã số thuế.
+  V Ngày áp dụng.
+  V Địa chỉ chi tiết, phường và tỉnh/thành phố.
+  V Tra cứu theo thứ tự DB → MuaSamCong → VietQR.
+  V Nạp và lưu thông tin liên hệ/ngân hàng.
+V Cấu hình riêng cho chủ đầu tư và nhà thầu chỉ chứa:
+  V ID trường form.
+  V Tên trường model.
+  V Các trường bắt buộc.
+  V Các trường riêng như dấu nhà thầu hoặc cơ quan chủ quản.
 
 ### Điều kiện hoàn thành
 
-- Không còn hai bản triển khai riêng cho địa chỉ, ngày áp dụng và tra cứu đối tác.
-- Mã số thuế chủ đầu tư vẫn là tùy chọn.
-- Số tài khoản và nơi mở tài khoản nhà thầu vẫn là tùy chọn.
+V Không còn hai bản triển khai riêng cho địa chỉ, ngày áp dụng và tra cứu đối tác.
+V Mã số thuế chủ đầu tư vẫn là tùy chọn.
+V Số tài khoản và nơi mở tài khoản nhà thầu vẫn là tùy chọn.
 
 ## Giai đoạn 5 — Tách quy trình chi tiết gói thầu
 
@@ -225,49 +227,52 @@ Mức rủi ro: Cao
 
 ```text
 features/packages/detail/
-├── PackageDetailCoordinator.js
-├── PackageDetailState.js
-├── PackageTabs.js
-├── panels/
-│   ├── PreparationPanel.js
-│   ├── InvitationPanel.js
-│   ├── OpeningPanel.js
-│   ├── TechnicalEvaluationPanel.js
-│   ├── FinancialOpeningPanel.js
-│   ├── FinancialEvaluationPanel.js
-│   ├── AwardResultPanel.js
-│   └── CancellationPanel.js
-└── components/
-    ├── PackageSummary.js
-    ├── BidderTable.js
-    ├── JointVentureModal.js
-    ├── EvaluationConclusion.js
-    └── WorkflowActions.js
+V ├── PackageDetailCoordinator.js
+V ├── PackageDetailState.js
+V ├── PackageTabs.js
+V ├── panels/
+V │   ├── PreparationPanel.js
+V │   ├── PreparationDetailsPanel.js
+V │   ├── InvitationPanel.js
+V │   ├── OpeningPanel.js
+V │   ├── TechnicalEvaluationPanel.js
+V │   ├── FinancialOpeningPanel.js
+V │   ├── FinancialEvaluationPanel.js
+V │   ├── AwardResultPanel.js
+V │   ├── AwardResultDetailsPanel.js
+V │   └── CancellationPanel.js
+V └── components/
+V     ├── PackageSummary.js
+V     ├── BidderTable.js
+V     ├── JointVentureModal.js
+V     ├── EvaluationConclusion.js
+V     ├── EvaluationPanel.js
+V     └── WorkflowActions.js
 ```
 
 ### Nguyên tắc tách
 
-- `PackageDetailCoordinator` quyết định tab và trạng thái workflow, không dựng HTML chi tiết.
-- Mỗi panel chỉ render và phát sự kiện nghiệp vụ.
-- Service nghiệp vụ chịu trách nhiệm validate, cập nhật model và lưu dữ liệu.
-- View không được gọi `persistData()` trực tiếp.
-- Modal liên danh và link nhà thầu dùng chung một component.
-- Tách lần lượt từng panel, không thay toàn bộ `GoiThauDetail.js` cùng lúc.
+V `PackageDetailCoordinator` quyết định tab và trạng thái workflow, không dựng HTML chi tiết.
+V Mỗi panel chỉ render và phát sự kiện nghiệp vụ.
+V Service nghiệp vụ chịu trách nhiệm validate, cập nhật model và lưu dữ liệu.
+V View không được gọi `persistData()` trực tiếp.
+V Modal liên danh và link nhà thầu dùng chung một component.
+V Tách lần lượt từng panel, không thay toàn bộ `GoiThauDetail.js` cùng lúc.
 
 ### Thứ tự tách
 
-1. Thông tin gói thầu.
-2. Hủy/khôi phục gói thầu.
-3. Kết quả lựa chọn nhà thầu.
-4. Mở thầu.
-5. Đánh giá kỹ thuật.
-6. Mở và đánh giá tài chính.
+V 1. Thông tin gói thầu.
+V 2. Hủy/khôi phục gói thầu.
+V 3. Kết quả lựa chọn nhà thầu.
+V 4. Mở thầu.
+V 5. Đánh giá kỹ thuật.
+V 6. Mở và đánh giá tài chính.
 
 ### Điều kiện hoàn thành
 
-- `GoiThauDetail.js` chỉ còn vai trò điều phối hoặc được thay thế hoàn toàn.
-- Không còn thao tác ghi DB nằm trong view.
-- Tất cả luồng nghiệp vụ được test trước và sau khi tách.
+V `GoiThauDetail.js` chỉ còn vai trò điều phối hoặc được thay thế hoàn toàn.
+V Không còn thao tác ghi DB nằm trong view.
+V Tất cả luồng nghiệp vụ được test trước và sau khi tách.
 
 ## Giai đoạn 6 — Chuẩn hóa Word, Excel và schema metadata
 
@@ -277,31 +282,31 @@ Mức rủi ro: Cao
 
 ### Công việc
 
-- Xây dựng một manifest chuẩn mô tả:
-  - Bảng dữ liệu.
-  - Tên trường DB và ứng dụng.
-  - Nhãn hiển thị.
-  - Kiểu dữ liệu.
-  - Quy tắc định dạng Word/Excel.
-  - Trường ngày thuần và trường ngày giờ.
-- Sinh tự động từ manifest:
-  - `schemaContract.js`.
-  - Danh sách biến Word frontend.
-  - Default Word mappings backend.
-  - Cấu hình cột Excel áp dụng được.
-- Tách `routes_docx.py` thành:
-  - Route export/template.
-  - Context builder.
-  - Bid/result filtering.
-  - Mapping service.
-  - Formula evaluator.
-- Hợp nhất các builder Excel có cùng cấu trúc bằng cấu hình cột.
+V Xây dựng một manifest chuẩn mô tả:
+  V Bảng dữ liệu.
+  V Tên trường DB và ứng dụng.
+  V Nhãn hiển thị.
+  V Kiểu dữ liệu.
+  V Quy tắc định dạng Word/Excel.
+  V Trường ngày thuần và trường ngày giờ.
+V Sinh tự động từ manifest:
+  V `schemaContract.js`.
+  V Danh sách biến Word frontend.
+  V Default Word mappings backend.
+  V Cấu hình cột Excel áp dụng được.
+V Tách `routes_docx.py` thành:
+  V Route export/template.
+  V Context builder.
+  V Bid/result filtering.
+  V Mapping service.
+  V Formula evaluator.
+V Hợp nhất các builder Excel có cùng cấu trúc bằng cấu hình cột.
 
 ### Điều kiện hoàn thành
 
-- Một trường không cần khai báo thủ công tại nhiều nơi.
-- Ngày, tiền tệ, hình ảnh và phiên bản nhà thầu được định dạng nhất quán.
-- Test Word và Excel đạt với cả nhà thầu độc lập và liên danh.
+V Một trường không cần khai báo thủ công tại nhiều nơi.
+V Ngày, tiền tệ, hình ảnh và phiên bản nhà thầu được định dạng nhất quán.
+V Test Word và Excel đạt với cả nhà thầu độc lập và liên danh.
 
 ## Giai đoạn 7 — Tách backend sync thành service/repository
 
@@ -324,18 +329,18 @@ backend/sync/
 
 ### Công việc
 
-- Route chỉ đọc request, xác thực, gọi service và trả response.
-- Repository quản lý SQL và transaction.
-- Validator xử lý định dạng, ownership và quan hệ cha/con.
-- Serializer xử lý ánh xạ DB ↔ JSON.
-- Service quản lý sync version, mutation, conflict và websocket event.
-- Tách pagination và dashboard summary khỏi route đồng bộ.
+V Route chỉ đọc request, xác thực, gọi service và trả response.
+V Repository quản lý SQL và transaction.
+V Validator xử lý định dạng, ownership và quan hệ cha/con.
+V Serializer xử lý ánh xạ DB ↔ JSON.
+V Service quản lý sync version, mutation, conflict và websocket event.
+V Tách pagination và dashboard summary khỏi route đồng bộ.
 
 ### Điều kiện hoàn thành
 
-- Không còn route dài hàng trăm dòng.
-- Transaction và rollback có test riêng.
-- Đồng bộ đầy đủ, đồng bộ delta, xóa và dữ liệu chờ đồng bộ cho kết quả như trước.
+V Không còn route dài hàng trăm dòng.
+V Transaction và rollback có test riêng.
+V Đồng bộ đầy đủ, đồng bộ delta, xóa và dữ liệu chờ đồng bộ cho kết quả như trước.
 
 ## Giai đoạn 8 — Giảm global state và chuẩn hóa command registry
 
@@ -345,16 +350,16 @@ Mức rủi ro: Trung bình
 
 ### Công việc
 
-- Dùng command registry làm đường gọi hành động chính.
-- Loại bỏ dần các hàm `window.*` không còn được HTML hoặc module cũ sử dụng.
-- Thay `Object.assign` lên prototype bằng dependency/module đăng ký rõ ràng.
-- Đưa cache ngày nghỉ, địa giới và dữ liệu modal vào service/state có tên rõ ràng.
-- Chỉ giữ global bridge cần thiết trong giai đoạn tương thích, có danh sách và ngày loại bỏ.
+V Dùng command registry làm đường gọi hành động chính.
+V Loại bỏ dần các hàm `window.*` không còn được HTML hoặc module cũ sử dụng.
+V Thay `Object.assign` lên prototype bằng dependency/module đăng ký rõ ràng.
+V Đưa cache ngày nghỉ, địa giới và dữ liệu modal vào service/state có tên rõ ràng.
+V Chỉ giữ global bridge cần thiết trong giai đoạn tương thích, có danh sách và ngày loại bỏ.
 
 ### Điều kiện hoàn thành
 
-- Có thể tìm được nơi định nghĩa và nơi sử dụng của mỗi command bằng tìm kiếm tĩnh.
-- Không còn phụ thuộc ngầm giữa các module qua `window` ngoài bridge được cho phép.
+V Có thể tìm được nơi định nghĩa và nơi sử dụng của mỗi command bằng tìm kiếm tĩnh.
+V Không còn phụ thuộc ngầm giữa các module qua `window` ngoài bridge được cho phép.
 
 ## Giai đoạn 9 — Chuẩn hóa CSS và dọn code cũ
 
@@ -364,41 +369,43 @@ Mức rủi ro: Thấp đến trung bình
 
 ### Công việc
 
-- Chuyển inline style lặp lại thành class CSS/component.
-- Chuẩn hóa button, badge, field grid, table cell và panel card.
-- Loại bỏ helper, handler và CSS không còn tham chiếu sau refactor.
-- Chỉ xóa code sau khi đã kiểm tra import động, command registry và `data-bf-action`.
-- Bổ sung ESLint hoặc công cụ kiểm tra tương đương cho JavaScript.
-- Bổ sung kiểm tra format/lint Python phù hợp với dự án.
+V Chuyển inline style lặp lại thành class CSS/component.
+V Chuẩn hóa button, badge, field grid, table cell và panel card.
+V Loại bỏ helper, handler và CSS không còn tham chiếu sau refactor.
+V Chỉ xóa code sau khi đã kiểm tra import động, command registry và `data-bf-action`.
+V Bổ sung ESLint hoặc công cụ kiểm tra tương đương cho JavaScript.
+V Bổ sung kiểm tra format/lint Python phù hợp với dự án.
 
 ### Điều kiện hoàn thành
 
-- Build production không chứa module cũ không còn sử dụng.
-- Không còn selector CSS chết được xác nhận.
-- `npm run check` bao gồm lint, build và test.
+V Build production không chứa module cũ không còn sử dụng.
+V Không còn selector CSS chết được xác nhận.
+V `npm run check` bao gồm lint, build và test.
+V `npm run check` đạt: 115 unit test và 54 API test.
+V Playwright đạt 7/7 E2E với tài khoản quản trị ở chế độ quản lý.
 
 ## 5. Thứ tự triển khai rút gọn
 
-1. Bổ sung test bảo vệ hành vi.
-2. API client và helper dùng chung.
-3. Bảng, bộ lọc và selector phiên bản dùng chung.
-4. Form binder, validation và version service.
-5. Hợp nhất form chủ đầu tư/nhà thầu.
-6. Tách từng panel của chi tiết gói thầu.
-7. Chuẩn hóa manifest Word/Excel/schema.
-8. Tách backend sync.
-9. Giảm `window.*`, chuẩn hóa CSS và xóa code cũ.
+V 1. Bổ sung test bảo vệ hành vi.
+V 2. API client và helper dùng chung.
+V 3. Bảng, bộ lọc và selector phiên bản dùng chung.
+V 4. Form binder, validation và version service.
+V 5. Hợp nhất form chủ đầu tư/nhà thầu.
+V 6. Tách từng panel của chi tiết gói thầu.
+V 7. Chuẩn hóa manifest Word/Excel/schema.
+V 8. Tách backend sync.
+V 9. Giảm `window.*`, chuẩn hóa CSS và xóa code cũ.
 
 ## 6. Kiểm thử bắt buộc sau mỗi giai đoạn
 
-- `npm run build`.
-- `npm run test:unit`.
-- `npm run test:api`.
-- E2E cho màn hình hoặc workflow vừa thay đổi.
-- Kiểm tra F5 tại trang danh sách và trang chi tiết.
-- Kiểm tra thêm, sửa, xóa và import cập nhật giao diện ngay.
-- Kiểm tra IndexedDB, hàng chờ đồng bộ và SQLite cho cùng một bản ghi.
-- Kiểm tra xuất Word với đúng phiên bản nhà thầu/chủ đầu tư theo ngày nghiệp vụ.
+V `npm run build`.
+V `npm run test:unit`.
+V `npm run test:api`.
+V E2E cho màn hình hoặc workflow vừa thay đổi.
+V Kiểm tra F5 tại trang danh sách và trang chi tiết.
+V Kiểm tra thêm, sửa, xóa và import cập nhật giao diện ngay.
+V Kiểm tra IndexedDB, hàng chờ đồng bộ và SQLite cho cùng một bản ghi.
+V Kiểm tra xuất Word với đúng phiên bản nhà thầu/chủ đầu tư theo ngày nghiệp vụ.
 
 ## 7. Tiêu chí dừng hoặc hoàn tác
 

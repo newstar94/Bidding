@@ -1,9 +1,11 @@
-import { validateExtensionRows } from "./packageValidation.js";
+﻿import { validateExtensionRows } from "./packageValidation.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../main_controller/modalReturnState.js";
 import { escapeHtml } from "../../views/subviews/view_helpers.js";
 import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
 import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
+import { persistAndSync } from "../domain/MutationService.js";
+import { createInitialVersion, createNextVersion, rememberSelectedVersion } from "../domain/VersionedEntityService.js";
 export function openPackageWizardStep() {
   if (!this.packageWizard.active) return;
   if (!document.getElementById("modal-goithau")) {
@@ -46,8 +48,6 @@ export async function deleteGoiThau(id) {
   }
   if (deleteChoice === 1) {
     deleteLatestPackageVersion(this.model, deleteContext);
-    await this.model.persistData("goithau");
-    await this.model.persistData("thongtinmothau");
     deleteContext.planIds.forEach((pId) => {
       if (pId) {
         this.recalculatePlanTotal(pId);
@@ -60,15 +60,18 @@ export async function deleteGoiThau(id) {
       this.updateBreakdownTotal(breakdownPlanId);
     }
     try {
-      await this.autoSync();
+      await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+        afterPersist: () => {
+          this.view.renderGoiThauTable();
+          this.view.renderKeHoachTable();
+        }
+      });
     } catch (e) {
       await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
     await this.view.customAlert("Thành công", "Đã xóa phiên bản gói thầu gần nhất!", "check-circle");
   } else if (deleteChoice === 2 || deleteConfirmed) {
     deleteAllPackageVersions(this.model, deleteContext);
-    await this.model.persistData("goithau");
-    await this.model.persistData("thongtinmothau");
     deleteContext.planIds.forEach((pId) => {
       if (pId) {
         this.recalculatePlanTotal(pId);
@@ -81,7 +84,12 @@ export async function deleteGoiThau(id) {
       this.updateBreakdownTotal(breakdownPlanId);
     }
     try {
-      await this.autoSync();
+      await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
+        afterPersist: () => {
+          this.view.renderGoiThauTable();
+          this.view.renderKeHoachTable();
+        }
+      });
     } catch (e) {
       await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
@@ -970,31 +978,17 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
       }
     }
     if (saveAsNewVersion) {
-      const rootId = oldGt.rootId || oldGt.id;
-      const relatedGts = this.model.state.goithau.filter((g) => (g.rootId || g.id) === rootId);
-      const maxVersion = Math.max(...relatedGts.map((g) => parseInt(g.phienBan) || 0));
-      const nextVersion = String(maxVersion + 1).padStart(2, "0");
-      relatedGts.forEach((g) => {
-        g.isLatest = 0;
-      });
-      const newGtId = window.generateRecordId("goithau");
+      const newGtId = generateRecordId("goithau");
       finalGtId = newGtId;
-      if (!this.model.state.selectedPackageVersion) {
-        this.model.state.selectedPackageVersion = {};
-      }
-      this.model.state.selectedPackageVersion[rootId] = newGtId;
-      const newPackageVersion = {
-        id: newGtId,
+      const timestamp = this.model.getCurrentDateTimeString();
+      const newPackageVersion = createNextVersion(this.model.state.goithau, oldGt, {
         maGoiThau: inputCode,
-        phienBan: nextVersion,
-        isLatest: 1,
-        rootId,
-        createdAt: oldGt.createdAt || this.model.getCurrentDateTimeString(),
-        updatedAt: this.model.getCurrentDateTimeString(),
         ...gtData
-      };
+      }, { id: newGtId, timestamp });
+      newPackageVersion.createdAt = oldGt.createdAt || timestamp;
       clearCompetitiveQuotationAppraisal(newPackageVersion);
       this.model.state.goithau.push(newPackageVersion);
+      rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
       if (Array.isArray(this.model.state.hopdong)) {
         this.model.state.hopdong = this.model.state.hopdong.map((h) => {
           if (h.goiThauIds && h.goiThauIds.includes(id)) {
@@ -1009,21 +1003,19 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
           }
           return h;
         });
-        await this.model.persistData("hopdong");
       }
       if (Array.isArray(this.model.state.thongtinmothau)) {
         const oldBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(id));
         const newBids = oldBids.map((b) => ({
           ...b,
-          id: window.generateRecordId("assignments"),
+          id: generateRecordId("assignments"),
           goiThauId: newGtId
         }));
         this.model.state.thongtinmothau = [...this.model.state.thongtinmothau, ...newBids];
-        await this.model.persistData("thongtinmothau");
       }
       const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
       if (assignedEmpId) {
-        await this.model.addRecord("assignments", { id: window.generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
+        await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
       }
     } else {
       oldGt.maGoiThau = inputCode;
@@ -1036,34 +1028,28 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
         await this.model.deleteRecord("assignments", oldA.id);
       }
       if (assignedEmpId) {
-        await this.model.addRecord("assignments", { id: window.generateRecordId("assignments"), empId: assignedEmpId, targetId: id, type: "goithau" });
+        await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: id, type: "goithau" });
       }
     }
   } else {
-    const newGtId = window.generateRecordId("goithau");
+    const newGtId = generateRecordId("goithau");
     finalGtId = newGtId;
     const formEl = document.getElementById("form-goithau");
     const rebidFrom = formEl ? formEl.getAttribute("data-rebid-from") : null;
-    const newPackage = {
-      id: newGtId,
+    const timestamp = this.model.getCurrentDateTimeString();
+    const newPackage = createInitialVersion({
       maGoiThau: inputCode,
-      phienBan: "00",
-      isLatest: 1,
-      rootId: newGtId,
-      createdAt: this.model.getCurrentDateTimeString(),
-      updatedAt: this.model.getCurrentDateTimeString(),
       isRebid: !!rebidFrom,
       rebidFromPackageId: rebidFrom || null,
       ...gtData
-    };
+    }, { id: newGtId, timestamp });
     clearCompetitiveQuotationAppraisal(newPackage);
     this.model.state.goithau.push(newPackage);
     const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
     if (assignedEmpId) {
-      await this.model.addRecord("assignments", { id: window.generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
+      await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
     }
   }
-  await this.model.persistData("goithau");
   if (oldPlanId) {
     this.recalculatePlanTotal(oldPlanId);
   }
@@ -1079,7 +1065,12 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
   if (hasModalReturnState("goithau-detail") && finalGtId) {
     updateModalReturnAction(finalGtId);
   }
-  const syncResult = await this.autoSync();
+  const syncResult = await persistAndSync(this, ["goithau", "kehoach", "hopdong", "thongtinmothau"], {
+    afterPersist: () => {
+      this.view.renderGoiThauTable();
+      this.view.renderKeHoachTable();
+    }
+  });
   if (syncResult && syncResult.ok === false) {
     await this.view.customAlert(
       "Lỗi đồng bộ",
@@ -1089,7 +1080,6 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     return;
   }
   this.closeModal("modal-goithau");
-  this.view.renderGoiThauTable();
   if (this.packageWizard.active) {
     if (this.packageWizard.currentCount < this.packageWizard.totalCount) {
       this.packageWizard.currentCount++;
@@ -1127,9 +1117,9 @@ export async function restoreCanceledPackage(id) {
   );
   if (!confirmed) return;
   gt.trangThai = previousState;
-  await this.model.persistData("goithau");
-  this.view.renderGoiThauTable();
-  const syncResult = await this.autoSync();
+  const syncResult = await persistAndSync(this, "goithau", {
+    afterPersist: () => this.view.renderGoiThauTable()
+  });
   if (!syncResult?.ok) return;
   await this.view.customAlert("Thành công", "Đã khôi phục trạng thái gói thầu thành công.", "check-circle");
 }
@@ -1264,3 +1254,4 @@ export function unifyTableInputsHeight(container) {
     el.style.setProperty("border-radius", "var(--radius-md)", "important");
   });
 }
+import { generateRecordId } from "../../models/idUtils.js";
