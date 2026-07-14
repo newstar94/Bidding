@@ -4,9 +4,6 @@ import secrets
 import hashlib
 from dataclasses import dataclass
 from starlette.responses import JSONResponse
-from backend.shared.helpers import (
-    _org_cache_invalidate_by_user_id
-)
 from backend.db.id_utils import stable_org_id
 from backend.auth.roles import (
     effective_access_roles,
@@ -136,29 +133,37 @@ def generate_otp() -> str:
     """Tạo OTP cryptographically secure."""
     return str(secrets.randbelow(900000) + 100000)
 
-def get_user_org_names(cursor, user_id):
-    """Lấy danh sách tên các tổ chức của user."""
-    cursor.execute("""
-        SELECT tc.ten_to_chuc
-        FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.organization_id = tc.id
-        WHERE tvtc.user_id = ?
-    """, (user_id,))
-    rows = cursor.fetchall()
-    return ", ".join(row['ten_to_chuc'] for row in rows)
-
-
 def get_user_organizations(cursor, user_id):
     """Return server-owned organization identities and membership roles."""
 
     cursor.execute(
         """
-        SELECT tc.id, tc.ten_to_chuc, tc.trang_thai,
-               tvtc.vai_tro_trong_to_chuc
+        SELECT tc.id, tc.ten_to_chuc, tc.scope_type,
+               tc.trang_thai AS organization_status,
+               tvtc.vai_tro_trong_to_chuc,
+               sub.package_id, sub.status AS subscription_status,
+               sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
+               pkg.trang_thai AS package_status,
+               (SELECT count(*) FROM thanh_vien_to_chuc members
+                WHERE members.organization_id = tc.id) AS member_count
         FROM thanh_vien_to_chuc AS tvtc
         JOIN to_chuc AS tc ON tc.id = tvtc.organization_id
+        LEFT JOIN organization_subscriptions AS sub ON sub.organization_id = tc.id
+        LEFT JOIN goi_dich_vu AS pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
-        ORDER BY CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
+          AND (
+              tc.scope_type = 'organization'
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM thanh_vien_to_chuc business_membership
+                  JOIN to_chuc business_org
+                    ON business_org.id = business_membership.organization_id
+                  WHERE business_membership.user_id = tvtc.user_id
+                    AND business_org.scope_type = 'organization'
+              )
+          )
+        ORDER BY CASE tc.scope_type WHEN 'organization' THEN 0 ELSE 1 END,
+                 CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
                     WHEN 'owner' THEN 0
                     WHEN 'manager' THEN 1
                     WHEN 'employee' THEN 2
@@ -169,16 +174,44 @@ def get_user_organizations(cursor, user_id):
         (user_id,),
     )
     organizations = []
+    now = int(time.time())
     for row in cursor.fetchall():
         membership_role = normalize_organization_role(row['vai_tro_trong_to_chuc'])
         if membership_role is None:
             continue
+        subscription_status = str(row['subscription_status'] or 'missing').strip().lower()
+        expires_at = int(row['expires_at']) if row['expires_at'] is not None else None
+        if expires_at is not None and expires_at <= now:
+            subscription_status = 'expired'
+        organization_status = str(row['organization_status'] or '').strip().lower()
+        package_status = str(row['package_status'] or '').strip().lower()
+        effective_status = 'active'
+        if organization_status != 'active' or subscription_status == 'suspended':
+            effective_status = 'suspended'
+        elif subscription_status != 'active':
+            effective_status = subscription_status
+        elif package_status != 'active':
+            effective_status = 'package_inactive'
+        starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
+        subscription = {
+            "package_id": row['package_id'],
+            "status": subscription_status,
+            "starts_at": starts_at,
+            "expires_at": expires_at,
+            "start_date": time.strftime('%Y-%m-%d', time.gmtime(starts_at)) if starts_at else None,
+            "end_date": time.strftime('%Y-%m-%d', time.gmtime(expires_at)) if expires_at else None,
+            "member_quota": int(row['member_quota'] or 0),
+            "member_count": int(row['member_count'] or 0),
+            "revision": int(row['revision'] or 0),
+        }
         organizations.append(
             {
                 "id": str(row['id']),
                 "name": str(row['ten_to_chuc']),
+                "scope_type": str(row['scope_type']),
                 "role": membership_role,
-                "status": str(row['trang_thai'] or '').strip().lower(),
+                "status": effective_status,
+                "subscription": subscription,
             }
         )
     return organizations
@@ -197,21 +230,24 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
 
     platform_role = normalize_platform_role(platform_role)
     membership_role = selected["role"] if selected else None
+    subscription = selected.get("subscription") if selected else None
     display_role = "super_admin" if platform_role == "super_admin" else membership_role
     return {
-        "role": display_role or "viewer",
+        "role": display_role or "employee",
         "platform_role": platform_role,
         "membership_role": membership_role,
         "effective_roles": effective_access_roles(platform_role, membership_role),
         "active_org_id": selected["id"] if selected else None,
         "organizations": organizations,
-        # Compatibility-only display field; never use this value as an auth key.
-        "organization_name": ", ".join(org["name"] for org in organizations),
+        "subscription": subscription,
+        "package_id": subscription.get("package_id") if subscription else None,
+        "package_start_date": subscription.get("start_date") if subscription else None,
+        "package_end_date": subscription.get("end_date") if subscription else None,
     }
 
 
 def provision_user_organization(cursor, user_id, display_name):
-    """Create the initial organization and its owner in the same transaction."""
+    """Create the private workspace owned by a user in the same transaction."""
 
     cursor.execute(
         "SELECT 1 FROM thanh_vien_to_chuc WHERE user_id = ? LIMIT 1",
@@ -221,9 +257,11 @@ def provision_user_organization(cursor, user_id, display_name):
         return None
     org_id = stable_org_id(f"user:{user_id}")
     label = str(display_name or "Người dùng").strip() or "Người dùng"
-    org_name = f"Tổ chức của {label} ({str(user_id)[-8:]})"
+    org_name = f"Không gian cá nhân của {label} ({str(user_id)[-8:]})"
     cursor.execute(
-        "INSERT INTO to_chuc (id, ten_to_chuc, quan_ly_id, trang_thai) VALUES (?, ?, ?, 'active')",
+        """INSERT INTO to_chuc (
+               id, ten_to_chuc, scope_type, personal_owner_user_id, trang_thai
+           ) VALUES (?, ?, 'personal', ?, 'active')""",
         (org_id, org_name, user_id),
     )
     cursor.execute(
@@ -234,78 +272,17 @@ def provision_user_organization(cursor, user_id, display_name):
         """,
         (user_id, org_id),
     )
+    now = int(time.time())
+    cursor.execute(
+        """
+        INSERT INTO organization_subscriptions (
+            organization_id, package_id, status, starts_at, expires_at, member_quota
+        ) VALUES (?, 'silver', 'active', ?, ?, 5)
+        """,
+        (org_id, now, now + 365 * 24 * 60 * 60),
+    )
     cursor.execute(
         "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 1)",
         (org_id,),
     )
     return org_id
-
-
-def update_user_organizations(cursor, user_id, organization_name):
-    """Cập nhật tổ chức của người dùng."""
-    new_orgs = [o.strip() for o in organization_name.split(',') if o.strip()]
-
-    cursor.execute("""
-        SELECT tc.id, tc.ten_to_chuc
-        FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.organization_id = tc.id
-        WHERE tvtc.user_id = ?
-    """, (user_id,))
-    current_assoc = {row['ten_to_chuc']: row['id'] for row in cursor.fetchall()}
-
-
-    for org_name in new_orgs:
-        if org_name not in current_assoc:
-            cursor.execute("SELECT id FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
-            org_row = cursor.fetchone()
-            created_org = org_row is None
-            if org_row:
-                org_id = org_row['id']
-            else:
-                org_id = stable_org_id(org_name)
-                cursor.execute(
-                    "INSERT OR IGNORE INTO to_chuc (id, ten_to_chuc, quan_ly_id) VALUES (?, ?, ?)",
-                    (org_id, org_name, user_id)
-                )
-
-            # A newly-created organization must have an owner.  Joining an
-            # existing organization never derives membership power from the
-            # account-level role.
-            role_in_org = 'owner' if created_org else 'employee'
-            cursor.execute(
-                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-                (user_id, org_id, role_in_org)
-            )
-
-
-    removed_any = False
-    for org_name, org_id in current_assoc.items():
-        if org_name not in new_orgs:
-            cursor.execute(
-                """
-                SELECT lower(trim(vai_tro_trong_to_chuc))
-                FROM thanh_vien_to_chuc
-                WHERE user_id = ? AND organization_id = ?
-                """,
-                (user_id, org_id),
-            )
-            membership = cursor.fetchone()
-            if membership and str(membership[0] or '').strip().lower() == 'owner':
-                cursor.execute(
-                    """
-                    SELECT count(*) FROM thanh_vien_to_chuc
-                    WHERE organization_id = ?
-                      AND lower(trim(vai_tro_trong_to_chuc)) = 'owner'
-                    """,
-                    (org_id,),
-                )
-                if int(cursor.fetchone()[0]) <= 1:
-                    raise ValueError("Không thể xóa chủ sở hữu cuối cùng khỏi tổ chức.")
-            cursor.execute(
-                "DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
-                (user_id, org_id)
-            )
-            removed_any = True
-
-    if removed_any:
-        _org_cache_invalidate_by_user_id(user_id)

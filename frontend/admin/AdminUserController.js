@@ -1,7 +1,8 @@
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
-import { normalizeOrganizations } from "../auth/accessContext.js";
+import { normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
+import { apiFetch } from "../shared/apiClient.js";
 function bindAdminEvent(element, eventName, bindingName, handler) {
   if (!element) return;
   element.__bfBoundEvents = element.__bfBoundEvents || /* @__PURE__ */ new Set();
@@ -19,7 +20,7 @@ export async function triggerUpgradePrompt() {
 }
 export async function loadSystemUsers() {
   try {
-    const res = await fetch("/api/auth/users");
+    const res = await apiFetch("/api/auth/users");
     if (res.ok) {
       const users = await res.json();
       const currentUsername = sessionStorage.getItem("bf_username");
@@ -33,7 +34,7 @@ export async function deleteSystemUser(userId, username) {
   const confirmed = await this.view.customConfirm("Xác nhận xóa tài khoản", `Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản "${username}" khỏi hệ thống?`, "user-x");
   if (confirmed) {
     try {
-      const res = await fetch(`/api/auth/users/${userId}`, {
+      const res = await apiFetch(`/api/auth/users/${userId}`, {
         method: "DELETE"
       });
       const data = await res.json();
@@ -50,7 +51,7 @@ export async function deleteSystemUser(userId, username) {
 }
 export async function changeUserRole(userId, newRole) {
   try {
-    const res = await fetch("/api/auth/users/update-role", {
+    const res = await apiFetch("/api/auth/users/update-role", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, role: newRole })
@@ -68,62 +69,41 @@ export async function changeUserRole(userId, newRole) {
     this.loadSystemUsers();
   }
 }
-export async function changeUserPackage(userId, newPackage) {
+function idempotencyKey(prefix) {
+  const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}:${random}`;
+}
+
+async function updateOrganizationSubscription(organizationId, action, extra = {}) {
+  const response = await apiFetch("/api/organizations/subscription", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey(action)
+    },
+    body: JSON.stringify({ organization_id: organizationId, action, ...extra })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Không thể cập nhật gói dịch vụ.");
+  return data;
+}
+
+export async function changeUserPackage(organizationId, newPackage) {
   try {
-    const res = await fetch("/api/auth/users/update-package", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, package_id: newPackage })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      await this.view.customAlert("Thành công", "Đã thay đổi gói đăng ký cho người dùng thành công!", "check-circle");
-      this.loadSystemUsers();
-    } else {
-      await this.view.customAlert("Thất bại", data.error || "Không thể thay đổi gói đăng ký.", "alert-triangle");
-      this.loadSystemUsers();
-    }
+    await updateOrganizationSubscription(organizationId, "set_package", { package_id: newPackage });
+    await this.view.customAlert("Thành công", "Đã thay đổi gói đăng ký của tổ chức!", "check-circle");
+    this.loadSystemUsers();
   } catch (err) {
-    await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+    await this.view.customAlert("Thất bại", err.message, "alert-triangle");
     this.loadSystemUsers();
   }
 }
-export async function toggleUserPackage(userId, packageId, isChecked) {
-  const user = this.model.state.employees.find((e) => String(e.id) === String(userId));
-  if (!user) return;
-  let userPkgs = user.package_id ? user.package_id.split(",").filter((p) => p && p !== "none") : [];
-  if (isChecked) {
-    if (!userPkgs.includes(packageId)) userPkgs.push(packageId);
-  } else {
-    userPkgs = userPkgs.filter((p) => p !== packageId);
-  }
-  const newPackageIds = userPkgs.join(",");
-  try {
-    const res = await fetch("/api/auth/users/update-package", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, package_id: newPackageIds || "none" })
-    });
-    if (res.ok) {
-      user.package_id = newPackageIds;
-      await this.reloadEmployeesFromDatabase();
-      const currentUsername = sessionStorage.getItem("bf_username");
-      fetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
-        this.view.renderSystemUsersTable(users, currentUsername);
-      });
-    } else {
-      const data = await res.json();
-      await this.view.customAlert("Thất bại", data.error || "Không thể cập nhật gói đăng ký.", "alert-triangle");
-      await this.reloadEmployeesFromDatabase();
-    }
-  } catch (err) {
-    await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
-    await this.reloadEmployeesFromDatabase();
-  }
+export async function toggleUserPackage(organizationId, packageId, isChecked) {
+  if (isChecked) await this.changeUserPackage(organizationId, packageId);
 }
 export async function updateUserMetadata(userId, field, value) {
   try {
-    const res = await fetch("/api/auth/users/update-metadata", {
+    const res = await apiFetch("/api/auth/users/update-metadata", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, field, value })
@@ -141,7 +121,7 @@ export async function showSystemUserDetail(userId) {
     if (!document.getElementById("modal-detail-system-user")) {
       await this.ensureLazyModal?.("modal-detail-system-user");
     }
-    const res = await fetch("/api/auth/users");
+    const res = await apiFetch("/api/auth/users");
     if (!res.ok) throw new Error("Failed to fetch users");
     const users = await res.json();
     const user = users.find((u) => String(u.id) === String(userId));
@@ -153,17 +133,21 @@ export async function showSystemUserDetail(userId) {
     document.getElementById("detail-su-username").value = user.username;
     document.getElementById("detail-su-name").value = user.name || "";
     document.getElementById("detail-su-email").value = user.email || "";
-    document.getElementById("detail-su-organization").value = user.organization_name || "";
+    document.getElementById("detail-su-organization").value = organizationDisplayName(user);
     const activeOrgId = getActiveOrganizationId();
     const activeMembership = normalizeOrganizations(user).find((organization) => organization.id === activeOrgId);
     document.getElementById("detail-su-role").value = activeMembership?.role || "employee";
-    document.getElementById("detail-su-package").value = user.package_id || "none";
+    const organizations = normalizeOrganizations(user);
+    const organization = organizations.find((item) => item.id === getActiveOrganizationId()) || organizations[0];
+    const subscription = organization?.subscription || {};
+    document.getElementById("form-detail-system-user").dataset.organizationId = organization?.id || "";
+    document.getElementById("detail-su-package").value = subscription.package_id || "none";
     const orgContainer = document.getElementById("detail-su-org-container");
     if (orgContainer) {
-      orgContainer.style.display = user.package_id && user.package_id !== "none" ? "block" : "none";
+      orgContainer.style.display = organization ? "block" : "none";
     }
-    document.getElementById("detail-su-startdate").value = user.package_start_date ? this.model.formatForDateInput(user.package_start_date) : "";
-    document.getElementById("detail-su-enddate").value = user.package_end_date ? this.model.formatForDateInput(user.package_end_date) : "";
+    document.getElementById("detail-su-startdate").value = subscription.start_date ? this.model.formatForDateInput(subscription.start_date) : "";
+    document.getElementById("detail-su-enddate").value = subscription.end_date ? this.model.formatForDateInput(subscription.end_date) : "";
     this.view.openModal("modal-detail-system-user");
   } catch (err) {
     await this.view.customAlert("Lỗi hệ thống", "Không thể kết nối đến máy chủ: " + err.message, "alert-triangle");
@@ -222,29 +206,20 @@ export function setupRBACEvents() {
     bindAdminEvent(formEmp, "submit", "save-manager-employee", async (e) => {
       e.preventDefault();
       if (!this.view.validateForm(formEmp)) return;
-      const currentUsername = sessionStorage.getItem("bf_username");
-      const currentUser = this.model.state.employees.find((e2) => e2.username === currentUsername);
-      const managerPkgs = currentUser && currentUser.package_id ? currentUser.package_id.split(",").filter((p) => p && p !== "none") : ["silver"];
-      let activePkgId = "silver";
-      if (managerPkgs.includes("diamond")) activePkgId = "diamond";
-      else if (managerPkgs.includes("gold")) activePkgId = "gold";
-      const pkg = this.model.state.systempackages.find((p) => p.id === activePkgId);
-      const quotaLimit = pkg ? pkg.quota : 5;
       const activeOrg = getActiveOrganizationId();
-      const orgEmployees = this.model.state.employees.filter((em) => {
-        if (!this.model.hasEffectiveRole(em, "employee")) return false;
-        if (!activeOrg) return true;
-        return normalizeOrganizations(em).some((organization) => organization.id === activeOrg);
-      });
+      const activeOrganization = normalizeOrganizations(this.model.state.activeuser || {})
+        .find((organization) => organization.id === activeOrg);
+      const quotaLimit = Number(activeOrganization?.subscription?.member_quota || 0);
+      const memberCount = Number(activeOrganization?.subscription?.member_count || 0);
       const id = document.getElementById("form-employee-id").value;
-      if (!id && orgEmployees.length >= quotaLimit) {
+      if (!id && quotaLimit > 0 && memberCount >= quotaLimit) {
         await this.triggerUpgradePrompt();
         return;
       }
       let foundUser = null;
       const emailInput = document.getElementById("emp-email").value.trim().toLowerCase();
       try {
-        const res = await fetch(`/api/auth/users?email=${encodeURIComponent(emailInput)}`);
+        const res = await apiFetch(`/api/auth/users?email=${encodeURIComponent(emailInput)}`);
         if (res.ok) {
           const matchedUsers = await res.json();
           foundUser = matchedUsers.find((u) => u.email && u.email.trim().toLowerCase() === emailInput);
@@ -261,7 +236,7 @@ export function setupRBACEvents() {
         if (existingEmp && existingEmp.email.trim().toLowerCase() !== emailInput) {
           try {
             const oldUserId = id;
-            await fetch("/api/auth/users/remove-from-org", {
+            await apiFetch("/api/auth/users/remove-from-org", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ user_id: oldUserId })
@@ -269,9 +244,6 @@ export function setupRBACEvents() {
           } catch (err) {
             console.error("Failed to remove the previous employee from the organization:", err);
           }
-          const localEmployees2 = JSON.parse(localStorage.getItem("bf_employees") || "[]");
-          const newLocal = localEmployees2.filter((le) => le.id !== id);
-          localStorage.setItem("bf_employees", JSON.stringify(newLocal));
           const newEmpId = foundUser.id;
           this.model.state.permissionmatrix.forEach((m) => {
             if (m.empId === id) m.empId = newEmpId;
@@ -284,7 +256,7 @@ export function setupRBACEvents() {
         }
       }
       try {
-        const resAdd = await fetch("/api/auth/users/add-to-org", {
+        const resAdd = await apiFetch("/api/auth/users/add-to-org", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ user_id: foundUser.id })
@@ -298,23 +270,7 @@ export function setupRBACEvents() {
         await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
         return;
       }
-      const localEmployees = JSON.parse(localStorage.getItem("bf_employees") || "[]");
       const empIdInState = foundUser.id;
-      const customEmp = {
-        id: empIdInState,
-        name: document.getElementById("emp-name").value.trim(),
-        email: document.getElementById("emp-email").value.trim(),
-        phone: document.getElementById("emp-phone").value.trim(),
-        role: "employee",
-        package_id: foundUser.package_id
-      };
-      const existingIdx = localEmployees.findIndex((le) => le.id === empIdInState);
-      if (existingIdx !== -1) {
-        localEmployees[existingIdx] = customEmp;
-      } else {
-        localEmployees.push(customEmp);
-      }
-      localStorage.setItem("bf_employees", JSON.stringify(localEmployees));
       await this.reloadEmployeesFromDatabase();
       if (!this.model.state.permissionmatrix.some((m) => m.empId === empIdInState)) {
         this.model.state.permissionmatrix.push({
@@ -421,32 +377,22 @@ export function setupRBACEvents() {
       const userId = document.getElementById("detail-su-id").value;
       const role = document.getElementById("detail-su-role").value;
       const packageId = document.getElementById("detail-su-package").value;
-      const startDateRaw = document.getElementById("detail-su-startdate").value;
-      const endDateRaw = document.getElementById("detail-su-enddate").value;
-      const startDate = startDateRaw ? this.model.convertDMYToYMD(startDateRaw) : "";
-      const endDate = endDateRaw ? this.model.convertDMYToYMD(endDateRaw) : "";
+      const organizationId = formSu.dataset.organizationId || "";
+      if (!organizationId) {
+        await this.view.customAlert("Không thể lưu", "Tài khoản chưa thuộc tổ chức nào.", "alert-triangle");
+        return;
+      }
       try {
-        const fields = [
-          { field: "package_start_date", value: startDate },
-          { field: "package_end_date", value: endDate }
-        ];
-        for (const f of fields) {
-          await fetch("/api/auth/users/update-metadata", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: userId, field: f.field, value: f.value })
-          });
-        }
-        await fetch("/api/auth/users/update-role", {
+        const roleResponse = await apiFetch("/api/auth/users/update-role", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Active-Org": organizationId },
           body: JSON.stringify({ user_id: userId, role, scope: "organization" })
         });
-        await fetch("/api/auth/users/update-package", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, package_id: packageId })
-        });
+        if (!roleResponse.ok) {
+          const roleError = await roleResponse.json();
+          throw new Error(roleError.error || "Không thể cập nhật vai trò.");
+        }
+        await updateOrganizationSubscription(organizationId, "set_package", { package_id: packageId });
         this.view.closeModal("modal-detail-system-user");
         await this.view.customAlert("Thành công", "Đã lưu thiết lập tài khoản thành công!", "check-circle");
         this.loadSystemUsers();
@@ -470,10 +416,17 @@ export function setupRBACEvents() {
       const quota = parseInt(document.getElementById("edit-pkg-quota").value, 10) || 0;
       const description = document.getElementById("edit-pkg-desc").value.trim();
       try {
-        const res = await fetch("/api/system-packages/update", {
+        const res = await apiFetch("/api/system-packages/update", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, name, price, quota, description })
+          body: JSON.stringify({
+            id,
+            name,
+            price,
+            quota,
+            description,
+            status: this.model.state.systempackages.find((item) => item.id === id)?.status || "active"
+          })
         });
         const data = await res.json();
         if (res.ok) {
@@ -502,6 +455,12 @@ export function setupRBACEvents() {
     bindAdminEvent(profileAvatarInput, "change", "select-profile-avatar", (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+      if (!allowedTypes.has(file.type) || file.size > 5 * 1024 * 1024) {
+        e.target.value = "";
+        this.view.customAlert("Ảnh không hợp lệ", "Chỉ chấp nhận ảnh PNG, JPEG hoặc WebP không quá 5 MB.", "alert-triangle");
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         const img = new Image();
@@ -536,7 +495,15 @@ export function setupRBACEvents() {
             profileAvatarFallback.style.display = "none";
           }
         };
+        img.onerror = () => {
+          e.target.value = "";
+          this.view.customAlert("Ảnh không hợp lệ", "Không thể đọc nội dung tệp ảnh đã chọn.", "alert-triangle");
+        };
         img.src = event.target.result;
+      };
+      reader.onerror = () => {
+        e.target.value = "";
+        this.view.customAlert("Ảnh không hợp lệ", "Không thể đọc tệp ảnh đã chọn.", "alert-triangle");
       };
       reader.readAsDataURL(file);
     });
@@ -550,7 +517,7 @@ export function setupRBACEvents() {
       const email = document.getElementById("profile-email").value.trim();
       const avatar = this.tempProfileAvatarBase64 || this.model.state.activeuser.avatar || "";
       try {
-        const res = await fetch("/api/auth/update-profile", {
+        const res = await apiFetch("/api/auth/update-profile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, email, avatar })
@@ -580,8 +547,8 @@ export function setupRBACEvents() {
       const oldPassword = document.getElementById("profile-old-password").value;
       const newPassword = document.getElementById("profile-new-password").value;
       const confirmPassword = document.getElementById("profile-confirm-password").value;
-      if (newPassword.length < 6) {
-        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới cần tối thiểu 6 ký tự!", "alert-triangle", document.getElementById("profile-new-password"));
+      if (newPassword.length < 8 || newPassword.length > 256) {
+        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới phải có từ 8 đến 256 ký tự!", "alert-triangle", document.getElementById("profile-new-password"));
         return;
       }
       if (newPassword !== confirmPassword) {
@@ -589,7 +556,7 @@ export function setupRBACEvents() {
         return;
       }
       try {
-        const res = await fetch("/api/auth/change-password", {
+        const res = await apiFetch("/api/auth/change-password", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, old_password: oldPassword, new_password: newPassword })
@@ -597,6 +564,7 @@ export function setupRBACEvents() {
         const data = await res.json();
         if (res.ok) {
           await this.view.customAlert("Thành công", "Đổi mật khẩu thành công! Vui lòng đăng nhập lại.", "check-circle");
+          this.disconnectWebSocket?.(false);
           this.model.clearSessionData();
           if (this._sessionInterval) clearInterval(this._sessionInterval);
           const overlay = document.getElementById("auth-overlay");
@@ -644,15 +612,12 @@ export async function deleteEmployee(id) {
   const confirmed = await this.view.customConfirm("Xác nhận gỡ nhân sự", warningText, "trash-2");
   if (confirmed) {
     try {
-      const res = await fetch("/api/auth/users/remove-from-org", {
+      const res = await apiFetch("/api/auth/users/remove-from-org", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: id })
       });
       if (res.ok) {
-        const localEmployees = JSON.parse(localStorage.getItem("bf_employees") || "[]");
-        const newLocalEmployees = localEmployees.filter((le) => le.id !== id);
-        localStorage.setItem("bf_employees", JSON.stringify(newLocalEmployees));
         await this.reloadEmployeesFromDatabase();
         this.model.state.permissionmatrix = this.model.state.permissionmatrix.filter((m) => m.empId !== id);
         this.model.state.assignments = this.model.state.assignments.filter((a) => a.empId !== id);
@@ -671,21 +636,17 @@ export async function deleteEmployee(id) {
 }
 export async function reloadEmployeesFromDatabase() {
   try {
-    const usersRes = await fetch("/api/auth/users");
+    const usersRes = await apiFetch("/api/auth/users");
     if (usersRes.ok) {
       const users = await usersRes.json();
-      const localEmployees = JSON.parse(localStorage.getItem("bf_employees") || "[]");
       this.model.state.employees = users.map((u) => {
-        const localEmp = localEmployees.find((le) => le.email && le.email.trim().toLowerCase() === (u.email || "").trim().toLowerCase());
         return {
           id: u.id,
           username: u.username,
-          name: localEmp ? localEmp.name : u.name,
+          name: u.name,
           email: u.email || "",
-          phone: localEmp ? localEmp.phone : "",
+          phone: "",
           role: u.role,
-          package_id: u.package_id,
-          organization_name: u.organization_name,
           organizations: normalizeOrganizations(u)
         };
       });
@@ -748,11 +709,46 @@ export async function editSystemPackage(pkgId) {
   document.getElementById("edit-pkg-desc").value = pkg.description || "";
   this.view.openModal("modal-edit-package");
 }
+export async function toggleOrgLock(organizationId) {
+  const organization = this.model.state.organizations.find((item) => String(item.id) === String(organizationId));
+  if (!organization) return;
+  const isActive = organization.status === "Hoạt động";
+  const action = isActive ? "lock" : "unlock";
+  const confirmed = await this.view.customConfirm(
+    "Xác nhận thay đổi",
+    `Bạn có chắc chắn muốn ${isActive ? "khóa" : "mở khóa"} tổ chức "${organization.name}"?`,
+    isActive ? "lock" : "unlock"
+  );
+  if (!confirmed) return;
+  try {
+    await updateOrganizationSubscription(organizationId, action);
+    this.view.renderSuperAdminPanel();
+    await this.view.customAlert("Thành công", `Đã ${isActive ? "khóa" : "mở khóa"} tổ chức.`, "check-circle");
+  } catch (error) {
+    await this.view.customAlert("Thất bại", error.message, "alert-triangle");
+  }
+}
+export async function renewOrgSubscription(organizationId) {
+  const organization = this.model.state.organizations.find((item) => String(item.id) === String(organizationId));
+  if (!organization) return;
+  const confirmed = await this.view.customConfirm(
+    "Xác nhận gia hạn",
+    `Gia hạn gói dịch vụ của tổ chức "${organization.name}" thêm 365 ngày?`,
+    "calendar-plus"
+  );
+  if (!confirmed) return;
+  try {
+    await updateOrganizationSubscription(organizationId, "renew", { duration_days: 365 });
+    this.view.renderSuperAdminPanel();
+    await this.view.customAlert("Thành công", "Đã gia hạn gói dịch vụ thêm 365 ngày.", "check-circle");
+  } catch (error) {
+    await this.view.customAlert("Thất bại", error.message, "alert-triangle");
+  }
+}
 export async function togglePackageLock(pkgId) {
   const pkg = this.model.state.systempackages.find((p) => p.id === pkgId);
   if (!pkg) return;
-  let lockedPkgs = JSON.parse(localStorage.getItem("bf_locked_system_packages") || "[]");
-  const isCurrentlyLocked = lockedPkgs.includes(pkgId);
+  const isCurrentlyLocked = Boolean(pkg.isLocked);
   const actionText = isCurrentlyLocked ? "kích hoạt lại" : "tạm khóa";
   const confirmed = await this.view.customConfirm(
     "Xác nhận thay đổi",
@@ -760,17 +756,28 @@ export async function togglePackageLock(pkgId) {
     isCurrentlyLocked ? "unlock" : "lock"
   );
   if (confirmed) {
-    if (isCurrentlyLocked) {
-      lockedPkgs = lockedPkgs.filter((id) => id !== pkgId);
-    } else {
-      lockedPkgs.push(pkgId);
+    try {
+      const response = await apiFetch("/api/system-packages/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: pkg.id,
+          name: pkg.name,
+          price: pkg.price,
+          quota: pkg.quota,
+          description: pkg.description || "",
+          status: isCurrentlyLocked ? "active" : "inactive"
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Không thể cập nhật trạng thái gói.");
+      pkg.status = isCurrentlyLocked ? "active" : "inactive";
+      pkg.isLocked = !isCurrentlyLocked;
+      this.view.renderSuperAdminPanel();
+      await this.view.customAlert("Thành công", `Đã ${actionText} gói dịch vụ thành công!`, "check-circle");
+    } catch (error) {
+      await this.view.customAlert("Thất bại", error.message, "alert-triangle");
     }
-    localStorage.setItem("bf_locked_system_packages", JSON.stringify(lockedPkgs));
-    this.model.state.systempackages.forEach((p) => {
-      p.isLocked = lockedPkgs.includes(p.id);
-    });
-    this.view.renderSuperAdminPanel();
-    await this.view.customAlert("Thành công", `Đã ${actionText} gói dịch vụ thành công!`, "check-circle");
   }
 }
 export function renderWorkspaceSwitcher() {
@@ -794,7 +801,7 @@ export function renderWorkspaceSwitcher() {
   }
   const htmlContent = orgs.map((org) => {
     const isActive = org.id === activeOrg;
-    const initials = org.name.split(" ").map((w) => w[0]).join("").substring(0, 2).toUpperCase();
+    const initials = escapeHtml(org.name.split(" ").map((w) => w[0]).join("").substring(0, 2).toUpperCase());
     const activeBg = isActive ? "var(--primary-soft)" : "transparent";
     return `
             <button class="dropdown-item dropdown-org-btn" data-org="${escapeHtml(org.id)}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; background: ${activeBg}; width: 100%; text-align: left; padding: 8px 16px; cursor: pointer; transition: background 0.15s ease;">

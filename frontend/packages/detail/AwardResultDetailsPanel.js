@@ -1248,7 +1248,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                 }
                 wId = resolveResultContractorId(wId);
                 gt.nhaThauTrungThauId = wId ? isNaN(wId) ? wId : parseInt(wId) : "";
-                gt.giaTrungThau = winnerRows.reduce((sum, tr) => sum + view.model.parseVND(tr.querySelector(".row-gia-trung")?.value || "0"), 0);
+                gt.giaTrungThau = view.model.sumVND(winnerRows.map((tr) => tr.querySelector(".row-gia-trung")?.value || "0"));
                 winnerIdStr = wId || "none";
               } else {
                 gt.nhaThauTrungThauId = "";

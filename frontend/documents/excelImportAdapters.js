@@ -245,15 +245,12 @@ export async function parseOpeningImport(controller, rows) {
       maNhaThau,
       tenNhaThau: rawNhaThau,
       loaiNhaThau,
-      damBaoDuThau: controller.model.parseVND(row["Đảm bảo dự thầu (VND)"] || row["Đảm bảo dự thầu"] || row["Đảm bảo"] || ""),
-      hieuLucDamBao: String(row["Hiệu lực đảm bảo (ngày)"] || row["Hiệu lực đảm bảo"] || row["Hiệu lực bảo đảm"] || "").trim(),
-      hieuLucHsdxt: String(row["Hiệu lực E-HSĐXKT (ngày)"] || row["Hiệu lực E-HSĐXKT"] || "").trim(),
       giaDuThau: controller.model.parseVND(row["Giá dự thầu (VND)"] || row["Giá dự thầu"] || row["Giá"] || ""),
       tyLeGiamGia: parseFloat(row["Tỷ lệ giảm giá (%)"] || row["Tỷ lệ giảm (%)"] || row["Tỷ lệ giảm"] || "0"),
       giaSauGiamGia: controller.model.parseVND(row["Giá sau giảm giá (nếu có)"] || row["Giá sau giảm giá"] || ""),
-      hieuLucHsdt: parseInt(row["Hiệu lực E-HSDT (ngày)"] || row["Hiệu lực E-HSDT"] || "90", 10),
-      giaTriDamBao: controller.model.parseVND(row["Giá trị ĐB DT (VND)"] || row["Giá trị ĐB"] || row["Giá trị ĐB DT"] || ""),
-      hieuLucBaoDamNgay: parseInt(row["Hiệu lực ĐB (ngày)"] || row["Hiệu lực ĐB"] || "120", 10),
+      hieuLucHsdt: parseInt(row["Hiệu lực E-HSDT (ngày)"] || row["Hiệu lực E-HSDT"] || row["Hiệu lực E-HSĐXKT (ngày)"] || row["Hiệu lực E-HSĐXKT"] || "90", 10),
+      giaTriDamBao: controller.model.parseVND(row["Giá trị ĐB DT (VND)"] || row["Giá trị ĐB"] || row["Giá trị ĐB DT"] || row["Đảm bảo dự thầu (VND)"] || row["Đảm bảo dự thầu"] || row["Đảm bảo"] || ""),
+      hieuLucBaoDamNgay: parseInt(row["Hiệu lực ĐB (ngày)"] || row["Hiệu lực ĐB"] || row["Hiệu lực đảm bảo (ngày)"] || row["Hiệu lực đảm bảo"] || row["Hiệu lực bảo đảm"] || "120", 10),
       thoiGianThucHien: String(row["Thời gian thực hiện (ngày)"] || row["Thời gian thực hiện"] || "").trim()
     };
     if (hasPhanLo) {

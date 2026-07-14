@@ -13,10 +13,12 @@ import {
 } from "../auth/accessContext.js";
 import { reconcileRouteDataAtStartup } from "./startupReconciliation.js";
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
+import { resolveCommandArgs } from "../shared/commandArgs.js";
 import {
   getActiveOrganizationId,
   setActiveOrganizationId
 } from "./workspaceState.js";
+import { apiFetch, configureApiClient } from "../shared/apiClient.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -147,7 +149,7 @@ export class BiddingController {
       return Promise.resolve(this._lazyPartialHtmlCache.get(key));
     }
     if (!this._lazyPartialPreloadPromises.has(key)) {
-      const request = fetch(url, { credentials: "same-origin" }).then((response) => {
+      const request = apiFetch(url).then((response) => {
         if (!response.ok) {
           throw new Error(`Failed to preload ${url}: HTTP ${response.status}`);
         }
@@ -311,7 +313,7 @@ export class BiddingController {
   }
   loadHolidaysInBackground() {
     if (hasHolidays()) return;
-    fetch("/api/holidays").then((res) => res.json()).then((data) => {
+    apiFetch("/api/holidays").then((res) => res.json()).then((data) => {
       setHolidays(data);
     }).catch((e) => {
       console.error("Failed to load holidays:", e);
@@ -531,33 +533,25 @@ export class BiddingController {
     const load = async () => {
       try {
         const [usersRes, pkgsRes] = await Promise.all([
-          fetch("/api/auth/users"),
-          fetch("/api/system-packages")
+          apiFetch("/api/auth/users"),
+          apiFetch("/api/system-packages")
         ]);
         if (usersRes.ok) {
           const users = await usersRes.json();
-          const localEmployees = JSON.parse(localStorage.getItem("bf_employees") || "[]");
-          this.model.state.employees = users.map((u) => {
-            const localEmp = localEmployees.find((le) => le.email && le.email.trim().toLowerCase() === (u.email || "").trim().toLowerCase());
-            return {
+          this.model.state.employees = users.map((u) => ({
               id: u.id,
               username: u.username,
-              name: localEmp ? localEmp.name : u.name,
+              name: u.name,
               email: u.email || "",
-              phone: localEmp ? localEmp.phone : "",
+              phone: "",
               role: u.role,
-              package_id: u.package_id
-            };
-          });
+              organizations: normalizeOrganizations(u)
+            }));
           this.model.persistData("employees");
           this.view.populateNhanVienPhuTrachDropdowns();
         }
         if (pkgsRes.ok) {
           const pkgs = await pkgsRes.json();
-          const lockedPkgs = JSON.parse(localStorage.getItem("bf_locked_system_packages") || "[]");
-          pkgs.forEach((p) => {
-            p.isLocked = lockedPkgs.includes(p.id);
-          });
           this.model.state.systempackages = pkgs;
           this.model.persistData("systempackages");
         }
@@ -573,40 +567,15 @@ export class BiddingController {
   }
   async init() {
     this.markStartup("init:start");
-    const originalFetch = window.fetch;
-    const readCookie = (name) => {
-      const prefix = `${name}=`;
-      const raw = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix));
-      return raw ? decodeURIComponent(raw.slice(prefix.length)) : "";
-    };
-    window.fetch = async (url, options = {}) => {
-      const activeOrg = getActiveOrganizationId();
-      if (typeof url === "string" && url.startsWith("/api/")) {
-        const headers = new Headers(options.headers || {});
-        const method = (options.method || "GET").toUpperCase();
-        headers.delete("X-Session-Token");
-        headers.delete("X-Username");
-        if (activeOrg) {
-          headers.set("X-Active-Org", encodeURIComponent(activeOrg));
-        }
-        if (["POST", "PUT", "DELETE"].includes(method)) {
-          const csrfToken = readCookie("csrf_token");
-          if (csrfToken) {
-            headers.set("X-CSRF-Token", csrfToken);
-          }
-        }
-        options.headers = headers;
-      }
-      const response = await originalFetch(url, options);
-      if (response.status === 403 && typeof url === "string" && url.startsWith("/api/") && !url.includes("/api/auth/privileged-reauth")) {
-        let requiresPrivilegedReauth = false;
-        try {
-          const payload = await response.clone().json();
-          requiresPrivilegedReauth = String(payload?.error || "").startsWith("Cần xác thực lại mật khẩu");
-        } catch {
-          requiresPrivilegedReauth = false;
-        }
-        if (requiresPrivilegedReauth) {
+    configureApiClient({
+      activeOrganization: getActiveOrganizationId,
+      onHttpError: async ({ path, response, data }) => {
+        const errorMsg = data?.error || data?.message || "Yêu cầu tới máy chủ thất bại.";
+        if (
+          response.status === 403
+          && path !== "/api/auth/privileged-reauth"
+          && String(errorMsg).startsWith("Cần xác thực lại mật khẩu")
+        ) {
           if (!this._privilegedReauthPromise) {
             this._privilegedReauthPromise = (async () => {
               const password = await this.view.customPrompt(
@@ -619,13 +588,12 @@ export class BiddingController {
                 "password"
               );
               if (password === null) return false;
-              const headers = new Headers({ "Content-Type": "application/json" });
-              const csrfToken = readCookie("csrf_token");
-              if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
-              const reauthResponse = await originalFetch("/api/auth/privileged-reauth", {
+              const reauthResponse = await apiFetch("/api/auth/privileged-reauth", {
                 method: "POST",
-                headers,
-                body: JSON.stringify({ password })
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ password }),
+                handleHttpErrors: false,
+                retries: 0
               });
               if (!reauthResponse.ok) {
                 let error = "Không thể xác thực lại quyền quản trị.";
@@ -641,41 +609,28 @@ export class BiddingController {
               this._privilegedReauthPromise = null;
             });
           }
-          if (await this._privilegedReauthPromise) {
-            return originalFetch(url, options);
-          }
-          return response;
+          return { retry: await this._privilegedReauthPromise };
         }
-      }
-      if (response.status === 403 && typeof url === "string" && url.startsWith("/api/") && !url.includes("/api/auth/login") && !url.includes("/api/auth/check-session")) {
-        let errorMsg = "Yêu cầu bị từ chối do không đủ quyền hạn hoặc vi phạm cấu hình hệ thống.";
-        let isSessionError = false;
-        try {
-          const clone = response.clone();
-          const data = await clone.json();
-          if (data && data.error) {
-            errorMsg = data.error;
-          }
-          if (errorMsg === "Không có quyền truy cập tổ chức này!") {
-            const recovered = await this.recoverActiveOrgAccess();
-            if (recovered) {
-              return response;
-            }
-          }
-          if (errorMsg === "Thiếu thông tin xác thực phiên làm việc!" || errorMsg === "Tài khoản không tồn tại!" || errorMsg === "Phiên làm việc đã hết hạn hoặc không hợp lệ!" || errorMsg === "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại.") {
-            isSessionError = true;
-          }
-        } catch (e) {
-          console.error("Failed to parse the 403 response:", e);
+        if (path === "/api/auth/login" || path === "/api/auth/check-session") return null;
+        if (response.status === 403 && errorMsg === "Không có quyền truy cập tổ chức này!") {
+          if (await this.recoverActiveOrgAccess()) return { retry: true };
         }
+        const sessionErrors = new Set([
+          "Thiếu thông tin xác thực phiên làm việc!",
+          "Tài khoản không tồn tại!",
+          "Phiên làm việc đã hết hạn hoặc không hợp lệ!",
+          "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
+        ]);
+        const isSessionError = response.status === 401 || sessionErrors.has(errorMsg);
         if (isSessionError) {
-          if (isAuthTransitionActive()) {
-            return response;
-          }
+          if (isAuthTransitionActive()) return null;
           const overlay = document.getElementById("auth-overlay");
           if (overlay && overlay.style.display !== "flex") {
             this.disconnectWebSocket?.(false);
-            void this.model.deactivateWorkspace?.();
+            const localCleanup = this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.();
+            void Promise.resolve(localCleanup).catch((error) => {
+              console.error("Failed to clear expired workspace data:", error);
+            });
             this.model.clearSessionData();
             overlay.style.display = "flex";
             document.querySelector(".app-container").style.filter = "blur(10px)";
@@ -686,40 +641,24 @@ export class BiddingController {
             if (formRegister) formRegister.style.display = "none";
             if (formForgot) formForgot.style.display = "none";
           }
-          return response;
+          return null;
         }
-        if (errorMsg === "Không có quyền truy cập tổ chức này!") {
+        if (response.status === 403 && errorMsg === "Không có quyền truy cập tổ chức này!") {
           await this.view.customAlert("⚠️ LỖI QUYỀN HẠN", "Không có quyền truy cập tổ chức này!", "log-out");
-        } else {
+          window.location.reload();
+        } else if (response.status === 403) {
           await this.view.customAlert("⚠️ LỖI QUYỀN HẠN (403)", `${errorMsg}
 
 Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
+          window.location.reload();
+        } else if (response.status === 409) {
+          window.dispatchEvent(new CustomEvent("bf:api-conflict", { detail: { error: errorMsg, data } }));
+        } else if (response.status === 429) {
+          window.dispatchEvent(new CustomEvent("bf:api-rate-limit", { detail: { error: errorMsg, data } }));
         }
-        window.location.reload();
-        return response;
+        return null;
       }
-      if (response.status === 401 && typeof url === "string" && url.startsWith("/api/") && !url.includes("/api/auth/login") && !url.includes("/api/auth/check-session")) {
-        if (isAuthTransitionActive()) {
-          return response;
-        }
-        const overlay = document.getElementById("auth-overlay");
-        if (overlay && overlay.style.display !== "flex") {
-          this.disconnectWebSocket?.(false);
-          void this.model.deactivateWorkspace?.();
-          this.model.clearSessionData();
-          overlay.style.display = "flex";
-          document.querySelector(".app-container").style.filter = "blur(10px)";
-          const formLogin = document.getElementById("form-auth-login");
-          const formRegister = document.getElementById("form-auth-register");
-          const formForgot = document.getElementById("form-auth-forgot");
-          if (formLogin) formLogin.style.display = "block";
-          if (formRegister) formRegister.style.display = "none";
-          if (formForgot) formForgot.style.display = "none";
-        }
-      }
-      return response;
-    };
-    window.fetch.__bfSecurityTransport = true;
+    });
     sessionStorage.removeItem("bf_session_token");
     localStorage.removeItem("bf_session_token");
     const rememberedUserId = localStorage.getItem("bf_user_id");
@@ -734,7 +673,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     if (initialSessionData === void 0) {
       initialSessionData = { valid: false };
       try {
-        const sessionResponse = await fetch("/api/auth/check-session", {
+        const sessionResponse = await apiFetch("/api/auth/check-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
@@ -829,7 +768,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     hideInitLoader();
     this.markStartup("loader:hidden");
     this.publishStartupMetrics();
-    this.schedulePostStartupTask(() => this.ensureWorkflowModules(), { timeout: 1400, delay: 250 });
     this.schedulePostStartupTask(() => this.preloadPrimaryModals(), { timeout: 1800, delay: 400 });
     this.schedulePostStartupTask(() => {
       this.setupFileUploads();
@@ -1000,7 +938,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           `/api/export-report/${dbId}?type=contract`,
           snapshotVersion
         );
-        const r = await fetch(exportUrl);
+        const r = await apiFetch(exportUrl, { timeoutMs: 120_000 });
         if (!r.ok) throw new Error("Không thể xuất hợp đồng");
         const b = await r.blob();
         const url = window.URL.createObjectURL(b);
@@ -1190,11 +1128,13 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
           const fn = target.dataset.fn;
           if (fn) {
             event.preventDefault();
-            let args = [];
-            try {
-              args = JSON.parse(target.dataset.args || "[]");
-            } catch (e) {
-              args = [];
+            let args = resolveCommandArgs(target.dataset.argKey);
+            if (!target.dataset.argKey) {
+              try {
+                args = JSON.parse(target.dataset.args || "[]");
+              } catch (e) {
+                args = [];
+              }
             }
             args = args.map((arg) => arg === null ? target : arg);
             this.executeCommand(fn, ...args);

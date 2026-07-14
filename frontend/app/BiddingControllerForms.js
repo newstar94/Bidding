@@ -898,13 +898,10 @@ export function recalculateTotalLotSecurities() {
   const linhVuc = document.getElementById("gt-linhvuc")?.value;
   const ht = document.getElementById("gt-hinhthuc")?.value;
   if (phanLo === "Có" && linhVuc !== "Tư vấn" && ht !== "Chỉ định thầu rút gọn" && ht !== "Lựa chọn nhà thầu trong trường hợp đặc biệt") {
-    let sum = 0;
-    document.querySelectorAll("#phanlo-tbody tr").forEach((tr) => {
-      const baodamInput = tr.querySelector(".pl-baodam-input");
-      if (baodamInput) {
-        sum += this.model.parseVND(baodamInput.value);
-      }
-    });
+    const sum = this.model.sumVND(Array.from(
+      document.querySelectorAll("#phanlo-tbody .pl-baodam-input"),
+      (input) => input.value
+    ));
     const mainBaoDamInput = document.getElementById("gt-giatribaomothau");
     if (mainBaoDamInput) {
       mainBaoDamInput.value = this.model.formatVND(sum);

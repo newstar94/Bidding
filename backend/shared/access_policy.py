@@ -68,6 +68,15 @@ def organization_membership_role(cursor, user_id, organization_id):
     return str(row[0] or "").strip().lower() if row else None
 
 
+def is_business_organization(cursor, organization_id):
+    cursor.execute(
+        "SELECT scope_type FROM to_chuc WHERE id = ? LIMIT 1",
+        (organization_id,),
+    )
+    row = cursor.fetchone()
+    return bool(row and str(row[0] or "").strip().lower() == "organization")
+
+
 def is_organization_manager(cursor, role_str, user_id, organization_id):
     if is_manager_role(role_str):
         return True

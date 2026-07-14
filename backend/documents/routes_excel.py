@@ -11,6 +11,7 @@ from backend.shared.helpers import (
 )
 from backend.shared.access_policy import can_read_record
 from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.request_validation import validate_or_response
 
 from backend.documents.document_worker import (
     DocumentWorkerError,
@@ -333,6 +334,11 @@ async def export_phanlo_excel_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "phanLoList": {"type": "array", "required": True, "max_length": 10_000},
+        })
+        if invalid:
+            return invalid
         phan_lo_list = data.get('phanLoList', [])
 
         out_stream = await _export_excel("create_phanlo_excel", phan_lo_list)
@@ -355,6 +361,11 @@ async def export_tuychonmuathem_excel_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "tuyChonList": {"type": "array", "required": True, "max_length": 10_000},
+        })
+        if invalid:
+            return invalid
         tuy_chon_list = data.get('tuyChonList', [])
 
         out_stream = await _export_excel(

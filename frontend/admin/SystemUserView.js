@@ -1,7 +1,9 @@
 import { getAppController } from "../app/controllerRef.js";
-import { escapeHtml as escapeHTML } from "../shared/view_helpers.js";
-import { normalizeOrganizations } from "../auth/accessContext.js";
+import { escapeHtml as escapeHTML, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
+import { registerCommandArgs } from "../shared/commandArgs.js";
+import { normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
+import { apiFetch } from "../shared/apiClient.js";
 export function updateActiveUserProfileDisplay() {
   const avatar = document.getElementById("header-profile-avatar");
   const h4 = document.getElementById("header-profile-name");
@@ -35,8 +37,13 @@ export function updateActiveUserProfileDisplay() {
     if (typeof appController?.renderWorkspaceSwitcher === "function") {
       appController.renderWorkspaceSwitcher();
     }
-    if (user.avatar) {
-      avatar.innerHTML = `<img src="${user.avatar}" alt="Avatar">`;
+    const avatarSrc = safeImageSrc(user.avatar);
+    if (avatarSrc) {
+      avatar.replaceChildren();
+      const image = document.createElement("img");
+      image.src = avatarSrc;
+      image.alt = "Avatar";
+      avatar.appendChild(image);
       avatar.style.background = "none";
     } else {
       avatar.textContent = user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
@@ -138,50 +145,53 @@ export function renderSuperAdminPanel() {
       const isLocked = pkg.isLocked || false;
       const lockBtnText = isLocked ? "Đã khóa" : "Hoạt động";
       const lockBtnClass = isLocked ? "btn-danger" : "btn-emerald";
+      const editArgsKey = registerCommandArgs([String(pkg.id || "")]);
+      const lockArgsKey = registerCommandArgs([String(pkg.id || "")]);
       return `
                 <div class="pricing-card ${cardClass}">
                     <div class="pricing-badge ${badgeClass}">${badgeLabel}</div>
-                    <h4 class="package-name">${pkg.name}</h4>
-                    <div class="package-price">${formattedPrice}<span>/năm</span></div>
-                    <p class="package-desc">${pkg.description || ""}</p>
+                    <h4 class="package-name">${escapeHTML(pkg.name)}</h4>
+                    <div class="package-price">${escapeHTML(formattedPrice)}<span>/năm</span></div>
+                    <p class="package-desc">${escapeHTML(pkg.description || "")}</p>
                     <ul class="package-features">
-                        <li><i data-lucide="check"></i> Hạn mức nhân sự: <strong>${quotaText}</strong></li>
+                        <li><i data-lucide="check"></i> Hạn mức nhân sự: <strong>${escapeHTML(quotaText)}</strong></li>
                         <li><i data-lucide="check"></i> Lập ma trận phân quyền</li>
                         <li><i data-lucide="check"></i> Đồng bộ dữ liệu SQLite động</li>
                         <li><i data-lucide="check"></i> Nhập dữ liệu thầu từ Excel</li>
                     </ul>
                     <div class="package-action-btn-group">
                         <button class="btn btn-outline btn-full-width mb-2"
-                            data-bf-action="call" data-fn="editSystemPackage" data-args='["${pkg.id}"]'>Chỉnh sửa Gói</button>
-                        <button class="btn ${lockBtnClass} btn-full-width" id="btn-lock-${pkg.id}"
-                            data-bf-action="call" data-fn="togglePackageLock" data-args='["${pkg.id}"]'>${lockBtnText}</button>
+                            data-bf-action="call" data-fn="editSystemPackage" data-arg-key="${editArgsKey}">Chỉnh sửa Gói</button>
+                        <button class="btn ${lockBtnClass} btn-full-width" id="btn-lock-${safeAttr(pkg.id)}"
+                            data-bf-action="call" data-fn="togglePackageLock" data-arg-key="${lockArgsKey}">${lockBtnText}</button>
                     </div>
                 </div>
             `;
     }).join("");
   }
-  fetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
+  apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
     const orgMap = {};
     users.forEach((u) => {
-      const orgs = normalizeOrganizations(u);
+      const orgs = normalizeOrganizations(u)
+        .filter((organization) => organization.scope_type === "organization");
       orgs.forEach((organization) => {
         if (!orgMap[organization.id]) {
+          const subscription = organization.subscription || {};
           orgMap[organization.id] = {
             id: organization.id,
             name: organization.name,
             contact: "",
             phone: "",
-            packageId: "none",
-            regDate: u.package_start_date || "",
-            expDate: u.package_end_date || "",
-            status: "Hoạt động"
+            packageId: subscription.package_id || "none",
+            regDate: subscription.start_date || "",
+            expDate: subscription.end_date || "",
+            quota: subscription.member_quota || 0,
+            memberCount: subscription.member_count || 0,
+            status: organization.status === "active" ? "Hoạt động" : "Đã khóa"
           };
         }
         if (["owner", "manager"].includes(organization.role) || !orgMap[organization.id].contact) {
           orgMap[organization.id].contact = u.name;
-          orgMap[organization.id].packageId = u.package_id || "none";
-          orgMap[organization.id].regDate = u.package_start_date || "";
-          orgMap[organization.id].expDate = u.package_end_date || "";
         }
       });
     });
@@ -193,21 +203,12 @@ export function renderSuperAdminPanel() {
       phone: "",
       role: u.role,
       username: u.username,
-      package_id: u.package_id,
-      package_start_date: u.package_start_date,
-      package_end_date: u.package_end_date,
-      organization_name: u.organization_name,
       organizations: normalizeOrganizations(u)
     }));
     const activeOrgs = this.model.state.organizations.filter((o) => o.status === "Hoạt động");
-    const lockedOrgs = this.model.state.organizations.filter((o) => o.status === "Đã khóa");
-    let calculatedRevenue = 0;
-    this.model.state.organizations.forEach((org) => {
-      if (org.status === "Hoạt động") {
-        const pkg = this.model.state.systempackages.find((p) => p.id === org.packageId);
-        if (pkg) calculatedRevenue += pkg.price;
-      }
-    });
+    const calculatedRevenue = this.model.sumVND(this.model.state.organizations
+      .filter((org) => org.status === "Hoạt động")
+      .map((org) => this.model.state.systempackages.find((pkg) => pkg.id === org.packageId)?.price || 0));
     const revEl = document.getElementById("sa-stat-revenue");
     if (revEl) revEl.textContent = this.model.formatCurrency(calculatedRevenue);
     const orgsEl = document.getElementById("sa-stat-orgs");
@@ -222,21 +223,23 @@ export function renderSuperAdminPanel() {
     if (tbody) {
       tbody.innerHTML = this.model.state.organizations.map((org) => {
         const pkg = this.model.state.systempackages.find((p) => p.id === org.packageId);
-        const pkgLabel = pkg ? `<span class="badge ${org.packageId === "diamond" ? "badge-warning" : org.packageId === "gold" ? "badge-info" : "badge-neutral"}">${pkg.name}</span>` : "--";
+        const pkgLabel = pkg ? `<span class="badge ${org.packageId === "diamond" ? "badge-warning" : org.packageId === "gold" ? "badge-info" : "badge-neutral"}">${escapeHTML(pkg.name)}</span>` : "--";
         const statusBadge = org.status === "Hoạt động" ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Hoạt động</span>' : '<span class="badge badge-danger"><i data-lucide="lock"></i> Đã khóa</span>';
-        const toggleLockBtn = org.status === "Hoạt động" ? `<button class="action-btn btn-delete" data-bf-action="call" data-fn="toggleOrgLock" data-args='["${org.id}"]' title="Khóa Đơn vị"><i data-lucide="lock"></i></button>` : `<button class="action-btn btn-edit" style="color:var(--success); background:rgba(16,185,129,0.1);" data-bf-action="call" data-fn="toggleOrgLock" data-args='["${org.id}"]' title="Mở khóa Đơn vị"><i data-lucide="unlock"></i></button>`;
+        const toggleArgsKey = registerCommandArgs([String(org.id || "")]);
+        const renewArgsKey = registerCommandArgs([String(org.id || "")]);
+        const toggleLockBtn = org.status === "Hoạt động" ? `<button class="action-btn btn-delete" data-bf-action="call" data-fn="toggleOrgLock" data-arg-key="${toggleArgsKey}" title="Khóa Đơn vị"><i data-lucide="lock"></i></button>` : `<button class="action-btn btn-edit" style="color:var(--success); background:rgba(16,185,129,0.1);" data-bf-action="call" data-fn="toggleOrgLock" data-arg-key="${toggleArgsKey}" title="Mở khóa Đơn vị"><i data-lucide="unlock"></i></button>`;
         return `
                         <tr>
                             <td class="fw-bold">${escapeHTML(org.name)}</td>
                             <td><span class="fw-bold">${escapeHTML(org.contact)}</span></td>
                             <td>${escapeHTML(org.phone) || "--"}</td>
                             <td>${pkgLabel}</td>
-                            <td>${this.model.formatDate(org.regDate)}</td>
-                            <td><small class="fw-bold">${this.model.formatDate(org.expDate)}</small></td>
+                            <td>${escapeHTML(this.model.formatDate(org.regDate))}</td>
+                            <td><small class="fw-bold">${escapeHTML(this.model.formatDate(org.expDate))}</small></td>
                             <td>${statusBadge}</td>
                             <td class="text-right">
                                 <div class="action-btn-group" style="justify-content: flex-end;">
-                                    <button class="action-btn btn-view" data-bf-action="call" data-fn="renewOrgSubscription" data-args='["${org.id}"]' title="Gia hạn 1 năm"><i data-lucide="calendar-plus"></i></button>
+                                    <button class="action-btn btn-view" data-bf-action="call" data-fn="renewOrgSubscription" data-arg-key="${renewArgsKey}" title="Gia hạn 1 năm"><i data-lucide="calendar-plus"></i></button>
                                     ${toggleLockBtn}
                                 </div>
                             </td>
@@ -248,25 +251,24 @@ export function renderSuperAdminPanel() {
   });
 }
 export function renderManagerNhanVienPanel() {
-  const currentUsername = sessionStorage.getItem("bf_username");
-  const currentUser = this.model.state.employees.find((e) => e.username === currentUsername);
-  const managerPkgs = currentUser && currentUser.package_id ? currentUser.package_id.split(",").filter((p) => p && p !== "none") : ["silver"];
-  let activePkgId = "silver";
-  if (managerPkgs.includes("diamond")) activePkgId = "diamond";
-  else if (managerPkgs.includes("gold")) activePkgId = "gold";
-  const pkg = this.model.state.systempackages.find((p) => p.id === activePkgId);
-  const quotaLimit = pkg ? pkg.quota : 5;
   const activeOrg = getActiveOrganizationId();
+  const currentOrganizations = normalizeOrganizations(this.model.state.activeuser || {});
+  const activeOrganization = currentOrganizations.find((organization) => organization.id === activeOrg);
+  const subscription = activeOrganization?.subscription || {};
+  const activePkgId = subscription.package_id || "silver";
+  const pkg = this.model.state.systempackages.find((p) => p.id === activePkgId);
+  const quotaLimit = Number(subscription.member_quota || pkg?.quota || 5);
   const orgEmployees = this.model.state.employees.filter((e) => {
     if (!activeOrg) return true;
     const membership = normalizeOrganizations(e).find((organization) => organization.id === activeOrg);
     return membership?.role === "employee";
   });
   const quotaLabel = document.getElementById("manager-quota-label");
-  if (quotaLabel) quotaLabel.textContent = `${orgEmployees.length} / ${quotaLimit === 999 ? "Không giới hạn" : quotaLimit} Nhân sự`;
+  const memberCount = Number(subscription.member_count || orgEmployees.length);
+  if (quotaLabel) quotaLabel.textContent = `${memberCount} / ${quotaLimit === 999 ? "Không giới hạn" : quotaLimit} Thành viên`;
   const progressFill = document.getElementById("manager-quota-progress-fill");
   if (progressFill) {
-    const percent = quotaLimit === 999 ? 20 : orgEmployees.length / quotaLimit * 100;
+    const percent = quotaLimit === 999 ? 20 : memberCount / quotaLimit * 100;
     progressFill.style.width = `${Math.min(percent, 100)}%`;
     if (percent >= 90) {
       progressFill.style.background = "var(--danger)";
@@ -285,13 +287,15 @@ export function renderManagerNhanVienPanel() {
       const assignedTasks = empAssignments.map((a) => {
         if (a.type === "goithau") {
           const gt = this.model.state.goithau.find((g) => g.id === a.targetId);
-          return gt ? `<span class="badge badge-neutral" style="margin:2px;">GT: ${gt.maGoiThau}</span>` : "";
+          return gt ? `<span class="badge badge-neutral" style="margin:2px;">GT: ${escapeHTML(gt.maGoiThau)}</span>` : "";
         } else if (a.type === "hopdong") {
           const hd = this.model.state.hopdong.find((h) => h.id === a.targetId);
-          return hd ? `<span class="badge badge-info" style="margin:2px;">HD: ${hd.soHopDong}</span>` : "";
+          return hd ? `<span class="badge badge-info" style="margin:2px;">HD: ${escapeHTML(hd.soHopDong)}</span>` : "";
         }
         return "";
       }).filter(Boolean).join(" ");
+      const editArgsKey = registerCommandArgs([String(emp.id || "")]);
+      const deleteArgsKey = registerCommandArgs([String(emp.id || "")]);
       return `
                 <tr>
                     <td class="fw-bold" style="text-align: center; vertical-align: middle;">${escapeHTML(emp.name)}</td>
@@ -300,8 +304,8 @@ export function renderManagerNhanVienPanel() {
                     <td style="max-width: 250px; text-align: center; vertical-align: middle;">${assignedTasks || '<span class="text-muted">Chưa giao thầu</span>'}</td>
                     <td style="text-align: center; vertical-align: middle;">
                         <div class="action-btn-group" style="justify-content: center; display: inline-flex;">
-                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editEmployee" data-args='["${emp.id}"]' title="Sửa"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteEmployee" data-args='["${emp.id}"]' title="Xóa"><i data-lucide="trash-2"></i></button>
+                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editEmployee" data-arg-key="${editArgsKey}" title="Sửa"><i data-lucide="edit-2"></i></button>
+                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteEmployee" data-arg-key="${deleteArgsKey}" title="Xóa"><i data-lucide="trash-2"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -323,7 +327,7 @@ export function renderManagerNhanVienPanel() {
         const mode = matrix[moduleName] || "view";
         return `
                     <td class="matrix-checkbox-cell">
-                        <select class="form-control matrix-select" data-emp-id="${emp.id}" data-module="${moduleName}" style="width: 100px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                        <select class="form-control matrix-select" data-emp-id="${safeAttr(emp.id)}" data-module="${safeAttr(moduleName)}" style="width: 100px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
                             <option value="view" ${mode === "view" ? "selected" : ""}>Xem</option>
                             <option value="edit" ${mode === "edit" ? "selected" : ""}>Sửa đổi</option>
                         </select>
@@ -332,7 +336,7 @@ export function renderManagerNhanVienPanel() {
       };
       return `
                 <tr>
-                    <td class="fw-bold">${emp.name}</td>
+                    <td class="fw-bold">${escapeHTML(emp.name)}</td>
                     ${getCellHtml("kehoach")}
                     ${getCellHtml("goithau")}
                     ${getCellHtml("hopdong")}
@@ -358,15 +362,16 @@ export function renderManagerHoSoGiayPanel() {
       tbody.innerHTML = orgStatuses.map((status) => {
         const safeName = escapeHTML(status.name);
         const safeColor = /^#[0-9a-fA-F]{6}$/.test(String(status.color || "")) ? status.color : "#64748b";
-        const safeArgs = escapeHTML(JSON.stringify([String(status.id || "")]));
+        const editArgsKey = registerCommandArgs([String(status.id || "")]);
+        const deleteArgsKey = registerCommandArgs([String(status.id || "")]);
         return `
                 <tr>
                     <td class="fw-bold">${safeName}</td>
                     <td><span class="status-pill" style="background-color: ${safeColor};">${safeName}</span></td>
                     <td class="text-right">
                         <div class="action-btn-group">
-                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editHoSoGiayStatus" data-args="${safeArgs}" title="Sửa"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteHoSoGiayStatus" data-args="${safeArgs}" title="Xóa"><i data-lucide="trash-2"></i></button>
+                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editHoSoGiayStatus" data-arg-key="${editArgsKey}" title="Sửa"><i data-lucide="edit-2"></i></button>
+                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteHoSoGiayStatus" data-arg-key="${deleteArgsKey}" title="Xóa"><i data-lucide="trash-2"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -387,9 +392,10 @@ export function renderProfileTab(user) {
   const orgInput = document.getElementById("profile-organization");
   const orgContainer = document.getElementById("profile-org-container");
   if (orgContainer && orgInput) {
-    if (user.organization_name || user.package_id && user.package_id !== "none") {
+    const organizationNames = organizationDisplayName(user);
+    if (organizationNames) {
       orgContainer.style.display = "block";
-      orgInput.value = user.organization_name || "";
+      orgInput.value = organizationNames;
     } else {
       orgContainer.style.display = "none";
       orgInput.value = "";
@@ -397,9 +403,10 @@ export function renderProfileTab(user) {
   }
   const avatarPreview = document.getElementById("profile-avatar-preview");
   const avatarFallback = document.getElementById("profile-avatar-fallback");
-  if (user.avatar) {
+  const avatarSrc = safeImageSrc(user.avatar);
+  if (avatarSrc) {
     if (avatarPreview) {
-      avatarPreview.src = user.avatar;
+      avatarPreview.src = avatarSrc;
       avatarPreview.style.display = "block";
     }
     if (avatarFallback) avatarFallback.style.display = "none";
@@ -445,7 +452,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
       manager: '<span class="badge badge-info" style="font-size:0.8rem; font-weight:600;"><i data-lucide="shield" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Quản lý</span>',
       employee: '<span class="badge badge-neutral" style="font-size:0.8rem; font-weight:600;"><i data-lucide="user" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Chuyên viên</span>'
     };
-    return map[role] || `<span class="badge badge-neutral">${role}</span>`;
+    return map[role] || `<span class="badge badge-neutral">${escapeHTML(role)}</span>`;
   };
   const getPackageBadge = (pkgId) => {
     const map = {
@@ -457,17 +464,22 @@ export function renderSystemUsersTable(usersList, currentUsername) {
     return map[pkgId] || '<span class="text-muted" style="font-size:0.8rem;">Chưa chọn gói</span>';
   };
   tbody.innerHTML = usersList.map((user) => {
+    const subscription = normalizeOrganizations(user).find((organization) => organization.status === "active")?.subscription
+      || normalizeOrganizations(user)[0]?.subscription
+      || {};
     const isSelf = user.username === currentUsername;
-    const deleteBtn = isSelf ? `<span class="text-muted" style="font-size:0.8rem; font-style:italic;">(Tài khoản hiện tại)</span>` : `<button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteSystemUser" data-args='["${user.id}","${user.username}"]' title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
-    const detailBtn = `<button class="action-btn btn-edit" data-bf-action="call" data-fn="showSystemUserDetail" data-args='["${user.id}"]' title="Xem chi tiết & Cấu hình"><i data-lucide="user-cog"></i></button>`;
+    const detailArgsKey = registerCommandArgs([String(user.id || "")]);
+    const deleteArgsKey = registerCommandArgs([String(user.id || ""), String(user.username || "")]);
+    const deleteBtn = isSelf ? `<span class="text-muted" style="font-size:0.8rem; font-style:italic;">(Tài khoản hiện tại)</span>` : `<button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteSystemUser" data-arg-key="${deleteArgsKey}" title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
+    const detailBtn = `<button class="action-btn btn-edit" data-bf-action="call" data-fn="showSystemUserDetail" data-arg-key="${detailArgsKey}" title="Xem chi tiết & Cấu hình"><i data-lucide="user-cog"></i></button>`;
     return `
-            <tr style="cursor: pointer;" data-bf-action="call" data-fn="showSystemUserDetail" data-args='["${user.id}"]'>
+            <tr style="cursor: pointer;" data-bf-action="call" data-fn="showSystemUserDetail" data-arg-key="${detailArgsKey}">
                 <td class="fw-bold" style="color: var(--text-main);">${escapeHTML(user.username)}</td>
                 <td style="font-weight: 600;">${escapeHTML(user.name)}</td>
                 <td>${escapeHTML(user.email) || "--"}</td>
                 <td>${getRoleBadge(user.role)}</td>
-                <td>${getPackageBadge(user.package_id)}</td>
-                <td>${calculateRemainingDays(user.package_end_date)}</td>
+                <td>${getPackageBadge(subscription.package_id)}</td>
+                <td>${calculateRemainingDays(subscription.end_date)}</td>
                 <td class="text-right" data-bf-stop>
                     <div class="action-btn-group" style="justify-content: flex-end;">
                         ${detailBtn}

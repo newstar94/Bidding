@@ -14,6 +14,7 @@ from backend.shared.helpers import (
 from backend.db.id_utils import generate_record_id
 from backend.shared.access_policy import can_read_record, is_organization_manager
 from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.request_validation import validate_or_response
 from backend.shared.async_io import run_blocking_io
 from backend.documents import custom_exporter
 from backend.documents.document_worker import (
@@ -374,6 +375,12 @@ async def set_active_template_api(request):
         user_id = role_or_err.user_id
 
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "template_name": {"type": "string", "max_length": 255},
+            "filename": {"type": "string", "max_length": 255},
+        })
+        if invalid:
+            return invalid
         template_name = data.get('template_name') or data.get('filename')
         if not template_name:
             return JSONResponse({"error": "Missing template_name parameter"}, status_code=400)
@@ -483,6 +490,22 @@ async def save_word_mapping_api(request):
         org_name = get_active_org(request, user_id)
 
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "id": {"type": "string", "max_length": 128},
+            "ten_bien": {"type": "string", "max_length": 128},
+            "tenBien": {"type": "string", "max_length": 128},
+            "source_table": {"type": "string", "max_length": 128},
+            "sourceTable": {"type": "string", "max_length": 128},
+            "source_column": {"type": "string", "max_length": 512},
+            "sourceColumn": {"type": "string", "max_length": 512},
+            "mapping_type": {"type": "string", "max_length": 32},
+            "mappingType": {"type": "string", "max_length": 32},
+            "formula": {"type": "string", "max_length": 5_000},
+            "mo_ta": {"type": "string", "max_length": 2_000},
+            "moTa": {"type": "string", "max_length": 2_000},
+        })
+        if invalid:
+            return invalid
         ten_bien = (data.get('ten_bien') or data.get('tenBien') or '').strip().lower()
         source_table = (data.get('source_table') or data.get('sourceTable') or '').strip()
         source_column = (data.get('source_column') or data.get('sourceColumn') or '').strip()

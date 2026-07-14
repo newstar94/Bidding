@@ -11,11 +11,12 @@
       || readJson(localStorage.getItem("bf_active_role"));
     const effectiveRoles = Array.isArray(user?.effective_roles) ? user.effective_roles : [];
     const allowed = new Set(effectiveRoles);
-    if (requested && allowed.has(requested)) return requested;
-    if (allowed.has("super_admin")) return "super_admin";
-    if (allowed.has("manager")) return "manager";
-    if (allowed.has("employee")) return "employee";
-    return "viewer";
+    let switchableRoles;
+    if (allowed.has("super_admin")) switchableRoles = ["super_admin", "manager", "employee"];
+    else if (allowed.has("owner") || allowed.has("manager")) switchableRoles = ["manager", "employee"];
+    else if (allowed.has("employee")) switchableRoles = ["employee"];
+    else switchableRoles = ["employee"];
+    return requested && switchableRoles.includes(requested) ? requested : switchableRoles[0];
   };
   const hydrateStableShell = () => {
     const appContainer = document.querySelector(".app-container");
@@ -40,8 +41,7 @@
     const roleLabels = {
       super_admin: "Super Admin",
       manager: "Quản lý",
-      employee: "Chuyên viên",
-      viewer: "Người xem"
+      employee: "Chuyên viên"
     };
     const name = user.name || user.username || "Người dùng";
     const profileName = document.getElementById("header-profile-name");

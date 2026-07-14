@@ -1,48 +1,61 @@
-const CACHE_NAME = "biddingflow-shell-v11";
-const APP_SHELL = [
-  "/",
-  "/css/variables.css?v=6.17",
-  "/css/base.css",
-  "/css/components.css?v=6.16",
-  "/css/views.css?v=6.16",
-  "/css/toast.css",
-  "/vendor/fonts/plus-jakarta-sans-latin.woff2",
-  "/vendor/fonts/plus-jakarta-sans-vietnamese.woff2",
-  "/vendor/lucide/lucide.min.js?v=1.21.0.1"
-];
+const CACHE_PREFIX = "biddingflow-assets-";
+const BUILD_ID = new URL(self.location.href).searchParams.get("build") || "unversioned";
+const CACHE_NAME = `${CACHE_PREFIX}${BUILD_ID.replace(/[^a-zA-Z0-9_-]/g, "-").slice(-80)}`;
+const HASHED_ASSET = /^\/dist\/assets\/.+-[A-Za-z0-9_-]{8}\.(?:js|css)$/;
+
+async function initialHashedAssets() {
+  const response = await fetch("/dist/.vite/manifest.json", { cache: "no-store", credentials: "same-origin" });
+  if (!response.ok) return [];
+  const manifest = await response.json();
+  const entryKey = "frontend/app/app.js";
+  const pending = [entryKey];
+  const visited = new Set();
+  const assets = [];
+  while (pending.length) {
+    const key = pending.pop();
+    if (!key || visited.has(key) || !manifest[key]) continue;
+    visited.add(key);
+    const item = manifest[key];
+    const pathname = `/dist/${String(item.file || "").replace(/^\/+/, "")}`;
+    if (HASHED_ASSET.test(pathname)) assets.push(pathname);
+    pending.push(...(item.imports || []));
+  }
+  return [...new Set(assets)];
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()).catch(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const assets = await initialHashedAssets();
+    if (assets.length) await (await caches.open(CACHE_NAME)).addAll(assets);
+    await self.skipWaiting();
+  })().catch(() => self.skipWaiting()));
 });
+
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names
+      .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
+      .map((name) => caches.delete(name)));
+    await self.clients.claim();
+  })());
 });
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/") || url.pathname.startsWith("/images/")) return;
-  if (url.pathname === "/") {
-    return;
-  }
-  // appbundle.js has a stable name. Let the browser perform HTTP revalidation
-  // so a deployment never boots a stale bundle from the service-worker cache.
-  if (url.pathname === "/dist/assets/appbundle.js" || url.pathname === "/vendor/initial-route.js") return;
-  if (url.pathname.endsWith(".css") || url.pathname.startsWith("/dist/") || url.pathname.startsWith("/vendor/")) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        const network = fetch(request).then((response) => {
-          if (response && response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        }).catch(() => cached);
-        return cached || network;
-      })
-    );
-  }
+  if (
+    request.method !== "GET"
+    || url.origin !== self.location.origin
+    || !HASHED_ASSET.test(url.pathname)
+  ) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response.ok && response.type === "basic") await cache.put(request, response.clone());
+    return response;
+  })());
 });

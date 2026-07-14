@@ -45,7 +45,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         "hopdong": 0,
         "activeGoithau": 0,
     }
-    total_contract_value = 0
+    total_contract_value = "0"
     status_counts = {}
     recent_packages = []
 
@@ -129,10 +129,10 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
 
     if can("hopdong", "hop_dong"):
         if manager:
-            cursor.execute("SELECT COUNT(*), COALESCE(SUM(gia_tri), 0) FROM hop_dong WHERE organization_id = ? AND archived_at IS NULL", (organization_id,))
+            cursor.execute("SELECT gia_tri FROM hop_dong WHERE organization_id = ? AND archived_at IS NULL", (organization_id,))
         else:
             cursor.execute("""
-                SELECT COUNT(*), COALESCE(SUM(hd.gia_tri), 0)
+                SELECT hd.gia_tri
                 FROM hop_dong hd
                 WHERE hd.organization_id = ? AND hd.archived_at IS NULL
                   AND EXISTS (
@@ -143,9 +143,9 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
                         AND pc.loai_doi_tuong = 'hopdong'
                   )
             """, (organization_id, user_id))
-        row = cursor.fetchone()
-        counts["hopdong"] = int(row[0] or 0) if row else 0
-        total_contract_value = float(row[1] or 0) if row else 0
+        contract_rows = cursor.fetchall()
+        counts["hopdong"] = len(contract_rows)
+        total_contract_value = str(sum(int(row[0] or 0) for row in contract_rows))
 
     return {
         "counts": counts,

@@ -2,6 +2,8 @@ import { renderChuDauTuTable, showChuDauTuDetails, renderChuDauTuVersionDetails 
 import { renderNhaThauTable, showNhaThauDetails, renderNhaThauVersionDetails } from "./NhaThauComponent.js";
 import { renderChuyenGiaTable, showChuyenGiaDetails } from "../experts/ChuyenGiaComponent.js";
 import { renderHopDongTable, showHopDongDetails, renderContractVersionDetails } from "../contracts/HopDongComponent.js";
+import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
+import { registerCommandArgs } from "../shared/commandArgs.js";
 export {
   renderChuDauTuTable,
   showChuDauTuDetails,
@@ -23,11 +25,12 @@ export function renderBieumauTab(templatesList = []) {
     return;
   }
   tbody.innerHTML = templatesList.map((tpl) => {
-    const activeBadge = tpl.is_active ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đang hoạt động</span>' : `<span class="badge badge-neutral btn-activate-template" data-filename="${tpl.filename}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" style="width: 12px; height: 12px;"></i> Sẵn sàng</span>`;
-    const actionButton = tpl.is_active ? `<span class="text-success fw-bold" style="font-size:0.8rem;">Đang dùng</span>` : `<button class="btn btn-outline btn-sm btn-activate-template" data-filename="${tpl.filename}">Sử dụng</button>`;
+    const safeFilename = safeAttr(tpl.filename);
+    const activeBadge = tpl.is_active ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đang hoạt động</span>' : `<span class="badge badge-neutral btn-activate-template" data-filename="${safeFilename}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" style="width: 12px; height: 12px;"></i> Sẵn sàng</span>`;
+    const actionButton = tpl.is_active ? `<span class="text-success fw-bold" style="font-size:0.8rem;">Đang dùng</span>` : `<button class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`;
     return `
             <tr>
-                <td class="fw-bold">${tpl.name}</td>
+                <td class="fw-bold">${escapeHtml(tpl.name)}</td>
                 <td>${activeBadge}</td>
                 <td class="text-right">${actionButton}</td>
             </tr>
@@ -240,9 +243,6 @@ export function renderDictionary(group) {
       },
       "thong_tin_mo_thau": {
         "gia_du_thau": "Giá dự thầu mở thầu",
-        "dam_bao_du_thau": "Bảo đảm dự thầu mở thầu",
-        "hieu_luc_dam_bao": "Hiệu lực bảo đảm mở thầu",
-        "hieu_luc_hsdxt": "Hiệu lực E-HSĐXKT mở thầu",
         "ty_le_giam_gia": "Tỷ lệ giảm giá mở thầu",
         "gia_sau_giam_gia": "Giá sau giảm giá mở thầu",
         "hieu_luc_hsdt": "Hiệu lực HSDT mở thầu (ngày)",
@@ -478,45 +478,50 @@ export function renderDictionary(group) {
   tbody.innerHTML = variables.map((v) => {
     let codeHTML = "";
     let actionHTML = "";
+    const safeVariableName = escapeHtml(v.tenBien || "");
+    const safeCode = escapeHtml(v.code || "");
+    const safeCopyCode = safeAttr(v.code || "");
+    const editArgsKey = registerCommandArgs([String(v.id || "")]);
+    const deleteArgsKey = registerCommandArgs([String(v.id || "")]);
     if (v.isList) {
       codeHTML = `
                 <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
-                    <code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:3px 6px; border-radius:4px; margin-bottom: 2px;">{#${v.tenBien}}</code>
-                    <code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:3px 6px; border-radius:4px;">{/${v.tenBien}}</code>
+                    <code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:3px 6px; border-radius:4px; margin-bottom: 2px;">{#${safeVariableName}}</code>
+                    <code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:3px 6px; border-radius:4px;">{/${safeVariableName}}</code>
                 </div>
             `;
       actionHTML = `
                 <div class="action-btn-group" style="justify-content: flex-end; gap: 8px;">
-                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="{#${v.tenBien}}&#10;&#10;{/${v.tenBien}}" title="Sao chép cả cặp tag" style="padding: 4px 8px; font-size: 0.75rem;">
+                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="{#${safeVariableName}}&#10;&#10;{/${safeVariableName}}" title="Sao chép cả cặp tag" style="padding: 4px 8px; font-size: 0.75rem;">
                         <i data-lucide="copy" style="width:12px; height:12px;"></i>
                     </button>
-                    <button class="action-btn btn-edit" data-bf-action="call" data-fn="editWordMapping" data-args='["${v.id}"]' title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                    <button class="action-btn btn-edit" data-bf-action="call" data-fn="editWordMapping" data-arg-key="${editArgsKey}" title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                         <i data-lucide="edit-2" style="width:12px; height:12px; color: var(--text-muted);"></i>
                     </button>
-                    <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteWordMapping" data-args='["${v.id}"]' title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                    <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteWordMapping" data-arg-key="${deleteArgsKey}" title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                         <i data-lucide="trash-2" style="width:12px; height:12px; color: var(--danger);"></i>
                     </button>
                 </div>
             `;
     } else {
-      codeHTML = `<code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:4px 8px; border-radius:4px;">${v.code}</code>`;
+      codeHTML = `<code style="font-size:0.82rem; color:var(--primary); font-weight:700; background:var(--primary-soft); padding:4px 8px; border-radius:4px;">${safeCode}</code>`;
       if (v.isCustom) {
         actionHTML = `
                     <div class="action-btn-group" style="justify-content: flex-end; gap: 8px;">
-                        <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" title="Sao chép" style="padding: 4px 8px; font-size: 0.75rem;">
+                        <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${safeCopyCode}" title="Sao chép" style="padding: 4px 8px; font-size: 0.75rem;">
                             <i data-lucide="copy" style="width:12px; height:12px;"></i>
                         </button>
-                        <button class="action-btn btn-edit" data-bf-action="call" data-fn="editWordMapping" data-args='["${v.id}"]' title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                        <button class="action-btn btn-edit" data-bf-action="call" data-fn="editWordMapping" data-arg-key="${editArgsKey}" title="Sửa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                             <i data-lucide="edit-2" style="width:12px; height:12px; color: var(--text-muted);"></i>
                         </button>
-                        <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteWordMapping" data-args='["${v.id}"]' title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
+                        <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteWordMapping" data-arg-key="${deleteArgsKey}" title="Xóa ánh xạ" style="padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: none; cursor: pointer; display: inline-flex; align-items: center;">
                             <i data-lucide="trash-2" style="width:12px; height:12px; color: var(--danger);"></i>
                         </button>
                     </div>
                 `;
       } else {
         actionHTML = `
-                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${v.code}" style="padding: 4px 8px; font-size: 0.75rem;">
+                    <button class="btn btn-outline btn-sm btn-copy-var" data-copy="${safeCopyCode}" style="padding: 4px 8px; font-size: 0.75rem;">
                         <i data-lucide="copy" style="width:12px; height:12px;"></i> Sao chép
                     </button>
                 `;
@@ -528,23 +533,23 @@ export function renderDictionary(group) {
         descHTML = `
                     <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">Công thức</span>
                     <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
-                    <code style="font-size: 0.8rem;">${v.desc}</code>
+                    <code style="font-size: 0.8rem;">${escapeHtml(v.desc || "")}</code>
                 `;
       } else if (!v.sourceColumn || v.sourceColumn === "*") {
         descHTML = `
                     <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">Vòng lặp danh sách</span>
                     <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
-                    <span class="fw-bold" style="font-size: 0.8rem;">Bảng ${getTableLabel(v.sourceTable)}</span>
+                    <span class="fw-bold" style="font-size: 0.8rem;">Bảng ${escapeHtml(getTableLabel(v.sourceTable))}</span>
                 `;
       } else {
         descHTML = `
-                    <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">${getTableLabel(v.sourceTable)}</span>
+                    <span class="badge badge-info" style="font-size:0.7rem; padding: 2px 6px;">${escapeHtml(getTableLabel(v.sourceTable))}</span>
                     <span style="color:var(--text-muted); margin:0 4px;">&rarr;</span>
-                    <span class="fw-bold" style="font-size: 0.8rem;">${getColumnLabel(v.sourceTable, v.sourceColumn)}</span>
+                    <span class="fw-bold" style="font-size: 0.8rem;">${escapeHtml(getColumnLabel(v.sourceTable, v.sourceColumn))}</span>
                 `;
       }
     } else {
-      descHTML = `<span style="font-size: 0.8rem; color: var(--text-muted);">${v.desc}</span>`;
+      descHTML = `<span style="font-size: 0.8rem; color: var(--text-muted);">${escapeHtml(v.desc || "")}</span>`;
     }
     return `
             <tr>

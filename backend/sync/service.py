@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 import re
@@ -42,9 +42,12 @@ from backend.sync.mapper import (
     db_column_for_json_key,
     get_payload_value,
     json_key_for_column,
+    map_db_to_json,
     save_child_payloads,
 )
 from backend.shared.text_utils import normalize_person_name
+from backend.db.schema import MONEY_COLUMNS
+from backend.shared.numeric_utils import parse_vnd_amount
 from backend.sync.queries import (
     ALLOWED_ORPHAN_TABLES,
     OWNER_TYPES,
@@ -73,6 +76,7 @@ from backend.sync.repository import (
 )
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
 from backend.sync.validator import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
+from backend.sync.payload_validation import validate_sync_payload_shape
 
 
 def _sync_batch_limit():
@@ -155,6 +159,15 @@ async def process_sync_request(request, broadcast_callback=None):
                 "Dữ liệu đồng bộ phải là một JSON object.",
                 status_code=400,
             )
+        shape_errors = validate_sync_payload_shape(data)
+        if shape_errors:
+            return error_response(
+                request,
+                "SYNC_VALIDATION_FAILED",
+                "Dữ liệu đồng bộ không hợp lệ.",
+                status_code=400,
+                fields={"errors": shape_errors},
+            )
         batch_size = _sync_batch_size(data)
         batch_limit = _sync_batch_limit()
         if batch_size > batch_limit:
@@ -175,13 +188,13 @@ async def process_sync_request(request, broadcast_callback=None):
         role_str = str(role_or_err)
         user_id = role_or_err.user_id
         owner_type = get_owner_type(cursor, org_name)
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         client_mutation_id = (data.get("clientMutationId") or "").strip()
         if client_mutation_id:
             client_mutation_id = client_mutation_id[:128]
             cursor.execute(
-                "SELECT response_json FROM sync_mutations WHERE organization_id = ? AND client_mutation_id = ?",
-                (org_name, client_mutation_id)
+                "SELECT response_json FROM sync_mutations WHERE organization_id = ? AND actor_user_id = ? AND client_mutation_id = ?",
+                (org_name, user_id, client_mutation_id)
             )
             existing_mutation = cursor.fetchone()
             if existing_mutation:
@@ -192,34 +205,26 @@ async def process_sync_request(request, broadcast_callback=None):
                     return JSONResponse({"status": "success"})
 
 
-        if owner_type != "organization":
-            cursor.execute("SELECT 1 FROM tai_khoan WHERE id = ?", (org_name,))
+        if owner_type == "personal":
+            cursor.execute(
+                """SELECT 1 FROM to_chuc
+                   WHERE id = ? AND personal_owner_user_id = ? AND scope_type = 'personal'""",
+                (org_name, user_id),
+            )
             if not cursor.fetchone():
-                log_sync_error(f"organization_id không hợp lệ: {org_name}")
-                return JSONResponse({"error": "Không thể xác định tổ chức hoặc tài khoản sở hữu dữ liệu."}, status_code=400)
+                log_sync_error(f"personal workspace không thuộc actor: {org_name}")
+                return JSONResponse(
+                    {"error": "Không thể xác định tài khoản sở hữu dữ liệu.", "code": "PERSONAL_WORKSPACE_OWNER_MISMATCH"},
+                    status_code=403,
+                )
+        elif owner_type != "organization":
+            log_sync_error(f"workspace ID không hợp lệ: {org_name}")
+            return JSONResponse(
+                {"error": "Không thể xác định phạm vi sở hữu dữ liệu.", "code": "WORKSPACE_NOT_FOUND"},
+                status_code=400,
+            )
 
 
-
-        has_write_payload = any(
-            isinstance(data.get(payload_key), list) and len(data.get(payload_key) or []) > 0
-            for payload_key in TABLE_KEYS
-        ) or (isinstance(data.get("deletions"), list) and len(data.get("deletions") or []) > 0)
-        base_sync_version = None
-        try:
-            if data.get("baseSyncVersion") not in (None, ""):
-                base_sync_version = int(data.get("baseSyncVersion"))
-        except (TypeError, ValueError):
-            base_sync_version = None
-
-        current_sync_version_before_write = get_current_sync_version(cursor, org_name)
-        if has_write_payload and base_sync_version is not None and base_sync_version < current_sync_version_before_write:
-            conn.rollback()
-            return JSONResponse({
-                "status": "conflict",
-                "message": "Dữ liệu trên máy chủ đã thay đổi. Vui lòng tải lại trước khi đồng bộ tiếp.",
-                "baseSyncVersion": base_sync_version,
-                "currentSyncVersion": current_sync_version_before_write,
-            }, status_code=409)
 
         batch_sync_version = next_sync_version(cursor, org_name)
 
@@ -231,6 +236,7 @@ async def process_sync_request(request, broadcast_callback=None):
             return clean_id(raw_id)
 
         updated_versioned_tables = set()
+        updated_row_versions = []
         orphaned_ids = []
         delete_impacts = []
 
@@ -271,6 +277,24 @@ async def process_sync_request(request, broadcast_callback=None):
                     item_errors.append(access_decision.message)
                 c_id = get_clean_id(table_name, item.get('id'))
                 c_root_id = get_clean_id(table_name, item.get('rootId')) or c_id
+                if c_id and "row_version" in SCHEMA_DINH_NGHIA[table_name]["columns"]:
+                    current_row = cursor.execute(
+                        f"SELECT * FROM {table_name} WHERE organization_id = ? AND id = ? LIMIT 1",
+                        (org_name, c_id),
+                    ).fetchone()
+                    if current_row:
+                        current_record = dict(current_row)
+                        expected_version = item.get("expectedVersion", item.get("rowVersion"))
+                        current_row_version = int(current_record.get("row_version") or 1)
+                        if expected_version != current_row_version:
+                            item_errors.append({
+                                "field": "expectedVersion",
+                                "code": "ROW_VERSION_CONFLICT",
+                                "message": "Bản ghi đã được thay đổi bởi một phiên làm việc khác.",
+                                "expectedVersion": expected_version,
+                                "currentVersion": current_row_version,
+                                "serverRecord": map_db_to_json(table_name, current_record),
+                            })
                 if c_id and table_name in ARCHIVABLE_TABLES:
                     archived_row = cursor.execute(
                         f"SELECT archived_at FROM {table_name} WHERE organization_id = ? AND id = ?",
@@ -382,6 +406,11 @@ async def process_sync_request(request, broadcast_callback=None):
                         }
                         if error_detail.get("conflictingId"):
                             validation_error["conflictingId"] = error_detail["conflictingId"]
+                        for detail_key in ("expectedVersion", "currentVersion", "serverRecord"):
+                            if detail_key in error_detail:
+                                validation_error[detail_key] = error_detail[detail_key]
+                        validation_error["field"] = error_detail.get("field") or "$record"
+                        validation_error["code"] = error_detail.get("code") or "SYNC_ITEM_INVALID"
                         validation_errors.append(validation_error)
 
         if validation_errors:
@@ -389,11 +418,26 @@ async def process_sync_request(request, broadcast_callback=None):
             print("Sync Validation Errors:", validation_errors)
             conn.rollback()
             conn.close()
-            return JSONResponse({
-                "status": "error",
-                "message": "Không thể lưu dữ liệu do phát hiện lỗi:",
-                "errors": validation_errors
-            }, status_code=400)
+            has_row_conflict = any(
+                error.get("code") == "ROW_VERSION_CONFLICT" for error in validation_errors
+            )
+            response = error_response(
+                request,
+                "ROW_VERSION_CONFLICT" if has_row_conflict else "SYNC_VALIDATION_FAILED",
+                "Có bản ghi đã thay đổi trên máy chủ." if has_row_conflict else "Không thể lưu dữ liệu do phát hiện lỗi.",
+                status_code=409 if has_row_conflict else 400,
+                fields={"errors": validation_errors},
+            )
+            payload = json.loads(response.body)
+            payload.update({
+                "status": "conflict" if has_row_conflict else "error",
+                "errors": validation_errors,
+            })
+            return JSONResponse(
+                payload,
+                status_code=409 if has_row_conflict else 400,
+                headers=dict(response.headers),
+            )
 
         for status_name in paper_statuses_to_seed:
             cursor.execute(
@@ -481,7 +525,9 @@ async def process_sync_request(request, broadcast_callback=None):
 
 
                                 col_type_upper = table_spec["columns"][col].upper()
-                                if "REAL" in col_type_upper:
+                                if (table_name, col) in MONEY_COLUMNS:
+                                    val = parse_vnd_amount(val)
+                                elif "REAL" in col_type_upper:
                                     val = safe_float(val)
                                 elif "INTEGER" in col_type_upper:
                                     if val is not None:
@@ -570,17 +616,54 @@ async def process_sync_request(request, broadcast_callback=None):
                         """, (db_row_data.get("organization_id"), db_row_data.get("emp_id"), db_row_data.get("id")))
 
 
-                    cols_str = ", ".join(db_row_data.keys())
-                    placeholders = ", ".join(["?"] * len(db_row_data))
-                    update_assignments = ", ".join([f"{k}=excluded.{k}" for k in db_row_data.keys() if k not in ["id", "created_at"]])
-                    if update_assignments:
-                        sql = f"""
-                            INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})
-                            ON CONFLICT(id) DO UPDATE SET {update_assignments}
-                        """
+                    existing_version_row = cursor.execute(
+                        f"SELECT row_version FROM {table_name} WHERE organization_id = ? AND id = ? LIMIT 1",
+                        (org_name, db_row_data["id"]),
+                    ).fetchone()
+                    if existing_version_row:
+                        expected_version = item.get("expectedVersion", item.get("rowVersion"))
+                        db_row_data["row_version"] = int(expected_version) + 1
+                        update_columns = [
+                            key for key in db_row_data if key not in {"id", "organization_id", "created_at"}
+                        ]
+                        assignments = ", ".join(f"{key} = ?" for key in update_columns)
+                        params = [db_row_data[key] for key in update_columns]
+                        params.extend([db_row_data["id"], org_name, expected_version])
+                        cursor.execute(
+                            f"UPDATE {table_name} SET {assignments} "
+                            "WHERE id = ? AND organization_id = ? AND row_version = ?",
+                            tuple(params),
+                        )
+                        if cursor.rowcount != 1:
+                            latest = cursor.execute(
+                                f"SELECT * FROM {table_name} WHERE organization_id = ? AND id = ? LIMIT 1",
+                                (org_name, db_row_data["id"]),
+                            ).fetchone()
+                            latest_record = dict(latest) if latest else None
+                            sync_item_errors.append({
+                                "table": table_name,
+                                "id": db_row_data["id"],
+                                "field": "expectedVersion",
+                                "code": "ROW_VERSION_CONFLICT",
+                                "message": "Bản ghi đã được thay đổi bởi một phiên làm việc khác.",
+                                "expectedVersion": expected_version,
+                                "currentVersion": latest_record.get("row_version") if latest_record else None,
+                                "serverRecord": map_db_to_json(table_name, latest_record) if latest_record else None,
+                            })
+                            continue
                     else:
-                        sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders}) ON CONFLICT(id) DO NOTHING"
-                    cursor.execute(sql, tuple(db_row_data.values()))
+                        db_row_data["row_version"] = 1
+                        cols_str = ", ".join(db_row_data.keys())
+                        placeholders = ", ".join(["?"] * len(db_row_data))
+                        cursor.execute(
+                            f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})",
+                            tuple(db_row_data.values()),
+                        )
+                    updated_row_versions.append({
+                        "table": payload_key,
+                        "id": db_row_data["id"],
+                        "rowVersion": db_row_data["row_version"],
+                    })
                     save_child_payloads(
                         cursor,
                         table_name,
@@ -589,6 +672,7 @@ async def process_sync_request(request, broadcast_callback=None):
                         owner_type,
                         batch_sync_version,
                         current_time,
+                        user_id,
                     )
 
 
@@ -711,6 +795,20 @@ async def process_sync_request(request, broadcast_callback=None):
                             if not existing_row:
                                 continue
                             existing_record = dict(existing_row)
+                            expected_version = del_item.get("expectedVersion")
+                            current_row_version = int(existing_record.get("row_version") or 1)
+                            if expected_version != current_row_version:
+                                sync_item_errors.append({
+                                    "table": table_name,
+                                    "id": c_id,
+                                    "field": "expectedVersion",
+                                    "code": "ROW_VERSION_CONFLICT",
+                                    "message": "Bản ghi cần xóa đã được thay đổi bởi một phiên làm việc khác.",
+                                    "expectedVersion": expected_version,
+                                    "currentVersion": current_row_version,
+                                    "serverRecord": map_db_to_json(table_name, existing_record),
+                                })
+                                continue
                             if table_name in ARCHIVABLE_TABLES and existing_record.get("archived_at"):
                                 continue
                             for image_column in image_columns:
@@ -868,14 +966,18 @@ async def process_sync_request(request, broadcast_callback=None):
             recalculate_tong_muc_dau_tu(cursor, organization_id=org_name)
 
         if sync_item_errors:
+            conflict = any(error.get("code") == "ROW_VERSION_CONFLICT" for error in sync_item_errors)
             return rollback_sync_response(
                 conn,
                 sync_item_errors,
                 "Không thể đồng bộ vì có bản ghi không hợp lệ.",
+                status_code=409 if conflict else 400,
             )
 
         current_sync_version = get_current_sync_version(cursor, org_name)
         response_data = {"status": "success", "timestamp": current_time, "syncVersion": current_sync_version}
+        if updated_row_versions:
+            response_data["rowVersions"] = updated_row_versions
         if delete_impacts:
             response_data["deleteImpacts"] = delete_impacts
         if data.get("includeDashboardSummary") is True:
@@ -886,8 +988,8 @@ async def process_sync_request(request, broadcast_callback=None):
             response_data["orphanedIds"] = orphaned_ids
         if client_mutation_id:
             cursor.execute(
-                "INSERT OR REPLACE INTO sync_mutations (organization_id, client_mutation_id, response_json) VALUES (?, ?, ?)",
-                (org_name, client_mutation_id, json.dumps(response_data))
+                "INSERT OR REPLACE INTO sync_mutations (organization_id, actor_user_id, client_mutation_id, response_json) VALUES (?, ?, ?, ?)",
+                (org_name, user_id, client_mutation_id, json.dumps(response_data))
             )
         conn.commit()
         transaction_committed = True

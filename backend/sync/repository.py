@@ -39,7 +39,7 @@ def next_sync_version(cursor, organization_id):
     )
     cursor.execute(
         "UPDATE sync_metadata SET current_version = current_version + 1, "
-        "updated_at = datetime('now', 'localtime') WHERE organization_id = ?",
+        "updated_at = datetime('now') WHERE organization_id = ?",
         (organization_id,),
     )
     cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))

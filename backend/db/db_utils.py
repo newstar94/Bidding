@@ -1,14 +1,10 @@
 from .schema import SCHEMA_DINH_NGHIA
-from backend.auth.auth_helper import hash_password
-from .id_utils import generate_record_id, stable_org_id
-from backend.documents.word_defaults import ensure_default_word_mappings_for_all_orgs
-import os
-import uuid
-import re
-import json
+from backend.db.migration_runner import MigrationContext, run_migrations
+from backend.db.migrations import MIGRATIONS
 from .db_helper import database
+import re
 
-DB_SCHEMA_VERSION = 1
+DB_SCHEMA_VERSION = MIGRATIONS[-1].VERSION if MIGRATIONS else 0
 
 
 _ALLOWED_TABLES: frozenset = frozenset()
@@ -26,23 +22,8 @@ def _assert_safe_table(table_name: str) -> str:
     return table_name
 
 
-def _normalize_sqlite_type(type_name: str) -> str:
-    type_name = (type_name or "").strip().upper()
-    if not type_name:
-        return "TEXT"
-    if "INT" in type_name:
-        return "INTEGER"
-    if "CHAR" in type_name or "CLOB" in type_name or "TEXT" in type_name:
-        return "TEXT"
-    if "BLOB" in type_name:
-        return "BLOB"
-    if "REAL" in type_name or "FLOA" in type_name or "DOUB" in type_name:
-        return "REAL"
-    return type_name
-
-
 def _build_create_table_sql(table_name: str, table_spec: dict) -> str:
-    """Xây dựng câu lệnh CREATE TABLE từ table_spec — dùng chung khi tạo mới và khi rebuild."""
+    """Build canonical table DDL used by the clean baseline migration."""
     cols_def = []
     primary_keys = table_spec.get("primary_keys", [])
     for col_name, col_def in table_spec["columns"].items():
@@ -60,234 +41,27 @@ def _build_create_table_sql(table_name: str, table_spec: dict) -> str:
     return f"CREATE TABLE {table_name} ({', '.join(cols_def)})"
 
 
-def _sync_table_schema(cursor, table_name: str, table_spec: dict):
-    """Keep an existing DB aligned with SCHEMA_DINH_NGHIA for future schema changes."""
-    _assert_safe_table(table_name)
-    expected_cols = table_spec["columns"]
-
-    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
-    table_row = cursor.fetchone()
-    if not table_row:
-        cursor.execute(_build_create_table_sql(table_name, table_spec))
-        return "created"
-    current_create_sql = table_row[0] or ""
-
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    current_info = cursor.fetchall()
-    current_cols = {row[1]: row for row in current_info}
-
-    expected_names = list(expected_cols.keys())
-    current_names = list(current_cols.keys())
-    rebuild_needed = expected_names != current_names or "_schema_sync_" in current_create_sql
-
-    if not rebuild_needed:
-        for col_name, col_def in expected_cols.items():
-            expected_type = _normalize_sqlite_type(col_def.split()[0])
-            current_type = _normalize_sqlite_type(current_cols[col_name][2])
-            if expected_type != current_type:
-                rebuild_needed = True
-                break
-            expected_not_null = "NOT NULL" in col_def.upper()
-            current_not_null = bool(current_cols[col_name][3])
-            if expected_not_null and not current_not_null:
-                rebuild_needed = True
-                break
-
-    if not rebuild_needed:
-        return "unchanged"
-
-    temp_table = f"_schema_sync_{table_name}_{uuid.uuid4().hex[:8]}"
-    savepoint = f"schema_rebuild_{uuid.uuid4().hex[:8]}"
-    common_cols = [col for col in expected_names if col in current_cols]
-    cursor.execute("PRAGMA legacy_alter_table = ON")
-    cursor.execute(f"SAVEPOINT {savepoint}")
-    try:
-        cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table}")
-        cursor.execute(_build_create_table_sql(table_name, table_spec))
-        if common_cols:
-            cols_sql = ", ".join(common_cols)
-            cursor.execute(f"INSERT INTO {table_name} ({cols_sql}) SELECT {cols_sql} FROM {temp_table}")
-        cursor.execute(f"DROP TABLE {temp_table}")
-        cursor.execute(f"RELEASE SAVEPOINT {savepoint}")
-        return "rebuilt"
-    except Exception:
-        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
-        cursor.execute(f"RELEASE SAVEPOINT {savepoint}")
-        raise
-    finally:
-        cursor.execute("PRAGMA legacy_alter_table = OFF")
+def _normalize_ddl(sql):
+    return re.sub(r"\s+", " ", str(sql or "").strip()).lower()
 
 
-def _normalize_contractor_code(value):
-    return re.sub(r"[^a-z0-9]", "", str(value or "").strip().lower())
+def _assert_schema_contract(cursor):
+    """Fail startup when a baseline table or table-level constraint drifts."""
+    for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
+        row = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        if not row:
+            raise RuntimeError(f"Schema drift: missing table {table_name}.")
+        expected = _normalize_ddl(_build_create_table_sql(table_name, table_spec))
+        actual = _normalize_ddl(row[0])
+        if actual != expected:
+            raise RuntimeError(f"Schema drift: table definition changed for {table_name}.")
 
 
-def _backfill_member_contractor_versions(cursor):
-    cursor.execute("""
-        SELECT id, organization_id, ma_nha_thau, ma_so_thue, phien_ban,
-               COALESCE(NULLIF(ngay_ap_dung, ''), substr(COALESCE(created_at, updated_at, ''), 1, 10)) AS effective_date
-        FROM nha_thau
-    """)
-    candidates_by_code = {}
-    for row in cursor.fetchall():
-        candidate = dict(row)
-        for raw_code in (candidate.get("ma_nha_thau"), candidate.get("ma_so_thue")):
-            code = _normalize_contractor_code(raw_code)
-            if code:
-                candidates_by_code.setdefault((candidate.get("organization_id"), code), {})[candidate["id"]] = candidate
-
-    def choose(organization_id, raw_code, reference_time):
-        code = _normalize_contractor_code(raw_code)
-        candidates = list(candidates_by_code.get((organization_id, code), {}).values())
-        if not candidates:
-            return None
-        reference_date = str(reference_time or "")[:10]
-        older = [item for item in candidates if not reference_date or (item.get("effective_date") or "") <= reference_date]
-        pool = older or candidates
-        if older:
-            return max(pool, key=lambda item: (item.get("effective_date") or "", int(item.get("phien_ban") or 0)))["id"]
-        return min(pool, key=lambda item: (int(item.get("phien_ban") or 0), item.get("effective_date") or ""))["id"]
-
-    specs = [
-        (
-            "thong_tin_mo_thau_lien_danh_thanh_vien",
-            """
-                SELECT member.id, member.organization_id, member.ma_nha_thau, member.ma_so_thue,
-                       COALESCE(pkg.thoi_gian_mo_thau, pkg.thoi_gian_mo_ehsdxtc, bid.created_at, bid.updated_at, '') AS reference_time
-                FROM thong_tin_mo_thau_lien_danh_thanh_vien member
-                JOIN thong_tin_mo_thau bid ON bid.id = member.thong_tin_mo_thau_id
-                JOIN goi_thau pkg ON pkg.id = bid.goi_thau_id
-                WHERE COALESCE(member.thanh_vien_nha_thau_id, '') = ''
-            """,
-        ),
-        (
-            "nha_thau_lien_danh_thanh_vien",
-            """
-                SELECT member.id, member.organization_id, member.ma_nha_thau, member.ma_so_thue,
-                       COALESCE(parent.ngay_ap_dung, parent.created_at, parent.updated_at, '') AS reference_time
-                FROM nha_thau_lien_danh_thanh_vien member
-                JOIN nha_thau parent ON parent.id = member.nha_thau_id
-                WHERE COALESCE(member.thanh_vien_nha_thau_id, '') = ''
-            """,
-        ),
-    ]
-    for table_name, select_sql in specs:
-        cursor.execute(select_sql)
-        for row in cursor.fetchall():
-            item = dict(row)
-            contractor_id = choose(
-                item.get("organization_id"),
-                item.get("ma_nha_thau") or item.get("ma_so_thue"),
-                item.get("reference_time") or "",
-            )
-            if contractor_id:
-                cursor.execute(
-                    f"UPDATE {table_name} SET thanh_vien_nha_thau_id = ? WHERE id = ?",
-                    (contractor_id, item["id"]),
-                )
-
-
-def _backfill_partner_effective_dates(cursor):
-    """Every partner version must have a deterministic effective date."""
-    for table_name in ("chu_dau_tu", "nha_thau"):
-        _assert_safe_table(table_name)
-        cursor.execute(
-            f"""
-            UPDATE {table_name}
-            SET ngay_ap_dung = substr(COALESCE(NULLIF(created_at, ''), NULLIF(updated_at, ''), datetime('now', 'localtime')), 1, 10)
-            WHERE COALESCE(ngay_ap_dung, '') = ''
-            """
-        )
-
-
-def _clear_competitive_quotation_appraisal(cursor):
-    """Remove legacy appraisal data that is not applicable to competitive quotations."""
-    cursor.execute("SELECT id, hinh_thuc_lua_chon, danh_gia_hsdt_metadata FROM goi_thau")
-    for row in cursor.fetchall():
-        item = dict(row)
-        if str(item.get("hinh_thuc_lua_chon") or "").strip().lower() != "chào hàng cạnh tranh":
-            continue
-        raw_metadata = item.get("danh_gia_hsdt_metadata")
-        try:
-            metadata = json.loads(raw_metadata) if raw_metadata else {}
-        except (TypeError, ValueError, json.JSONDecodeError):
-            metadata = {}
-        if isinstance(metadata.get("technical"), dict):
-            metadata["technical"].pop("soBctdKt", None)
-            metadata["technical"].pop("ngayBctdKt", None)
-        if isinstance(metadata.get("result"), dict):
-            metadata["result"].pop("soBctdKetQua", None)
-            metadata["result"].pop("ngayBctdKetQua", None)
-        cursor.execute(
-            """
-            UPDATE goi_thau
-            SET yeu_cau_tham_dinh_hsmt = 'Không',
-                so_bao_cao_tham_dinh_hsmt = '',
-                ngay_bao_cao_tham_dinh_hsmt = '',
-                danh_gia_hsdt_metadata = ?
-            WHERE id = ?
-            """,
-            (json.dumps(metadata, ensure_ascii=False), item["id"]),
-        )
-        cursor.execute(
-            "DELETE FROM goi_thau_chuyen_gia WHERE goi_thau_id = ? AND loai = 'tham_dinh'",
-            (item["id"],),
-        )
-
-
-def _ensure_schema_version_tables(cursor):
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS schema_metadata (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL,
-            updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            from_version INTEGER,
-            to_version INTEGER NOT NULL,
-            action TEXT NOT NULL,
-            details TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-        )
-    """)
-    cursor.execute("PRAGMA user_version")
-    row = cursor.fetchone()
-    return int(row[0] if row else 0)
-
-
-def _record_schema_version(cursor, previous_version: int, schema_actions):
-    schema_actions = [action for action in schema_actions if action[1] != "unchanged"]
-    cursor.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
-    cursor.execute("""
-        INSERT INTO schema_metadata (key, value, updated_at)
-        VALUES ('schema_version', ?, datetime('now', 'localtime'))
-        ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = excluded.updated_at
-    """, (str(DB_SCHEMA_VERSION),))
-
-    if previous_version != DB_SCHEMA_VERSION or schema_actions:
-        details = "; ".join(f"{table}:{action}" for table, action in schema_actions)
-        cursor.execute("""
-            INSERT INTO schema_migrations (from_version, to_version, action, details)
-            VALUES (?, ?, ?, ?)
-        """, (
-            previous_version,
-            DB_SCHEMA_VERSION,
-            "schema_sync",
-            details or "no table shape changes"
-        ))
-        if schema_actions:
-            print("[DB] Schema sync actions: " + details)
-        if previous_version != DB_SCHEMA_VERSION:
-            print(f"[DB] Schema version set from {previous_version} to {DB_SCHEMA_VERSION}")
-
-
-def _ensure_runtime_indexes(cursor):
-    """Create safe indexes that do not change business data or table shape."""
+def _create_baseline_indexes_and_triggers(cursor):
+    """Create indexes, invariant triggers and FTS exactly once in migration 0001."""
     versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
     synced_tables = versioned_tables + ["phan_cong_nhan_su", "trang_thai_ho_so_giay", "thong_tin_mo_thau", "ma_tran_phan_quyen"]
     owner_typed_tables = synced_tables + ["cau_hinh_bien_word"]
@@ -360,6 +134,9 @@ def _ensure_runtime_indexes(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_parent ON goi_thau_lam_ro (organization_id, goi_thau_id, loai, sort_order)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_parent ON nha_thau_lien_danh_thanh_vien (organization_id, nha_thau_id, sort_order)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_parent ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thong_tin_mo_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_vong_danh_gia_package ON vong_danh_gia (organization_id, goi_thau_id, thu_tu)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tieu_chi_danh_gia_round ON tieu_chi_danh_gia (organization_id, vong_danh_gia_id, thu_tu)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ket_qua_danh_gia_opening ON ket_qua_danh_gia_nha_thau (organization_id, thong_tin_mo_thau_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_ke_hoach ON hop_dong (ke_hoach_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_chu_dau_tu ON hop_dong (chu_dau_tu_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau ON hop_dong (nha_thau_id)")
@@ -369,15 +146,20 @@ def _ensure_runtime_indexes(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_cg ON goi_thau_chuyen_gia (organization_id, chuyen_gia_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_goi_thau ON thong_tin_mo_thau (goi_thau_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_nha_thau ON thong_tin_mo_thau (nha_thau_id)")
+    cursor.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_active_business_key
+        ON thong_tin_mo_thau (organization_id, goi_thau_id, nha_thau_id, ma_phan_lo)
+        WHERE archived_at IS NULL"""
+    )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)")
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tai_khoan_token ON tai_khoan (token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tai_khoan_email ON tai_khoan (email) WHERE email != ''")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tai_khoan_ten_dang_nhap ON tai_khoan (ten_dang_nhap)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_dinh_danh_ngoai_user ON dinh_danh_ngoai (user_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_user_active ON password_reset_tokens (user_id, used_at, expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limit_expires ON rate_limit_buckets (expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (organization_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_to_chuc_quan_ly ON to_chuc (quan_ly_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_status_expiry ON organization_subscriptions (status, expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_idempotency_created ON api_idempotency (created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (organization_id, deleted_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (organization_id, delete_version)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_table ON deleted_records (organization_id, table_name)")
@@ -390,8 +172,6 @@ def _ensure_runtime_indexes(cursor):
         CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record
         ON deleted_records (organization_id, table_name, record_id)
     """)
-    cursor.execute("DELETE FROM sync_mutations WHERE created_at < datetime('now', 'localtime', '-7 days')")
-
     _ensure_fts_indexes(cursor)
     _ensure_delta_sync_triggers(cursor, synced_tables)
     _ensure_assignment_tenant_triggers(cursor)
@@ -529,11 +309,11 @@ def _ensure_delta_sync_triggers(cursor, synced_tables):
 
                 UPDATE sync_metadata
                 SET current_version = current_version + 1,
-                    updated_at = datetime('now', 'localtime')
+                    updated_at = datetime('now')
                 WHERE organization_id = NEW.organization_id;
 
                 UPDATE {table}
-                SET updated_at = datetime('now', 'localtime'),
+                SET updated_at = datetime('now'),
                     sync_version = (
                         SELECT current_version
                         FROM sync_metadata
@@ -555,7 +335,7 @@ def _ensure_delta_sync_triggers(cursor, synced_tables):
 
                 UPDATE sync_metadata
                 SET current_version = current_version + 1,
-                    updated_at = datetime('now', 'localtime')
+                    updated_at = datetime('now')
                 WHERE organization_id = OLD.organization_id;
 
                 INSERT INTO deleted_records (table_name, record_id, organization_id, deleted_at, delete_version)
@@ -563,7 +343,7 @@ def _ensure_delta_sync_triggers(cursor, synced_tables):
                     '{table}',
                     OLD.id,
                     OLD.organization_id,
-                    datetime('now', 'localtime'),
+                    datetime('now'),
                     (SELECT current_version FROM sync_metadata WHERE organization_id = OLD.organization_id)
                 )
                 ON CONFLICT(organization_id, table_name, record_id) DO UPDATE SET
@@ -654,19 +434,20 @@ def recalculate_tong_muc_dau_tu(cursor, organization_id=None):
         loai_hinh = row[1]
 
         cursor.execute("""
-            SELECT COALESCE(SUM(gia_goi_thau), 0)
+            SELECT gia_goi_thau
             FROM goi_thau
             WHERE ke_hoach_id = ? AND is_latest = 1 AND archived_at IS NULL
         """, (plan_id,))
-        sum_iv = cursor.fetchone()[0] or 0
+        sum_iv = sum(int(item[0] or 0) for item in cursor.fetchall())
 
         cursor.execute("""
-            SELECT loai, COALESCE(SUM(gia_tri), 0)
+            SELECT loai, gia_tri
             FROM ke_hoach_cong_viec
             WHERE ke_hoach_id = ?
-            GROUP BY loai
         """, (plan_id,))
-        cv_sums = {r[0]: r[1] or 0 for r in cursor.fetchall()}
+        cv_sums = {}
+        for item in cursor.fetchall():
+            cv_sums[item[0]] = cv_sums.get(item[0], 0) + int(item[1] or 0)
         sum_i = cv_sums.get("da_thuc_hien", 0)
         sum_ii = cv_sums.get("khong_ap_dung", 0)
         sum_iii = cv_sums.get("chua_du_dieu_kien", 0)
@@ -685,83 +466,32 @@ def recalculate_tong_muc_dau_tu(cursor, organization_id=None):
 
 
 def khoi_tao_va_di_tru_he_thong():
-    """Create fresh DB and reconcile schema for future table/column changes.
-
-    Existing DBs are aligned to SCHEMA_DINH_NGHIA by rebuilding changed tables
-    and preserving columns that still exist in the new schema.
-    """
+    """Apply immutable, ordered migrations to a clean or already-versioned DB."""
     conn = None
     try:
         conn = database.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("PRAGMA foreign_keys = OFF")
+        cursor.execute("PRAGMA foreign_keys = ON")
         cursor.execute("BEGIN IMMEDIATE")
-        previous_schema_version = _ensure_schema_version_tables(cursor)
-        schema_actions = []
-        for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
-            action = _sync_table_schema(cursor, table_name, table_spec)
-            schema_actions.append((table_name, action))
-        _backfill_partner_effective_dates(cursor)
-        _backfill_member_contractor_versions(cursor)
-        _clear_competitive_quotation_appraisal(cursor)
-
-        cursor.execute("SELECT COUNT(*) FROM goi_dich_vu")
-        if cursor.fetchone()[0] == 0:
-            cursor.executemany(
-                "INSERT INTO goi_dich_vu (id, ten_goi, gia_ca, han_muc_nhan_su, mo_ta) VALUES (?, ?, ?, ?, ?)",
-                [
-                    ('silver', 'Gói Bạc (Silver)', 15000000.0, 5, 'Phù hợp với đơn vị quy mô nhỏ, quản lý tối đa 5 nhân sự.'),
-                    ('gold', 'Gói Vàng (Gold)', 35000000.0, 15, 'Giải pháp tuyệt vời cho phòng thầu chuyên nghiệp, tối đa 15 nhân sự.'),
-                    ('diamond', 'Gói Kim Cương (Diamond)', 75000000.0, 999, 'Đặc quyền quản trị thầu tối cao, không giới hạn số lượng nhân sự.'),
-                ]
-            )
-
-        cursor.execute("SELECT COUNT(*) FROM tai_khoan")
-        if cursor.fetchone()[0] == 0:
-            admin_uuid = generate_record_id("tai_khoan")
-            admin_pass = os.environ.get("ADMIN_PASSWORD", "")
-            if not admin_pass:
-                raise ValueError("ADMIN_PASSWORD environment variable is not configured. Initial admin password must be set in the environment.")
-            admin_name = os.environ.get("ADMIN_NAME", "Administrator")
-            admin_email = os.environ.get("ADMIN_EMAIL", "admin@localhost")
-            org_name = os.environ.get("DEFAULT_ORG_NAME", "HTD")
-            org_id = stable_org_id(org_name)
-
-            cursor.execute(
-                """
-                INSERT INTO tai_khoan (
-                    id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
-                    da_xac_minh, goi_dich_vu_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (admin_uuid, 'admin', hash_password(admin_pass), admin_name, 'super_admin', admin_email, 1, 'diamond')
-            )
-            cursor.execute(
-                "INSERT INTO to_chuc (id, ten_to_chuc, quan_ly_id) VALUES (?, ?, ?)",
-                (org_id, org_name, admin_uuid)
-            )
-            cursor.execute(
-                "INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-                (admin_uuid, org_id, 'owner')
-            )
-            cursor.execute(
-                "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, ?)",
-                (org_id, 1)
-            )
-
-        _ensure_runtime_indexes(cursor)
-        _record_schema_version(cursor, previous_schema_version, schema_actions)
-        ensure_default_word_mappings_for_all_orgs(cursor)
+        version = run_migrations(
+            cursor,
+            MigrationContext(
+                build_create_table_sql=_build_create_table_sql,
+                create_indexes_and_triggers=_create_baseline_indexes_and_triggers,
+                assert_foreign_key_integrity=_assert_foreign_key_integrity,
+            ),
+        )
+        if version != DB_SCHEMA_VERSION:
+            raise RuntimeError(f"Migration runner stopped at unexpected version {version}.")
+        _assert_schema_contract(cursor)
         _assert_foreign_key_integrity(cursor)
 
         conn.commit()
-        cursor.execute("PRAGMA foreign_keys = ON")
-        print("[DB] Database schema initialized and synchronized successfully.")
+        print(f"[DB] Database migrations applied successfully (version {version}).")
     except Exception as e:
         if conn:
             conn.rollback()
-            conn.execute("PRAGMA foreign_keys = ON")
         print("[DB] Database schema initialization/synchronization failed:", e)
         raise
     finally:

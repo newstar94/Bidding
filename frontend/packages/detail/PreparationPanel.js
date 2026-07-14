@@ -1,10 +1,11 @@
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { registerCommandArgs } from "../../shared/commandArgs.js";
 
 export function renderPreparationActionPanel(container, pkg) {
   if (!container) return;
   const isPreparing = pkg?.trangThai === "Chuẩn bị";
   const status = escapeHtml(pkg?.trangThai || "--");
-  const packageId = escapeHtml(pkg?.id || "");
+  const packageArgsKey = registerCommandArgs([String(pkg?.id || "")]);
   const content = isPreparing ? `
     <div class="package-state-icon is-warning">
       <i data-lucide="settings"></i>
@@ -13,7 +14,7 @@ export function renderPreparationActionPanel(container, pkg) {
     <p class="package-state-description">
       Gói thầu này hiện đang trong giai đoạn Chuẩn bị và chưa phát hành hồ sơ mời thầu. Vui lòng phát hành HSMT để bắt đầu quá trình mời thầu và nhận hồ sơ thầu.
     </p>
-    <button class="btn btn-primary workflow-primary-action" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-args='["${packageId}"]'>
+    <button class="btn btn-primary workflow-primary-action" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-arg-key="${packageArgsKey}">
       <i data-lucide="send"></i> Phát hành HSMT &amp; Mời thầu
     </button>
   ` : `

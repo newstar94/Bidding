@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "updatePolicy": "Verify the official source, license, embedded version and SHA-256; run npm run audit:vendor plus regression tests before replacing an asset.",
+  "assets": [
+    {
+      "name": "flatpickr",
+      "version": "4.6.13",
+      "license": "MIT",
+      "source": "https://github.com/flatpickr/flatpickr/releases/tag/v4.6.13",
+      "files": {
+        "flatpickr/flatpickr.min.js": "1eeab1cb779471a0b0aaa93dd91c2eb1aa537d696f01ab05ea9dabc55e8525a1",
+        "flatpickr/flatpickr.min.css": "1b34a42552c96f10e4dfaaa4a367276b03868aacff63c1ac42ffe331352bc754",
+        "flatpickr/l10n/vn.js": "d0dc75263c0fad3aafbbbb86b84d59b19b68c25f7a3d8453c14641178f89a39a"
+      }
+    },
+    {
+      "name": "lucide",
+      "version": "1.21.0",
+      "license": "ISC",
+      "source": "https://www.npmjs.com/package/lucide/v/1.21.0",
+      "files": {
+        "lucide/lucide.min.js": "a112741972e57dffb5d84bf919a9cc1a0060a15d8a4b283b4cf1b7f1b2190c92"
+      }
+    },
+    {
+      "name": "SheetJS Community Edition",
+      "version": "0.18.5",
+      "license": "Apache-2.0",
+      "source": "https://cdn.sheetjs.com/xlsx-0.18.5/package/dist/xlsx.full.min.js",
+      "updateSource": "https://docs.sheetjs.com/docs/getting-started/installation/standalone/",
+      "files": {
+        "xlsx/xlsx.full.min.js": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99"
+      }
+    },
+    {
+      "name": "Plus Jakarta Sans",
+      "version": "vendored-subsets-2026-07-14",
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/main/ofl/plusjakartasans",
+      "files": {
+        "fonts/plus-jakarta-sans-latin.woff2": "153fc85b70298beeb1d61a5f723331649e7f23bb77302a66e61cb3e2fbdb5e79",
+        "fonts/plus-jakarta-sans-vietnamese.woff2": "b275d1258601dda240fc6a1d4a6cad56e691d898f5cdf1b0e4fd6ca0022d8e40",
+        "fonts/OFL.txt": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99"
+      }
+    }
+  ]
+}

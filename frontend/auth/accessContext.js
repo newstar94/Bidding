@@ -7,11 +7,19 @@ export function normalizeOrganizations(payload = {}) {
     return payload.organizations.map((organization) => ({
       id: String(organization?.id || "").trim(),
       name: String(organization?.name || "").trim(),
-      role: String(organization?.role || "viewer").trim().toLowerCase(),
-      status: String(organization?.status || "active").trim().toLowerCase()
+      scope_type: String(organization?.scope_type || "organization").trim().toLowerCase(),
+      role: String(organization?.role || "employee").trim().toLowerCase(),
+      status: String(organization?.status || "active").trim().toLowerCase(),
+      subscription: organization?.subscription && typeof organization.subscription === "object"
+        ? { ...organization.subscription }
+        : null
     })).filter((organization) => organization.id && organization.name);
   }
   return [];
+}
+
+export function organizationDisplayName(payload = {}) {
+  return normalizeOrganizations(payload).map((organization) => organization.name).join(", ");
 }
 
 export function selectActiveOrganization(payload = {}, storage = null) {
@@ -32,19 +40,17 @@ export function applyAccessContext(target, payload = {}, storage = null) {
   const { organizations, selected } = selectActiveOrganization(payload, storage);
   target.platformRole = payload.platform_role || "user";
   target.membershipRole = selected?.role || payload.membership_role || null;
-  target.dbRole = payload.role || (target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "viewer");
+  target.dbRole = payload.role || (target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "employee");
   const membershipHierarchy = {
-    owner: ["owner", "manager", "employee", "viewer"],
-    manager: ["manager", "employee", "viewer"],
-    employee: ["employee"],
-    viewer: ["viewer"]
+    owner: ["owner", "manager", "employee"],
+    manager: ["manager", "employee"],
+    employee: ["employee"]
   };
   target.dbRoles = target.platformRole === "super_admin"
-    ? ["super_admin", "owner", "manager", "employee", "viewer"]
+    ? ["super_admin", "owner", "manager", "employee"]
     : [...membershipHierarchy[target.membershipRole] || []];
-  target.dbRole = target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "viewer";
+  target.dbRole = target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "employee";
   target.organizations = organizations;
   target.activeOrganizationId = selected?.id || null;
-  target.organization_name = organizations.map((organization) => organization.name).join(", ");
   return selected;
 }

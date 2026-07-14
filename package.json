@@ -4,14 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "npm run lint && npm run audit:modules && npm run audit:dead && python -m compileall -q backend scripts && npm run build -- --emptyOutDir false && npm run test:unit && npm run test:api",
+    "check": "npm run lint && npm run audit:modules && npm run audit:dead && npm run audit:vendor && python -m compileall -q backend scripts && npm run build && npm run audit:bundle && npm run test:unit && npm run test:api",
     "audit:modules": "node scripts/audit_module_references.mjs",
     "audit:dead": "node scripts/audit_dead_code.mjs",
+    "audit:bundle": "node scripts/audit_bundle_budget.mjs",
+    "audit:npm": "npm audit --audit-level=high",
+    "audit:python": "python -m pip_audit --no-deps -r requirements/runtime.lock.txt",
+    "audit:vendor": "node scripts/audit_vendor_assets.mjs && retire --path views/vendor",
+    "audit:secrets": "python scripts/audit_secrets.py",
+    "audit:dependencies": "npm run audit:npm && npm run audit:python && npm run audit:vendor && npm run audit:secrets",
+    "sbom": "npm run sbom:npm && npm run sbom:vendor && npm run sbom:python",
+    "sbom:npm": "cyclonedx-npm --package-lock-only --output-reproducible --spec-version 1.6 --output-format JSON --output-file sbom/npm.cdx.json --validate",
+    "sbom:vendor": "node scripts/generate_vendor_sbom.mjs",
+    "sbom:python": "cyclonedx-py requirements requirements/runtime.lock.txt --pyproject pyproject.toml --output-reproducible --spec-version 1.6 --output-format JSON --output-file sbom/python-runtime.cdx.json --validate",
     "lint": "npm run lint:js && npm run lint:py",
     "lint:js": "node scripts/lint_js.mjs",
     "lint:py": "python scripts/lint_python.py",
     "generate:schema": "python scripts/generate_schema_contract.py",
-    "build": "vite build --mode secure",
+    "build": "vite build --mode production",
     "build:secure": "vite build --mode secure",
     "test": "npm run test:api && npm run test:e2e",
     "test:api": "python -m pytest tests/api",
@@ -21,9 +31,11 @@
     "test:install-browsers": "playwright install"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "esbuild": "^0.28.1",
-    "javascript-obfuscator": "^5.4.3",
-    "vite": "^8.1.4"
+    "@cyclonedx/cyclonedx-npm": "6.0.0",
+    "@playwright/test": "1.61.1",
+    "esbuild": "0.28.1",
+    "javascript-obfuscator": "5.4.3",
+    "retire": "5.4.3",
+    "vite": "8.1.4"
   }
 }

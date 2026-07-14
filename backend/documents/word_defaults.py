@@ -117,9 +117,6 @@ WORD_SINGLE_SOURCES = {
         "ten_phan_lo",
         "ma_dinh_danh",
         "gia_du_thau",
-        "dam_bao_du_thau",
-        "hieu_luc_dam_bao",
-        "hieu_luc_hsdxt",
         "ty_le_giam_gia",
         "gia_sau_giam_gia",
         "hieu_luc_hsdt",
@@ -301,9 +298,6 @@ WORD_SINGLE_NAME_OVERRIDES = {
     ("thong_tin_mo_thau", "ten_phan_lo"): "mt_ten_phan_lo",
     ("thong_tin_mo_thau", "ma_dinh_danh"): "mt_ma_dinh_danh",
     ("thong_tin_mo_thau", "gia_du_thau"): "mt_gia_du_thau",
-    ("thong_tin_mo_thau", "dam_bao_du_thau"): "mt_dam_bao_du_thau",
-    ("thong_tin_mo_thau", "hieu_luc_dam_bao"): "mt_hieu_luc_dam_bao",
-    ("thong_tin_mo_thau", "hieu_luc_hsdxt"): "mt_hieu_luc_hsdxt",
     ("thong_tin_mo_thau", "ty_le_giam_gia"): "mt_ty_le_giam_gia",
     ("thong_tin_mo_thau", "gia_sau_giam_gia"): "mt_gia_sau_giam_gia",
     ("thong_tin_mo_thau", "hieu_luc_hsdt"): "mt_hieu_luc_hsdt",
@@ -520,7 +514,7 @@ def ensure_default_word_mappings(cursor, organization_id):
             VALUES (?, ?)
             ON CONFLICT(organization_id) DO UPDATE SET
                 mappings_version = excluded.mappings_version,
-                updated_at = datetime('now', 'localtime')
+                updated_at = datetime('now')
             """,
             (organization_id, WORD_DEFAULT_MAPPINGS_VERSION),
         )

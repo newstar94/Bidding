@@ -5,6 +5,9 @@ without starting the ASGI server or touching the configured application DB.
 """
 
 import os
+from pathlib import Path
+
+from backend.shared.paths import PROJECT_ROOT
 
 
 class StartupValidationError(RuntimeError):
@@ -19,6 +22,59 @@ REQUIRED_APPLICATION_TABLES = frozenset({
     "password_reset_tokens",
     "rate_limit_buckets",
 })
+
+_SYNC_DIRECTORY_MARKERS = ("onedrive", "dropbox", "google drive", "icloud")
+_SEPARATE_RUNTIME_PATHS = (
+    "BIDDING_BACKUP_DIR",
+    "BIDDING_LOG_DIR",
+    "BIDDING_UPLOAD_DIR",
+    "BIDDING_WORD_TEMPLATE_DIR",
+    "DOCUMENT_WORKER_TEMP_DIR",
+)
+
+
+def _is_within(path, parent):
+    try:
+        Path(path).resolve().relative_to(Path(parent).resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _validate_production_sqlite_layout(database, environ):
+    raw_db_path = str(environ.get("BIDDING_DB_PATH", "")).strip()
+    if not raw_db_path or not Path(raw_db_path).is_absolute():
+        raise StartupValidationError(
+            "BIDDING_DB_PATH must be an absolute path on a local persistent volume in production."
+        )
+
+    db_path = Path(database.db_path).resolve()
+    lowered_db_path = str(db_path).casefold()
+    if any(marker in lowered_db_path for marker in _SYNC_DIRECTORY_MARKERS):
+        raise StartupValidationError(
+            "The production SQLite database cannot be stored in a file-sync directory."
+        )
+    if _is_within(db_path, PROJECT_ROOT):
+        raise StartupValidationError(
+            "The production SQLite database must be outside the application source directory."
+        )
+    if str(environ.get("BIDDING_SQLITE_SINGLE_WRITER", "")).strip().lower() != "true":
+        raise StartupValidationError(
+            "BIDDING_SQLITE_SINGLE_WRITER=true is required when production uses SQLite."
+        )
+
+    db_directory = db_path.parent
+    for variable in _SEPARATE_RUNTIME_PATHS:
+        raw_path = str(environ.get(variable, "")).strip()
+        if not raw_path or not Path(raw_path).is_absolute():
+            raise StartupValidationError(
+                f"{variable} must be an explicit absolute path in production."
+            )
+        runtime_path = Path(raw_path).resolve()
+        if _is_within(runtime_path, db_directory):
+            raise StartupValidationError(
+                f"{variable} must be outside the SQLite database directory."
+            )
 
 
 def database_requires_admin_bootstrap(database):
@@ -44,6 +100,9 @@ def database_requires_admin_bootstrap(database):
 def validate_startup_configuration(database, environ=None):
     """Validate configuration that must exist before first-run migration."""
     environ = os.environ if environ is None else environ
+    app_env = str(environ.get("APP_ENV", "development")).strip().lower()
+    if app_env in {"prod", "production"}:
+        _validate_production_sqlite_layout(database, environ)
     admin_password = str(environ.get("ADMIN_PASSWORD", ""))
     if database_requires_admin_bootstrap(database) and not admin_password.strip():
         raise StartupValidationError(

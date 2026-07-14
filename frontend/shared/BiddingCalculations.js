@@ -1,3 +1,14 @@
+import { parseVND } from "./formatters.js";
+
+function moneyBigInt(value) {
+  const parsed = parseVND(value);
+  return BigInt(parsed === null ? 0 : parsed);
+}
+
+function compareMoney(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 export function calculateRankings(gt, bids) {
   const rankings = {};
   const scores = {};
@@ -30,9 +41,7 @@ export function calculateRankings(gt, bids) {
       const val = (b.danhGiaKyThuat || "").trim().replace(/,/g, ".");
       return parseFloat(val) || 0;
     };
-    const getPriceG = (b) => {
-      return parseFloat(b.giaSauGiamGia || b.giaDuThau || 0);
-    };
+    const getPriceG = (b) => moneyBigInt(b.giaSauGiamGia || b.giaDuThau);
     let eligibleBids = [];
     if (isTuVan) {
       if (method === "Giá thấp nhất") {
@@ -40,18 +49,18 @@ export function calculateRankings(gt, bids) {
           const kt = (b.danhGiaKyThuat || "").trim().toLowerCase();
           return kt !== "không đạt" && kt !== "";
         });
-        eligibleBids.sort((x, y) => getPriceG(x) - getPriceG(y));
+        eligibleBids.sort((x, y) => compareMoney(getPriceG(x), getPriceG(y)));
       } else if (method === "Giá cố định") {
-        const packagePrice = parseFloat(gt.giaGoiThau || 0);
+        const packagePrice = moneyBigInt(gt.giaGoiThau);
         eligibleBids = lotBids.filter((b) => {
           const price = getPriceG(b);
-          return price > 0 && price <= packagePrice;
+          return price > 0n && price <= packagePrice;
         });
         eligibleBids.sort((x, y) => getTechScore(y) - getTechScore(x));
       } else if (method === "Kết hợp giữa kỹ thuật và giá") {
         eligibleBids = lotBids.filter(isQualified);
-        const prices = eligibleBids.map(getPriceG).filter((p) => p > 0);
-        const gMin = prices.length > 0 ? Math.min(...prices) : 0;
+        const prices = eligibleBids.map(getPriceG).filter((p) => p > 0n);
+        const gMin = prices.reduce((minimum, price) => price < minimum ? price : minimum, prices[0] || 0n);
         const techScores = eligibleBids.map(getTechScore);
         const maxTech = techScores.length > 0 ? Math.max(...techScores) : 0;
         const K = parseFloat(gt.trongSoKyThuat !== void 0 && gt.trongSoKyThuat !== null ? gt.trongSoKyThuat : 80);
@@ -60,8 +69,8 @@ export function calculateRankings(gt, bids) {
           const gCurrent = getPriceG(b);
           const techCurrent = getTechScore(b);
           let score = 0;
-          if (gCurrent > 0 && maxTech > 0) {
-            score = gMin / gCurrent * T + techCurrent / maxTech * K;
+          if (gCurrent > 0n && maxTech > 0) {
+            score = Number(gMin) / Number(gCurrent) * T + techCurrent / maxTech * K;
           }
           scores[b.id] = score;
         });
@@ -73,19 +82,21 @@ export function calculateRankings(gt, bids) {
     } else {
       if (method === "Giá thấp nhất") {
         eligibleBids = lotBids.filter(isQualified);
-        eligibleBids.sort((x, y) => getPriceG(x) - getPriceG(y));
+        eligibleBids.sort((x, y) => compareMoney(getPriceG(x), getPriceG(y)));
       } else if (method === "Giá đánh giá") {
         eligibleBids = lotBids.filter(isQualified);
         eligibleBids.forEach((b) => {
           const basePrice = getPriceG(b);
-          const convertedCost = parseFloat(b.chiPhiQuyDoi || 0);
-          scores[b.id] = basePrice + convertedCost;
+          const evaluationPrice = basePrice + moneyBigInt(b.chiPhiQuyDoi);
+          scores[b.id] = Number(evaluationPrice);
+          b.__evaluationPrice = evaluationPrice;
         });
-        eligibleBids.sort((x, y) => (scores[x.id] || 0) - (scores[y.id] || 0));
+        eligibleBids.sort((x, y) => compareMoney(x.__evaluationPrice, y.__evaluationPrice));
+        eligibleBids.forEach((bid) => delete bid.__evaluationPrice);
       } else if (method === "Kết hợp giữa kỹ thuật và giá") {
         eligibleBids = lotBids.filter(isQualified);
-        const prices = eligibleBids.map(getPriceG).filter((p) => p > 0);
-        const gMin = prices.length > 0 ? Math.min(...prices) : 0;
+        const prices = eligibleBids.map(getPriceG).filter((p) => p > 0n);
+        const gMin = prices.reduce((minimum, price) => price < minimum ? price : minimum, prices[0] || 0n);
         const techScores = eligibleBids.map(getTechScore);
         const maxTech = techScores.length > 0 ? Math.max(...techScores) : 0;
         const K = parseFloat(gt.trongSoKyThuat !== void 0 && gt.trongSoKyThuat !== null ? gt.trongSoKyThuat : 30);
@@ -94,8 +105,8 @@ export function calculateRankings(gt, bids) {
           const gCurrent = getPriceG(b);
           const techCurrent = getTechScore(b);
           let score = 0;
-          if (gCurrent > 0 && maxTech > 0) {
-            score = gMin / gCurrent * T + techCurrent / maxTech * K;
+          if (gCurrent > 0n && maxTech > 0) {
+            score = Number(gMin) / Number(gCurrent) * T + techCurrent / maxTech * K;
           }
           scores[b.id] = score;
         });

@@ -1,0 +1,40 @@
+name: Quality and supply chain
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-install-audit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements/dev.lock.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked Python dependencies
+        run: python -m pip install --require-hashes -r requirements/dev.lock.txt
+      - name: Install locked npm dependencies
+        run: npm ci
+      - name: Install isolated E2E browser
+        run: npx playwright install --with-deps chromium
+      - name: Audit dependencies and secrets
+        run: npm run audit:dependencies
+      - name: Generate reproducible SBOMs
+        run: npm run sbom
+      - name: Verify generated SBOMs are current
+        run: git diff --exit-code -- sbom
+      - name: Run full checks
+        run: npm check
+      - name: Run isolated E2E twice-worker suite
+        run: npm run test:e2e

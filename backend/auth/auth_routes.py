@@ -4,8 +4,9 @@ import json
 import uuid
 import time
 import hashlib
+import sqlite3
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 
 from starlette.responses import JSONResponse
@@ -27,8 +28,18 @@ from backend.shared.helpers import (
 )
 from backend.auth.auth_helper import _session_cache_get, _session_cache_set
 from backend.auth.auth_helper import PRIVILEGED_REAUTH_TTL_SECONDS, verify_super_admin_controls
+from backend.auth.profile_validation import ProfileValidationError, validate_profile_email, validate_profile_fields
+from backend.auth.identity import (
+    conflict_payload,
+    identity_conflict_code,
+    normalize_username,
+)
+from backend.auth.password_policy import validate_new_password, validate_password_input
+from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.sync.api import disconnect_user_websockets
 from backend.shared.logging_utils import error_response
+from backend.shared.request_validation import validate_or_response
+from backend.shared.access_policy import is_business_organization
 
 
 from backend.auth.auth_service import (
@@ -37,7 +48,6 @@ from backend.auth.auth_service import (
     rate_limit_response,
     record_rate_limit_failure,
     build_user_access_payload,
-    update_user_organizations,
     _SECURE_COOKIES,
     SESSION_EXPIRY_HOURS,
     SESSION_REMEMBER_EXPIRY_HOURS,
@@ -59,8 +69,15 @@ async def login_api(request):
             return rate_limit_response("Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau.", ip_limit)
 
         data = await request.json()
-        username = data.get('username', '').strip()
-        password = data.get('password', '').strip()
+        invalid = validate_or_response(request, data, {
+            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 320},
+            "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
+            "remember": {"type": "boolean"},
+        })
+        if invalid:
+            return invalid
+        username = normalize_username(data.get('username'))
+        password = data.get('password')
         remember = data.get('remember', False)
 
         username_rate_key = hashlib.sha256(username.lower().encode('utf-8')).hexdigest()
@@ -79,14 +96,14 @@ async def login_api(request):
                 metadata={"username": username}
             )
 
-        if not username or not password:
+        if not username or not validate_password_input(password):
             record_failed_login()
             return JSONResponse({"error": "Vui lòng nhập tài khoản và mật khẩu!"}, status_code=400)
 
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM tai_khoan WHERE ten_dang_nhap = ? OR (email != '' AND email = ?)",
+            "SELECT * FROM tai_khoan WHERE username_norm = ? OR email_norm = ?",
             (username, username)
         )
         row = cursor.fetchone()
@@ -116,7 +133,7 @@ async def login_api(request):
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
             "ip": ip,
-            "login_time": datetime.utcnow().isoformat()
+            "login_time": datetime.now(timezone.utc).isoformat()
         })
         cursor.execute(
             "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ?, privileged_reauth_at = NULL WHERE id = ?",
@@ -148,7 +165,6 @@ async def login_api(request):
             **access_payload,
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
-            "package_id": user.get('goi_dich_vu_id'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
         })
 
@@ -176,8 +192,12 @@ def _load_user_by_session_token(session_token):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien,
-                   goi_dich_vu_id, token_phien, han_su_dung_token,
-                   thong_tin_thiet_bi_cuoi, google_id, mat_khau,
+                   token_phien, han_su_dung_token,
+                   thong_tin_thiet_bi_cuoi, mat_khau,
+                   EXISTS(
+                       SELECT 1 FROM dinh_danh_ngoai dd
+                       WHERE dd.user_id = tai_khoan.id
+                   ) AS has_external_identity,
                    privileged_reauth_at
             FROM tai_khoan
             WHERE token_phien = ?
@@ -255,7 +275,7 @@ def _get_username_setup_state(user):
         )
     finally:
         conn_suggest.close()
-    account_linked = bool(user.get('google_id') and user.get('mat_khau'))
+    account_linked = bool(user.get('has_external_identity') and user.get('mat_khau'))
     return needs_username, suggested_username, account_linked
 
 
@@ -283,7 +303,6 @@ def build_session_bootstrap(request):
             **access_payload,
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
-            "package_id": user.get('goi_dich_vu_id'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
             "needs_username": needs_username,
             "suggested_username": suggested_username,
@@ -305,7 +324,6 @@ def _session_response(user, remember, session_was_extended, request):
             **access_payload,
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
-            "package_id": user.get('goi_dich_vu_id'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
             "needs_username": needs_username,
             "suggested_username": suggested_username,
@@ -327,6 +345,11 @@ async def check_session_api(request):
             data = await request.json()
         except Exception:
             data = {}
+        invalid = validate_or_response(request, data, {
+            "remember": {"type": "boolean"},
+        })
+        if invalid:
+            return invalid
         session_token = (request.cookies.get('session_token') or '').strip()
         remember = data.get('remember', False)
 
@@ -361,24 +384,35 @@ async def update_profile_api(request):
                 "error": "Tên tổ chức là trường chỉ đọc trong hồ sơ cá nhân.",
                 "code": "ORGANIZATION_NAME_READ_ONLY",
             }, status_code=400)
-        name = data.get('name', '').strip()
-        email = data.get('email', '').strip()
-        avatar = data.get('avatar', '')
-
-        if not name or not email:
-            return JSONResponse({"error": "Vui lòng điền đầy đủ Họ tên và Email!"}, status_code=400)
+        invalid = validate_or_response(request, data, {
+            "name": {"type": "string", "required": True, "max_length": 200},
+            "email": {"type": "string", "required": True, "max_length": 320},
+            "avatar": {"type": "string", "max_length": 8_000_000},
+        })
+        if invalid:
+            return invalid
+        try:
+            name, email, avatar = validate_profile_fields(
+                data.get('name', ''),
+                data.get('email', ''),
+                data.get('avatar', ''),
+            )
+        except ProfileValidationError as exc:
+            return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
 
         conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
 
-        cursor.execute("SELECT ten_dang_nhap FROM tai_khoan WHERE email = ? AND id != ?", (email, role_or_err.user_id))
+        cursor.execute("SELECT ten_dang_nhap FROM tai_khoan WHERE email_norm = ? AND id != ?", (email, role_or_err.user_id))
         if cursor.fetchone():
-            return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
+            conn.rollback()
+            return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
 
         if avatar:
-            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ?, anh_dai_dien = ? WHERE id = ?", (name, email, avatar, role_or_err.user_id))
+            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ?, email_norm = ?, anh_dai_dien = ? WHERE id = ?", (name, email, email, avatar, role_or_err.user_id))
         else:
-            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ? WHERE id = ?", (name, email, role_or_err.user_id))
+            cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ?, email_norm = ? WHERE id = ?", (name, email, email, role_or_err.user_id))
 
         cursor.execute(
             """
@@ -402,7 +436,17 @@ async def update_profile_api(request):
             "message": "Cập nhật thông tin tài khoản thành công!",
             "profile": dict(updated_profile),
         })
+    except sqlite3.IntegrityError as e:
+        if conn:
+            conn.rollback()
+        conflict_code = identity_conflict_code(e)
+        if conflict_code:
+            return JSONResponse(conflict_payload(conflict_code), status_code=409)
+        log_error(e, "update_profile_api_integrity")
+        return JSONResponse({"error": "Không thể cập nhật do xung đột dữ liệu."}, status_code=409)
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "update_profile_api")
         return JSONResponse({"error": "Đã xảy ra lỗi cập nhật hồ sơ."}, status_code=500)
     finally:
@@ -418,11 +462,21 @@ async def change_password_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
-        old_password = data.get('old_password', '').strip()
-        new_password = data.get('new_password', '').strip()
+        invalid = validate_or_response(request, data, {
+            "old_password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
+            "new_password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
+        })
+        if invalid:
+            return invalid
+        old_password = data.get('old_password')
+        new_password = data.get('new_password')
 
-        if not old_password or not new_password:
+        if not validate_password_input(old_password) or not isinstance(new_password, str):
             return JSONResponse({"error": "Vui lòng nhập đầy đủ mật khẩu cũ và mới!"}, status_code=400)
+
+        valid_password, password_error = validate_new_password(new_password)
+        if not valid_password:
+            return JSONResponse({"error": password_error, "code": "PASSWORD_POLICY_FAILED"}, status_code=400)
 
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -446,6 +500,7 @@ async def change_password_api(request):
         conn.commit()
         if old_token:
             _session_cache_invalidate(old_token)
+        disconnect_user_websockets(user['id'])
         log_audit(
             "auth.password_changed",
             actor_user_id=role_or_err.user_id,
@@ -470,6 +525,7 @@ async def change_password_api(request):
 
 async def logout_api(request):
     conn = None
+    user_id = None
     try:
         token = request.cookies.get('session_token')
         if token:
@@ -477,11 +533,16 @@ async def logout_api(request):
         if token:
             conn = database.get_connection()
             cursor = conn.cursor()
+            cursor.execute("SELECT id FROM tai_khoan WHERE token_phien = ?", (token,))
+            user_row = cursor.fetchone()
+            user_id = user_row['id'] if user_row else None
             cursor.execute(
                 "UPDATE tai_khoan SET token_phien = NULL, han_su_dung_token = NULL, privileged_reauth_at = NULL WHERE token_phien = ?",
                 (token,)
             )
             conn.commit()
+            if user_id:
+                disconnect_user_websockets(user_id)
         log_audit(
             "auth.logout",
             actor_user_id=None,
@@ -521,7 +582,12 @@ async def privileged_reauth_api(request):
                 reauth_ip_limit if not reauth_ip_limit.allowed else reauth_user_limit,
             )
         data = await request.json()
-        password = str(data.get("password") or "")
+        invalid = validate_or_response(request, data, {
+            "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
+        })
+        if invalid:
+            return invalid
+        password = data.get("password")
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -591,15 +657,15 @@ async def list_users_api(request):
         req_role = requester['vai_tro']
         effective_roles = get_effective_roles(req_role)
 
-        sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar, goi_dich_vu_id AS package_id, ngay_bat_dau_goi AS package_start_date, ngay_het_han_goi AS package_end_date FROM tai_khoan"
+        sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar FROM tai_khoan"
 
         email_query = (request.query_params.get('email') or '').strip().lower()
-        email_filter_sql = " AND lower(email) = ?" if email_query else ""
-        email_filter_tk_sql = " AND lower(tk.email) = ?" if email_query else ""
+        email_filter_sql = " AND email_norm = ?" if email_query else ""
+        email_filter_tk_sql = " AND tk.email_norm = ?" if email_query else ""
 
         if 'super_admin' in effective_roles:
             if email_query:
-                cursor.execute(sql_base + " WHERE lower(email) = ?", (email_query,))
+                cursor.execute(sql_base + " WHERE email_norm = ?", (email_query,))
             else:
                 cursor.execute(sql_base)
             users_raw = cursor.fetchall()
@@ -620,10 +686,7 @@ async def list_users_api(request):
                     SELECT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
                            tvtc.vai_tro_trong_to_chuc AS role,
                            tk.vai_tro AS platform_role,
-                           tk.email, tk.anh_dai_dien AS avatar,
-                           tk.goi_dich_vu_id AS package_id,
-                           tk.ngay_bat_dau_goi AS package_start_date,
-                           tk.ngay_het_han_goi AS package_end_date
+                           tk.email, tk.anh_dai_dien AS avatar
                     FROM tai_khoan AS tk
                     JOIN thanh_vien_to_chuc AS tvtc ON tvtc.user_id = tk.id
                     WHERE tk.id = ? AND tvtc.organization_id = ?{email_filter_tk_sql}
@@ -634,8 +697,7 @@ async def list_users_api(request):
                     SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
                                     tvtc.vai_tro_trong_to_chuc AS role,
                                     tk.vai_tro AS platform_role,
-                                    tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id,
-                                    tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date
+                                    tk.email, tk.anh_dai_dien AS avatar
                     FROM tai_khoan tk
                     JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
                     WHERE tvtc.organization_id = ?{email_filter_tk_sql}
@@ -647,25 +709,67 @@ async def list_users_api(request):
         if user_ids:
             placeholders = ",".join("?" for _ in user_ids)
             cursor.execute(f"""
-                SELECT tvtc.user_id, tc.id, tc.ten_to_chuc, tc.trang_thai,
-                       tvtc.vai_tro_trong_to_chuc
+                SELECT tvtc.user_id, tc.id, tc.ten_to_chuc, tc.scope_type,
+                       tc.trang_thai AS organization_status,
+                       tvtc.vai_tro_trong_to_chuc,
+                       sub.package_id, sub.status AS subscription_status,
+                       sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
+                       pkg.trang_thai AS package_status,
+                       (SELECT count(*) FROM thanh_vien_to_chuc members
+                        WHERE members.organization_id = tc.id) AS member_count
                 FROM thanh_vien_to_chuc tvtc
                 JOIN to_chuc tc ON tvtc.organization_id = tc.id
+                LEFT JOIN organization_subscriptions sub ON sub.organization_id = tc.id
+                LEFT JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
                 WHERE tvtc.user_id IN ({placeholders})
+                  AND (
+                      tc.scope_type = 'organization'
+                      OR NOT EXISTS (
+                          SELECT 1
+                          FROM thanh_vien_to_chuc business_membership
+                          JOIN to_chuc business_org
+                            ON business_org.id = business_membership.organization_id
+                          WHERE business_membership.user_id = tvtc.user_id
+                            AND business_org.scope_type = 'organization'
+                      )
+                  )
             """, user_ids)
             for row in cursor.fetchall():
+                expires_at = int(row['expires_at']) if row['expires_at'] is not None else None
+                subscription_status = str(row['subscription_status'] or 'missing').strip().lower()
+                if expires_at is not None and expires_at <= int(time.time()):
+                    subscription_status = 'expired'
+                effective_status = 'active'
+                if row['organization_status'] != 'active' or subscription_status == 'suspended':
+                    effective_status = 'suspended'
+                elif subscription_status != 'active':
+                    effective_status = subscription_status
+                elif row['package_status'] != 'active':
+                    effective_status = 'package_inactive'
+                starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
                 orgs_by_user[row['user_id']].append({
                     "id": row['id'],
                     "name": row['ten_to_chuc'],
-                    "status": row['trang_thai'],
+                    "scope_type": row['scope_type'],
+                    "status": effective_status,
                     "role": row['vai_tro_trong_to_chuc'],
+                    "subscription": {
+                        "package_id": row['package_id'],
+                        "status": subscription_status,
+                        "starts_at": starts_at,
+                        "expires_at": expires_at,
+                        "start_date": time.strftime('%Y-%m-%d', time.gmtime(starts_at)) if starts_at else None,
+                        "end_date": time.strftime('%Y-%m-%d', time.gmtime(expires_at)) if expires_at else None,
+                        "member_quota": int(row['member_quota'] or 0),
+                        "member_count": int(row['member_count'] or 0),
+                        "revision": int(row['revision'] or 0),
+                    },
                 })
 
         users = []
         for row in users_raw:
             u = dict(row)
             u['organizations'] = orgs_by_user[u['id']]
-            u['organization_name'] = ", ".join(org['name'] for org in u['organizations'])
             users.append(u)
         conn.close()
         return JSONResponse(users)
@@ -787,6 +891,13 @@ async def update_user_role_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "role": {"type": "string", "required": True, "min_length": 1, "max_length": 32},
+            "scope": {"type": "string", "max_length": 32},
+        })
+        if invalid:
+            return invalid
         user_id = str(data.get("user_id") or "").strip()
         new_role = str(data.get("role") or "").strip().lower()
         scope = str(data.get("scope") or "organization").strip().lower()
@@ -833,6 +944,12 @@ async def update_user_role_api(request):
             audit_event = "admin.platform_role_updated"
         elif scope == "organization":
             org_id = get_active_org(request, role_or_err.user_id)
+            if not is_business_organization(cursor, org_id):
+                conn.rollback()
+                return JSONResponse({
+                    "error": "Không thể thay đổi membership của không gian cá nhân.",
+                    "code": "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN",
+                }, status_code=409)
             cursor.execute(
                 "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
                 (role_or_err.user_id, org_id),
@@ -842,7 +959,7 @@ async def update_user_role_api(request):
             if not actor_platform_admin and actor_role not in {"owner", "manager"}:
                 conn.rollback()
                 return JSONResponse({"error": "Không có quyền quản lý thành viên tổ chức."}, status_code=403)
-            if new_role not in {"owner", "manager", "employee", "viewer"}:
+            if new_role not in {"owner", "manager", "employee"}:
                 conn.rollback()
                 return JSONResponse({"error": "Vai trò thành viên không hợp lệ."}, status_code=400)
 
@@ -859,7 +976,7 @@ async def update_user_role_api(request):
                 conn.rollback()
                 return JSONResponse({"error": "Không thể tự thay đổi vai trò tổ chức."}, status_code=409)
 
-            hierarchy = {"viewer": 0, "employee": 1, "manager": 2, "owner": 3}
+            hierarchy = {"employee": 0, "manager": 1, "owner": 2}
             if not actor_platform_admin:
                 actor_rank = hierarchy[actor_role]
                 if hierarchy[target_role] >= actor_rank or hierarchy[new_role] >= actor_rank:
@@ -876,7 +993,7 @@ async def update_user_role_api(request):
                     return JSONResponse({"error": "Không thể hạ quyền chủ sở hữu cuối cùng."}, status_code=409)
 
             cursor.execute(
-                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now', 'localtime') WHERE user_id = ? AND organization_id = ?",
+                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now') WHERE user_id = ? AND organization_id = ?",
                 (new_role, user_id, org_id),
             )
             audit_metadata = {"scope": "organization", "organization_id": org_id, "role": new_role}
@@ -917,46 +1034,6 @@ async def update_user_role_api(request):
             conn.close()
 
 
-async def update_user_package_api(request):
-    try:
-        is_valid, role_or_err = verify_session(request, required_role='super_admin')
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-
-        data = await request.json()
-        user_id = data.get('user_id')
-        new_package = data.get('package_id')
-
-        if not user_id or new_package is None:
-            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-
-        pkgs = [p.strip() for p in new_package.split(',')]
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM goi_dich_vu")
-        valid_pkg_ids = {row['id'] for row in cursor.fetchall()} | {'none', ''}
-        for p in pkgs:
-            if p and p not in valid_pkg_ids:
-                conn.close()
-                return JSONResponse({"error": "Gói đăng ký không hợp lệ!"}, status_code=400)
-        db_package = None if new_package in ('none', '', None) else new_package
-        cursor.execute("UPDATE tai_khoan SET goi_dich_vu_id = ? WHERE id = ?", (db_package, user_id))
-        conn.commit()
-        conn.close()
-        _session_cache_invalidate_by_user_id(user_id)
-        log_audit(
-            "admin.user_package_updated",
-            actor_user_id=role_or_err.user_id,
-            target_type="tai_khoan",
-            target_id=user_id,
-            request=request,
-            metadata={"package_id": db_package}
-        )
-        return JSONResponse({"success": True, "message": "Cập nhật gói đăng ký thành công!"})
-    except Exception as e:
-        log_error(e, "update_user_package_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật gói dịch vụ."}, status_code=500)
-
 async def update_user_metadata_api(request):
     try:
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
@@ -964,6 +1041,13 @@ async def update_user_metadata_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "field": {"type": "string", "required": True, "enum": {"name", "email"}},
+            "value": {"required": True},
+        })
+        if invalid:
+            return invalid
         user_id = data.get('user_id')
         field = data.get('field')
         value = data.get('value')
@@ -972,17 +1056,22 @@ async def update_user_metadata_api(request):
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
 
         field_map = {
-            'package_start_date': 'ngay_bat_dau_goi',
-            'package_end_date': 'ngay_het_han_goi',
             'name': 'ho_ten',
-            'email': 'email'
         }
 
         conn = database.get_connection()
         cursor = conn.cursor()
 
-        if field == 'organization_name':
-            update_user_organizations(cursor, user_id, value)
+        if field == 'email':
+            try:
+                email = validate_profile_email(value)
+            except ProfileValidationError as exc:
+                conn.close()
+                return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
+            cursor.execute(
+                "UPDATE tai_khoan SET email = ?, email_norm = ? WHERE id = ?",
+                (email, email, user_id),
+            )
         else:
             if field not in field_map:
                 conn.close()
@@ -1003,6 +1092,12 @@ async def update_user_metadata_api(request):
             metadata={"field": field}
         )
         return JSONResponse({"success": True, "message": "Cập nhật thông tin thành công!"})
+    except sqlite3.IntegrityError as e:
+        conflict_code = identity_conflict_code(e)
+        if conflict_code:
+            return JSONResponse(conflict_payload(conflict_code), status_code=409)
+        log_error(e, "update_user_metadata_api_integrity")
+        return JSONResponse({"error": "Không thể cập nhật do xung đột dữ liệu."}, status_code=409)
     except Exception as e:
         log_error(e, "update_user_metadata_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật thông tin."}, status_code=500)
@@ -1015,8 +1110,13 @@ async def list_system_packages_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, ten_goi AS name, gia_ca AS price, han_muc_nhan_su AS quota, mo_ta AS description FROM goi_dich_vu")
-        packages = [dict(row) for row in cursor.fetchall()]
+        cursor.execute("SELECT id, ten_goi AS name, gia_ca AS price, han_muc_nhan_su AS quota, mo_ta AS description, trang_thai AS status FROM goi_dich_vu")
+        packages = []
+        for row in cursor.fetchall():
+            package = dict(row)
+            package['price'] = money_json_value(package['price'])
+            package['isLocked'] = package['status'] != 'active'
+            packages.append(package)
         conn.close()
         return JSONResponse(packages)
     except Exception as e:
@@ -1030,22 +1130,33 @@ async def update_system_package_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
+            "price": {"type": "money", "required": True},
+            "quota": {"type": "integer", "required": True, "min": 1, "max": 1_000_000},
+            "description": {"type": "string", "max_length": 5_000},
+            "status": {"type": "string", "enum": {"active", "inactive"}},
+        })
+        if invalid:
+            return invalid
         pkg_id = data.get('id')
         name = data.get('name')
-        price = float(data.get('price', 0))
+        price = parse_vnd_amount(data.get('price'))
         quota = int(data.get('quota', 0))
         description = data.get('description', '')
+        status = str(data.get('status') or 'active').strip().lower()
 
-        if not pkg_id or not name:
+        if not pkg_id or not name or price is None or status not in {'active', 'inactive'}:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
 
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE goi_dich_vu
-            SET ten_goi = ?, gia_ca = ?, han_muc_nhan_su = ?, mo_ta = ?
+            SET ten_goi = ?, gia_ca = ?, han_muc_nhan_su = ?, mo_ta = ?, trang_thai = ?
             WHERE id = ?
-        """, (name, price, quota, description, pkg_id))
+        """, (name, price, quota, description, status, pkg_id))
         conn.commit()
         conn.close()
         log_audit(
@@ -1054,7 +1165,7 @@ async def update_system_package_api(request):
             target_type="goi_dich_vu",
             target_id=pkg_id,
             request=request,
-            metadata={"name": name, "price": price, "quota": quota}
+            metadata={"name": name, "price": price, "quota": quota, "status": status}
         )
         return JSONResponse({"success": True, "message": "Cập nhật gói dịch vụ thành công!"})
     except Exception as e:
@@ -1074,7 +1185,12 @@ async def set_username_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
-        new_username = (data.get("username") or "").strip().lower()
+        invalid = validate_or_response(request, data, {
+            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+        })
+        if invalid:
+            return invalid
+        new_username = normalize_username(data.get("username"))
 
 
         valid, reason = validate_username(new_username)
@@ -1082,6 +1198,7 @@ async def set_username_api(request):
             return JSONResponse({"error": reason}, status_code=400)
 
         conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
 
 
@@ -1100,7 +1217,7 @@ async def set_username_api(request):
             )
 
 
-        cursor.execute("SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ? AND id != ?", (new_username, role_or_err.user_id))
+        cursor.execute("SELECT 1 FROM tai_khoan WHERE username_norm = ? AND id != ?", (new_username, role_or_err.user_id))
         if cursor.fetchone():
             return JSONResponse(
                 {"error": "Tên đăng nhập này đã được sử dụng. Vui lòng chọn tên khác."},
@@ -1109,8 +1226,8 @@ async def set_username_api(request):
 
 
         cursor.execute(
-            "UPDATE tai_khoan SET ten_dang_nhap = ?, username_da_dat = 1, updated_at = datetime('now', 'localtime') WHERE id = ?",
-            (new_username, role_or_err.user_id)
+            "UPDATE tai_khoan SET ten_dang_nhap = ?, username_norm = ?, username_da_dat = 1, updated_at = datetime('now') WHERE id = ?",
+            (new_username, new_username, role_or_err.user_id)
         )
         _session_cache_invalidate_by_user_id(role_or_err.user_id)
         conn.commit()
@@ -1126,7 +1243,17 @@ async def set_username_api(request):
 
         return JSONResponse({"success": True, "username": new_username})
 
+    except sqlite3.IntegrityError as e:
+        if conn:
+            conn.rollback()
+        conflict_code = identity_conflict_code(e)
+        if conflict_code:
+            return JSONResponse(conflict_payload(conflict_code), status_code=409)
+        log_error(e, "set_username_api_integrity")
+        return JSONResponse({"error": "Không thể đặt tên đăng nhập do xung đột dữ liệu."}, status_code=409)
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "set_username_api")
         return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại."}, status_code=500)
     finally:

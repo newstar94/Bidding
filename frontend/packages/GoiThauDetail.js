@@ -6,6 +6,7 @@ import { isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import { buildPackageTabs, checkBidQualified } from "./detail/PackageTabs.js";
 import { renderCancellationPanel } from "./detail/CancellationPanel.js";
 import { renderPreparationActionPanel } from "./detail/PreparationPanel.js";
+import { apiFetch } from "../shared/apiClient.js";
 import { renderPreparationDetailsPanel } from "./detail/PreparationDetailsPanel.js";
 import { renderAwardResultDetailsPanel } from "./detail/AwardResultDetailsPanel.js";
 import { executeAppCommand } from "../app/commandBus.js";
@@ -24,11 +25,12 @@ import { renderPackageTabHeaders } from "./detail/PackageDetailCoordinator.js";
 import { renderPackageSummary } from "./detail/PackageSummary.js";
 import { renderBidContractorLink } from "./detail/BidderTable.js";
 import { renderWorkflowActions } from "./detail/WorkflowActions.js";
+import { registerCommandArgs } from "../shared/commandArgs.js";
 export { checkBidQualified };
 export function showPackageDetails(id, isSwitchingVersion = false) {
   const appController = getAppController();
   if (!hasHolidays()) {
-    fetch("/api/holidays").then((r) => r.json()).then((data) => {
+    apiFetch("/api/holidays").then((r) => r.json()).then((data) => {
       setHolidays(data);
       this.showPackageDetails(id, isSwitchingVersion);
     }).catch((e) => {
@@ -178,6 +180,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
       {
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
         if (gt.trangThai === "Chuẩn bị" && !isDirectOrSpecial) {
+          const releaseArgsKey = registerCommandArgs([String(gt.id || "")]);
           const khObj = this.model.getLatestPlan(gt.keHoachId);
           const cdtObj = khObj ? this.model.state.chudautu.find((c) => c.id === khObj.chuDauTuId) : null;
           const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : "Không rõ";
@@ -198,7 +201,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <p style="font-size: 0.85rem; margin-bottom: 24px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.5; color: var(--text-muted);">
                             Gói thầu này hiện đang trong giai đoạn Chuẩn bị và chưa phát hành hồ sơ mời thầu. Vui lòng phát hành HSMT để bắt đầu quá trình mời thầu và nhận hồ sơ thầu.
                         </p>
-                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-args='["${gt.id}"]' style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
+                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-arg-key="${releaseArgsKey}" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
                             <i data-lucide="send"></i> Phát hành HSMT & Mời thầu
                         </button>
                     </div>
@@ -357,17 +360,17 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
-                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
-                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
-                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || "Hàng hóa"}</div>
-                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ"}</div>
+                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml(tenKhStr)}</span></div>
+                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
+                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
                             <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || "--"}</div>
-                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ""}</div>` : ""}
-                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || "--"}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || "--"}</div>
-                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || "--"}</div>
+                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
+                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
+                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
                             ${!isDirectOrSpecial ? `
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
                             <div>• <strong style="color: var(--primary);">${is1G2T3 ? "Thời gian mở E-HSĐXKT" : "Thời gian mở thầu"}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</div>
@@ -592,30 +595,30 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                     <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
-                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${(() => {
+                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml((() => {
           const khO = this.model.getLatestPlan(gt.keHoachId);
           const cdO = khO ? this.model.state.chudautu.find((c) => c.id === khO.chuDauTuId) : null;
           return cdO ? cdO.tenChuDauTu : "Không rõ";
-        })()}</span></div>
-                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${(() => {
+        })())}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml((() => {
           const khO = this.model.getLatestPlan(gt.keHoachId);
           return khO ? khO.tenKeHoach : "Không rõ";
-        })()}</span></div>
-                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || "Hàng hóa"}</div>
-                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ"}</div>
+        })())}</span></div>
+                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
+                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
                             <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || "--"}</div>
-                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ""}</div>` : ""}
-                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || "--"}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || "--"}</div>
-                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || "--"}</div>
+                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
+                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
+                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
                             ${!isDirectOrSpecial ? `
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
                             <div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXKT:</strong> <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</span></div>
                             <div style="display: flex; align-items: center; gap: 8px; grid-column: span 2; white-space: nowrap;">
                                 <span>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong></span>
-                                ${isReadOnly ? `<span class="text-dark fw-bold">${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở"}</span>` : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : ""}" placeholder="dd/MM/yyyy HH:mm">`}
+                                ${isReadOnly ? `<span class="text-dark fw-bold">${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở")}</span>` : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : "")}" placeholder="dd/MM/yyyy HH:mm">`}
                             </div>
                             ` : ""}
                         </div>

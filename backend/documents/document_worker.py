@@ -203,7 +203,10 @@ def _assign_windows_job_object(process: subprocess.Popen[bytes]) -> int | None:
     limits.BasicLimitInformation.PerProcessUserTimeLimit = (
         _positive_int_env("DOCUMENT_WORKER_CPU_SECONDS", 40, 5, 180) * 10_000_000
     )
-    limits.BasicLimitInformation.ActiveProcessLimit = 1
+    # A Windows venv ``python.exe`` launcher creates the real interpreter as
+    # one child process. The job therefore needs two slots while still
+    # preventing the document code from creating an unbounded process tree.
+    limits.BasicLimitInformation.ActiveProcessLimit = 2
     limits.ProcessMemoryLimit = (
         _positive_int_env("DOCUMENT_WORKER_MAX_MEMORY_MB", 768, 128, 2_048)
         * 1024

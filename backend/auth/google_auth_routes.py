@@ -5,6 +5,7 @@ import time
 import urllib.request
 import urllib.error
 import urllib.parse
+import sqlite3
 from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
@@ -28,6 +29,14 @@ from backend.auth.auth_service import (
     SESSION_INACTIVITY_TIMEOUT_HOURS,
 )
 from backend.db.id_utils import generate_record_id
+from backend.auth.identity import (
+    GOOGLE_ISSUERS,
+    conflict_payload,
+    identity_conflict_code,
+    normalize_email,
+)
+from backend.shared.request_validation import validate_or_response
+from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOTimeoutError,
@@ -65,6 +74,9 @@ def _verify_google_token(id_token: str):
 
     aud = payload.get("aud", "")
     if aud != GOOGLE_CLIENT_ID:
+        return None
+
+    if payload.get("iss") not in GOOGLE_ISSUERS:
         return None
 
 
@@ -106,6 +118,11 @@ async def google_login_api(request):
             data = await request.json()
         except Exception:
             return JSONResponse({"error": "Dữ liệu yêu cầu không hợp lệ."}, status_code=400)
+        invalid = validate_or_response(request, data, {
+            "credential": {"type": "string", "required": True, "min_length": 1, "max_length": 20_000},
+        })
+        if invalid:
+            return invalid
 
         credential = (data.get("credential") or "").strip()
         if not credential:
@@ -134,11 +151,11 @@ async def google_login_api(request):
                 status_code=401,
             )
 
-        google_id = payload.get("sub", "")
-        email = (payload.get("email") or "").strip().lower()
-        name = (payload.get("name") or email.split("@")[0]).strip()
-        picture = payload.get("picture", "")
-        email_verified = payload.get("email_verified", "false") == "true"
+        google_id = str(payload.get("sub") or "").strip()
+        email = normalize_email(payload.get("email"))
+        name = payload.get("name") or email.split("@")[0]
+        picture = payload.get("picture") or ""
+        email_verified = payload.get("email_verified") in (True, "true", "True", "1")
 
         if not google_id or not email:
             record_rate_limit_failure(rate_key)
@@ -150,24 +167,38 @@ async def google_login_api(request):
                 status_code=400,
             )
 
+        if len(google_id) > 255:
+            return JSONResponse({"error": "Định danh Google không hợp lệ."}, status_code=400)
+
+        try:
+            name, email, picture = validate_profile_fields(name, email, picture)
+        except ProfileValidationError as exc:
+            return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
+
         conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
 
 
         user = None
-        try:
-            cursor.execute("SELECT * FROM tai_khoan WHERE google_id = ?", (google_id,))
-            row = cursor.fetchone()
-            if row:
-                user = dict(row)
-        except Exception:
-            pass
+        cursor.execute(
+            """
+            SELECT tk.*
+            FROM dinh_danh_ngoai dd
+            JOIN tai_khoan tk ON tk.id = dd.user_id
+            WHERE dd.issuer = ? AND dd.subject = ?
+            """,
+            ("https://accounts.google.com", google_id),
+        )
+        row = cursor.fetchone()
+        if row:
+            user = dict(row)
 
 
         account_linked = False
         if not user:
             cursor.execute(
-                "SELECT * FROM tai_khoan WHERE email != '' AND lower(email) = ?",
+                "SELECT * FROM tai_khoan WHERE email_norm = ?",
                 (email,),
             )
             row = cursor.fetchone()
@@ -177,18 +208,20 @@ async def google_login_api(request):
 
 
                 already_has_username = bool(user.get("ten_dang_nhap"))
-                try:
-                    cursor.execute(
-                        "UPDATE tai_khoan SET google_id = ?, anh_dai_dien = COALESCE(NULLIF(anh_dai_dien,''), ?)"
-                        ", username_da_dat = ? WHERE id = ?",
-                        (google_id, picture, 1 if already_has_username else 0, user["id"]),
-                    )
-                    user["google_id"] = google_id
-                    user["username_da_dat"] = 1 if already_has_username else 0
-                    if not user.get("anh_dai_dien") and picture:
-                        user["anh_dai_dien"] = picture
-                except Exception:
-                    pass
+                cursor.execute(
+                    """
+                    INSERT INTO dinh_danh_ngoai (issuer, subject, user_id, email_norm)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    ("https://accounts.google.com", google_id, user["id"], email),
+                )
+                cursor.execute(
+                    "UPDATE tai_khoan SET anh_dai_dien = COALESCE(NULLIF(anh_dai_dien,''), ?), username_da_dat = ? WHERE id = ?",
+                    (picture, 1 if already_has_username else 0, user["id"]),
+                )
+                user["username_da_dat"] = 1 if already_has_username else 0
+                if not user.get("anh_dai_dien") and picture:
+                    user["anh_dai_dien"] = picture
                 pending_audits.append((
                     "auth.google_account_linked",
                     {
@@ -208,30 +241,25 @@ async def google_login_api(request):
             import secrets as _secrets
             from backend.shared.helpers import hash_password as _hash_password
 
-
-            temp_password = _secrets.token_urlsafe(8)
-            temp_password_hash = _hash_password(temp_password)
-
-
+            # Google-only accounts receive an unrecoverable random local secret.
+            # A local password can later be established through the verified-email
+            # reset flow; credentials are never sent by email.
+            random_password_hash = _hash_password(_secrets.token_urlsafe(48))
             new_id = generate_record_id("tai_khoan")
-
-            try:
-                cursor.execute(
-                    """INSERT INTO tai_khoan
-                       (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
-                        anh_dai_dien, da_xac_minh, google_id, username_da_dat)
-                       VALUES (?, NULL, ?, ?, 'user', ?, ?, 1, ?, 0)""",
-                    (new_id, temp_password_hash, name, email, picture, google_id),
-                )
-            except Exception:
-
-                cursor.execute(
-                    """INSERT INTO tai_khoan
-                       (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
-                        anh_dai_dien, da_xac_minh)
-                       VALUES (?, NULL, ?, ?, 'user', ?, ?, 1)""",
-                    (new_id, temp_password_hash, name, email, picture),
-                )
+            cursor.execute(
+                """INSERT INTO tai_khoan
+                   (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
+                    email, email_norm, anh_dai_dien, da_xac_minh, username_da_dat)
+                   VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, 0)""",
+                (new_id, random_password_hash, name, email, email, picture),
+            )
+            cursor.execute(
+                """
+                INSERT INTO dinh_danh_ngoai (issuer, subject, user_id, email_norm)
+                VALUES (?, ?, ?, ?)
+                """,
+                ("https://accounts.google.com", google_id, new_id, email),
+            )
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
             provision_user_organization(cursor, new_id, name)
@@ -246,52 +274,6 @@ async def google_login_api(request):
                     "metadata": {"email": email, "username": None},
                 },
             ))
-
-
-            bg_tasks = BackgroundTasks()
-            try:
-                from backend.shared.helpers import gui_email as _gui_email
-                tieu_de = "[BiddingFlow] Tài khoản mới — Mật khẩu tạm thời của bạn"
-                noi_dung_html = f"""
-                <html>
-                <body style="font-family: Arial, sans-serif; background: #f4f6fa; margin: 0; padding: 0;">
-                  <div style="max-width: 520px; margin: 40px auto; background: #fff; border-radius: 12px;
-                              box-shadow: 0 2px 12px rgba(0,0,0,0.08); overflow: hidden;">
-                    <div style="background: linear-gradient(135deg, #4f46e5, #7c3aed); padding: 32px; text-align: center;">
-                      <h1 style="color: #fff; margin: 0; font-size: 1.4rem;">BiddingFlow</h1>
-                      <p style="color: #c4b5fd; margin: 8px 0 0;">Hệ thống quản lý đấu thầu</p>
-                    </div>
-                    <div style="padding: 32px;">
-                      <p style="color: #374151; font-size: 1rem; margin-top: 0;">Xin chào <strong>{name}</strong>,</p>
-                      <p style="color: #6b7280;">Tài khoản của bạn vừa được tạo tự động qua đăng nhập Google.
-                         Bên dưới là mật khẩu tạm thời để đăng nhập bằng tên đăng nhập (sau khi bạn đặt):</p>
-                      <div style="background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px;
-                                  padding: 20px; text-align: center; margin: 24px 0;">
-                        <p style="color: #6b7280; font-size: 0.8rem; margin: 0 0 8px;">MẬT KHẨU TẠM THỜI</p>
-                        <span style="font-size: 1.6rem; font-weight: 700; color: #4f46e5;
-                                     letter-spacing: 4px; font-family: monospace;">{temp_password}</span>
-                      </div>
-                      <p style="color: #ef4444; font-size: 0.85rem;">
-                        ⚠️ Vui lòng đổi mật khẩu ngay sau khi đăng nhập để bảo mật tài khoản.
-                      </p>
-                      <p style="color: #6b7280; font-size: 0.85rem;">
-                        Lần đăng nhập tiếp theo bạn sẽ được yêu cầu đặt tên đăng nhập (username) cho tài khoản.
-                        Tên đăng nhập chỉ có thể đặt một lần và không thể thay đổi sau đó.
-                      </p>
-                    </div>
-                    <div style="background: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
-                      <p style="color: #9ca3af; font-size: 0.75rem; margin: 0;">
-                        Email này được gửi tự động từ BiddingFlow. Vui lòng không trả lời email này.
-                      </p>
-                    </div>
-                  </div>
-                </body>
-                </html>
-                """
-                bg_tasks.add_task(_gui_email, email, tieu_de, noi_dung_html)
-            except Exception as _e:
-                log_error(_e, "google_login_send_temp_password_email")
-
 
 
         if not user.get("da_xac_minh"):
@@ -353,7 +335,6 @@ async def google_login_api(request):
             **access_payload,
             "email": user["email"],
             "avatar": user.get("anh_dai_dien") or "",
-            "package_id": user.get("goi_dich_vu_id"),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
             "needs_username": needs_username,
             "suggested_username": suggested_username,
@@ -367,7 +348,20 @@ async def google_login_api(request):
         response.delete_cookie("username", path="/")
         return response
 
+    except sqlite3.IntegrityError as e:
+        if conn:
+            conn.rollback()
+        conflict_code = identity_conflict_code(e)
+        if conflict_code:
+            return JSONResponse(conflict_payload(conflict_code), status_code=409)
+        log_error(e, "google_login_api_integrity")
+        return JSONResponse(
+            {"error": "Không thể liên kết tài khoản do xung đột dữ liệu."},
+            status_code=409,
+        )
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "google_login_api")
         return JSONResponse(
             {"error": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại sau."},

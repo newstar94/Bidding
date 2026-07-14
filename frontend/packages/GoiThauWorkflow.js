@@ -6,6 +6,7 @@ import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from 
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import { persistAndSync } from "../shared/MutationService.js";
 import { createInitialVersion, createNextVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import { apiFetch } from "../shared/apiClient.js";
 export function openPackageWizardStep() {
   if (!this.packageWizard.active) return;
   if (!document.getElementById("modal-goithau")) {
@@ -167,7 +168,7 @@ export async function editGoiThau(id, isReadOnly = false) {
     restoreEmpValue();
   };
   if (!this.model.state.employees || this.model.state.employees.length === 0) {
-    fetch("/api/auth/users").then((r) => r.json()).then((users) => {
+    apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
       this.model.state.employees = users.map((u) => ({
         id: `user-${u.id}`,
         name: u.name,
@@ -852,7 +853,7 @@ export async function handleGoiThauSubmit(e) {
         const bdInp = tr.querySelector(".pl-baodam-input");
         if (bdInp && linhVuc !== "Tư vấn") {
           const bdVal = this.model.parseVND(bdInp.value) || 0;
-          if (bdVal <= 0 && !invalidBaoDamInput) {
+          if (BigInt(bdVal) <= 0n && !invalidBaoDamInput) {
             invalidBaoDamInput = bdInp;
           }
         }
@@ -867,8 +868,8 @@ export async function handleGoiThauSubmit(e) {
       }
     }
     const giaGoiThau = formVals.giaGoiThau || 0;
-    const totalPhanLoVal = collectedPhanLoList.reduce((sum, item) => sum + (item.giaTriPhanLo || 0), 0);
-    if (giaGoiThau !== totalPhanLoVal) {
+    const totalPhanLoVal = this.model.sumVND(collectedPhanLoList.map((item) => item.giaTriPhanLo));
+    if (String(this.model.parseVND(giaGoiThau) || 0) !== String(totalPhanLoVal)) {
       const confirmed = await this.view.customConfirm(
         "Cảnh báo chênh lệch giá",
         `Giá gói thầu (${this.model.formatVND(giaGoiThau)} VND) khác với tổng giá trị của các phần lô (${this.model.formatVND(totalPhanLoVal)} VND).
@@ -932,7 +933,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     thoiGianMoEhsdxtc: formattedDate5,
     toChuyenGia,
     toThamDinh: isCompetitiveQuotationPackage({ hinhThucLuaChon: formVals.hinhThucLuaChon }) ? [] : toThamDinh,
-    giaTriDamBaoDuThau: linhVuc === "Tư vấn" ? 0 : isPhanLo ? collectedPhanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0) : this.model.parseVND(formVals.giaTriDamBaoDuThau || "0"),
+    giaTriDamBaoDuThau: linhVuc === "Tư vấn" ? 0 : isPhanLo ? this.model.sumVND(collectedPhanLoList.map((item) => item.baoDamDuThau || 0)) : this.model.parseVND(formVals.giaTriDamBaoDuThau || "0"),
     hieuLucHsdt: formVals.hieuLucHsdt,
     hieuLucDamBaoDuThau: formVals.hieuLucDamBaoDuThau,
     tyLeBaoDamHopDong: formVals.tyLeBaoDamHopDong

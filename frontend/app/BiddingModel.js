@@ -5,10 +5,12 @@ import {
   COMMON_FIELD_NAME_OVERRIDES,
   FIELD_MAP_BY_TABLE,
   resolveSchemaTable
-} from "../documents/schemaContract.js";
+} from "../documents/schemaRuntime.js";
 import { generateUUID as createUUID } from "../shared/idUtils.js";
+import { serializeEvaluationMetadata } from "../packages/evaluationMetadata.js";
 import {
   ScopedWorkspaceStorage,
+  purgeWorkspaceLocalData,
   resolveWorkspaceScope,
   workspaceDatabaseName
 } from "./workspaceState.js";
@@ -342,6 +344,9 @@ export class BiddingModel {
     } else if (type === "nhathau" && normalized.tenNhaThau) {
       normalized.tenNhaThau = normalizeOrganizationName(normalized.tenNhaThau);
     }
+    if (type === "goithau" && normalized.danhGiaHsdtMetadata != null) {
+      normalized.danhGiaHsdtMetadata = serializeEvaluationMetadata(normalized.danhGiaHsdtMetadata);
+    }
     return normalized;
   }
   normalizeRecords(type, records) {
@@ -411,6 +416,23 @@ export class BiddingModel {
     this.workspaceSessionStorage = null;
     this._workspaceEpoch += 1;
     this.endWorkspaceTransition();
+  }
+  async purgeWorkspaceData() {
+    const scope = this.workspaceScope;
+    if (!scope) return false;
+    this.beginWorkspaceTransition();
+    this.db?.close?.();
+    try {
+      await purgeWorkspaceLocalData(scope);
+    } finally {
+      this._resetWorkspaceMemory();
+      this.workspaceScope = null;
+      this.workspaceStorage = null;
+      this.workspaceSessionStorage = null;
+      this._workspaceEpoch += 1;
+      this.endWorkspaceTransition();
+    }
+    return true;
   }
   async loadStorageKeys(keysToLoad) {
     const requested = new Set(keysToLoad || Object.keys(this.STORAGE_KEYS));
@@ -531,10 +553,17 @@ export class BiddingModel {
     try {
       const oldData = await this.db.getTableData(type);
       if (Array.isArray(oldData) && Array.isArray(this.state[type])) {
+        const oldById = new Map(oldData.filter((record) => record?.id).map((record) => [String(record.id), record]));
+        const changedRecords = this.state[type].filter((record) => {
+          if (!record?.id) return false;
+          const previous = oldById.get(String(record.id));
+          return !previous || JSON.stringify(previous) !== JSON.stringify(record);
+        });
+        if (changedRecords.length > 0) this.markRecordDirty(type, changedRecords);
         const newIds = new Set(this.state[type].map((x) => x.id).filter(Boolean));
-        const deletedIds = oldData.map((x) => x.id).filter((id) => id && !newIds.has(id));
-        if (deletedIds.length > 0) {
-          this.markDeleted(type, deletedIds);
+        const deletedRecords = oldData.filter((record) => record?.id && !newIds.has(record.id));
+        if (deletedRecords.length > 0) {
+          this.markDeleted(type, deletedRecords);
         }
       }
     } catch (e) {
@@ -663,23 +692,35 @@ export class BiddingModel {
   }
   markDeleted(type, recordIds) {
     this._assertWorkspaceWritable();
-    const ids = Array.isArray(recordIds) ? recordIds : [recordIds];
+    const values = Array.isArray(recordIds) ? recordIds : [recordIds];
+    const records = values.filter(Boolean).map((value) => {
+      if (typeof value === "object") return value;
+      return (this.state[type] || []).find((record) => String(record.id) === String(value)) || { id: value };
+    });
     const localDeletions = this.workspaceStorage.readJson(LOCAL_DELETIONS_KEY, []);
-    ids.filter(Boolean).forEach((id) => {
-      if (!localDeletions.some((d) => d.id === id && d.table === type)) {
-        localDeletions.push({ table: type, id });
+    records.forEach((record) => {
+      const id = record.id;
+      const expectedVersion = Number.isInteger(record.rowVersion) ? record.rowVersion : void 0;
+      const existing = localDeletions.find((item) => item.id === id && item.table === type);
+      if (existing) {
+        if (expectedVersion) existing.expectedVersion = expectedVersion;
+      } else {
+        localDeletions.push({ table: type, id, ...(expectedVersion ? { expectedVersion } : {}) });
       }
     });
     this.workspaceStorage.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     const queue = this.getMutationQueue();
-    ids.filter(Boolean).forEach((id) => {
+    records.forEach((record) => {
+      const id = record.id;
+      const expectedVersion = Number.isInteger(record.rowVersion) ? record.rowVersion : void 0;
       if (queue.upserts[type]) {
         delete queue.upserts[type][id];
       }
-      if (!queue.deletes.some((d) => d.id === id && d.table === type)) {
-        queue.deletes.push({ table: type, id });
-      }
+      const existing = queue.deletes.find((item) => item.id === id && item.table === type);
+      if (existing) {
+        if (expectedVersion) existing.expectedVersion = expectedVersion;
+      } else queue.deletes.push({ table: type, id, ...(expectedVersion ? { expectedVersion } : {}) });
     });
     this._touchMutationQueue(queue);
     this._saveMutationQueue(queue);
@@ -707,12 +748,22 @@ export class BiddingModel {
     const snapshot = JSON.parse(JSON.stringify(queue));
     Object.keys(queue.dirtyTables || {}).forEach((type) => {
       if (!queue.dirtyTables[type] || !this._isSyncedStateKey(type)) return;
-      payload[type] = Array.isArray(this.state[type]) ? this.state[type].map((record) => this.normalizeRecordKeys(record, type)) : [];
+      payload[type] = Array.isArray(this.state[type]) ? this.state[type].map((record) => {
+        const normalized = this.normalizeRecordKeys(record, type);
+        return Number.isInteger(normalized.rowVersion)
+          ? { ...normalized, expectedVersion: normalized.rowVersion }
+          : normalized;
+      }) : [];
       payload.upserts[type] = payload[type];
     });
     Object.entries(queue.upserts || {}).forEach(([type, recordsById]) => {
       if (!this._isSyncedStateKey(type) || payload[type]) return;
-      const records = Object.values(recordsById || {}).map((record) => this.normalizeRecordKeys(record, type));
+      const records = Object.values(recordsById || {}).map((record) => {
+        const normalized = this.normalizeRecordKeys(record, type);
+        return Number.isInteger(normalized.rowVersion)
+          ? { ...normalized, expectedVersion: normalized.rowVersion }
+          : normalized;
+      });
       if (records.length > 0) {
         payload[type] = records;
         payload.upserts[type] = records;
@@ -723,7 +774,11 @@ export class BiddingModel {
     const deleteMap = /* @__PURE__ */ new Map();
     [...queuedDeletes, ...localDeletions].forEach((item) => {
       if (!item || !item.table || !item.id) return;
-      deleteMap.set(`${item.table}::${item.id}`, { table: item.table, id: item.id });
+      deleteMap.set(`${item.table}::${item.id}`, {
+        table: item.table,
+        id: item.id,
+        ...(Number.isInteger(item.expectedVersion) ? { expectedVersion: item.expectedVersion } : {})
+      });
     });
     payload.deletions = Array.from(deleteMap.values());
     const hasUpserts = Object.keys(payload.upserts).length > 0;
@@ -731,6 +786,24 @@ export class BiddingModel {
       return null;
     }
     return { payload, snapshot };
+  }
+  async applyCommittedRowVersions(entries = []) {
+    const queue = this.getMutationQueue();
+    const writes = [];
+    entries.forEach((entry) => {
+      const type = entry?.table;
+      const id = String(entry?.id || "");
+      const rowVersion = entry?.rowVersion;
+      if (!type || !id || !Number.isInteger(rowVersion)) return;
+      const record = (this.state[type] || []).find((item) => String(item.id) === id);
+      if (record) {
+        record.rowVersion = rowVersion;
+        if (this.db.stores.includes(type)) writes.push(this.db.putRecord(type, record));
+      }
+      if (queue.upserts?.[type]?.[id]) queue.upserts[type][id].rowVersion = rowVersion;
+    });
+    this._saveMutationQueue(queue);
+    await Promise.all(writes);
   }
   clearSyncedMutationQueue(snapshot) {
     const current = this.getMutationQueue();
@@ -770,11 +843,6 @@ export class BiddingModel {
     if (this.STORAGE_KEYS[key]) {
       if (Array.isArray(this.state[type])) {
         this.normalizeRecords(type, this.state[type]);
-      }
-      // Queue the current state before the first await. Callers that start an
-      // immediate sync must not be able to build a payload without this write.
-      if (options.trackMutation !== false) {
-        this.commitLocalMutation(type, { fullTable: true });
       }
       if (options.trackMutation !== false && this._isSyncedStateKey(type)) {
         await this.trackDeletions(type);
@@ -880,35 +948,32 @@ export class BiddingModel {
   // ROLE HIERARCHY HELPERS
   // ==========================================
   static ROLE_HIERARCHY = {
-    super_admin: ["super_admin", "owner", "manager", "employee", "viewer"],
-    owner: ["owner", "manager", "employee", "viewer"],
-    manager: ["manager", "employee", "viewer"],
-    employee: ["employee"],
-    viewer: ["viewer"]
+    super_admin: ["super_admin", "owner", "manager", "employee"],
+    owner: ["owner", "manager", "employee"],
+    manager: ["manager", "employee"],
+    employee: ["employee"]
   };
   static getRoleTitle(role) {
     if (role === "super_admin") return "Super Admin";
-    if (role === "manager") return "Quản lý";
-    if (role === "viewer") return "Người xem";
+    if (role === "owner" || role === "manager") return "Quản lý";
     return "Chuyên viên";
   }
   static resolveAllowedActiveRole(user, requestedRole = null) {
     const rolesFromServer = Array.isArray(user?.dbRoles) ? user.dbRoles : [];
     const roleSource = rolesFromServer.length > 0 ? rolesFromServer.join(",") : user?.dbRole || user?.role || "";
-    if (!roleSource) {
-      return user && requestedRole && BiddingModel.ROLE_HIERARCHY[requestedRole] ? requestedRole : "viewer";
-    }
+    if (!roleSource) return "employee";
     const allowedRoles = new Set(BiddingModel.getEffectiveRoles(roleSource));
-    if (allowedRoles.size === 0) {
-      allowedRoles.add("viewer");
-    }
-    if (requestedRole && allowedRoles.has(requestedRole)) {
-      return requestedRole;
-    }
-    if (allowedRoles.has("super_admin")) return "super_admin";
-    if (allowedRoles.has("manager")) return "manager";
-    if (allowedRoles.has("employee")) return "employee";
-    return "viewer";
+    let switchableRoles;
+    if (allowedRoles.has("super_admin")) {
+      switchableRoles = ["super_admin", "manager", "employee"];
+    } else if (allowedRoles.has("owner") || allowedRoles.has("manager")) {
+      switchableRoles = ["manager", "employee"];
+    } else if (allowedRoles.has("employee")) {
+      switchableRoles = ["employee"];
+    } else switchableRoles = ["employee"];
+    return requestedRole && switchableRoles.includes(requestedRole)
+      ? requestedRole
+      : switchableRoles[0];
   }
   /**
    * Kiểm tra xem user (dựa vào cỗt role) có role yêu cầu hay không (kể cả kế thừa).

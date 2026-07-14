@@ -1,7 +1,8 @@
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { DEFAULT_WORD_VARIABLES } from "./schemaContract.js";
+import { DEFAULT_WORD_VARIABLES } from "./wordVariableManifest.js";
+import { apiFetch } from "../shared/apiClient.js";
 export function setupWordTemplatesEvents() {
   const templateInput = document.getElementById("word-file-input") || document.getElementById("word-template-file-input");
   if (templateInput) {
@@ -196,9 +197,6 @@ export function setupWordTemplatesEvents() {
       { value: "ten_phan_lo", label: "Tên phần lô mở thầu" },
       { value: "ma_dinh_danh", label: "Mã định danh mở thầu" },
       { value: "gia_du_thau", label: "Giá dự thầu mở thầu" },
-      { value: "dam_bao_du_thau", label: "Bảo đảm dự thầu mở thầu" },
-      { value: "hieu_luc_dam_bao", label: "Hiệu lực bảo đảm mở thầu" },
-      { value: "hieu_luc_hsdxt", label: "Hiệu lực E-HSĐXKT mở thầu" },
       { value: "ty_le_giam_gia", label: "Tỷ lệ giảm giá mở thầu" },
       { value: "gia_sau_giam_gia", label: "Giá sau giảm giá mở thầu" },
       { value: "hieu_luc_hsdt", label: "Hiệu lực HSDT mở thầu (ngày)" },
@@ -736,7 +734,7 @@ export function setupWordTemplatesEvents() {
         return;
       }
       try {
-        const res = await fetch("/api/word-mappings", {
+        const res = await apiFetch("/api/word-mappings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, tenBien, sourceTable, sourceColumn })
@@ -818,7 +816,7 @@ export function setupWordTemplatesEvents() {
         return;
       }
       try {
-        const res = await fetch("/api/word-mappings", {
+        const res = await apiFetch("/api/word-mappings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, tenBien, sourceTable, sourceColumn })
@@ -867,7 +865,7 @@ export function setupWordTemplatesEvents() {
         return;
       }
       try {
-        const res = await fetch("/api/word-mappings", {
+        const res = await apiFetch("/api/word-mappings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, tenBien, mappingType: "computed", formula })
@@ -936,7 +934,7 @@ export function setupWordTemplatesEvents() {
     const confirmed = await this.view.customConfirm("Xác nhận xóa", "Bạn có chắc chắn muốn xóa biến ánh xạ này không?", "trash-2");
     if (!confirmed) return;
     try {
-      const res = await fetch(`/api/word-mappings/${id}`, {
+      const res = await apiFetch(`/api/word-mappings/${id}`, {
         method: "DELETE"
       });
       if (res.ok) {
@@ -988,7 +986,7 @@ export function setupCopyVariableEvents() {
 }
 export async function loadWordTemplates() {
   try {
-    const res = await fetch("/api/templates");
+    const res = await apiFetch("/api/templates");
     if (res.ok) {
       const templates = await res.json();
       this.view.renderWordTemplates(templates);
@@ -1002,7 +1000,7 @@ export async function loadWordTemplates() {
 }
 export async function loadWordMappings() {
   try {
-    const res = await fetch("/api/word-mappings");
+    const res = await apiFetch("/api/word-mappings");
     const payload = await res.json().catch(() => null);
     if (!res.ok) {
       throw new Error(payload?.error || `HTTP ${res.status}`);
@@ -1036,7 +1034,7 @@ export function setupTemplateActivationEvents() {
       if (!targetEl) return;
       const filename = targetEl.getAttribute("data-filename");
       try {
-        const res = await fetch("/api/templates/active", {
+        const res = await apiFetch("/api/templates/active", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filename })
@@ -1058,7 +1056,7 @@ export async function handleWordTemplateUpload(file) {
   const formData = new FormData();
   formData.append("file", file);
   try {
-    const res = await fetch("/api/templates/upload", {
+    const res = await apiFetch("/api/templates/upload", {
       method: "POST",
       body: formData
     });

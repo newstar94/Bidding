@@ -66,10 +66,12 @@ export function applyAwardResultToPackage({ gt, bids, winnerRows, tbodyResult, m
       gt.phanLoList = plList;
     }
     if (winner.id) gt.nhaThauTrungThauId = normalizeId(winner.id);
-    gt.giaTrungThau = winnerRows.reduce((sum, row) => sum + model.parseVND(row.querySelector(".row-gia-trung")?.value || "0"), 0) || bids.reduce((sum, bid) => {
+    const winnerTotal = model.sumVND(winnerRows.map((row) => row.querySelector(".row-gia-trung")?.value || "0"));
+    const fallbackTotal = model.sumVND(bids.map((bid) => {
       const bidState = model.state.thongtinmothau.find((item) => item.id === bid.id);
-      return sum + (bidState?.giaSauGiamGia || bidState?.giaDuThau || 0);
-    }, 0);
+      return bidState?.giaSauGiamGia || bidState?.giaDuThau || 0;
+    }));
+    gt.giaTrungThau = winnerRows.length ? winnerTotal : fallbackTotal;
     return;
   }
   gt.nhaThauTrungThauId = winner.id ? normalizeId(winner.id) : "";

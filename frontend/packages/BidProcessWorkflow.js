@@ -326,7 +326,7 @@ export async function handlePhatHanhHsmtSubmit(e) {
           pl.thoiGianThucHien = row.thoiGianThucHien;
         }
       });
-      gt.giaTriDamBaoDuThau = gt.phanLoList.reduce((sum, item) => sum + (item.baoDamDuThau || 0), 0);
+      gt.giaTriDamBaoDuThau = this.model.sumVND(gt.phanLoList.map((item) => item.baoDamDuThau));
     } else if (!isTuVan && !isPhanLo) {
       gt.giaTriDamBaoDuThau = giaTriDamBaoVal;
     } else {
@@ -1014,7 +1014,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td>${typeSelectHtml}</td>
             <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
             <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
-            <td>${bidData.hieuLucHsdxt || (gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}</td>
+            <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
             <td>${bidData.thoiGianThucHien || gt.thoiGianThucHien || "--"}</td>
         ` : `
             <td>${typeSelectHtml}</td>
@@ -1023,7 +1023,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
-            <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdxt || (gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}" required placeholder="Hiệu lực"></td>
+            <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${bidData.thoiGianThucHien || gt.thoiGianThucHien || ""}" required placeholder="Ví dụ: 120 ngày"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
@@ -1032,9 +1032,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td>${typeSelectHtml}</td>
             <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
             <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
-            <td>${this.model.formatVND(bidData.damBaoDuThau) || this.model.formatVND(gt.giaTriDamBaoDuThau) || "--"}</td>
-            <td>${bidData.hieuLucDamBao || (gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày")}</td>
-            <td>${bidData.hieuLucHsdxt || (gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}</td>
+            <td>${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || "--"}</td>
+            <td>${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}</td>
+            <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
         ` : `
             <td>${typeSelectHtml}</td>
             <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
@@ -1042,9 +1042,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
-            <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.damBaoDuThau) || this.model.formatVND(gt.giaTriDamBaoDuThau) || ""}" required placeholder="Số tiền ĐB"></td>
-            <td><input type="text" class="form-control mt-hieu-luc-dam-bao" value="${bidData.hieuLucDamBao || (gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày")}" placeholder="Hiệu lực bảo đảm"></td>
-            <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdxt || (gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}" required placeholder="Hiệu lực"></td>
+            <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || ""}" required placeholder="Số tiền ĐB"></td>
+            <td><input type="text" class="form-control mt-hieu-luc-dam-bao" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" placeholder="Hiệu lực bảo đảm"></td>
+            <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G2T_WITH_LOT") {
@@ -1059,9 +1059,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td>${typeSelectHtml}</td>
             <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
             <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
-            <td>${this.model.formatVND(bidData.damBaoDuThau) || defaultLotBaoDam || "--"}</td>
-            <td>${bidData.hieuLucDamBao || (gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày")}</td>
-            <td>${bidData.hieuLucHsdxt || (gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}</td>
+            <td>${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam || "--"}</td>
+            <td>${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}</td>
+            <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
         ` : `
             <td>
                 <select class="form-control mt-ma-phan-lo" required>
@@ -1076,9 +1076,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
-            <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.damBaoDuThau) || defaultLotBaoDam}" required placeholder="Số tiền ĐB"></td>
-            <td><input type="text" class="form-control mt-hieu-luc-dam-bao" value="${bidData.hieuLucDamBao || (gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày")}" placeholder="Hiệu lực ĐB"></td>
-            <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdxt || (gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}" required placeholder="Hiệu lực"></td>
+            <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Số tiền ĐB"></td>
+            <td><input type="text" class="form-control mt-hieu-luc-dam-bao" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" placeholder="Hiệu lực ĐB"></td>
+            <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G1T_NO_LOT") {

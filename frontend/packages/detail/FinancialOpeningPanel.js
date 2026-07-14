@@ -16,7 +16,7 @@ export function renderFinancialOpeningTable({
     const bidPrice = model.formatVND(bid.giaDuThau) || "";
     const discount = String(bid.tyLeGiamGia || 0).replace(".", ",");
     const finalPrice = model.formatVND(bid.giaSauGiamGia) || "";
-    const validity = bid.hieuLucHsdt || bid.hieuLucHsdxt || "";
+    const validity = bid.hieuLucHsdt || "";
     const identity = escapeHtml(bid.maNhaThau || bid.maDinhDanh || "--");
     const contractor = renderBidContractorLink(model, bid, `${pkg.id}_financial_${isReadOnly ? "readonly" : "edit"}_${bid.id}`);
     const lotCells = hasLots ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td>${escapeHtml(bid.tenPhanLo || "--")}</td>` : "";

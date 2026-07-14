@@ -1,6 +1,7 @@
 import { APP_DEBUG } from "./appConfig.js";
 import { bootstrapWorkspace } from "./workspaceBootstrap.js";
 import { bootstrapAuthShell } from "../auth/AuthShell.js";
+import { apiFetch } from "../shared/apiClient.js";
 const startupMark = (name) => {
   try {
     performance.mark(`bf:${name}`);
@@ -25,7 +26,7 @@ const checkInitialSession = async () => {
   if (embedded && typeof embedded.valid === "boolean") return embedded;
   startupMark("session-check-start");
   try {
-    const response = await fetch("/api/auth/check-session", {
+    const response = await apiFetch("/api/auth/check-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
@@ -84,7 +85,8 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
   if ("serviceWorker" in navigator && APP_DEBUG === false) {
-    navigator.serviceWorker.register("/service-worker.js").catch(() => {
+    const buildId = new URL(import.meta.url).pathname.split("/").pop() || "app";
+    navigator.serviceWorker.register(`/service-worker.js?build=${encodeURIComponent(buildId)}`).catch(() => {
     });
   }
   const lucideReady = loadLucideIcons().then(() => {

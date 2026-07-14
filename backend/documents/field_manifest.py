@@ -20,7 +20,6 @@ PERCENT_COLUMNS = {
 
 CURRENCY_COLUMNS = {
     "bao_dam_du_thau",
-    "dam_bao_du_thau",
     "gia_ca",
     "gia_du_thau",
     "gia_goi_thau",

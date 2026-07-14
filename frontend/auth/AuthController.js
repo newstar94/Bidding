@@ -1,7 +1,7 @@
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
-import { ApiError, postJson } from "../shared/apiClient.js";
+import { ApiError, apiFetch, postJson } from "../shared/apiClient.js";
 
 export function validateUsernameClient(username) {
   const u = (username || "").toLowerCase().trim();
@@ -251,7 +251,9 @@ export function checkInactivity() {
     if (idleTime > inactivityLimit) {
       if (this._sessionInterval) clearInterval(this._sessionInterval);
       this.disconnectWebSocket?.(false);
-      void this.model.deactivateWorkspace?.();
+      void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
+        console.error("Failed to clear inactive workspace data:", error);
+      });
       this.model.clearSessionData();
       const showSessionExpired = async () => {
         if (this.view && typeof this.view.customAlert === "function") {
@@ -290,7 +292,7 @@ export function startBackgroundSessionChecker() {
       clearInterval(this._sessionInterval);
       return;
     }
-    fetch("/api/auth/check-session", {
+    apiFetch("/api/auth/check-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
@@ -301,7 +303,9 @@ export function startBackgroundSessionChecker() {
       if (!data || !data.valid) {
         clearInterval(this._sessionInterval);
         this.disconnectWebSocket?.(false);
-        void this.model.deactivateWorkspace?.();
+        void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
+          console.error("Failed to clear expired workspace data:", error);
+        });
         this.model.clearSessionData();
         const overlay = document.getElementById("auth-overlay");
         if (overlay) {
@@ -515,7 +519,7 @@ export function setupAuth() {
         void showCachedWorkspace();
       });
     }
-    const sessionPromise = precheckedSession !== void 0 ? Promise.resolve(precheckedSession) : fetch("/api/auth/check-session", {
+    const sessionPromise = precheckedSession !== void 0 ? Promise.resolve(precheckedSession) : apiFetch("/api/auth/check-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
@@ -641,15 +645,25 @@ export function setupAuth() {
     btnLogout.onclick = async () => {
       const confirmed = await this.view.customConfirm("Xác nhận đăng xuất", "Bạn có chắc chắn muốn đăng xuất tài khoản này không?", "log-out");
       if (confirmed) {
+        let clearLocalData = document.getElementById("logout-clear-local-data")?.checked !== false;
+        let finalSyncFailed = false;
         try {
           if (typeof this.autoSync === "function") {
             await this.autoSync();
           }
         } catch (e) {
+          finalSyncFailed = true;
           console.error("Failed final sync during logout:", e);
         }
+        if (clearLocalData && finalSyncFailed) {
+          clearLocalData = await this.view.customConfirm(
+            "Dữ liệu chưa đồng bộ",
+            "Không thể đồng bộ lần cuối. Nếu tiếp tục xóa dữ liệu offline, các thay đổi đang chờ có thể mất. Bạn vẫn muốn xóa dữ liệu trên thiết bị này?",
+            "cloud-off"
+          );
+        }
         try {
-          await fetch("/api/auth/logout", {
+          await apiFetch("/api/auth/logout", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: "{}"
@@ -657,7 +671,16 @@ export function setupAuth() {
         } catch (e) {
           console.error("Failed to clear server session during logout:", e);
         }
-        if (typeof this.resetWorkspaceData === "function") {
+        if (clearLocalData && typeof this.model.purgeWorkspaceData === "function") {
+          this.disconnectWebSocket?.(false);
+          setActiveOrganizationId("");
+          try {
+            await this.model.purgeWorkspaceData();
+          } catch (error) {
+            console.error("Failed to purge local workspace data:", error);
+            await this.model.deactivateWorkspace?.();
+          }
+        } else if (typeof this.resetWorkspaceData === "function") {
           await this.resetWorkspaceData("");
         } else {
           setActiveOrganizationId("");
@@ -677,12 +700,12 @@ export function setupAuth() {
   formLogin.onsubmit = async (e) => {
     e.preventDefault();
     const username = document.getElementById("login-username").value.trim();
-    const password = document.getElementById("login-password").value.trim();
+    const password = document.getElementById("login-password").value;
     const errorDiv = document.getElementById("login-error");
     errorDiv.style.display = "none";
     const remember = document.getElementById("login-remember")?.checked || false;
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await apiFetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password, remember })
@@ -771,8 +794,8 @@ export function setupAuth() {
     const username = document.getElementById("register-username").value.trim().toLowerCase();
     const fullname = document.getElementById("register-fullname").value.trim();
     const email = document.getElementById("register-email").value.trim();
-    const password = document.getElementById("register-password").value.trim();
-    const confirmPassword = document.getElementById("register-confirm-password").value.trim();
+    const password = document.getElementById("register-password").value;
+    const confirmPassword = document.getElementById("register-confirm-password").value;
     const role = "employee";
     const errorDiv = document.getElementById("register-error");
     const successDiv = document.getElementById("register-success");
@@ -785,8 +808,8 @@ export function setupAuth() {
       document.getElementById("register-username").focus();
       return;
     }
-    if (password.length < 6) {
-      errorDiv.textContent = "Mật khẩu đăng nhập phải có ít nhất 6 ký tự!";
+    if (password.length < 8 || password.length > 256) {
+      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự!";
       errorDiv.style.display = "block";
       return;
     }
@@ -796,7 +819,7 @@ export function setupAuth() {
       return;
     }
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await apiFetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password, name: fullname, email, role })
@@ -836,7 +859,7 @@ export function setupAuth() {
         return;
       }
       try {
-        const res = await fetch("/api/auth/verify", {
+        const res = await apiFetch("/api/auth/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, code })
@@ -874,7 +897,7 @@ export function setupAuth() {
         return;
       }
       try {
-        const res = await fetch("/api/auth/resend-code", {
+        const res = await apiFetch("/api/auth/resend-code", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username })
@@ -903,7 +926,7 @@ export function setupAuth() {
     errorDiv.style.display = "none";
     successDiv.style.display = "none";
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await apiFetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, email })
@@ -966,8 +989,8 @@ export function setupAuth() {
       errorDiv.style.display = "block";
       return;
     }
-    if (newPassword.length < 12) {
-      errorDiv.textContent = "Mật khẩu phải có ít nhất 12 ký tự.";
+    if (newPassword.length < 8 || newPassword.length > 256) {
+      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự.";
       errorDiv.style.display = "block";
       return;
     }
@@ -982,7 +1005,7 @@ export function setupAuth() {
       .find((part) => part.startsWith("csrf_token="))
       ?.slice("csrf_token=".length) || "";
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await apiFetch("/api/auth/reset-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1183,7 +1206,7 @@ export function setupGoogleSignIn() {
       }
     };
     try {
-      const res = await fetch("/api/auth/google-login", {
+      const res = await apiFetch("/api/auth/google-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential: response.credential })

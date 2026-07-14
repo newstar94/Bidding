@@ -50,11 +50,28 @@ def get_active_org(request, user_id):
     conn = database.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT tc.id, tc.ten_to_chuc, tc.trang_thai,
-               tvtc.vai_tro_trong_to_chuc
+        SELECT tc.id, tc.ten_to_chuc, tc.scope_type, tc.trang_thai,
+               tvtc.vai_tro_trong_to_chuc,
+               sub.status AS subscription_status, sub.expires_at,
+               pkg.trang_thai AS package_status
         FROM thanh_vien_to_chuc tvtc
         JOIN to_chuc tc ON tvtc.organization_id = tc.id
+        LEFT JOIN organization_subscriptions sub ON sub.organization_id = tc.id
+        LEFT JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
+          AND (
+              tc.scope_type = 'organization'
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM thanh_vien_to_chuc business_membership
+                  JOIN to_chuc business_org
+                    ON business_org.id = business_membership.organization_id
+                  WHERE business_membership.user_id = tvtc.user_id
+                    AND business_org.scope_type = 'organization'
+              )
+          )
+        ORDER BY CASE tc.scope_type WHEN 'organization' THEN 0 ELSE 1 END,
+                 lower(tc.ten_to_chuc), tc.id
     """, (user_id,))
     rows = cursor.fetchall()
     conn.close()
@@ -87,8 +104,26 @@ def get_active_org(request, user_id):
         with _org_cache_lock:
             _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
         raise exc
+    subscription_status = str(selected_row['subscription_status'] or '').strip().lower()
+    expires_at = selected_row['expires_at']
+    package_status = str(selected_row['package_status'] or '').strip().lower()
+    if subscription_status != 'active':
+        exc = OrgPermissionError("Gói dịch vụ của tổ chức không hoạt động!")
+        with _org_cache_lock:
+            _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+        raise exc
+    if expires_at is not None and int(expires_at) <= int(now):
+        exc = OrgPermissionError("Gói dịch vụ của tổ chức đã hết hạn!")
+        with _org_cache_lock:
+            _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+        raise exc
+    if package_status != 'active':
+        exc = OrgPermissionError("Gói dịch vụ đang bị tạm khóa!")
+        with _org_cache_lock:
+            _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+        raise exc
     membership_role = str(selected_row['vai_tro_trong_to_chuc'] or '').strip().lower()
-    if membership_role not in {'owner', 'manager', 'employee', 'viewer'}:
+    if membership_role not in {'owner', 'manager', 'employee'}:
         raise OrgPermissionError("Vai trò thành viên tổ chức không hợp lệ!")
     context = OrganizationContext(
         active_org_id=str(selected_row['id']),

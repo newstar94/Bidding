@@ -3,6 +3,7 @@ import secrets
 import hashlib
 import html
 import os
+import sqlite3
 from urllib.parse import quote
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
@@ -25,11 +26,18 @@ from backend.auth.auth_service import (
 from backend.db.id_utils import generate_record_id
 from backend.auth.username_validator import validate_username
 from backend.auth.password_policy import validate_new_password
+from backend.auth.identity import (
+    conflict_payload,
+    identity_conflict_code,
+    normalize_username,
+)
+from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.password_reset_service import (
     InvalidResetToken,
     create_password_reset,
     redeem_password_reset,
 )
+from backend.shared.request_validation import validate_or_response
 
 
 PASSWORD_RESET_REQUEST_MESSAGE = (
@@ -45,17 +53,32 @@ async def register_api(request):
             return rate_limit_response("Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau.", register_limit)
 
         data = await request.json()
-        username = data.get('username', '').strip().lower()
-        password = data.get('password', '').strip()
-        name = data.get('name', '').strip()
-        email = data.get('email', '').strip()
+        invalid = validate_or_response(request, data, {
+            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+            "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
+            "name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
+            "email": {"type": "string", "required": True, "min_length": 3, "max_length": 320},
+            "role": {"type": "string", "enum": {"user"}},
+        })
+        if invalid:
+            return invalid
+        username = normalize_username(data.get('username'))
+        password = data.get('password')
+        try:
+            name, email, _ = validate_profile_fields(data.get('name'), data.get('email'), '')
+        except ProfileValidationError as exc:
+            return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
         role = 'user'
 
-        if not username or not password or not name or not email:
+        if not username or not isinstance(password, str) or not password or not name or not email:
             return JSONResponse({"error": "Vui lòng nhập đầy đủ thông tin bắt buộc!"}, status_code=400)
 
+        valid_password, password_error = validate_new_password(password)
+        if not valid_password:
+            return JSONResponse({"error": password_error, "code": "PASSWORD_POLICY_FAILED"}, status_code=400)
+
         register_identity = hashlib.sha256(
-            f"{username}\0{email.lower()}".encode("utf-8")
+            f"{username}\0{email}".encode("utf-8")
         ).hexdigest()[:24]
         register_identity_limit = get_rate_limit_decision(
             f"register_identity:{register_identity}"
@@ -72,23 +95,26 @@ async def register_api(request):
             return JSONResponse({"error": reason}, status_code=400)
 
         conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
 
-        cursor.execute("SELECT id FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
+        cursor.execute("SELECT id FROM tai_khoan WHERE username_norm = ?", (username,))
         if cursor.fetchone():
-            return JSONResponse({"error": "Tên đăng nhập đã tồn tại!"}, status_code=400)
+            conn.rollback()
+            return JSONResponse(conflict_payload("USERNAME_ALREADY_EXISTS"), status_code=409)
 
-        cursor.execute("SELECT id FROM tai_khoan WHERE email = ?", (email,))
+        cursor.execute("SELECT id FROM tai_khoan WHERE email_norm = ?", (email,))
         if cursor.fetchone():
-            return JSONResponse({"error": "Địa chỉ email này đã được sử dụng bởi một tài khoản khác!"}, status_code=400)
+            conn.rollback()
+            return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
 
         user_uuid = generate_record_id("tai_khoan")
         code = generate_otp()
         expiry = int(time.time()) + 600
 
         cursor.execute(
-            "INSERT INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_uuid, username, hash_password(password), name, role, email, 0, code, expiry)
+            "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_uuid, username, username, hash_password(password), name, role, email, email, 0, code, expiry)
         )
         provision_user_organization(cursor, user_uuid, name)
         conn.commit()
@@ -99,7 +125,7 @@ async def register_api(request):
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <h2 style="color: #2563eb; text-align: center;">Chào mừng bạn đến với BiddingFlow</h2>
-                <p>Xin chào <strong>{name}</strong>,</p>
+                <p>Xin chào <strong>{html.escape(name)}</strong>,</p>
                 <p>Cảm ơn bạn đã đăng ký tài khoản tại BiddingFlow. Mã OTP xác thực email của bạn là:</p>
                 <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0;">
                     <span style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 4px;">{code}</span>
@@ -118,7 +144,17 @@ async def register_api(request):
             {"success": True, "message": "Đăng ký thành công! Vui lòng kiểm tra email để lấy mã xác nhận kích hoạt tài khoản."},
             background=tasks
         )
+    except sqlite3.IntegrityError as e:
+        if conn:
+            conn.rollback()
+        conflict_code = identity_conflict_code(e)
+        if conflict_code:
+            return JSONResponse(conflict_payload(conflict_code), status_code=409)
+        log_error(e, "register_api_integrity")
+        return JSONResponse({"error": "Không thể tạo tài khoản do xung đột dữ liệu."}, status_code=409)
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "register_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đăng ký. Vui lòng thử lại sau."}, status_code=500)
     finally:
@@ -129,6 +165,12 @@ async def register_api(request):
 async def verify_email_api(request):
     try:
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+            "code": {"type": "string", "required": True, "min_length": 6, "max_length": 6},
+        })
+        if invalid:
+            return invalid
         username = data.get('username', '').strip()
         code = data.get('code', '').strip()
 
@@ -146,7 +188,7 @@ async def verify_email_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, ma_xac_minh, han_xac_minh FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
+        cursor.execute("SELECT id, ma_xac_minh, han_xac_minh FROM tai_khoan WHERE username_norm = ?", (normalize_username(username),))
         row = cursor.fetchone()
 
         if not row:
@@ -176,6 +218,11 @@ async def verify_email_api(request):
 async def resend_code_api(request):
     try:
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+        })
+        if invalid:
+            return invalid
         username = data.get('username', '').strip()
 
         if not username:
@@ -194,7 +241,7 @@ async def resend_code_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, ho_ten, email, da_xac_minh FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
+        cursor.execute("SELECT id, ho_ten, email, da_xac_minh FROM tai_khoan WHERE username_norm = ?", (normalize_username(username),))
         row = cursor.fetchone()
 
         if not row:
@@ -248,6 +295,12 @@ async def forgot_password_api(request):
     try:
         ip = get_client_ip(request)
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+            "email": {"type": "string", "required": True, "min_length": 3, "max_length": 320},
+        })
+        if invalid:
+            return invalid
         username = data.get('username', '').strip()
         email = data.get('email', '').strip()
 
@@ -307,6 +360,12 @@ async def reset_password_api(request):
     try:
         ip = get_client_ip(request)
         data = await request.json()
+        invalid = validate_or_response(request, data, {
+            "token": {"type": "string", "required": True, "min_length": 20, "max_length": 512},
+            "new_password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
+        })
+        if invalid:
+            return invalid
         token = str(data.get('token') or '').strip()
         new_password = data.get('new_password')
         token_key = hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]

@@ -24,6 +24,8 @@ Cần cài đặt Node.js trên máy tính của bạn, sau đó di chuyển và
 npm install
 ```
 
+Backend dùng Python đúng phiên bản trong `.python-version`. Trên máy mới, cài dependency đã khóa hash bằng `python -m pip install --require-hashes -r requirements/dev.lock.txt`; production dùng `requirements/runtime.lock.txt`. Quy trình update, audit ba nguồn dependency, secret scan và SBOM xem tại [DEPENDENCIES.md](./DEPENDENCIES.md).
+
 ### Cau hinh `.env` bat buoc cho lan chay dau
 
 Truoc khi khoi dong server lan dau, tao `.env` tu `.env.example` va dat toi thieu:
@@ -45,6 +47,22 @@ GET /health/ready  # chi san sang nhan traffic sau migration va DB checks
 ```
 
 Neu migration, schema version, tai khoan quan tri hoac DB readiness khong hop le, startup se that bai va process khong duoc dua vao traffic.
+
+### SQLite production, backup va phuc hoi
+
+Production phai dat `BIDDING_DB_PATH` tai duong dan tuyet doi tren local persistent volume, ben ngoai source va moi thu muc dong bo file. Ung dung chi ho tro mot ASGI process khi dung SQLite va giu process lock de chan khoi dong nham instance thu hai. Upload, Word template, temp, log va backup dung cac thu muc/mount rieng theo `.env.example`.
+
+Tao backup online va kiem tra restore bang:
+
+```bash
+python scripts/backup_database.py
+python scripts/restore_database.py --backup /path/backup.db --destination /path/rehearsal.db
+python scripts/check_database.py --database /path/rehearsal.db
+```
+
+Khong copy rieng file `.db` khi server dang chay. Quy trinh lap lich, retention, sao chep off-host va xu ly su co nam tai [QUY_TRINH_SAO_LUU_PHUC_HOI_DB.md](./QUY_TRINH_SAO_LUU_PHUC_HOI_DB.md).
+
+Database mới được tạo duy nhất bởi migration `0001_clean_baseline`. Mỗi migration có `version`, `name`, SHA-256 `checksum` và `applied_at`; ứng dụng sẽ dừng nếu checksum, thứ tự version, table constraint hoặc foreign key bị drift. Migration đã áp dụng không được sửa: mọi thay đổi schema sau này phải thêm module `backend/db/migrations/mNNNN_*.py` kế tiếp. Baseline này cố ý không nâng cấp database legacy; khi thử nghiệm clean first-run, hãy dùng một file SQLite mới.
 
 ### Reverse proxy va IP tin cay
 

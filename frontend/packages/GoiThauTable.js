@@ -152,14 +152,14 @@ export async function renderGoiThauTable() {
                 jvData
               };
             });
-            const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
+            const totalGiaTrung = this.model.sumVND(winningLots.map((pl) => pl.giaTrungThau));
             winnerInfoHtml = `<a href="#" data-bf-action="show-lot-winners" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
           } else if (uniqueWinnerIds.length === 1) {
             const singleWinnerId = uniqueWinnerIds[0];
             const singleWinnerNt = this.model.state.nhathau.find((n) => String(n.id) === String(singleWinnerId));
             const singleWinnerBid = this.model.state.thongtinmothau.find((b) => String(b.goiThauId) === String(displayedGt.id) && String(b.nhaThauId) === String(singleWinnerId));
             const name = singleWinnerBid ? resolveBidContractorName(this.model, singleWinnerBid) : singleWinnerNt ? singleWinnerNt.tenNhaThau : "Nhà thầu #" + singleWinnerId;
-            const totalGiaTrung = winningLots.reduce((sum, pl) => sum + (parseFloat(pl.giaTrungThau) || 0), 0);
+            const totalGiaTrung = this.model.sumVND(winningLots.map((pl) => pl.giaTrungThau));
             let link;
             if (singleWinnerBid && singleWinnerBid.loaiNhaThau === "Liên danh") {
               const allJvMembers = resolveBidJointVentureMembers(this.model, singleWinnerBid);

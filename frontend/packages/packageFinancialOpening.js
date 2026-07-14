@@ -39,11 +39,7 @@ export async function savePackageFinancialOpening(controller, pkg, bidUpdates, {
     bid.giaDuThau = update.giaDuThau;
     bid.tyLeGiamGia = update.tyLeGiamGia;
     bid.giaSauGiamGia = update.giaSauGiamGia;
-    if (update.hieuLucHsdt != null) {
-      bid.hieuLucHsdt = update.hieuLucHsdt;
-    } else if (pkg.linhVuc === "Tư vấn") {
-      bid.hieuLucHsdt = Number.parseInt(bid.hieuLucHsdxt, 10) || 0;
-    }
+    if (update.hieuLucHsdt != null) bid.hieuLucHsdt = update.hieuLucHsdt;
   });
   pkg.thoiGianMoEhsdxtc = openingTime || pkg.thoiGianMoEhsdxtc || controller.model.getCurrentDateTimeString();
   await persistAndSync(controller, ["thongtinmothau", "goithau"]);

@@ -3,8 +3,10 @@ import { APP_DEBUG } from "./appConfig.js";
 import {
   getActiveOrganizationId,
   getWorkspaceStorage,
-  isWorkspaceStorageEvent
+  isWorkspaceStorageEvent,
+  WORKSPACE_PURGE_EVENT_KEY
 } from "./workspaceState.js";
+import { apiFetch } from "../shared/apiClient.js";
 
 function currentWorkspaceStorage(controller) {
   return controller.model?.workspaceStorage || getWorkspaceStorage();
@@ -78,6 +80,16 @@ export function setupAutoSyncBackground() {
   if (!this._workspaceStorageListener) {
     this._workspaceStorageListener = (event) => {
       const scope = this.model?.workspaceScope;
+      if (scope && event.key === WORKSPACE_PURGE_EVENT_KEY && event.newValue) {
+        try {
+          if (JSON.parse(event.newValue).scopeKey === scope.key) {
+            this.disconnectWebSocket?.(false);
+            void this.model.deactivateWorkspace?.();
+            return;
+          }
+        } catch {
+        }
+      }
       if (scope && isWorkspaceStorageEvent(event, scope)) this.scheduleBackgroundSync(250);
     };
     window.addEventListener("storage", this._workspaceStorageListener);
@@ -179,7 +191,7 @@ export function detailRecordExists(model, tableKey, lookup) {
 }
 export async function fetchRecordByLookup(tableKey, lookup) {
   if (!tableKey || !lookup) return null;
-  const response = await fetch(`/api/record?table=${encodeURIComponent(tableKey)}&lookup=${encodeURIComponent(lookup)}`, {
+  const response = await apiFetch(`/api/record?table=${encodeURIComponent(tableKey)}&lookup=${encodeURIComponent(lookup)}`, {
     headers: {
       "X-Active-Org": encodeURIComponent(getActiveOrganizationId())
     }
@@ -235,7 +247,7 @@ export function autoSync() {
   if (shouldRefreshDashboardSummary) {
     payload.includeDashboardSummary = true;
   }
-  return fetch("/api/sync", {
+  return apiFetch("/api/sync", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -351,6 +363,9 @@ export function autoSync() {
     } else {
       currentWorkspaceStorage(this).removeItem("bf_local_deletions");
     }
+    if (Array.isArray(data.rowVersions) && typeof this.model?.applyCommittedRowVersions === "function") {
+      await this.model.applyCommittedRowVersions(data.rowVersions);
+    }
     if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
       let stateChanged = false;
       for (const orphan of data.orphanedIds) {
@@ -443,7 +458,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       if (routeTables.length > 0) queryParams.set("tables", routeTables.join(","));
     }
     const syncQuery = queryParams.toString();
-    const response = await fetch("/api/get-all-data?" + syncQuery, {
+    const response = await apiFetch("/api/get-all-data?" + syncQuery, {
       headers: {
         "X-Active-Org": encodeURIComponent(workspace.organizationId)
       }

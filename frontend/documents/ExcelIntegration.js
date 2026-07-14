@@ -1,6 +1,7 @@
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { triggerExcelTemplateDownload as triggerTemplateDownload } from "./excelTemplateAdapter.js";
 import { ensureXlsxLoaded } from "../shared/externalAssets.js";
+import { apiFetch } from "../shared/apiClient.js";
 import { readExcelRows, showExcelImportSaveButton } from "./excelFileReader.js";
 import {
   parseAwardResultImport,
@@ -166,7 +167,7 @@ export async function handleExcelUpload(file) {
   formData.append("file", file);
   formData.append("type", apiType);
   try {
-    const res = await fetch("/api/import-excel", {
+    const res = await apiFetch("/api/import-excel", {
       method: "POST",
       body: formData
     });
@@ -401,7 +402,7 @@ export function exportPhatHanhPhanLoExcel(gt) {
   const headers = {
     "Content-Type": "application/json"
   };
-  fetch("/api/export-phanlo-excel", {
+  apiFetch("/api/export-phanlo-excel", {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -430,7 +431,7 @@ export function exportEditPhanLoExcel() {
   const headers = {
     "Content-Type": "application/json"
   };
-  fetch("/api/export-phanlo-excel", {
+  apiFetch("/api/export-phanlo-excel", {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -459,7 +460,7 @@ export function exportEditTuyChonMuaThemExcel() {
   const headers = {
     "Content-Type": "application/json"
   };
-  fetch("/api/export-tuychonmuathem-excel", {
+  apiFetch("/api/export-tuychonmuathem-excel", {
     method: "POST",
     headers,
     body: JSON.stringify({

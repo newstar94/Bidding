@@ -21,10 +21,9 @@ ARCHIVABLE_REFERENCE_TABLES = {
 
 
 def get_owner_type(cursor, organization_id):
-    cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (organization_id,))
-    if cursor.fetchone():
-        return "organization"
-    return "user"
+    cursor.execute("SELECT scope_type FROM to_chuc WHERE id = ?", (organization_id,))
+    row = cursor.fetchone()
+    return str(row[0]) if row else "unknown"
 
 
 def validate_owner_scoped_references(cursor, organization_id, table_name, item, incoming_ids_by_table=None):

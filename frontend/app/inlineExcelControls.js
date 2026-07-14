@@ -1,3 +1,5 @@
+import { apiFetch } from "../shared/apiClient.js";
+
 export function setupInlineExcelControls(controller) {
   bindInlineExcelPair({
     templateButtonId: "btn-template-phanlo",
@@ -46,7 +48,7 @@ function handleInlineExcelUpload(controller, file, type) {
   tbody.innerHTML = `<tr><td colspan="${type === "phanlo" ? 5 : 6}" style="text-align: center; padding: 20px; font-weight: bold; color: var(--primary);">
         Đang tải dữ liệu và phân tích file Excel...
     </td></tr>`;
-  fetch("/api/import-excel", {
+  apiFetch("/api/import-excel", {
     method: "POST",
     body: fd
   }).then((res) => res.json()).then((data) => {

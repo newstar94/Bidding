@@ -41,3 +41,12 @@ Các cascade trên phải xuất hiện trong `deleteImpacts` và audit. Mọi q
 - Tham chiếu không thuộc nhóm có thể archive: lỗi `DELETE_REFERENCED`.
 - Thành công: response có `deleteImpacts[]` gồm `action`, `rootCount`, `dependentCount`, `totalCount`, chi tiết quan hệ và số assignment.
 - Audit action tương ứng là `sync.record_archived` hoặc `sync.record_deleted`.
+
+## 5. Dữ liệu offline trên trình duyệt
+
+- Mỗi IndexedDB và khóa local/session storage phải được scope bằng `userId + organizationId`; không dùng chung cache dữ liệu giữa hai tài khoản hoặc hai tổ chức.
+- Khi đăng xuất, tùy chọn “Xóa dữ liệu offline trên thiết bị” được bật mặc định. Người dùng có thể bỏ chọn trên thiết bị cá nhân.
+- Nếu lần đồng bộ cuối thất bại, hệ thống phải cảnh báo nguy cơ mất thay đổi và yêu cầu xác nhận riêng trước khi xóa.
+- Khi phiên hết hạn, bị thu hồi hoặc tài khoản đăng nhập ở nơi khác, dữ liệu workspace cục bộ được xóa để tránh lộ dữ liệu trên máy dùng chung.
+- Xóa workspace chỉ xóa đúng database và khóa storage của cặp user/tổ chức hiện hành; không xóa workspace của tài khoản hoặc tổ chức khác.
+- Service worker không cache HTML cá nhân hóa, API, WebSocket, ảnh tải lên hoặc vendor không có content hash. Mỗi build dùng cache asset riêng và dọn cache build cũ khi activate.

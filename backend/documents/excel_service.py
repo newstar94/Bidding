@@ -226,13 +226,14 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
         SELECT loai_nha_thau, ma_phan_lo, ten_phan_lo, ma_dinh_danh, ten_nha_thau,
                gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia, hieu_luc_hsdt,
                gia_tri_dam_bao, hieu_luc_bao_dam_ngay, thoi_gian_thuc_hien,
-               dam_bao_du_thau, hieu_luc_dam_bao, hieu_luc_hsdxt,
-               danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
-               lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh,
-               danh_gia_tai_chinh,
-               nguyen_nhan_khong_dat_hop_le, nguyen_nhan_khong_dat_nang_luc, nguyen_nhan_khong_dat_ky_thuat
-        FROM thong_tin_mo_thau
-        WHERE goi_thau_id = ? AND organization_id = ?
+               k.danh_gia_hop_le, k.danh_gia_nang_luc, k.danh_gia_ky_thuat,
+               k.lam_ro_hop_le, k.lam_ro_nang_luc, k.lam_ro_ky_thuat, k.lam_ro_tai_chinh,
+               k.danh_gia_tai_chinh,
+               k.nguyen_nhan_khong_dat_hop_le, k.nguyen_nhan_khong_dat_nang_luc, k.nguyen_nhan_khong_dat_ky_thuat
+        FROM thong_tin_mo_thau m
+        LEFT JOIN ket_qua_danh_gia_nha_thau k
+          ON k.organization_id = m.organization_id AND k.thong_tin_mo_thau_id = m.id
+        WHERE m.goi_thau_id = ? AND m.organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()
@@ -289,28 +290,28 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
             if has_phan_lo:
                 row_values = [
                     bid[0], bid[1], bid[2], bid[3], bid[4],
-                    bid[15] or "", bid[18] or "", bid[23] or "",
-                    bid[16] or "", bid[19] or "", bid[24] or "",
-                    bid[17] or "", bid[20] or "", bid[25] or "",
+                    bid[12] or "", bid[15] or "", bid[20] or "",
+                    bid[13] or "", bid[16] or "", bid[21] or "",
+                    bid[14] or "", bid[17] or "", bid[22] or "",
                 ]
             else:
                 row_values = [
                     bid[0], bid[3], bid[4],
-                    bid[15] or "", bid[18] or "", bid[23] or "",
-                    bid[16] or "", bid[19] or "", bid[24] or "",
-                    bid[17] or "", bid[20] or "", bid[25] or "",
+                    bid[12] or "", bid[15] or "", bid[20] or "",
+                    bid[13] or "", bid[16] or "", bid[21] or "",
+                    bid[14] or "", bid[17] or "", bid[22] or "",
                 ]
         elif has_phan_lo:
             row_values = [
                 bid[0], bid[1], bid[2], bid[3], bid[4],
                 bid[5] or "", bid[6] or "", bid[7] or "",
-                bid[22] or "", bid[21] or "",
+                bid[19] or "", bid[18] or "",
             ]
         else:
             row_values = [
                 bid[0], bid[3], bid[4],
                 bid[5] or "", bid[6] or "", bid[7] or "",
-                bid[22] or "", bid[21] or "",
+                bid[19] or "", bid[18] or "",
             ]
         rows.append(row_values)
 

@@ -12,29 +12,50 @@ from backend.documents.word_defaults import build_default_word_mappings
 
 def main():
     contract = build_schema_contract(build_default_word_mappings())
-    output = ROOT / "frontend" / "documents" / "schemaContract.js"
-    payload = json.dumps(contract, ensure_ascii=True, indent=2, sort_keys=True)
-    output.write_text(
-        "/* Generated from backend field/schema manifests. Do not edit by hand. */\n"
-        f"export const SCHEMA_CONTRACT = {payload};\n\n"
-        "export const CLIENT_TABLE_MAP = SCHEMA_CONTRACT.clientTableMap;\n"
-        "export const COMMON_FIELD_NAME_OVERRIDES = SCHEMA_CONTRACT.commonFieldMap;\n"
-        "export const FIELD_MAP_BY_TABLE = Object.fromEntries(\n"
-        "  Object.entries(SCHEMA_CONTRACT.tables).map(([table, spec]) => [table, spec.fieldMap || {}])\n"
-        ");\n\n"
-        "export const FIELD_MANIFEST = SCHEMA_CONTRACT.fieldManifest;\n"
-        "export const FIELD_METADATA_BY_TABLE = Object.fromEntries(\n"
-        "  Object.entries(FIELD_MANIFEST.tables).map(([table, spec]) => [table, spec.fields || {}])\n"
-        ");\n\n"
-        "export const DEFAULT_WORD_VARIABLES = Object.entries(FIELD_METADATA_BY_TABLE).flatMap(\n"
-        "  ([sourceTable, fields]) => Object.values(fields)\n"
-        "    .filter((field) => field.wordVariable)\n"
-        "    .map((field) => ({\n"
-        "      name: field.wordVariable, sourceTable, sourceColumn: field.column,\n"
-        "      label: field.label, format: field.format\n"
-        "    }))\n"
-        ");\n\n"
+    runtime_contract = {
+        "clientTableMap": contract["clientTableMap"],
+        "commonFieldMap": contract["commonFieldMap"],
+        "fieldMapByTable": {
+            table: spec.get("fieldMap", {}) for table, spec in contract["tables"].items()
+        },
+    }
+    runtime_payload = json.dumps(runtime_contract, ensure_ascii=True, indent=2, sort_keys=True)
+    runtime_output = ROOT / "frontend" / "documents" / "schemaRuntime.js"
+    runtime_output.write_text(
+        "/* Generated runtime-only schema maps. Do not edit by hand. */\n"
+        f"const RUNTIME_SCHEMA = {runtime_payload};\n\n"
+        "export const CLIENT_TABLE_MAP = RUNTIME_SCHEMA.clientTableMap;\n"
+        "export const COMMON_FIELD_NAME_OVERRIDES = RUNTIME_SCHEMA.commonFieldMap;\n"
+        "export const FIELD_MAP_BY_TABLE = RUNTIME_SCHEMA.fieldMapByTable;\n"
         "export const resolveSchemaTable = (type) => CLIENT_TABLE_MAP[type] || type;\n",
+        encoding="utf-8",
+    )
+
+    field_tables = contract["fieldManifest"]["tables"]
+    word_metadata = {
+        table: {
+            column: field for column, field in spec.get("fields", {}).items()
+            if field.get("wordVariable")
+        }
+        for table, spec in field_tables.items()
+    }
+    word_metadata = {table: fields for table, fields in word_metadata.items() if fields}
+    word_variables = [
+        {
+            "name": field["wordVariable"],
+            "sourceTable": table,
+            "sourceColumn": field["column"],
+            "label": field.get("label"),
+            "format": field.get("format"),
+        }
+        for table, fields in word_metadata.items()
+        for field in fields.values()
+    ]
+    word_output = ROOT / "frontend" / "documents" / "wordVariableManifest.js"
+    word_output.write_text(
+        "/* Generated Word-variable manifest. Loaded only with Word integration. */\n"
+        f"export const FIELD_METADATA_BY_TABLE = {json.dumps(word_metadata, ensure_ascii=True, indent=2, sort_keys=True)};\n\n"
+        f"export const DEFAULT_WORD_VARIABLES = {json.dumps(word_variables, ensure_ascii=True, indent=2, sort_keys=True)};\n",
         encoding="utf-8",
     )
 

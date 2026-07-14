@@ -733,9 +733,9 @@ export function renderDanhGiaHsdtPanel() {
     }
     if (!is1G2T && gt.quyTrinhDanhGia === "quytrinh2") {
       bids.sort((a, b) => {
-        const priceA = parseFloat(a.giaSauGiamGia || a.giaDuThau || 0);
-        const priceB = parseFloat(b.giaSauGiamGia || b.giaDuThau || 0);
-        return priceA - priceB;
+        const priceA = BigInt(this.model.parseVND(a.giaSauGiamGia || a.giaDuThau) || 0);
+        const priceB = BigInt(this.model.parseVND(b.giaSauGiamGia || b.giaDuThau) || 0);
+        return priceA < priceB ? -1 : priceA > priceB ? 1 : 0;
       });
     } else {
       bids.sort((a, b) => {
@@ -751,16 +751,8 @@ export function renderDanhGiaHsdtPanel() {
       bids.forEach((bid) => {
         const tr = document.createElement("tr");
         tr.setAttribute("data-bid-id", bid.id);
-        let finalGiaTriDamBao = bid.giaTriDamBao || 0;
+        const finalGiaTriDamBao = bid.giaTriDamBao || 0;
         let finalHieuLucDamBao = bid.hieuLucBaoDamNgay ? String(bid.hieuLucBaoDamNgay) : "";
-        if (is1G2T && gt.linhVuc !== "Tư vấn") {
-          if (bid.damBaoDuThau !== void 0 && bid.damBaoDuThau !== null) {
-            finalGiaTriDamBao = bid.damBaoDuThau;
-          }
-          if (bid.hieuLucDamBao) {
-            finalHieuLucDamBao = String(bid.hieuLucDamBao);
-          }
-        }
         if (finalHieuLucDamBao && !finalHieuLucDamBao.includes("ngày")) {
           finalHieuLucDamBao = finalHieuLucDamBao + " ngày";
         }
@@ -843,7 +835,7 @@ export function renderDanhGiaHsdtPanel() {
           const valLamRoTaiChinh = bid.lamRoTaiChinh || "";
           const valKetLuan = bid.danhGiaKetLuan || "";
           const isTechnical = caseType === "TU_VAN" || caseType === "1G2T_NO_LOT" || caseType === "1G2T_WITH_LOT";
-          const valHieuLucHsdtRaw = bid.hieuLucHsdxt || bid.hieuLucHsdt || "";
+          const valHieuLucHsdtRaw = bid.hieuLucHsdt || "";
           const valHieuLucHsdtDisplay = valHieuLucHsdtRaw ? String(valHieuLucHsdtRaw).includes("ngày") ? valHieuLucHsdtRaw : valHieuLucHsdtRaw + " ngày" : "--";
           const valHieuLucHsdtInput = valHieuLucHsdtRaw ? String(valHieuLucHsdtRaw).includes("ngày") ? valHieuLucHsdtRaw : valHieuLucHsdtRaw + " ngày" : "";
           if (isReadOnly) {

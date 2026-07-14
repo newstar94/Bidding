@@ -1,7 +1,7 @@
 """Full and delta synchronization read service."""
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
 
@@ -54,7 +54,7 @@ async def read_sync_data(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
 
         org_name = get_active_org(request, role_or_err.user_id)

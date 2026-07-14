@@ -1,8 +1,10 @@
+import { apiFetch } from "./apiClient.js";
+
 export function getAuthDownloadUrl(url) {
   return url;
 }
 export function authFetchDownload(url, filename) {
-  return fetch(url).then(async (res) => {
+  return apiFetch(url, { timeoutMs: 120_000 }).then(async (res) => {
     if (!res.ok) {
       let errMsg = "Lỗi tải file";
       try {

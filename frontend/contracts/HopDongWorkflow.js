@@ -3,6 +3,7 @@ import { selectPartnerVersionForDate } from "../partners/contractorVersionBindin
 import { removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
 import { persistAndSync } from "../shared/MutationService.js";
 import { escapeHtml } from "../shared/view_helpers.js";
+import { apiFetch } from "../shared/apiClient.js";
 export async function deleteHopDong(id) {
   const targetHd = this.model.state.hopdong.find((h) => h.id === id);
   if (!targetHd) return;
@@ -273,7 +274,7 @@ export async function editHopDong(id) {
       restoreHdEmpValue();
     };
     if (!this.model.state.employees || this.model.state.employees.length === 0) {
-      fetch("/api/auth/users").then((r) => r.json()).then((users) => {
+      apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
         this.model.state.employees = users.map((u) => ({
           id: `user-${u.id}`,
           name: u.name,

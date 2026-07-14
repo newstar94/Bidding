@@ -3,6 +3,8 @@ from io import BytesIO
 import re
 import hashlib
 
+from backend.shared.numeric_utils import parse_vnd_amount
+
 from .field_manifest import build_field_manifest
 from .schema_contract import CLIENT_TABLE_MAP, json_key_for_column
 
@@ -210,10 +212,8 @@ def clean_money(val):
     if pd.isna(val):
         return 0
     val_str = str(val).replace("VND", "").replace(".", "").replace(",", "").strip()
-    try:
-        return float(val_str)
-    except ValueError:
-        return 0
+    parsed = parse_vnd_amount(val_str)
+    return parsed if parsed is not None else 0
 
 def clean_int(val):
     if pd.isna(val):
@@ -283,7 +283,7 @@ def parse_excel(file_bytes, import_type):
             if pd.isna(val):
                 val = ""
 
-            if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'baoDamDuThau', 'damBaoDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao']:
+            if key in ['tongMucDauTu', 'giaGoiThau', 'giaTri', 'giaTriPhanLo', 'giaTriUocTinh', 'giaTrungThau', 'baoDamDuThau', 'giaDuThau', 'giaSauGiamGia', 'giaTriDamBao']:
                 val = clean_money(val)
             elif key in ['soLuong', 'tyLe']:
                 try:
@@ -324,7 +324,7 @@ def parse_excel(file_bytes, import_type):
             tong_muc = item.get('tongMucDauTu')
             if tong_muc is not None:
                 try:
-                    tm_val = float(tong_muc)
+                    tm_val = int(tong_muc)
                     if tm_val < 0:
                         validation_comments.append("Tổng mức đầu tư không được nhỏ hơn 0")
                 except ValueError:
@@ -337,7 +337,7 @@ def parse_excel(file_bytes, import_type):
             gia = item.get('giaGoiThau')
             if gia is not None:
                 try:
-                    g_val = float(gia)
+                    g_val = int(gia)
                     if g_val < 0:
                         validation_comments.append("Giá gói thầu không được nhỏ hơn 0")
                 except ValueError:
@@ -385,7 +385,7 @@ def parse_excel(file_bytes, import_type):
             gia_tri = item.get('giaTri')
             if gia_tri is not None:
                 try:
-                    gt_val = float(gia_tri)
+                    gt_val = int(gia_tri)
                     if gt_val < 0:
                         validation_comments.append("Giá trị hợp đồng không được nhỏ hơn 0")
                 except ValueError:

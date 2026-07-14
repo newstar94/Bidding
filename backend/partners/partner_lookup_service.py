@@ -360,7 +360,7 @@ def run_partner_lookup_worker():
                         (organization_id,)
                     )
                     cursor.execute(
-                        "UPDATE sync_metadata SET current_version = current_version + 1, updated_at = datetime('now', 'localtime') WHERE organization_id = ?",
+                        "UPDATE sync_metadata SET current_version = current_version + 1, updated_at = datetime('now') WHERE organization_id = ?",
                         (organization_id,)
                     )
                     cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))
@@ -376,7 +376,7 @@ def run_partner_lookup_worker():
                             ten_viet_tat = CASE WHEN ten_viet_tat IS NULL OR ten_viet_tat = '' THEN ? ELSE ten_viet_tat END,
                             ma_so_thue = CASE WHEN ? != '' THEN ? ELSE ma_so_thue END,
                             sync_version = ?,
-                            updated_at = datetime('now', 'localtime')
+                            updated_at = datetime('now')
                         WHERE id = ?
                     """, (new_name, new_address, new_address_raw, new_short_name, returned_tax_code, returned_tax_code, new_sync_ver, c_id))
 
@@ -385,7 +385,7 @@ def run_partner_lookup_worker():
                         UPDATE thong_tin_mo_thau
                         SET ten_nha_thau = ?,
                             sync_version = ?,
-                            updated_at = datetime('now', 'localtime')
+                            updated_at = datetime('now')
                         WHERE nha_thau_id = ?
                           AND (ten_nha_thau IS NULL OR ten_nha_thau = '' OR ten_nha_thau LIKE 'Nhà thầu%' OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)')
                     """, (new_name, new_sync_ver, c_id))

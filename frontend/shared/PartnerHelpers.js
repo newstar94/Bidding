@@ -1,3 +1,5 @@
+import { apiFetch } from "./apiClient.js";
+
 function addressCacheRoot() {
   return typeof window !== "undefined" ? window : globalThis;
 }
@@ -57,7 +59,7 @@ async function ensureVietnamProvinces() {
   const root = addressCacheRoot();
   if (!root._vietnamProvinces || !Array.isArray(root._vietnamProvinces) || root._vietnamProvinces.length === 0) {
     try {
-      const res = await fetch("/api/address/provinces");
+      const res = await apiFetch("/api/address/provinces");
       if (!res.ok) return [];
       const data = await res.json();
       root._vietnamProvinces = Array.isArray(data) ? data : [];
@@ -74,7 +76,7 @@ async function ensureVietnamWards(provinceCode) {
   root._vietnamWards = root._vietnamWards || {};
   if (!root._vietnamWards[provinceCode] || !Array.isArray(root._vietnamWards[provinceCode])) {
     try {
-      const res = await fetch(`/api/address/wards/${provinceCode}`);
+      const res = await apiFetch(`/api/address/wards/${provinceCode}`);
       if (!res.ok) return [];
       const data = await res.json();
       root._vietnamWards[provinceCode] = Array.isArray(data) ? data : [];

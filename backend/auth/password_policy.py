@@ -1,5 +1,5 @@
-MAX_PASSWORD_LENGTH = 1024
-MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 256
+MIN_PASSWORD_LENGTH = 8
 
 
 def validate_new_password(password):
@@ -11,3 +11,8 @@ def validate_new_password(password):
     if len(password) > MAX_PASSWORD_LENGTH:
         return False, f"Mật khẩu không được vượt quá {MAX_PASSWORD_LENGTH} ký tự."
     return True, ""
+
+
+def validate_password_input(password):
+    """Bound authentication work without changing any password characters."""
+    return isinstance(password, str) and 0 < len(password) <= MAX_PASSWORD_LENGTH

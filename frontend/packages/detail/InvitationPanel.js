@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../shared/view_helpers.js";
+import { registerCommandArgs } from "../../shared/commandArgs.js";
 
 const HEADER_CLASS_BY_STYLE = Object.freeze({
   "width: 120px; text-align: center;": "col-number text-center",
@@ -28,6 +29,7 @@ function renderListCard({ title, addButtonId, addLabel, tableId, bodyId, headers
 
 export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMode = false } = {}) {
   if (!container) return;
+  const packageArgsKey = registerCommandArgs([String(pkg?.id || "")]);
   const required = '<span class="required-marker">*</span>';
   const extensionCard = renderListCard({
     title: "Gia hạn thời điểm đóng thầu",
@@ -68,14 +70,13 @@ export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMo
       { label: `Nội dung trả lời ${required}` }
     ]
   });
-  const packageId = escapeHtml(pkg?.id || "");
   container.innerHTML = `
     ${summaryHtml}
     ${extensionCard}
     ${requestCard}
     ${responseCard}
     <div class="workflow-action-row is-spread with-divider">
-      <button class="btn btn-primary workflow-primary-action" data-bf-action="call" data-fn="moThauGoiThau" data-args='["${packageId}"]'>
+      <button class="btn btn-primary workflow-primary-action" data-bf-action="call" data-fn="moThauGoiThau" data-arg-key="${packageArgsKey}">
         <i data-lucide="unlock"></i> Tiến hành Mở thầu
       </button>
       <button class="btn btn-primary workflow-primary-action ${editMode ? "is-success" : ""}" id="btn-luu-thongtinmoithau">

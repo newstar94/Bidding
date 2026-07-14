@@ -169,7 +169,7 @@ def generate_suggested_username(name: str, email: str, cursor) -> str:
     candidate = base
     while True:
         cursor.execute(
-            "SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ?",
+            "SELECT 1 FROM tai_khoan WHERE username_norm = ?",
             (candidate,),
         )
         if not cursor.fetchone():

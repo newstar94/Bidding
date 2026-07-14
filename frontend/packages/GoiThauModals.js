@@ -151,9 +151,6 @@ export function renderExcelPreview(rows, importType) {
     nhaThauId: "Nhà thầu",
     maPhanLo: "Mã phần lô",
     tenPhanLo: "Tên phần lô",
-    damBaoDuThau: "Đảm bảo dự thầu",
-    hieuLucDamBao: "Hiệu lực ĐB (ngày)",
-    hieuLucHsdxt: "Hiệu lực E-HSĐXKT",
     giaDuThau: "Giá dự thầu",
     tyLeGiamGia: "Tỷ lệ giảm (%)",
     giaSauGiamGia: "Giá sau giảm giá",
@@ -176,7 +173,7 @@ export function renderExcelPreview(rows, importType) {
   keys.forEach((k) => {
     const label = labelMap[k] || k;
     let align = "left";
-    if (["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "damBaoDuThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao"].includes(k)) {
+    if (["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao"].includes(k)) {
       align = "right";
     }
     headerHtml += `<th style="text-align: ${align} !important;">${label}</th>`;
@@ -217,7 +214,7 @@ export function renderExcelPreview(rows, importType) {
       let inputClass = "excel-preview-input";
       const dateKeys = ["ngayPheDuyet", "ngayQuyetDinh", "ngayKy", "ngayQdChiDinh", "ngayTrinhDuToan", "ngayPheDuyetDuToan", "ngayCapCCCD", "ngayCapChungChi"];
       const datetimeKeys = ["thoiGianDangMa", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau"];
-      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "damBaoDuThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
+      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
       if (numberKeys.includes(k)) {
         inputType = "number";
         align = "right";
@@ -260,7 +257,7 @@ export function renderExcelPreview(rows, importType) {
       const row = controller._excelImportData[rowIndex];
       const dateKeys = ["ngayPheDuyet", "ngayQuyetDinh", "ngayKy", "ngayQdChiDinh", "ngayTrinhDuToan", "ngayPheDuyetDuToan", "ngayCapCCCD", "ngayCapChungChi"];
       const datetimeKeys = ["thoiGianDangMa", "thoiGianDangTai", "thoiGianDongThau", "thoiGianMoThau"];
-      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "damBaoDuThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
+      const numberKeys = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao", "thoiGianThucHien", "hieuLucBaoDamNgay", "hieuLucHsdt"];
       if (numberKeys.includes(key)) {
         row[key] = val !== "" ? parseFloat(val) : 0;
       } else if (dateKeys.includes(key)) {

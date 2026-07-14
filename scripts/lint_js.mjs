@@ -25,6 +25,12 @@ function inspect(filePath) {
     if (/\son(?:click|change|input|submit)\s*=/.test(line)) {
       errors.push(`${relative}:${index + 1}: dùng data-bf-action thay inline event handler`);
     }
+    if (/data-args\s*=.*\$\{/.test(line)) {
+      errors.push(`${relative}:${index + 1}: không nội suy dữ liệu động vào data-args; dùng registerCommandArgs`);
+    }
+    if (/\.innerHTML\s*=\s*`[^`]*<img[^`]*\$\{/.test(line)) {
+      errors.push(`${relative}:${index + 1}: không nội suy src ảnh vào innerHTML; dùng safeImageSrc và DOM API`);
+    }
     for (const match of line.matchAll(/window\.([A-Za-z_$][\w$]*)\s*=/g)) {
       if (!ALLOWED_GLOBAL_ASSIGNMENTS.has(match[1])) {
         errors.push(`${relative}:${index + 1}: global window.${match[1]} chưa được phê duyệt`);

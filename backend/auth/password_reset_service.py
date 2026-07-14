@@ -6,6 +6,7 @@ import time
 import uuid
 
 from backend.auth.auth_helper import hash_password
+from backend.auth.identity import normalize_email, normalize_username
 
 
 RESET_TOKEN_TTL_SECONDS = 30 * 60
@@ -25,8 +26,8 @@ def create_password_reset(database, username, email, requested_ip, now=None):
     The caller must always return the same public response for both outcomes.
     The raw token exists only in the returned email payload and is never stored.
     """
-    normalized_username = str(username or "").strip().lower()
-    normalized_email = str(email or "").strip().lower()
+    normalized_username = normalize_username(username)
+    normalized_email = normalize_email(email)
     current_time = int(time.time() if now is None else now)
     conn = database.get_connection()
     try:
@@ -39,7 +40,7 @@ def create_password_reset(database, username, email, requested_ip, now=None):
             """
             SELECT id, ho_ten, ten_dang_nhap, email
             FROM tai_khoan
-            WHERE lower(ten_dang_nhap) = ? AND lower(email) = ?
+            WHERE username_norm = ? AND email_norm = ?
             LIMIT 1
             """,
             (normalized_username, normalized_email),

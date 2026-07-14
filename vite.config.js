@@ -63,17 +63,17 @@ export default defineConfig(({ mode }) => {
       manifest: true,
       outDir: 'dist',
       emptyOutDir: true,
-      cssCodeSplit: false,
+      cssCodeSplit: true,
       sourcemap: false,
       minify: 'esbuild',
-      chunkSizeWarningLimit: enableObfuscation ? 4096 : 1024,
+      chunkSizeWarningLimit: 700,
       rolldownOptions: {
         input: {
           app: path.resolve(__dirname, 'frontend/app/app.js')
         },
         output: {
-          codeSplitting: false,
-          entryFileNames: 'assets/appbundle.js',
+          codeSplitting: true,
+          entryFileNames: 'assets/[name]-[hash].js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]'
         }

@@ -50,8 +50,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
 
-from backend.shared.paths import IMAGE_DIR, WORD_TEMPLATE_DIR
 from backend.shared.client_ip import is_request_secure, parse_ip_networks
+from backend.shared.origin_policy import get_allowed_websocket_origins
 
 
 env_path = os.path.join(project_root, '.env')
@@ -64,6 +64,8 @@ if os.path.exists(env_path):
             if '=' in line:
                 k, v = line.split('=', 1)
                 os.environ.setdefault(k.strip(), v.strip().strip("'").strip('"'))
+
+from backend.shared.paths import IMAGE_DIR, WORD_TEMPLATE_DIR
 
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
@@ -133,17 +135,7 @@ def _unique_ordered(values):
 
 
 
-_ws_origins_env = os.environ.get("ALLOWED_WS_ORIGINS", "")
-if _ws_origins_env:
-    ALLOWED_WS_ORIGINS = frozenset(_split_env_list(_ws_origins_env))
-else:
-    _scheme = "https" if APP_SECURE_COOKIES else "http"
-    _port_suffix = f":{APP_PORT}" if APP_PORT not in (80, 443) else ""
-    ALLOWED_WS_ORIGINS = frozenset([
-        f"{_scheme}://{APP_HOST}{_port_suffix}",
-        f"{_scheme}://localhost{_port_suffix}",
-        f"{_scheme}://127.0.0.1{_port_suffix}",
-    ])
+ALLOWED_WS_ORIGINS = get_allowed_websocket_origins()
 
 
 
@@ -390,7 +382,8 @@ from backend.auth.otp_routes import (
 )
 from backend.api.org_routes import (
     add_user_to_org_api,
-    remove_user_from_org_api
+    remove_user_from_org_api,
+    update_organization_subscription_api,
 )
 from backend.auth.auth_routes import (
     login_api,
@@ -402,7 +395,6 @@ from backend.auth.auth_routes import (
     list_users_api,
     delete_user_api,
     update_user_role_api,
-    update_user_package_api,
     update_user_metadata_api,
     list_system_packages_api,
     update_system_package_api,
@@ -669,10 +661,10 @@ routes = [
     Route("/api/auth/users", list_users_api, methods=["GET"]),
 
     Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
-    Route("/api/auth/users/update-package", update_user_package_api, methods=["POST"]),
     Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),
     Route("/api/auth/users/add-to-org", add_user_to_org_api, methods=["POST"]),
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
+    Route("/api/organizations/subscription", update_organization_subscription_api, methods=["POST"]),
     Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
 
 
@@ -924,6 +916,34 @@ class BodySizeLimitMiddleware:
             if not message.get("more_body", False):
                 break
 
+        content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+        if content_type == "application/json":
+            raw_body = b"".join(
+                message.get("body", b"")
+                for message in buffered_messages
+                if message.get("type") == "http.request"
+            )
+            try:
+                parsed_body = json.loads(raw_body.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                await self._reject(
+                    scope,
+                    send,
+                    "REQUEST_JSON_INVALID",
+                    "Nội dung JSON không hợp lệ.",
+                    400,
+                )
+                return
+            if not isinstance(parsed_body, dict):
+                await self._reject(
+                    scope,
+                    send,
+                    "REQUEST_JSON_OBJECT_REQUIRED",
+                    "Nội dung JSON phải là một object.",
+                    400,
+                )
+                return
+
         message_index = 0
 
         async def replay_receive():
@@ -1052,8 +1072,11 @@ async def lifespan(application):
     application.state.startup_complete = False
     application.state.event_loop_lag_ms = 0.0
     monitor_task = None
+    websocket_broker_task = None
+    writer_lease = None
     try:
         validate_startup_configuration(database)
+        writer_lease = database.acquire_writer_lease()
         from backend.documents.document_worker import (
             cleanup_stale_document_jobs,
             validate_document_worker_configuration,
@@ -1065,12 +1088,28 @@ async def lifespan(application):
         _initialize_database()
         verify_database_readiness(database, DB_SCHEMA_VERSION)
     except Exception as db_err:
+        if writer_lease is not None:
+            writer_lease.release()
         log_error(db_err, "startup_database_init")
         raise
 
     application.state.startup_complete = True
     application.state.ready = True
     monitor_task = asyncio.create_task(_monitor_event_loop(application))
+    try:
+        from backend.sync.websocket import _latest_broker_event_id, run_websocket_event_broker
+        websocket_cursor = await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)
+        websocket_broker_task = asyncio.create_task(
+            run_websocket_event_broker(start_after_id=websocket_cursor)
+        )
+    except Exception:
+        monitor_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await monitor_task
+        application.state.ready = False
+        application.state.startup_complete = False
+        writer_lease.release()
+        raise
 
     def _start_optional_background_services():
         import time as _time
@@ -1114,7 +1153,7 @@ async def lifespan(application):
 
 
                     _conn.execute(
-                        "DELETE FROM deleted_records WHERE deleted_at < datetime('now', 'localtime', '-90 days')"
+                        "DELETE FROM deleted_records WHERE deleted_at < datetime('now', '-90 days')"
                     )
                     _conn.commit()
                     _conn.close()
@@ -1139,8 +1178,14 @@ async def lifespan(application):
             monitor_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await monitor_task
+        if websocket_broker_task is not None:
+            websocket_broker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await websocket_broker_task
         application.state.ready = False
         application.state.startup_complete = False
+        if writer_lease is not None:
+            writer_lease.release()
 
 async def org_permission_handler(request, exc):
     return error_response(

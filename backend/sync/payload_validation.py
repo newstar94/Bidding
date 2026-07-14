@@ -1,11 +1,15 @@
 import json
+import math
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
-from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from .mapper import json_key_for_column
+from .queries import TABLE_KEYS
 from backend.shared.date_utils import is_datetime_column, parse_datetime_value
-from backend.shared.text_utils import safe_float, safe_int
+from backend.shared.text_utils import safe_int
+from backend.shared.numeric_utils import parse_vnd_amount
+from backend.sync.evaluation_metadata import parse_evaluation_metadata
 
 
 PACKAGE_STATUSES = {"Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"}
@@ -22,6 +26,250 @@ DATE_KEYS_BY_TABLE = {
     ]
     for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
 }
+
+SYNC_CHILD_FIELDS = {
+    "ke_hoach_lcnt": {
+        "cvDaThucHienList", "cvKhongApDungList", "cvChuaDuDieuKienList",
+    },
+    "goi_thau": {
+        "phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList",
+        "yeuCauLamRoList", "traLoiLamRoList", "toChuyenGia", "toThamDinh",
+    },
+    "nha_thau": {"thanhVienLienDanh"},
+    "thong_tin_mo_thau": {"thanhVienLienDanh"},
+    "hop_dong": {"goiThauIds"},
+}
+SYNC_VIRTUAL_FIELDS = {
+    "thong_tin_mo_thau": {
+        "danhGiaHopLe", "danhGiaNangLuc", "danhGiaKyThuat", "danhGiaTaiChinh",
+        "danhGiaKetLuan", "diemDanhGia", "lyDoTruot", "lamRoHopLe",
+        "lamRoNangLuc", "lamRoKyThuat", "lamRoTaiChinh",
+        "nguyenNhanKhongDatHopLe", "nguyenNhanKhongDatNangLuc",
+        "nguyenNhanKhongDatKyThuat",
+    }
+}
+MAX_SYNC_TEXT_LENGTH = 100_000
+MAX_SYNC_CHILD_ITEMS = 500
+BOOLEAN_COLUMNS = {
+    "is_latest", "is_tong_muc_tu_dong", "is_thuoc", "co_qd_chi_dinh",
+}
+TABLE_KEYS_FOR_VALIDATION = TABLE_KEYS
+CHILD_MONEY_FIELDS = {
+    "giaTri", "gia_tri", "giaTriPhanLo", "gia_tri_phan_lo",
+    "baoDamDuThau", "bao_dam_du_thau", "giaTrungThau", "gia_trung_thau",
+    "giaTriUocTinh", "gia_tri_uoc_tinh",
+}
+CHILD_NUMBER_FIELDS = {"soLuong", "so_luong", "tyLe", "ty_le"}
+
+
+def _field_error(path, code, message):
+    return {"field": path, "code": code, "message": message}
+
+
+def _is_strict_integer(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_json_depth(value, depth=0):
+    if depth > 8:
+        return False
+    if isinstance(value, dict):
+        return len(value) <= 500 and all(
+            isinstance(key, str) and _validate_json_depth(item, depth + 1)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return len(value) <= MAX_SYNC_CHILD_ITEMS and all(
+            _validate_json_depth(item, depth + 1) for item in value
+        )
+    return not isinstance(value, str) or len(value) <= MAX_SYNC_TEXT_LENGTH
+
+
+def validate_sync_payload_shape(payload):
+    """Validate sync input without coercing invalid values or dropping unknown fields."""
+    errors = []
+    if not isinstance(payload, dict):
+        return [_field_error("$", "TYPE_OBJECT_REQUIRED", "Dữ liệu đồng bộ phải là JSON object.")]
+
+    allowed_top_level = set(TABLE_KEYS_FOR_VALIDATION) | {
+        "deletions", "baseSyncVersion", "clientMutationId", "upserts",
+    }
+    for key in payload:
+        if key not in allowed_top_level:
+            errors.append(_field_error(key, "UNKNOWN_FIELD", "Trường không được hỗ trợ."))
+
+    mutation_id = payload.get("clientMutationId")
+    if mutation_id is not None and (
+        not isinstance(mutation_id, str) or not mutation_id.strip() or len(mutation_id) > 128
+    ):
+        errors.append(_field_error(
+            "clientMutationId", "INVALID_MUTATION_ID",
+            "clientMutationId phải là chuỗi từ 1 đến 128 ký tự.",
+        ))
+    base_version = payload.get("baseSyncVersion")
+    if base_version not in (None, ""):
+        if isinstance(base_version, bool) or not re.fullmatch(r"\d+", str(base_version)):
+            errors.append(_field_error(
+                "baseSyncVersion", "INVALID_INTEGER",
+                "baseSyncVersion phải là số nguyên không âm.",
+            ))
+
+    upserts = payload.get("upserts")
+    if upserts is not None and not isinstance(upserts, dict):
+        errors.append(_field_error("upserts", "TYPE_OBJECT_REQUIRED", "upserts phải là object."))
+    elif isinstance(upserts, dict):
+        for key, values in upserts.items():
+            if key not in TABLE_KEYS_FOR_VALIDATION:
+                errors.append(_field_error(f"upserts.{key}", "INVALID_TABLE", "Bảng upsert không hợp lệ."))
+            elif not isinstance(values, (list, dict)) or not _validate_json_depth(values):
+                errors.append(_field_error(f"upserts.{key}", "PAYLOAD_TOO_COMPLEX", "Upsert không hợp lệ hoặc vượt giới hạn."))
+
+    deletions = payload.get("deletions", [])
+    if not isinstance(deletions, list):
+        errors.append(_field_error("deletions", "TYPE_ARRAY_REQUIRED", "deletions phải là mảng."))
+    else:
+        for index, deletion in enumerate(deletions):
+            path = f"deletions[{index}]"
+            if not isinstance(deletion, dict):
+                errors.append(_field_error(path, "TYPE_OBJECT_REQUIRED", "Mục xóa phải là object."))
+                continue
+            unknown = set(deletion) - {"table", "id", "expectedVersion"}
+            for key in sorted(unknown):
+                errors.append(_field_error(f"{path}.{key}", "UNKNOWN_FIELD", "Trường không được hỗ trợ."))
+            if deletion.get("table") not in TABLE_KEYS_FOR_VALIDATION:
+                errors.append(_field_error(f"{path}.table", "INVALID_TABLE", "Bảng xóa không hợp lệ."))
+            if not isinstance(deletion.get("id"), str) or not deletion.get("id", "").strip():
+                errors.append(_field_error(f"{path}.id", "INVALID_ID", "ID xóa phải là chuỗi không rỗng."))
+            expected_version = deletion.get("expectedVersion")
+            if expected_version is not None and (
+                not _is_strict_integer(expected_version) or expected_version <= 0
+            ):
+                errors.append(_field_error(
+                    f"{path}.expectedVersion", "INVALID_ROW_VERSION",
+                    "expectedVersion phải là số nguyên dương.",
+                ))
+
+    for payload_key, table_name in TABLE_KEYS_FOR_VALIDATION.items():
+        if payload_key not in payload:
+            continue
+        items = payload[payload_key]
+        if not isinstance(items, list):
+            errors.append(_field_error(payload_key, "TYPE_ARRAY_REQUIRED", "Danh sách bản ghi phải là mảng."))
+            continue
+        table_spec = SCHEMA_DINH_NGHIA[table_name]
+        columns = table_spec.get("columns", {})
+        key_to_column = {}
+        for column in columns:
+            key_to_column[column] = column
+            key_to_column[json_key_for_column(table_name, column)] = column
+        allowed_item_keys = (
+            set(key_to_column)
+            | SYNC_CHILD_FIELDS.get(table_name, set())
+            | SYNC_VIRTUAL_FIELDS.get(table_name, set())
+            | {"expectedVersion"}
+        )
+
+        for index, item in enumerate(items):
+            item_path = f"{payload_key}[{index}]"
+            if not isinstance(item, dict):
+                errors.append(_field_error(item_path, "TYPE_OBJECT_REQUIRED", "Bản ghi phải là object."))
+                continue
+            if not _validate_json_depth(item):
+                errors.append(_field_error(item_path, "PAYLOAD_TOO_COMPLEX", "Bản ghi vượt giới hạn kích thước hoặc độ sâu."))
+            for key in item:
+                if key not in allowed_item_keys:
+                    errors.append(_field_error(f"{item_path}.{key}", "UNKNOWN_FIELD", "Trường không được hỗ trợ."))
+                    continue
+                if key == "expectedVersion":
+                    if not _is_strict_integer(item[key]) or item[key] <= 0:
+                        errors.append(_field_error(
+                            f"{item_path}.{key}", "INVALID_ROW_VERSION",
+                            "expectedVersion phải là số nguyên dương.",
+                        ))
+                    continue
+                if key in SYNC_VIRTUAL_FIELDS.get(table_name, set()):
+                    value = item[key]
+                    field_path = f"{item_path}.{key}"
+                    if key == "diemDanhGia":
+                        if value is not None and (
+                            isinstance(value, bool)
+                            or not isinstance(value, (int, float))
+                            or not math.isfinite(value)
+                            or value < 0
+                        ):
+                            errors.append(_field_error(field_path, "INVALID_NUMBER", "Điểm đánh giá phải là số không âm hữu hạn."))
+                    elif value is not None and not isinstance(value, str):
+                        errors.append(_field_error(field_path, "INVALID_STRING", "Trường kết quả đánh giá phải là chuỗi."))
+                    elif isinstance(value, str) and len(value) > MAX_SYNC_TEXT_LENGTH:
+                        errors.append(_field_error(field_path, "STRING_TOO_LONG", "Chuỗi vượt quá giới hạn cho phép."))
+                    continue
+                if key in SYNC_CHILD_FIELDS.get(table_name, set()):
+                    child_value = item[key]
+                    if not isinstance(child_value, list):
+                        errors.append(_field_error(f"{item_path}.{key}", "TYPE_ARRAY_REQUIRED", "Trường con phải là mảng."))
+                    elif len(child_value) > MAX_SYNC_CHILD_ITEMS:
+                        errors.append(_field_error(f"{item_path}.{key}", "INVALID_CHILD_LIST", "Danh sách con không hợp lệ hoặc quá dài."))
+                    elif key == "goiThauIds":
+                        if any(not isinstance(child, str) or not child.strip() for child in child_value):
+                            errors.append(_field_error(f"{item_path}.{key}", "INVALID_ID_LIST", "Danh sách ID gói thầu không hợp lệ."))
+                    else:
+                        for child_index, child in enumerate(child_value):
+                            child_path = f"{item_path}.{key}[{child_index}]"
+                            if not isinstance(child, dict):
+                                errors.append(_field_error(child_path, "TYPE_OBJECT_REQUIRED", "Bản ghi con phải là object."))
+                                continue
+                            for child_key, child_field_value in child.items():
+                                field_path = f"{child_path}.{child_key}"
+                                if child_field_value is None:
+                                    continue
+                                if child_key in CHILD_MONEY_FIELDS and parse_vnd_amount(child_field_value) is None:
+                                    errors.append(_field_error(field_path, "INVALID_MONEY", "Số tiền phải là số nguyên không âm hợp lệ."))
+                                elif child_key in CHILD_NUMBER_FIELDS:
+                                    if (
+                                        isinstance(child_field_value, bool)
+                                        or not isinstance(child_field_value, (int, float))
+                                        or not math.isfinite(child_field_value)
+                                    ):
+                                        errors.append(_field_error(field_path, "INVALID_NUMBER", "Giá trị phải là số hữu hạn."))
+                                    elif child_key in {"tyLe", "ty_le"} and not 0 <= child_field_value <= 100:
+                                        errors.append(_field_error(field_path, "VALUE_OUT_OF_RANGE", "Tỷ lệ phải nằm trong khoảng 0-100."))
+                                    elif child_key in {"soLuong", "so_luong"} and child_field_value < 0:
+                                        errors.append(_field_error(field_path, "VALUE_OUT_OF_RANGE", "Số lượng không được âm."))
+                                elif isinstance(child_field_value, str) and len(child_field_value) > MAX_SYNC_TEXT_LENGTH:
+                                    errors.append(_field_error(field_path, "STRING_TOO_LONG", "Chuỗi vượt quá giới hạn cho phép."))
+                    continue
+
+                column = key_to_column[key]
+                value = item[key]
+                definition = columns[column].upper()
+                field_path = f"{item_path}.{key}"
+                if table_name == "goi_thau" and column == "danh_gia_hsdt_metadata":
+                    try:
+                        parse_evaluation_metadata(value, require_version=True)
+                    except ValueError as exc:
+                        errors.append(_field_error(field_path, "INVALID_EVALUATION_METADATA", str(exc)))
+                    continue
+                if value is None:
+                    if "NOT NULL" in definition:
+                        errors.append(_field_error(field_path, "NULL_NOT_ALLOWED", "Trường này không được là null."))
+                    continue
+                if (table_name, column) in MONEY_COLUMNS:
+                    if parse_vnd_amount(value) is None:
+                        errors.append(_field_error(field_path, "INVALID_MONEY", "Số tiền phải là số nguyên không âm hợp lệ."))
+                elif "INTEGER" in definition:
+                    if column in BOOLEAN_COLUMNS:
+                        if not (isinstance(value, bool) or (_is_strict_integer(value) and value in (0, 1))):
+                            errors.append(_field_error(field_path, "INVALID_BOOLEAN", "Giá trị phải là boolean hoặc 0/1."))
+                    elif not _is_strict_integer(value):
+                        errors.append(_field_error(field_path, "INVALID_INTEGER", "Giá trị phải là số nguyên."))
+                elif "REAL" in definition:
+                    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                        errors.append(_field_error(field_path, "INVALID_NUMBER", "Giá trị phải là số hữu hạn."))
+                elif "TEXT" in definition and not isinstance(value, str):
+                    errors.append(_field_error(field_path, "INVALID_STRING", "Giá trị phải là chuỗi."))
+                elif isinstance(value, str) and len(value) > MAX_SYNC_TEXT_LENGTH:
+                    errors.append(_field_error(field_path, "STRING_TOO_LONG", "Chuỗi vượt quá giới hạn cho phép."))
+    return errors
 
 
 
@@ -42,7 +290,7 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
 
     if table_name in {"chu_dau_tu", "nha_thau"} and not str(item.get("ngayApDung") or "").strip():
         created_at = str(item.get("createdAt") or "").strip()
-        item["ngayApDung"] = created_at[:10] if parse_datetime_value(created_at) else datetime.now().strftime("%Y-%m-%d")
+        item["ngayApDung"] = created_at[:10] if parse_datetime_value(created_at) else datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     if table_name == "chu_dau_tu":
         if not str(item.get("tenChuDauTu") or "").strip():
@@ -140,9 +388,9 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
                 errors.append("Trọng số kỹ thuật phải nằm trong khoảng 0-100.")
 
         gia = item.get("giaGoiThau")
-        if gia is not None:
-            gia_val = safe_float(gia)
-            if gia_val is not None and gia_val < 0:
+        if gia not in (None, ""):
+            gia_val = parse_vnd_amount(gia)
+            if gia_val is None:
                 errors.append("Giá gói thầu không được nhỏ hơn 0.")
 
     elif table_name == "ke_hoach_lcnt":
@@ -150,16 +398,16 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
         item["isTongMucTuDong"] = 1 if (is_auto is True or str(is_auto) in ("1", "true", "True")) else 0
 
         tong_muc = item.get("tongMucDauTu")
-        if tong_muc is not None:
-            tm_val = safe_float(tong_muc)
-            if tm_val is not None and tm_val < 0:
+        if tong_muc not in (None, ""):
+            tm_val = parse_vnd_amount(tong_muc)
+            if tm_val is None:
                 errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
 
     elif table_name == "hop_dong":
         gia_tri = item.get("giaTri")
-        if gia_tri is not None:
-            gt_val = safe_float(gia_tri)
-            if gt_val is not None and gt_val < 0:
+        if gia_tri not in (None, ""):
+            gt_val = parse_vnd_amount(gia_tri)
+            if gt_val is None:
                 errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
         trang_thai_hs = item.get("trangThaiHoSo")
         if trang_thai_hs:

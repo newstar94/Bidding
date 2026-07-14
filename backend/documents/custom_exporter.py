@@ -8,7 +8,7 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Inches
-from datetime import datetime
+from datetime import datetime, timezone
 
 from backend.documents.archive_validation import validate_ooxml_archive
 from backend.documents.template_security import (
@@ -841,7 +841,7 @@ def generate_report_from_custom_template(template_path, context, custom_vars=Non
             append_runtime_log(
                 "export_error.log",
                 (
-                    f"[{datetime.now().isoformat()}] ERROR: Failed rendering "
+                    f"[{datetime.now(timezone.utc).isoformat()}] ERROR: Failed rendering "
                     f"template {os.path.basename(template_path)}\n"
                     f"{traceback.format_exc()}\n{'=' * 50}\n"
                 ),

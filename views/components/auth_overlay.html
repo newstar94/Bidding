@@ -110,7 +110,8 @@
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock"></i>
-                    <input type="password" id="register-password" required placeholder="Mật khẩu tối thiểu 6 ký tự">
+                    <input type="password" id="register-password" required minlength="8" maxlength="256"
+                        autocomplete="new-password" placeholder="Mật khẩu tối thiểu 8 ký tự">
                     <button type="button" class="toggle-password" data-target="register-password">
                         <i data-lucide="eye" style="position:static; pointer-events:none; width:16px; height:16px;"></i>
                     </button>
@@ -123,7 +124,8 @@
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock"></i>
-                    <input type="password" id="register-confirm-password" required placeholder="Xác nhận lại mật khẩu">
+                    <input type="password" id="register-confirm-password" required minlength="8" maxlength="256"
+                        autocomplete="new-password" placeholder="Xác nhận lại mật khẩu">
                     <button type="button" class="toggle-password" data-target="register-confirm-password">
                         <i data-lucide="eye" style="position:static; pointer-events:none; width:16px; height:16px;"></i>
                     </button>
@@ -188,8 +190,8 @@
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock-keyhole"></i>
-                    <input type="password" id="reset-new-password" required minlength="12" maxlength="1024"
-                        autocomplete="new-password" placeholder="Tối thiểu 12 ký tự">
+                    <input type="password" id="reset-new-password" required minlength="8" maxlength="256"
+                        autocomplete="new-password" placeholder="Tối thiểu 8 ký tự">
                     <button type="button" class="toggle-password" data-target="reset-new-password" aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye"></i>
                     </button>
@@ -201,7 +203,7 @@
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock-keyhole"></i>
-                    <input type="password" id="reset-confirm-password" required minlength="12" maxlength="1024"
+                    <input type="password" id="reset-confirm-password" required minlength="8" maxlength="256"
                         autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
                     <button type="button" class="toggle-password" data-target="reset-confirm-password" aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye"></i>

@@ -1,5 +1,5 @@
 export { getAuthDownloadUrl, authFetchDownload } from "./workflow_helpers.js";
-import { formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "./formatters.js";
+import { formatCurrency as formatVndCurrency, formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "./formatters.js";
 import { hasUnifiedSelectListener, markUnifiedSelectListenerRegistered } from "./runtimeState.js";
 export function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -38,14 +38,12 @@ export function safeImageSrc(value, cacheKey = "") {
     const token = String(cacheKey || "").trim();
     return token ? `${src}?v=${encodeURIComponent(token)}` : src;
   }
-  if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
+  if (/^https:\/\/lh3\.googleusercontent\.com\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]+$/.test(src)) return src;
+  if (/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
   return "";
 }
 export function formatCurrency(value) {
-  if (value === null || value === void 0 || value === "") return "--";
-  const num = Number(value);
-  if (isNaN(num)) return value;
-  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(num);
+  return formatVndCurrency(value);
 }
 export function formatDate(dateStr) {
   return formatDisplayDate(dateStr);

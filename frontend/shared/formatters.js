@@ -1,40 +1,41 @@
 export function formatCurrency(value) {
-  if (value === null || value === void 0 || value === "" || isNaN(value)) return "--";
-  const hasFraction = value % 1 !== 0;
-  const fixedValue = hasFraction ? value.toFixed(2) : value.toFixed(0);
-  const parts = fixedValue.split(".");
-  const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const decimalPart = parts[1] ? "," + parts[1] : "";
-  return integerPart + decimalPart + " ₫";
+  const formatted = formatVND(value);
+  return formatted ? `${formatted} ₫` : "--";
 }
 export function formatVND(value) {
   if (value === null || value === void 0) return "";
   let str = value.toString().trim();
   if (!str) return "";
-  if (typeof value === "number") {
-    str = value.toString().replace(".", ",");
+  const integerPart = str.replace(/\./g, "").replace(/\s/g, "");
+  if (!/^\d+$/.test(integerPart)) return "";
+  try {
+    return new Intl.NumberFormat("vi-VN").format(BigInt(integerPart));
+  } catch {
+    return "";
   }
-  const parts = str.split(",");
-  let integerPart = parts[0];
-  let decimalPart = parts.length > 1 ? parts[1] : null;
-  integerPart = integerPart.replace(/\D/g, "");
-  if (!integerPart && decimalPart === null) return "";
-  if (!integerPart) integerPart = "0";
-  const formattedInteger = parseInt(integerPart, 10).toLocaleString("vi-VN");
-  if (decimalPart !== null) {
-    decimalPart = decimalPart.replace(/\D/g, "");
-    return formattedInteger + "," + decimalPart;
-  }
-  return formattedInteger;
 }
 export function parseVND(value) {
   if (value === null || value === void 0) return null;
   let str = value.toString().trim();
   if (!str) return null;
-  str = str.replace(/\./g, "");
-  str = str.replace(/,/g, ".");
-  const parsed = parseFloat(str);
-  return isNaN(parsed) ? null : parsed;
+  str = str.replace(/[.\s]/g, "");
+  if (!/^\d+$/.test(str)) return null;
+  const canonical = str.replace(/^0+(?=\d)/, "");
+  try {
+    const amount = BigInt(canonical);
+    return amount <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(amount) : amount.toString();
+  } catch {
+    return null;
+  }
+}
+export function sumVND(values) {
+  let total = 0n;
+  for (const value of values || []) {
+    const parsed = parseVND(value);
+    if (parsed === null) continue;
+    total += BigInt(parsed);
+  }
+  return total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : total.toString();
 }
 export function parseDisplayDateParts(value) {
   if (!value) return null;

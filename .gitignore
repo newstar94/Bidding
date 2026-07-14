@@ -33,6 +33,7 @@ scratch/
 
 # Tool caches
 .pytest_cache/
+.venv/
 .mypy_cache/
 .ruff_cache/
 .hypothesis/

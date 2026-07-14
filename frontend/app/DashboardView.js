@@ -1,5 +1,6 @@
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
 import { normalizeOrganizations } from "../auth/accessContext.js";
+import { apiFetch } from "../shared/apiClient.js";
 const PACKAGE_STATUS_COLORS = {
   "Chuẩn bị": "var(--text-light)",
   "Đang mời thầu": "var(--primary)",
@@ -97,10 +98,7 @@ export function renderDashboard() {
   } else {
     latestPackages = this.model.getFilteredGoiThau();
     filteredContracts = this.model.getFilteredHopDong();
-    totalContractValue = 0;
-    filteredContracts.forEach((hd) => {
-      totalContractValue += hd.giaTri || 0;
-    });
+    totalContractValue = this.model.sumVND(filteredContracts.map((hd) => hd.giaTri || 0));
     activePackages = 0;
     latestPackages.forEach((gt) => {
       if (gt.trangThai === "Đang mời thầu") {
@@ -177,7 +175,7 @@ export function renderDashboard() {
   this.createIconsScoped(document.getElementById("tab-dashboard"));
 }
 export function renderSuperAdminDashboard() {
-  fetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
+  apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
     const allOrgs = [];
     users.forEach((u) => {
       normalizeOrganizations(u).forEach((organization) => allOrgs.push(organization.id));
@@ -238,7 +236,7 @@ export function renderSuperAdminDashboard() {
                                 <td>${org.manager ? escapeHtml(org.manager) : '<span class="text-muted">Chưa cấu hình</span>'}</td>
                                 <td>${org.email ? escapeHtml(org.email) : '<span class="text-muted">Chưa có</span>'}</td>
                                 <td><span class="badge ${pkgClass}">${pkgName}</span></td>
-                                <td style="font-weight:600;">${org.end || '<span class="text-muted">Vô thời hạn</span>'}</td>
+                                <td style="font-weight:600;">${org.end ? escapeHtml(org.end) : '<span class="text-muted">Vô thời hạn</span>'}</td>
                                 <td style="font-weight:700; text-align:center;">${org.userCount}</td>
                                 <td class="text-right">
                                     <div class="actions-group">

@@ -610,22 +610,15 @@ export function updateBreakdownTotal(planId) {
   const parseInputsVal = (type) => {
     const tbody = document.getElementById(`tbody-breakdown-${type}`);
     if (!tbody) return 0;
-    let sum = 0;
-    tbody.querySelectorAll(".breakdown-value").forEach((input) => {
-      sum += this.model.parseVND(input.value);
-    });
-    return sum;
+    return this.model.sumVND(Array.from(tbody.querySelectorAll(".breakdown-value"), (input) => input.value));
   };
   const sumI = parseInputsVal("dathuchien");
   const sumII = parseInputsVal("khongapdung");
   const sumIII = parseInputsVal("chuadudieuKien");
   const pkgs = this.model.getLatestPackagesForPlan(planId);
-  const sumIV = pkgs.reduce((acc, curr) => {
-    if (curr.isRebid) return acc;
-    return acc + (curr.giaGoiThau || 0);
-  }, 0);
+  const sumIV = this.model.sumVND(pkgs.filter((item) => !item.isRebid).map((item) => item.giaGoiThau || 0));
   const isProject = kh.loaiHinhMuaSam === "Dự án";
-  const total = isProject ? sumI + sumII + sumIII + sumIV : sumII + sumIII + sumIV;
+  const total = this.model.sumVND(isProject ? [sumI, sumII, sumIII, sumIV] : [sumII, sumIII, sumIV]);
   if (kh.tongMucDauTu && kh.tongMucDauTu > 1 && kh.isTongMucTuDong !== true) {
   } else {
     kh.tongMucDauTu = total;
@@ -643,16 +636,13 @@ export function recalculatePlanTotal(planId) {
   if (kh.tongMucDauTu && kh.tongMucDauTu > 1 && kh.isTongMucTuDong !== true) {
     return;
   }
-  const sumI = (kh.cvDaThucHienList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
-  const sumII = (kh.cvKhongApDungList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
-  const sumIII = (kh.cvChuaDuDieuKienList || []).reduce((acc, curr) => acc + (curr.giaTri || 0), 0);
+  const sumI = this.model.sumVND((kh.cvDaThucHienList || []).map((item) => item.giaTri || 0));
+  const sumII = this.model.sumVND((kh.cvKhongApDungList || []).map((item) => item.giaTri || 0));
+  const sumIII = this.model.sumVND((kh.cvChuaDuDieuKienList || []).map((item) => item.giaTri || 0));
   const pkgs = this.model.getLatestPackagesForPlan(planId);
-  const sumIV = pkgs.reduce((acc, curr) => {
-    if (curr.isRebid) return acc;
-    return acc + (curr.giaGoiThau || 0);
-  }, 0);
+  const sumIV = this.model.sumVND(pkgs.filter((item) => !item.isRebid).map((item) => item.giaGoiThau || 0));
   const isProject = kh.loaiHinhMuaSam === "Dự án";
-  kh.tongMucDauTu = isProject ? sumI + sumII + sumIII + sumIV : sumII + sumIII + sumIV;
+  kh.tongMucDauTu = this.model.sumVND(isProject ? [sumI, sumII, sumIII, sumIV] : [sumII, sumIII, sumIV]);
   kh.isTongMucTuDong = true;
 }
 export async function savePlanBreakdown() {

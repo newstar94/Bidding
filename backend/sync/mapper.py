@@ -1,9 +1,11 @@
 import json
 import re
 
-from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
+from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.shared.date_utils import normalize_datetime_value
 from backend.db.id_utils import generate_record_id
+from backend.sync.evaluation_metadata import dump_evaluation_metadata, parse_evaluation_metadata
 from backend.shared.text_utils import clean_id, normalize_organization_name, normalize_person_name, safe_float, to_camel_case
 
 
@@ -81,6 +83,8 @@ def map_db_to_json(table_name, row_dict):
             val = normalize_organization_name(val)
         elif table_name == "nha_thau" and col == "ten_nha_thau":
             val = normalize_organization_name(val)
+        if (table_name, col) in MONEY_COLUMNS:
+            val = money_json_value(val)
         is_json_field = (
             col in explicit_json_fields
             or col.endswith("_list")
@@ -158,7 +162,12 @@ def _child_number(value):
     return parsed if parsed is not None else 0
 
 
-def save_child_payloads(cursor, table_name, item, organization_id, owner_type, sync_version, updated_at):
+def _child_money(value):
+    parsed = parse_vnd_amount(value)
+    return parsed if parsed is not None else 0
+
+
+def save_child_payloads(cursor, table_name, item, organization_id, owner_type, sync_version, updated_at, actor_user_id=None):
     parent_id = clean_id(item.get("id"))
     if not parent_id:
         return
@@ -167,10 +176,140 @@ def save_child_payloads(cursor, table_name, item, organization_id, owner_type, s
     elif table_name == "goi_thau":
         _save_package_children(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
         _save_package_expert_relations(cursor, parent_id, item, organization_id, owner_type)
+        _save_evaluation_rounds(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id)
     elif table_name == "nha_thau":
         _save_member_children(cursor, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", parent_id, item, organization_id, owner_type, sync_version, updated_at)
     elif table_name == "thong_tin_mo_thau":
         _save_member_children(cursor, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", parent_id, item, organization_id, owner_type, sync_version, updated_at)
+        _save_bid_evaluation_result(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id)
+
+
+def _save_evaluation_rounds(cursor, package_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id):
+    if "danhGiaHsdtMetadata" not in item:
+        return
+    metadata = parse_evaluation_metadata(item.get("danhGiaHsdtMetadata"), require_version=False)
+    is_two_envelope = bool(metadata.get("is1G2T"))
+    blocks = (
+        [("technical", metadata.get("technical") or {}), ("financial", metadata.get("financial") or {})]
+        if is_two_envelope else [("single", metadata)]
+    )
+    for order, (round_type, raw_block) in enumerate(blocks):
+        block = raw_block if isinstance(raw_block, dict) else {}
+        extension = {
+            key: value for key, value in block.items()
+            if key not in {"saved", "qualifiedSaved", "soBaoCao", "ngayBaoCao", "criteria", "schemaVersion"}
+        }
+        extension["schemaVersion"] = 1
+        round_id = f"evaluation-round:{package_id}:{round_type}"
+        saved = 1 if block.get("saved") else 0
+        cursor.execute(
+            """INSERT INTO vong_danh_gia (
+                id, organization_id, owner_type, goi_thau_id, loai_vong, thu_tu,
+                trang_thai, so_bao_cao, ngay_bao_cao, da_luu_danh_sach_dat,
+                nguoi_cham_id, hoan_thanh_luc, extension_json, sync_version, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(organization_id, goi_thau_id, loai_vong) DO UPDATE SET
+                trang_thai=excluded.trang_thai, so_bao_cao=excluded.so_bao_cao,
+                ngay_bao_cao=excluded.ngay_bao_cao,
+                da_luu_danh_sach_dat=excluded.da_luu_danh_sach_dat,
+                nguoi_cham_id=excluded.nguoi_cham_id,
+                hoan_thanh_luc=excluded.hoan_thanh_luc,
+                extension_json=excluded.extension_json,
+                sync_version=excluded.sync_version, updated_at=excluded.updated_at""",
+            (
+                round_id, organization_id, owner_type, package_id, round_type, order,
+                "completed" if saved else "draft", block.get("soBaoCao") or "",
+                block.get("ngayBaoCao") or "", 1 if block.get("qualifiedSaved") else 0,
+                actor_user_id if saved else None, updated_at if saved else None,
+                dump_evaluation_metadata(extension), sync_version, updated_at,
+            ),
+        )
+        cursor.execute(
+            "DELETE FROM tieu_chi_danh_gia WHERE organization_id = ? AND vong_danh_gia_id = ?",
+            (organization_id, round_id),
+        )
+        for criterion_order, criterion in enumerate(block.get("criteria") or []):
+            if not isinstance(criterion, dict):
+                continue
+            code = str(criterion.get("code") or criterion.get("maTieuChi") or "").strip()
+            name = str(criterion.get("name") or criterion.get("tenTieuChi") or "").strip()
+            if not code or not name:
+                continue
+            criterion_extension = {
+                key: value for key, value in criterion.items()
+                if key not in {"id", "code", "maTieuChi", "name", "tenTieuChi", "maxScore", "diemToiDa", "weight", "trongSo"}
+            }
+            criterion_extension["schemaVersion"] = 1
+            cursor.execute(
+                """INSERT INTO tieu_chi_danh_gia (
+                    id, organization_id, owner_type, vong_danh_gia_id, ma_tieu_chi,
+                    ten_tieu_chi, diem_toi_da, trong_so, thu_tu, extension_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    clean_id(criterion.get("id")) or f"evaluation-criterion:{round_id}:{code}",
+                    organization_id, owner_type, round_id, code, name,
+                    safe_float(criterion.get("maxScore", criterion.get("diemToiDa"))),
+                    safe_float(criterion.get("weight", criterion.get("trongSo"))),
+                    criterion_order, dump_evaluation_metadata(criterion_extension), updated_at,
+                ),
+            )
+
+
+def _save_bid_evaluation_result(cursor, opening_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id):
+    evaluation_keys = {
+        "danhGiaHopLe", "danhGiaNangLuc", "danhGiaKyThuat", "danhGiaTaiChinh",
+        "danhGiaKetLuan", "diemDanhGia", "lyDoTruot", "nguyenNhanKhongDatHopLe",
+        "nguyenNhanKhongDatNangLuc", "nguyenNhanKhongDatKyThuat", "lamRoHopLe",
+        "lamRoNangLuc", "lamRoKyThuat", "lamRoTaiChinh",
+    }
+    if not any(key in item for key in evaluation_keys):
+        return
+    exclusion_reason = next((
+        str(item.get(key) or "").strip() for key in (
+            "lyDoTruot", "nguyenNhanKhongDatHopLe", "nguyenNhanKhongDatNangLuc",
+            "nguyenNhanKhongDatKyThuat"
+        ) if str(item.get(key) or "").strip()
+    ), "")
+    cursor.execute(
+        """INSERT INTO ket_qua_danh_gia_nha_thau (
+            id, organization_id, owner_type, goi_thau_id, thong_tin_mo_thau_id,
+            danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat,
+            danh_gia_tai_chinh, danh_gia_ket_luan, diem, ly_do_loai,
+            lam_ro_hop_le, lam_ro_nang_luc, lam_ro_ky_thuat, lam_ro_tai_chinh,
+            nguyen_nhan_khong_dat_hop_le, nguyen_nhan_khong_dat_nang_luc,
+            nguyen_nhan_khong_dat_ky_thuat,
+            nguoi_cham_id, danh_gia_luc, sync_version, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(organization_id, thong_tin_mo_thau_id) DO UPDATE SET
+            danh_gia_hop_le=excluded.danh_gia_hop_le,
+            danh_gia_nang_luc=excluded.danh_gia_nang_luc,
+            danh_gia_ky_thuat=excluded.danh_gia_ky_thuat,
+            danh_gia_tai_chinh=excluded.danh_gia_tai_chinh,
+            danh_gia_ket_luan=excluded.danh_gia_ket_luan,
+            diem=excluded.diem, ly_do_loai=excluded.ly_do_loai,
+            lam_ro_hop_le=excluded.lam_ro_hop_le,
+            lam_ro_nang_luc=excluded.lam_ro_nang_luc,
+            lam_ro_ky_thuat=excluded.lam_ro_ky_thuat,
+            lam_ro_tai_chinh=excluded.lam_ro_tai_chinh,
+            nguyen_nhan_khong_dat_hop_le=excluded.nguyen_nhan_khong_dat_hop_le,
+            nguyen_nhan_khong_dat_nang_luc=excluded.nguyen_nhan_khong_dat_nang_luc,
+            nguyen_nhan_khong_dat_ky_thuat=excluded.nguyen_nhan_khong_dat_ky_thuat,
+            nguoi_cham_id=excluded.nguoi_cham_id, danh_gia_luc=excluded.danh_gia_luc,
+            sync_version=excluded.sync_version, updated_at=excluded.updated_at""",
+        (
+            f"bid-evaluation:{opening_id}", organization_id, owner_type,
+            clean_id(item.get("goiThauId")), opening_id,
+            item.get("danhGiaHopLe") or "", item.get("danhGiaNangLuc") or "",
+            item.get("danhGiaKyThuat") or "", item.get("danhGiaTaiChinh") or "",
+            item.get("danhGiaKetLuan") or "", safe_float(item.get("diemDanhGia")),
+            exclusion_reason, item.get("lamRoHopLe") or "", item.get("lamRoNangLuc") or "",
+            item.get("lamRoKyThuat") or "", item.get("lamRoTaiChinh") or "",
+            item.get("nguyenNhanKhongDatHopLe") or "",
+            item.get("nguyenNhanKhongDatNangLuc") or "",
+            item.get("nguyenNhanKhongDatKyThuat") or "",
+            actor_user_id, updated_at, sync_version, updated_at,
+        ),
+    )
 
 
 def _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
@@ -190,7 +329,7 @@ def _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sy
                 parent_id,
                 kind,
                 _first_value(row, "tenCongViec", "ten_cong_viec", default=""),
-                _child_number(_first_value(row, "giaTri", "gia_tri")),
+                _child_money(_first_value(row, "giaTri", "gia_tri")),
                 _first_value(row, "donViThucHien", "don_vi_thuc_hien", default=""),
                 _first_value(row, "vanBanPheDuyet", "van_ban_phe_duyet", default=""),
                 index,
@@ -296,11 +435,11 @@ def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, syn
             parent_id,
             _first_value(row, "maPhanLo", "ma_phan_lo", default=""),
             _first_value(row, "tenPhanLo", "ten_phan_lo", default=""),
-            _child_number(_first_value(row, "giaTriPhanLo", "gia_tri_phan_lo")),
-            _child_number(_first_value(row, "baoDamDuThau", "bao_dam_du_thau")),
+            _child_money(_first_value(row, "giaTriPhanLo", "gia_tri_phan_lo")),
+            _child_money(_first_value(row, "baoDamDuThau", "bao_dam_du_thau")),
             _first_value(row, "thoiGianThucHien", "thoi_gian_thuc_hien", default=""),
             clean_id(_first_value(row, "nhaThauTrungThauId", "nha_thau_trung_thau_id")),
-            _child_number(_first_value(row, "giaTrungThau", "gia_trung_thau")),
+            _child_money(_first_value(row, "giaTrungThau", "gia_trung_thau")),
             _first_value(row, "thoiGianGoiThau", "thoi_gian_goi_thau", default=""),
             _first_value(row, "thoiGianHopDong", "thoi_gian_hop_dong", default=""),
             index,
@@ -331,7 +470,7 @@ def _save_options(cursor, parent_id, value, organization_id, owner_type, sync_ve
             _first_value(row, "donVi", "don_vi", default=""),
             _child_number(_first_value(row, "soLuong", "so_luong")),
             _child_number(_first_value(row, "tyLe", "ty_le")),
-            _child_number(_first_value(row, "giaTriUocTinh", "gia_tri_uoc_tinh")),
+            _child_money(_first_value(row, "giaTriUocTinh", "gia_tri_uoc_tinh")),
             index,
             sync_version,
             updated_at,
@@ -475,6 +614,7 @@ def attach_child_rows_to_items(cursor, table_name, items, organization_id=None, 
         _attach_members(cursor, by_id, parent_ids, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", organization_id, naming)
     elif table_name == "thong_tin_mo_thau":
         _attach_members(cursor, by_id, parent_ids, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", organization_id, naming)
+        _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, naming)
         _enrich_opening_bid_contractor_versions(cursor, by_id, organization_id, naming)
     return items
 
@@ -557,6 +697,83 @@ def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming)
             item["yeuCauLamRoList" if naming == "camel" else "yeu_cau_lam_ro_list"].append(_format_clarification_child(row, naming, True))
         elif row.get("loai") == "tra_loi":
             item["traLoiLamRoList" if naming == "camel" else "tra_loi_lam_ro_list"].append(_format_clarification_child(row, naming, False))
+    _attach_evaluation_rounds(cursor, by_id, parent_ids, organization_id, naming)
+
+
+def _attach_evaluation_rounds(cursor, by_id, parent_ids, organization_id, naming):
+    metadata_key = "danhGiaHsdtMetadata" if naming == "camel" else "danh_gia_hsdt_metadata"
+    criteria_by_round = {}
+    rounds = _select_children(
+        cursor, "vong_danh_gia", "goi_thau_id", parent_ids, organization_id,
+        extra_order="thu_tu, id",
+    )
+    round_ids = [row["id"] for row in rounds]
+    if round_ids:
+        for criterion in _select_children(
+            cursor, "tieu_chi_danh_gia", "vong_danh_gia_id", round_ids, organization_id,
+            extra_order="thu_tu, id",
+        ):
+            criteria_by_round.setdefault(criterion["vong_danh_gia_id"], []).append({
+                "id": criterion["id"],
+                "code": criterion["ma_tieu_chi"],
+                "name": criterion["ten_tieu_chi"],
+                "maxScore": criterion["diem_toi_da"],
+                "weight": criterion["trong_so"],
+            })
+    rounds_by_package = {}
+    for row in rounds:
+        rounds_by_package.setdefault(row["goi_thau_id"], []).append(row)
+    for package_id, item in by_id.items():
+        metadata = parse_evaluation_metadata(item.get(metadata_key), require_version=False)
+        package_rounds = rounds_by_package.get(package_id, [])
+        if any(row["loai_vong"] in {"technical", "financial"} for row in package_rounds):
+            metadata["is1G2T"] = True
+        for row in package_rounds:
+            try:
+                block = parse_evaluation_metadata(row.get("extension_json"), require_version=True)
+            except ValueError:
+                block = {"schemaVersion": 1}
+            block.update({
+                "saved": row.get("trang_thai") in {"completed", "approved"},
+                "qualifiedSaved": bool(row.get("da_luu_danh_sach_dat")),
+                "soBaoCao": row.get("so_bao_cao") or "",
+                "ngayBaoCao": row.get("ngay_bao_cao") or "",
+                "criteria": criteria_by_round.get(row["id"], []),
+            })
+            if row["loai_vong"] == "single":
+                metadata.update(block)
+            else:
+                metadata[row["loai_vong"]] = block
+        item[metadata_key] = dump_evaluation_metadata(metadata)
+
+
+def _attach_bid_evaluation_results(cursor, by_id, parent_ids, organization_id, naming):
+    rows = _select_children(
+        cursor, "ket_qua_danh_gia_nha_thau", "thong_tin_mo_thau_id",
+        parent_ids, organization_id, extra_order="id",
+    )
+    field_pairs = [
+        ("danh_gia_hop_le", "danhGiaHopLe"),
+        ("danh_gia_nang_luc", "danhGiaNangLuc"),
+        ("danh_gia_ky_thuat", "danhGiaKyThuat"),
+        ("danh_gia_tai_chinh", "danhGiaTaiChinh"),
+        ("danh_gia_ket_luan", "danhGiaKetLuan"),
+        ("diem", "diemDanhGia"),
+        ("ly_do_loai", "lyDoTruot"),
+        ("lam_ro_hop_le", "lamRoHopLe"),
+        ("lam_ro_nang_luc", "lamRoNangLuc"),
+        ("lam_ro_ky_thuat", "lamRoKyThuat"),
+        ("lam_ro_tai_chinh", "lamRoTaiChinh"),
+        ("nguyen_nhan_khong_dat_hop_le", "nguyenNhanKhongDatHopLe"),
+        ("nguyen_nhan_khong_dat_nang_luc", "nguyenNhanKhongDatNangLuc"),
+        ("nguyen_nhan_khong_dat_ky_thuat", "nguyenNhanKhongDatKyThuat"),
+    ]
+    for row in rows:
+        item = by_id.get(row["thong_tin_mo_thau_id"])
+        if not item:
+            continue
+        for snake_key, camel_key in field_pairs:
+            item[camel_key if naming == "camel" else snake_key] = row.get(snake_key)
 
 
 def _attach_members(cursor, by_id, parent_ids, child_table, parent_col, organization_id, naming):
@@ -769,7 +986,9 @@ def _shape_child(row, naming, fields):
         value = row.get(snake_key)
         if snake_key == "id":
             shaped[key] = value
-        elif snake_key.startswith("gia_") or snake_key in {"bao_dam_du_thau", "so_luong", "ty_le"}:
+        elif snake_key.startswith("gia_") or snake_key in {"bao_dam_du_thau"}:
+            shaped[key] = money_json_value(value or 0)
+        elif snake_key in {"so_luong", "ty_le"}:
             shaped[key] = value or 0
         else:
             shaped[key] = value or ""

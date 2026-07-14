@@ -258,7 +258,7 @@ Một người là manager ở tổ chức A nhưng chỉ là employee ở tổ 
 **Sửa đề xuất**
 
 - `users.platform_role` chỉ dành cho quyền nền tảng, ví dụ `super_admin`; user thông thường không có global business role.
-- `organization_memberships.role` là nguồn sự thật cho `owner`, `manager`, `employee`, `viewer` trong từng org.
+- `organization_memberships.role` là nguồn sự thật cho `owner`, `manager`, `employee` trong từng org; `owner` là vai trò sở hữu nội bộ và dùng chế độ giao diện Quản lý.
 - Mọi session/request context phải chứa `active_org_id`, role của membership và trạng thái org; luôn được đọc/verify server-side.
 - Policy nhận `(user_id, org_id, org_role, action, resource)`; không có bypass “manager toàn cục”.
 - Chỉ owner hoặc quyền cụ thể mới được mời/xóa/đổi role; không được tự nâng quyền, xóa owner cuối cùng, sửa peer cao hơn hoặc tác động super-admin.
@@ -363,13 +363,13 @@ Một tab cũ có thể export và vô tình ghi trạng thái cũ lên server t
 
 Các trường `email` và `google_id` trong `tai_khoan` chưa có invariant unique phù hợp ở schema gốc. Runtime chỉ tạo index email không unique. Login theo email có thể chọn một bản ghi bất kỳ nếu DB đã có duplicate. Pre-check bằng `SELECT` trước `INSERT` không giải quyết race condition.
 
-Registration phía server chủ yếu kiểm tra không rỗng; frontend chỉ yêu cầu mật khẩu tối thiểu 6 ký tự. Change-password cũng không có policy đủ mạnh. Việc gọi `.strip()` trên password ở một số luồng làm thay đổi mật khẩu người dùng đã nhập.
+Trước khi chỉnh sửa, registration phía server chủ yếu kiểm tra không rỗng; frontend chỉ yêu cầu mật khẩu tối thiểu 6 ký tự. Hiện các luồng tạo/đổi/đặt lại mật khẩu đã dùng chung giới hạn 8–256 ký tự và giữ nguyên chính xác nội dung người dùng nhập, không gọi `.strip()` trên mật khẩu.
 
 **Thiết kế lại:**
 
 - `username_norm` và `email_norm` chuẩn hóa rõ, unique ở DB với collation/case strategy nhất quán.
 - `google_subject` unique, nullable; không dùng email Google làm identifier duy nhất nếu chưa dựa trên subject/issuer.
-- Password policy ở server: tối thiểu 12 ký tự, cho phép passphrase, chặn password phổ biến/đã lộ nếu có dịch vụ phù hợp; không ép quy tắc ký tự gây yếu UX.
+- Password policy ở server: tối thiểu 8 ký tự, cho phép passphrase, chặn password phổ biến/đã lộ nếu có dịch vụ phù hợp; không ép quy tắc ký tự gây yếu UX.
 - Không trim password. Chỉ trim/normalize username/email theo quy tắc đã công bố.
 - Giới hạn độ dài request trước khi hash để tránh CPU/memory abuse.
 - Dùng DB unique constraint và chuyển integrity error thành `409`/field error; pre-check chỉ để UX.
