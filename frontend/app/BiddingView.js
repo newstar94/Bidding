@@ -834,6 +834,8 @@ export class BiddingView {
     }
     const toast = document.createElement("div");
     toast.className = `bf-toast toast-${type}`;
+    toast.setAttribute("role", type === "error" || type === "warning" ? "alert" : "status");
+    toast.setAttribute("aria-live", type === "error" || type === "warning" ? "assertive" : "polite");
     const iconSvg = {
       success: '<i data-lucide="check-circle"></i>',
       error: '<i data-lucide="x-circle"></i>',

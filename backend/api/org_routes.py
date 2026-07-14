@@ -398,6 +398,12 @@ async def remove_user_from_org_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
+        if not is_business_organization(cursor, org_id):
+            conn.close()
+            return JSONResponse(
+                {"error": "Không thể quản lý thành viên trong không gian cá nhân.", "code": "PERSONAL_WORKSPACE_MEMBERSHIP_FORBIDDEN"},
+                status_code=409,
+            )
         if not is_organization_manager(
             cursor, str(role_or_err), role_or_err.user_id, org_id
         ):

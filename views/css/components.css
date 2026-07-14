@@ -756,6 +756,27 @@
   flex: 1;
   scroll-behavior: smooth;
 }
+
+.form-error-summary {
+  grid-column: 1 / -1;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border-color));
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.form-error-summary ul { margin: 8px 0 0; padding-left: 20px; }
+.form-error-summary button {
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .modal-footer {
   padding: 20px 28px;
   border-top: 1px solid var(--border-color);

@@ -111,6 +111,65 @@ a:hover {
   height: 18px;
   flex-shrink: 0;
 }
+
+.sync-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  max-width: 245px;
+  padding: 7px 11px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sync-status-pill:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.sync-status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--text-light);
+}
+
+.sync-status-pill[data-sync-state="synced"] .sync-status-dot { background: var(--success); }
+.sync-status-pill[data-sync-state="pending"] .sync-status-dot,
+.sync-status-pill[data-sync-state="local"] .sync-status-dot { background: var(--warning); }
+.sync-status-pill[data-sync-state="error"] .sync-status-dot,
+.sync-status-pill[data-sync-state="conflict"] .sync-status-dot,
+.sync-status-pill[data-sync-state="offline"] .sync-status-dot { background: var(--danger); }
+.sync-status-pill[data-sync-state="syncing"] .sync-status-dot {
+  background: var(--primary);
+  animation: sync-status-pulse 1s ease-in-out infinite alternate;
+}
+
+.sync-pending-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  text-align: center;
+}
+
+@keyframes sync-status-pulse {
+  from { opacity: 0.35; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-status-pill[data-sync-state="syncing"] .sync-status-dot { animation: none; }
+}
 @keyframes fadeIn {
   from {
     opacity: 0;

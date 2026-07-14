@@ -663,7 +663,8 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (personal_owner_user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
             "CHECK((scope_type = 'organization' AND personal_owner_user_id IS NULL) OR (scope_type = 'personal' AND personal_owner_user_id IS NOT NULL))"
-        ]
+        ],
+        "unique_constraints": ["UNIQUE(id, scope_type)"]
     },
     "thanh_vien_to_chuc": {
         "columns": {
@@ -955,10 +956,16 @@ def _apply_tenant_constraints(schema):
             else:
                 upgraded_foreign_keys.append(foreign_key)
 
-        if not any("REFERENCES to_chuc(id)" in fk for fk in upgraded_foreign_keys):
-            upgraded_foreign_keys.append(
-                "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT"
-            )
+        if not any("REFERENCES to_chuc(" in fk for fk in upgraded_foreign_keys):
+            if "owner_type" in columns:
+                upgraded_foreign_keys.append(
+                    "FOREIGN KEY (organization_id, owner_type) "
+                    "REFERENCES to_chuc(id, scope_type) ON DELETE RESTRICT"
+                )
+            else:
+                upgraded_foreign_keys.append(
+                    "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT"
+                )
 
         if table_name == "phan_cong_nhan_su":
             upgraded_foreign_keys.append(

@@ -8,6 +8,15 @@ import {
 } from "../documents/schemaRuntime.js";
 import { generateUUID as createUUID } from "../shared/idUtils.js";
 import { serializeEvaluationMetadata } from "../packages/evaluationMetadata.js";
+import { summarizeMutationQueue } from "./syncStatus.js";
+import { BrowserDB } from "./BrowserDB.js";
+import { removeEntity, upsertEntity } from "./entityStore.js";
+import {
+  buildMutationPayload,
+  createEmptyMutationQueue,
+  mutationQueueHasChanges,
+  normalizeMutationQueue
+} from "./mutationQueue.js";
 import {
   ScopedWorkspaceStorage,
   purgeWorkspaceLocalData,
@@ -31,227 +40,6 @@ const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
 ]);
 const MUTATION_QUEUE_KEY = "bf_mutation_queue";
 const LOCAL_DELETIONS_KEY = "bf_local_deletions";
-class BrowserDB {
-  constructor(dbName = "BiddingFlowDB") {
-    this.dbName = dbName;
-    this.db = null;
-    this.stores = [
-      "chudautu",
-      "nhathau",
-      "chuyengia",
-      "kehoach",
-      "goithau",
-      "hopdong",
-      "systempackages",
-      "organizations",
-      "employees",
-      "permissionmatrix",
-      "custompaperstatuses",
-      "assignments",
-      "thongtinmothau",
-      "kv_store"
-    ];
-  }
-  init() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 2);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        this.stores.forEach((storeName) => {
-          if (!db.objectStoreNames.contains(storeName)) {
-            db.createObjectStore(storeName, storeName === "kv_store" ? {} : { keyPath: "id" });
-          }
-        });
-      };
-      request.onsuccess = (e) => {
-        this.db = e.target.result;
-        resolve(this);
-      };
-      request.onerror = (e) => {
-        reject(e.target.error);
-      };
-    });
-  }
-  get(key) {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve(null);
-      try {
-        const transaction = this.db.transaction("kv_store", "readonly");
-        const store = transaction.objectStore("kv_store");
-        const request = store.get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => resolve(null);
-      } catch (e) {
-        resolve(null);
-      }
-    });
-  }
-  set(key, value) {
-    return new Promise((resolve, reject) => {
-      if (!this.db) return reject("Database not initialized");
-      try {
-        const transaction = this.db.transaction("kv_store", "readwrite");
-        const store = transaction.objectStore("kv_store");
-        const request = store.put(value, key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-  getTableData(tableName) {
-    return new Promise((resolve) => {
-      if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve([]);
-      try {
-        const transaction = this.db.transaction(tableName, "readonly");
-        const store = transaction.objectStore(tableName);
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => resolve([]);
-      } catch (e) {
-        resolve([]);
-      }
-    });
-  }
-  countTableData(tableName) {
-    return new Promise((resolve) => {
-      if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve(0);
-      try {
-        const transaction = this.db.transaction(tableName, "readonly");
-        const store = transaction.objectStore(tableName);
-        const request = store.count();
-        request.onsuccess = () => resolve(request.result || 0);
-        request.onerror = () => resolve(0);
-      } catch (e) {
-        resolve(0);
-      }
-    });
-  }
-  async hasAnyTableData(tableNames) {
-    const names = Array.isArray(tableNames) ? tableNames : [];
-    const counts = await Promise.all(names.map((name) => this.countTableData(name)));
-    return counts.some((count) => count > 0);
-  }
-  putTableData(tableName, dataArray) {
-    return new Promise((resolve, reject) => {
-      if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve();
-      try {
-        const transaction = this.db.transaction(tableName, "readwrite");
-        const store = transaction.objectStore(tableName);
-        const getKeysRequest = store.getAllKeys();
-        getKeysRequest.onsuccess = () => {
-          const existingKeys = new Set(getKeysRequest.result || []);
-          const incomingKeys = new Set((dataArray || []).map((item) => item.id));
-          existingKeys.forEach((key) => {
-            if (!incomingKeys.has(key)) {
-              store.delete(key);
-            }
-          });
-          (dataArray || []).forEach((item) => {
-            store.put(item);
-          });
-        };
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (e) => reject(e.target.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-  putRecord(tableName, record) {
-    return new Promise((resolve, reject) => {
-      if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve();
-      try {
-        const transaction = this.db.transaction(tableName, "readwrite");
-        const store = transaction.objectStore(tableName);
-        const request = store.put(record);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-  deleteRecord(tableName, recordId) {
-    return new Promise((resolve, reject) => {
-      if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve();
-      try {
-        const transaction = this.db.transaction(tableName, "readwrite");
-        const store = transaction.objectStore(tableName);
-        const request = store.delete(recordId);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-  putRecords(tableName, dataArray) {
-    return new Promise((resolve, reject) => {
-      if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve();
-      try {
-        const transaction = this.db.transaction(tableName, "readwrite");
-        const store = transaction.objectStore(tableName);
-        (dataArray || []).forEach((item) => {
-          store.put(item);
-        });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (e) => reject(e.target.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-  deleteRecords(tableName, idsArray) {
-    return new Promise((resolve, reject) => {
-      if (!this.db || !this.db.objectStoreNames.contains(tableName)) return resolve();
-      try {
-        const transaction = this.db.transaction(tableName, "readwrite");
-        const store = transaction.objectStore(tableName);
-        (idsArray || []).forEach((id) => {
-          store.delete(id);
-        });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (e) => reject(e.target.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-  close() {
-    this.db?.close?.();
-    this.db = null;
-  }
-  applySyncChanges({ replacements = {}, upserts = {}, deletions = {} } = {}) {
-    const tableNames = Array.from(new Set([
-      ...Object.keys(replacements),
-      ...Object.keys(upserts),
-      ...Object.keys(deletions)
-    ])).filter((name) => this.db?.objectStoreNames.contains(name));
-    if (!this.db || tableNames.length === 0) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      try {
-        const transaction = this.db.transaction(tableNames, "readwrite");
-        tableNames.forEach((tableName) => {
-          const store = transaction.objectStore(tableName);
-          if (Object.prototype.hasOwnProperty.call(replacements, tableName)) {
-            store.clear();
-            (replacements[tableName] || []).forEach((item) => store.put(item));
-            return;
-          }
-          (upserts[tableName] || []).forEach((item) => store.put(item));
-          (deletions[tableName] || []).forEach((id) => store.delete(id));
-        });
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || new Error("IndexedDB sync transaction failed"));
-        transaction.onabort = () => reject(transaction.error || new Error("IndexedDB sync transaction aborted"));
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-}
 const snakeToCamel = (key, type = null) => {
   if (!key || !key.includes("_")) return key;
   const tableName = type ? resolveSchemaTable(type) : null;
@@ -323,6 +111,7 @@ export class BiddingModel {
     this._hasPersistedWorkspaceData = false;
     this._suspendMutationTracking = 0;
     this._workspaceWriteLocked = false;
+    this.onMutationQueueChanged = null;
     this._workspaceEpoch = 0;
     this.workspaceScope = null;
     this.workspaceStorage = null;
@@ -574,24 +363,22 @@ export class BiddingModel {
     return SYNCED_STATE_KEYS.has(type);
   }
   _emptyMutationQueue() {
-    return {
-      baseSyncVersion: this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
-      clientMutationId: createUUID(),
-      dirtyTables: {},
-      upserts: {},
-      deletes: [],
-      revision: 0
-    };
+    return createEmptyMutationQueue(
+      this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
+      createUUID()
+    );
   }
   getMutationQueue() {
-    const queue = this.workspaceStorage?.readJson(MUTATION_QUEUE_KEY, null) || this._emptyMutationQueue();
-    queue.baseSyncVersion = queue.baseSyncVersion ?? (this.workspaceStorage?.getItem("bf_last_sync_version") || "0");
-    queue.clientMutationId = queue.clientMutationId || createUUID();
-    queue.dirtyTables = queue.dirtyTables && typeof queue.dirtyTables === "object" ? queue.dirtyTables : {};
-    queue.upserts = queue.upserts && typeof queue.upserts === "object" ? queue.upserts : {};
-    queue.deletes = Array.isArray(queue.deletes) ? queue.deletes : [];
-    queue.revision = Number.isFinite(Number(queue.revision)) ? Number(queue.revision) : 0;
-    return queue;
+    return normalizeMutationQueue(this.workspaceStorage?.readJson(MUTATION_QUEUE_KEY, null), {
+      baseSyncVersion: this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
+      createId: createUUID
+    });
+  }
+  getPendingMutationSummary() {
+    return summarizeMutationQueue(this.getMutationQueue());
+  }
+  _notifyMutationQueueChanged(queue = this.getMutationQueue()) {
+    this.onMutationQueueChanged?.(summarizeMutationQueue(queue));
   }
   isRecordPending(type, recordId) {
     if (!type || !recordId) return false;
@@ -642,14 +429,13 @@ export class BiddingModel {
     this._saveMutationQueue(queue);
   }
   _saveMutationQueue(queue) {
-    const hasDirtyTables = Object.keys(queue.dirtyTables || {}).some((key) => queue.dirtyTables[key]);
-    const hasUpserts = Object.values(queue.upserts || {}).some((items) => items && Object.keys(items).length > 0);
-    const hasDeletes = Array.isArray(queue.deletes) && queue.deletes.length > 0;
-    if (!hasDirtyTables && !hasUpserts && !hasDeletes) {
+    if (!mutationQueueHasChanges(queue)) {
       this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
+      this._notifyMutationQueueChanged(this._emptyMutationQueue());
       return;
     }
     this.workspaceStorage?.writeJson(MUTATION_QUEUE_KEY, queue);
+    this._notifyMutationQueueChanged(queue);
   }
   _touchMutationQueue(queue) {
     queue.revision = (Number(queue.revision) || 0) + 1;
@@ -739,53 +525,13 @@ export class BiddingModel {
   }
   buildMutationSyncPayload() {
     const queue = this.getMutationQueue();
-    const payload = {
-      clientMutationId: queue.clientMutationId,
-      baseSyncVersion: queue.baseSyncVersion,
-      upserts: {},
-      deletions: []
-    };
-    const snapshot = JSON.parse(JSON.stringify(queue));
-    Object.keys(queue.dirtyTables || {}).forEach((type) => {
-      if (!queue.dirtyTables[type] || !this._isSyncedStateKey(type)) return;
-      payload[type] = Array.isArray(this.state[type]) ? this.state[type].map((record) => {
-        const normalized = this.normalizeRecordKeys(record, type);
-        return Number.isInteger(normalized.rowVersion)
-          ? { ...normalized, expectedVersion: normalized.rowVersion }
-          : normalized;
-      }) : [];
-      payload.upserts[type] = payload[type];
+    return buildMutationPayload({
+      queue,
+      state: this.state,
+      localDeletions: this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [],
+      isSyncedType: (type) => this._isSyncedStateKey(type),
+      normalizeRecord: (record, type) => this.normalizeRecordKeys(record, type)
     });
-    Object.entries(queue.upserts || {}).forEach(([type, recordsById]) => {
-      if (!this._isSyncedStateKey(type) || payload[type]) return;
-      const records = Object.values(recordsById || {}).map((record) => {
-        const normalized = this.normalizeRecordKeys(record, type);
-        return Number.isInteger(normalized.rowVersion)
-          ? { ...normalized, expectedVersion: normalized.rowVersion }
-          : normalized;
-      });
-      if (records.length > 0) {
-        payload[type] = records;
-        payload.upserts[type] = records;
-      }
-    });
-    const queuedDeletes = Array.isArray(queue.deletes) ? queue.deletes : [];
-    const localDeletions = this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [];
-    const deleteMap = /* @__PURE__ */ new Map();
-    [...queuedDeletes, ...localDeletions].forEach((item) => {
-      if (!item || !item.table || !item.id) return;
-      deleteMap.set(`${item.table}::${item.id}`, {
-        table: item.table,
-        id: item.id,
-        ...(Number.isInteger(item.expectedVersion) ? { expectedVersion: item.expectedVersion } : {})
-      });
-    });
-    payload.deletions = Array.from(deleteMap.values());
-    const hasUpserts = Object.keys(payload.upserts).length > 0;
-    if (!hasUpserts && payload.deletions.length === 0) {
-      return null;
-    }
-    return { payload, snapshot };
   }
   async applyCommittedRowVersions(entries = []) {
     const queue = this.getMutationQueue();
@@ -810,6 +556,7 @@ export class BiddingModel {
     if (!snapshot || current.clientMutationId === snapshot.clientMutationId && current.revision === snapshot.revision) {
       this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
       this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
+      this._notifyMutationQueueChanged(this._emptyMutationQueue());
       return;
     }
     Object.entries(snapshot.upserts || {}).forEach(([type, recordsById]) => {
@@ -828,6 +575,45 @@ export class BiddingModel {
     );
     this._saveMutationQueue(current);
     this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, current.deletes || []);
+  }
+  discardAllPendingMutations() {
+    this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
+    this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
+    this._notifyMutationQueueChanged(this._emptyMutationQueue());
+  }
+  async reapplyPendingMutationQueue(queueSnapshot, syncVersion) {
+    const queue = queueSnapshot ? JSON.parse(JSON.stringify(queueSnapshot)) : this.getMutationQueue();
+    const writes = [];
+    Object.entries(queue.upserts || {}).forEach(([type, recordsById]) => {
+      if (!Array.isArray(this.state[type])) this.state[type] = [];
+      Object.entries(recordsById || {}).forEach(([id, localRecord]) => {
+        const index = this.state[type].findIndex((item) => String(item.id) === String(id));
+        const serverRecord = index >= 0 ? this.state[type][index] : null;
+        const restored = {
+          ...localRecord,
+          ...(Number.isInteger(serverRecord?.rowVersion) ? { rowVersion: serverRecord.rowVersion } : {})
+        };
+        if (index >= 0) this.state[type][index] = restored;
+        else this.state[type].push(restored);
+        queue.upserts[type][id] = restored;
+        if (this.db.stores.includes(type)) writes.push(this.db.putRecord(type, restored));
+      });
+    });
+    for (const deletion of queue.deletes || []) {
+      const list = this.state[deletion.table];
+      if (Array.isArray(list)) {
+        const serverRecord = list.find((item) => String(item.id) === String(deletion.id));
+        if (Number.isInteger(serverRecord?.rowVersion)) deletion.expectedVersion = serverRecord.rowVersion;
+        this.state[deletion.table] = list.filter((item) => String(item.id) !== String(deletion.id));
+      }
+      if (this.db.stores.includes(deletion.table)) writes.push(this.db.deleteRecord(deletion.table, deletion.id));
+    }
+    queue.baseSyncVersion = String(syncVersion ?? this.workspaceStorage?.getItem("bf_last_sync_version") ?? "0");
+    queue.clientMutationId = createUUID();
+    this._touchMutationQueue(queue);
+    this._saveMutationQueue(queue);
+    this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, queue.deletes || []);
+    await Promise.all(writes);
   }
   suspendMutationTracking(callback) {
     this._suspendMutationTracking += 1;
@@ -864,11 +650,12 @@ export class BiddingModel {
   }
   async addRecord(type, record) {
     this._assertWorkspaceWritable();
-    if (!this.state[type]) {
-      this.state[type] = [];
-    }
-    const normalizedRecord = this.normalizeRecordKeys(record, type);
-    this.state[type].push(normalizedRecord);
+    const normalizedRecord = upsertEntity(
+      this.state,
+      type,
+      record,
+      (value, entityType) => this.normalizeRecordKeys(value, entityType)
+    );
     if (this.db.stores.includes(type)) {
       await this.db.putRecord(type, normalizedRecord);
     } else {
@@ -878,16 +665,12 @@ export class BiddingModel {
   }
   async updateRecord(type, record) {
     this._assertWorkspaceWritable();
-    if (!this.state[type]) {
-      this.state[type] = [];
-    }
-    const normalizedRecord = this.normalizeRecordKeys(record, type);
-    const index = this.state[type].findIndex((x) => x.id === normalizedRecord.id);
-    if (index !== -1) {
-      this.state[type][index] = normalizedRecord;
-    } else {
-      this.state[type].push(normalizedRecord);
-    }
+    const normalizedRecord = upsertEntity(
+      this.state,
+      type,
+      record,
+      (value, entityType) => this.normalizeRecordKeys(value, entityType)
+    );
     if (this.db.stores.includes(type)) {
       await this.db.putRecord(type, normalizedRecord);
     } else {
@@ -897,9 +680,7 @@ export class BiddingModel {
   }
   async deleteRecord(type, recordId) {
     this._assertWorkspaceWritable();
-    if (this.state[type]) {
-      this.state[type] = this.state[type].filter((x) => x.id !== recordId);
-    }
+    removeEntity(this.state, type, recordId);
     this.commitLocalMutation(type, { deletedIds: recordId });
     if (this.db.stores.includes(type)) {
       await this.db.deleteRecord(type, recordId);

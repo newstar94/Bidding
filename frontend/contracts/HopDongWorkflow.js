@@ -35,7 +35,11 @@ export async function deleteHopDong(id) {
     this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
     await this.model.persistData("hopdong");
     try {
-      await this.autoSync();
+      const syncResult = await this.autoSync();
+      if (!syncResult?.ok) {
+        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang chờ máy chủ xác nhận. Vui lòng xử lý trạng thái đồng bộ trước khi tiếp tục.", "alert-triangle");
+        return;
+      }
     } catch (e) {
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }
@@ -46,7 +50,11 @@ export async function deleteHopDong(id) {
     this.model.markDeleted("hopdong", result.removed.map((item) => item.id));
     await this.model.persistData("hopdong");
     try {
-      await this.autoSync();
+      const syncResult = await this.autoSync();
+      if (!syncResult?.ok) {
+        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang chờ máy chủ xác nhận. Vui lòng xử lý trạng thái đồng bộ trước khi tiếp tục.", "alert-triangle");
+        return;
+      }
     } catch (e) {
       await this.view.customAlert("Lỗi đồng bộ", "Hợp đồng đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Vui lòng tải lại trang.", "x-circle");
     }

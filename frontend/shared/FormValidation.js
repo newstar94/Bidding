@@ -28,10 +28,53 @@ export function setValidationError(control, message = "") {
   const group = control?.closest?.(".form-group");
   const error = errorElement(control, group);
   group?.classList?.toggle("invalid", Boolean(message));
+  control?.setAttribute?.("aria-invalid", message ? "true" : "false");
   if (error) {
+    if (!error.id && control?.id) error.id = `${control.id}-error`;
+    if (error.id) control?.setAttribute?.("aria-describedby", error.id);
     error.dataset.defaultValidationMessage ??= error.textContent || "";
     error.textContent = message || error.dataset.defaultValidationMessage;
   }
+}
+
+export function validationErrorSummary(invalidControls = []) {
+  return invalidControls.map((control) => ({
+    id: control?.id || "",
+    label: control?.labels?.[0]?.textContent?.trim?.() || control?.name || control?.id || "Trường dữ liệu",
+    message: errorElement(control, control?.closest?.(".form-group"))?.textContent || "Dữ liệu không hợp lệ."
+  }));
+}
+
+function renderValidationSummary(form, invalidControls) {
+  if (!form?.ownerDocument?.createElement || !form.querySelector) return;
+  let summary = form.querySelector("[data-form-error-summary]");
+  if (invalidControls.length === 0) {
+    summary?.remove?.();
+    return;
+  }
+  if (!summary) {
+    summary = form.ownerDocument.createElement("div");
+    summary.dataset.formErrorSummary = "true";
+    summary.className = "form-error-summary";
+    summary.setAttribute("role", "alert");
+    summary.setAttribute("aria-live", "assertive");
+    summary.setAttribute("tabindex", "-1");
+    form.prepend?.(summary);
+  }
+  summary.replaceChildren();
+  const heading = form.ownerDocument.createElement("strong");
+  heading.textContent = `Vui lòng kiểm tra ${invalidControls.length} trường sau:`;
+  const list = form.ownerDocument.createElement("ul");
+  validationErrorSummary(invalidControls).forEach((item, index) => {
+    const row = form.ownerDocument.createElement("li");
+    const button = form.ownerDocument.createElement("button");
+    button.type = "button";
+    button.textContent = `${item.label}: ${item.message}`;
+    button.addEventListener("click", () => focusInvalidControl(invalidControls[index]));
+    row.appendChild(button);
+    list.appendChild(row);
+  });
+  summary.append(heading, list);
 }
 
 function bindClearOnChange(control, group) {
@@ -68,6 +111,7 @@ export function validateForm(form, { rules = [], focus = true } = {}) {
       bindClearOnChange(control, group);
     }
   });
+  renderValidationSummary(form, invalid);
   if (focus && invalid[0]) focusInvalidControl(invalid[0]);
   return { valid: invalid.length === 0, invalidControls: invalid };
 }

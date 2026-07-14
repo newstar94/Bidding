@@ -7,6 +7,8 @@ import {
   WORKSPACE_PURGE_EVENT_KEY
 } from "./workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { buildConflictDiff, renderSyncStatus } from "./syncStatus.js";
+import { commitSyncCursor, readSyncCursor } from "./syncCursor.js";
 
 function currentWorkspaceStorage(controller) {
   return controller.model?.workspaceStorage || getWorkspaceStorage();
@@ -21,6 +23,80 @@ function captureWorkspace(controller) {
 
 function workspaceIsCurrent(controller, snapshot) {
   return !!snapshot.organizationId && controller.model?.isWorkspaceCurrent?.(snapshot.token) !== false;
+}
+
+export function updateSyncState(patch = {}) {
+  const storedTimestamp = Number(currentWorkspaceStorage(this)?.getItem("bf_last_fetch_time") || 0) || null;
+  const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
+  this._syncUxState = {
+    phase: "idle",
+    online: globalThis.navigator?.onLine !== false,
+    pendingCount,
+    lastSyncedAt: storedTimestamp,
+    ...this._syncUxState,
+    ...patch
+  };
+  renderSyncStatus(document.getElementById("btn-force-sync"), this._syncUxState);
+  return this._syncUxState;
+}
+
+export function setupSyncUx() {
+  if (this._syncUxInstalled) return;
+  this._syncUxInstalled = true;
+  const button = document.getElementById("btn-force-sync");
+  button?.addEventListener("click", () => {
+    if (this._syncConflict) void this.resolveSyncConflict();
+    else if ((this.model?.getPendingMutationSummary?.().pendingCount || 0) > 0) void this.autoSync();
+    else void this.forceSyncData(false, false);
+  });
+  this.model.onMutationQueueChanged = ({ pendingCount }) => this.updateSyncState({ pendingCount });
+  const updateOnline = () => this.updateSyncState({ online: navigator.onLine });
+  window.addEventListener("online", updateOnline);
+  window.addEventListener("offline", updateOnline);
+  document.addEventListener("input", (event) => {
+    const modal = event.target?.closest?.(".modal-overlay.active");
+    if (modal && event.isTrusted !== false) modal.dataset.bfUnsaved = "true";
+  }, true);
+  document.addEventListener("submit", (event) => {
+    const modal = event.target?.closest?.(".modal-overlay");
+    if (modal) delete modal.dataset.bfUnsaved;
+  }, true);
+  window.addEventListener("beforeunload", (event) => {
+    const hasPending = (this.model?.getPendingMutationSummary?.().pendingCount || 0) > 0;
+    const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
+    if (!hasPending && !hasUnsavedForm) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+  this.updateSyncState();
+}
+
+export async function resolveSyncConflict() {
+  const conflict = this._syncConflict;
+  if (!conflict) return { ok: true, skipped: true };
+  const queue = this.model.getMutationQueue();
+  const detail = buildConflictDiff(queue, conflict.data).join("\n");
+  const choice = await this.view.customSelectConfirm(
+    "Giải quyết xung đột đồng bộ",
+    detail,
+    [
+      { value: "local", label: "Giữ thay đổi trên máy này và thử lại" },
+      { value: "server", label: "Bỏ thay đổi chờ và dùng dữ liệu máy chủ" }
+    ]
+  );
+  if (!choice) return { ok: false, cancelled: true };
+  this.updateSyncState({ phase: "syncing" });
+  if (choice === "server") {
+    this.model.discardAllPendingMutations();
+    this._syncConflict = null;
+    return this.forceSyncData(false, true);
+  }
+  const refreshed = await this.forceSyncData(true, true);
+  if (!refreshed?.ok) return refreshed;
+  const syncVersion = currentWorkspaceStorage(this).getItem("bf_last_sync_version");
+  await this.model.reapplyPendingMutationQueue(queue, syncVersion);
+  this._syncConflict = null;
+  return this.autoSync();
 }
 export function collectCommittedMutationKeys(payload = {}) {
   return new Set([
@@ -240,9 +316,11 @@ export function autoSync() {
   if (!workspace.organizationId) return Promise.resolve({ ok: false, error: new Error("No active workspace") });
   const mutationBatch = this.model && typeof this.model.buildMutationSyncPayload === "function" ? this.model.buildMutationSyncPayload() : null;
   if (!mutationBatch) {
+    this.updateSyncState({ phase: "idle", pendingCount: 0 });
     return Promise.resolve({ ok: true, skipped: true });
   }
   const { payload, snapshot } = mutationBatch;
+  this.updateSyncState({ phase: "syncing" });
   const shouldRefreshDashboardSummary = mutationAffectsDashboard(payload);
   if (shouldRefreshDashboardSummary) {
     payload.includeDashboardSummary = true;
@@ -260,6 +338,8 @@ export function autoSync() {
     if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true, status, data };
     if (!ok || data.status === "error") {
       if (status === 409 || data.status === "conflict") {
+        this._syncConflict = { status, data, createdAt: Date.now() };
+        this.updateSyncState({ phase: "conflict" });
         console.warn("[Sync Conflict]", data.message || data.error || "Server data changed before local sync.");
         if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
           currentWorkspaceStorage(this).setItem("bf_conflict_server_sync_version", String(data.currentSyncVersion));
@@ -270,13 +350,10 @@ export function autoSync() {
             "Dữ liệu trên máy chủ đã thay đổi. Tải lại dữ liệu mới trước khi đồng bộ tiếp.",
             "warning",
             {
-              actionLabel: "Tải lại",
-              onAction: () => this.forceSyncData(false, true).catch((err) => console.error("Failed manual conflict refresh:", err))
+              actionLabel: "Xem và xử lý",
+              onAction: () => this.resolveSyncConflict().catch((err) => console.error("Failed conflict resolution:", err))
             }
           );
-        }
-        if (typeof this.forceSyncData === "function") {
-          this.forceSyncData(true).catch((err) => console.error("Failed to refresh after sync conflict:", err));
         }
         return { ok: false, status, data, conflict: true };
       }
@@ -350,6 +427,7 @@ export function autoSync() {
           this.view.showToast("Lỗi đồng bộ", data.error || data.message || "Đồng bộ thất bại", "error");
         }
       }
+      this.updateSyncState({ phase: "error", message: data.error || data.message || "Lỗi đồng bộ" });
       return { ok: false, status, data, validation: Array.isArray(data.errors) && data.errors.length > 0 };
     }
     if (data.timestamp) {
@@ -400,9 +478,21 @@ export function autoSync() {
       }
     });
     await renderChangedState(this, committedKeys);
+    if (Array.isArray(data.deleteImpacts) && data.deleteImpacts.length > 0 && this.view?.showToast) {
+      const affected = data.deleteImpacts.reduce((total, impact) => total + Number(impact?.totalCount || 0), 0);
+      const archived = data.deleteImpacts.filter((impact) => impact?.action === "archived").length;
+      this.view.showToast(
+        "Đã xác nhận trên máy chủ",
+        `${archived ? `${archived} mục được lưu trữ; ` : ""}${affected} bản ghi bị ảnh hưởng. Chi tiết đã được ghi vào nhật ký kiểm toán.`,
+        "success"
+      );
+    }
+    this._syncConflict = null;
+    this.updateSyncState({ phase: "idle", pendingCount: this.model?.getPendingMutationSummary?.().pendingCount || 0, lastSyncedAt: Date.now() });
     return { ok: true, status, data };
   }).catch((err) => {
     console.error("Error auto sync:", err);
+    this.updateSyncState({ phase: "error", message: "Không thể kết nối máy chủ" });
     return { ok: false, error: err };
   });
 }
@@ -436,6 +526,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
   const syncBtn = document.getElementById("btn-force-sync");
   const syncIcon = document.getElementById("sync-icon");
   const syncStatusText = document.getElementById("sync-status-text");
+  this.updateSyncState({ phase: "syncing" });
   if (syncIcon) syncIcon.classList.add("anim-spin");
   if (syncStatusText) syncStatusText.textContent = "Đang đồng bộ...";
   const hasLocalDataForCurrentRoute = typeof this.hasLocalDataForRoute === "function" ? this.hasLocalDataForRoute(window.location.pathname) : typeof this.hasLocalWorkspaceData === "function" ? this.hasLocalWorkspaceData() : false;
@@ -445,10 +536,8 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
   const shouldShowFullLoader = !isBackground && !hasLocalDataForCurrentRoute && this.view && this.view.showLoader;
   if (shouldShowFullLoader) this.view.showLoader();
   try {
-    const lastSyncVersion = storage.getItem("bf_last_sync_version");
-    const useVersionDelta = !forceFull && lastSyncVersion !== null && lastSyncVersion !== "";
-    const since = forceFull ? "0" : storage.getItem("bf_last_sync_timestamp") || "0";
-    const queryParams = new URLSearchParams(useVersionDelta ? { after_version: lastSyncVersion } : { since });
+    const { useVersionDelta, since, query } = readSyncCursor(storage, { forceFull });
+    const queryParams = new URLSearchParams(query);
     const currentTab = typeof this.getTabNameForPath === "function" ? this.getTabNameForPath(window.location.pathname) : "";
     if (currentTab === "dashboard" || currentTab === "superadmin-dashboard") {
       queryParams.set("include_summary", "1");
@@ -475,6 +564,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       const isAuthError = normalizedMsg.includes("xác thực") || normalizedMsg.includes("phiên") || normalizedMsg.includes("đăng nhập") || normalizedMsg.includes("tài khoản") || normalizedMsg.includes("authentication") || normalizedMsg.includes("session");
       if (isAuthError || isBackground) {
         if (syncStatusText) syncStatusText.textContent = "Cần đăng nhập lại";
+        this.updateSyncState({ phase: "error", message: "Cần đăng nhập lại" });
         return { ok: false, status: response.status, error: errorMsg };
       }
     }
@@ -499,14 +589,10 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       const { changedKeys, persistencePromise } = applyServerSnapshot(this.model, dbData, { useVersionDelta, since });
       await persistencePromise;
       if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
-      if (!dbData.partial && dbData.syncVersion !== void 0 && dbData.syncVersion !== null) {
-        storage.setItem("bf_last_sync_version", dbData.syncVersion.toString());
-        this.model?.rebasePendingMutationQueue?.(dbData.syncVersion);
+      const committedCursor = commitSyncCursor(storage, dbData);
+      if (committedCursor.syncVersion !== null) {
+        this.model?.rebasePendingMutationQueue?.(committedCursor.syncVersion);
       }
-      if (!dbData.partial && dbData.timestamp) {
-        storage.setItem("bf_last_sync_timestamp", dbData.timestamp.toString());
-      }
-      storage.setItem("bf_last_fetch_time", Date.now().toString());
       await renderChangedState(this, changedKeys, { isBackground });
       this.updateSyncStatusDisplay(Date.now());
       if (!isBackground) {
@@ -525,10 +611,13 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       if (routeOnly && typeof this.scheduleBackgroundSync === "function") {
         this.scheduleBackgroundSync(900);
       }
+      this.updateSyncState({ phase: "idle", lastSyncedAt: Date.now() });
+      return { ok: true, data: dbData };
     }
   } catch (err) {
     if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
     console.error("Failed to sync data from SQLite:", err);
+    this.updateSyncState({ phase: "error", message: "Lỗi đồng bộ" });
     if (syncStatusText) syncStatusText.textContent = "Lỗi đồng bộ";
     const banner = document.getElementById("offline-indicator-banner");
     if (banner) {
@@ -548,16 +637,14 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
         }
       }, 5e3);
     }
+    return { ok: false, error: err };
   } finally {
     if (syncIcon) syncIcon.classList.remove("anim-spin");
     if (shouldShowFullLoader && this.view && this.view.hideLoader) this.view.hideLoader();
   }
 }
 export function updateSyncStatusDisplay(timestamp) {
-  const syncStatusText = document.getElementById("sync-status-text");
-  if (!syncStatusText) return;
-  const timeStr = new Date(timestamp).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-  syncStatusText.textContent = `Đồng bộ (${timeStr})`;
+  this.updateSyncState({ phase: "idle", lastSyncedAt: timestamp });
 }
 export function setupWebSocketConnection() {
   const workspace = captureWorkspace(this);

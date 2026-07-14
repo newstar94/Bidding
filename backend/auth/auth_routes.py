@@ -809,7 +809,10 @@ async def delete_user_api(request):
             """
             SELECT membership.organization_id
             FROM thanh_vien_to_chuc AS membership
+            JOIN to_chuc AS organization
+              ON organization.id = membership.organization_id
             WHERE membership.user_id = ?
+              AND organization.scope_type = 'organization'
               AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'owner'
               AND NOT EXISTS (
                   SELECT 1
@@ -824,8 +827,29 @@ async def delete_user_api(request):
         )
         if cursor.fetchone():
             return JSONResponse({"error": "Không thể xóa chủ sở hữu cuối cùng của tổ chức."}, status_code=409)
+        personal_workspace_count = int(cursor.execute(
+            "SELECT COUNT(*) FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
+            (user_id,),
+        ).fetchone()[0])
+        if personal_workspace_count:
+            cursor.execute("SAVEPOINT delete_personal_workspace")
+            try:
+                cursor.execute(
+                    "DELETE FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
+                    (user_id,),
+                )
+                cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
+            except sqlite3.IntegrityError:
+                cursor.execute("ROLLBACK TO SAVEPOINT delete_personal_workspace")
+                cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
+                conn.rollback()
+                return JSONResponse({
+                    "error": "Không thể xóa tài khoản khi không gian cá nhân còn dữ liệu.",
+                    "code": "PERSONAL_WORKSPACE_NOT_EMPTY",
+                }, status_code=409)
         impact = {
             "rootCount": 1,
+            "personalWorkspaces": personal_workspace_count,
             "memberships": int(cursor.execute(
                 "SELECT COUNT(*) FROM thanh_vien_to_chuc WHERE user_id = ?",
                 (user_id,),

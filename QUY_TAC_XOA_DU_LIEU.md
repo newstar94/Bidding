@@ -44,6 +44,9 @@ Các cascade trên phải xuất hiện trong `deleteImpacts` và audit. Mọi q
 
 ## 5. Dữ liệu offline trên trình duyệt
 
+- Workspace có `scope_type = organization` thuộc tổ chức; workspace có `scope_type = personal` thuộc duy nhất `personal_owner_user_id`. Cả hai cùng dùng ID workspace làm khóa tenant để không tạo nhánh lưu trữ nullable.
+- Không cho xóa tài khoản nếu workspace cá nhân còn dữ liệu nghiệp vụ; API trả `PERSONAL_WORKSPACE_NOT_EMPTY`. Workspace cá nhân rỗng được xóa cùng tài khoản.
+
 - Mỗi IndexedDB và khóa local/session storage phải được scope bằng `userId + organizationId`; không dùng chung cache dữ liệu giữa hai tài khoản hoặc hai tổ chức.
 - Khi đăng xuất, tùy chọn “Xóa dữ liệu offline trên thiết bị” được bật mặc định. Người dùng có thể bỏ chọn trên thiết bị cá nhân.
 - Nếu lần đồng bộ cuối thất bại, hệ thống phải cảnh báo nguy cơ mất thay đổi và yêu cầu xác nhận riêng trước khi xóa.

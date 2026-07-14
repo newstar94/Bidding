@@ -736,6 +736,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       this.model.workspaceStorage?.removeItem("bf_last_fetch_time");
     }
     this.view.initDOM();
+    this.setupSyncUx();
     this.setupAuth();
     this.setupActivityTracker();
     this.registerCommands();

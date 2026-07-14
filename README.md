@@ -64,6 +64,13 @@ Khong copy rieng file `.db` khi server dang chay. Quy trinh lap lich, retention,
 
 Database mới được tạo duy nhất bởi migration `0001_clean_baseline`. Mỗi migration có `version`, `name`, SHA-256 `checksum` và `applied_at`; ứng dụng sẽ dừng nếu checksum, thứ tự version, table constraint hoặc foreign key bị drift. Migration đã áp dụng không được sửa: mọi thay đổi schema sau này phải thêm module `backend/db/migrations/mNNNN_*.py` kế tiếp. Baseline này cố ý không nâng cấp database legacy; khi thử nghiệm clean first-run, hãy dùng một file SQLite mới.
 
+### Phạm vi sở hữu dữ liệu
+
+- Tài khoản có membership tổ chức tạo và chỉnh sửa dữ liệu trong tổ chức đang hoạt động; client và API chỉ truyền ID workspace qua `X-Active-Org`, không dùng tên để định danh.
+- Tài khoản chưa thuộc tổ chức nghiệp vụ nào tự động dùng một `personal` workspace riêng. Mọi bản ghi vẫn có `organization_id` để dùng chung FK, sync và cache, nhưng `owner_type = personal` và DB ràng buộc workspace đó với đúng `personal_owner_user_id`.
+- Khi tài khoản được thêm vào ít nhất một tổ chức nghiệp vụ, workspace cá nhân bị ẩn và không thể chọn bằng header trực tiếp. Nếu mọi membership tổ chức bị gỡ, workspace cá nhân lại trở thành phạm vi mặc định.
+- Workspace cá nhân không hỗ trợ thêm, xóa hoặc đổi vai trò thành viên. API `organizations` luôn trả DTO có `id`, `name`, `scope_type`, `role`, `status`; tên chỉ phục vụ hiển thị.
+
 ### Reverse proxy va IP tin cay
 
 Khi production dat sau Nginx, dung mau `deploy/nginx-biddingflow.conf.example` va dat:
