@@ -1,4 +1,6 @@
 import { installAdminModule } from "../app/adminModuleLoader.js";
+import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
+import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 
 export function validateUsernameClient(username) {
   const u = (username || "").toLowerCase().trim();
@@ -247,6 +249,8 @@ export function checkInactivity() {
     const idleTime = Date.now() - parseInt(lastActivity, 10);
     if (idleTime > inactivityLimit) {
       if (this._sessionInterval) clearInterval(this._sessionInterval);
+      this.disconnectWebSocket?.(false);
+      void this.model.deactivateWorkspace?.();
       this.model.clearSessionData();
       const showSessionExpired = async () => {
         if (this.view && typeof this.view.customAlert === "function") {
@@ -295,6 +299,8 @@ export function startBackgroundSessionChecker() {
     }).then(async (data) => {
       if (!data || !data.valid) {
         clearInterval(this._sessionInterval);
+        this.disconnectWebSocket?.(false);
+        void this.model.deactivateWorkspace?.();
         this.model.clearSessionData();
         const overlay = document.getElementById("auth-overlay");
         if (overlay) {
@@ -319,12 +325,15 @@ export function startBackgroundSessionChecker() {
           const activeuser = this.model.state.activeuser || {};
           this.model.state.activeuser = activeuser;
           let hasChanges = false;
-          const nextDbRoles = data.user.effective_roles || [];
-          const nextActiveRole = this.model.constructor.resolveAllowedActiveRole({
-            ...activeuser,
-            dbRole: data.user.role || "",
-            dbRoles: nextDbRoles
-          }, this.model.state.activerole);
+          const previousAccess = JSON.stringify({
+            role: activeuser.dbRole,
+            roles: activeuser.dbRoles,
+            organizations: activeuser.organizations,
+            activeOrganizationId: activeuser.activeOrganizationId
+          });
+          const previousOrgId = getActiveOrganizationId();
+          applyAccessContext(activeuser, data.user);
+          const nextActiveRole = this.model.constructor.resolveAllowedActiveRole(activeuser, this.model.state.activerole);
           if (this.model.state.activerole !== nextActiveRole) {
             this.model.state.activerole = nextActiveRole;
             hasChanges = true;
@@ -341,14 +350,13 @@ export function startBackgroundSessionChecker() {
             activeuser.email = data.user.email || "";
             hasChanges = true;
           }
-          if (activeuser.dbRole !== (data.user.role || "")) {
-            activeuser.dbRole = data.user.role || "";
-            hasChanges = true;
-          }
-          if (JSON.stringify(activeuser.dbRoles || []) !== JSON.stringify(nextDbRoles)) {
-            activeuser.dbRoles = nextDbRoles;
-            hasChanges = true;
-          }
+          const nextAccess = JSON.stringify({
+            role: activeuser.dbRole,
+            roles: activeuser.dbRoles,
+            organizations: activeuser.organizations,
+            activeOrganizationId: activeuser.activeOrganizationId
+          });
+          if (previousAccess !== nextAccess) hasChanges = true;
           const nextTitle = this.model.constructor.getRoleTitle(this.model.state.activerole);
           if (activeuser.title !== nextTitle) {
             activeuser.title = nextTitle;
@@ -358,31 +366,14 @@ export function startBackgroundSessionChecker() {
             activeuser.package_id = data.user.package_id || "none";
             hasChanges = true;
           }
-          if (activeuser.organization_name !== (data.user.organization_name || "")) {
-            activeuser.organization_name = data.user.organization_name || "";
-            hasChanges = true;
-          }
           if (hasChanges) {
             sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.model.state.activerole));
             sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(activeuser));
             localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(activeuser));
             this.view.updateActiveUserProfileDisplay();
-            let activeOrg = localStorage.getItem("bf_active_org");
-            const orgs = (activeuser.organization_name || "").split(",").map((o) => o.trim()).filter(Boolean);
-            if (activeOrg && !orgs.includes(activeOrg)) {
-              const nextOrg = orgs[0] || "";
-              if (typeof this.resetWorkspaceData === "function") {
-                await this.resetWorkspaceData(nextOrg);
-              } else {
-                if (nextOrg) {
-                  localStorage.setItem("bf_active_org", nextOrg);
-                } else {
-                  localStorage.removeItem("bf_active_org");
-                }
-                localStorage.setItem("bf_last_sync_timestamp", "0");
-                localStorage.removeItem("bf_last_sync_version");
-              }
-              this.forceSyncData().catch((err) => console.error("Automatic data reload failed:", err));
+            const nextOrg = getActiveOrganizationId();
+            if (previousOrgId && previousOrgId !== nextOrg) {
+              await this.switchWorkspaceContext?.(nextOrg, { skipPendingFlush: true, accessRevoked: true });
             }
             if (typeof this.renderWorkspaceSwitcher === "function") {
               this.renderWorkspaceSwitcher();
@@ -401,7 +392,11 @@ export function setupAuth() {
   const formLogin = document.getElementById("form-auth-login");
   const formRegister = document.getElementById("form-auth-register");
   const formForgot = document.getElementById("form-auth-forgot");
+  const formReset = document.getElementById("form-auth-reset");
   const formVerify = document.getElementById("form-auth-verify");
+  let resetToken = window.location.pathname === "/reset-password"
+    ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("token") || ""
+    : "";
   const hasLocalWorkspaceData = () => {
     if (typeof this.hasLocalWorkspaceData === "function") {
       return this.hasLocalWorkspaceData();
@@ -414,12 +409,17 @@ export function setupAuth() {
       hideInitLoader();
       return;
     }
+    this.disconnectWebSocket?.(false);
+    void this.model.deactivateWorkspace?.();
     this.model.clearSessionData();
     overlay.style.display = "flex";
     document.querySelector(".app-container").style.filter = "blur(10px)";
-    formLogin.style.display = "block";
+    const showResetForm = Boolean(resetToken && formReset);
+    formLogin.style.display = showResetForm ? "none" : "block";
     formRegister.style.display = "none";
     formForgot.style.display = "none";
+    if (formReset) formReset.style.display = showResetForm ? "block" : "none";
+    if (formVerify) formVerify.style.display = "none";
     document.getElementById("login-username").value = "";
     document.getElementById("login-password").value = "";
     hideInitLoader();
@@ -458,19 +458,13 @@ export function setupAuth() {
       sessionStorage.setItem("bf_username", user.username);
     }
     if (!this.model.state.activeuser) this.model.state.activeuser = {};
+    applyAccessContext(this.model.state.activeuser, user);
     const requestedRole = this.model.state.activeuser.dbRole ? this.model.state.activerole : null;
-    this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole({
-      ...this.model.state.activeuser,
-      dbRole: user.role || "",
-      dbRoles: user.effective_roles || []
-    }, requestedRole);
+    this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole(this.model.state.activeuser, requestedRole);
     this.model.state.activeuser.name = user.name;
     this.model.state.activeuser.avatar = user.avatar || "";
     this.model.state.activeuser.email = user.email || "";
-    this.model.state.activeuser.dbRole = user.role || "";
-    this.model.state.activeuser.dbRoles = user.effective_roles || [];
     this.model.state.activeuser.package_id = user.package_id || "none";
-    this.model.state.activeuser.organization_name = user.organization_name || "";
     if (user.inactivity_timeout_hours) {
       localStorage.setItem("bf_inactivity_timeout", user.inactivity_timeout_hours);
     }
@@ -532,6 +526,11 @@ export function setupAuth() {
       if (isAuthTransitionActive() || isStaleAuthResult(sessionCheckStartedAt)) {
         return;
       }
+      if (resetToken) {
+        setAuthSessionActive(false);
+        showLoginOverlay(sessionCheckStartedAt);
+        return;
+      }
       if (!data || !data.valid) {
         showLoginOverlay(sessionCheckStartedAt);
       } else {
@@ -578,12 +577,14 @@ export function setupAuth() {
   const btnShowForgot = document.getElementById("link-show-forgot");
   const btnShowLoginFromReg = document.getElementById("link-show-login-from-reg");
   const btnShowLoginFromForgot = document.getElementById("link-show-login-from-forgot");
+  const btnShowLoginFromReset = document.getElementById("link-show-login-from-reset");
   const btnShowLoginFromVerify = document.getElementById("link-show-login-from-verify");
   const btnLogout = document.getElementById("btn-auth-logout");
   const switchForm = (showPane) => {
     formLogin.style.display = "none";
     formRegister.style.display = "none";
     formForgot.style.display = "none";
+    if (formReset) formReset.style.display = "none";
     if (formVerify) formVerify.style.display = "none";
     document.querySelectorAll(".auth-error-msg, .auth-success-msg").forEach((el) => el.style.display = "none");
     showPane.style.display = "block";
@@ -625,6 +626,12 @@ export function setupAuth() {
     e.preventDefault();
     switchForm(formLogin);
   };
+  if (btnShowLoginFromReset) btnShowLoginFromReset.onclick = (e) => {
+    e.preventDefault();
+    resetToken = "";
+    window.history.replaceState({}, "", "/");
+    switchForm(formLogin);
+  };
   if (btnShowLoginFromVerify) btnShowLoginFromVerify.onclick = (e) => {
     e.preventDefault();
     switchForm(formLogin);
@@ -649,17 +656,15 @@ export function setupAuth() {
         } catch (e) {
           console.error("Failed to clear server session during logout:", e);
         }
+        if (typeof this.resetWorkspaceData === "function") {
+          await this.resetWorkspaceData("");
+        } else {
+          setActiveOrganizationId("");
+        }
         this.model.clearSessionData();
         setAuthSessionActive(false);
         setAuthFlowInProgress(false);
         if (this._sessionInterval) clearInterval(this._sessionInterval);
-        if (typeof this.resetWorkspaceData === "function") {
-          await this.resetWorkspaceData("");
-        } else {
-          localStorage.removeItem("bf_active_org");
-          localStorage.removeItem("bf_last_sync_timestamp");
-          localStorage.removeItem("bf_last_sync_version");
-        }
         overlay.style.display = "flex";
         document.querySelector(".app-container").style.filter = "blur(10px)";
         switchForm(formLogin);
@@ -709,15 +714,7 @@ export function setupAuth() {
         localStorage.removeItem("bf_username");
         localStorage.removeItem("bf_user_id");
       }
-      const orgs = (data.organization_name || "").split(",").map((o) => o.trim()).filter(Boolean);
-      const currentActiveOrg = localStorage.getItem("bf_active_org");
-      if (!currentActiveOrg || !orgs.includes(currentActiveOrg)) {
-        if (orgs.length > 0) {
-          localStorage.setItem("bf_active_org", orgs[0]);
-        } else {
-          localStorage.removeItem("bf_active_org");
-        }
-      }
+      selectActiveOrganization(data);
       if (this._workspaceDeferredUntilReload) {
         reloadWithInitLoader();
         return;
@@ -731,19 +728,14 @@ export function setupAuth() {
       if (effectiveRoles.includes("super_admin")) activeRole = "super_admin";
       else if (effectiveRoles.includes("manager")) activeRole = "manager";
       else if (effectiveRoles.includes("employee")) activeRole = "employee";
-      const resolvedUserId = !this.model.hasEffectiveRole(data.role, "manager") ? data.id ? data.id : "1" : this.model.hasEffectiveRole(data.role, "super_admin") ? "sa-1" : "mgr-1";
       this.model.state.activeuser = {
-        ...this.model.state.activeuser || {},
-        dbRole: data.role || "",
-        dbRoles: effectiveRoles
+        ...this.model.state.activeuser || {}
       };
-      this.model.switchActiveRole(activeRole, data.name, resolvedUserId);
+      applyAccessContext(this.model.state.activeuser, data);
+      this.model.switchActiveRole(activeRole, data.name, data.id);
       this.model.state.activeuser.avatar = data.avatar || "";
       this.model.state.activeuser.email = data.email || "";
-      this.model.state.activeuser.dbRole = data.role || "";
-      this.model.state.activeuser.dbRoles = effectiveRoles;
       this.model.state.activeuser.package_id = data.package_id || "none";
-      this.model.state.activeuser.organization_name = data.organization_name || "";
       localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
       if (data.inactivity_timeout_hours) {
         localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);
@@ -960,6 +952,61 @@ export function setupAuth() {
       this.setupGoogleSignIn();
     }
   };
+  if (formReset) formReset.onsubmit = async (e) => {
+    e.preventDefault();
+    const newPassword = document.getElementById("reset-new-password").value;
+    const confirmPassword = document.getElementById("reset-confirm-password").value;
+    const errorDiv = document.getElementById("reset-error");
+    const successDiv = document.getElementById("reset-success");
+    errorDiv.style.display = "none";
+    successDiv.style.display = "none";
+    if (!resetToken) {
+      errorDiv.textContent = "Liên kết đặt lại mật khẩu không hợp lệ.";
+      errorDiv.style.display = "block";
+      return;
+    }
+    if (newPassword.length < 12) {
+      errorDiv.textContent = "Mật khẩu phải có ít nhất 12 ký tự.";
+      errorDiv.style.display = "block";
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      errorDiv.textContent = "Mật khẩu xác nhận không khớp.";
+      errorDiv.style.display = "block";
+      return;
+    }
+    const csrfToken = document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("csrf_token="))
+      ?.slice("csrf_token=".length) || "";
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken ? { "X-CSRF-Token": decodeURIComponent(csrfToken) } : {})
+        },
+        body: JSON.stringify({ token: resetToken, new_password: newPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errorDiv.textContent = data.error || "Không thể đặt lại mật khẩu.";
+        errorDiv.style.display = "block";
+        return;
+      }
+      resetToken = "";
+      window.history.replaceState({}, "", "/");
+      formReset.reset();
+      successDiv.textContent = data.message;
+      successDiv.style.display = "block";
+      const submitButton = formReset.querySelector('button[type="submit"]');
+      if (submitButton) submitButton.disabled = true;
+    } catch (err) {
+      errorDiv.textContent = "Lỗi kết nối máy chủ: " + err.message;
+      errorDiv.style.display = "block";
+    }
+  };
   const loadGoogleIdentity = () => {
     if (typeof google !== "undefined" && google.accounts) {
       initGoogle();
@@ -1167,15 +1214,7 @@ export function setupGoogleSignIn() {
       sessionStorage.setItem("bf_user_id", data.id);
       localStorage.removeItem("bf_remember_me");
       hideAuthOverlay();
-      const orgs = (data.organization_name || "").split(",").map((o) => o.trim()).filter(Boolean);
-      const currentActiveOrg = localStorage.getItem("bf_active_org");
-      if (!currentActiveOrg || !orgs.includes(currentActiveOrg)) {
-        if (orgs.length > 0) {
-          localStorage.setItem("bf_active_org", orgs[0]);
-        } else {
-          localStorage.removeItem("bf_active_org");
-        }
-      }
+      selectActiveOrganization(data);
       const effectiveRoles = data.effective_roles || [];
       if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
         await installAdminModule(this.constructor);
@@ -1198,19 +1237,14 @@ export function setupGoogleSignIn() {
                 return;
               }
               await this.model.init();
-              const resolvedUserId2 = !this.model.hasEffectiveRole(data.role, "manager") ? data.id ? data.id : "1" : this.model.hasEffectiveRole(data.role, "super_admin") ? "sa-1" : "mgr-1";
               this.model.state.activeuser = {
-                ...this.model.state.activeuser || {},
-                dbRole: data.role || "",
-                dbRoles: effectiveRoles
+                ...this.model.state.activeuser || {}
               };
-              this.model.switchActiveRole(activeRole, data.name, resolvedUserId2);
+              applyAccessContext(this.model.state.activeuser, data);
+              this.model.switchActiveRole(activeRole, data.name, data.id);
               this.model.state.activeuser.avatar = data.avatar || "";
               this.model.state.activeuser.email = data.email || "";
-              this.model.state.activeuser.dbRole = data.role || "";
-              this.model.state.activeuser.dbRoles = effectiveRoles;
               this.model.state.activeuser.package_id = data.package_id || "none";
-              this.model.state.activeuser.organization_name = data.organization_name || "";
               localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
               if (data.inactivity_timeout_hours) {
                 localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);
@@ -1231,19 +1265,14 @@ export function setupGoogleSignIn() {
         return;
       }
       await this.model.init();
-      const resolvedUserId = !this.model.hasEffectiveRole(data.role, "manager") ? data.id ? data.id : "1" : this.model.hasEffectiveRole(data.role, "super_admin") ? "sa-1" : "mgr-1";
       this.model.state.activeuser = {
-        ...this.model.state.activeuser || {},
-        dbRole: data.role || "",
-        dbRoles: effectiveRoles
+        ...this.model.state.activeuser || {}
       };
-      this.model.switchActiveRole(activeRole, data.name, resolvedUserId);
+      applyAccessContext(this.model.state.activeuser, data);
+      this.model.switchActiveRole(activeRole, data.name, data.id);
       this.model.state.activeuser.avatar = data.avatar || "";
       this.model.state.activeuser.email = data.email || "";
-      this.model.state.activeuser.dbRole = data.role || "";
-      this.model.state.activeuser.dbRoles = effectiveRoles;
       this.model.state.activeuser.package_id = data.package_id || "none";
-      this.model.state.activeuser.organization_name = data.organization_name || "";
       localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
       if (data.inactivity_timeout_hours) {
         localStorage.setItem("bf_inactivity_timeout", data.inactivity_timeout_hours);

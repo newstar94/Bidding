@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from backend.shared.client_ip import get_client_ip
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
@@ -47,8 +48,7 @@ def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, targe
     try:
         ip_address = None
         if request is not None:
-            forwarded = request.headers.get("X-Forwarded-For")
-            ip_address = forwarded.split(",")[0].strip() if forwarded else getattr(request.client, "host", None)
+            ip_address = get_client_ip(request)
 
         metadata_json = None
         if metadata is not None:

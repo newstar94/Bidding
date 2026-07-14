@@ -1,6 +1,5 @@
 import os
 import re
-import zipfile
 from urllib.parse import quote
 from starlette.responses import StreamingResponse, JSONResponse
 
@@ -12,8 +11,10 @@ from backend.shared.helpers import (
     OrgPermissionError
 )
 from backend.db.id_utils import generate_record_id
-from backend.shared.access_policy import can_read_record, is_manager_role
+from backend.shared.access_policy import can_read_record, is_organization_manager
 from backend.documents import custom_exporter
+from backend.documents.archive_validation import validate_ooxml_archive
+from backend.documents.template_security import validate_docx_template_statements
 import backend.documents.docx_service as docx_service
 from backend.documents.docx_bid_context_service import (
     enrich_context_with_filtered_bidders,
@@ -27,6 +28,70 @@ import uuid
 SYSTEM_TEMPLATES = {'mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx'}
 MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
 COMPUTED_SOURCE_TABLE = '__computed__'
+
+
+def _current_sync_version(owner_id):
+    conn = database.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT current_version FROM sync_metadata WHERE owner_id = ?",
+            (owner_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Không tìm thấy phiên bản đồng bộ của tổ chức.")
+        return int(row[0])
+    finally:
+        conn.close()
+
+
+def _validate_export_snapshot(request, owner_id):
+    raw_version = request.query_params.get('snapshotVersion')
+    if raw_version is None or raw_version == '':
+        return None, JSONResponse(
+            {
+                "error": "Thiếu phiên bản dữ liệu để xuất tệp.",
+                "code": "EXPORT_SNAPSHOT_REQUIRED",
+            },
+            status_code=428,
+        )
+    try:
+        expected_version = int(raw_version)
+        if expected_version < 0 or str(expected_version) != str(raw_version).strip():
+            raise ValueError
+    except (TypeError, ValueError):
+        return None, JSONResponse(
+            {
+                "error": "Phiên bản dữ liệu không hợp lệ.",
+                "code": "EXPORT_SNAPSHOT_INVALID",
+            },
+            status_code=400,
+        )
+
+    current_version = _current_sync_version(owner_id)
+    if current_version != expected_version:
+        return None, JSONResponse(
+            {
+                "error": "Dữ liệu đã thay đổi. Vui lòng đồng bộ lại trước khi xuất tệp.",
+                "code": "EXPORT_SNAPSHOT_STALE",
+                "currentSyncVersion": current_version,
+            },
+            status_code=409,
+        )
+    return expected_version, None
+
+
+def _ensure_export_snapshot_unchanged(owner_id, expected_version):
+    current_version = _current_sync_version(owner_id)
+    if current_version == expected_version:
+        return None
+    return JSONResponse(
+        {
+            "error": "Dữ liệu đã thay đổi trong khi tạo tệp. Vui lòng thử lại.",
+            "code": "EXPORT_SNAPSHOT_CHANGED",
+            "currentSyncVersion": current_version,
+        },
+        status_code=409,
+    )
 
 
 def _can_export_record(role_or_err, org_name, payload_key, table_name, record_id):
@@ -80,14 +145,8 @@ def _validate_docx_upload(filename, content):
         raise ValueError('Tệp tải lên đang trống')
     if len(content) > MAX_TEMPLATE_UPLOAD_BYTES:
         raise ValueError('Tệp mẫu vượt quá giới hạn 10MB')
-    import io
-    try:
-        with zipfile.ZipFile(io.BytesIO(content)) as zf:
-            names = set(zf.namelist())
-            if '[Content_Types].xml' not in names or 'word/document.xml' not in names:
-                raise ValueError('Tệp .docx không hợp lệ')
-    except zipfile.BadZipFile:
-        raise ValueError('Tệp .docx không hợp lệ')
+    validate_ooxml_archive(content, "docx")
+    validate_docx_template_statements(content)
     return _safe_filename(f"{root[:80]}_{uuid.uuid4().hex[:8]}.docx")
 
 
@@ -99,6 +158,9 @@ async def export_plan_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
+        if snapshot_error is not None:
+            return snapshot_error
         if not _can_export_record(role_or_err, org_name, "kehoach", "ke_hoach_lcnt", plan_id):
             return JSONResponse({"error": "Ban khong co quyen xuat ke hoach nay."}, status_code=403)
 
@@ -123,6 +185,10 @@ async def export_plan_api(request):
 
         docx_stream = custom_exporter.generate_report_from_custom_template(tpl_path, unified_context, custom_vars_list)
 
+        snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
+        if snapshot_error is not None:
+            return snapshot_error
+
         filename = f"Ke_hoach_LCNT_{unified_context['ke_hoach']['ma_ke_hoach']}.docx"
         return StreamingResponse(
             docx_stream,
@@ -143,6 +209,9 @@ async def export_report_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
+        if snapshot_error is not None:
+            return snapshot_error
         if not _can_export_record(role_or_err, org_name, "goithau", "goi_thau", package_id):
             return JSONResponse({"error": "Ban khong co quyen xuat goi thau nay."}, status_code=403)
 
@@ -170,6 +239,10 @@ async def export_report_api(request):
         tpl_path, active_tpl = _resolve_template_path(user_id, active_tpl)
 
         docx_stream = custom_exporter.generate_report_from_custom_template(tpl_path, unified_context, custom_vars_list)
+
+        snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
+        if snapshot_error is not None:
+            return snapshot_error
 
         if type_param in ('contract', 'liquidation'):
             prefix = "Thanh_ly_hop_dong" if type_param == 'liquidation' else "Hop_dong"
@@ -259,12 +332,13 @@ async def list_word_mappings_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-        if not is_manager_role(str(role_or_err)):
-            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
         conn = database.get_connection()
         cursor = conn.cursor()
+        if not is_organization_manager(cursor, str(role_or_err), user_id, org_name):
+            conn.close()
+            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
         ensure_default_word_mappings(cursor, org_name)
         conn.commit()
@@ -294,8 +368,6 @@ async def save_word_mapping_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-        if not is_manager_role(str(role_or_err)):
-            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
 
@@ -323,6 +395,9 @@ async def save_word_mapping_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
+        if not is_organization_manager(cursor, str(role_or_err), user_id, org_name):
+            conn.close()
+            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
 
 
@@ -387,8 +462,6 @@ async def delete_word_mapping_api(request):
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-        if not is_manager_role(str(role_or_err)):
-            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
 
@@ -398,6 +471,9 @@ async def delete_word_mapping_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
+        if not is_organization_manager(cursor, str(role_or_err), user_id, org_name):
+            conn.close()
+            return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ? AND owner_id = ?", (mapping_id, org_name))
         conn.commit()
         conn.close()

@@ -12,6 +12,7 @@ from backend.shared.helpers import (
 from backend.shared.access_policy import can_read_record
 
 from backend.documents.excel_handler import parse_excel
+from backend.documents.archive_validation import validate_ooxml_archive
 import backend.documents.excel_service as excel_service
 
 MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -60,6 +61,8 @@ def _validate_excel_upload(file_obj, file_bytes):
         raise ValueError('Nội dung tệp .xlsx không hợp lệ')
     if ext.lower() == '.xls' and not is_xls:
         raise ValueError('Nội dung tệp .xls không hợp lệ')
+    if ext.lower() == '.xlsx':
+        validate_ooxml_archive(file_bytes, "xlsx")
 
 async def import_excel_api(request):
     try:

@@ -7,6 +7,11 @@ import {
   resolveSchemaTable
 } from "../documents/schemaContract.js";
 import { generateUUID as createUUID } from "../shared/idUtils.js";
+import {
+  ScopedWorkspaceStorage,
+  resolveWorkspaceScope,
+  workspaceDatabaseName
+} from "./workspaceState.js";
 const STATE_KEY_BY_SERVER_TABLE = Object.fromEntries(
   Object.entries(CLIENT_TABLE_MAP).map(([stateKey, tableName]) => [tableName, stateKey])
 );
@@ -24,18 +29,6 @@ const SYNCED_STATE_KEYS = /* @__PURE__ */ new Set([
 ]);
 const MUTATION_QUEUE_KEY = "bf_mutation_queue";
 const LOCAL_DELETIONS_KEY = "bf_local_deletions";
-function readLocalJson(key, fallback) {
-  if (typeof localStorage === "undefined") return fallback;
-  try {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
-  } catch (e) {
-    return fallback;
-  }
-}
-function writeLocalJson(key, value) {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(value));
-}
 class BrowserDB {
   constructor(dbName = "BiddingFlowDB") {
     this.dbName = dbName;
@@ -224,6 +217,10 @@ class BrowserDB {
       }
     });
   }
+  close() {
+    this.db?.close?.();
+    this.db = null;
+  }
   applySyncChanges({ replacements = {}, upserts = {}, deletions = {} } = {}) {
     const tableNames = Array.from(new Set([
       ...Object.keys(replacements),
@@ -310,26 +307,24 @@ export class BiddingModel {
       chuyengia: { field: "hoTen", order: "asc" },
       hopdong: { field: "tenHopDong", order: "asc" }
     };
-    const savedPages = (() => {
-      try {
-        return JSON.parse(sessionStorage.getItem("bf_current_pages") || "{}");
-      } catch {
-        return {};
-      }
-    })();
     this.currentPage = {
-      kehoach: savedPages.kehoach || 1,
-      goithau: savedPages.goithau || 1,
-      chudautu: savedPages.chudautu || 1,
-      nhathau: savedPages.nhathau || 1,
-      chuyengia: savedPages.chuyengia || 1,
-      hopdong: savedPages.hopdong || 1
+      kehoach: 1,
+      goithau: 1,
+      chudautu: 1,
+      nhathau: 1,
+      chuyengia: 1,
+      hopdong: 1
     };
     this.pageSize = 10;
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
     this._allDataLoadPromise = null;
     this._hasPersistedWorkspaceData = false;
     this._suspendMutationTracking = 0;
+    this._workspaceWriteLocked = false;
+    this._workspaceEpoch = 0;
+    this.workspaceScope = null;
+    this.workspaceStorage = null;
+    this.workspaceSessionStorage = null;
   }
   normalizeRecordKeys(record, type = null) {
     if (!record || typeof record !== "object" || Array.isArray(record)) {
@@ -358,11 +353,64 @@ export class BiddingModel {
   /** Lưu trang hiện tại vào sessionStorage để F5 không mất trang */
   savePage(table) {
     try {
-      const pages = JSON.parse(sessionStorage.getItem("bf_current_pages") || "{}");
+      const pages = this.workspaceSessionStorage?.readJson("bf_current_pages", {}) || {};
       pages[table] = this.currentPage[table] || 1;
-      sessionStorage.setItem("bf_current_pages", JSON.stringify(pages));
+      this.workspaceSessionStorage?.writeJson("bf_current_pages", pages);
     } catch (e) {
     }
+  }
+
+  getWorkspaceToken() {
+    return this.workspaceScope ? `${this.workspaceScope.key}@${this._workspaceEpoch}` : "";
+  }
+
+  isWorkspaceCurrent(token) {
+    return !!token && token === this.getWorkspaceToken();
+  }
+
+  beginWorkspaceTransition() {
+    if (!this._workspaceWriteLocked) this._workspaceEpoch += 1;
+    this._workspaceWriteLocked = true;
+  }
+
+  endWorkspaceTransition() {
+    this._workspaceWriteLocked = false;
+  }
+
+  _assertWorkspaceWritable() {
+    if (this._workspaceWriteLocked) {
+      throw new Error("Workspace is changing; local writes are temporarily locked");
+    }
+    if (!this.workspaceScope || !this.workspaceStorage) {
+      throw new Error("Workspace state is not initialized");
+    }
+  }
+
+  _resetWorkspaceMemory() {
+    Object.keys(this.STORAGE_KEYS).forEach((key) => {
+      if (["THEME", "ACTIVEROLE", "ACTIVEUSER"].includes(key)) return;
+      const stateKey = key.toLowerCase();
+      if (Array.isArray(this.state[stateKey])) this.state[stateKey] = [];
+    });
+    this.dashboardSummary = null;
+    this.state.selectedPlanVersion = {};
+    this.state.selectedPackageVersion = {};
+    this.useServerSidePagination = false;
+    this._hasPersistedWorkspaceData = false;
+    this._loadedStorageKeys = /* @__PURE__ */ new Set();
+    this._allDataLoadPromise = null;
+    this._remainingHydrationScheduled = false;
+  }
+
+  async deactivateWorkspace() {
+    this.beginWorkspaceTransition();
+    this.db?.close?.();
+    this._resetWorkspaceMemory();
+    this.workspaceScope = null;
+    this.workspaceStorage = null;
+    this.workspaceSessionStorage = null;
+    this._workspaceEpoch += 1;
+    this.endWorkspaceTransition();
   }
   async loadStorageKeys(keysToLoad) {
     const requested = new Set(keysToLoad || Object.keys(this.STORAGE_KEYS));
@@ -416,16 +464,25 @@ export class BiddingModel {
     }
   }
   async init(options = {}) {
-    const userId = sessionStorage.getItem("bf_user_id");
-    if (userId) {
-      const cleanUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, "");
-      this.db = new BrowserDB(`BiddingFlowDB_${cleanUserId}`);
-    } else {
-      this.db = new BrowserDB();
+    const nextScope = resolveWorkspaceScope({
+      userId: options.userId,
+      organizationId: options.organizationId
+    });
+    const changedWorkspace = this.workspaceScope?.key !== nextScope.key;
+    if (changedWorkspace) {
+      this.db?.close?.();
+      this._resetWorkspaceMemory();
+      this.workspaceScope = nextScope;
+      this.workspaceStorage = new ScopedWorkspaceStorage(nextScope, localStorage);
+      this.workspaceSessionStorage = new ScopedWorkspaceStorage(nextScope, sessionStorage);
+      this.db = new BrowserDB(workspaceDatabaseName(nextScope));
+      this._workspaceEpoch += 1;
     }
-    this._loadedStorageKeys = /* @__PURE__ */ new Set();
-    this._allDataLoadPromise = null;
     await this.db.init();
+    const savedPages = this.workspaceSessionStorage.readJson("bf_current_pages", {});
+    Object.keys(this.currentPage).forEach((key) => {
+      this.currentPage[key] = savedPages[key] || 1;
+    });
     const persistedDataPromise = this.db.hasAnyTableData([
       "kehoach",
       "goithau",
@@ -489,7 +546,7 @@ export class BiddingModel {
   }
   _emptyMutationQueue() {
     return {
-      baseSyncVersion: typeof localStorage !== "undefined" ? localStorage.getItem("bf_last_sync_version") || "0" : "0",
+      baseSyncVersion: this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
       clientMutationId: createUUID(),
       dirtyTables: {},
       upserts: {},
@@ -498,8 +555,8 @@ export class BiddingModel {
     };
   }
   getMutationQueue() {
-    const queue = readLocalJson(MUTATION_QUEUE_KEY, null) || this._emptyMutationQueue();
-    queue.baseSyncVersion = queue.baseSyncVersion ?? (typeof localStorage !== "undefined" ? localStorage.getItem("bf_last_sync_version") || "0" : "0");
+    const queue = this.workspaceStorage?.readJson(MUTATION_QUEUE_KEY, null) || this._emptyMutationQueue();
+    queue.baseSyncVersion = queue.baseSyncVersion ?? (this.workspaceStorage?.getItem("bf_last_sync_version") || "0");
     queue.clientMutationId = queue.clientMutationId || createUUID();
     queue.dirtyTables = queue.dirtyTables && typeof queue.dirtyTables === "object" ? queue.dirtyTables : {};
     queue.upserts = queue.upserts && typeof queue.upserts === "object" ? queue.upserts : {};
@@ -560,21 +617,20 @@ export class BiddingModel {
     const hasUpserts = Object.values(queue.upserts || {}).some((items) => items && Object.keys(items).length > 0);
     const hasDeletes = Array.isArray(queue.deletes) && queue.deletes.length > 0;
     if (!hasDirtyTables && !hasUpserts && !hasDeletes) {
-      if (typeof localStorage !== "undefined") {
-        localStorage.removeItem(MUTATION_QUEUE_KEY);
-      }
+      this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
       return;
     }
-    writeLocalJson(MUTATION_QUEUE_KEY, queue);
+    this.workspaceStorage?.writeJson(MUTATION_QUEUE_KEY, queue);
   }
   _touchMutationQueue(queue) {
     queue.revision = (Number(queue.revision) || 0) + 1;
     queue.clientMutationId = queue.clientMutationId || createUUID();
     if (queue.baseSyncVersion === void 0 || queue.baseSyncVersion === null || queue.baseSyncVersion === "") {
-      queue.baseSyncVersion = typeof localStorage !== "undefined" ? localStorage.getItem("bf_last_sync_version") || "0" : "0";
+      queue.baseSyncVersion = this.workspaceStorage?.getItem("bf_last_sync_version") || "0";
     }
   }
   markRecordDirty(type, records) {
+    this._assertWorkspaceWritable();
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     const list = Array.isArray(records) ? records : [records];
     const validRecords = list.filter((record) => record && record.id);
@@ -589,6 +645,7 @@ export class BiddingModel {
     this._saveMutationQueue(queue);
   }
   markTableDirty(type) {
+    this._assertWorkspaceWritable();
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     const records = Array.isArray(this.state[type]) ? this.state[type].filter((record) => record && record.id).map((record) => this.normalizeRecordKeys(record, type)) : [];
     if (records.length === 0) return;
@@ -605,14 +662,15 @@ export class BiddingModel {
     this._saveMutationQueue(queue);
   }
   markDeleted(type, recordIds) {
+    this._assertWorkspaceWritable();
     const ids = Array.isArray(recordIds) ? recordIds : [recordIds];
-    let localDeletions = readLocalJson(LOCAL_DELETIONS_KEY, []);
+    const localDeletions = this.workspaceStorage.readJson(LOCAL_DELETIONS_KEY, []);
     ids.filter(Boolean).forEach((id) => {
       if (!localDeletions.some((d) => d.id === id && d.table === type)) {
         localDeletions.push({ table: type, id });
       }
     });
-    writeLocalJson(LOCAL_DELETIONS_KEY, localDeletions);
+    this.workspaceStorage.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     const queue = this.getMutationQueue();
     ids.filter(Boolean).forEach((id) => {
@@ -625,6 +683,18 @@ export class BiddingModel {
     });
     this._touchMutationQueue(queue);
     this._saveMutationQueue(queue);
+  }
+  commitLocalMutation(type, options = {}) {
+    this._assertWorkspaceWritable();
+    if (options.deletedIds !== void 0) {
+      this.markDeleted(type, options.deletedIds);
+      return;
+    }
+    if (options.fullTable) {
+      this.markTableDirty(type);
+      return;
+    }
+    this.markRecordDirty(type, options.records || []);
   }
   buildMutationSyncPayload() {
     const queue = this.getMutationQueue();
@@ -649,7 +719,7 @@ export class BiddingModel {
       }
     });
     const queuedDeletes = Array.isArray(queue.deletes) ? queue.deletes : [];
-    const localDeletions = readLocalJson(LOCAL_DELETIONS_KEY, []);
+    const localDeletions = this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [];
     const deleteMap = /* @__PURE__ */ new Map();
     [...queuedDeletes, ...localDeletions].forEach((item) => {
       if (!item || !item.table || !item.id) return;
@@ -665,10 +735,8 @@ export class BiddingModel {
   clearSyncedMutationQueue(snapshot) {
     const current = this.getMutationQueue();
     if (!snapshot || current.clientMutationId === snapshot.clientMutationId && current.revision === snapshot.revision) {
-      if (typeof localStorage !== "undefined") {
-        localStorage.removeItem(MUTATION_QUEUE_KEY);
-        localStorage.removeItem(LOCAL_DELETIONS_KEY);
-      }
+      this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
+      this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
       return;
     }
     Object.entries(snapshot.upserts || {}).forEach(([type, recordsById]) => {
@@ -686,7 +754,7 @@ export class BiddingModel {
       (item) => !(snapshot.deletes || []).some((oldItem) => oldItem.table === item.table && String(oldItem.id) === String(item.id))
     );
     this._saveMutationQueue(current);
-    writeLocalJson(LOCAL_DELETIONS_KEY, current.deletes || []);
+    this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, current.deletes || []);
   }
   suspendMutationTracking(callback) {
     this._suspendMutationTracking += 1;
@@ -697,6 +765,7 @@ export class BiddingModel {
     }
   }
   async persistData(type, options = {}) {
+    if (options.trackMutation !== false) this._assertWorkspaceWritable();
     const key = type.toUpperCase();
     if (this.STORAGE_KEYS[key]) {
       if (Array.isArray(this.state[type])) {
@@ -705,7 +774,7 @@ export class BiddingModel {
       // Queue the current state before the first await. Callers that start an
       // immediate sync must not be able to build a payload without this write.
       if (options.trackMutation !== false) {
-        this.markTableDirty(type);
+        this.commitLocalMutation(type, { fullTable: true });
       }
       if (options.trackMutation !== false && this._isSyncedStateKey(type)) {
         await this.trackDeletions(type);
@@ -726,6 +795,7 @@ export class BiddingModel {
     }
   }
   async addRecord(type, record) {
+    this._assertWorkspaceWritable();
     if (!this.state[type]) {
       this.state[type] = [];
     }
@@ -736,9 +806,10 @@ export class BiddingModel {
     } else {
       this.persistData(type);
     }
-    this.markRecordDirty(type, normalizedRecord);
+    this.commitLocalMutation(type, { records: normalizedRecord });
   }
   async updateRecord(type, record) {
+    this._assertWorkspaceWritable();
     if (!this.state[type]) {
       this.state[type] = [];
     }
@@ -754,13 +825,14 @@ export class BiddingModel {
     } else {
       this.persistData(type);
     }
-    this.markRecordDirty(type, normalizedRecord);
+    this.commitLocalMutation(type, { records: normalizedRecord });
   }
   async deleteRecord(type, recordId) {
+    this._assertWorkspaceWritable();
     if (this.state[type]) {
       this.state[type] = this.state[type].filter((x) => x.id !== recordId);
     }
-    this.markDeleted(type, recordId);
+    this.commitLocalMutation(type, { deletedIds: recordId });
     if (this.db.stores.includes(type)) {
       await this.db.deleteRecord(type, recordId);
     } else {
@@ -808,31 +880,35 @@ export class BiddingModel {
   // ROLE HIERARCHY HELPERS
   // ==========================================
   static ROLE_HIERARCHY = {
-    super_admin: ["super_admin", "manager", "employee"],
-    manager: ["manager", "employee"],
-    employee: ["employee"]
+    super_admin: ["super_admin", "owner", "manager", "employee", "viewer"],
+    owner: ["owner", "manager", "employee", "viewer"],
+    manager: ["manager", "employee", "viewer"],
+    employee: ["employee"],
+    viewer: ["viewer"]
   };
   static getRoleTitle(role) {
     if (role === "super_admin") return "Super Admin";
     if (role === "manager") return "Quản lý";
+    if (role === "viewer") return "Người xem";
     return "Chuyên viên";
   }
   static resolveAllowedActiveRole(user, requestedRole = null) {
     const rolesFromServer = Array.isArray(user?.dbRoles) ? user.dbRoles : [];
     const roleSource = rolesFromServer.length > 0 ? rolesFromServer.join(",") : user?.dbRole || user?.role || "";
     if (!roleSource) {
-      return user && requestedRole && BiddingModel.ROLE_HIERARCHY[requestedRole] ? requestedRole : "employee";
+      return user && requestedRole && BiddingModel.ROLE_HIERARCHY[requestedRole] ? requestedRole : "viewer";
     }
     const allowedRoles = new Set(BiddingModel.getEffectiveRoles(roleSource));
     if (allowedRoles.size === 0) {
-      allowedRoles.add("employee");
+      allowedRoles.add("viewer");
     }
     if (requestedRole && allowedRoles.has(requestedRole)) {
       return requestedRole;
     }
     if (allowedRoles.has("super_admin")) return "super_admin";
     if (allowedRoles.has("manager")) return "manager";
-    return "employee";
+    if (allowedRoles.has("employee")) return "employee";
+    return "viewer";
   }
   /**
    * Kiểm tra xem user (dựa vào cỗt role) có role yêu cầu hay không (kể cả kế thừa).

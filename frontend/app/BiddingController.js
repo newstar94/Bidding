@@ -6,7 +6,17 @@ import { hasHolidays, setHolidays } from "../shared/runtimeState.js";
 import { APP_DEBUG } from "./appConfig.js";
 import { setAppController } from "./controllerRef.js";
 import { hideInitLoader, isAuthTransitionActive } from "../auth/authRuntimeState.js";
+import {
+  applyAccessContext,
+  normalizeOrganizations,
+  selectActiveOrganization
+} from "../auth/accessContext.js";
 import { reconcileRouteDataAtStartup } from "./startupReconciliation.js";
+import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
+import {
+  getActiveOrganizationId,
+  setActiveOrganizationId
+} from "./workspaceState.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -358,59 +368,105 @@ export class BiddingController {
   }
   getActiveUserWorkspaceList() {
     const currentUser = this.model?.state?.activeuser || {};
-    return String(currentUser.organization_name || "").split(",").map((org) => org.trim()).filter(Boolean);
+    return normalizeOrganizations(currentUser).filter((organization) => organization.status === "active");
+  }
+  async switchWorkspaceContext(nextOrgId, options = {}) {
+    const organizationId = String(nextOrgId || "").trim();
+    if (!organizationId) throw new Error("Thiếu organization ID khi đổi workspace");
+    if (this._workspaceTransitionPromise) return this._workspaceTransitionPromise;
+    const currentUser = this.model?.state?.activeuser || {};
+    const organization = this.getActiveUserWorkspaceList().find((item) => item.id === organizationId);
+    if (!organization && !options.accessRevoked) {
+      throw new Error("Tổ chức không còn khả dụng trong phiên hiện tại");
+    }
+    const currentOrganizationId = this.model?.workspaceScope?.organizationId || getActiveOrganizationId();
+    if (currentOrganizationId === organizationId && this.model?.workspaceScope?.organizationId === organizationId) {
+      return { changed: false, organizationId };
+    }
+    this._workspaceTransitionPromise = (async () => {
+      this._workspaceSwitching = true;
+      this.model.beginWorkspaceTransition?.();
+      if (this._backgroundSyncTimer) {
+        clearTimeout(this._backgroundSyncTimer);
+        this._backgroundSyncTimer = null;
+      }
+      this._backgroundSyncQueued = false;
+      if (currentOrganizationId && !options.skipPendingFlush && navigator.onLine && typeof this.autoSync === "function") {
+        try {
+          await this.autoSync();
+        } catch (error) {
+          console.warn("Pending mutations remain isolated in the previous workspace:", error);
+        }
+      }
+      this.disconnectWebSocket?.(false);
+      setActiveOrganizationId(organizationId);
+      applyAccessContext(currentUser, {
+        ...currentUser,
+        active_org_id: organizationId,
+        platform_role: currentUser.platformRole
+      });
+      this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole(currentUser);
+      currentUser.title = this.model.constructor.getRoleTitle(this.model.state.activerole);
+      sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEROLE, JSON.stringify(this.model.state.activerole));
+      sessionStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(currentUser));
+      localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(currentUser));
+      await this.model.init({
+        userId: currentUser.id || sessionStorage.getItem("bf_user_id"),
+        organizationId,
+        priorityKeys: this.getStartupPriorityKeys?.(window.location.pathname)
+      });
+      this._pendingDetailRecordLoads?.clear?.();
+      this.packageWizard = { active: false, planId: null, totalCount: 0, currentCount: 0 };
+      this.model.endWorkspaceTransition?.();
+      if (!options.localOnly && typeof this.forceSyncData === "function") {
+        await this.forceSyncData(false, false);
+      }
+      this.model.dashboardSummary = this.model.dashboardSummary || null;
+      if (this.view) this.view._dashboardAggregateCache = null;
+      this.renderWorkspaceSwitcher?.();
+      this.view?.updateActiveUserProfileDisplay?.();
+      if (typeof this.switchTab === "function") {
+        const targetTab = this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard";
+        this.model.state.activetab = targetTab;
+        await this.switchTab(targetTab, null, true);
+      }
+      this.setupWebSocketConnection?.();
+      return { changed: true, organizationId, pendingPreserved: true };
+    })().finally(() => {
+      this.model.endWorkspaceTransition?.();
+      this._workspaceSwitching = false;
+      this._workspaceTransitionPromise = null;
+    });
+    return this._workspaceTransitionPromise;
   }
   async resetWorkspaceData(nextOrg = "") {
-    if (nextOrg) {
-      localStorage.setItem("bf_active_org", nextOrg);
-    } else {
-      localStorage.removeItem("bf_active_org");
-    }
-    localStorage.setItem("bf_last_sync_timestamp", "0");
-    localStorage.removeItem("bf_last_sync_version");
-    localStorage.removeItem("bf_last_fetch_time");
-    localStorage.removeItem("bf_mutation_queue");
-    localStorage.setItem("bf_local_deletions", "[]");
-    if (this.model) {
-      this.model.dashboardSummary = null;
-      this.model._hasPersistedWorkspaceData = false;
-    }
-    if (this.model?.db?.stores) {
-      await Promise.all(this.model.db.stores.map((storeName) => {
-        if (Array.isArray(this.model.state[storeName])) {
-          this.model.state[storeName] = [];
-        }
-        return this.model.db.putTableData(storeName, []).catch(() => {
-        });
-      }));
-    }
+    if (nextOrg) return this.switchWorkspaceContext(nextOrg, { skipPendingFlush: true, accessRevoked: true });
+    this.disconnectWebSocket?.(false);
+    setActiveOrganizationId("");
+    await this.model?.deactivateWorkspace?.();
+    return { changed: true, organizationId: "" };
   }
   async recoverActiveOrgAccess() {
     if (this._recoveringActiveOrg) return false;
     this._recoveringActiveOrg = true;
     try {
-      const currentOrg = localStorage.getItem("bf_active_org") || "";
+      const currentOrg = getActiveOrganizationId();
       const orgs = this.getActiveUserWorkspaceList();
-      const nextOrg = orgs.find((org) => org !== currentOrg) || orgs[0] || "";
-      await this.resetWorkspaceData(nextOrg);
+      const nextOrganization = orgs.find((org) => org.id !== currentOrg) || orgs[0] || null;
+      const nextOrg = nextOrganization?.id || "";
+      if (!nextOrg) {
+        await this.resetWorkspaceData("");
+        return false;
+      }
+      await this.switchWorkspaceContext(nextOrg, { skipPendingFlush: true, accessRevoked: true });
       if (typeof this.renderWorkspaceSwitcher === "function") {
         this.renderWorkspaceSwitcher();
       }
-      if (!nextOrg) {
-        return false;
-      }
       this.view?.showToast?.(
         "Đã đổi workspace",
-        `Workspace cũ không còn quyền truy cập. Đang tải dữ liệu của "${nextOrg}".`,
+        `Workspace cũ không còn quyền truy cập. Đang tải dữ liệu của "${nextOrganization?.name || nextOrg}".`,
         "warning"
       );
-      if (typeof this.forceSyncData === "function") {
-        await this.forceSyncData(false, true);
-      }
-      if (typeof this.switchTab === "function") {
-        this.switchTab(this.model.state.activetab || "dashboard", null, false);
-      }
-      this.view?.updateActiveUserProfileDisplay?.();
       return true;
     } catch (err) {
       console.error("Failed to recover active workspace:", err);
@@ -524,7 +580,7 @@ export class BiddingController {
       return raw ? decodeURIComponent(raw.slice(prefix.length)) : "";
     };
     window.fetch = async (url, options = {}) => {
-      const activeOrg = localStorage.getItem("bf_active_org");
+      const activeOrg = getActiveOrganizationId();
       if (typeof url === "string" && url.startsWith("/api/")) {
         const headers = new Headers(options.headers || {});
         const method = (options.method || "GET").toUpperCase();
@@ -541,23 +597,7 @@ export class BiddingController {
         }
         options.headers = headers;
       }
-      if (typeof url === "string" && url.includes("/api/sync") && options.method === "POST") {
-        try {
-          let bodyObj = {};
-          if (options.body) {
-            bodyObj = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
-          }
-          const localDeletions = JSON.parse(localStorage.getItem("bf_local_deletions") || "[]");
-          bodyObj.deletions = localDeletions;
-          options.body = JSON.stringify(bodyObj);
-        } catch (e) {
-          console.error("Failed to inject local deletions to sync request", e);
-        }
-      }
       const response = await originalFetch(url, options);
-      if (response.ok && typeof url === "string" && url.includes("/api/sync") && options.method === "POST") {
-        localStorage.setItem("bf_local_deletions", "[]");
-      }
       if (response.status === 403 && typeof url === "string" && url.startsWith("/api/") && !url.includes("/api/auth/login") && !url.includes("/api/auth/check-session")) {
         let errorMsg = "Yêu cầu bị từ chối do không đủ quyền hạn hoặc vi phạm cấu hình hệ thống.";
         let isSessionError = false;
@@ -585,6 +625,8 @@ export class BiddingController {
           }
           const overlay = document.getElementById("auth-overlay");
           if (overlay && overlay.style.display !== "flex") {
+            this.disconnectWebSocket?.(false);
+            void this.model.deactivateWorkspace?.();
             this.model.clearSessionData();
             overlay.style.display = "flex";
             document.querySelector(".app-container").style.filter = "blur(10px)";
@@ -613,6 +655,8 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         }
         const overlay = document.getElementById("auth-overlay");
         if (overlay && overlay.style.display !== "flex") {
+          this.disconnectWebSocket?.(false);
+          void this.model.deactivateWorkspace?.();
           this.model.clearSessionData();
           overlay.style.display = "flex";
           document.querySelector(".app-container").style.filter = "blur(10px)";
@@ -666,8 +710,13 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     if (initialSessionData.user?.username) {
       sessionStorage.setItem("bf_username", initialSessionData.user.username);
     }
+    selectActiveOrganization(initialSessionData.user || {});
     const startupPriorityKeys = this.getStartupPriorityKeys(window.location.pathname);
-    await this.model.init({ priorityKeys: startupPriorityKeys });
+    await this.model.init({
+      userId: initialSessionData.user?.id,
+      organizationId: getActiveOrganizationId(),
+      priorityKeys: startupPriorityKeys
+    });
     this.markStartup("model:init");
     const banner = document.createElement("div");
     banner.id = "offline-indicator-banner";
@@ -693,9 +742,9 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     updateOnlineStatus();
     const hasLocalWorkspaceSnapshot = this.hasLocalWorkspaceData();
     if (!hasLocalWorkspaceSnapshot) {
-      localStorage.setItem("bf_last_sync_timestamp", "0");
-      localStorage.removeItem("bf_last_sync_version");
-      localStorage.removeItem("bf_last_fetch_time");
+      this.model.workspaceStorage?.setItem("bf_last_sync_timestamp", "0");
+      this.model.workspaceStorage?.removeItem("bf_last_sync_version");
+      this.model.workspaceStorage?.removeItem("bf_last_fetch_time");
     }
     this.view.initDOM();
     this.setupAuth();
@@ -886,7 +935,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const editHopDong = (id) => runWorkflow("editHopDong", id);
     const deleteHopDong = (id) => runWorkflow("deleteHopDong", id);
     const saveKetQuaChiDinhThau = (gtId) => runWorkflow("saveKetQuaChiDinhThau", gtId);
-    const exportContractFromHopDong = (pkgId, soHopDong) => {
+    const exportContractFromHopDong = async (pkgId, soHopDong) => {
       const dbId = pkgId;
       const btn = document.querySelector(`button[onclick*="${pkgId}"][onclick*="${soHopDong}"]`);
       const origHTML = btn ? btn.innerHTML : "";
@@ -895,20 +944,15 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         btn.innerHTML = '<i data-lucide="loader-2" class="animate-spin" style="width:14px;height:14px;"></i>';
         lucide.createIcons({ root: btn });
       }
-      fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          goithau: this.model.state.goithau,
-          hopdong: this.model.state.hopdong
-        })
-      }).then((s) => {
-        if (!s.ok) throw new Error("Không thể đồng bộ dữ liệu");
-        return fetch(`/api/export-report/${dbId}?type=contract`);
-      }).then((r) => {
+      try {
+        const snapshotVersion = await this.prepareExportSnapshot();
+        const exportUrl = appendExportSnapshotVersion(
+          `/api/export-report/${dbId}?type=contract`,
+          snapshotVersion
+        );
+        const r = await fetch(exportUrl);
         if (!r.ok) throw new Error("Không thể xuất hợp đồng");
-        return r.blob();
-      }).then((b) => {
+        const b = await r.blob();
         const url = window.URL.createObjectURL(b);
         const a = document.createElement("a");
         a.href = url;
@@ -917,15 +961,15 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-      }).catch((err) => {
+      } catch (err) {
         this.view.customAlert("Lỗi xuất hợp đồng", err.message, "x-circle");
-      }).finally(() => {
+      } finally {
         if (btn) {
           btn.disabled = false;
           btn.innerHTML = origHTML;
           lucide.createIcons({ root: btn });
         }
-      });
+      }
     };
     const addJointVentureMemberCard = (data) => this.addJointVentureMemberCard(data);
     const removeJointVentureMemberCard = (id) => this.removeJointVentureMemberCard(id);

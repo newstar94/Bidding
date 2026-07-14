@@ -1,6 +1,9 @@
 import time
 import secrets
-import uuid
+import hashlib
+import html
+import os
+from urllib.parse import quote
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
 
@@ -9,15 +12,28 @@ from backend.shared.helpers import (
     hash_password,
     gui_email,
     log_error,
+    log_audit,
     _session_cache_invalidate_by_user_id,
 )
 from backend.auth.auth_service import (
     get_client_ip,
     check_rate_limit,
-    generate_otp
+    generate_otp,
+    provision_user_organization,
 )
 from backend.db.id_utils import generate_record_id
 from backend.auth.username_validator import validate_username
+from backend.auth.password_policy import validate_new_password
+from backend.auth.password_reset_service import (
+    InvalidResetToken,
+    create_password_reset,
+    redeem_password_reset,
+)
+
+
+PASSWORD_RESET_REQUEST_MESSAGE = (
+    "Nếu thông tin phù hợp với một tài khoản, chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu qua email."
+)
 
 async def register_api(request):
     conn = None
@@ -31,7 +47,7 @@ async def register_api(request):
         password = data.get('password', '').strip()
         name = data.get('name', '').strip()
         email = data.get('email', '').strip()
-        role = 'employee'
+        role = 'user'
 
         if not username or not password or not name or not email:
             return JSONResponse({"error": "Vui lòng nhập đầy đủ thông tin bắt buộc!"}, status_code=400)
@@ -60,6 +76,7 @@ async def register_api(request):
             "INSERT INTO tai_khoan (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (user_uuid, username, hash_password(password), name, role, email, 0, code, expiry)
         )
+        provision_user_organization(cursor, user_uuid, name)
         conn.commit()
 
         tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"
@@ -202,68 +219,104 @@ async def resend_code_api(request):
         return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
 
 async def forgot_password_api(request):
-    conn = None
     try:
         ip = get_client_ip(request)
-        if not check_rate_limit(f"forgot:{ip}"):
-            return JSONResponse({"error": "Quá nhiều yêu cầu. Vui lòng thử lại sau 60 giây."}, status_code=429)
-
         data = await request.json()
         username = data.get('username', '').strip()
         email = data.get('email', '').strip()
 
-        if not username or not email:
-            return JSONResponse({"error": "Vui lòng nhập tài khoản và email đã đăng ký!"}, status_code=400)
+        identity_hash = hashlib.sha256(
+            f"{username.lower()}\0{email.lower()}".encode("utf-8")
+        ).hexdigest()[:24]
+        if (
+            not check_rate_limit(f"forgot:{ip}")
+            or not check_rate_limit(f"forgot_identity:{identity_hash}")
+        ):
+            return JSONResponse({"error": "Quá nhiều yêu cầu. Vui lòng thử lại sau 60 giây."}, status_code=429)
 
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, ho_ten FROM tai_khoan WHERE ten_dang_nhap = ? AND email = ?", (username, email))
-        row = cursor.fetchone()
+        reset_request = None
+        if username and email:
+            reset_request = create_password_reset(database, username, email, ip)
 
-        if not row:
-            return JSONResponse({"error": "Thông tin tài khoản hoặc email không khớp!"}, status_code=400)
-
-        user = dict(row)
-        user_id = user['id']
-        name = user['ho_ten']
-        temp_pwd = secrets.token_urlsafe(12)
-        cursor.execute(
-            "UPDATE tai_khoan SET mat_khau = ?, token_phien = NULL, han_su_dung_token = NULL WHERE id = ?",
-            (hash_password(temp_pwd), user_id)
-        )
-        conn.commit()
-        _session_cache_invalidate_by_user_id(user_id)
-
-        tieu_de = "[BiddingFlow] Khôi phục mật khẩu tài khoản"
-        noi_dung_html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-                <h2 style="color: #dc2626; text-align: center;">Khôi phục mật khẩu BiddingFlow</h2>
-                <p>Xin chào <strong>{name}</strong>,</p>
-                <p>Chúng tôi nhận được yêu cầu khôi phục mật khẩu cho tài khoản <strong>{username}</strong>.</p>
-                <p>Mật khẩu tạm thời mới của bạn là:</p>
-                <div style="background-color: #fef2f2; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0; border: 1px solid #fca5a5;">
-                    <span style="font-size: 22px; font-weight: bold; color: #991b1b; letter-spacing: 2px;">{temp_pwd}</span>
-                </div>
-                <p>Vui lòng đăng nhập bằng mật khẩu tạm thời này và tiến hành thay đổi mật khẩu ngay lập tức trong phần quản lý tài khoản để đảm bảo bảo mật thông tin.</p>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-            </div>
-        </body>
-        </html>
-        """
         tasks = BackgroundTasks()
-        tasks.add_task(gui_email, email, tieu_de, noi_dung_html)
+        if reset_request is not None:
+            public_url = os.environ.get("APP_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
+            reset_link = f"{public_url}/reset-password#token={quote(reset_request['token'], safe='')}"
+            safe_name = html.escape(str(reset_request.get('name') or 'bạn'))
+            safe_username = html.escape(str(reset_request.get('username') or ''))
+            safe_link = html.escape(reset_link, quote=True)
+
+            subject = "[BiddingFlow] Đặt lại mật khẩu tài khoản"
+            email_body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 style="color: #2563eb; text-align: center;">Đặt lại mật khẩu BiddingFlow</h2>
+                    <p>Xin chào <strong>{safe_name}</strong>,</p>
+                    <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản <strong>{safe_username}</strong>.</p>
+                    <p style="text-align: center; margin: 28px 0;">
+                        <a href="{safe_link}" style="display: inline-block; padding: 12px 22px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px;">Đặt lại mật khẩu</a>
+                    </p>
+                    <p>Liên kết chỉ dùng được một lần và hết hạn sau 30 phút. Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email.</p>
+                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+                    <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
+                </div>
+            </body>
+            </html>
+            """
+            tasks.add_task(gui_email, reset_request['email'], subject, email_body, True)
 
         return JSONResponse({
             "success": True,
-            "message": "Yêu cầu khôi phục mật khẩu thành công! Mật khẩu mới đã được gửi tới địa chỉ email của bạn. Vui lòng kiểm tra hộp thư (và thư mục Spam nếu không thấy)."
+            "message": PASSWORD_RESET_REQUEST_MESSAGE,
         }, background=tasks)
     except Exception as e:
         log_error(e, "forgot_password_api")
         return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)
-    finally:
-        if conn:
-            try: conn.close()
-            except Exception: pass
+
+
+async def reset_password_api(request):
+    try:
+        ip = get_client_ip(request)
+        data = await request.json()
+        token = str(data.get('token') or '').strip()
+        new_password = data.get('new_password')
+        token_key = hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]
+        if (
+            not check_rate_limit(f"reset_password:{ip}")
+            or not check_rate_limit(f"reset_password_token:{token_key}")
+        ):
+            return JSONResponse({"error": "Quá nhiều yêu cầu. Vui lòng thử lại sau 60 giây."}, status_code=429)
+
+        valid_password, password_error = validate_new_password(new_password)
+        if not valid_password:
+            return JSONResponse({"error": password_error, "code": "PASSWORD_POLICY_FAILED"}, status_code=400)
+
+        try:
+            user_id = redeem_password_reset(database, token, new_password)
+        except InvalidResetToken:
+            return JSONResponse(
+                {
+                    "error": "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.",
+                    "code": "RESET_TOKEN_INVALID",
+                },
+                status_code=400,
+            )
+
+        _session_cache_invalidate_by_user_id(user_id)
+        from backend.sync.websocket import disconnect_user_websockets
+        disconnect_user_websockets(user_id)
+        log_audit(
+            "auth.password_reset",
+            actor_user_id=user_id,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request,
+        )
+        return JSONResponse({
+            "success": True,
+            "message": "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.",
+        })
+    except Exception as e:
+        log_error(e, "reset_password_api")
+        return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)

@@ -68,6 +68,7 @@ APP_SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "t
 APP_DEBUG = os.environ.get("APP_DEBUG", "False").lower() == "true"
 APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 IS_PRODUCTION = APP_ENV in {"prod", "production"}
+APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "").strip().rstrip("/")
 BACKGROUND_STARTUP_DELAY_SECONDS = max(0, int(os.environ.get("BACKGROUND_STARTUP_DELAY_SECONDS", "5")))
 ENABLE_IMAGE_CACHE_PREWARM = os.environ.get("ENABLE_IMAGE_CACHE_PREWARM", "true").lower() == "true"
 ENABLE_PARTNER_LOOKUP_WORKER = os.environ.get("ENABLE_PARTNER_LOOKUP_WORKER", "true").lower() == "true"
@@ -353,12 +354,19 @@ from backend.shared.helpers import (
     database,
     get_active_org
 )
+from backend.db.db_utils import DB_SCHEMA_VERSION
+from backend.startup import (
+    validate_startup_configuration,
+    verify_database_readiness,
+    verify_database_responsive,
+)
 
 from backend.auth.otp_routes import (
     register_api,
     verify_email_api,
     resend_code_api,
-    forgot_password_api
+    forgot_password_api,
+    reset_password_api,
 )
 from backend.api.org_routes import (
     add_user_to_org_api,
@@ -431,6 +439,37 @@ async def list_holidays_api(request):
         return JSONResponse(_holidays_cache)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def health_live_api(request):
+    """Process liveness; intentionally does not depend on the database."""
+    return JSONResponse(
+        {"status": "live"},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def health_ready_api(request):
+    """Traffic readiness; fail closed when startup or the DB is unhealthy."""
+    if not getattr(request.app.state, "startup_complete", False):
+        return JSONResponse(
+            {"status": "not_ready"},
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
+    try:
+        verify_database_responsive(database, DB_SCHEMA_VERSION)
+    except Exception as readiness_error:
+        log_error(readiness_error, "readiness_database_check")
+        return JSONResponse(
+            {"status": "not_ready"},
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
+    return JSONResponse(
+        {"status": "ready"},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 class SafeStaticFiles(StaticFiles):
@@ -528,6 +567,8 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 os.makedirs(WORD_TEMPLATE_DIR, exist_ok=True)
 
 routes = [
+    Route("/health/live", health_live_api, methods=["GET"]),
+    Route("/health/ready", health_ready_api, methods=["GET"]),
     Route("/", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),
     Route("/images/{file_path:path}", protected_image_api, methods=["GET"]),
@@ -570,6 +611,7 @@ routes = [
     Route("/api/auth/check-session", check_session_api, methods=["POST"]),
     Route("/api/auth/logout", logout_api, methods=["POST"]),
     Route("/api/auth/forgot-password", forgot_password_api, methods=["POST"]),
+    Route("/api/auth/reset-password", reset_password_api, methods=["POST"]),
     Route("/api/auth/update-profile", update_profile_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
@@ -600,6 +642,7 @@ routes = [
     Route("/hop-dong", index, methods=["GET"]),
     Route("/hop-dong/{action}", index, methods=["GET"]),
     Route("/bieu-mau", index, methods=["GET"]),
+    Route("/reset-password", index, methods=["GET"]),
 
     Route("/tong-quan-admin", index, methods=["GET"]),
     Route("/quan-ly-tai-khoan", index, methods=["GET"]),
@@ -651,6 +694,8 @@ if IS_PRODUCTION:
         raise RuntimeError("ALLOWED_WS_ORIGINS must contain production HTTPS origins only when APP_ENV=production.")
     if "*" in super_admin_allowlist or not super_admin_allowlist:
         raise RuntimeError("SUPER_ADMIN_IP_ALLOWLIST must be explicit and cannot contain * when APP_ENV=production.")
+    if not APP_PUBLIC_URL or not _is_public_https_origin(APP_PUBLIC_URL):
+        raise RuntimeError("APP_PUBLIC_URL must be a public HTTPS origin when APP_ENV=production.")
 
 
 CSP_CONNECT_SOURCES = " ".join(_unique_ordered([
@@ -784,17 +829,27 @@ middleware = [
 
 import contextlib
 
+
+def _initialize_database():
+    from backend.shared.helpers import khoi_tao_va_di_tru_he_thong
+    khoi_tao_va_di_tru_he_thong()
+
 @contextlib.asynccontextmanager
-async def lifespan(app):
-    if IS_PRODUCTION:
-        _build_index_response_payload()
-
-
+async def lifespan(application):
+    application.state.ready = False
+    application.state.startup_complete = False
     try:
-        from backend.shared.helpers import khoi_tao_va_di_tru_he_thong
-        khoi_tao_va_di_tru_he_thong()
+        validate_startup_configuration(database)
+        if IS_PRODUCTION:
+            _build_index_response_payload()
+        _initialize_database()
+        verify_database_readiness(database, DB_SCHEMA_VERSION)
     except Exception as db_err:
         log_error(db_err, "startup_database_init")
+        raise
+
+    application.state.startup_complete = True
+    application.state.ready = True
 
     def _start_optional_background_services():
         import time as _time
@@ -856,7 +911,11 @@ async def lifespan(app):
                 except Exception:
                     pass
     threading.Thread(target=_run_cache_cleanup, daemon=True).start()
-    yield
+    try:
+        yield
+    finally:
+        application.state.ready = False
+        application.state.startup_complete = False
 
 async def org_permission_handler(request, exc):
     return JSONResponse({"error": "Không có quyền truy cập tổ chức này!"}, status_code=403)

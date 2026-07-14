@@ -12,6 +12,7 @@ import { reopenPackageAwardResult } from "../packageAwardResult.js";
 import { executeAppCommand } from "../../app/commandBus.js";
 import { getHolidays, getLotWinnersStore } from "../../shared/runtimeState.js";
 import { generateRecordId, generateUUID } from "../../shared/idUtils.js";
+import { appendExportSnapshotVersion } from "../../shared/exportSnapshot.js";
 
 function isLeadJointVentureMember(member) {
   return String(member?.vaiTro || "").trim().toLocaleLowerCase("vi-VN") === "đứng đầu liên danh";
@@ -314,10 +315,15 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             await reopenPackageAwardResult(appController || view, gt);
             view.showPackageDetails(id);
           },
-          onExport: () => authFetchDownload(
-            `/api/export-report/${id}?type=result`,
-            `Bao_cao_ket_qua_danh_gia_ho_so_du_thau_${gt.maGoiThau}.docx`
-          ),
+          onExport: async () => {
+            const snapshotVersion = appController?.prepareExportSnapshot
+              ? await appController.prepareExportSnapshot()
+              : await executeAppCommand("prepareExportSnapshot");
+            return authFetchDownload(
+              appendExportSnapshotVersion(`/api/export-report/${id}?type=result`, snapshotVersion),
+              `Bao_cao_ket_qua_danh_gia_ho_so_du_thau_${gt.maGoiThau}.docx`
+            );
+          },
           onExportError: (error) => view.customAlert("Lỗi", "Lỗi xuất báo cáo: " + error.message, "x-circle"),
           refreshIcons: () => lucide.createIcons()
         });

@@ -1,4 +1,5 @@
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
+import { normalizeOrganizations } from "../auth/accessContext.js";
 const PACKAGE_STATUS_COLORS = {
   "Chuẩn bị": "var(--text-light)",
   "Đang mời thầu": "var(--primary)",
@@ -81,7 +82,7 @@ export function renderDashboard() {
   }
   const listSignature = (items, fields) => (items || []).map((item) => fields.map((field) => item[field] ?? "").join(":")).join("|");
   const dashboardSignature = [
-    localStorage.getItem("bf_last_sync_version") || "",
+    this.model.workspaceStorage?.getItem("bf_last_sync_version") || "",
     listSignature(this.model.state.goithau, ["id", "updatedAt", "syncVersion", "trangThai", "giaGoiThau"]),
     listSignature(this.model.state.hopdong, ["id", "updatedAt", "syncVersion", "giaTri"])
   ].join("|");
@@ -179,11 +180,7 @@ export function renderSuperAdminDashboard() {
   fetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
     const allOrgs = [];
     users.forEach((u) => {
-      if (u.organization_name) {
-        u.organization_name.split(",").map((o) => o.trim()).filter(Boolean).forEach((org) => {
-          allOrgs.push(org);
-        });
-      }
+      normalizeOrganizations(u).forEach((organization) => allOrgs.push(organization.id));
     });
     const orgCount = new Set(allOrgs).size;
     const saStatOrgs = document.getElementById("sad-stat-orgs");
@@ -192,9 +189,9 @@ export function renderSuperAdminDashboard() {
     if (saStatUsers) saStatUsers.textContent = `${users.length} Người dùng`;
     const activeOrgs = [];
     users.forEach((u) => {
-      if (u.package_id && u.package_id !== "none" && u.organization_name) {
-        u.organization_name.split(",").map((o) => o.trim()).filter(Boolean).forEach((org) => {
-          activeOrgs.push(org);
+      if (u.package_id && u.package_id !== "none") {
+        normalizeOrganizations(u).filter((organization) => organization.status === "active").forEach((organization) => {
+          activeOrgs.push(organization.id);
         });
       }
     });
@@ -205,11 +202,11 @@ export function renderSuperAdminDashboard() {
     if (orgListContainer) {
       const orgMap = {};
       users.forEach((u) => {
-        const orgs = u.organization_name ? u.organization_name.split(",").map((o) => o.trim()).filter(Boolean) : [];
-        orgs.forEach((orgName) => {
-          if (!orgMap[orgName]) {
-            orgMap[orgName] = {
-              name: orgName,
+        const orgs = normalizeOrganizations(u);
+        orgs.forEach((organization) => {
+          if (!orgMap[organization.id]) {
+            orgMap[organization.id] = {
+              name: organization.name,
               manager: "",
               email: "",
               package_id: "none",
@@ -218,13 +215,13 @@ export function renderSuperAdminDashboard() {
               userCount: 0
             };
           }
-          orgMap[orgName].userCount++;
-          if (u.role === "manager" || !orgMap[orgName].manager) {
-            orgMap[orgName].manager = u.name;
-            orgMap[orgName].email = u.email;
-            orgMap[orgName].package_id = u.package_id || "none";
-            orgMap[orgName].start = u.package_start_date ? this.model.formatDate(u.package_start_date) : "";
-            orgMap[orgName].end = u.package_end_date ? this.model.formatDate(u.package_end_date) : "";
+          orgMap[organization.id].userCount++;
+          if (["owner", "manager"].includes(organization.role) || !orgMap[organization.id].manager) {
+            orgMap[organization.id].manager = u.name;
+            orgMap[organization.id].email = u.email;
+            orgMap[organization.id].package_id = u.package_id || "none";
+            orgMap[organization.id].start = u.package_start_date ? this.model.formatDate(u.package_start_date) : "";
+            orgMap[organization.id].end = u.package_end_date ? this.model.formatDate(u.package_end_date) : "";
           }
         });
       });
@@ -237,9 +234,9 @@ export function renderSuperAdminDashboard() {
           const pkgClass = org.package_id === "diamond" ? "badge-primary" : org.package_id === "gold" ? "badge-warning" : org.package_id === "silver" ? "badge-success" : "badge-neutral";
           return `
                             <tr>
-                                <td style="font-weight:700; color:var(--text-main);">${org.name}</td>
-                                <td>${org.manager || '<span class="text-muted">Chưa cấu hình</span>'}</td>
-                                <td>${org.email || '<span class="text-muted">Chưa có</span>'}</td>
+                                <td style="font-weight:700; color:var(--text-main);">${escapeHtml(org.name)}</td>
+                                <td>${org.manager ? escapeHtml(org.manager) : '<span class="text-muted">Chưa cấu hình</span>'}</td>
+                                <td>${org.email ? escapeHtml(org.email) : '<span class="text-muted">Chưa có</span>'}</td>
                                 <td><span class="badge ${pkgClass}">${pkgName}</span></td>
                                 <td style="font-weight:600;">${org.end || '<span class="text-muted">Vô thời hạn</span>'}</td>
                                 <td style="font-weight:700; text-align:center;">${org.userCount}</td>

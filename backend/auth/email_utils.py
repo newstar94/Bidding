@@ -6,7 +6,7 @@ from backend.db.db_helper import database
 from backend.shared.logging_utils import log_error
 
 
-def gui_email(email_nhan, tieu_de, noi_dung_html):
+def gui_email(email_nhan, tieu_de, noi_dung_html, sensitive_content=False):
     SMTP_USER = os.environ.get("SMTP_USER", "")
     SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
     SMTP_SENDER = os.environ.get("SMTP_SENDER", "")
@@ -17,7 +17,8 @@ def gui_email(email_nhan, tieu_de, noi_dung_html):
         SMTP_PORT = 587
 
     if not SMTP_USER or not SMTP_PASSWORD:
-        msg = f"[MOCK MAIL] Gửi tới: {email_nhan}\nTiêu đề: {tieu_de}\nNội dung:\n{noi_dung_html}\n"
+        body = "[Nội dung nhạy cảm đã được ẩn]" if sensitive_content else noi_dung_html
+        msg = f"[MOCK MAIL] Gửi tới: {email_nhan}\nTiêu đề: {tieu_de}\nNội dung:\n{body}\n"
         log_error(msg, context="EmailMock")
         return True
 

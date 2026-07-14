@@ -22,7 +22,7 @@ from backend.shared.helpers import (
     save_base64_image,
     verify_session,
 )
-from backend.shared.access_policy import authorize_record_write, is_manager_role
+from backend.shared.access_policy import authorize_record_write
 from backend.shared.date_utils import is_datetime_column, normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.shared.media_helper import (
@@ -45,6 +45,10 @@ from backend.sync.queries import (
     build_dashboard_summary,
 )
 from backend.sync.ownership import get_owner_type, validate_owner_scoped_references
+from backend.sync.delete_policy import (
+    delete_assignment_dependents,
+    find_blocking_delete_references,
+)
 from backend.sync.repository import (
     DELETED_RECORD_UPSERT_SQL,
     VERSIONED_TABLES,
@@ -667,6 +671,31 @@ async def process_sync_request(request, broadcast_callback=None):
                                     "message": access_decision.message
                                 })
                                 continue
+                            blocking_references = find_blocking_delete_references(
+                                cursor,
+                                org_name,
+                                table_name,
+                                c_id,
+                            )
+                            if blocking_references:
+                                relation_summary = ", ".join(
+                                    f"{item['label']} ({item['count']})"
+                                    for item in blocking_references
+                                )
+                                sync_item_errors.append({
+                                    "table": table_name,
+                                    "id": c_id,
+                                    "code": "DELETE_REFERENCED",
+                                    "message": f"Không thể xóa vì bản ghi đang được tham chiếu bởi: {relation_summary}.",
+                                    "references": blocking_references,
+                                })
+                                continue
+                            delete_assignment_dependents(
+                                cursor,
+                                org_name,
+                                table_name,
+                                c_id,
+                            )
                             cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
 
                             cursor.execute(

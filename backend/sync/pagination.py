@@ -12,7 +12,7 @@ from backend.shared.helpers import (
     get_active_org,
     verify_session,
 )
-from backend.shared.access_policy import can_read_table, is_manager_role
+from backend.shared.access_policy import can_read_table, is_organization_manager
 from backend.shared.media_helper import public_image_path
 from backend.sync.mapper import (
     attach_child_rows_to_items,
@@ -63,7 +63,7 @@ async def paginate_records(request):
 
         query_parts = ["owner_id = ?"]
         query_params = [org_name]
-        if not is_manager_role(role_str):
+        if not is_organization_manager(cursor, role_str, user_id, org_name):
             if table_name == "phan_cong_nhan_su":
                 query_parts.append("id_nhan_vien = ?")
                 query_params.append(user_id)

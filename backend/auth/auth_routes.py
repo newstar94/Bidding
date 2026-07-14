@@ -4,6 +4,7 @@ import json
 import uuid
 import time
 import hashlib
+import urllib.parse
 from datetime import datetime
 from collections import defaultdict
 
@@ -32,13 +33,18 @@ from backend.auth.auth_service import (
     get_client_ip,
     check_rate_limit,
     record_rate_limit_failure,
-    get_user_org_names,
+    build_user_access_payload,
     update_user_organizations,
     _SECURE_COOKIES,
     SESSION_EXPIRY_HOURS,
     SESSION_REMEMBER_EXPIRY_HOURS,
     SESSION_INACTIVITY_TIMEOUT_HOURS
 )
+
+
+def _active_org_hint(request):
+    value = (request.headers.get('X-Active-Org') or '').strip()
+    return urllib.parse.unquote(value) if value else None
 
 async def login_api(request):
     conn = None
@@ -112,30 +118,32 @@ async def login_api(request):
             (session_token, token_expiry, device_info, user['id'])
         )
         _session_cache_invalidate_by_user_id(user['id'])
-        org_names = get_user_org_names(cursor, user['id'])
+        access_payload = build_user_access_payload(
+            cursor,
+            user['id'],
+            user['vai_tro'],
+            _active_org_hint(request),
+        )
         conn.commit()
         log_audit(
             "auth.login_success",
             actor_user_id=user['id'],
-            owner_id=org_names,
+            owner_id=access_payload['active_org_id'],
             target_type="tai_khoan",
             target_id=user['id'],
             request=request,
             metadata={"remember": remember}
         )
 
-        effective_roles = list(get_effective_roles(user['vai_tro']))
         response = JSONResponse({
             "success": True,
             "id": user['id'],
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
-            "role": user['vai_tro'],
-            "effective_roles": effective_roles,
+            **access_payload,
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "package_id": user.get('goi_dich_vu_id'),
-            "organization_name": org_names,
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
         })
 
@@ -211,11 +219,16 @@ def _extend_session_if_needed(user, remember):
     return True
 
 
-def _get_org_names_for_session(user_id):
+def _get_access_for_session(user, request):
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
-        return get_user_org_names(cursor, user_id)
+        return build_user_access_payload(
+            cursor,
+            user['id'],
+            user['vai_tro'],
+            _active_org_hint(request),
+        )
     finally:
         conn.close()
 
@@ -255,6 +268,7 @@ def build_session_bootstrap(request):
         return {"valid": False, "reason": invalid_reason}
 
     needs_username, suggested_username, account_linked = _get_username_setup_state(user)
+    access_payload = _get_access_for_session(user, request)
     _session_cache_set(session_token, user)
     return {
         "valid": True,
@@ -263,12 +277,10 @@ def build_session_bootstrap(request):
             "id": user['id'],
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
-            "role": user['vai_tro'],
-            "effective_roles": list(get_effective_roles(user['vai_tro'])),
+            **access_payload,
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "package_id": user.get('goi_dich_vu_id'),
-            "organization_name": _get_org_names_for_session(user['id']),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
             "needs_username": needs_username,
             "suggested_username": suggested_username,
@@ -277,8 +289,9 @@ def build_session_bootstrap(request):
     }
 
 
-def _session_response(user, remember, session_was_extended):
+def _session_response(user, remember, session_was_extended, request):
     needs_username, suggested_username, account_linked = _get_username_setup_state(user)
+    access_payload = _get_access_for_session(user, request)
     response = JSONResponse({
         "valid": True,
         "device_info": user.get('thong_tin_thiet_bi_cuoi'),
@@ -286,12 +299,10 @@ def _session_response(user, remember, session_was_extended):
             "id": user['id'],
             "username": user['ten_dang_nhap'],
             "name": user['ho_ten'],
-            "role": user['vai_tro'],
-            "effective_roles": list(get_effective_roles(user['vai_tro'])),
+            **access_payload,
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "package_id": user.get('goi_dich_vu_id'),
-            "organization_name": _get_org_names_for_session(user['id']),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
             "needs_username": needs_username,
             "suggested_username": suggested_username,
@@ -326,7 +337,7 @@ async def check_session_api(request):
 
         session_was_extended = _extend_session_if_needed(user, remember)
         _session_cache_set(session_token, user)
-        response = _session_response(user, remember, session_was_extended)
+        response = _session_response(user, remember, session_was_extended, request)
         response.headers["Server-Timing"] = f"session-check;dur={(time.perf_counter() - started_at) * 1000:.1f}"
         return response
     except Exception as e:
@@ -485,10 +496,7 @@ async def list_users_api(request):
         req_role = requester['vai_tro']
         effective_roles = get_effective_roles(req_role)
 
-        cursor.execute("SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?", (role_or_err.user_id,))
-        req_org_ids = [r['to_chuc_id'] for r in cursor.fetchall()]
-
-        sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, email, anh_dai_dien AS avatar, goi_dich_vu_id AS package_id, ngay_bat_dau_goi AS package_start_date, ngay_het_han_goi AS package_end_date FROM tai_khoan"
+        sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar, goi_dich_vu_id AS package_id, ngay_bat_dau_goi AS package_start_date, ngay_het_han_goi AS package_end_date FROM tai_khoan"
 
         email_query = (request.query_params.get('email') or '').strip().lower()
         email_filter_sql = " AND lower(email) = ?" if email_query else ""
@@ -500,54 +508,69 @@ async def list_users_api(request):
             else:
                 cursor.execute(sql_base)
             users_raw = cursor.fetchall()
-        elif 'manager' not in effective_roles:
-            cursor.execute(sql_base + " WHERE id = ?" + email_filter_sql, tuple([role_or_err.user_id] + ([email_query] if email_query else [])))
-            users_raw = cursor.fetchall()
         else:
-            if not req_org_ids:
-                cursor.execute(sql_base + " WHERE id = ?" + email_filter_sql, tuple([role_or_err.user_id] + ([email_query] if email_query else [])))
+            active_org_id = get_active_org(request, role_or_err.user_id)
+            cursor.execute(
+                """
+                SELECT lower(trim(vai_tro_trong_to_chuc))
+                FROM thanh_vien_to_chuc
+                WHERE user_id = ? AND to_chuc_id = ?
+                """,
+                (role_or_err.user_id, active_org_id),
+            )
+            membership = cursor.fetchone()
+            membership_role = str(membership[0] or "").strip().lower() if membership else ""
+            if membership_role not in {'owner', 'manager'}:
+                cursor.execute(f"""
+                    SELECT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
+                           tvtc.vai_tro_trong_to_chuc AS role,
+                           tk.vai_tro AS platform_role,
+                           tk.email, tk.anh_dai_dien AS avatar,
+                           tk.goi_dich_vu_id AS package_id,
+                           tk.ngay_bat_dau_goi AS package_start_date,
+                           tk.ngay_het_han_goi AS package_end_date
+                    FROM tai_khoan AS tk
+                    JOIN thanh_vien_to_chuc AS tvtc ON tvtc.user_id = tk.id
+                    WHERE tk.id = ? AND tvtc.to_chuc_id = ?{email_filter_tk_sql}
+                """, tuple([role_or_err.user_id, active_org_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
             else:
-                active_org_id = get_active_org(request, role_or_err.user_id)
-                if active_org_id and active_org_id in req_org_ids:
-                    cursor.execute(f"""
-                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role,
-                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id,
-                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date
-                        FROM tai_khoan tk
-                        JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                        WHERE tvtc.to_chuc_id = ?{email_filter_tk_sql}
-                    """, tuple([active_org_id] + ([email_query] if email_query else [])))
-                    users_raw = cursor.fetchall()
-                else:
-                    placeholders = ",".join("?" for _ in req_org_ids)
-                    cursor.execute(f"""
-                        SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name, tk.vai_tro AS role,
-                                        tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id,
-                                        tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date
-                        FROM tai_khoan tk
-                        JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                        WHERE tvtc.to_chuc_id IN ({placeholders}){email_filter_tk_sql}
-                    """, tuple(req_org_ids + ([email_query] if email_query else [])))
-                    users_raw = cursor.fetchall()
+                cursor.execute(f"""
+                    SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
+                                    tvtc.vai_tro_trong_to_chuc AS role,
+                                    tk.vai_tro AS platform_role,
+                                    tk.email, tk.anh_dai_dien AS avatar, tk.goi_dich_vu_id AS package_id,
+                                    tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date
+                    FROM tai_khoan tk
+                    JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
+                    WHERE tvtc.to_chuc_id = ?{email_filter_tk_sql}
+                """, tuple([active_org_id] + ([email_query] if email_query else [])))
+                users_raw = cursor.fetchall()
 
         user_ids = [r['id'] for r in users_raw]
         orgs_by_user = defaultdict(list)
         if user_ids:
             placeholders = ",".join("?" for _ in user_ids)
             cursor.execute(f"""
-                SELECT tvtc.user_id, tc.ten_to_chuc
+                SELECT tvtc.user_id, tc.id, tc.ten_to_chuc, tc.trang_thai,
+                       tvtc.vai_tro_trong_to_chuc
                 FROM thanh_vien_to_chuc tvtc
                 JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
                 WHERE tvtc.user_id IN ({placeholders})
             """, user_ids)
             for row in cursor.fetchall():
-                orgs_by_user[row['user_id']].append(row['ten_to_chuc'])
+                orgs_by_user[row['user_id']].append({
+                    "id": row['id'],
+                    "name": row['ten_to_chuc'],
+                    "status": row['trang_thai'],
+                    "role": row['vai_tro_trong_to_chuc'],
+                })
 
         users = []
         for row in users_raw:
             u = dict(row)
-            u['organization_name'] = ", ".join(orgs_by_user[u['id']])
+            u['organizations'] = orgs_by_user[u['id']]
+            u['organization_name'] = ", ".join(org['name'] for org in u['organizations'])
             users.append(u)
         conn.close()
         return JSONResponse(users)
@@ -558,17 +581,47 @@ async def list_users_api(request):
         return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
 
 async def delete_user_api(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         user_id = request.path_params.get('user_id')
+        if str(user_id) == str(role_or_err.user_id):
+            return JSONResponse({"error": "Không thể tự xóa tài khoản quản trị."}, status_code=409)
         conn = database.get_connection()
         cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
+        target = cursor.fetchone()
+        if not target:
+            return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
+        if str(target[0] or '').strip().lower() == 'super_admin':
+            cursor.execute("SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'")
+            if int(cursor.fetchone()[0]) <= 1:
+                return JSONResponse({"error": "Không thể xóa quản trị viên nền tảng cuối cùng."}, status_code=409)
+        cursor.execute(
+            """
+            SELECT membership.to_chuc_id
+            FROM thanh_vien_to_chuc AS membership
+            WHERE membership.user_id = ?
+              AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'owner'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM thanh_vien_to_chuc AS other_owner
+                  WHERE other_owner.to_chuc_id = membership.to_chuc_id
+                    AND other_owner.user_id != membership.user_id
+                    AND lower(trim(other_owner.vai_tro_trong_to_chuc)) = 'owner'
+              )
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        if cursor.fetchone():
+            return JSONResponse({"error": "Không thể xóa chủ sở hữu cuối cùng của tổ chức."}, status_code=409)
         cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
         conn.commit()
-        conn.close()
 
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
@@ -583,75 +636,146 @@ async def delete_user_api(request):
 
         return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "delete_user_api")
         return JSONResponse({"error": "Đã xảy ra lỗi xóa tài khoản."}, status_code=500)
+    finally:
+        if conn:
+            conn.close()
 
 async def update_user_role_api(request):
+    """Update a platform role or a role in the active organization.
+
+    Organization roles are membership-scoped.  A platform-role change requires an
+    explicit ``scope=platform`` so an organization manager can never accidentally
+    or deliberately promote an account globally.
+    """
+
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        effective_roles = get_effective_roles(str(role_or_err))
-        if 'manager' not in effective_roles:
-            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
-
         data = await request.json()
-        user_id = data.get('user_id')
-        new_role = data.get('role')
-
+        user_id = str(data.get("user_id") or "").strip()
+        new_role = str(data.get("role") or "").strip().lower()
+        scope = str(data.get("scope") or "organization").strip().lower()
         if not user_id or not new_role:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
+        if "," in new_role:
+            return JSONResponse({"error": "Mỗi phạm vi chỉ được có một vai trò."}, status_code=400)
 
-        valid_roles = {'super_admin', 'manager', 'employee'}
-        requested_roles = [r.strip() for r in new_role.split(',') if r.strip()]
-        if not requested_roles or not all(r in valid_roles for r in requested_roles):
-            return JSONResponse({"error": "Vai trò không hợp lệ!"}, status_code=400)
-
-        if 'super_admin' not in effective_roles and 'super_admin' in requested_roles:
-            return JSONResponse({"error": "Bạn không có quyền gán vai trò Quản trị viên tối cao!"}, status_code=403)
-
-        if 'super_admin' not in effective_roles and any(role != 'employee' for role in requested_roles):
-            return JSONResponse({"error": "Ban khong co quyen gan vai tro quan tri."}, status_code=403)
-
-        if 'super_admin' not in effective_roles:
-            requester_id = role_or_err.user_id
-            conn_check = database.get_connection()
-            cur_check = conn_check.cursor()
-            cur_check.execute(
-                "SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?",
-                (requester_id,)
-            )
-            requester_orgs = {row[0] for row in cur_check.fetchall()}
-            cur_check.execute(
-                "SELECT to_chuc_id FROM thanh_vien_to_chuc WHERE user_id = ?",
-                (user_id,)
-            )
-            target_orgs = {row[0] for row in cur_check.fetchall()}
-            conn_check.close()
-            if not requester_orgs.intersection(target_orgs):
-                return JSONResponse({"error": "Bạn không có quyền thay đổi vai trò của người dùng này!"}, status_code=403)
-
-        normalized_role = ','.join(requested_roles)
-
+        actor_platform_admin = "super_admin" in get_effective_roles(str(role_or_err))
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE tai_khoan SET vai_tro = ? WHERE id = ?", (normalized_role, user_id))
+        cursor.execute("BEGIN IMMEDIATE")
+
+        if scope == "platform":
+            if not actor_platform_admin:
+                conn.rollback()
+                return JSONResponse({"error": "Không có quyền thay đổi vai trò nền tảng."}, status_code=403)
+            if new_role not in {"super_admin", "user"}:
+                conn.rollback()
+                return JSONResponse({"error": "Vai trò nền tảng không hợp lệ."}, status_code=400)
+            if user_id == str(role_or_err.user_id):
+                conn.rollback()
+                return JSONResponse({"error": "Không thể tự thay đổi quyền nền tảng."}, status_code=409)
+            cursor.execute("SELECT 1 FROM tai_khoan WHERE id = ?", (user_id,))
+            if not cursor.fetchone():
+                conn.rollback()
+                return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
+            cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
+            target_platform_role = str(cursor.fetchone()[0] or '').strip().lower()
+            if target_platform_role == 'super_admin' and new_role != 'super_admin':
+                cursor.execute("SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'")
+                if int(cursor.fetchone()[0]) <= 1:
+                    conn.rollback()
+                    return JSONResponse({"error": "Không thể hạ quyền quản trị viên nền tảng cuối cùng."}, status_code=409)
+            cursor.execute("UPDATE tai_khoan SET vai_tro = ? WHERE id = ?", (new_role, user_id))
+            audit_metadata = {"scope": "platform", "role": new_role}
+            audit_event = "admin.platform_role_updated"
+        elif scope == "organization":
+            org_id = get_active_org(request, role_or_err.user_id)
+            cursor.execute(
+                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
+                (role_or_err.user_id, org_id),
+            )
+            actor_row = cursor.fetchone()
+            actor_role = str(actor_row[0] or "").strip().lower() if actor_row else ""
+            if not actor_platform_admin and actor_role not in {"owner", "manager"}:
+                conn.rollback()
+                return JSONResponse({"error": "Không có quyền quản lý thành viên tổ chức."}, status_code=403)
+            if new_role not in {"owner", "manager", "employee", "viewer"}:
+                conn.rollback()
+                return JSONResponse({"error": "Vai trò thành viên không hợp lệ."}, status_code=400)
+
+            cursor.execute(
+                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
+                (user_id, org_id),
+            )
+            target_row = cursor.fetchone()
+            if not target_row:
+                conn.rollback()
+                return JSONResponse({"error": "Người dùng không thuộc tổ chức hiện tại."}, status_code=404)
+            target_role = str(target_row[0] or "").strip().lower()
+            if user_id == str(role_or_err.user_id) and new_role != target_role:
+                conn.rollback()
+                return JSONResponse({"error": "Không thể tự thay đổi vai trò tổ chức."}, status_code=409)
+
+            hierarchy = {"viewer": 0, "employee": 1, "manager": 2, "owner": 3}
+            if not actor_platform_admin:
+                actor_rank = hierarchy[actor_role]
+                if hierarchy[target_role] >= actor_rank or hierarchy[new_role] >= actor_rank:
+                    conn.rollback()
+                    return JSONResponse({"error": "Không thể sửa hoặc gán vai trò ngang/cao hơn mình."}, status_code=403)
+
+            if target_role == "owner" and new_role != "owner":
+                cursor.execute(
+                    "SELECT count(*) FROM thanh_vien_to_chuc WHERE to_chuc_id = ? AND lower(trim(vai_tro_trong_to_chuc)) = 'owner'",
+                    (org_id,),
+                )
+                if int(cursor.fetchone()[0]) <= 1:
+                    conn.rollback()
+                    return JSONResponse({"error": "Không thể hạ quyền chủ sở hữu cuối cùng."}, status_code=409)
+
+            cursor.execute(
+                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now', 'localtime') WHERE user_id = ? AND to_chuc_id = ?",
+                (new_role, user_id, org_id),
+            )
+            audit_metadata = {"scope": "organization", "organization_id": org_id, "role": new_role}
+            audit_event = "organization.member_role_updated"
+        else:
+            conn.rollback()
+            return JSONResponse({"error": "Phạm vi vai trò không hợp lệ."}, status_code=400)
+
         conn.commit()
-        conn.close()
         _session_cache_invalidate_by_user_id(user_id)
+        _org_cache_invalidate_by_user_id(user_id)
+        disconnect_user_websockets(user_id)
         log_audit(
-            "admin.user_role_updated",
+            audit_event,
             actor_user_id=role_or_err.user_id,
-            target_type="tai_khoan",
+            target_type="tai_khoan" if scope == "platform" else "organization_membership",
             target_id=user_id,
             request=request,
-            metadata={"role": normalized_role}
+            metadata=audit_metadata,
         )
-        return JSONResponse({"success": True, "message": "Cập nhật vai trò người dùng thành công!"})
+        return JSONResponse({"success": True, "message": "Cập nhật vai trò thành công!"})
+    except OrgPermissionError as e:
+        if conn:
+            conn.rollback()
+        return JSONResponse({"error": str(e)}, status_code=403)
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "update_user_role_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật vai trò."}, status_code=500)
+    finally:
+        if conn:
+            conn.close()
+
 
 async def update_user_package_api(request):
     try:
@@ -718,10 +842,7 @@ async def update_user_metadata_api(request):
         cursor = conn.cursor()
 
         if field == 'organization_name':
-            cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
-            u_row = cursor.fetchone()
-            role = u_row['vai_tro'] if u_row else 'employee'
-            update_user_organizations(cursor, user_id, value, role)
+            update_user_organizations(cursor, user_id, value)
         else:
             if field not in field_map:
                 conn.close()

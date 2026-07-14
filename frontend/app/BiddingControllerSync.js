@@ -1,5 +1,25 @@
-import { applySyncPayload } from "./syncMergeUtils.js";
+import { applyServerSnapshot } from "./syncMergeUtils.js";
 import { APP_DEBUG } from "./appConfig.js";
+import {
+  getActiveOrganizationId,
+  getWorkspaceStorage,
+  isWorkspaceStorageEvent
+} from "./workspaceState.js";
+
+function currentWorkspaceStorage(controller) {
+  return controller.model?.workspaceStorage || getWorkspaceStorage();
+}
+
+function captureWorkspace(controller) {
+  return {
+    token: controller.model?.getWorkspaceToken?.() || "",
+    organizationId: controller.model?.workspaceScope?.organizationId || getActiveOrganizationId()
+  };
+}
+
+function workspaceIsCurrent(controller, snapshot) {
+  return !!snapshot.organizationId && controller.model?.isWorkspaceCurrent?.(snapshot.token) !== false;
+}
 export function collectCommittedMutationKeys(payload = {}) {
   return new Set([
     ...Object.keys(payload.upserts || {}),
@@ -28,8 +48,10 @@ export function scheduleBackgroundSync(delay = 500) {
     this._backgroundSyncQueued = true;
     return;
   }
+  const workspace = captureWorkspace(this);
   this._backgroundSyncTimer = setTimeout(async () => {
     this._backgroundSyncTimer = null;
+    if (!workspaceIsCurrent(this, workspace)) return;
     if (this._backgroundSyncRunning) {
       this._backgroundSyncQueued = true;
       return;
@@ -53,6 +75,13 @@ export function setupAutoSyncBackground() {
     this.scheduleBackgroundSync(500);
   };
   window.addEventListener("focus", checkAndSync);
+  if (!this._workspaceStorageListener) {
+    this._workspaceStorageListener = (event) => {
+      const scope = this.model?.workspaceScope;
+      if (scope && isWorkspaceStorageEvent(event, scope)) this.scheduleBackgroundSync(250);
+    };
+    window.addEventListener("storage", this._workspaceStorageListener);
+  }
   this.setupWebSocketConnection();
 }
 function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
@@ -152,7 +181,7 @@ export async function fetchRecordByLookup(tableKey, lookup) {
   if (!tableKey || !lookup) return null;
   const response = await fetch(`/api/record?table=${encodeURIComponent(tableKey)}&lookup=${encodeURIComponent(lookup)}`, {
     headers: {
-      "X-Active-Org": encodeURIComponent(localStorage.getItem("bf_active_org") || "")
+      "X-Active-Org": encodeURIComponent(getActiveOrganizationId())
     }
   });
   if (!response.ok) return null;
@@ -195,6 +224,8 @@ export function ensureDetailRecordLoaded(tabName, action) {
   return promise;
 }
 export function autoSync() {
+  const workspace = captureWorkspace(this);
+  if (!workspace.organizationId) return Promise.resolve({ ok: false, error: new Error("No active workspace") });
   const mutationBatch = this.model && typeof this.model.buildMutationSyncPayload === "function" ? this.model.buildMutationSyncPayload() : null;
   if (!mutationBatch) {
     return Promise.resolve({ ok: true, skipped: true });
@@ -208,17 +239,18 @@ export function autoSync() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Active-Org": encodeURIComponent(localStorage.getItem("bf_active_org") || "")
+      "X-Active-Org": encodeURIComponent(workspace.organizationId)
     },
     body: JSON.stringify(payload)
   }).then((res) => {
     return res.json().then((data) => ({ ok: res.ok, status: res.status, data }));
   }).then(async ({ ok, status, data }) => {
+    if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true, status, data };
     if (!ok || data.status === "error") {
       if (status === 409 || data.status === "conflict") {
         console.warn("[Sync Conflict]", data.message || data.error || "Server data changed before local sync.");
         if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
-          localStorage.setItem("bf_conflict_server_sync_version", String(data.currentSyncVersion));
+          currentWorkspaceStorage(this).setItem("bf_conflict_server_sync_version", String(data.currentSyncVersion));
         }
         if (this.view && typeof this.view.showToast === "function") {
           this.view.showToast(
@@ -309,15 +341,15 @@ export function autoSync() {
       return { ok: false, status, data, validation: Array.isArray(data.errors) && data.errors.length > 0 };
     }
     if (data.timestamp) {
-      localStorage.setItem("bf_last_sync_timestamp", data.timestamp);
+      currentWorkspaceStorage(this).setItem("bf_last_sync_timestamp", data.timestamp);
     }
     if (data.syncVersion !== void 0 && data.syncVersion !== null) {
-      localStorage.setItem("bf_last_sync_version", data.syncVersion.toString());
+      currentWorkspaceStorage(this).setItem("bf_last_sync_version", data.syncVersion.toString());
     }
     if (this.model && typeof this.model.clearSyncedMutationQueue === "function") {
       this.model.clearSyncedMutationQueue(snapshot);
     } else {
-      localStorage.removeItem("bf_local_deletions");
+      currentWorkspaceStorage(this).removeItem("bf_local_deletions");
     }
     if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
       let stateChanged = false;
@@ -359,7 +391,33 @@ export function autoSync() {
     return { ok: false, error: err };
   });
 }
+
+export async function prepareExportSnapshot() {
+  if (!this.model || typeof this.model.buildMutationSyncPayload !== "function") {
+    throw new Error("Không thể kiểm tra dữ liệu chờ đồng bộ.");
+  }
+
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) {
+    if (syncResult?.conflict || syncResult?.status === 409) {
+      throw new Error("Dữ liệu đã thay đổi trên máy chủ. Vui lòng giải quyết xung đột trước khi xuất tệp.");
+    }
+    throw new Error("Không thể đồng bộ dữ liệu chờ xử lý trước khi xuất tệp.");
+  }
+
+  let snapshotVersion = syncResult?.data?.syncVersion;
+  if (snapshotVersion === void 0 || snapshotVersion === null || snapshotVersion === "") {
+    snapshotVersion = currentWorkspaceStorage(this).getItem("bf_last_sync_version");
+  }
+  if (snapshotVersion === void 0 || snapshotVersion === null || !/^\d+$/.test(String(snapshotVersion))) {
+    throw new Error("Chưa có phiên bản dữ liệu đã cam kết để xuất tệp.");
+  }
+  return String(snapshotVersion);
+}
 export async function forceSyncData(isBackground = false, forceFull = false, routeOnly = false) {
+  const workspace = captureWorkspace(this);
+  if (!workspace.organizationId) return { ok: false, error: "No active workspace" };
+  const storage = currentWorkspaceStorage(this);
   const syncBtn = document.getElementById("btn-force-sync");
   const syncIcon = document.getElementById("sync-icon");
   const syncStatusText = document.getElementById("sync-status-text");
@@ -372,9 +430,9 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
   const shouldShowFullLoader = !isBackground && !hasLocalDataForCurrentRoute && this.view && this.view.showLoader;
   if (shouldShowFullLoader) this.view.showLoader();
   try {
-    const lastSyncVersion = localStorage.getItem("bf_last_sync_version");
+    const lastSyncVersion = storage.getItem("bf_last_sync_version");
     const useVersionDelta = !forceFull && lastSyncVersion !== null && lastSyncVersion !== "";
-    const since = forceFull ? "0" : localStorage.getItem("bf_last_sync_timestamp") || "0";
+    const since = forceFull ? "0" : storage.getItem("bf_last_sync_timestamp") || "0";
     const queryParams = new URLSearchParams(useVersionDelta ? { after_version: lastSyncVersion } : { since });
     const currentTab = typeof this.getTabNameForPath === "function" ? this.getTabNameForPath(window.location.pathname) : "";
     if (currentTab === "dashboard" || currentTab === "superadmin-dashboard") {
@@ -387,7 +445,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     const syncQuery = queryParams.toString();
     const response = await fetch("/api/get-all-data?" + syncQuery, {
       headers: {
-        "X-Active-Org": encodeURIComponent(localStorage.getItem("bf_active_org") || "")
+        "X-Active-Org": encodeURIComponent(workspace.organizationId)
       }
     });
     if (response.status === 401 || response.status === 403) {
@@ -422,16 +480,18 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     }
     if (response.ok) {
       const dbData = await response.json();
-      const { changedKeys, persistencePromise } = applySyncPayload(this.model, dbData, { useVersionDelta, since });
+      if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
+      const { changedKeys, persistencePromise } = applyServerSnapshot(this.model, dbData, { useVersionDelta, since });
       await persistencePromise;
+      if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
       if (!dbData.partial && dbData.syncVersion !== void 0 && dbData.syncVersion !== null) {
-        localStorage.setItem("bf_last_sync_version", dbData.syncVersion.toString());
+        storage.setItem("bf_last_sync_version", dbData.syncVersion.toString());
         this.model?.rebasePendingMutationQueue?.(dbData.syncVersion);
       }
       if (!dbData.partial && dbData.timestamp) {
-        localStorage.setItem("bf_last_sync_timestamp", dbData.timestamp.toString());
+        storage.setItem("bf_last_sync_timestamp", dbData.timestamp.toString());
       }
-      localStorage.setItem("bf_last_fetch_time", Date.now().toString());
+      storage.setItem("bf_last_fetch_time", Date.now().toString());
       await renderChangedState(this, changedKeys, { isBackground });
       this.updateSyncStatusDisplay(Date.now());
       if (!isBackground) {
@@ -452,6 +512,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       }
     }
   } catch (err) {
+    if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
     console.error("Failed to sync data from SQLite:", err);
     if (syncStatusText) syncStatusText.textContent = "Lỗi đồng bộ";
     const banner = document.getElementById("offline-indicator-banner");
@@ -484,9 +545,12 @@ export function updateSyncStatusDisplay(timestamp) {
   syncStatusText.textContent = `Đồng bộ (${timeStr})`;
 }
 export function setupWebSocketConnection() {
-  if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+  const workspace = captureWorkspace(this);
+  if (!workspace.organizationId) return;
+  if (this.ws && this._wsOrganizationId === workspace.organizationId && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
     return;
   }
+  if (this.ws) this.disconnectWebSocket(false);
   if (this._wsReconnectTimer) {
     clearTimeout(this._wsReconnectTimer);
     this._wsReconnectTimer = null;
@@ -497,11 +561,14 @@ export function setupWebSocketConnection() {
   if (debug) console.log("Connecting to WebSocket sync server:", wsUrl);
   const ws = new WebSocket(wsUrl);
   this.ws = ws;
+  this._wsOrganizationId = workspace.organizationId;
+  this._wsReconnectEnabled = true;
   ws.onopen = () => {
     if (debug) console.log("WebSocket connection established. Sending auth...");
     this._wsRetryDelay = 5e3;
     ws.send(JSON.stringify({
-      action: "auth"
+      action: "auth",
+      organizationId: workspace.organizationId
     }));
   };
   ws.onmessage = (event) => {
@@ -514,6 +581,7 @@ export function setupWebSocketConnection() {
         return;
       }
       if (msg.event === "db_changed") {
+        if (!workspaceIsCurrent(this, workspace)) return;
         if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
         this.scheduleBackgroundSync(300);
       }
@@ -525,7 +593,7 @@ export function setupWebSocketConnection() {
     if (this.ws === ws) {
       this.ws = null;
     }
-    if (!shouldReconnectWebSocket(event.code)) {
+    if (!this._wsReconnectEnabled || !workspaceIsCurrent(this, workspace) || !shouldReconnectWebSocket(event.code)) {
       if (this._wsReconnectTimer) {
         clearTimeout(this._wsReconnectTimer);
         this._wsReconnectTimer = null;
@@ -552,4 +620,18 @@ export function setupWebSocketConnection() {
     console.error("WebSocket error:", err);
     ws.close();
   };
+}
+
+export function disconnectWebSocket(reconnect = false) {
+  this._wsReconnectEnabled = reconnect;
+  if (this._wsReconnectTimer) {
+    clearTimeout(this._wsReconnectTimer);
+    this._wsReconnectTimer = null;
+  }
+  const socket = this.ws;
+  this.ws = null;
+  this._wsOrganizationId = null;
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    socket.close(1000, "workspace_changed");
+  }
 }

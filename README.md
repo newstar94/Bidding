@@ -37,6 +37,15 @@ DEFAULT_ORG_NAME=HTD
 
 Neu `ADMIN_PASSWORD` bi bo trong, server se dung co che fail-fast va khong tao DB mac dinh. Dieu nay tranh viec vo tinh khoi tao he thong voi mat khau rong hoac yeu.
 
+Sau khi khoi dong, he thong cung cap hai health check cho reverse proxy/orchestrator:
+
+```text
+GET /health/live   # process dang chay, khong phu thuoc DB
+GET /health/ready  # chi san sang nhan traffic sau migration va DB checks
+```
+
+Neu migration, schema version, tai khoan quan tri hoac DB readiness khong hop le, startup se that bai va process khong duoc dua vao traffic.
+
 ---
 
 ## 3. Chạy thử local trong quá trình phát triển (Development Mode)

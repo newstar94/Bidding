@@ -9,11 +9,13 @@
   const resolveActiveRole = (user) => {
     const requested = readJson(sessionStorage.getItem("bf_active_role"))
       || readJson(localStorage.getItem("bf_active_role"));
-    const dbRole = user?.role || "employee";
-    const allowed = dbRole === "super_admin"
-      ? ["super_admin", "manager", "employee"]
-      : dbRole === "manager" ? ["manager", "employee"] : ["employee"];
-    return allowed.includes(requested) ? requested : dbRole;
+    const effectiveRoles = Array.isArray(user?.effective_roles) ? user.effective_roles : [];
+    const allowed = new Set(effectiveRoles);
+    if (requested && allowed.has(requested)) return requested;
+    if (allowed.has("super_admin")) return "super_admin";
+    if (allowed.has("manager")) return "manager";
+    if (allowed.has("employee")) return "employee";
+    return "viewer";
   };
   const hydrateStableShell = () => {
     const appContainer = document.querySelector(".app-container");
@@ -38,7 +40,8 @@
     const roleLabels = {
       super_admin: "Super Admin",
       manager: "Quản lý",
-      employee: "Chuyên viên"
+      employee: "Chuyên viên",
+      viewer: "Người xem"
     };
     const name = user.name || user.username || "Người dùng";
     const profileName = document.getElementById("header-profile-name");
@@ -63,13 +66,22 @@
       }
     }
 
-    const organizations = String(user.organization_name || "").split(",").map((item) => item.trim()).filter(Boolean);
-    let activeOrg = localStorage.getItem("bf_active_org");
-    if (!organizations.includes(activeOrg)) activeOrg = organizations[0] || "";
+    const organizations = Array.isArray(user.organizations) ? user.organizations : [];
+    let activeOrg = String(user.active_org_id || sessionStorage.getItem("bf_active_org") || localStorage.getItem("bf_active_org") || "");
+    let selectedOrganization = organizations.find((organization) => organization.id === activeOrg && organization.status === "active");
+    if (!selectedOrganization) selectedOrganization = organizations.find((organization) => organization.status === "active") || null;
+    activeOrg = selectedOrganization?.id || "";
+    if (activeOrg) {
+      sessionStorage.setItem("bf_active_org", activeOrg);
+      localStorage.setItem("bf_active_org", activeOrg);
+    } else {
+      sessionStorage.removeItem("bf_active_org");
+      localStorage.removeItem("bf_active_org");
+    }
     const orgPill = document.getElementById("header-active-org-pill");
     const orgName = document.getElementById("header-active-org-name");
-    if (orgPill && orgName && activeOrg) {
-      orgName.textContent = activeOrg;
+    if (orgPill && orgName && selectedOrganization) {
+      orgName.textContent = selectedOrganization.name;
       orgPill.style.display = "flex";
     }
 

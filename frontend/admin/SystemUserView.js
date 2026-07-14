@@ -1,5 +1,7 @@
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML } from "../shared/view_helpers.js";
+import { normalizeOrganizations } from "../auth/accessContext.js";
+import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 export function updateActiveUserProfileDisplay() {
   const avatar = document.getElementById("header-profile-avatar");
   const h4 = document.getElementById("header-profile-name");
@@ -7,14 +9,14 @@ export function updateActiveUserProfileDisplay() {
   if (avatar && h4 && p) {
     const user = this.model.state.activeuser || { name: "Khách", title: "Khách", id: "" };
     h4.textContent = user.name;
-    const orgs = user.organization_name ? user.organization_name.split(",").map((o) => o.trim()).filter(Boolean) : [];
-    let activeOrg = localStorage.getItem("bf_active_org");
-    if (!activeOrg || !orgs.includes(activeOrg)) {
-      activeOrg = orgs[0] || "";
+    const orgs = normalizeOrganizations(user).filter((organization) => organization.status === "active");
+    let activeOrg = getActiveOrganizationId();
+    if (!activeOrg || !orgs.some((organization) => organization.id === activeOrg)) {
+      activeOrg = orgs[0]?.id || "";
       if (activeOrg) {
-        localStorage.setItem("bf_active_org", activeOrg);
+        setActiveOrganizationId(activeOrg);
       } else {
-        localStorage.removeItem("bf_active_org");
+        setActiveOrganizationId("");
       }
     }
     p.textContent = `Chế độ: ${user.title}`;
@@ -22,7 +24,7 @@ export function updateActiveUserProfileDisplay() {
     const orgPillName = document.getElementById("header-active-org-name");
     if (orgPill && orgPillName) {
       if (activeOrg) {
-        orgPillName.textContent = activeOrg;
+        orgPillName.textContent = orgs.find((organization) => organization.id === activeOrg)?.name || activeOrg;
         orgPill.style.display = "flex";
         orgPill.style.cursor = "default";
       } else {
@@ -48,16 +50,17 @@ export function updateActiveUserProfileDisplay() {
     }
     const saSwitchSection = document.getElementById("sa-role-switch-section");
     if (saSwitchSection) {
-      if (user.dbRole === "super_admin" || user.dbRole === "manager") {
+      const effectiveRoles = Array.isArray(user.dbRoles) ? user.dbRoles : [];
+      if (effectiveRoles.includes("super_admin") || effectiveRoles.includes("manager")) {
         saSwitchSection.style.display = "block";
         const superAdminBtn = document.querySelector('.dropdown-role-btn[data-switch-role="super_admin"]');
         const managerBtn = document.querySelector('.dropdown-role-btn[data-switch-role="manager"]');
         const employeeBtn = document.querySelector('.dropdown-role-btn[data-switch-role="employee"]');
-        if (user.dbRole === "super_admin") {
+        if (effectiveRoles.includes("super_admin")) {
           if (superAdminBtn) superAdminBtn.style.display = "flex";
           if (managerBtn) managerBtn.style.display = "flex";
           if (employeeBtn) employeeBtn.style.display = "flex";
-        } else if (user.dbRole === "manager") {
+        } else if (effectiveRoles.includes("manager")) {
           if (superAdminBtn) superAdminBtn.style.display = "none";
           if (managerBtn) managerBtn.style.display = "flex";
           if (employeeBtn) employeeBtn.style.display = "flex";
@@ -100,11 +103,10 @@ export function populateNhanVienPhuTrachDropdowns() {
   const hdDropdown = document.getElementById("hd-nhanvienphutrach");
   let employees = Array.isArray(this.model.state.employees) ? this.model.state.employees : [];
   if (this.model.state.activerole !== "super_admin") {
-    const activeOrg = localStorage.getItem("bf_active_org");
+    const activeOrg = getActiveOrganizationId();
     if (activeOrg) {
       employees = employees.filter((e) => {
-        const orgs = e.organization_name ? e.organization_name.split(",").map((o) => o.trim()).filter(Boolean) : [];
-        return orgs.includes(activeOrg);
+        return normalizeOrganizations(e).some((organization) => organization.id === activeOrg);
       });
     }
   }
@@ -161,12 +163,12 @@ export function renderSuperAdminPanel() {
   fetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
     const orgMap = {};
     users.forEach((u) => {
-      const orgs = u.organization_name ? u.organization_name.split(",").map((o) => o.trim()).filter(Boolean) : [];
-      orgs.forEach((orgName) => {
-        if (!orgMap[orgName]) {
-          orgMap[orgName] = {
-            id: u.id,
-            name: orgName,
+      const orgs = normalizeOrganizations(u);
+      orgs.forEach((organization) => {
+        if (!orgMap[organization.id]) {
+          orgMap[organization.id] = {
+            id: organization.id,
+            name: organization.name,
             contact: "",
             phone: "",
             packageId: "none",
@@ -175,11 +177,11 @@ export function renderSuperAdminPanel() {
             status: "Hoạt động"
           };
         }
-        if (u.role === "manager" || !orgMap[orgName].contact) {
-          orgMap[orgName].contact = u.name;
-          orgMap[orgName].packageId = u.package_id || "none";
-          orgMap[orgName].regDate = u.package_start_date || "";
-          orgMap[orgName].expDate = u.package_end_date || "";
+        if (["owner", "manager"].includes(organization.role) || !orgMap[organization.id].contact) {
+          orgMap[organization.id].contact = u.name;
+          orgMap[organization.id].packageId = u.package_id || "none";
+          orgMap[organization.id].regDate = u.package_start_date || "";
+          orgMap[organization.id].expDate = u.package_end_date || "";
         }
       });
     });
@@ -194,7 +196,8 @@ export function renderSuperAdminPanel() {
       package_id: u.package_id,
       package_start_date: u.package_start_date,
       package_end_date: u.package_end_date,
-      organization_name: u.organization_name
+      organization_name: u.organization_name,
+      organizations: normalizeOrganizations(u)
     }));
     const activeOrgs = this.model.state.organizations.filter((o) => o.status === "Hoạt động");
     const lockedOrgs = this.model.state.organizations.filter((o) => o.status === "Đã khóa");
@@ -253,12 +256,11 @@ export function renderManagerNhanVienPanel() {
   else if (managerPkgs.includes("gold")) activePkgId = "gold";
   const pkg = this.model.state.systempackages.find((p) => p.id === activePkgId);
   const quotaLimit = pkg ? pkg.quota : 5;
-  const activeOrg = localStorage.getItem("bf_active_org");
+  const activeOrg = getActiveOrganizationId();
   const orgEmployees = this.model.state.employees.filter((e) => {
-    if (e.role !== "employee") return false;
     if (!activeOrg) return true;
-    const orgs = e.organization_name ? e.organization_name.split(",").map((o) => o.trim()).filter(Boolean) : [];
-    return orgs.includes(activeOrg);
+    const membership = normalizeOrganizations(e).find((organization) => organization.id === activeOrg);
+    return membership?.role === "employee";
   });
   const quotaLabel = document.getElementById("manager-quota-label");
   if (quotaLabel) quotaLabel.textContent = `${orgEmployees.length} / ${quotaLimit === 999 ? "Không giới hạn" : quotaLimit} Nhân sự`;

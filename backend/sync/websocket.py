@@ -9,6 +9,28 @@ from backend.shared.helpers import database
 active_connections = {}
 
 
+def resolve_websocket_owner(cursor, user_id, organization_id):
+    """Resolve an active organization only from an explicit membership ID."""
+    requested = str(organization_id or "").strip()
+    if not requested:
+        return None
+    cursor.execute(
+        """
+        SELECT memberships.to_chuc_id
+        FROM thanh_vien_to_chuc AS memberships
+        INNER JOIN to_chuc AS organizations
+            ON organizations.id = memberships.to_chuc_id
+        WHERE memberships.user_id = ?
+          AND memberships.to_chuc_id = ?
+          AND organizations.trang_thai = 'active'
+        LIMIT 1
+        """,
+        (user_id, requested),
+    )
+    row = cursor.fetchone()
+    return str(row[0]) if row else None
+
+
 async def sync_websocket_endpoint(websocket):
 
 
@@ -29,6 +51,7 @@ async def sync_websocket_endpoint(websocket):
         data = await websocket.receive_text()
         msg = json.loads(data)
         if msg.get("action") == "auth":
+            requested_org_id = msg.get("organizationId")
             token = (websocket.cookies.get("session_token") or "").strip()
 
             conn = database.get_connection()
@@ -54,17 +77,8 @@ async def sync_websocket_endpoint(websocket):
                 websocket.user_id = user_id
                 conn = database.get_connection()
                 cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT to_chuc_id
-                    FROM thanh_vien_to_chuc
-                    WHERE user_id = ?
-                """, (user_id,))
-                user_orgs = [r[0] for r in cursor.fetchall()]
+                owner_id = resolve_websocket_owner(cursor, user_id, requested_org_id)
                 conn.close()
-                if user_orgs:
-                    owner_id = user_orgs[0]
-                else:
-                    owner_id = str(user_id)
 
         if not owner_id:
             await websocket.close(code=4003)
@@ -89,7 +103,21 @@ async def sync_websocket_endpoint(websocket):
                 try:
                     _conn = database.get_connection()
                     _cur = _conn.cursor()
-                    _cur.execute("SELECT token_phien, han_su_dung_token FROM tai_khoan WHERE id = ?", (user_id,))
+                    _cur.execute(
+                        """
+                        SELECT accounts.token_phien, accounts.han_su_dung_token
+                        FROM tai_khoan AS accounts
+                        INNER JOIN thanh_vien_to_chuc AS memberships
+                            ON memberships.user_id = accounts.id
+                           AND memberships.to_chuc_id = ?
+                        INNER JOIN to_chuc AS organizations
+                            ON organizations.id = memberships.to_chuc_id
+                           AND organizations.trang_thai = 'active'
+                        WHERE accounts.id = ?
+                        LIMIT 1
+                        """,
+                        (owner_id, user_id),
+                    )
                     _row = _cur.fetchone()
                     _conn.close()
                     if not _row or _row['token_phien'] != token:
@@ -175,5 +203,4 @@ def disconnect_user_websockets(user_id):
                 sockets.discard(ws)
         if not active_connections.get(owner_id):
             active_connections.pop(owner_id, None)
-
 

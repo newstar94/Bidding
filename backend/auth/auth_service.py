@@ -1,13 +1,17 @@
 import os
 import time
 import secrets
-import json
 import hashlib
-from collections import defaultdict
 from backend.shared.helpers import (
     _org_cache_invalidate_by_user_id
 )
 from backend.db.id_utils import stable_org_id
+from backend.auth.roles import (
+    effective_access_roles,
+    normalize_organization_role,
+    normalize_platform_role,
+)
+from backend.shared.client_ip import get_client_ip
 
 
 _SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
@@ -16,75 +20,61 @@ SESSION_REMEMBER_EXPIRY_HOURS = int(os.environ.get("SESSION_REMEMBER_EXPIRY_HOUR
 SESSION_INACTIVITY_TIMEOUT_HOURS = int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10"))
 
 
-_rate_limit_store = defaultdict(list)
 RATE_LIMIT_MAX = 5
 RATE_LIMIT_WINDOW = 60
 
-def get_client_ip(request) -> str:
-    """Lấy IP thật từ header X-Forwarded-For hoặc client.host"""
-    forwarded = request.headers.get('X-Forwarded-For')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return getattr(request.client, 'host', 'unknown')
+
+def _get_rate_limit_database():
+    from backend.shared.helpers import database as rate_limit_database
+    return rate_limit_database
+
 
 def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
-    """Kiểm tra giới hạn rate limit, kết hợp in-memory + DB persist.
+    """Check a persistent fixed-window bucket using an atomic DB transaction.
 
     Mac dinh van ghi nhan attempt de giu tuong thich voi cac flow OTP.
     Login dung consume_attempt=False de chi ghi nhan khi xac thuc that bai.
     """
-    now = time.time()
-    window_start = now - RATE_LIMIT_WINDOW
-
-
-    _rate_limit_store[ip] = [t for t in _rate_limit_store[ip] if t > window_start]
-
-
+    now = int(time.time())
+    bucket_key = hashlib.sha256(str(ip or "unknown").encode("utf-8")).hexdigest()
+    conn = None
     try:
-        from backend.shared.helpers import database as _db
-        conn = _db.get_connection()
-        cur = conn.cursor()
-        key = f"rate_limit:{ip}"
-        cur.execute("SELECT config_value FROM sys_config WHERE config_key = ?", (key,))
-        row = cur.fetchone()
-        if row:
-            try:
-                db_timestamps = [t for t in json.loads(row[0]) if t > window_start]
-            except Exception:
-                db_timestamps = []
-        else:
-            db_timestamps = list(_rate_limit_store[ip])
-
-        all_timestamps = sorted(set(list(_rate_limit_store[ip]) + db_timestamps))
-        all_timestamps = [t for t in all_timestamps if t > window_start]
-
-        if len(all_timestamps) >= RATE_LIMIT_MAX:
-            conn.close()
-            _rate_limit_store[ip] = all_timestamps
-            return False
-
-        if not consume_attempt:
-            conn.close()
-            _rate_limit_store[ip] = all_timestamps
-            return True
-
-        all_timestamps.append(now)
-        cur.execute(
-            "INSERT INTO sys_config (config_key, config_value) VALUES (?, ?) "
-            "ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value",
-            (key, json.dumps(all_timestamps[-RATE_LIMIT_MAX:]))
-        )
-        conn.commit()
-        conn.close()
-        _rate_limit_store[ip] = all_timestamps
-    except Exception:
-
-        if len(_rate_limit_store[ip]) >= RATE_LIMIT_MAX:
+        conn = _get_rate_limit_database().get_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM rate_limit_buckets WHERE expires_at <= ?", (now,))
+        row = conn.execute(
+            "SELECT attempt_count FROM rate_limit_buckets WHERE bucket_key = ?",
+            (bucket_key,),
+        ).fetchone()
+        attempt_count = int(row[0]) if row is not None else 0
+        if attempt_count >= RATE_LIMIT_MAX:
+            conn.commit()
             return False
         if consume_attempt:
-            _rate_limit_store[ip].append(now)
-
-    return True
+            conn.execute(
+                """
+                INSERT INTO rate_limit_buckets (
+                    bucket_key, window_started_at, attempt_count, expires_at
+                ) VALUES (?, ?, 1, ?)
+                ON CONFLICT(bucket_key) DO UPDATE SET
+                    attempt_count = rate_limit_buckets.attempt_count + 1
+                """,
+                (bucket_key, now, now + RATE_LIMIT_WINDOW),
+            )
+        conn.commit()
+        return True
+    except Exception as rate_limit_error:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        from backend.shared.logging_utils import log_error
+        log_error(rate_limit_error, "rate_limit", level="WARN")
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
 
 def record_rate_limit_failure(ip: str) -> bool:
     """Ghi nhan mot lan that bai vao rate limiter."""
@@ -105,7 +95,101 @@ def get_user_org_names(cursor, user_id):
     rows = cursor.fetchall()
     return ", ".join(row['ten_to_chuc'] for row in rows)
 
-def update_user_organizations(cursor, user_id, organization_name, user_role='employee'):
+
+def get_user_organizations(cursor, user_id):
+    """Return server-owned organization identities and membership roles."""
+
+    cursor.execute(
+        """
+        SELECT tc.id, tc.ten_to_chuc, tc.trang_thai,
+               tvtc.vai_tro_trong_to_chuc
+        FROM thanh_vien_to_chuc AS tvtc
+        JOIN to_chuc AS tc ON tc.id = tvtc.to_chuc_id
+        WHERE tvtc.user_id = ?
+        ORDER BY CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
+                    WHEN 'owner' THEN 0
+                    WHEN 'manager' THEN 1
+                    WHEN 'employee' THEN 2
+                    ELSE 3
+                 END,
+                 lower(tc.ten_to_chuc), tc.id
+        """,
+        (user_id,),
+    )
+    organizations = []
+    for row in cursor.fetchall():
+        membership_role = normalize_organization_role(row['vai_tro_trong_to_chuc'])
+        if membership_role is None:
+            continue
+        organizations.append(
+            {
+                "id": str(row['id']),
+                "name": str(row['ten_to_chuc']),
+                "role": membership_role,
+                "status": str(row['trang_thai'] or '').strip().lower(),
+            }
+        )
+    return organizations
+
+
+def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=None):
+    organizations = get_user_organizations(cursor, user_id)
+    active_organizations = [org for org in organizations if org["status"] == "active"]
+    hint = str(active_org_hint or '').strip()
+    selected = next(
+        (org for org in active_organizations if org["id"] == hint),
+        None,
+    ) if hint else None
+    if selected is None and active_organizations:
+        selected = active_organizations[0]
+
+    platform_role = normalize_platform_role(platform_role)
+    membership_role = selected["role"] if selected else None
+    display_role = "super_admin" if platform_role == "super_admin" else membership_role
+    return {
+        "role": display_role or "viewer",
+        "platform_role": platform_role,
+        "membership_role": membership_role,
+        "effective_roles": effective_access_roles(platform_role, membership_role),
+        "active_org_id": selected["id"] if selected else None,
+        "organizations": organizations,
+        # Compatibility-only display field; never use this value as an auth key.
+        "organization_name": ", ".join(org["name"] for org in organizations),
+    }
+
+
+def provision_user_organization(cursor, user_id, display_name):
+    """Create the initial organization and its owner in the same transaction."""
+
+    cursor.execute(
+        "SELECT 1 FROM thanh_vien_to_chuc WHERE user_id = ? LIMIT 1",
+        (user_id,),
+    )
+    if cursor.fetchone():
+        return None
+    org_id = stable_org_id(f"user:{user_id}")
+    label = str(display_name or "Người dùng").strip() or "Người dùng"
+    org_name = f"Tổ chức của {label} ({str(user_id)[-8:]})"
+    cursor.execute(
+        "INSERT INTO to_chuc (id, ten_to_chuc, quan_ly_id, trang_thai) VALUES (?, ?, ?, 'active')",
+        (org_id, org_name, user_id),
+    )
+    cursor.execute(
+        """
+        INSERT INTO thanh_vien_to_chuc
+            (user_id, to_chuc_id, vai_tro_trong_to_chuc)
+        VALUES (?, ?, 'owner')
+        """,
+        (user_id, org_id),
+    )
+    cursor.execute(
+        "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, 1)",
+        (org_id,),
+    )
+    return org_id
+
+
+def update_user_organizations(cursor, user_id, organization_name):
     """Cập nhật tổ chức của người dùng."""
     new_orgs = [o.strip() for o in organization_name.split(',') if o.strip()]
 
@@ -122,6 +206,7 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
         if org_name not in current_assoc:
             cursor.execute("SELECT id FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
             org_row = cursor.fetchone()
+            created_org = org_row is None
             if org_row:
                 org_id = org_row['id']
             else:
@@ -131,11 +216,10 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
                     (org_id, org_name, user_id)
                 )
 
-            role_in_org = 'employee'
-            if 'super_admin' in user_role:
-                role_in_org = 'super_admin'
-            elif 'manager' in user_role:
-                role_in_org = 'manager'
+            # A newly-created organization must have an owner.  Joining an
+            # existing organization never derives membership power from the
+            # account-level role.
+            role_in_org = 'owner' if created_org else 'employee'
             cursor.execute(
                 "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
                 (user_id, org_id, role_in_org)
@@ -145,6 +229,26 @@ def update_user_organizations(cursor, user_id, organization_name, user_role='emp
     removed_any = False
     for org_name, org_id in current_assoc.items():
         if org_name not in new_orgs:
+            cursor.execute(
+                """
+                SELECT lower(trim(vai_tro_trong_to_chuc))
+                FROM thanh_vien_to_chuc
+                WHERE user_id = ? AND to_chuc_id = ?
+                """,
+                (user_id, org_id),
+            )
+            membership = cursor.fetchone()
+            if membership and str(membership[0] or '').strip().lower() == 'owner':
+                cursor.execute(
+                    """
+                    SELECT count(*) FROM thanh_vien_to_chuc
+                    WHERE to_chuc_id = ?
+                      AND lower(trim(vai_tro_trong_to_chuc)) = 'owner'
+                    """,
+                    (org_id,),
+                )
+                if int(cursor.fetchone()[0]) <= 1:
+                    raise ValueError("Không thể xóa chủ sở hữu cuối cùng khỏi tổ chức.")
             cursor.execute(
                 "DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
                 (user_id, org_id)

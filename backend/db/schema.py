@@ -16,7 +16,7 @@ SCHEMA_DINH_NGHIA = {
             "ten_dang_nhap": "TEXT UNIQUE",
             "mat_khau": "TEXT",
             "ho_ten": "TEXT",
-            "vai_tro": "TEXT",
+            "vai_tro": "TEXT NOT NULL DEFAULT 'user' CHECK(vai_tro IN ('super_admin', 'user'))",
             "email": "TEXT",
             "token_phien": "TEXT",
             "anh_dai_dien": "TEXT",
@@ -39,6 +39,28 @@ SCHEMA_DINH_NGHIA = {
             "so_cccd": "soCCCD",
             "ma_qhns": "maQHNS",
             "id_goc": "rootId"
+        }
+    },
+    "password_reset_tokens": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "user_id": "TEXT NOT NULL",
+            "token_hash": "TEXT NOT NULL UNIQUE",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > 0)",
+            "used_at": "INTEGER",
+            "requested_ip": "TEXT",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
+    "rate_limit_buckets": {
+        "columns": {
+            "bucket_key": "TEXT PRIMARY KEY",
+            "window_started_at": "INTEGER NOT NULL",
+            "attempt_count": "INTEGER NOT NULL CHECK(attempt_count >= 0)",
+            "expires_at": "INTEGER NOT NULL"
         }
     },
     "chu_dau_tu": {
@@ -111,7 +133,7 @@ SCHEMA_DINH_NGHIA = {
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
-        "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL"],
+        "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE RESTRICT"],
         "field_map": {
             "thoi_gian_dang_tai": "thoiGianDangMa",
             "don_vi_trinh_cdt": "donViTrinhCdt",
@@ -201,7 +223,7 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (thanh_vien_nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
+            "FOREIGN KEY (thanh_vien_nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ]
     },
     "goi_thau": {
@@ -257,8 +279,8 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE CASCADE",
-            "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ],
         "field_map": {
             "nha_thau_trung_thau_id": "nhaThauTrungThauId",
@@ -307,7 +329,7 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
+            "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ]
     },
     "goi_thau_tuy_chon_mua_them": {
@@ -425,11 +447,11 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
-            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL",
-            "FOREIGN KEY (chu_dau_tu_thanh_ly_id) REFERENCES chu_dau_tu(id) ON DELETE SET NULL",
-            "FOREIGN KEY (nha_thau_thanh_ly_id) REFERENCES nha_thau(id) ON DELETE SET NULL",
-            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE SET NULL"
+            "FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (chu_dau_tu_thanh_ly_id) REFERENCES chu_dau_tu(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (nha_thau_thanh_ly_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT"
         ],
         "field_map": {
             "thoi_gian_thuc_hien": "soNgayThucHien",
@@ -448,7 +470,7 @@ SCHEMA_DINH_NGHIA = {
         "primary_keys": ["owner_id", "hop_dong_id", "goi_thau_id"],
         "foreign_keys": [
             "FOREIGN KEY (hop_dong_id) REFERENCES hop_dong(id) ON DELETE CASCADE",
-            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE"
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT"
         ]
     },
     "phan_cong_nhan_su": {
@@ -537,7 +559,7 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ],
         "field_map": {
             "goi_thau_id": "goiThauId",
@@ -599,7 +621,7 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (thanh_vien_nha_thau_id) REFERENCES nha_thau(id) ON DELETE SET NULL"
+            "FOREIGN KEY (thanh_vien_nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ]
     },
     "to_chuc": {
@@ -607,6 +629,7 @@ SCHEMA_DINH_NGHIA = {
             "id": "TEXT PRIMARY KEY",
             "ten_to_chuc": "TEXT UNIQUE NOT NULL",
             "quan_ly_id": "TEXT",
+            "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'suspended'))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -616,7 +639,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "user_id": "TEXT NOT NULL",
             "to_chuc_id": "TEXT NOT NULL",
-            "vai_tro_trong_to_chuc": "TEXT",
+            "vai_tro_trong_to_chuc": "TEXT NOT NULL DEFAULT 'employee' CHECK(vai_tro_trong_to_chuc IN ('owner', 'manager', 'employee', 'viewer'))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
@@ -640,7 +663,7 @@ SCHEMA_DINH_NGHIA = {
         "primary_keys": ["owner_id", "goi_thau_id", "chuyen_gia_id", "loai"],
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
-            "FOREIGN KEY (chuyen_gia_id) REFERENCES chuyen_gia(id) ON DELETE CASCADE"
+            "FOREIGN KEY (chuyen_gia_id) REFERENCES chuyen_gia(id) ON DELETE RESTRICT"
         ]
     },
     "deleted_records": {

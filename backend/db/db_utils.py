@@ -97,8 +97,10 @@ def _sync_table_schema(cursor, table_name: str, table_spec: dict):
         return "unchanged"
 
     temp_table = f"_schema_sync_{table_name}_{uuid.uuid4().hex[:8]}"
+    savepoint = f"schema_rebuild_{uuid.uuid4().hex[:8]}"
     common_cols = [col for col in expected_names if col in current_cols]
     cursor.execute("PRAGMA legacy_alter_table = ON")
+    cursor.execute(f"SAVEPOINT {savepoint}")
     try:
         cursor.execute(f"ALTER TABLE {table_name} RENAME TO {temp_table}")
         cursor.execute(_build_create_table_sql(table_name, table_spec))
@@ -106,7 +108,12 @@ def _sync_table_schema(cursor, table_name: str, table_spec: dict):
             cols_sql = ", ".join(common_cols)
             cursor.execute(f"INSERT INTO {table_name} ({cols_sql}) SELECT {cols_sql} FROM {temp_table}")
         cursor.execute(f"DROP TABLE {temp_table}")
+        cursor.execute(f"RELEASE SAVEPOINT {savepoint}")
         return "rebuilt"
+    except Exception:
+        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+        cursor.execute(f"RELEASE SAVEPOINT {savepoint}")
+        raise
     finally:
         cursor.execute("PRAGMA legacy_alter_table = OFF")
 
@@ -366,6 +373,9 @@ def _ensure_runtime_indexes(cursor):
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tai_khoan_token ON tai_khoan (token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tai_khoan_email ON tai_khoan (email) WHERE email != ''")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tai_khoan_ten_dang_nhap ON tai_khoan (ten_dang_nhap)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_user_active ON password_reset_tokens (user_id, used_at, expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limit_expires ON rate_limit_buckets (expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (to_chuc_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_to_chuc_quan_ly ON to_chuc (quan_ly_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (owner_id, deleted_at)")
@@ -628,13 +638,13 @@ def khoi_tao_va_di_tru_he_thong():
         conn = database.get_connection()
         cursor = conn.cursor()
 
+        cursor.execute("PRAGMA foreign_keys = OFF")
+        cursor.execute("BEGIN IMMEDIATE")
         previous_schema_version = _ensure_schema_version_tables(cursor)
         schema_actions = []
-        cursor.execute("PRAGMA foreign_keys = OFF")
         for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
             action = _sync_table_schema(cursor, table_name, table_spec)
             schema_actions.append((table_name, action))
-        cursor.execute("PRAGMA foreign_keys = ON")
         _backfill_partner_effective_dates(cursor)
         _backfill_member_contractor_versions(cursor)
         _clear_competitive_quotation_appraisal(cursor)
@@ -676,7 +686,7 @@ def khoi_tao_va_di_tru_he_thong():
             )
             cursor.execute(
                 "INSERT INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-                (admin_uuid, org_id, 'super_admin')
+                (admin_uuid, org_id, 'owner')
             )
             cursor.execute(
                 "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, ?)",
@@ -688,10 +698,12 @@ def khoi_tao_va_di_tru_he_thong():
         ensure_default_word_mappings_for_all_orgs(cursor)
 
         conn.commit()
+        cursor.execute("PRAGMA foreign_keys = ON")
         print("[DB] Database schema initialized and synchronized successfully.")
     except Exception as e:
         if conn:
             conn.rollback()
+            conn.execute("PRAGMA foreign_keys = ON")
         print("[DB] Database schema initialization/synchronization failed:", e)
         raise
     finally:

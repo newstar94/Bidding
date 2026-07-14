@@ -9,6 +9,11 @@ from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Inches
 from datetime import datetime
 
+from backend.documents.archive_validation import validate_ooxml_archive
+from backend.documents.template_security import (
+    create_template_environment,
+    validate_template_statements,
+)
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
 
 
@@ -596,8 +601,13 @@ def translate_docx_template(template_path, context):
         return DocxTemplate(BytesIO(cached[3]))
 
 
+    with open(template_path, 'rb') as template_file:
+        template_bytes = template_file.read()
+    validate_ooxml_archive(template_bytes, "docx")
+
     temp_bytes = BytesIO()
-    with zipfile.ZipFile(template_path, 'r') as yin:
+    translated_xml_parts = []
+    with zipfile.ZipFile(BytesIO(template_bytes), 'r') as yin:
         with zipfile.ZipFile(temp_bytes, 'w', zipfile.ZIP_DEFLATED) as yout:
             for item in yin.infolist():
                 data = yin.read(item.filename)
@@ -605,7 +615,11 @@ def translate_docx_template(template_path, context):
                     xml_str = data.decode('utf-8')
                     translated_xml = translate_xml_tags(xml_str, valid_vars)
                     data = translated_xml.encode('utf-8')
+                if item.filename.startswith('word/') and item.filename.lower().endswith('.xml'):
+                    translated_xml_parts.append(data.decode('utf-8'))
                 yout.writestr(item, data)
+
+    validate_template_statements(translated_xml_parts)
 
     translated_data = temp_bytes.getvalue()
 
@@ -800,7 +814,11 @@ def convert_images_in_context(doc, data):
         except Exception as img_ex:
             print("Image conversion in the DOCX context failed:", img_ex)
 
-def generate_report_from_custom_template(template_path, context, custom_vars=[]):
+class TemplateRenderError(ValueError):
+    """Public, non-sensitive error raised when a DOCX template cannot render."""
+
+
+def generate_report_from_custom_template(template_path, context, custom_vars=None):
 
 
     context = replace_placeholders_with_empty(context)
@@ -813,7 +831,7 @@ def generate_report_from_custom_template(template_path, context, custom_vars=[])
     try:
         doc = translate_docx_template(template_path, context)
         convert_images_in_context(doc, context)
-        doc.render(context)
+        doc.render(context, jinja_env=create_template_environment())
     except Exception as e:
 
         log_path = os.path.join(project_root, 'export_error.log')
@@ -847,23 +865,12 @@ def generate_report_from_custom_template(template_path, context, custom_vars=[])
             pass
 
 
-        try:
-            with open(template_path, 'rb') as f:
-                raw_bytes = f.read()
-            out_stream = BytesIO(raw_bytes)
-            return out_stream
-        except Exception:
-            pass
+        raise TemplateRenderError(
+            "Mẫu Word chứa biểu thức không được hỗ trợ hoặc không thể kết xuất."
+        ) from e
 
     out_stream = BytesIO()
     if doc:
         doc.save(out_stream)
-    else:
-
-        try:
-            with open(template_path, 'rb') as f:
-                out_stream.write(f.read())
-        except Exception:
-            pass
     out_stream.seek(0)
     return out_stream

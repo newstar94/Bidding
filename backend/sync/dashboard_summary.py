@@ -1,11 +1,11 @@
 """Dashboard projections derived from synchronized records."""
 
-from backend.shared.access_policy import can_read_table, is_manager_role
+from backend.shared.access_policy import can_read_table, is_organization_manager
 from backend.sync.mapper import map_db_to_json
 
 
 def build_dashboard_summary(cursor, owner_id, role_str, user_id):
-    manager = is_manager_role(role_str)
+    manager = is_organization_manager(cursor, role_str, user_id, owner_id)
 
     def can(payload_key, table_name):
         return can_read_table(cursor, role_str, user_id, owner_id, payload_key, table_name)
@@ -153,5 +153,4 @@ def build_dashboard_summary(cursor, owner_id, role_str, user_id):
         "recentPackages": recent_packages,
         "totalContractValue": total_contract_value,
     }
-
 

@@ -1,4 +1,7 @@
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
+import { normalizeOrganizations } from "../auth/accessContext.js";
+import { escapeHtml } from "../shared/view_helpers.js";
+import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 function bindAdminEvent(element, eventName, bindingName, handler) {
   if (!element) return;
   element.__bfBoundEvents = element.__bfBoundEvents || /* @__PURE__ */ new Set();
@@ -151,7 +154,9 @@ export async function showSystemUserDetail(userId) {
     document.getElementById("detail-su-name").value = user.name || "";
     document.getElementById("detail-su-email").value = user.email || "";
     document.getElementById("detail-su-organization").value = user.organization_name || "";
-    document.getElementById("detail-su-role").value = user.role || "employee";
+    const activeOrgId = getActiveOrganizationId();
+    const activeMembership = normalizeOrganizations(user).find((organization) => organization.id === activeOrgId);
+    document.getElementById("detail-su-role").value = activeMembership?.role || "employee";
     document.getElementById("detail-su-package").value = user.package_id || "none";
     const orgContainer = document.getElementById("detail-su-org-container");
     if (orgContainer) {
@@ -225,12 +230,11 @@ export function setupRBACEvents() {
       else if (managerPkgs.includes("gold")) activePkgId = "gold";
       const pkg = this.model.state.systempackages.find((p) => p.id === activePkgId);
       const quotaLimit = pkg ? pkg.quota : 5;
-      const activeOrg = localStorage.getItem("bf_active_org");
+      const activeOrg = getActiveOrganizationId();
       const orgEmployees = this.model.state.employees.filter((em) => {
         if (!this.model.hasEffectiveRole(em, "employee")) return false;
         if (!activeOrg) return true;
-        const orgs = em.organization_name ? em.organization_name.split(",").map((o) => o.trim()).filter(Boolean) : [];
-        return orgs.includes(activeOrg);
+        return normalizeOrganizations(em).some((organization) => organization.id === activeOrg);
       });
       const id = document.getElementById("form-employee-id").value;
       if (!id && orgEmployees.length >= quotaLimit) {
@@ -419,7 +423,7 @@ export function setupRBACEvents() {
         await fetch("/api/auth/users/update-role", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, role })
+          body: JSON.stringify({ user_id: userId, role, scope: "organization" })
         });
         await fetch("/api/auth/users/update-package", {
           method: "POST",
@@ -670,7 +674,8 @@ export async function reloadEmployeesFromDatabase() {
           phone: localEmp ? localEmp.phone : "",
           role: u.role,
           package_id: u.package_id,
-          organization_name: u.organization_name
+          organization_name: u.organization_name,
+          organizations: normalizeOrganizations(u)
         };
       });
       this.model.persistData("employees");
@@ -752,33 +757,33 @@ export function renderWorkspaceSwitcher() {
   const orgSwitchSection = document.getElementById("org-switch-section");
   const orgSwitchList = document.getElementById("org-switch-list");
   const currentUser = this.model.state.activeuser;
-  if (!currentUser || !currentUser.organization_name) {
+  const orgs = normalizeOrganizations(currentUser || {}).filter((organization) => organization.status === "active");
+  if (!currentUser || orgs.length === 0) {
     if (orgSwitchSection) orgSwitchSection.style.display = "none";
     return;
   }
-  const orgs = currentUser.organization_name.split(",").map((o) => o.trim()).filter(Boolean);
   if (orgs.length <= 1) {
     if (orgSwitchSection) orgSwitchSection.style.display = "none";
     return;
   }
   if (orgSwitchSection) orgSwitchSection.style.display = "block";
-  let activeOrg = localStorage.getItem("bf_active_org");
-  if (!activeOrg || !orgs.includes(activeOrg)) {
-    activeOrg = orgs[0];
-    localStorage.setItem("bf_active_org", activeOrg);
+  let activeOrg = getActiveOrganizationId();
+  if (!activeOrg || !orgs.some((organization) => organization.id === activeOrg)) {
+    activeOrg = orgs[0].id;
+    setActiveOrganizationId(activeOrg);
   }
   const htmlContent = orgs.map((org) => {
-    const isActive = org === activeOrg;
-    const initials = org.split(" ").map((w) => w[0]).join("").substring(0, 2).toUpperCase();
+    const isActive = org.id === activeOrg;
+    const initials = org.name.split(" ").map((w) => w[0]).join("").substring(0, 2).toUpperCase();
     const activeBg = isActive ? "var(--primary-soft)" : "transparent";
     return `
-            <button class="dropdown-item dropdown-org-btn" data-org="${org}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; background: ${activeBg}; width: 100%; text-align: left; padding: 8px 16px; cursor: pointer; transition: background 0.15s ease;">
+            <button class="dropdown-item dropdown-org-btn" data-org="${escapeHtml(org.id)}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; background: ${activeBg}; width: 100%; text-align: left; padding: 8px 16px; cursor: pointer; transition: background 0.15s ease;">
                 <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
                     <div style="width: 24px; height: 24px; border-radius: 6px; background: ${isActive ? "var(--primary)" : "var(--border-color)"}; color: ${isActive ? "#ffffff" : "var(--text-muted)"}; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; transition: all 0.2s;">
                         ${initials}
                     </div>
                     <span style="font-size: 0.78rem; font-weight: ${isActive ? "700" : "500"}; color: ${isActive ? "var(--primary)" : "var(--text-main)"}; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: 1; min-width: 0;">
-                        ${org}
+                        ${escapeHtml(org.name)}
                     </span>
                 </div>
                 ${isActive ? `<i data-lucide="check" style="width: 14px; height: 14px; color: var(--primary); flex-shrink: 0;"></i>` : ""}
@@ -793,40 +798,19 @@ export function renderWorkspaceSwitcher() {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const selectedOrg = btn.getAttribute("data-org");
-        const currentActive = localStorage.getItem("bf_active_org");
+        const currentActive = getActiveOrganizationId();
         if (selectedOrg === currentActive) {
           const profileDropdown = document.getElementById("profile-dropdown-menu");
           if (profileDropdown) profileDropdown.classList.remove("active");
           return;
         }
-        localStorage.setItem("bf_active_org", selectedOrg);
-        this.renderWorkspaceSwitcher();
         try {
-          const response = await fetch("/api/get-all-data");
-          if (response.ok) {
-            const dbData = await response.json();
-            Object.keys(dbData).forEach((key) => {
-              this.model.state[key] = dbData[key];
-              this.model.persistData(key);
-            });
-            this.view.renderDashboard();
-            this.view.renderKeHoachTable();
-            this.view.renderGoiThauTable();
-            this.view.renderChuDauTuTable();
-            this.view.renderNhaThauTable();
-            this.view.renderChuyenGiaTable();
-            this.view.renderHopDongTable();
-            if (typeof this.switchTab === "function") {
-              this.switchTab(this.model.state.activetab || "dashboard", null, false);
-            }
-            this.view.updateActiveUserProfileDisplay();
-            await this.reloadEmployeesFromDatabase();
-            await this.view.customAlert("Chuyển đổi thành công", `Đã chuyển sang không gian làm việc của "${selectedOrg}"!`, "check-circle");
-            const profileDropdown = document.getElementById("profile-dropdown-menu");
-            if (profileDropdown) profileDropdown.classList.remove("active");
-          } else {
-            await this.view.customAlert("Thất bại", "Không thể tải dữ liệu của tổ chức này.", "alert-triangle");
-          }
+          await this.switchWorkspaceContext(selectedOrg);
+          await this.reloadEmployeesFromDatabase();
+          const selectedName = orgs.find((org) => org.id === selectedOrg)?.name || selectedOrg;
+          await this.view.customAlert("Chuyển đổi thành công", `Đã chuyển sang không gian làm việc của "${selectedName}"!`, "check-circle");
+          const profileDropdown = document.getElementById("profile-dropdown-menu");
+          if (profileDropdown) profileDropdown.classList.remove("active");
         } catch (err) {
           await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
         }

@@ -43,7 +43,7 @@ export function mergeReferenceRecords(model, key, incoming) {
       : { ...existing, ...referenceItem, referenceOnly: true };
   });
 }
-export function applySyncPayload(model, dbData, options = {}) {
+export function applyServerSnapshot(model, dbData, options = {}) {
   const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "dashboardSummary", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
@@ -146,3 +146,5 @@ export function applySyncPayload(model, dbData, options = {}) {
   }
   return { changedKeys, deletionsByTable, useServerSidePagination, persistencePromise };
 }
+
+export const applySyncPayload = applyServerSnapshot;

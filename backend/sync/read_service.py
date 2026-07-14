@@ -11,7 +11,7 @@ from backend.shared.access_policy import (
     can_read_record,
     can_read_table,
     filter_items_for_read,
-    is_manager_role,
+    is_organization_manager,
 )
 from backend.shared.media_helper import public_image_path
 from backend.sync.mapper import (
@@ -307,7 +307,7 @@ async def read_sync_data(request):
                     reference_items,
                 )
 
-        if not is_manager_role(role_str):
+        if not is_organization_manager(cursor, role_str, user_id, org_name):
             deletions = [
                 item for item in deletions
                 if can_read_table(cursor, role_str, user_id, org_name, item.get("table"), TABLE_KEYS.get(item.get("table"), ""))

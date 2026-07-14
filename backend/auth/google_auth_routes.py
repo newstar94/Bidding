@@ -13,7 +13,6 @@ from starlette.background import BackgroundTasks
 
 from backend.shared.helpers import (
     database,
-    get_effective_roles,
     log_error,
     log_audit,
     _session_cache_invalidate_by_user_id,
@@ -22,7 +21,8 @@ from backend.auth.auth_service import (
     get_client_ip,
     check_rate_limit,
     record_rate_limit_failure,
-    get_user_org_names,
+    build_user_access_payload,
+    provision_user_organization,
     _SECURE_COOKIES,
     SESSION_EXPIRY_HOURS,
     SESSION_INACTIVITY_TIMEOUT_HOURS,
@@ -238,7 +238,7 @@ async def google_login_api(request):
                     """INSERT INTO tai_khoan
                        (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
                         anh_dai_dien, da_xac_minh, google_id, username_da_dat)
-                       VALUES (?, NULL, ?, ?, 'employee', ?, ?, 1, ?, 0)""",
+                       VALUES (?, NULL, ?, ?, 'user', ?, ?, 1, ?, 0)""",
                     (new_id, temp_password_hash, name, email, picture, google_id),
                 )
             except Exception:
@@ -247,11 +247,12 @@ async def google_login_api(request):
                     """INSERT INTO tai_khoan
                        (id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
                         anh_dai_dien, da_xac_minh)
-                       VALUES (?, NULL, ?, ?, 'employee', ?, ?, 1)""",
+                       VALUES (?, NULL, ?, ?, 'user', ?, ?, 1)""",
                     (new_id, temp_password_hash, name, email, picture),
                 )
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
+            provision_user_organization(cursor, new_id, name)
 
             pending_audits.append((
                 "auth.google_auto_register",
@@ -330,7 +331,15 @@ async def google_login_api(request):
         )
         _session_cache_invalidate_by_user_id(user["id"])
 
-        org_names = get_user_org_names(cursor, user["id"])
+        active_org_hint = urllib.parse.unquote(
+            (request.headers.get("X-Active-Org") or "").strip()
+        ) or None
+        access_payload = build_user_access_payload(
+            cursor,
+            user["id"],
+            user["vai_tro"],
+            active_org_hint,
+        )
         conn.commit()
 
         for audit_action, audit_kwargs in pending_audits:
@@ -340,14 +349,12 @@ async def google_login_api(request):
             bg_tasks,
             "auth.google_login_success",
             actor_user_id=user["id"],
-            owner_id=org_names,
+            owner_id=access_payload["active_org_id"],
             target_type="tai_khoan",
             target_id=user["id"],
             request=request,
             metadata={"email": email},
         )
-
-        effective_roles = list(get_effective_roles(user["vai_tro"]))
 
         needs_username = not user.get("ten_dang_nhap")
 
@@ -361,12 +368,10 @@ async def google_login_api(request):
             "id": user["id"],
             "username": user["ten_dang_nhap"],
             "name": user["ho_ten"],
-            "role": user["vai_tro"],
-            "effective_roles": effective_roles,
+            **access_payload,
             "email": user["email"],
             "avatar": user.get("anh_dai_dien") or "",
             "package_id": user.get("goi_dich_vu_id"),
-            "organization_name": org_names,
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
             "needs_username": needs_username,
             "suggested_username": suggested_username,

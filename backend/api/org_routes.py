@@ -9,20 +9,18 @@ from backend.shared.helpers import (
     _session_cache_invalidate_by_user_id,
     _org_cache_invalidate_by_user_id,
     log_error,
+    log_audit,
     OrgPermissionError
 )
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, next_sync_version
+from backend.shared.access_policy import is_organization_manager
 
 async def add_user_to_org_api(request):
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-
-        effective_roles = get_effective_roles(role_or_err)
-        if 'manager' not in effective_roles:
-            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
 
         data = await request.json()
         user_id = data.get('user_id')
@@ -33,6 +31,14 @@ async def add_user_to_org_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
+
+        if not is_organization_manager(
+            cursor, str(role_or_err), role_or_err.user_id, org_id
+        ):
+            conn.close()
+            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
+
+        effective_roles = get_effective_roles(role_or_err)
 
         cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (org_id,))
         if not cursor.fetchone():
@@ -54,7 +60,7 @@ async def add_user_to_org_api(request):
             )
             cursor.execute(
                 "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-                (role_or_err.user_id, org_id, 'manager')
+                (role_or_err.user_id, org_id, 'owner')
             )
 
         cursor.execute("SELECT user_id FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
@@ -76,14 +82,19 @@ async def add_user_to_org_api(request):
             (user_id, org_id, 'employee')
         )
 
-        if u_row:
-            current_role = u_row['vai_tro'] or ''
-            if not current_role or current_role == 'none':
-                cursor.execute("UPDATE tai_khoan SET vai_tro = 'employee' WHERE id = ?", (user_id,))
-
         conn.commit()
         conn.close()
         _session_cache_invalidate_by_user_id(user_id)
+        _org_cache_invalidate_by_user_id(user_id)
+
+        log_audit(
+            "organization.member_added",
+            actor_user_id=role_or_err.user_id,
+            target_type="organization_membership",
+            target_id=f"{org_id}:{user_id}",
+            request=request,
+            metadata={"organization_id": org_id, "membership_role": "employee"},
+        )
 
         return JSONResponse({"success": True, "message": "Thêm nhân sự vào tổ chức thành công!"})
     except OrgPermissionError as e:
@@ -98,10 +109,6 @@ async def remove_user_from_org_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        effective_roles = get_effective_roles(role_or_err)
-        if 'manager' not in effective_roles:
-            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
-
         data = await request.json()
         user_id = data.get('user_id')
         if not user_id:
@@ -115,12 +122,24 @@ async def remove_user_from_org_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
+        if not is_organization_manager(
+            cursor, str(role_or_err), role_or_err.user_id, org_id
+        ):
+            conn.close()
+            return JSONResponse({"error": "Bạn không có quyền thực hiện thao tác này!"}, status_code=403)
         sync_version = next_sync_version(cursor, org_id)
 
-        cursor.execute("SELECT 1 FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
-        if not cursor.fetchone():
+        cursor.execute(
+            "SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
+            (user_id, org_id),
+        )
+        target_membership = cursor.fetchone()
+        if not target_membership:
             conn.close()
             return JSONResponse({"error": "Nguoi dung khong thuoc to chuc hien tai."}, status_code=404)
+        if str(target_membership[0] or "").strip().lower() == "owner":
+            conn.close()
+            return JSONResponse({"error": "Không thể xóa chủ sở hữu tổ chức."}, status_code=409)
 
         cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
 
@@ -143,6 +162,15 @@ async def remove_user_from_org_api(request):
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
         broadcast_websocket_event(org_id, {"event": "db_changed"})
+
+        log_audit(
+            "organization.member_removed",
+            actor_user_id=role_or_err.user_id,
+            target_type="organization_membership",
+            target_id=f"{org_id}:{user_id}",
+            request=request,
+            metadata={"organization_id": org_id},
+        )
 
         return JSONResponse({"success": True, "message": "Gỡ nhân sự khỏi tổ chức thành công!"})
     except OrgPermissionError as e:

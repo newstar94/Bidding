@@ -5,21 +5,19 @@ import threading
 import time
 from datetime import datetime
 from backend.db.db_helper import database
+from backend.shared.client_ip import get_client_ip
+from backend.auth.roles import effective_access_roles, normalize_platform_role
 
 ROLE_HIERARCHY = {
-    'super_admin': ['super_admin', 'manager', 'employee'],
-    'manager':     ['manager', 'employee'],
-    'employee':    ['employee'],
+    'super_admin': effective_access_roles('super_admin'),
+    'user': ['user'],
 }
 
 PASSWORD_HASH_ITERATIONS = int(os.environ.get("PASSWORD_HASH_ITERATIONS", "310000"))
 
 def get_effective_roles(role_str):
-    roles = [r.strip() for r in (role_str or '').split(',') if r.strip()]
-    effective = set()
-    for r in roles:
-        effective.update(ROLE_HIERARCHY.get(r, [r]))
-    return effective
+    platform_role = normalize_platform_role(role_str)
+    return set(ROLE_HIERARCHY[platform_role])
 
 def hash_password(password: str, salt: str = None) -> str:
     if salt is None:
@@ -126,11 +124,7 @@ def verify_session(request, required_role=None):
         allowlist = [ip.strip() for ip in allowlist_str.split(",") if ip.strip()]
 
         if "*" not in allowlist:
-            forwarded = request.headers.get('X-Forwarded-For')
-            if forwarded:
-                client_ip = forwarded.split(',')[0].strip()
-            else:
-                client_ip = getattr(request.client, 'host', 'unknown')
+            client_ip = get_client_ip(request)
             if client_ip not in allowlist:
                 return False, "Truy cập bị từ chối: IP không được phép truy cập quyền quản trị tối cao!"
 
@@ -141,7 +135,7 @@ def verify_session(request, required_role=None):
         else:
             if required_role and required_role not in get_effective_roles(cached_user['vai_tro']):
                 return False, "Bạn không có quyền thực hiện thao tác này!"
-            return True, SessionRole(cached_user['vai_tro'], cached_user['id'])
+            return True, SessionRole(normalize_platform_role(cached_user['vai_tro']), cached_user['id'])
 
     conn = database.get_connection()
     cursor = conn.cursor()
@@ -171,4 +165,4 @@ def verify_session(request, required_role=None):
 
 
     _session_cache_set(token, user)
-    return True, SessionRole(user['vai_tro'], user['id'])
+    return True, SessionRole(normalize_platform_role(user['vai_tro']), user['id'])

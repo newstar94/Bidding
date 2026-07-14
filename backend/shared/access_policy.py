@@ -4,7 +4,8 @@ from backend.auth.auth_helper import get_effective_roles
 from backend.shared.text_utils import clean_id
 
 
-MANAGER_ROLES = {"super_admin", "manager"}
+PLATFORM_ADMIN_ROLES = {"super_admin"}
+ORGANIZATION_MANAGER_ROLES = {"owner", "manager"}
 WRITE_PROTECTED_KEYS = {
     "assignments",
     "permissionmatrix",
@@ -42,7 +43,41 @@ def _roles(role_str):
 
 
 def is_manager_role(role_str):
-    return bool(_roles(role_str) & MANAGER_ROLES)
+    """Return whether an account has the platform-wide administration role.
+
+    Organization manager roles deliberately do not belong here: they must always
+    be resolved against a concrete membership and organization.
+    """
+
+    return bool(_roles(role_str) & PLATFORM_ADMIN_ROLES)
+
+
+def organization_membership_role(cursor, user_id, owner_id):
+    if not user_id or not owner_id:
+        return None
+    cursor.execute(
+        """
+        SELECT lower(trim(vai_tro_trong_to_chuc))
+        FROM thanh_vien_to_chuc
+        WHERE user_id = ? AND to_chuc_id = ?
+        LIMIT 1
+        """,
+        (user_id, owner_id),
+    )
+    row = cursor.fetchone()
+    return str(row[0] or "").strip().lower() if row else None
+
+
+def is_organization_manager(cursor, role_str, user_id, owner_id):
+    if is_manager_role(role_str):
+        return True
+    return organization_membership_role(cursor, user_id, owner_id) in ORGANIZATION_MANAGER_ROLES
+
+
+def has_active_organization_membership(cursor, role_str, user_id, owner_id):
+    if is_manager_role(role_str):
+        return True
+    return organization_membership_role(cursor, user_id, owner_id) is not None
 
 
 def _permission_for(cursor, owner_id, user_id, module_name):
@@ -62,8 +97,10 @@ def _permission_for(cursor, owner_id, user_id, module_name):
 
 
 def has_module_permission(cursor, role_str, user_id, owner_id, module_name, action="view"):
-    if is_manager_role(role_str):
+    if is_organization_manager(cursor, role_str, user_id, owner_id):
         return True
+    if not has_active_organization_membership(cursor, role_str, user_id, owner_id):
+        return False
     permission = _permission_for(cursor, owner_id, user_id, module_name)
     if action == "edit":
         return permission == "edit"
@@ -147,8 +184,8 @@ def _assigned_for_table(cursor, owner_id, user_id, table_name, item_or_id):
     return _assigned(cursor, owner_id, user_id, record_id, target_type)
 
 
-def authorize_payload_key_write(role_str, payload_key):
-    if is_manager_role(role_str):
+def authorize_payload_key_write(role_str, payload_key, *, organization_manager=False):
+    if is_manager_role(role_str) or organization_manager:
         return AccessDecision(True)
     if payload_key in WRITE_PROTECTED_KEYS:
         return AccessDecision(False, f"Không có quyền đồng bộ {payload_key}.")
@@ -156,10 +193,15 @@ def authorize_payload_key_write(role_str, payload_key):
 
 
 def authorize_record_write(cursor, role_str, user_id, owner_id, payload_key, table_name, item):
-    key_decision = authorize_payload_key_write(role_str, payload_key)
+    organization_manager = is_organization_manager(cursor, role_str, user_id, owner_id)
+    key_decision = authorize_payload_key_write(
+        role_str,
+        payload_key,
+        organization_manager=organization_manager,
+    )
     if not key_decision.allowed:
         return key_decision
-    if is_manager_role(role_str):
+    if organization_manager:
         return AccessDecision(True)
 
     module_name = TABLE_TO_MODULE.get(table_name)
@@ -179,8 +221,10 @@ def authorize_record_write(cursor, role_str, user_id, owner_id, payload_key, tab
 
 
 def can_read_table(cursor, role_str, user_id, owner_id, payload_key, table_name):
-    if is_manager_role(role_str):
+    if is_organization_manager(cursor, role_str, user_id, owner_id):
         return True
+    if not has_active_organization_membership(cursor, role_str, user_id, owner_id):
+        return False
     if payload_key in {"assignments", "permissionmatrix"}:
         return True
     module_name = TABLE_TO_MODULE.get(table_name)
@@ -188,7 +232,7 @@ def can_read_table(cursor, role_str, user_id, owner_id, payload_key, table_name)
 
 
 def can_read_record(cursor, role_str, user_id, owner_id, payload_key, table_name, item_or_id):
-    if is_manager_role(role_str):
+    if is_organization_manager(cursor, role_str, user_id, owner_id):
         return True
     if not can_read_table(cursor, role_str, user_id, owner_id, payload_key, table_name):
         return False
@@ -198,7 +242,7 @@ def can_read_record(cursor, role_str, user_id, owner_id, payload_key, table_name
 
 
 def filter_items_for_read(cursor, role_str, user_id, owner_id, payload_key, table_name, items):
-    if is_manager_role(role_str):
+    if is_organization_manager(cursor, role_str, user_id, owner_id):
         return list(items or [])
 
     source_items = list(items or [])

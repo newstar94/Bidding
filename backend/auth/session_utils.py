@@ -1,5 +1,6 @@
 import time
 import threading
+from dataclasses import dataclass
 from backend.db.db_helper import database
 
 _org_cache = {}
@@ -9,6 +10,21 @@ ORG_CACHE_TTL = 60
 class OrgPermissionError(Exception):
     """Lỗi khi người dùng không có quyền truy cập vào tổ chức được yêu cầu."""
     pass
+
+
+@dataclass(frozen=True)
+class OrganizationContext:
+    active_org_id: str
+    membership_role: str
+    organization_status: str
+
+
+def _attach_organization_context(request, context):
+    try:
+        request.state.organization_context = context
+    except (AttributeError, TypeError):
+        # Lightweight request doubles used in tests may not expose Starlette state.
+        pass
 
 
 
@@ -26,14 +42,16 @@ def get_active_org(request, user_id):
             if now < expire:
                 if isinstance(val, Exception):
                     raise val
-                return val
+                _attach_organization_context(request, val)
+                return val.active_org_id
             else:
                 del _org_cache[cache_key]
 
     conn = database.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT tc.id, tc.ten_to_chuc
+        SELECT tc.id, tc.ten_to_chuc, tc.trang_thai,
+               tvtc.vai_tro_trong_to_chuc
         FROM thanh_vien_to_chuc tvtc
         JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
         WHERE tvtc.user_id = ?
@@ -45,29 +63,44 @@ def get_active_org(request, user_id):
     if active_org:
         matched = False
         for row in rows:
-            if active_org == row['id'] or active_org == row['ten_to_chuc']:
+            if active_org == row['id']:
                 matched = True
-                result = row['id']
+                selected_row = row
                 break
         if not matched:
-
-            if active_org == str(user_id):
-                result = str(user_id)
-            else:
-                exc = OrgPermissionError("Không có quyền truy cập tổ chức này!")
-                with _org_cache_lock:
-                    _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
-                raise exc
+            exc = OrgPermissionError("Không có quyền truy cập tổ chức này!")
+            with _org_cache_lock:
+                _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+            raise exc
     else:
         if not rows:
-            result = str(user_id)
+            exc = OrgPermissionError("Tài khoản chưa thuộc tổ chức nào!")
+            with _org_cache_lock:
+                _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+            raise exc
         else:
-            result = rows[0]['id']
+            selected_row = rows[0]
+
+    status = str(selected_row['trang_thai'] or '').strip().lower()
+    if status != 'active':
+        exc = OrgPermissionError("Tổ chức đang bị tạm ngưng!")
+        with _org_cache_lock:
+            _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+        raise exc
+    membership_role = str(selected_row['vai_tro_trong_to_chuc'] or '').strip().lower()
+    if membership_role not in {'owner', 'manager', 'employee', 'viewer'}:
+        raise OrgPermissionError("Vai trò thành viên tổ chức không hợp lệ!")
+    context = OrganizationContext(
+        active_org_id=str(selected_row['id']),
+        membership_role=membership_role,
+        organization_status=status,
+    )
 
     with _org_cache_lock:
-        _org_cache[cache_key] = (result, now + ORG_CACHE_TTL)
+        _org_cache[cache_key] = (context, now + ORG_CACHE_TTL)
 
-    return result
+    _attach_organization_context(request, context)
+    return context.active_org_id
 
 
 
