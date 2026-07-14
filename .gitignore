@@ -9,6 +9,7 @@ __pycache__/
 # Database SQLite (Bỏ qua file DB thay đổi cục bộ)
 data/bidding.db
 data/bidding.db-*
+data/*.writer.lock
 backend/db/bidding.db*
 
 # Log files
