@@ -4,18 +4,20 @@ import ipaddress
 import os
 
 
-def _trusted_proxy_networks():
-    raw_value = os.environ.get("TRUSTED_PROXY_CIDRS", "")
+def parse_ip_networks(raw_value, *, allow_wildcard=False):
     networks = []
-    for raw_item in raw_value.split(","):
+    for raw_item in str(raw_value or "").split(","):
         item = raw_item.strip()
         if not item:
             continue
-        try:
-            networks.append(ipaddress.ip_network(item, strict=False))
-        except ValueError:
-            continue
+        if item == "*" and allow_wildcard:
+            return ("*",)
+        networks.append(ipaddress.ip_network(item, strict=False))
     return tuple(networks)
+
+
+def trusted_proxy_networks():
+    return parse_ip_networks(os.environ.get("TRUSTED_PROXY_CIDRS", ""))
 
 
 def _parse_ip(value):
@@ -30,6 +32,36 @@ def _is_trusted_proxy(address, networks):
     return parsed is not None and any(parsed in network for network in networks)
 
 
+def is_client_ip_allowed(address, raw_allowlist=None):
+    raw_value = raw_allowlist if raw_allowlist is not None else os.environ.get(
+        "SUPER_ADMIN_IP_ALLOWLIST",
+        "127.0.0.1/32,::1/128",
+    )
+    try:
+        networks = parse_ip_networks(raw_value, allow_wildcard=True)
+    except ValueError:
+        return False
+    if networks == ("*",):
+        return True
+    return _is_trusted_proxy(address, networks)
+
+
+def is_trusted_proxy_peer(request):
+    peer = str(getattr(getattr(request, "client", None), "host", "unknown") or "unknown")
+    try:
+        return _is_trusted_proxy(peer, trusted_proxy_networks())
+    except ValueError:
+        return False
+
+
+def is_request_secure(request):
+    if str(getattr(getattr(request, "url", None), "scheme", "")).lower() == "https":
+        return True
+    if not is_trusted_proxy_peer(request):
+        return False
+    return request.headers.get("X-Forwarded-Proto", "").strip().lower() == "https"
+
+
 def get_client_ip(request):
     """Return the first untrusted hop, starting from the socket peer.
 
@@ -37,7 +69,10 @@ def get_client_ip(request):
     configured trusted proxy CIDR. Malformed chains fail closed to the peer IP.
     """
     peer = str(getattr(getattr(request, "client", None), "host", "unknown") or "unknown")
-    networks = _trusted_proxy_networks()
+    try:
+        networks = trusted_proxy_networks()
+    except ValueError:
+        return peer
     if not networks or not _is_trusted_proxy(peer, networks):
         return peer
 

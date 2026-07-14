@@ -361,12 +361,20 @@ export function setupRBACEvents() {
     bindAdminEvent(formHsg, "submit", "save-paper-status", async (e) => {
       e.preventDefault();
       if (!this.view.validateForm(formHsg)) return;
-      const orgId = "1";
+      const organizationId = getActiveOrganizationId();
+      if (!organizationId) {
+        await this.view.customAlert("Không thể lưu", "Không xác định được tổ chức đang làm việc.", "alert-triangle");
+        return;
+      }
       const id = document.getElementById("form-hosogiay-id").value;
       const name = document.getElementById("hsg-name").value.trim();
       const color = document.getElementById("hsg-color").value;
+      const currentStatus = id
+        ? this.model.state.custompaperstatuses.find((status) => status.id === id)
+        : null;
       const data = {
-        orgId,
+        ...(currentStatus || {}),
+        organizationId,
         id: id || generateRecordId("custompaperstatuses"),
         name,
         color
@@ -377,14 +385,23 @@ export function setupRBACEvents() {
       } else {
         this.model.state.custompaperstatuses.push(data);
       }
-      this.model.persistData("custompaperstatuses");
+      await this.model.persistData("custompaperstatuses");
+      this.view.renderManagerHoSoGiayPanel();
+      const syncResult = await this.autoSync();
+      if (!syncResult?.ok) {
+        await this.view.customAlert(
+          "Chưa đồng bộ",
+          "Thay đổi đã được lưu trên thiết bị nhưng chưa được máy chủ xác nhận. Vui lòng đồng bộ lại.",
+          "alert-triangle"
+        );
+        return;
+      }
       formHsg.reset();
       document.getElementById("form-hosogiay-id").value = "";
       document.getElementById("btn-save-hosogiay").innerHTML = '<i data-lucide="plus"></i> Thêm trạng thái';
       lucide.createIcons();
       this.view.renderManagerHoSoGiayPanel();
       await this.view.customAlert("Thành công", "Trạng thái hồ sơ giấy đã được cập nhật thành công!", "check-circle");
-      this.autoSync();
     });
   }
   const suPkgDropdown = document.getElementById("detail-su-package");
@@ -529,31 +546,25 @@ export function setupRBACEvents() {
     bindAdminEvent(formProfileUpdate, "submit", "save-profile", async (e) => {
       e.preventDefault();
       if (!this.view.validateForm(formProfileUpdate)) return;
-      const username = document.getElementById("profile-username").value;
       const name = document.getElementById("profile-fullname").value.trim();
       const email = document.getElementById("profile-email").value.trim();
-      const organizationName = document.getElementById("profile-organization") ? document.getElementById("profile-organization").value.trim() : "";
       const avatar = this.tempProfileAvatarBase64 || this.model.state.activeuser.avatar || "";
       try {
         const res = await fetch("/api/auth/update-profile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, name, email, organization_name: organizationName, avatar })
+          body: JSON.stringify({ name, email, avatar })
         });
         const data = await res.json();
-        if (res.ok) {
-          this.model.state.activeuser.name = name;
-          this.model.state.activeuser.email = email;
-          this.model.state.activeuser.organization_name = organizationName;
-          if (avatar) {
-            this.model.state.activeuser.avatar = avatar;
-          }
+        if (res.ok && data.profile) {
+          this.model.state.activeuser.name = data.profile.name;
+          this.model.state.activeuser.email = data.profile.email;
+          this.model.state.activeuser.avatar = data.profile.avatar || "";
           localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
           this.view.updateActiveUserProfileDisplay();
           await this.view.customAlert("Thành công", "Thông tin cá nhân đã được cập nhật thành công!", "check-circle");
-          this.autoSync();
         } else {
-          await this.view.customAlert("Thất bại", data.error || "Không thể cập nhật hồ sơ.", "alert-triangle");
+          await this.view.customAlert("Thất bại", data.error || "Máy chủ không trả về hồ sơ đã cập nhật.", "alert-triangle");
         }
       } catch (err) {
         await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
@@ -704,6 +715,7 @@ export async function deleteHoSoGiayStatus(id) {
   );
   if (!confirmed) return;
   this.model.state.custompaperstatuses = this.model.state.custompaperstatuses.filter((s) => s.id !== id);
+  this.model.markDeleted?.("custompaperstatuses", [id]);
   await this.model.persistData("custompaperstatuses");
   const editingId = document.getElementById("form-hosogiay-id").value;
   if (editingId === id) {
@@ -712,8 +724,16 @@ export async function deleteHoSoGiayStatus(id) {
     document.getElementById("btn-save-hosogiay").innerHTML = '<i data-lucide="plus"></i> Thêm trạng thái';
   }
   this.view.renderManagerHoSoGiayPanel();
+  const syncResult = await this.autoSync();
+  if (!syncResult?.ok) {
+    await this.view.customAlert(
+      "Chưa đồng bộ",
+      "Yêu cầu xóa đã được lưu trên thiết bị nhưng chưa được máy chủ xác nhận. Vui lòng đồng bộ lại.",
+      "alert-triangle"
+    );
+    return;
+  }
   await this.view.customAlert("Thành công", "Đã xóa trạng thái hồ sơ giấy thành công!", "check-circle");
-  await this.autoSync();
 }
 export async function editSystemPackage(pkgId) {
   const pkg = this.model.state.systempackages.find((p) => p.id === pkgId);

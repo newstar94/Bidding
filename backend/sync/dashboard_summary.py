@@ -4,11 +4,11 @@ from backend.shared.access_policy import can_read_table, is_organization_manager
 from backend.sync.mapper import map_db_to_json
 
 
-def build_dashboard_summary(cursor, owner_id, role_str, user_id):
-    manager = is_organization_manager(cursor, role_str, user_id, owner_id)
+def build_dashboard_summary(cursor, organization_id, role_str, user_id):
+    manager = is_organization_manager(cursor, role_str, user_id, organization_id)
 
     def can(payload_key, table_name):
-        return can_read_table(cursor, role_str, user_id, owner_id, payload_key, table_name)
+        return can_read_table(cursor, role_str, user_id, organization_id, payload_key, table_name)
 
     def scalar(sql, params=()):
         cursor.execute(sql, params)
@@ -26,7 +26,7 @@ def build_dashboard_summary(cursor, owner_id, role_str, user_id):
                                     id DESC
                        ) AS rn
                 FROM {table_name}
-                WHERE owner_id = ?
+                WHERE organization_id = ? AND archived_at IS NULL
             )
             SELECT * FROM ranked WHERE rn = 1
         """
@@ -34,7 +34,7 @@ def build_dashboard_summary(cursor, owner_id, role_str, user_id):
     def count_latest(payload_key, table_name):
         if not can(payload_key, table_name):
             return 0
-        return int(scalar(f"SELECT COUNT(*) FROM ({latest_cte(table_name)}) latest_rows", (owner_id,)))
+        return int(scalar(f"SELECT COUNT(*) FROM ({latest_cte(table_name)}) latest_rows", (organization_id,)))
 
     counts = {
         "kehoach": 0,
@@ -65,7 +65,7 @@ def build_dashboard_summary(cursor, owner_id, role_str, user_id):
                 FROM ({latest_cte("ke_hoach_lcnt")}) kh
                 WHERE EXISTS (
                     SELECT 1 FROM phan_cong_nhan_su pc
-                    WHERE pc.owner_id = ?
+                    WHERE pc.organization_id = ?
                       AND pc.id_nhan_vien = ?
                       AND pc.loai_doi_tuong = 'kehoach'
                       AND pc.id_muc_tieu = kh.id
@@ -73,23 +73,23 @@ def build_dashboard_summary(cursor, owner_id, role_str, user_id):
                 OR EXISTS (
                     SELECT 1 FROM goi_thau gt
                     JOIN phan_cong_nhan_su pc
-                      ON pc.owner_id = gt.owner_id
+                      ON pc.organization_id = gt.organization_id
                      AND pc.id_muc_tieu = gt.id
                      AND pc.loai_doi_tuong = 'goithau'
-                    WHERE gt.owner_id = ?
+                    WHERE gt.organization_id = ?
                       AND gt.ke_hoach_id = kh.id
                       AND pc.id_nhan_vien = ?
                 )
-            """, (owner_id, owner_id, user_id, owner_id, user_id))
+            """, (organization_id, organization_id, user_id, organization_id, user_id))
             counts["kehoach"] = int(cursor.fetchone()[0] or 0)
 
     package_filter_sql = ""
-    package_params = [owner_id]
+    package_params = [organization_id]
     if not manager:
         package_filter_sql = """
             AND EXISTS (
                 SELECT 1 FROM phan_cong_nhan_su pc
-                WHERE pc.owner_id = latest_rows.owner_id
+                WHERE pc.organization_id = latest_rows.organization_id
                   AND pc.id_nhan_vien = ?
                   AND pc.id_muc_tieu = latest_rows.id
                   AND pc.loai_doi_tuong = 'goithau'
@@ -129,20 +129,20 @@ def build_dashboard_summary(cursor, owner_id, role_str, user_id):
 
     if can("hopdong", "hop_dong"):
         if manager:
-            cursor.execute("SELECT COUNT(*), COALESCE(SUM(gia_tri), 0) FROM hop_dong WHERE owner_id = ?", (owner_id,))
+            cursor.execute("SELECT COUNT(*), COALESCE(SUM(gia_tri), 0) FROM hop_dong WHERE organization_id = ? AND archived_at IS NULL", (organization_id,))
         else:
             cursor.execute("""
                 SELECT COUNT(*), COALESCE(SUM(hd.gia_tri), 0)
                 FROM hop_dong hd
-                WHERE hd.owner_id = ?
+                WHERE hd.organization_id = ? AND hd.archived_at IS NULL
                   AND EXISTS (
                       SELECT 1 FROM phan_cong_nhan_su pc
-                      WHERE pc.owner_id = hd.owner_id
+                      WHERE pc.organization_id = hd.organization_id
                         AND pc.id_nhan_vien = ?
                         AND pc.id_muc_tieu = hd.id
                         AND pc.loai_doi_tuong = 'hopdong'
                   )
-            """, (owner_id, user_id))
+            """, (organization_id, user_id))
         row = cursor.fetchone()
         counts["hopdong"] = int(row[0] or 0) if row else 0
         total_contract_value = float(row[1] or 0) if row else 0
@@ -153,4 +153,3 @@ def build_dashboard_summary(cursor, owner_id, role_str, user_id):
         "recentPackages": recent_packages,
         "totalContractValue": total_contract_value,
     }
-

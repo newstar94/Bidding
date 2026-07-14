@@ -1016,7 +1016,7 @@ export class BiddingView {
       modal.classList.add("active");
     });
   }
-  customPrompt(title, message, defaultValue = "", placeholder = "", isDatePicker = false, validateFn = null) {
+  customPrompt(title, message, defaultValue = "", placeholder = "", isDatePicker = false, validateFn = null, inputType = "text") {
     return new Promise((resolve) => {
       const modal = document.getElementById("modal-custom-dialog");
       const titleEl = document.getElementById("dialog-title");
@@ -1036,7 +1036,7 @@ export class BiddingView {
       inputContainer.style.marginBottom = "20px";
       inputContainer.style.textAlign = "left";
       const inputEl = document.createElement("input");
-      inputEl.type = "text";
+      inputEl.type = inputType;
       inputEl.id = "dialog-prompt-input";
       inputEl.value = defaultValue;
       inputEl.placeholder = placeholder;

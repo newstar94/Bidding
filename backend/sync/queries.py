@@ -40,14 +40,14 @@ def build_fts_match_query(search_text):
     return " ".join(f"{token}*" for token in tokens[:8])
 
 
-def get_expert_relations_for_packages(cursor, gt_ids, owner_id=None):
+def get_expert_relations_for_packages(cursor, gt_ids, organization_id=None):
     if not gt_ids:
         return {}
     placeholders = ", ".join(["?"] * len(gt_ids))
-    owner_filter = " AND owner_id = ?" if owner_id is not None else ""
+    owner_filter = " AND organization_id = ?" if organization_id is not None else ""
     params = list(gt_ids)
-    if owner_id is not None:
-        params.append(owner_id)
+    if organization_id is not None:
+        params.append(organization_id)
     cursor.execute(f"""
         SELECT goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
         FROM goi_thau_chuyen_gia
@@ -72,14 +72,14 @@ def get_expert_relations_for_packages(cursor, gt_ids, owner_id=None):
     return relations_map
 
 
-def get_contract_package_ids(cursor, hd_ids, owner_id=None):
+def get_contract_package_ids(cursor, hd_ids, organization_id=None):
     if not hd_ids:
         return {}
     placeholders = ", ".join(["?"] * len(hd_ids))
-    owner_filter = " AND owner_id = ?" if owner_id is not None else ""
+    owner_filter = " AND organization_id = ?" if organization_id is not None else ""
     params = list(hd_ids)
-    if owner_id is not None:
-        params.append(owner_id)
+    if organization_id is not None:
+        params.append(organization_id)
     cursor.execute(
         f"SELECT hop_dong_id, goi_thau_id FROM hop_dong_goi_thau WHERE hop_dong_id IN ({placeholders}){owner_filter}",
         tuple(params)

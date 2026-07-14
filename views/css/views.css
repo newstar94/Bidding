@@ -1223,6 +1223,8 @@ table th {
   align-items: center;
   justify-content: center;
   padding: 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
   animation: fadeIn var(--transition-fast) forwards;
 }
 .auth-card {
@@ -1234,6 +1236,7 @@ table th {
   max-width: 460px;
   padding: 40px;
   position: relative;
+  margin: auto 0;
   transform: scale(0.95);
   animation: popIn var(--transition-fast) forwards;
 }
@@ -1349,6 +1352,82 @@ table th {
 }
 .auth-footer-links .bullet {
   color: var(--text-light);
+}
+.google-signin-container {
+  display: flex;
+  min-height: 44px;
+  margin-bottom: 4px;
+  align-items: center;
+  justify-content: center;
+}
+.google-signin-loading {
+  display: flex;
+  width: min(300px, 100%);
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.google-signin-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: bf-initial-spin 0.75s linear infinite;
+}
+.google-signin-status {
+  margin: 6px auto 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  text-align: center;
+}
+.google-signin-status[data-state="error"] {
+  color: var(--danger);
+}
+@media (max-height: 760px) {
+  .auth-overlay {
+    align-items: flex-start;
+    padding: 12px 20px;
+  }
+  .auth-card {
+    padding: 24px 32px;
+  }
+  .auth-brand {
+    margin-bottom: 16px;
+    gap: 5px;
+  }
+  .auth-subtitle {
+    margin-bottom: 16px;
+  }
+}
+@media (max-height: 620px) {
+  .auth-brand {
+    margin-bottom: 10px;
+  }
+  .auth-brand .brand-icon,
+  .auth-brand span,
+  .auth-subtitle {
+    display: none;
+  }
+  .btn-auth-submit {
+    margin-top: 16px;
+  }
+}
+@media (max-width: 520px) {
+  .auth-overlay {
+    padding: 10px;
+  }
+  .auth-card {
+    padding: 24px 20px;
+  }
 }
 .auth-error-msg {
   background-color: var(--danger-soft);

@@ -291,8 +291,8 @@ export async function editHopDong(id) {
     }
     const statusSelect = document.getElementById("hd-trangthai");
     if (statusSelect) {
-      const orgId = "1";
-      const orgStatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses.filter((s) => s.orgId === orgId) : [];
+      // The sync endpoint already scopes this collection to the active organization.
+      const orgStatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses : [];
       statusSelect.innerHTML = '<option value="">-- Chọn Trạng thái --</option>' + orgStatuses.map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join("");
     }
     if (id) {

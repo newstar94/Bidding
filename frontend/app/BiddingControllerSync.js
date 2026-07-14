@@ -174,7 +174,7 @@ export function detailRecordExists(model, tableKey, lookup) {
     if (!isMatch) return false;
     if (item.referenceOnly === true) return false;
     if (item.referenceOnly === false) return true;
-    return hasMeaningfulValue(item.ownerId) || (completenessFields[tableKey] || []).some((field) => hasMeaningfulValue(item[field]));
+    return hasMeaningfulValue(item.organizationId) || (completenessFields[tableKey] || []).some((field) => hasMeaningfulValue(item[field]));
   });
 }
 export async function fetchRecordByLookup(tableKey, lookup) {

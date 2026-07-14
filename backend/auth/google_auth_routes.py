@@ -1,12 +1,11 @@
 import os
-import re
 import json
 import uuid
 import time
 import urllib.request
 import urllib.error
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
@@ -19,7 +18,8 @@ from backend.shared.helpers import (
 )
 from backend.auth.auth_service import (
     get_client_ip,
-    check_rate_limit,
+    get_rate_limit_decision,
+    rate_limit_response,
     record_rate_limit_failure,
     build_user_access_payload,
     provision_user_organization,
@@ -28,6 +28,11 @@ from backend.auth.auth_service import (
     SESSION_INACTIVITY_TIMEOUT_HOURS,
 )
 from backend.db.id_utils import generate_record_id
+from backend.shared.async_io import (
+    BlockingIOBusyError,
+    BlockingIOTimeoutError,
+    run_blocking_io,
+)
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
@@ -42,41 +47,7 @@ _UNICODE_MAP = str.maketrans(
     "AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIIIOOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD",
 )
 
-from backend.auth.username_validator import validate_username as _validate_username
-
-
-def _generate_suggested_username(name: str, email: str, cursor) -> str:
-
-    import re as _re_u
-    import random as _random
-
-    email_prefix = email.split('@')[0].lower()
-    base = _re_u.sub(r'[^a-z0-9_]', '_', email_prefix)
-    base = _re_u.sub(r'_+', '_', base).strip('_')
-
-    if len(base) < 3:
-        base = 'user'
-
-
-    ok, _ = _validate_username(base)
-    if not ok:
-        base = (base[:26] + '_u').strip('_')
-
-    candidate = base
-    while True:
-        try:
-            cursor.execute("SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ?", (candidate,))
-            if not cursor.fetchone():
-                ok, _ = _validate_username(candidate)
-                if ok:
-                    break
-        except Exception:
-            break
-
-        rand_suffix = ''.join(_random.choice('abcdefghijklmnopqrstuvwxyz0123456789') for _ in range(4))
-        candidate = f"{base[:25]}_{rand_suffix}"
-
-    return candidate
+from backend.auth.username_validator import generate_suggested_username
 
 
 def _verify_google_token(id_token: str):
@@ -121,11 +92,9 @@ async def google_login_api(request):
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
-        if not check_rate_limit(rate_key, consume_attempt=False):
-            return JSONResponse(
-                {"error": "Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau 60 giây."},
-                status_code=429,
-            )
+        google_limit = get_rate_limit_decision(rate_key, consume_attempt=False)
+        if not google_limit.allowed:
+            return rate_limit_response("Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau.", google_limit)
 
         if not GOOGLE_CLIENT_ID:
             return JSONResponse(
@@ -143,7 +112,20 @@ async def google_login_api(request):
             record_rate_limit_failure(rate_key)
             return JSONResponse({"error": "Thiếu thông tin xác thực Google."}, status_code=400)
 
-        payload = _verify_google_token(credential)
+        try:
+            payload = await run_blocking_io(
+                _verify_google_token,
+                credential,
+                timeout_seconds=12,
+            )
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
+            return JSONResponse(
+                {
+                    "error": "Dịch vụ xác thực Google đang bận. Vui lòng thử lại sau.",
+                    "code": "GOOGLE_AUTH_UPSTREAM_BUSY",
+                },
+                status_code=503,
+            )
         if not payload:
             record_rate_limit_failure(rate_key)
             log_audit("auth.google_login_failed", request=request, metadata={"reason": "invalid_token"})
@@ -321,12 +303,12 @@ async def google_login_api(request):
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
-            "ip": request.client.host,
-            "login_time": datetime.utcnow().isoformat(),
+            "ip": get_client_ip(request),
+            "login_time": datetime.now(timezone.utc).isoformat(),
             "method": "google",
         })
         cursor.execute(
-            "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ? WHERE id = ?",
+            "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ?, privileged_reauth_at = NULL WHERE id = ?",
             (session_token, token_expiry, device_info, user["id"]),
         )
         _session_cache_invalidate_by_user_id(user["id"])
@@ -349,7 +331,7 @@ async def google_login_api(request):
             bg_tasks,
             "auth.google_login_success",
             actor_user_id=user["id"],
-            owner_id=access_payload["active_org_id"],
+            organization_id=access_payload["active_org_id"],
             target_type="tai_khoan",
             target_id=user["id"],
             request=request,
@@ -361,7 +343,7 @@ async def google_login_api(request):
 
         suggested_username = ""
         if needs_username:
-            suggested_username = _generate_suggested_username(user.get("ho_ten", ""), email, cursor)
+            suggested_username = generate_suggested_username(user.get("ho_ten", ""), email, cursor)
 
         response = JSONResponse({
             "success": True,

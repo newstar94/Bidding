@@ -5,7 +5,6 @@ from .schema_contract import json_key_for_column
 
 
 WORD_DEFAULT_MAPPINGS_VERSION = 7
-WORD_DEFAULT_SEED_PREFIX = "__word_defaults_seeded_v"
 
 
 WORD_SINGLE_SOURCES = {
@@ -410,13 +409,9 @@ WORD_CONTEXT_MAPPINGS = [
 ]
 
 
-def _stable_word_mapping_id(owner_id, ten_bien):
-    digest = hashlib.sha1(f"{owner_id}:{ten_bien}".encode("utf-8")).hexdigest()[:16]
+def _stable_word_mapping_id(organization_id, ten_bien):
+    digest = hashlib.sha1(f"{organization_id}:{ten_bien}".encode("utf-8")).hexdigest()[:16]
     return f"wdef-{digest}"
-
-
-def _seed_marker(owner_id):
-    return f"{WORD_DEFAULT_SEED_PREFIX}{WORD_DEFAULT_MAPPINGS_VERSION}:{owner_id}"
 
 
 def _default_single_name(source_table, column):
@@ -458,13 +453,16 @@ def build_default_word_mappings():
     return mappings
 
 
-def ensure_default_word_mappings(cursor, owner_id):
-    if not owner_id:
+def ensure_default_word_mappings(cursor, organization_id):
+    if not organization_id:
         return 0
 
-    marker = _seed_marker(owner_id)
-    cursor.execute("SELECT 1 FROM sync_metadata WHERE owner_id = ?", (marker,))
-    marker_exists = bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT mappings_version FROM word_default_seeds WHERE organization_id = ?",
+        (organization_id,),
+    )
+    seed_row = cursor.fetchone()
+    marker_exists = bool(seed_row and int(seed_row[0]) >= WORD_DEFAULT_MAPPINGS_VERSION)
 
     inserted = 0
     for mapping in build_default_word_mappings():
@@ -472,9 +470,9 @@ def ensure_default_word_mappings(cursor, owner_id):
             """
             SELECT id, ten_bien, mo_ta
             FROM cau_hinh_bien_word
-            WHERE owner_id = ? AND source_table = ? AND source_column = ?
+            WHERE organization_id = ? AND source_table = ? AND source_column = ?
             """,
-            (owner_id, mapping["source_table"], mapping["source_column"]),
+            (organization_id, mapping["source_table"], mapping["source_column"]),
         )
         existing = cursor.fetchone()
         if existing:
@@ -487,8 +485,8 @@ def ensure_default_word_mappings(cursor, owner_id):
                 )
             ):
                 cursor.execute(
-                    "SELECT 1 FROM cau_hinh_bien_word WHERE owner_id = ? AND ten_bien = ? AND id != ?",
-                    (owner_id, mapping["ten_bien"], existing_id),
+                    "SELECT 1 FROM cau_hinh_bien_word WHERE organization_id = ? AND ten_bien = ? AND id != ?",
+                    (organization_id, mapping["ten_bien"], existing_id),
                 )
                 if not cursor.fetchone():
                     cursor.execute(
@@ -501,12 +499,12 @@ def ensure_default_word_mappings(cursor, owner_id):
             cursor.execute(
                 """
                 INSERT OR IGNORE INTO cau_hinh_bien_word (
-                    id, owner_id, owner_type, ten_bien, source_table, source_column, mo_ta
+                    id, organization_id, owner_type, ten_bien, source_table, source_column, mo_ta
                 ) VALUES (?, ?, 'organization', ?, ?, ?, ?)
                 """,
                 (
-                    _stable_word_mapping_id(owner_id, mapping["ten_bien"]),
-                    owner_id,
+                    _stable_word_mapping_id(organization_id, mapping["ten_bien"]),
+                    organization_id,
                     mapping["ten_bien"],
                     mapping["source_table"],
                     mapping["source_column"],
@@ -517,8 +515,14 @@ def ensure_default_word_mappings(cursor, owner_id):
 
     if not marker_exists:
         cursor.execute(
-            "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, ?)",
-            (marker, WORD_DEFAULT_MAPPINGS_VERSION),
+            """
+            INSERT INTO word_default_seeds (organization_id, mappings_version)
+            VALUES (?, ?)
+            ON CONFLICT(organization_id) DO UPDATE SET
+                mappings_version = excluded.mappings_version,
+                updated_at = datetime('now', 'localtime')
+            """,
+            (organization_id, WORD_DEFAULT_MAPPINGS_VERSION),
         )
     return inserted
 

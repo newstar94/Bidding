@@ -14,6 +14,7 @@ Trả về:
 """
 
 import re as _re
+import secrets
 
 
 
@@ -150,3 +151,30 @@ def validate_username(username: str):
         )
 
     return True, ""
+
+
+def generate_suggested_username(name: str, email: str, cursor) -> str:
+    """Generate an available username using the same validation contract as set-username."""
+    del name  # Reserved for future name-based suggestions; email is stable today.
+    email_prefix = str(email or "").split("@", 1)[0].lower()
+    base = _re.sub(r"[^a-z0-9_]", "_", email_prefix)
+    base = _re.sub(r"_+", "_", base).strip("_")
+    if len(base) < 3:
+        base = "user"
+
+    valid, _message = validate_username(base)
+    if not valid:
+        base = "member"
+
+    candidate = base
+    while True:
+        cursor.execute(
+            "SELECT 1 FROM tai_khoan WHERE ten_dang_nhap = ?",
+            (candidate,),
+        )
+        if not cursor.fetchone():
+            valid, _message = validate_username(candidate)
+            if valid:
+                return candidate
+        suffix = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(4))
+        candidate = f"{base[:25]}_{suffix}"

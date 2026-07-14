@@ -284,7 +284,7 @@ def run_partner_lookup_worker():
 
 
             cursor.execute("""
-                SELECT id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau,
+                SELECT id, organization_id, ma_nha_thau, ma_so_thue, ten_nha_thau,
                        dia_chi, dia_chi_goc, ten_viet_tat
                 FROM nha_thau
                 WHERE (
@@ -322,7 +322,7 @@ def run_partner_lookup_worker():
             _worker_debug(f"[Partner Worker] Found {len(rows)} contractors to lookup.")
 
             for row in rows:
-                c_id, owner_id, ma_nha_thau, ma_so_thue, ten_nha_thau = row[:5]
+                c_id, organization_id, ma_nha_thau, ma_so_thue, ten_nha_thau = row[:5]
 
 
                 tax_code = extract_clean_tax_code(ma_so_thue)
@@ -356,14 +356,14 @@ def run_partner_lookup_worker():
 
 
                     cursor.execute(
-                        "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, 0)",
-                        (owner_id,)
+                        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 0)",
+                        (organization_id,)
                     )
                     cursor.execute(
-                        "UPDATE sync_metadata SET current_version = current_version + 1, updated_at = datetime('now', 'localtime') WHERE owner_id = ?",
-                        (owner_id,)
+                        "UPDATE sync_metadata SET current_version = current_version + 1, updated_at = datetime('now', 'localtime') WHERE organization_id = ?",
+                        (organization_id,)
                     )
-                    cursor.execute("SELECT current_version FROM sync_metadata WHERE owner_id = ?", (owner_id,))
+                    cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))
                     meta_row = cursor.fetchone()
                     new_sync_ver = int(meta_row[0]) if meta_row else 1
 
@@ -395,7 +395,7 @@ def run_partner_lookup_worker():
 
                     try:
                         from backend.sync.api import broadcast_websocket_event
-                        broadcast_websocket_event(owner_id, {
+                        broadcast_websocket_event(organization_id, {
                             "type": "sync_update",
                             "table": "nhathau",
                             "id": c_id,

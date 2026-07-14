@@ -1,7 +1,5 @@
 """Server-side pagination for synchronized entity tables."""
 
-import traceback
-
 from starlette.responses import JSONResponse
 
 from backend.shared.helpers import (
@@ -26,6 +24,8 @@ from backend.sync.queries import (
     get_contract_package_ids as _get_contract_package_ids,
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
+from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
+from backend.shared.logging_utils import error_response, log_and_error
 
 
 async def paginate_records(request):
@@ -61,8 +61,10 @@ async def paginate_records(request):
             return JSONResponse({"items": [], "totalItems": 0})
 
 
-        query_parts = ["owner_id = ?"]
+        query_parts = ["organization_id = ?"]
         query_params = [org_name]
+        if table_name in ARCHIVED_TABLES:
+            query_parts.append("archived_at IS NULL")
         if not is_organization_manager(cursor, role_str, user_id, org_name):
             if table_name == "phan_cong_nhan_su":
                 query_parts.append("id_nhan_vien = ?")
@@ -75,15 +77,15 @@ async def paginate_records(request):
                     (
                         id IN (
                             SELECT id_muc_tieu FROM phan_cong_nhan_su
-                            WHERE owner_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'kehoach'
+                            WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'kehoach'
                         )
                         OR id IN (
                             SELECT gt.ke_hoach_id FROM goi_thau gt
                             JOIN phan_cong_nhan_su pc
-                              ON pc.owner_id = gt.owner_id
+                              ON pc.organization_id = gt.organization_id
                              AND pc.id_muc_tieu = gt.id
                              AND pc.loai_doi_tuong = 'goithau'
-                            WHERE gt.owner_id = ? AND pc.id_nhan_vien = ?
+                            WHERE gt.organization_id = ? AND pc.id_nhan_vien = ?
                         )
                     )
                 """)
@@ -96,7 +98,7 @@ async def paginate_records(request):
                 query_parts.append("""
                     id IN (
                         SELECT id_muc_tieu FROM phan_cong_nhan_su
-                        WHERE owner_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = ?
+                        WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = ?
                     )
                 """)
                 query_params.extend([org_name, user_id, assignment_type])
@@ -104,7 +106,7 @@ async def paginate_records(request):
                 query_parts.append("""
                     goi_thau_id IN (
                         SELECT id_muc_tieu FROM phan_cong_nhan_su
-                        WHERE owner_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'goithau'
+                        WHERE organization_id = ? AND id_nhan_vien = ? AND loai_doi_tuong = 'goithau'
                     )
                 """)
                 query_params.extend([org_name, user_id])
@@ -125,7 +127,7 @@ async def paginate_records(request):
                         ke_hoach_id IS NULL
                         OR ke_hoach_id IN (
                             SELECT id FROM ke_hoach_lcnt
-                            WHERE owner_id = ? AND is_latest = 1
+                            WHERE organization_id = ? AND is_latest = 1 AND archived_at IS NULL
                         )
                     )
                 """)
@@ -159,7 +161,7 @@ async def paginate_records(request):
                 fts_table = f"fts_{table_name}"
                 cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (fts_table,))
                 if cursor.fetchone():
-                    query_parts.append(f"id IN (SELECT id FROM {fts_table} WHERE {fts_table} MATCH ? AND owner_id = ?)")
+                    query_parts.append(f"id IN (SELECT id FROM {fts_table} WHERE {fts_table} MATCH ? AND organization_id = ?)")
                     query_params.extend([fts_query, org_name])
                 else:
                     add_like_search_filter()
@@ -271,7 +273,8 @@ async def paginate_records(request):
             all_root_vals = list({(r["id_goc"] or r["id"]) for r in rows})
             v_placeholders = ", ".join(["?"] * len(all_root_vals))
             version_query_parts = [
-                "owner_id = ?",
+                "organization_id = ?",
+                "archived_at IS NULL",
                 f"""(
                     (id_goc IS NOT NULL AND id_goc != '' AND id_goc IN ({v_placeholders})) OR
                     ((id_goc IS NULL OR id_goc = '') AND id IN ({v_placeholders}))
@@ -327,7 +330,7 @@ async def paginate_records(request):
 
             items.append(item)
         if table_name in ["ke_hoach_lcnt", "goi_thau", "nha_thau", "thong_tin_mo_thau"]:
-            attach_child_rows_to_items(cursor, table_name, items, owner_id=org_name)
+            attach_child_rows_to_items(cursor, table_name, items, organization_id=org_name)
 
         conn.close()
         return JSONResponse({
@@ -335,10 +338,20 @@ async def paginate_records(request):
             "totalItems": total_items
         })
     except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({"error": "Đã xảy ra lỗi hệ thống khi phân trang."}, status_code=500)
+        return log_and_error(
+            request,
+            e,
+            "paginate_records",
+            "PAGINATION_FAILED",
+            "Không thể tải trang dữ liệu.",
+        )
     finally:
 
         if conn:

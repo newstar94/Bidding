@@ -15,23 +15,27 @@ OWNER_SCOPED_REFERENCES = {
     "thong_tin_mo_thau": [("goi_thau_id", "goi_thau"), ("nha_thau_id", "nha_thau")],
 }
 
+ARCHIVABLE_REFERENCE_TABLES = {
+    "chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"
+}
 
-def get_owner_type(cursor, owner_id):
-    cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (owner_id,))
+
+def get_owner_type(cursor, organization_id):
+    cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (organization_id,))
     if cursor.fetchone():
         return "organization"
     return "user"
 
 
-def validate_owner_scoped_references(cursor, owner_id, table_name, item, incoming_ids_by_table=None):
+def validate_owner_scoped_references(cursor, organization_id, table_name, item, incoming_ids_by_table=None):
     errors = []
     incoming_ids_by_table = incoming_ids_by_table or {}
     if table_name in {"phan_cong_nhan_su", "ma_tran_phan_quyen"}:
         emp_id = clean_id(get_payload_value(table_name, item, "id_nhan_vien" if table_name == "phan_cong_nhan_su" else "emp_id"))
-        if emp_id and str(emp_id) != str(owner_id):
+        if emp_id and str(emp_id) != str(organization_id):
             cursor.execute(
-                "SELECT 1 FROM thanh_vien_to_chuc WHERE to_chuc_id = ? AND user_id = ? LIMIT 1",
-                (owner_id, emp_id),
+                "SELECT 1 FROM thanh_vien_to_chuc WHERE organization_id = ? AND user_id = ? LIMIT 1",
+                (organization_id, emp_id),
             )
             if not cursor.fetchone():
                 errors.append(f"Nhan su {emp_id} khong thuoc owner hien tai.")
@@ -44,9 +48,10 @@ def validate_owner_scoped_references(cursor, owner_id, table_name, item, incomin
             if str(target_id) in incoming_ids_by_table.get(target_table, set()):
                 target_table = None
         if target_id and target_table:
+            active_clause = " AND archived_at IS NULL" if target_table in ARCHIVABLE_REFERENCE_TABLES else ""
             cursor.execute(
-                f"SELECT 1 FROM {target_table} WHERE owner_id = ? AND id = ? LIMIT 1",
-                (owner_id, target_id),
+                f"SELECT 1 FROM {target_table} WHERE organization_id = ? AND id = ?{active_clause} LIMIT 1",
+                (organization_id, target_id),
             )
             if not cursor.fetchone():
                 errors.append(f"Phan cong {target_type}={target_id} khong thuoc owner hien tai.")
@@ -57,9 +62,10 @@ def validate_owner_scoped_references(cursor, owner_id, table_name, item, incomin
             continue
         if str(ref_id) in incoming_ids_by_table.get(ref_table, set()):
             continue
+        active_clause = " AND archived_at IS NULL" if ref_table in ARCHIVABLE_REFERENCE_TABLES else ""
         cursor.execute(
-            f"SELECT 1 FROM {ref_table} WHERE owner_id = ? AND id = ? LIMIT 1",
-            (owner_id, ref_id),
+            f"SELECT 1 FROM {ref_table} WHERE organization_id = ? AND id = ?{active_clause} LIMIT 1",
+            (organization_id, ref_id),
         )
         if not cursor.fetchone():
             errors.append(f"Tham chieu {col_name}={ref_id} khong thuoc owner hien tai.")
@@ -75,10 +81,9 @@ def validate_owner_scoped_references(cursor, owner_id, table_name, item, incomin
             if not contractor_id or str(contractor_id) in incoming_ids_by_table.get("nha_thau", set()):
                 continue
             cursor.execute(
-                "SELECT 1 FROM nha_thau WHERE owner_id = ? AND id = ? LIMIT 1",
-                (owner_id, contractor_id),
+                "SELECT 1 FROM nha_thau WHERE organization_id = ? AND id = ? AND archived_at IS NULL LIMIT 1",
+                (organization_id, contractor_id),
             )
             if not cursor.fetchone():
                 errors.append(f"Thanh vien lien danh nha_thau_id={contractor_id} khong thuoc owner hien tai.")
     return errors
-

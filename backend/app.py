@@ -1,5 +1,6 @@
 import sys
 import os
+import asyncio
 
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -40,6 +41,7 @@ from starlette.applications import Starlette
 from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.responses import JSONResponse, HTMLResponse, Response, FileResponse
+from starlette.requests import Request
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -49,6 +51,7 @@ project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
 
 from backend.shared.paths import IMAGE_DIR, WORD_TEMPLATE_DIR
+from backend.shared.client_ip import is_request_secure, parse_ip_networks
 
 
 env_path = os.path.join(project_root, '.env')
@@ -167,6 +170,13 @@ def _html_cache_signature():
                     entries.append((os.path.relpath(path, views_dir), stat.st_mtime_ns, stat.st_size))
                 except OSError:
                     pass
+    for relative_path in (os.path.join('dist', '.vite', 'manifest.json'), os.path.join('dist', 'assets', 'appbundle.js')):
+        try:
+            path = os.path.join(project_root, relative_path)
+            stat = os.stat(path)
+            entries.append((relative_path, stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            pass
     return tuple(entries)
 
 
@@ -226,6 +236,13 @@ def compile_html(file_path):
                     bundle_src = f"/dist/{bundle_file}"
             except Exception as exc:
                 log_error(exc, "frontend_manifest")
+        bundle_path = os.path.join(project_root, bundle_src.lstrip('/').replace('/', os.sep))
+        try:
+            bundle_stat = os.stat(bundle_path)
+            bundle_version = f"{bundle_stat.st_mtime_ns:x}-{bundle_stat.st_size:x}"
+            bundle_src = f"{bundle_src}?v={bundle_version}"
+        except OSError:
+            pass
         compiled = re.sub(
             r'<script\s+type="module"\s+src="/frontend/app/app\.js(?:\?v=[^"]*)?"></script>',
             f'<script type="module" src="{bundle_src}"></script>',
@@ -349,11 +366,14 @@ async def index(request):
 from backend.shared.helpers import (
     log_error,
     ErrorLoggingMiddleware,
+    RequestIdMiddleware,
     OrgPermissionError,
     verify_session,
     database,
     get_active_org
 )
+from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.async_io import get_blocking_io_stats, run_blocking_io
 from backend.db.db_utils import DB_SCHEMA_VERSION
 from backend.startup import (
     validate_startup_configuration,
@@ -377,6 +397,7 @@ from backend.auth.auth_routes import (
     check_session_api,
     update_profile_api,
     change_password_api,
+    privileged_reauth_api,
     logout_api,
     list_users_api,
     delete_user_api,
@@ -423,22 +444,34 @@ from backend.partners.address_routes import (
 
 _holidays_cache = None
 
+
+def _load_holidays_file(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, 'r', encoding='utf-8') as holidays_stream:
+        return json.load(holidays_stream)
+
 async def list_holidays_api(request):
     global _holidays_cache
     if _holidays_cache is not None:
         return JSONResponse(_holidays_cache)
 
-    import json
     holidays_file = os.path.join(project_root, 'holidays.json')
     try:
-        if os.path.exists(holidays_file):
-            with open(holidays_file, 'r', encoding='utf-8') as f:
-                _holidays_cache = json.load(f)
-        else:
-            _holidays_cache = {}
+        _holidays_cache = await run_blocking_io(
+            _load_holidays_file,
+            holidays_file,
+            timeout_seconds=5,
+        )
         return JSONResponse(_holidays_cache)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return log_and_error(
+            request,
+            e,
+            "list_holidays_api",
+            "HOLIDAYS_LOAD_FAILED",
+            "Không thể tải danh sách ngày nghỉ.",
+        )
 
 
 async def health_live_api(request):
@@ -466,10 +499,18 @@ async def health_ready_api(request):
             status_code=503,
             headers={"Cache-Control": "no-store"},
         )
-    return JSONResponse(
+    io_stats = get_blocking_io_stats()
+    response = JSONResponse(
         {"status": "ready"},
-        headers={"Cache-Control": "no-store"},
+        headers={
+            "Cache-Control": "no-store",
+            "X-Event-Loop-Lag-Ms": f"{getattr(request.app.state, 'event_loop_lag_ms', 0.0):.1f}",
+            "X-Blocking-IO-In-Flight": str(io_stats.in_flight),
+            "X-Blocking-IO-Queue-Depth": str(io_stats.queued),
+            "X-Blocking-IO-Timeouts": str(io_stats.timed_out),
+        },
     )
+    return response
 
 
 class SafeStaticFiles(StaticFiles):
@@ -516,23 +557,23 @@ async def protected_image_api(request):
 
     conn = None
     try:
-        owner_id = get_active_org(request, role_or_err.user_id)
+        organization_id = get_active_org(request, role_or_err.user_id)
         stored_path = 'images/' + rel_path
         filename = os.path.basename(rel_path)
         conn = database.get_connection()
         cursor = conn.cursor()
         if rel_path.startswith('nha_thau/'):
             cursor.execute(
-                "SELECT 1 FROM nha_thau WHERE owner_id = ? AND anh_dau = ?",
-                (owner_id, stored_path)
+                "SELECT 1 FROM nha_thau WHERE organization_id = ? AND anh_dau = ?",
+                (organization_id, stored_path)
             )
         else:
             cursor.execute(
                 """
                 SELECT 1 FROM chuyen_gia
-                WHERE owner_id = ? AND (anh_chung_chi = ? OR anh_chu_ky = ?)
+                WHERE organization_id = ? AND (anh_chung_chi = ? OR anh_chu_ky = ?)
                 """,
-                (owner_id, stored_path, stored_path)
+                (organization_id, stored_path, stored_path)
             )
         allowed = cursor.fetchone() is not None
         if not allowed and rel_path.startswith('chuyen_gia/') and '_opt_' in filename:
@@ -540,18 +581,28 @@ async def protected_image_api(request):
             cursor.execute(
                 """
                 SELECT 1 FROM chuyen_gia
-                WHERE owner_id = ? AND (anh_chung_chi LIKE ? OR anh_chu_ky LIKE ?)
+                WHERE organization_id = ? AND (anh_chung_chi LIKE ? OR anh_chu_ky LIKE ?)
                 """,
-                (owner_id, f'images/chuyen_gia/{original_prefix}.%', f'images/chuyen_gia/{original_prefix}.%')
+                (organization_id, f'images/chuyen_gia/{original_prefix}.%', f'images/chuyen_gia/{original_prefix}.%')
             )
             allowed = cursor.fetchone() is not None
         if not allowed:
             return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
     except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
-        log_error(e, "protected_image_api")
-        return JSONResponse({"error": "Không thể kiểm tra quyền truy cập tệp"}, status_code=500)
+        return log_and_error(
+            request,
+            e,
+            "protected_image_api",
+            "PROTECTED_FILE_ACCESS_CHECK_FAILED",
+            "Không thể kiểm tra quyền truy cập tệp.",
+        )
     finally:
         if conn:
             try: conn.close()
@@ -614,6 +665,7 @@ routes = [
     Route("/api/auth/reset-password", reset_password_api, methods=["POST"]),
     Route("/api/auth/update-profile", update_profile_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
+    Route("/api/auth/privileged-reauth", privileged_reauth_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
 
     Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
@@ -686,6 +738,15 @@ cors_origins = _split_env_list(cors_origins_str) or ["http://127.0.0.1:8000"]
 
 if IS_PRODUCTION:
     super_admin_allowlist = _split_env_list(os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", ""))
+    trusted_proxy_cidrs = os.environ.get("TRUSTED_PROXY_CIDRS", "")
+    try:
+        proxy_networks = parse_ip_networks(trusted_proxy_cidrs)
+        admin_networks = parse_ip_networks(
+            os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", ""),
+            allow_wildcard=True,
+        )
+    except ValueError as exc:
+        raise RuntimeError("Trusted proxy and super-admin allowlists must contain valid IP/CIDR values.") from exc
     if not APP_SECURE_COOKIES:
         raise RuntimeError("APP_SECURE_COOKIES=True is required when APP_ENV=production.")
     if "*" in cors_origins or not all(_is_public_https_origin(origin) for origin in cors_origins):
@@ -694,6 +755,10 @@ if IS_PRODUCTION:
         raise RuntimeError("ALLOWED_WS_ORIGINS must contain production HTTPS origins only when APP_ENV=production.")
     if "*" in super_admin_allowlist or not super_admin_allowlist:
         raise RuntimeError("SUPER_ADMIN_IP_ALLOWLIST must be explicit and cannot contain * when APP_ENV=production.")
+    if admin_networks == ("*",) or any(network.prefixlen == 0 for network in admin_networks):
+        raise RuntimeError("SUPER_ADMIN_IP_ALLOWLIST cannot trust the entire internet in production.")
+    if any(network.prefixlen == 0 for network in proxy_networks):
+        raise RuntimeError("TRUSTED_PROXY_CIDRS cannot trust the entire internet in production.")
     if not APP_PUBLIC_URL or not _is_public_https_origin(APP_PUBLIC_URL):
         raise RuntimeError("APP_PUBLIC_URL must be a public HTTPS origin when APP_ENV=production.")
 
@@ -731,7 +796,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         path = request.url.path
 
-        if request.headers.get("X-Forwarded-Proto") == "https":
+        if is_request_secure(request):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         if path.startswith("/api/") or path.startswith("/ws/"):
@@ -744,17 +809,132 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
         return response
 
-class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-    """Giới hạn kích thước request body tối đa 10MB để phòng chống DoS."""
-    async def dispatch(self, request, call_next):
+class BodySizeLimitMiddleware:
+    """Enforce actual streamed-body limits, including chunked requests."""
+
+    BODY_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+    DOCUMENT_PATHS = {"/api/templates/upload", "/api/import-excel"}
+
+    def __init__(self, app):
+        self.app = app
+
+    @staticmethod
+    def _configured_limit(name, default):
+        try:
+            value = int(os.environ.get(name, str(default)))
+        except (TypeError, ValueError):
+            value = default
+        return min(64 * 1024 * 1024, max(64 * 1024, value))
+
+    @classmethod
+    def _limit_for_path(cls, path):
+        if path == "/api/sync":
+            return cls._configured_limit("REQUEST_MAX_SYNC_BYTES", 10 * 1024 * 1024)
+        if path in cls.DOCUMENT_PATHS:
+            return cls._configured_limit("REQUEST_MAX_DOCUMENT_BYTES", 11 * 1024 * 1024)
+        return cls._configured_limit("REQUEST_MAX_JSON_BYTES", 1024 * 1024)
+
+    @staticmethod
+    async def _reject(scope, send, code, message, status_code, fields=None):
+        response = error_response(
+            Request(scope),
+            code,
+            message,
+            status_code=status_code,
+            fields=fields,
+        )
+
+        async def empty_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await response(scope, empty_receive, send)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") not in self.BODY_METHODS:
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
+        limit = self._limit_for_path(scope.get("path", ""))
+        content_encoding = (request.headers.get("content-encoding") or "identity").lower()
+        if content_encoding not in {"", "identity"}:
+            await self._reject(
+                scope,
+                send,
+                "REQUEST_CONTENT_ENCODING_UNSUPPORTED",
+                "Không hỗ trợ nội dung request đã nén.",
+                415,
+            )
+            return
+
         content_length = request.headers.get("content-length")
         if content_length:
             try:
-                if int(content_length) > 10 * 1024 * 1024:
-                    return JSONResponse({"error": "Payload quá lớn (Giới hạn 10MB)"}, status_code=413)
+                declared_size = int(content_length)
+                if declared_size < 0:
+                    raise ValueError
             except ValueError:
-                return JSONResponse({"error": "Content-Length không hợp lệ"}, status_code=400)
-        return await call_next(request)
+                await self._reject(
+                    scope,
+                    send,
+                    "CONTENT_LENGTH_INVALID",
+                    "Content-Length không hợp lệ.",
+                    400,
+                )
+                return
+            if declared_size > limit:
+                await self._reject(
+                    scope,
+                    send,
+                    "REQUEST_BODY_TOO_LARGE",
+                    "Dữ liệu gửi lên vượt quá giới hạn cho phép.",
+                    413,
+                    fields={"maxBytes": limit},
+                )
+                return
+
+        buffered_messages = []
+        received_size = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                await self._reject(
+                    scope,
+                    send,
+                    "REQUEST_BODY_INCOMPLETE",
+                    "Kết nối bị ngắt trước khi nhận đủ dữ liệu.",
+                    400,
+                )
+                return
+            if message["type"] != "http.request":
+                buffered_messages.append(message)
+                continue
+            received_size += len(message.get("body", b""))
+            if received_size > limit:
+                await self._reject(
+                    scope,
+                    send,
+                    "REQUEST_BODY_TOO_LARGE",
+                    "Dữ liệu gửi lên vượt quá giới hạn cho phép.",
+                    413,
+                    fields={"maxBytes": limit},
+                )
+                return
+            buffered_messages.append(message)
+            if not message.get("more_body", False):
+                break
+
+        message_index = 0
+
+        async def replay_receive():
+            nonlocal message_index
+            if message_index < len(buffered_messages):
+                message = buffered_messages[message_index]
+                message_index += 1
+                return message
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await self.app(scope, replay_receive, send)
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Bảo vệ request đã đăng nhập bằng Origin/Referer và double-submit CSRF token."""
@@ -800,7 +980,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if requires_token:
                 header_token = request.headers.get("x-csrf-token", "")
                 if not csrf_cookie or not header_token or not secrets.compare_digest(csrf_cookie, header_token):
-                    return JSONResponse({"error": "Yêu cầu bị từ chối do thiếu hoặc sai CSRF token!"}, status_code=403)
+                    return JSONResponse({
+                        "error": "Yêu cầu bị từ chối do thiếu hoặc sai CSRF token!",
+                        "code": "CSRF_TOKEN_INVALID",
+                    }, status_code=403)
 
         response = await call_next(request)
         if not csrf_cookie:
@@ -819,12 +1002,13 @@ middleware = [
     Middleware(CORSMiddleware,
                allow_origins=cors_origins,
                allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-               allow_headers=['Content-Type', 'X-Active-Org', 'X-CSRF-Token'],
+               allow_headers=['Content-Type', 'X-Active-Org', 'X-CSRF-Token', 'X-Request-ID'],
                allow_credentials=False),
-    Middleware(BodySizeLimitMiddleware),
+    Middleware(RequestIdMiddleware),
     Middleware(CSRFMiddleware),
     Middleware(SecurityHeadersMiddleware),
-    Middleware(ErrorLoggingMiddleware)
+    Middleware(ErrorLoggingMiddleware),
+    Middleware(BodySizeLimitMiddleware),
 ]
 
 import contextlib
@@ -834,12 +1018,48 @@ def _initialize_database():
     from backend.shared.helpers import khoi_tao_va_di_tru_he_thong
     khoi_tao_va_di_tru_he_thong()
 
+
+async def _monitor_event_loop(application):
+    try:
+        interval = float(os.environ.get("EVENT_LOOP_LAG_INTERVAL_SECONDS", "1"))
+    except (TypeError, ValueError):
+        interval = 1.0
+    try:
+        warn_threshold_ms = float(os.environ.get("EVENT_LOOP_LAG_WARN_MS", "500"))
+    except (TypeError, ValueError):
+        warn_threshold_ms = 500.0
+    interval = max(0.1, min(10.0, interval))
+    warn_threshold_ms = max(50.0, warn_threshold_ms)
+    loop = asyncio.get_running_loop()
+    last_warning = 0.0
+    while True:
+        expected = loop.time() + interval
+        await asyncio.sleep(interval)
+        now = loop.time()
+        lag_ms = max(0.0, (now - expected) * 1000)
+        application.state.event_loop_lag_ms = lag_ms
+        if lag_ms >= warn_threshold_ms and now - last_warning >= 60:
+            log_error(
+                f"Event loop lag {lag_ms:.1f}ms",
+                "event_loop_monitor",
+                level="WARN",
+            )
+            last_warning = now
+
 @contextlib.asynccontextmanager
 async def lifespan(application):
     application.state.ready = False
     application.state.startup_complete = False
+    application.state.event_loop_lag_ms = 0.0
+    monitor_task = None
     try:
         validate_startup_configuration(database)
+        from backend.documents.document_worker import (
+            cleanup_stale_document_jobs,
+            validate_document_worker_configuration,
+        )
+        validate_document_worker_configuration()
+        cleanup_stale_document_jobs()
         if IS_PRODUCTION:
             _build_index_response_payload()
         _initialize_database()
@@ -850,6 +1070,7 @@ async def lifespan(application):
 
     application.state.startup_complete = True
     application.state.ready = True
+    monitor_task = asyncio.create_task(_monitor_event_loop(application))
 
     def _start_optional_background_services():
         import time as _time
@@ -914,11 +1135,20 @@ async def lifespan(application):
     try:
         yield
     finally:
+        if monitor_task is not None:
+            monitor_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await monitor_task
         application.state.ready = False
         application.state.startup_complete = False
 
 async def org_permission_handler(request, exc):
-    return JSONResponse({"error": "Không có quyền truy cập tổ chức này!"}, status_code=403)
+    return error_response(
+        request,
+        "ORG_ACCESS_DENIED",
+        "Không có quyền truy cập tổ chức này.",
+        status_code=403,
+    )
 
 app = Starlette(
     debug=APP_DEBUG,
@@ -934,6 +1164,6 @@ app = Starlette(
 if __name__ == "__main__":
     import uvicorn
     if APP_DEBUG:
-        uvicorn.run("backend.app:app", host=APP_HOST, port=APP_PORT, reload=True)
+        uvicorn.run("backend.app:app", host=APP_HOST, port=APP_PORT, reload=True, proxy_headers=False)
     else:
-        uvicorn.run(app, host=APP_HOST, port=APP_PORT, reload=False)
+        uvicorn.run(app, host=APP_HOST, port=APP_PORT, reload=False, proxy_headers=False)

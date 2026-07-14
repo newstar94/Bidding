@@ -1,7 +1,6 @@
 """Full and delta synchronization read service."""
 
 import time
-import traceback
 from datetime import datetime
 
 from starlette.responses import JSONResponse
@@ -25,8 +24,9 @@ from backend.sync.queries import (
     get_contract_package_ids as _get_contract_package_ids,
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
-from backend.sync.repository import get_current_sync_version
+from backend.sync.repository import ARCHIVED_TABLES, get_current_sync_version
 from backend.sync.service import parse_sync_read_window
+from backend.shared.logging_utils import error_response, log_and_error
 
 
 async def read_sync_data(request):
@@ -78,12 +78,13 @@ async def read_sync_data(request):
             if use_server_pagination and tbl in heavy_tables and is_full_fetch:
 
                 return []
+            active_clause = " AND archived_at IS NULL" if tbl in ARCHIVED_TABLES else ""
             if after_version is not None:
-                cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+                cursor.execute(f"SELECT * FROM {tbl} WHERE organization_id = ? AND sync_version > ?{active_clause}", (org_name, after_version))
             elif not is_full_fetch:
-                cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+                cursor.execute(f"SELECT * FROM {tbl} WHERE organization_id = ? AND updated_at > ?{active_clause}", (org_name, since))
             else:
-                cursor.execute(f"SELECT * FROM {tbl} WHERE owner_id = ?", (org_name,))
+                cursor.execute(f"SELECT * FROM {tbl} WHERE organization_id = ?{active_clause}", (org_name,))
             return cursor.fetchall()
 
 
@@ -99,7 +100,7 @@ async def read_sync_data(request):
                 if item.get(list_key) is None:
                     item[list_key] = []
             kehoach.append(item)
-        attach_child_rows_to_items(cursor, "ke_hoach_lcnt", kehoach, owner_id=org_name)
+        attach_child_rows_to_items(cursor, "ke_hoach_lcnt", kehoach, organization_id=org_name)
 
 
         chuyengia = []
@@ -119,7 +120,7 @@ async def read_sync_data(request):
             row_dict = dict(row)
             row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
             nhathau.append(map_db_to_json("nha_thau", row_dict))
-        attach_child_rows_to_items(cursor, "nha_thau", nhathau, owner_id=org_name)
+        attach_child_rows_to_items(cursor, "nha_thau", nhathau, organization_id=org_name)
 
 
         goithau = []
@@ -142,7 +143,7 @@ async def read_sync_data(request):
                 if item.get(list_key) is None:
                     item[list_key] = []
             goithau.append(item)
-        attach_child_rows_to_items(cursor, "goi_thau", goithau, owner_id=org_name)
+        attach_child_rows_to_items(cursor, "goi_thau", goithau, organization_id=org_name)
 
 
         hopdong = []
@@ -159,11 +160,11 @@ async def read_sync_data(request):
         assignments = []
         if not is_partial_response or "assignments" in requested_keys:
             if after_version is not None:
-                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE organization_id = ? AND sync_version > ?", (org_name, after_version))
             elif since != '1970-01-01 00:00:00' and since != '0':
-                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE organization_id = ? AND updated_at > ?", (org_name, since))
             else:
-                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE owner_id = ?", (org_name,))
+                cursor.execute("SELECT * FROM phan_cong_nhan_su WHERE organization_id = ?", (org_name,))
             for row in cursor.fetchall():
                 assignments.append(map_db_to_json("phan_cong_nhan_su", dict(row)))
 
@@ -171,11 +172,11 @@ async def read_sync_data(request):
         custompaperstatuses = []
         if not is_partial_response or "custompaperstatuses" in requested_keys:
             if after_version is not None:
-                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE organization_id = ? AND sync_version > ?", (org_name, after_version))
             elif since != '1970-01-01 00:00:00' and since != '0':
-                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE organization_id = ? AND updated_at > ?", (org_name, since))
             else:
-                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE owner_id = ?", (org_name,))
+                cursor.execute("SELECT * FROM trang_thai_ho_so_giay WHERE organization_id = ?", (org_name,))
             for row in cursor.fetchall():
                 custompaperstatuses.append(map_db_to_json("trang_thai_ho_so_giay", dict(row)))
 
@@ -183,18 +184,18 @@ async def read_sync_data(request):
         thongtinmothau = []
         for row in query_table("thong_tin_mo_thau"):
             thongtinmothau.append(map_db_to_json("thong_tin_mo_thau", dict(row)))
-        attach_child_rows_to_items(cursor, "thong_tin_mo_thau", thongtinmothau, owner_id=org_name)
+        attach_child_rows_to_items(cursor, "thong_tin_mo_thau", thongtinmothau, organization_id=org_name)
 
 
         permissionmatrix = []
         try:
             if not is_partial_response or "permissionmatrix" in requested_keys:
                 if after_version is not None:
-                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND sync_version > ?", (org_name, after_version))
+                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ? AND sync_version > ?", (org_name, after_version))
                 elif since != '1970-01-01 00:00:00' and since != '0':
-                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ? AND updated_at > ?", (org_name, since))
+                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ? AND updated_at > ?", (org_name, since))
                 else:
-                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE owner_id = ?", (org_name,))
+                    cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ?", (org_name,))
                 for row in cursor.fetchall():
                     permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
         except Exception:
@@ -205,7 +206,7 @@ async def read_sync_data(request):
         if after_version is not None:
             cursor.execute(
                 "SELECT table_name, record_id FROM deleted_records "
-                "WHERE owner_id = ? AND delete_version > ? "
+                "WHERE organization_id = ? AND delete_version > ? "
                 "ORDER BY delete_version ASC, deleted_at ASC",
                 (org_name, after_version)
             )
@@ -218,7 +219,7 @@ async def read_sync_data(request):
 
             cursor.execute(
                 "SELECT table_name, record_id FROM deleted_records "
-                "WHERE owner_id = ? AND deleted_at > ? "
+                "WHERE organization_id = ? AND deleted_at > ? "
                 "ORDER BY deleted_at DESC LIMIT 1000",
                 (org_name, since)
             )
@@ -258,7 +259,7 @@ async def read_sync_data(request):
                 if is_partial_response and payload_key not in requested_keys:
                     continue
                 cursor.execute(
-                    f"SELECT id FROM {table_name} WHERE owner_id = ?",
+                    f"SELECT id FROM {table_name} WHERE organization_id = ? AND archived_at IS NULL",
                     (org_name,)
                 )
                 manifest_items = [{"id": row[0]} for row in cursor.fetchall()]
@@ -276,11 +277,11 @@ async def read_sync_data(request):
                 selected_columns = reference_columns.get(payload_key)
                 if not selected_columns:
                     continue
-                reference_where = "owner_id = ? AND is_latest = 1"
+                reference_where = "organization_id = ? AND is_latest = 1 AND archived_at IS NULL"
                 if table_name in {"chu_dau_tu", "nha_thau"}:
                     # Date-based stage binding needs the lightweight identity of
                     # every version; full details remain paginated/lazy-loaded.
-                    reference_where = "owner_id = ?"
+                    reference_where = "organization_id = ? AND archived_at IS NULL"
                 reference_params = (org_name,)
                 cursor.execute(
                     f"SELECT {', '.join(selected_columns)} FROM {table_name} WHERE {reference_where}",
@@ -357,10 +358,20 @@ async def read_sync_data(request):
                 conn.close()
             except Exception:
                 pass
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({"error": "Đã xảy ra lỗi hệ thống khi lấy dữ liệu."}, status_code=500)
+        return log_and_error(
+            request,
+            e,
+            "read_sync_data",
+            "SYNC_READ_FAILED",
+            "Không thể tải dữ liệu đồng bộ.",
+        )
     finally:
         if conn:
             try:
@@ -412,10 +423,10 @@ async def read_single_record(request):
         cursor.execute(f"""
             SELECT *
             FROM {table_name}
-            WHERE owner_id = ?
+            WHERE organization_id = ?
               AND (
                   id IN ({placeholders})
-                  OR {lookup_column} IN ({placeholders})
+                  OR (archived_at IS NULL AND {lookup_column} IN ({placeholders}))
               )
             ORDER BY is_latest DESC,
                      CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC,
@@ -435,7 +446,7 @@ async def read_single_record(request):
         item = map_db_to_json(table_name, row_dict)
         items = [item]
         if table_name in {"ke_hoach_lcnt", "goi_thau", "nha_thau"}:
-            attach_child_rows_to_items(cursor, table_name, items, owner_id=org_name)
+            attach_child_rows_to_items(cursor, table_name, items, organization_id=org_name)
         if table_name == "goi_thau":
             relations_map = _get_expert_relations_for_packages(cursor, [row_dict["id"]], org_name)
             pkg_rels = relations_map.get(row_dict["id"], {"to_cg": [], "to_td": [], "cg_ids": []})
@@ -450,10 +461,20 @@ async def read_single_record(request):
 
         return JSONResponse({"item": item})
     except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
-    except Exception:
-        traceback.print_exc()
-        return JSONResponse({"error": "Da xay ra loi he thong khi lay ban ghi."}, status_code=500)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
+    except Exception as e:
+        return log_and_error(
+            request,
+            e,
+            "get_record_by_id",
+            "SYNC_RECORD_READ_FAILED",
+            "Không thể tải bản ghi.",
+        )
     finally:
         if conn:
             try:

@@ -346,25 +346,32 @@ export function renderManagerNhanVienPanel() {
   lucide.createIcons();
 }
 export function renderManagerHoSoGiayPanel() {
-  const orgId = "1";
-  const orgStatuses = this.model.state.custompaperstatuses.filter((s) => s.orgId === orgId);
+  // The sync endpoint already scopes this collection to the active organization.
+  const orgStatuses = Array.isArray(this.model.state.custompaperstatuses)
+    ? this.model.state.custompaperstatuses
+    : [];
   const tbody = document.getElementById("manager-hosogiay-tbody");
   if (tbody) {
     if (orgStatuses.length === 0) {
       tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Chưa cấu hình trạng thái hồ sơ giấy nào.</td></tr>`;
     } else {
-      tbody.innerHTML = orgStatuses.map((status) => `
+      tbody.innerHTML = orgStatuses.map((status) => {
+        const safeName = escapeHTML(status.name);
+        const safeColor = /^#[0-9a-fA-F]{6}$/.test(String(status.color || "")) ? status.color : "#64748b";
+        const safeArgs = escapeHTML(JSON.stringify([String(status.id || "")]));
+        return `
                 <tr>
-                    <td class="fw-bold">${status.name}</td>
-                    <td><span class="status-pill" style="background-color: ${status.color};">${status.name}</span></td>
+                    <td class="fw-bold">${safeName}</td>
+                    <td><span class="status-pill" style="background-color: ${safeColor};">${safeName}</span></td>
                     <td class="text-right">
                         <div class="action-btn-group">
-                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editHoSoGiayStatus" data-args='["${status.id}"]' title="Sửa"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteHoSoGiayStatus" data-args='["${status.id}"]' title="Xóa"><i data-lucide="trash-2"></i></button>
+                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editHoSoGiayStatus" data-args="${safeArgs}" title="Sửa"><i data-lucide="edit-2"></i></button>
+                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteHoSoGiayStatus" data-args="${safeArgs}" title="Xóa"><i data-lucide="trash-2"></i></button>
                         </div>
                     </td>
                 </tr>
-            `).join("");
+            `;
+      }).join("");
     }
   }
   lucide.createIcons();

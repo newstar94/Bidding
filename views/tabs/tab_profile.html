@@ -51,7 +51,9 @@
                                         style="margin-bottom: 20px; display: none;">
                                         <label for="profile-organization">Tên tổ chức / Doanh nghiệp</label>
                                         <input type="text" id="profile-organization"
-                                            placeholder="Tên tổ chức, doanh nghiệp của bạn">
+                                            placeholder="Tên tổ chức, doanh nghiệp của bạn" readonly
+                                            aria-describedby="profile-organization-help">
+                                        <small id="profile-organization-help" class="text-muted">Tên tổ chức chỉ có thể thay đổi trong phần quản trị tổ chức.</small>
                                     </div>
                                     <button type="submit" class="btn btn-primary btn-full-width">
                                         <i data-lucide="save"></i> Cập nhật hồ sơ

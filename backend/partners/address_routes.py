@@ -1,13 +1,34 @@
 
 import urllib.request
 import json
+import asyncio
+import re
 from starlette.responses import JSONResponse
+from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.async_io import (
+    BlockingIOBusyError,
+    BlockingIOTimeoutError,
+    run_blocking_io,
+)
+from backend.auth.auth_service import (
+    get_client_ip,
+    get_rate_limit_decision,
+    rate_limit_response,
+)
 
 
 _provinces_cache = None
 _wards_cache = {}
+_provinces_lock = asyncio.Lock()
+_wards_locks = {}
 
 PROVINCES_API_BASE = "https://provinces.open-api.vn/api/v2"
+
+
+def _fetch_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "BiddingApp/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 
 async def get_provinces_api(request):
@@ -17,47 +38,112 @@ async def get_provinces_api(request):
         return JSONResponse(_provinces_cache)
 
     try:
-        url = f"{PROVINCES_API_BASE}/p/"
-        req = urllib.request.Request(url, headers={"User-Agent": "BiddingApp/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        if isinstance(data, list) and len(data) > 0:
-            _provinces_cache = data
-            return JSONResponse(data)
-        else:
-            return JSONResponse({"error": "Dữ liệu tỉnh thành trống"}, status_code=502)
+        async with _provinces_lock:
+            if _provinces_cache is None:
+                data = await run_blocking_io(
+                    _fetch_json,
+                    f"{PROVINCES_API_BASE}/p/",
+                    timeout_seconds=12,
+                )
+                if isinstance(data, list) and data:
+                    _provinces_cache = data
+            if _provinces_cache is not None:
+                return JSONResponse(_provinces_cache)
+        return error_response(
+            request,
+            "PROVINCES_UPSTREAM_EMPTY",
+            "Dịch vụ tỉnh thành không trả về dữ liệu.",
+            status_code=502,
+        )
     except Exception as e:
-        return JSONResponse({"error": f"Không thể tải danh sách tỉnh thành: {str(e)}"}, status_code=502)
+        return log_and_error(
+            request,
+            e,
+            "get_provinces_api",
+            "PROVINCES_UPSTREAM_UNAVAILABLE",
+            "Không thể tải danh sách tỉnh thành lúc này.",
+            status_code=502,
+        )
 
 
 async def get_wards_api(request):
 
     province_code = request.path_params.get("province_code", "")
     if not province_code:
-        return JSONResponse({"error": "Thiếu mã tỉnh"}, status_code=400)
+        return error_response(
+            request,
+            "PROVINCE_CODE_REQUIRED",
+            "Thiếu mã tỉnh.",
+            status_code=400,
+        )
+    if not re.fullmatch(r"\d{1,3}", province_code):
+        return error_response(
+            request,
+            "PROVINCE_CODE_INVALID",
+            "Mã tỉnh không hợp lệ.",
+            status_code=400,
+        )
 
     if province_code in _wards_cache:
         return JSONResponse(_wards_cache[province_code])
 
     try:
-        url = f"{PROVINCES_API_BASE}/p/{province_code}?depth=2"
-        req = urllib.request.Request(url, headers={"User-Agent": "BiddingApp/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        wards = data.get("wards", []) if isinstance(data, dict) else []
-        _wards_cache[province_code] = wards
-        return JSONResponse(wards)
+        lock = _wards_locks.setdefault(province_code, asyncio.Lock())
+        async with lock:
+            if province_code not in _wards_cache:
+                data = await run_blocking_io(
+                    _fetch_json,
+                    f"{PROVINCES_API_BASE}/p/{province_code}?depth=2",
+                    timeout_seconds=12,
+                )
+                _wards_cache[province_code] = (
+                    data.get("wards", []) if isinstance(data, dict) else []
+                )
+            return JSONResponse(_wards_cache[province_code])
     except Exception as e:
-        return JSONResponse({"error": f"Không thể tải danh sách xã phường: {str(e)}"}, status_code=502)
+        return log_and_error(
+            request,
+            e,
+            "get_wards_api",
+            "WARDS_UPSTREAM_UNAVAILABLE",
+            "Không thể tải danh sách xã phường lúc này.",
+            status_code=502,
+        )
 
 
 async def lookup_tax_code_api(request):
+
+    try:
+        lookup_limit = await run_blocking_io(
+            get_rate_limit_decision,
+            f"partner_lookup:{get_client_ip(request)}",
+            max_attempts=30,
+            window_seconds=60,
+            timeout_seconds=2,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return error_response(
+            request,
+            "PARTNER_LOOKUP_BUSY",
+            "Dịch vụ tra cứu đang bận. Vui lòng thử lại sau.",
+            status_code=503,
+        )
+    if not lookup_limit.allowed:
+        return rate_limit_response(
+            "Quá nhiều yêu cầu tra cứu. Vui lòng thử lại sau.",
+            lookup_limit,
+        )
 
     tax_code = request.query_params.get("code", "").strip()
     org_code = request.query_params.get("orgCode", "").strip()
     role_name = request.query_params.get("role", "NT")
     if not tax_code and not org_code:
-        return JSONResponse({"error": "Thiếu mã định danh hoặc mã số thuế"}, status_code=400)
+        return error_response(
+            request,
+            "PARTNER_IDENTIFIER_REQUIRED",
+            "Thiếu mã định danh hoặc mã số thuế.",
+            status_code=400,
+        )
 
     try:
         from backend.partners.partner_lookup_service import (
@@ -68,18 +154,41 @@ async def lookup_tax_code_api(request):
         cleaned_code = extract_clean_tax_code(tax_code) if tax_code else ""
         normalized_org_code = normalize_procurement_org_code(org_code) if org_code else ""
         if tax_code and not cleaned_code:
-            return JSONResponse({"error": "Mã số thuế không hợp lệ về mặt định dạng"}, status_code=400)
+            return error_response(
+                request,
+                "TAX_CODE_INVALID",
+                "Mã số thuế không hợp lệ về mặt định dạng.",
+                status_code=400,
+            )
         if org_code and not normalized_org_code:
-            return JSONResponse({"error": "Mã định danh không hợp lệ"}, status_code=400)
+            return error_response(
+                request,
+                "ORGANIZATION_CODE_INVALID",
+                "Mã định danh không hợp lệ.",
+                status_code=400,
+            )
 
-        info = lookup_partner_info(
+        info = await run_blocking_io(
+            lookup_partner_info,
             cleaned_code,
             org_code=normalized_org_code,
             role_name=role_name,
+            timeout_seconds=30,
         )
         if info:
             return JSONResponse(info)
         else:
-            return JSONResponse({"error": "Không tìm thấy thông tin doanh nghiệp cho mã số thuế này"}, status_code=404)
+            return error_response(
+                request,
+                "PARTNER_NOT_FOUND",
+                "Không tìm thấy thông tin doanh nghiệp.",
+                status_code=404,
+            )
     except Exception as e:
-        return JSONResponse({"error": f"Lỗi hệ thống khi tra cứu: {str(e)}"}, status_code=500)
+        return log_and_error(
+            request,
+            e,
+            "lookup_tax_code_api",
+            "PARTNER_LOOKUP_FAILED",
+            "Không thể tra cứu thông tin doanh nghiệp lúc này.",
+        )

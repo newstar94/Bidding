@@ -2,6 +2,8 @@ import os
 import time
 import secrets
 import hashlib
+from dataclasses import dataclass
+from starlette.responses import JSONResponse
 from backend.shared.helpers import (
     _org_cache_invalidate_by_user_id
 )
@@ -20,8 +22,16 @@ SESSION_REMEMBER_EXPIRY_HOURS = int(os.environ.get("SESSION_REMEMBER_EXPIRY_HOUR
 SESSION_INACTIVITY_TIMEOUT_HOURS = int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10"))
 
 
-RATE_LIMIT_MAX = 5
-RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX = max(1, int(os.environ.get("RATE_LIMIT_MAX_ATTEMPTS", "5")))
+RATE_LIMIT_WINDOW = max(1, int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60")))
+
+
+@dataclass(frozen=True)
+class RateLimitDecision:
+    allowed: bool
+    retry_after: int
+    remaining: int
+    storage_failed: bool = False
 
 
 def _get_rate_limit_database():
@@ -29,27 +39,36 @@ def _get_rate_limit_database():
     return rate_limit_database
 
 
-def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
+def get_rate_limit_decision(
+    bucket: str,
+    consume_attempt: bool = True,
+    *,
+    max_attempts: int = RATE_LIMIT_MAX,
+    window_seconds: int = RATE_LIMIT_WINDOW,
+) -> RateLimitDecision:
     """Check a persistent fixed-window bucket using an atomic DB transaction.
 
     Mac dinh van ghi nhan attempt de giu tuong thich voi cac flow OTP.
     Login dung consume_attempt=False de chi ghi nhan khi xac thuc that bai.
     """
     now = int(time.time())
-    bucket_key = hashlib.sha256(str(ip or "unknown").encode("utf-8")).hexdigest()
+    max_attempts = max(1, int(max_attempts))
+    window_seconds = max(1, int(window_seconds))
+    bucket_key = hashlib.sha256(str(bucket or "unknown").encode("utf-8")).hexdigest()
     conn = None
     try:
         conn = _get_rate_limit_database().get_connection()
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("DELETE FROM rate_limit_buckets WHERE expires_at <= ?", (now,))
         row = conn.execute(
-            "SELECT attempt_count FROM rate_limit_buckets WHERE bucket_key = ?",
+            "SELECT attempt_count, expires_at FROM rate_limit_buckets WHERE bucket_key = ?",
             (bucket_key,),
         ).fetchone()
         attempt_count = int(row[0]) if row is not None else 0
-        if attempt_count >= RATE_LIMIT_MAX:
+        expires_at = int(row[1]) if row is not None else now + window_seconds
+        if attempt_count >= max_attempts:
             conn.commit()
-            return False
+            return RateLimitDecision(False, max(1, expires_at - now), 0)
         if consume_attempt:
             conn.execute(
                 """
@@ -59,10 +78,15 @@ def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
                 ON CONFLICT(bucket_key) DO UPDATE SET
                     attempt_count = rate_limit_buckets.attempt_count + 1
                 """,
-                (bucket_key, now, now + RATE_LIMIT_WINDOW),
+                (bucket_key, now, now + window_seconds),
             )
+            attempt_count += 1
         conn.commit()
-        return True
+        return RateLimitDecision(
+            True,
+            0,
+            max(0, max_attempts - attempt_count),
+        )
     except Exception as rate_limit_error:
         if conn is not None:
             try:
@@ -71,10 +95,38 @@ def check_rate_limit(ip: str, consume_attempt: bool = True) -> bool:
                 pass
         from backend.shared.logging_utils import log_error
         log_error(rate_limit_error, "rate_limit", level="WARN")
-        return False
+        return RateLimitDecision(False, window_seconds, 0, storage_failed=True)
     finally:
         if conn is not None:
             conn.close()
+
+
+def check_rate_limit(
+    bucket: str,
+    consume_attempt: bool = True,
+    *,
+    max_attempts: int = RATE_LIMIT_MAX,
+    window_seconds: int = RATE_LIMIT_WINDOW,
+) -> bool:
+    return get_rate_limit_decision(
+        bucket,
+        consume_attempt,
+        max_attempts=max_attempts,
+        window_seconds=window_seconds,
+    ).allowed
+
+
+def rate_limit_response(message, decision=None):
+    retry_after = max(1, int(getattr(decision, "retry_after", RATE_LIMIT_WINDOW)))
+    return JSONResponse(
+        {
+            "error": message,
+            "code": "rate_limit_exceeded",
+            "retry_after": retry_after,
+        },
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
+    )
 
 def record_rate_limit_failure(ip: str) -> bool:
     """Ghi nhan mot lan that bai vao rate limiter."""
@@ -89,7 +141,7 @@ def get_user_org_names(cursor, user_id):
     cursor.execute("""
         SELECT tc.ten_to_chuc
         FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
+        JOIN to_chuc tc ON tvtc.organization_id = tc.id
         WHERE tvtc.user_id = ?
     """, (user_id,))
     rows = cursor.fetchall()
@@ -104,7 +156,7 @@ def get_user_organizations(cursor, user_id):
         SELECT tc.id, tc.ten_to_chuc, tc.trang_thai,
                tvtc.vai_tro_trong_to_chuc
         FROM thanh_vien_to_chuc AS tvtc
-        JOIN to_chuc AS tc ON tc.id = tvtc.to_chuc_id
+        JOIN to_chuc AS tc ON tc.id = tvtc.organization_id
         WHERE tvtc.user_id = ?
         ORDER BY CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
                     WHEN 'owner' THEN 0
@@ -177,13 +229,13 @@ def provision_user_organization(cursor, user_id, display_name):
     cursor.execute(
         """
         INSERT INTO thanh_vien_to_chuc
-            (user_id, to_chuc_id, vai_tro_trong_to_chuc)
+            (user_id, organization_id, vai_tro_trong_to_chuc)
         VALUES (?, ?, 'owner')
         """,
         (user_id, org_id),
     )
     cursor.execute(
-        "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, 1)",
+        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 1)",
         (org_id,),
     )
     return org_id
@@ -196,7 +248,7 @@ def update_user_organizations(cursor, user_id, organization_name):
     cursor.execute("""
         SELECT tc.id, tc.ten_to_chuc
         FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
+        JOIN to_chuc tc ON tvtc.organization_id = tc.id
         WHERE tvtc.user_id = ?
     """, (user_id,))
     current_assoc = {row['ten_to_chuc']: row['id'] for row in cursor.fetchall()}
@@ -221,7 +273,7 @@ def update_user_organizations(cursor, user_id, organization_name):
             # account-level role.
             role_in_org = 'owner' if created_org else 'employee'
             cursor.execute(
-                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
+                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
                 (user_id, org_id, role_in_org)
             )
 
@@ -233,7 +285,7 @@ def update_user_organizations(cursor, user_id, organization_name):
                 """
                 SELECT lower(trim(vai_tro_trong_to_chuc))
                 FROM thanh_vien_to_chuc
-                WHERE user_id = ? AND to_chuc_id = ?
+                WHERE user_id = ? AND organization_id = ?
                 """,
                 (user_id, org_id),
             )
@@ -242,7 +294,7 @@ def update_user_organizations(cursor, user_id, organization_name):
                 cursor.execute(
                     """
                     SELECT count(*) FROM thanh_vien_to_chuc
-                    WHERE to_chuc_id = ?
+                    WHERE organization_id = ?
                       AND lower(trim(vai_tro_trong_to_chuc)) = 'owner'
                     """,
                     (org_id,),
@@ -250,7 +302,7 @@ def update_user_organizations(cursor, user_id, organization_name):
                 if int(cursor.fetchone()[0]) <= 1:
                     raise ValueError("Không thể xóa chủ sở hữu cuối cùng khỏi tổ chức.")
             cursor.execute(
-                "DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
+                "DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
                 (user_id, org_id)
             )
             removed_any = True

@@ -89,6 +89,12 @@ def verify_database_readiness(database, expected_schema_version):
         if quick_check is None or str(quick_check[0]).lower() != "ok":
             raise StartupValidationError("SQLite quick_check did not return ok.")
 
+        foreign_key_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_violations:
+            raise StartupValidationError(
+                f"SQLite foreign_key_check found {len(foreign_key_violations)} violation(s)."
+            )
+
         bootstrap_admin = conn.execute(
             """
             SELECT 1
@@ -96,7 +102,7 @@ def verify_database_readiness(database, expected_schema_version):
             INNER JOIN thanh_vien_to_chuc AS memberships
                 ON memberships.user_id = users.id
             INNER JOIN to_chuc AS organizations
-                ON organizations.id = memberships.to_chuc_id
+                ON organizations.id = memberships.organization_id
             WHERE users.vai_tro = 'super_admin'
             LIMIT 1
             """

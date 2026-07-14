@@ -8,13 +8,13 @@ from backend.shared.helpers import (
     get_active_org,
     _session_cache_invalidate_by_user_id,
     _org_cache_invalidate_by_user_id,
-    log_error,
     log_audit,
     OrgPermissionError
 )
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, next_sync_version
 from backend.shared.access_policy import is_organization_manager
+from backend.shared.logging_utils import error_response, log_and_error
 
 async def add_user_to_org_api(request):
     try:
@@ -59,11 +59,11 @@ async def add_user_to_org_api(request):
                 (org_id, org_name, role_or_err.user_id)
             )
             cursor.execute(
-                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
+                "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
                 (role_or_err.user_id, org_id, 'owner')
             )
 
-        cursor.execute("SELECT user_id FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
+        cursor.execute("SELECT user_id FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?", (user_id, org_id))
         if cursor.fetchone():
             conn.close()
             return JSONResponse({"success": True, "message": "Nhân sự đã thuộc tổ chức này!"})
@@ -78,7 +78,7 @@ async def add_user_to_org_api(request):
             return JSONResponse({"error": "Ban khong co quyen them super_admin vao to chuc."}, status_code=403)
 
         cursor.execute(
-            "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
             (user_id, org_id, 'employee')
         )
 
@@ -98,10 +98,20 @@ async def add_user_to_org_api(request):
 
         return JSONResponse({"success": True, "message": "Thêm nhân sự vào tổ chức thành công!"})
     except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
-        log_error(e, "add_user_to_org_api")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return log_and_error(
+            request,
+            e,
+            "add_user_to_org_api",
+            "ORGANIZATION_MEMBER_ADD_FAILED",
+            "Không thể thêm thành viên vào tổ chức.",
+        )
 
 async def remove_user_from_org_api(request):
     try:
@@ -130,7 +140,7 @@ async def remove_user_from_org_api(request):
         sync_version = next_sync_version(cursor, org_id)
 
         cursor.execute(
-            "SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
+            "SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
             (user_id, org_id),
         )
         target_membership = cursor.fetchone()
@@ -141,9 +151,9 @@ async def remove_user_from_org_api(request):
             conn.close()
             return JSONResponse({"error": "Không thể xóa chủ sở hữu tổ chức."}, status_code=409)
 
-        cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?", (user_id, org_id))
+        cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?", (user_id, org_id))
 
-        cursor.execute("SELECT id FROM ma_tran_phan_quyen WHERE emp_id = ? AND owner_id = ?", (user_id, org_id))
+        cursor.execute("SELECT id FROM ma_tran_phan_quyen WHERE emp_id = ? AND organization_id = ?", (user_id, org_id))
         pq_rows = cursor.fetchall()
         for row in pq_rows:
             pq_id = row['id']
@@ -153,7 +163,16 @@ async def remove_user_from_org_api(request):
                 ("ma_tran_phan_quyen", pq_id, org_id, current_time, sync_version)
             )
 
-        cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id_nhan_vien = ? AND owner_id = ?", (user_id, org_id))
+        assignment_result = cursor.execute(
+            "DELETE FROM phan_cong_nhan_su WHERE id_nhan_vien = ? AND organization_id = ?",
+            (user_id, org_id),
+        )
+        impact = {
+            "rootCount": 1,
+            "permissionRows": len(pq_rows),
+            "assignments": int(assignment_result.rowcount or 0),
+        }
+        impact["totalCount"] = sum(impact.values())
 
         conn.commit()
         conn.close()
@@ -169,12 +188,26 @@ async def remove_user_from_org_api(request):
             target_type="organization_membership",
             target_id=f"{org_id}:{user_id}",
             request=request,
-            metadata={"organization_id": org_id},
+            metadata={"organization_id": org_id, "impact": impact},
         )
 
-        return JSONResponse({"success": True, "message": "Gỡ nhân sự khỏi tổ chức thành công!"})
+        return JSONResponse({
+            "success": True,
+            "message": "Gỡ nhân sự khỏi tổ chức thành công!",
+            "deleteImpact": impact,
+        })
     except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
-        log_error(e, "remove_user_from_org_api")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return log_and_error(
+            request,
+            e,
+            "remove_user_from_org_api",
+            "ORGANIZATION_MEMBER_REMOVE_FAILED",
+            "Không thể gỡ thành viên khỏi tổ chức.",
+        )

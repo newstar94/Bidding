@@ -1,6 +1,7 @@
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
+import { ApiError, postJson } from "../shared/apiClient.js";
 
 export function validateUsernameClient(username) {
   const u = (username || "").toLowerCase().trim();
@@ -1022,6 +1023,7 @@ export function setupAuth() {
     script.addEventListener("load", initGoogle, { once: true });
     script.addEventListener("error", () => {
       console.warn("Google Sign-In could not be loaded.");
+      showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng.", "error");
     }, { once: true });
     document.head.appendChild(script);
   };
@@ -1033,12 +1035,13 @@ export function setupAuth() {
 }
 export function setupGoogleSignIn() {
   if (isGoogleIdentityInitialized()) return;
-  markGoogleIdentityInitialized();
   const clientId = document.querySelector('meta[name="google-client-id"]')?.content?.trim();
-  if (clientId === "__GOOGLE_CLIENT_ID__") return;
-  if (!clientId) return;
   const container = document.getElementById("google-signin-btn-container");
   if (!container) return;
+  if (clientId === "__GOOGLE_CLIENT_ID__" || !clientId) {
+    showGoogleSignInState("Đăng nhập Google chưa được cấu hình.", "error");
+    return;
+  }
   if (typeof google === "undefined" || !google.accounts || !google.accounts.id) return;
   this._finishGoogleLogin = async (activeRole) => {
     setAuthSessionActive(true);
@@ -1127,22 +1130,7 @@ export function setupGoogleSignIn() {
       if (btnSpan) btnSpan.textContent = "Đang lưu...";
       if (errorDiv) errorDiv.style.display = "none";
       try {
-        const res = await fetch("/api/auth/set-username", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username })
-        });
-        const result = await res.json();
-        if (!res.ok) {
-          if (errorDiv) {
-            errorDiv.textContent = result.error || "Đặt tên đăng nhập thất bại. Vui lòng thử lại.";
-            errorDiv.style.display = "block";
-          }
-          submitBtn.disabled = false;
-          submitBtn.style.opacity = "1";
-          if (btnSpan) btnSpan.textContent = "Xác nhận tên đăng nhập";
-          return;
-        }
+        const result = await postJson("/api/auth/set-username", { username });
         if (this.model?.state?.activeuser) {
           this.model.state.activeuser.username = result.username;
         }
@@ -1151,7 +1139,9 @@ export function setupGoogleSignIn() {
         onSuccess();
       } catch (err) {
         if (errorDiv) {
-          errorDiv.textContent = "Lỗi kết nối. Vui lòng thử lại.";
+          errorDiv.textContent = err instanceof ApiError
+            ? err.message
+            : "Lỗi kết nối. Vui lòng thử lại.";
           errorDiv.style.display = "block";
         }
         submitBtn.disabled = false;
@@ -1282,20 +1272,39 @@ export function setupGoogleSignIn() {
       showGoogleLoginError("Lỗi kết nối Google: " + err.message);
     }
   };
-  google.accounts.id.initialize({
-    client_id: clientId,
-    callback: handleGoogleResponse.bind(this),
-    ux_mode: "popup",
-    context: "signin"
-  });
-  google.accounts.id.renderButton(container, {
-    theme: "outline",
-    size: "large",
-    width: 300,
-    text: "signin_with",
-    locale: "vi",
-    logo_alignment: "center"
-  });
+  try {
+    container.replaceChildren();
+    markGoogleIdentityInitialized();
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: handleGoogleResponse.bind(this),
+      ux_mode: "popup",
+      context: "signin"
+    });
+    google.accounts.id.renderButton(container, {
+      theme: "outline",
+      size: "large",
+      width: 300,
+      text: "signin_with",
+      locale: "vi",
+      logo_alignment: "center"
+    });
+    showGoogleSignInState("", "ready");
+  } catch (error) {
+    resetGoogleIdentityInitialized();
+    console.warn("Google Sign-In could not be initialized.", error);
+    showGoogleSignInState("Không thể khởi tạo đăng nhập Google. Vui lòng tải lại trang.", "error");
+  }
+}
+
+function showGoogleSignInState(message, state = "loading") {
+  const container = document.getElementById("google-signin-btn-container");
+  const status = document.getElementById("google-signin-status");
+  if (container) container.dataset.state = state;
+  if (!status) return;
+  status.textContent = message || "";
+  status.hidden = !message;
+  status.dataset.state = state;
 }
 import {
   hideInitLoader,
@@ -1304,6 +1313,7 @@ import {
   isGoogleIdentityInitialized,
   isStaleAuthResult,
   markGoogleIdentityInitialized,
+  resetGoogleIdentityInitialized,
   setAuthFlowInProgress,
   setAuthSessionActive,
   showInitLoader,

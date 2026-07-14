@@ -153,13 +153,13 @@ def build_plan_context(plan_id, user_id, org_name):
     conn = database.get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM ke_hoach_lcnt WHERE id = ? AND owner_id = ?", (plan_id, org_name))
+    cursor.execute("SELECT * FROM ke_hoach_lcnt WHERE id = ? AND organization_id = ?", (plan_id, org_name))
     row_plan = cursor.fetchone()
     if not row_plan:
         conn.close()
         raise ValueError(f"Plan with id {plan_id} not found")
     plan = parse_json_fields(dict(row_plan))
-    attach_child_rows(cursor, "ke_hoach_lcnt", plan, owner_id=org_name, naming="snake")
+    attach_child_rows(cursor, "ke_hoach_lcnt", plan, organization_id=org_name, naming="snake")
 
     investor_name = '--'
     investor_address = ''
@@ -187,9 +187,9 @@ def build_plan_context(plan_id, user_id, org_name):
         if row_gdv:
             gdv_data = parse_json_fields(dict(row_gdv))
 
-    cursor.execute("SELECT * FROM goi_thau WHERE ke_hoach_id = ? AND owner_id = ?", (plan_id, org_name))
+    cursor.execute("SELECT * FROM goi_thau WHERE ke_hoach_id = ? AND organization_id = ?", (plan_id, org_name))
     goi_thau_list = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
-    attach_child_rows_to_items(cursor, "goi_thau", goi_thau_list, owner_id=org_name, naming="snake")
+    attach_child_rows_to_items(cursor, "goi_thau", goi_thau_list, organization_id=org_name, naming="snake")
     for gt in goi_thau_list:
         extract_evaluation_dates(gt)
         clear_competitive_quotation_appraisal(gt)
@@ -214,13 +214,13 @@ def build_report_context(package_id, user_id, org_name, type_param):
     conn = database.get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM goi_thau WHERE id = ? AND owner_id = ?", (package_id, org_name))
+    cursor.execute("SELECT * FROM goi_thau WHERE id = ? AND organization_id = ?", (package_id, org_name))
     row_pkg = cursor.fetchone()
     if not row_pkg:
         conn.close()
         raise ValueError(f"Package with id {package_id} not found")
     pkg = parse_json_fields(dict(row_pkg))
-    attach_child_rows(cursor, "goi_thau", pkg, owner_id=org_name, naming="snake")
+    attach_child_rows(cursor, "goi_thau", pkg, organization_id=org_name, naming="snake")
     extract_evaluation_dates(pkg)
     clear_competitive_quotation_appraisal(pkg)
 
@@ -233,7 +233,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
         row_plan = cursor.fetchone()
         if row_plan:
             plan = parse_json_fields(dict(row_plan))
-            attach_child_rows(cursor, "ke_hoach_lcnt", plan, owner_id=org_name, naming="snake")
+            attach_child_rows(cursor, "ke_hoach_lcnt", plan, organization_id=org_name, naming="snake")
             if plan.get('chu_dau_tu_id'):
                 cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ?", (plan['chu_dau_tu_id'],))
                 row_inv = cursor.fetchone()
@@ -257,9 +257,9 @@ def build_report_context(package_id, user_id, org_name, type_param):
         if row_gdv:
             gdv_data = parse_json_fields(dict(row_gdv))
 
-    cursor.execute("SELECT * FROM thong_tin_mo_thau WHERE goi_thau_id = ? AND owner_id = ?", (package_id, org_name))
+    cursor.execute("SELECT * FROM thong_tin_mo_thau WHERE goi_thau_id = ? AND organization_id = ?", (package_id, org_name))
     bids = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
-    attach_child_rows_to_items(cursor, "thong_tin_mo_thau", bids, owner_id=org_name, naming="snake")
+    attach_child_rows_to_items(cursor, "thong_tin_mo_thau", bids, organization_id=org_name, naming="snake")
     if type_param == 'result':
         try:
             result_meta = json.loads(pkg.get('danh_gia_hsdt_metadata') or '{}').get('result', {})
@@ -289,9 +289,9 @@ def build_report_context(package_id, user_id, org_name, type_param):
 
     id_goc = pkg.get('id_goc')
     root_id = id_goc if (id_goc and id_goc.strip()) else package_id
-    cursor.execute("SELECT * FROM goi_thau WHERE owner_id = ? AND (id_goc = ? OR id = ?) ORDER BY CAST(phien_ban AS INTEGER) ASC", (org_name, root_id, root_id))
+    cursor.execute("SELECT * FROM goi_thau WHERE organization_id = ? AND (id_goc = ? OR id = ?) ORDER BY CAST(phien_ban AS INTEGER) ASC", (org_name, root_id, root_id))
     goi_thau_versions = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
-    attach_child_rows_to_items(cursor, "goi_thau", goi_thau_versions, owner_id=org_name, naming="snake")
+    attach_child_rows_to_items(cursor, "goi_thau", goi_thau_versions, organization_id=org_name, naming="snake")
     for v in goi_thau_versions:
         extract_evaluation_dates(v)
         clear_competitive_quotation_appraisal(v)
@@ -302,7 +302,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
             SELECT hd.*
             FROM hop_dong hd
             JOIN hop_dong_goi_thau hdgt ON hdgt.hop_dong_id = hd.id
-            WHERE hd.owner_id = ? AND hdgt.owner_id = ? AND hdgt.goi_thau_id = ?
+            WHERE hd.organization_id = ? AND hdgt.organization_id = ? AND hdgt.goi_thau_id = ?
             ORDER BY CAST(hd.phien_ban AS INTEGER) DESC
             LIMIT 1
         """, (org_name, org_name, package_id))
@@ -310,32 +310,32 @@ def build_report_context(package_id, user_id, org_name, type_param):
         if row_contract:
             contract_data = parse_json_fields(dict(row_contract))
             cursor.execute(
-                "SELECT goi_thau_id FROM hop_dong_goi_thau WHERE owner_id = ? AND hop_dong_id = ?",
+                "SELECT goi_thau_id FROM hop_dong_goi_thau WHERE organization_id = ? AND hop_dong_id = ?",
                 (org_name, contract_data.get('id'))
             )
             contract_data['goi_thau_ids'] = [r[0] for r in cursor.fetchall()]
             investor_id = contract_data.get('chu_dau_tu_thanh_ly_id') if type_param == 'liquidation' else contract_data.get('chu_dau_tu_id')
             contractor_id = contract_data.get('nha_thau_thanh_ly_id') if type_param == 'liquidation' else contract_data.get('nha_thau_id')
             if investor_id:
-                cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ? AND owner_id = ?", (investor_id, org_name))
+                cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ? AND organization_id = ?", (investor_id, org_name))
                 row_inv = cursor.fetchone()
                 if row_inv:
                     inv_data = parse_json_fields(dict(row_inv))
                     investor_name = inv_data.get('ten_chu_dau_tu', '--')
                     investor_address = inv_data.get('dia_chi', '')
             if contractor_id:
-                cursor.execute("SELECT * FROM nha_thau WHERE id = ? AND owner_id = ?", (contractor_id, org_name))
+                cursor.execute("SELECT * FROM nha_thau WHERE id = ? AND organization_id = ?", (contractor_id, org_name))
                 row_contractor = cursor.fetchone()
                 if row_contractor:
                     bids = [parse_json_fields(dict(row_contractor))]
-                    attach_child_rows_to_items(cursor, "nha_thau", bids, owner_id=org_name, naming="snake")
+                    attach_child_rows_to_items(cursor, "nha_thau", bids, organization_id=org_name, naming="snake")
 
 
     cursor.execute("""
         SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec
         FROM goi_thau_chuyen_gia gtcg
         JOIN chuyen_gia cg ON gtcg.chuyen_gia_id = cg.id
-        WHERE gtcg.owner_id = ? AND cg.owner_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'chuyen_gia'
+        WHERE gtcg.organization_id = ? AND cg.organization_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'chuyen_gia'
     """, (org_name, org_name, package_id))
     to_chuyen_gia = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
 
@@ -344,7 +344,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
         SELECT cg.*, gtcg.chuc_vu, gtcg.cong_viec
         FROM goi_thau_chuyen_gia gtcg
         JOIN chuyen_gia cg ON gtcg.chuyen_gia_id = cg.id
-        WHERE gtcg.owner_id = ? AND cg.owner_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'tham_dinh'
+        WHERE gtcg.organization_id = ? AND cg.organization_id = ? AND gtcg.goi_thau_id = ? AND gtcg.loai = 'tham_dinh'
     """, (org_name, org_name, package_id))
     to_tham_dinh = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
     if is_competitive_quotation_package(pkg):

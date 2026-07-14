@@ -1,3 +1,6 @@
+import re
+
+
 SCHEMA_DINH_NGHIA = {
     "goi_dich_vu": {
         "columns": {
@@ -24,6 +27,7 @@ SCHEMA_DINH_NGHIA = {
             "ngay_bat_dau_goi": "TEXT",
             "ngay_het_han_goi": "TEXT",
             "han_su_dung_token": "INTEGER",
+            "privileged_reauth_at": "INTEGER",
             "thong_tin_thiet_bi_cuoi": "TEXT",
             "da_xac_minh": "INTEGER DEFAULT 0",
             "ma_xac_minh": "TEXT",
@@ -66,11 +70,12 @@ SCHEMA_DINH_NGHIA = {
     "chu_dau_tu": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "archived_at": "TEXT",
             "ngay_ap_dung": "TEXT NOT NULL DEFAULT (date('now', 'localtime'))",
             "ma_chu_dau_tu": "TEXT",
             "ten_chu_dau_tu": "TEXT NOT NULL",
@@ -99,13 +104,14 @@ SCHEMA_DINH_NGHIA = {
     "ke_hoach_lcnt": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "id_goc": "TEXT",
             "ma_ke_hoach": "TEXT",
             "ma_du_an": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "archived_at": "TEXT",
             "ten_ke_hoach": "TEXT NOT NULL",
             "ten_du_an_du_toan": "TEXT",
             "loai_hinh_mua_sam": "TEXT",
@@ -148,8 +154,8 @@ SCHEMA_DINH_NGHIA = {
     "ke_hoach_cong_viec": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "ke_hoach_id": "TEXT NOT NULL",
             "loai": "TEXT NOT NULL CHECK(loai IN ('da_thuc_hien', 'khong_ap_dung', 'chua_du_dieu_kien'))",
             "ten_cong_viec": "TEXT",
@@ -162,17 +168,18 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE CASCADE"
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT"
         ]
     },
     "nha_thau": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "archived_at": "TEXT",
             "ngay_ap_dung": "TEXT NOT NULL DEFAULT (date('now', 'localtime'))",
             "ma_nha_thau": "TEXT",
             "ten_nha_thau": "TEXT NOT NULL",
@@ -199,8 +206,8 @@ SCHEMA_DINH_NGHIA = {
     "nha_thau_lien_danh_thanh_vien": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "nha_thau_id": "TEXT NOT NULL",
             "thanh_vien_nha_thau_id": "TEXT",
             "ten_nha_thau": "TEXT",
@@ -222,19 +229,20 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (thanh_vien_nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ]
     },
     "goi_thau": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "id_goc": "TEXT",
             "ma_goi_thau": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "archived_at": "TEXT",
             "ke_hoach_id": "TEXT",
             "ten_goi_thau": "TEXT NOT NULL",
             "gia_goi_thau": "REAL",
@@ -310,8 +318,8 @@ SCHEMA_DINH_NGHIA = {
     "goi_thau_phan_lo": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "goi_thau_id": "TEXT NOT NULL",
             "ma_phan_lo": "TEXT",
             "ten_phan_lo": "TEXT",
@@ -328,15 +336,15 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ]
     },
     "goi_thau_tuy_chon_mua_them": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "goi_thau_id": "TEXT NOT NULL",
             "hang_muc": "TEXT",
             "don_vi": "TEXT",
@@ -355,8 +363,8 @@ SCHEMA_DINH_NGHIA = {
     "goi_thau_gia_han": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "goi_thau_id": "TEXT NOT NULL",
             "thoi_gian_dong_thau": "TEXT",
             "ly_do_gia_han": "TEXT",
@@ -366,14 +374,14 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE"
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT"
         ]
     },
     "goi_thau_lam_ro": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "goi_thau_id": "TEXT NOT NULL",
             "loai": "TEXT NOT NULL CHECK(loai IN ('yeu_cau', 'tra_loi'))",
             "thoi_gian": "TEXT",
@@ -384,18 +392,19 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE"
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT"
         ]
     },
     "chuyen_gia": {
         "json_fields": [],
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "archived_at": "TEXT",
             "ho_ten": "TEXT NOT NULL",
             "so_chung_chi": "TEXT",
             "ngay_cap_chung_chi": "TEXT",
@@ -420,11 +429,12 @@ SCHEMA_DINH_NGHIA = {
     "hop_dong": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "id_goc": "TEXT",
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1",
+            "archived_at": "TEXT",
             "ten_hop_dong": "TEXT",
             "so_hop_dong": "TEXT",
             "ngay_ky": "TEXT",
@@ -460,24 +470,24 @@ SCHEMA_DINH_NGHIA = {
     },
     "hop_dong_goi_thau": {
         "columns": {
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "hop_dong_id": "TEXT NOT NULL",
             "goi_thau_id": "TEXT NOT NULL",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
-        "primary_keys": ["owner_id", "hop_dong_id", "goi_thau_id"],
+        "primary_keys": ["organization_id", "hop_dong_id", "goi_thau_id"],
         "foreign_keys": [
-            "FOREIGN KEY (hop_dong_id) REFERENCES hop_dong(id) ON DELETE CASCADE",
+            "FOREIGN KEY (hop_dong_id) REFERENCES hop_dong(id) ON DELETE RESTRICT",
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT"
         ]
     },
     "phan_cong_nhan_su": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "id_nhan_vien": "TEXT NOT NULL",
             "id_muc_tieu": "TEXT NOT NULL",
             "loai_doi_tuong": "TEXT NOT NULL",
@@ -486,7 +496,7 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
-            "UNIQUE(owner_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
+            "UNIQUE(organization_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong)"
         ],
         "foreign_keys": [
             "FOREIGN KEY (id_nhan_vien) REFERENCES tai_khoan(id) ON DELETE CASCADE"
@@ -503,8 +513,8 @@ SCHEMA_DINH_NGHIA = {
     "trang_thai_ho_so_giay": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "name": "TEXT NOT NULL",
             "color": "TEXT NOT NULL DEFAULT '#64748b'",
             "sync_version": "INTEGER DEFAULT 0",
@@ -521,8 +531,9 @@ SCHEMA_DINH_NGHIA = {
     "thong_tin_mo_thau": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
+            "archived_at": "TEXT",
             "goi_thau_id": "TEXT",
             "nha_thau_id": "TEXT",
             "ma_phan_lo": "TEXT",
@@ -558,7 +569,7 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "foreign_keys": [
-            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
         ],
         "field_map": {
@@ -597,8 +608,8 @@ SCHEMA_DINH_NGHIA = {
     "thong_tin_mo_thau_lien_danh_thanh_vien": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "thong_tin_mo_thau_id": "TEXT NOT NULL",
             "thanh_vien_nha_thau_id": "TEXT",
             "ten_nha_thau": "TEXT",
@@ -638,21 +649,21 @@ SCHEMA_DINH_NGHIA = {
     "thanh_vien_to_chuc": {
         "columns": {
             "user_id": "TEXT NOT NULL",
-            "to_chuc_id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL",
             "vai_tro_trong_to_chuc": "TEXT NOT NULL DEFAULT 'employee' CHECK(vai_tro_trong_to_chuc IN ('owner', 'manager', 'employee', 'viewer'))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
-        "primary_keys": ["user_id", "to_chuc_id"],
+        "primary_keys": ["user_id", "organization_id"],
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
-            "FOREIGN KEY (to_chuc_id) REFERENCES to_chuc(id) ON DELETE CASCADE"
+            "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE"
         ]
     },
     "goi_thau_chuyen_gia": {
         "columns": {
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "goi_thau_id": "TEXT NOT NULL",
             "chuyen_gia_id": "TEXT NOT NULL",
             "loai": "TEXT NOT NULL DEFAULT 'chuyen_gia'",
@@ -660,7 +671,7 @@ SCHEMA_DINH_NGHIA = {
             "cong_viec": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
-        "primary_keys": ["owner_id", "goi_thau_id", "chuyen_gia_id", "loai"],
+        "primary_keys": ["organization_id", "goi_thau_id", "chuyen_gia_id", "loai"],
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
             "FOREIGN KEY (chuyen_gia_id) REFERENCES chuyen_gia(id) ON DELETE RESTRICT"
@@ -671,7 +682,7 @@ SCHEMA_DINH_NGHIA = {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
             "table_name": "TEXT NOT NULL",
             "record_id": "TEXT NOT NULL",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "delete_version": "INTEGER DEFAULT 0",
             "deleted_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
@@ -679,8 +690,8 @@ SCHEMA_DINH_NGHIA = {
     "cau_hinh_bien_word": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "ten_bien": "TEXT NOT NULL",
             "source_table": "TEXT NOT NULL",
             "source_column": "TEXT NOT NULL",
@@ -689,8 +700,8 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
-            "UNIQUE(owner_id, ten_bien)",
-            "UNIQUE(owner_id, source_table, source_column)"
+            "UNIQUE(organization_id, ten_bien)",
+            "UNIQUE(organization_id, source_table, source_column)"
         ]
     },
 
@@ -699,8 +710,8 @@ SCHEMA_DINH_NGHIA = {
     "ma_tran_phan_quyen": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
-            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'user'))",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type = 'organization')",
             "emp_id": "TEXT NOT NULL",
             "kehoach": "TEXT",
             "goithau": "TEXT",
@@ -714,30 +725,37 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
         "unique_constraints": [
-            "UNIQUE(owner_id, emp_id)"
+            "UNIQUE(organization_id, emp_id)"
         ]
     },
     "sync_metadata": {
         "columns": {
-            "owner_id": "TEXT PRIMARY KEY CHECK(owner_id != '')",
+            "organization_id": "TEXT PRIMARY KEY CHECK(organization_id != '')",
             "current_version": "INTEGER NOT NULL DEFAULT 0",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
+        }
+    },
+    "word_default_seeds": {
+        "columns": {
+            "organization_id": "TEXT PRIMARY KEY CHECK(organization_id != '')",
+            "mappings_version": "INTEGER NOT NULL CHECK(mappings_version > 0)",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         }
     },
     "sync_mutations": {
         "columns": {
-            "owner_id": "TEXT NOT NULL CHECK(owner_id != '')",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
             "client_mutation_id": "TEXT NOT NULL",
             "response_json": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\', \'localtime\'))"
         },
-        "primary_keys": ["owner_id", "client_mutation_id"]
+        "primary_keys": ["organization_id", "client_mutation_id"]
     },
     "audit_log": {
         "columns": {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
             "actor_user_id": "TEXT",
-            "owner_id": "TEXT",
+            "organization_id": "TEXT",
             "action": "TEXT NOT NULL",
             "target_type": "TEXT",
             "target_id": "TEXT",
@@ -747,3 +765,74 @@ SCHEMA_DINH_NGHIA = {
         }
     }
 }
+
+
+_SIMPLE_ID_FK = re.compile(
+    r"^FOREIGN KEY \((?P<column>[a-zA-Z0-9_]+)\) "
+    r"REFERENCES (?P<table>[a-zA-Z0-9_]+)\(id\)(?P<suffix>.*)$"
+)
+
+
+def _apply_tenant_constraints(schema):
+    """Materialize tenant isolation in every clean-schema table.
+
+    A globally unique ``id`` is not sufficient: child and parent must also carry
+    the same organization key so SQLite itself rejects cross-tenant links.
+    """
+    tenant_tables = {
+        table_name
+        for table_name, table_spec in schema.items()
+        if "organization_id" in table_spec.get("columns", {})
+    }
+
+    for table_name in tenant_tables:
+        table_spec = schema[table_name]
+        columns = table_spec.get("columns", {})
+        foreign_keys = list(table_spec.get("foreign_keys", []))
+        upgraded_foreign_keys = []
+
+        for foreign_key in foreign_keys:
+            match = _SIMPLE_ID_FK.match(foreign_key)
+            if (
+                match
+                and match.group("column") != "organization_id"
+                and match.group("table") in tenant_tables
+            ):
+                upgraded_foreign_keys.append(
+                    "FOREIGN KEY (organization_id, {column}) "
+                    "REFERENCES {table}(organization_id, id){suffix}".format(
+                        column=match.group("column"),
+                        table=match.group("table"),
+                        suffix=match.group("suffix"),
+                    )
+                )
+            else:
+                upgraded_foreign_keys.append(foreign_key)
+
+        if not any("REFERENCES to_chuc(id)" in fk for fk in upgraded_foreign_keys):
+            upgraded_foreign_keys.append(
+                "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT"
+            )
+
+        if table_name == "phan_cong_nhan_su":
+            upgraded_foreign_keys.append(
+                "FOREIGN KEY (id_nhan_vien, organization_id) "
+                "REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
+            )
+        elif table_name == "ma_tran_phan_quyen":
+            upgraded_foreign_keys.append(
+                "FOREIGN KEY (emp_id, organization_id) "
+                "REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
+            )
+
+        table_spec["foreign_keys"] = list(dict.fromkeys(upgraded_foreign_keys))
+
+        if "id" in columns:
+            tenant_unique = "UNIQUE(organization_id, id)"
+            unique_constraints = list(table_spec.get("unique_constraints", []))
+            if tenant_unique not in unique_constraints:
+                unique_constraints.append(tenant_unique)
+            table_spec["unique_constraints"] = unique_constraints
+
+
+_apply_tenant_constraints(SCHEMA_DINH_NGHIA)

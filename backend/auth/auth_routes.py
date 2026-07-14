@@ -26,12 +26,15 @@ from backend.shared.helpers import (
     OrgPermissionError
 )
 from backend.auth.auth_helper import _session_cache_get, _session_cache_set
+from backend.auth.auth_helper import PRIVILEGED_REAUTH_TTL_SECONDS, verify_super_admin_controls
 from backend.sync.api import disconnect_user_websockets
+from backend.shared.logging_utils import error_response
 
 
 from backend.auth.auth_service import (
     get_client_ip,
-    check_rate_limit,
+    get_rate_limit_decision,
+    rate_limit_response,
     record_rate_limit_failure,
     build_user_access_payload,
     update_user_organizations,
@@ -51,8 +54,9 @@ async def login_api(request):
     try:
         ip = get_client_ip(request)
         ip_rate_key = f"login:{ip}"
-        if not check_rate_limit(ip_rate_key, consume_attempt=False):
-            return JSONResponse({"error": "Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau 60 giây."}, status_code=429)
+        ip_limit = get_rate_limit_decision(ip_rate_key, consume_attempt=False)
+        if not ip_limit.allowed:
+            return rate_limit_response("Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau.", ip_limit)
 
         data = await request.json()
         username = data.get('username', '').strip()
@@ -61,8 +65,9 @@ async def login_api(request):
 
         username_rate_key = hashlib.sha256(username.lower().encode('utf-8')).hexdigest()
         user_rate_key = f"login_user:{username_rate_key}" if username else None
-        if user_rate_key and not check_rate_limit(user_rate_key, consume_attempt=False):
-            return JSONResponse({"error": "Quá nhiều lần đăng nhập cho tài khoản này. Vui lòng thử lại sau 60 giây."}, status_code=429)
+        user_limit = get_rate_limit_decision(user_rate_key, consume_attempt=False) if user_rate_key else None
+        if user_limit and not user_limit.allowed:
+            return rate_limit_response("Quá nhiều lần đăng nhập cho tài khoản này. Vui lòng thử lại sau.", user_limit)
 
         def record_failed_login():
             record_rate_limit_failure(ip_rate_key)
@@ -110,11 +115,11 @@ async def login_api(request):
         token_expiry = int(time.time() + expiry_hours * 3600)
         device_info = json.dumps({
             "user_agent": request.headers.get("User-Agent", "")[:200],
-            "ip": request.client.host,
+            "ip": ip,
             "login_time": datetime.utcnow().isoformat()
         })
         cursor.execute(
-            "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ? WHERE id = ?",
+            "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ?, privileged_reauth_at = NULL WHERE id = ?",
             (session_token, token_expiry, device_info, user['id'])
         )
         _session_cache_invalidate_by_user_id(user['id'])
@@ -128,7 +133,7 @@ async def login_api(request):
         log_audit(
             "auth.login_success",
             actor_user_id=user['id'],
-            owner_id=access_payload['active_org_id'],
+            organization_id=access_payload['active_org_id'],
             target_type="tai_khoan",
             target_id=user['id'],
             request=request,
@@ -172,7 +177,8 @@ def _load_user_by_session_token(session_token):
         cursor.execute("""
             SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien,
                    goi_dich_vu_id, token_phien, han_su_dung_token,
-                   thong_tin_thiet_bi_cuoi, google_id, mat_khau
+                   thong_tin_thiet_bi_cuoi, google_id, mat_khau,
+                   privileged_reauth_at
             FROM tai_khoan
             WHERE token_phien = ?
         """, (session_token,))
@@ -238,18 +244,15 @@ def _get_username_setup_state(user):
     if not needs_username:
         return False, "", False
 
-    suggested_username = ""
     conn_suggest = database.get_connection()
     try:
-        from google_auth_routes import _generate_suggested_username
+        from backend.auth.username_validator import generate_suggested_username
         cursor_suggest = conn_suggest.cursor()
-        suggested_username = _generate_suggested_username(
+        suggested_username = generate_suggested_username(
             user.get('ho_ten', ''),
             user.get('email', ''),
             cursor_suggest
         )
-    except Exception:
-        pass
     finally:
         conn_suggest.close()
     account_linked = bool(user.get('google_id') and user.get('mat_khau'))
@@ -353,6 +356,11 @@ async def update_profile_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
+        if 'organization_name' in data:
+            return JSONResponse({
+                "error": "Tên tổ chức là trường chỉ đọc trong hồ sơ cá nhân.",
+                "code": "ORGANIZATION_NAME_READ_ONLY",
+            }, status_code=400)
         name = data.get('name', '').strip()
         email = data.get('email', '').strip()
         avatar = data.get('avatar', '')
@@ -372,11 +380,28 @@ async def update_profile_api(request):
         else:
             cursor.execute("UPDATE tai_khoan SET ho_ten = ?, email = ? WHERE id = ?", (name, email, role_or_err.user_id))
 
-        _session_cache_invalidate_by_user_id(role_or_err.user_id)
+        cursor.execute(
+            """
+            SELECT ten_dang_nhap AS username, ho_ten AS name, email,
+                   COALESCE(anh_dai_dien, '') AS avatar
+            FROM tai_khoan
+            WHERE id = ?
+            """,
+            (role_or_err.user_id,),
+        )
+        updated_profile = cursor.fetchone()
+        if not updated_profile:
+            conn.rollback()
+            return JSONResponse({"error": "Tài khoản không còn tồn tại."}, status_code=404)
 
         conn.commit()
+        _session_cache_invalidate_by_user_id(role_or_err.user_id)
 
-        return JSONResponse({"success": True, "message": "Cập nhật thông tin tài khoản thành công!"})
+        return JSONResponse({
+            "success": True,
+            "message": "Cập nhật thông tin tài khoản thành công!",
+            "profile": dict(updated_profile),
+        })
     except Exception as e:
         log_error(e, "update_profile_api")
         return JSONResponse({"error": "Đã xảy ra lỗi cập nhật hồ sơ."}, status_code=500)
@@ -415,7 +440,7 @@ async def change_password_api(request):
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         cursor.execute(
-            "UPDATE tai_khoan SET mat_khau = ?, token_phien = ?, han_su_dung_token = ? WHERE id = ?",
+            "UPDATE tai_khoan SET mat_khau = ?, token_phien = ?, han_su_dung_token = ?, privileged_reauth_at = NULL WHERE id = ?",
             (hash_password(new_password), new_token, token_expiry, user['id'])
         )
         conn.commit()
@@ -453,7 +478,7 @@ async def logout_api(request):
             conn = database.get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE tai_khoan SET token_phien = NULL, han_su_dung_token = NULL WHERE token_phien = ?",
+                "UPDATE tai_khoan SET token_phien = NULL, han_su_dung_token = NULL, privileged_reauth_at = NULL WHERE token_phien = ?",
                 (token,)
             )
             conn.commit()
@@ -477,6 +502,76 @@ async def logout_api(request):
         if conn:
             try: conn.close()
             except Exception: pass
+
+
+async def privileged_reauth_api(request):
+    conn = None
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        ip = get_client_ip(request)
+        ip_rate_key = f"privileged_reauth:{ip}"
+        user_rate_key = f"privileged_reauth_user:{role_or_err.user_id}"
+        reauth_ip_limit = get_rate_limit_decision(ip_rate_key, consume_attempt=False)
+        reauth_user_limit = get_rate_limit_decision(user_rate_key, consume_attempt=False)
+        if not reauth_ip_limit.allowed or not reauth_user_limit.allowed:
+            return rate_limit_response(
+                "Quá nhiều lần xác thực lại thất bại. Vui lòng thử lại sau.",
+                reauth_ip_limit if not reauth_ip_limit.allowed else reauth_user_limit,
+            )
+        data = await request.json()
+        password = str(data.get("password") or "")
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, vai_tro, mat_khau FROM tai_khoan WHERE id = ?",
+            (role_or_err.user_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
+        is_super_admin = "super_admin" in get_effective_roles(row["vai_tro"])
+        if is_super_admin:
+            controls_valid, controls_error = verify_super_admin_controls(
+                request,
+                dict(row),
+                require_reauth=False,
+            )
+            if not controls_valid:
+                return JSONResponse({"error": controls_error}, status_code=403)
+        if not password or not verify_password(row["mat_khau"], password):
+            record_rate_limit_failure(ip_rate_key)
+            record_rate_limit_failure(user_rate_key)
+            log_audit(
+                "admin.privileged_reauth_failed" if is_super_admin else "security.password_reauth_failed",
+                actor_user_id=role_or_err.user_id,
+                target_type="session",
+                request=request,
+            )
+            return JSONResponse({"error": "Mật khẩu không chính xác."}, status_code=400)
+        reauthenticated_at = int(time.time())
+        cursor.execute(
+            "UPDATE tai_khoan SET privileged_reauth_at = ? WHERE id = ?",
+            (reauthenticated_at, role_or_err.user_id),
+        )
+        conn.commit()
+        _session_cache_invalidate_by_user_id(role_or_err.user_id)
+        log_audit(
+            "admin.privileged_reauth_succeeded" if is_super_admin else "security.password_reauth_succeeded",
+            actor_user_id=role_or_err.user_id,
+            target_type="session",
+            request=request,
+        )
+        return JSONResponse({"success": True, "expires_in": PRIVILEGED_REAUTH_TTL_SECONDS})
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        log_error(exc, "privileged_reauth_api")
+        return JSONResponse({"error": "Không thể xác thực lại quyền quản trị."}, status_code=500)
+    finally:
+        if conn:
+            conn.close()
 
 async def list_users_api(request):
     try:
@@ -514,7 +609,7 @@ async def list_users_api(request):
                 """
                 SELECT lower(trim(vai_tro_trong_to_chuc))
                 FROM thanh_vien_to_chuc
-                WHERE user_id = ? AND to_chuc_id = ?
+                WHERE user_id = ? AND organization_id = ?
                 """,
                 (role_or_err.user_id, active_org_id),
             )
@@ -531,7 +626,7 @@ async def list_users_api(request):
                            tk.ngay_het_han_goi AS package_end_date
                     FROM tai_khoan AS tk
                     JOIN thanh_vien_to_chuc AS tvtc ON tvtc.user_id = tk.id
-                    WHERE tk.id = ? AND tvtc.to_chuc_id = ?{email_filter_tk_sql}
+                    WHERE tk.id = ? AND tvtc.organization_id = ?{email_filter_tk_sql}
                 """, tuple([role_or_err.user_id, active_org_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
             else:
@@ -543,7 +638,7 @@ async def list_users_api(request):
                                     tk.ngay_bat_dau_goi AS package_start_date, tk.ngay_het_han_goi AS package_end_date
                     FROM tai_khoan tk
                     JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                    WHERE tvtc.to_chuc_id = ?{email_filter_tk_sql}
+                    WHERE tvtc.organization_id = ?{email_filter_tk_sql}
                 """, tuple([active_org_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
 
@@ -555,7 +650,7 @@ async def list_users_api(request):
                 SELECT tvtc.user_id, tc.id, tc.ten_to_chuc, tc.trang_thai,
                        tvtc.vai_tro_trong_to_chuc
                 FROM thanh_vien_to_chuc tvtc
-                JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
+                JOIN to_chuc tc ON tvtc.organization_id = tc.id
                 WHERE tvtc.user_id IN ({placeholders})
             """, user_ids)
             for row in cursor.fetchall():
@@ -575,7 +670,12 @@ async def list_users_api(request):
         conn.close()
         return JSONResponse(users)
     except OrgPermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
         log_error(e, "list_users_api")
         return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
@@ -603,14 +703,14 @@ async def delete_user_api(request):
                 return JSONResponse({"error": "Không thể xóa quản trị viên nền tảng cuối cùng."}, status_code=409)
         cursor.execute(
             """
-            SELECT membership.to_chuc_id
+            SELECT membership.organization_id
             FROM thanh_vien_to_chuc AS membership
             WHERE membership.user_id = ?
               AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'owner'
               AND NOT EXISTS (
                   SELECT 1
                   FROM thanh_vien_to_chuc AS other_owner
-                  WHERE other_owner.to_chuc_id = membership.to_chuc_id
+                  WHERE other_owner.organization_id = membership.organization_id
                     AND other_owner.user_id != membership.user_id
                     AND lower(trim(other_owner.vai_tro_trong_to_chuc)) = 'owner'
               )
@@ -620,6 +720,29 @@ async def delete_user_api(request):
         )
         if cursor.fetchone():
             return JSONResponse({"error": "Không thể xóa chủ sở hữu cuối cùng của tổ chức."}, status_code=409)
+        impact = {
+            "rootCount": 1,
+            "memberships": int(cursor.execute(
+                "SELECT COUNT(*) FROM thanh_vien_to_chuc WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()[0]),
+            "assignments": int(cursor.execute(
+                "SELECT COUNT(*) FROM phan_cong_nhan_su WHERE id_nhan_vien = ?",
+                (user_id,),
+            ).fetchone()[0]),
+            "permissionRows": int(cursor.execute(
+                "SELECT COUNT(*) FROM ma_tran_phan_quyen WHERE emp_id = ?",
+                (user_id,),
+            ).fetchone()[0]),
+            "passwordResetTokens": int(cursor.execute(
+                "SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()[0]),
+        }
+        impact["totalCount"] = impact["rootCount"] + sum(
+            value for key, value in impact.items() if key not in {"rootCount", "totalCount"}
+        )
+        cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE emp_id = ?", (user_id,))
         cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
         conn.commit()
 
@@ -631,10 +754,15 @@ async def delete_user_api(request):
             actor_user_id=role_or_err.user_id,
             target_type="tai_khoan",
             target_id=user_id,
-            request=request
+            request=request,
+            metadata={"impact": impact},
         )
 
-        return JSONResponse({"success": True, "message": "Xóa người dùng thành công!"})
+        return JSONResponse({
+            "success": True,
+            "message": "Xóa người dùng thành công!",
+            "deleteImpact": impact,
+        })
     except Exception as e:
         if conn:
             conn.rollback()
@@ -668,6 +796,13 @@ async def update_user_role_api(request):
             return JSONResponse({"error": "Mỗi phạm vi chỉ được có một vai trò."}, status_code=400)
 
         actor_platform_admin = "super_admin" in get_effective_roles(str(role_or_err))
+        if actor_platform_admin:
+            controls_valid, controls_error = verify_super_admin_controls(
+                request,
+                _load_user_by_session_token(request.cookies.get("session_token")) or {},
+            )
+            if not controls_valid:
+                return JSONResponse({"error": controls_error}, status_code=403)
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
@@ -699,7 +834,7 @@ async def update_user_role_api(request):
         elif scope == "organization":
             org_id = get_active_org(request, role_or_err.user_id)
             cursor.execute(
-                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
+                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
                 (role_or_err.user_id, org_id),
             )
             actor_row = cursor.fetchone()
@@ -712,7 +847,7 @@ async def update_user_role_api(request):
                 return JSONResponse({"error": "Vai trò thành viên không hợp lệ."}, status_code=400)
 
             cursor.execute(
-                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND to_chuc_id = ?",
+                "SELECT lower(trim(vai_tro_trong_to_chuc)) FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
                 (user_id, org_id),
             )
             target_row = cursor.fetchone()
@@ -733,7 +868,7 @@ async def update_user_role_api(request):
 
             if target_role == "owner" and new_role != "owner":
                 cursor.execute(
-                    "SELECT count(*) FROM thanh_vien_to_chuc WHERE to_chuc_id = ? AND lower(trim(vai_tro_trong_to_chuc)) = 'owner'",
+                    "SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ? AND lower(trim(vai_tro_trong_to_chuc)) = 'owner'",
                     (org_id,),
                 )
                 if int(cursor.fetchone()[0]) <= 1:
@@ -741,7 +876,7 @@ async def update_user_role_api(request):
                     return JSONResponse({"error": "Không thể hạ quyền chủ sở hữu cuối cùng."}, status_code=409)
 
             cursor.execute(
-                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now', 'localtime') WHERE user_id = ? AND to_chuc_id = ?",
+                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now', 'localtime') WHERE user_id = ? AND organization_id = ?",
                 (new_role, user_id, org_id),
             )
             audit_metadata = {"scope": "organization", "organization_id": org_id, "role": new_role}
@@ -766,7 +901,12 @@ async def update_user_role_api(request):
     except OrgPermissionError as e:
         if conn:
             conn.rollback()
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
         if conn:
             conn.rollback()

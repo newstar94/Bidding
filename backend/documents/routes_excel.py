@@ -10,18 +10,67 @@ from backend.shared.helpers import (
     OrgPermissionError
 )
 from backend.shared.access_policy import can_read_record
+from backend.shared.logging_utils import error_response, log_and_error
 
-from backend.documents.excel_handler import parse_excel
-from backend.documents.archive_validation import validate_ooxml_archive
-import backend.documents.excel_service as excel_service
+from backend.documents.document_worker import (
+    DocumentWorkerError,
+    run_document_job,
+    run_document_job_async,
+)
 
 MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _max_excel_import_rows():
+    try:
+        value = int(os.environ.get("EXCEL_MAX_IMPORT_ROWS", "10000"))
+    except (TypeError, ValueError):
+        value = 10000
+    return min(100_000, max(100, value))
+
+
+MAX_EXCEL_IMPORT_ROWS = _max_excel_import_rows()
 ALLOWED_EXCEL_EXTENSIONS = {'.xlsx', '.xls'}
 ALLOWED_EXCEL_MIME_TYPES = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-excel',
     'application/octet-stream',
 }
+
+
+def _excel_error(request, exception, context, *, value_status=400):
+    if isinstance(exception, OrgPermissionError):
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
+    if isinstance(exception, ValueError):
+        return error_response(
+            request,
+            "EXCEL_INPUT_INVALID" if value_status == 400 else "EXCEL_DATA_NOT_FOUND",
+            "Tệp hoặc dữ liệu Excel không hợp lệ."
+            if value_status == 400
+            else "Không tìm thấy dữ liệu cần xuất.",
+            status_code=value_status,
+        )
+    if isinstance(exception, DocumentWorkerError):
+        return log_and_error(
+            request,
+            exception,
+            context,
+            "DOCUMENT_WORKER_UNAVAILABLE",
+            "Dịch vụ xử lý tài liệu tạm thời không khả dụng.",
+            status_code=503,
+        )
+    return log_and_error(
+        request,
+        exception,
+        context,
+        "EXCEL_OPERATION_FAILED",
+        "Không thể xử lý yêu cầu Excel.",
+    )
 
 
 def _can_export_package(role_or_err, org_name, package_id):
@@ -41,7 +90,7 @@ def _can_export_package(role_or_err, org_name, package_id):
         conn.close()
 
 
-def _validate_excel_upload(file_obj, file_bytes):
+def _validate_excel_upload(file_obj, file_bytes, *, deep_validation=True):
     filename = os.path.basename(str(getattr(file_obj, 'filename', '') or ''))
     _, ext = os.path.splitext(filename)
     if ext.lower() not in ALLOWED_EXCEL_EXTENSIONS:
@@ -61,8 +110,20 @@ def _validate_excel_upload(file_obj, file_bytes):
         raise ValueError('Nội dung tệp .xlsx không hợp lệ')
     if ext.lower() == '.xls' and not is_xls:
         raise ValueError('Nội dung tệp .xls không hợp lệ')
-    if ext.lower() == '.xlsx':
-        validate_ooxml_archive(file_bytes, "xlsx")
+    if ext.lower() == '.xlsx' and deep_validation:
+        run_document_job(
+            "validate_ooxml",
+            {"content": file_bytes, "kind": "xlsx"},
+            timeout_seconds=15,
+        )
+
+
+async def _export_excel(function_name, *args):
+    result = await run_document_job_async(
+        "export_excel",
+        {"function": function_name, "args": list(args)},
+    )
+    return BytesIO(result)
 
 async def import_excel_api(request):
     try:
@@ -78,13 +139,37 @@ async def import_excel_api(request):
             return JSONResponse({"error": "Missing file or type parameter"}, status_code=400)
 
         file_bytes = await file_obj.read()
-        _validate_excel_upload(file_obj, file_bytes)
-        rows = parse_excel(file_bytes, import_type)
+        _validate_excel_upload(file_obj, file_bytes, deep_validation=False)
+        _, extension = os.path.splitext(os.path.basename(file_obj.filename or ""))
+        rows = await run_document_job_async(
+            "parse_excel",
+            {
+                "content": file_bytes,
+                "kind": extension.lower().lstrip("."),
+                "import_type": import_type,
+            },
+            timeout_seconds=30,
+        )
+        if not isinstance(rows, list):
+            raise ValueError("Invalid Excel parser result")
+        if len(rows) > MAX_EXCEL_IMPORT_ROWS:
+            return error_response(
+                request,
+                "EXCEL_ROW_LIMIT_EXCEEDED",
+                "Tệp Excel có quá nhiều dòng dữ liệu.",
+                status_code=413,
+                fields={
+                    "maxRows": MAX_EXCEL_IMPORT_ROWS,
+                    "receivedRows": len(rows),
+                },
+            )
         return JSONResponse({"success": True, "rows": rows})
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _excel_error(request, e, "import_excel_api")
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "import_excel_api")
     except Exception as e:
-        return JSONResponse({"error": f"Lỗi phân tích tệp Excel: {str(e)}"}, status_code=500)
+        return _excel_error(request, e, "import_excel_api")
 
 async def export_excel_template_api(request):
     try:
@@ -93,11 +178,7 @@ async def export_excel_template_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         import_type = request.path_params.get('import_type')
-        wb = excel_service.create_excel_template(import_type)
-
-        out_stream = BytesIO()
-        wb.save(out_stream)
-        out_stream.seek(0)
+        out_stream = await _export_excel("create_excel_template", import_type)
 
         filename = f"mau_nhap_lieu_{import_type}.xlsx"
         return StreamingResponse(
@@ -106,9 +187,11 @@ async def export_excel_template_api(request):
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _excel_error(request, e, "export_excel_template_api")
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "export_excel_template_api")
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _excel_error(request, e, "export_excel_template_api")
 
 async def export_mothau_template_api(request):
     try:
@@ -121,11 +204,9 @@ async def export_mothau_template_api(request):
         lot_codes_str = request.query_params.get('lot_codes', '')
         lot_codes = [c.strip() for c in lot_codes_str.split(',') if c.strip()]
 
-        wb = excel_service.create_mothau_template(case_type, lot_codes)
-
-        out_stream = BytesIO()
-        wb.save(out_stream)
-        out_stream.seek(0)
+        out_stream = await _export_excel(
+            "create_mothau_template", case_type, lot_codes
+        )
 
         filename = f"Mau_nhap_HSDT_{package_name}.xlsx"
         return StreamingResponse(
@@ -133,8 +214,10 @@ async def export_mothau_template_api(request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "export_mothau_template_api")
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _excel_error(request, e, "export_mothau_template_api")
 
 async def export_opening_fin_template_api(request):
     try:
@@ -155,11 +238,9 @@ async def export_opening_fin_template_api(request):
         if not _can_export_package(role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
-        wb = excel_service.create_opening_fin_template(pkg_id_clean, org_name)
-
-        out_stream = BytesIO()
-        wb.save(out_stream)
-        out_stream.seek(0)
+        out_stream = await _export_excel(
+            "create_opening_fin_template", pkg_id_clean, org_name
+        )
 
         filename = f"Mau_mo_hsdet_tai_chinh_{package_name}.xlsx"
         return StreamingResponse(
@@ -167,8 +248,10 @@ async def export_opening_fin_template_api(request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "export_opening_fin_template_api")
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _excel_error(request, e, "export_opening_fin_template_api")
 
 async def export_danhgiahsdt_template_api(request):
     try:
@@ -190,11 +273,9 @@ async def export_danhgiahsdt_template_api(request):
         if not _can_export_package(role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
-        wb = excel_service.create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type)
-
-        out_stream = BytesIO()
-        wb.save(out_stream)
-        out_stream.seek(0)
+        out_stream = await _export_excel(
+            "create_danhgiahsdt_template", pkg_id_clean, org_name, eval_type
+        )
 
         filename = f"Mau_danh_gia_HSDT_{eval_type}_{package_name}.xlsx"
         return StreamingResponse(
@@ -203,9 +284,11 @@ async def export_danhgiahsdt_template_api(request):
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=404)
+        return _excel_error(request, e, "export_danhgiahsdt_template_api", value_status=404)
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "export_danhgiahsdt_template_api")
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _excel_error(request, e, "export_danhgiahsdt_template_api")
 
 async def export_ketquaqd_template_api(request):
     try:
@@ -226,11 +309,9 @@ async def export_ketquaqd_template_api(request):
         if not _can_export_package(role_or_err, org_name, pkg_id_clean):
             return JSONResponse({"error": "Ban khong co quyen xuat du lieu goi thau nay."}, status_code=403)
 
-        wb = excel_service.create_ketquaqd_template(pkg_id_clean, org_name)
-
-        out_stream = BytesIO()
-        wb.save(out_stream)
-        out_stream.seek(0)
+        out_stream = await _export_excel(
+            "create_ketquaqd_template", pkg_id_clean, org_name
+        )
 
         filename = f"Mau_ket_qua_LCNT_{package_name}.xlsx"
         return StreamingResponse(
@@ -239,9 +320,11 @@ async def export_ketquaqd_template_api(request):
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=404)
+        return _excel_error(request, e, "export_ketquaqd_template_api", value_status=404)
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "export_ketquaqd_template_api")
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _excel_error(request, e, "export_ketquaqd_template_api")
 
 async def export_phanlo_excel_api(request):
     try:
@@ -252,11 +335,7 @@ async def export_phanlo_excel_api(request):
         data = await request.json()
         phan_lo_list = data.get('phanLoList', [])
 
-        wb = excel_service.create_phanlo_excel(phan_lo_list)
-
-        out_stream = BytesIO()
-        wb.save(out_stream)
-        out_stream.seek(0)
+        out_stream = await _export_excel("create_phanlo_excel", phan_lo_list)
 
         filename = "Danh_sach_phan_lo.xlsx"
         return StreamingResponse(
@@ -264,8 +343,10 @@ async def export_phanlo_excel_api(request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "export_phanlo_excel_api")
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _excel_error(request, e, "export_phanlo_excel_api")
 
 async def export_tuychonmuathem_excel_api(request):
     try:
@@ -276,11 +357,9 @@ async def export_tuychonmuathem_excel_api(request):
         data = await request.json()
         tuy_chon_list = data.get('tuyChonList', [])
 
-        wb = excel_service.create_tuychonmuathem_excel(tuy_chon_list)
-
-        out_stream = BytesIO()
-        wb.save(out_stream)
-        out_stream.seek(0)
+        out_stream = await _export_excel(
+            "create_tuychonmuathem_excel", tuy_chon_list
+        )
 
         filename = "Danh_sach_tuy_chon_mua_them.xlsx"
         return StreamingResponse(
@@ -288,5 +367,7 @@ async def export_tuychonmuathem_excel_api(request):
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except DocumentWorkerError as e:
+        return _excel_error(request, e, "export_tuychonmuathem_excel_api")
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _excel_error(request, e, "export_tuychonmuathem_excel_api")

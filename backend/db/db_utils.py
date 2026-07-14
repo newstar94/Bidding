@@ -124,7 +124,7 @@ def _normalize_contractor_code(value):
 
 def _backfill_member_contractor_versions(cursor):
     cursor.execute("""
-        SELECT id, owner_id, ma_nha_thau, ma_so_thue, phien_ban,
+        SELECT id, organization_id, ma_nha_thau, ma_so_thue, phien_ban,
                COALESCE(NULLIF(ngay_ap_dung, ''), substr(COALESCE(created_at, updated_at, ''), 1, 10)) AS effective_date
         FROM nha_thau
     """)
@@ -134,11 +134,11 @@ def _backfill_member_contractor_versions(cursor):
         for raw_code in (candidate.get("ma_nha_thau"), candidate.get("ma_so_thue")):
             code = _normalize_contractor_code(raw_code)
             if code:
-                candidates_by_code.setdefault((candidate.get("owner_id"), code), {})[candidate["id"]] = candidate
+                candidates_by_code.setdefault((candidate.get("organization_id"), code), {})[candidate["id"]] = candidate
 
-    def choose(owner_id, raw_code, reference_time):
+    def choose(organization_id, raw_code, reference_time):
         code = _normalize_contractor_code(raw_code)
-        candidates = list(candidates_by_code.get((owner_id, code), {}).values())
+        candidates = list(candidates_by_code.get((organization_id, code), {}).values())
         if not candidates:
             return None
         reference_date = str(reference_time or "")[:10]
@@ -152,7 +152,7 @@ def _backfill_member_contractor_versions(cursor):
         (
             "thong_tin_mo_thau_lien_danh_thanh_vien",
             """
-                SELECT member.id, member.owner_id, member.ma_nha_thau, member.ma_so_thue,
+                SELECT member.id, member.organization_id, member.ma_nha_thau, member.ma_so_thue,
                        COALESCE(pkg.thoi_gian_mo_thau, pkg.thoi_gian_mo_ehsdxtc, bid.created_at, bid.updated_at, '') AS reference_time
                 FROM thong_tin_mo_thau_lien_danh_thanh_vien member
                 JOIN thong_tin_mo_thau bid ON bid.id = member.thong_tin_mo_thau_id
@@ -163,7 +163,7 @@ def _backfill_member_contractor_versions(cursor):
         (
             "nha_thau_lien_danh_thanh_vien",
             """
-                SELECT member.id, member.owner_id, member.ma_nha_thau, member.ma_so_thue,
+                SELECT member.id, member.organization_id, member.ma_nha_thau, member.ma_so_thue,
                        COALESCE(parent.ngay_ap_dung, parent.created_at, parent.updated_at, '') AS reference_time
                 FROM nha_thau_lien_danh_thanh_vien member
                 JOIN nha_thau parent ON parent.id = member.nha_thau_id
@@ -176,7 +176,7 @@ def _backfill_member_contractor_versions(cursor):
         for row in cursor.fetchall():
             item = dict(row)
             contractor_id = choose(
-                item.get("owner_id"),
+                item.get("organization_id"),
                 item.get("ma_nha_thau") or item.get("ma_so_thue"),
                 item.get("reference_time") or "",
             )
@@ -294,38 +294,38 @@ def _ensure_runtime_indexes(cursor):
 
     for table in versioned_tables:
         _assert_safe_table(table)
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_updated ON {table} (owner_id, updated_at)")
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_latest ON {table} (owner_id, is_latest)")
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_root ON {table} (owner_id, id_goc)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_updated ON {table} (organization_id, updated_at)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_latest ON {table} (organization_id, is_latest)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_root ON {table} (organization_id, id_goc)")
 
     for table in synced_tables:
         _assert_safe_table(table)
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_type_owner ON {table} (owner_type, owner_id)")
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_sync_version ON {table} (owner_id, sync_version)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_type_owner ON {table} (owner_type, organization_id)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_sync_version ON {table} (organization_id, sync_version)")
 
     for table in owner_typed_tables:
         _assert_safe_table(table)
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_type_owner ON {table} (owner_type, owner_id)")
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_type_owner ON {table} (owner_type, organization_id)")
 
     for table in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "chuyen_gia", "hop_dong"]:
         _assert_safe_table(table)
         cursor.execute(f"""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_unique_version
-            ON {table} (owner_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)
+            ON {table} (organization_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban)
         """)
         cursor.execute(f"""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_unique_latest
-            ON {table} (owner_id, COALESCE(NULLIF(id_goc, ''), id))
+            ON {table} (organization_id, COALESCE(NULLIF(id_goc, ''), id))
             WHERE is_latest = 1
         """)
 
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_unique_plan_snapshot_version
-        ON goi_thau (owner_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban, ke_hoach_id)
+        ON goi_thau (organization_id, COALESCE(NULLIF(id_goc, ''), id), phien_ban, ke_hoach_id)
     """)
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_unique_latest
-        ON goi_thau (owner_id, COALESCE(NULLIF(id_goc, ''), id), COALESCE(ke_hoach_id, ''))
+        ON goi_thau (organization_id, COALESCE(NULLIF(id_goc, ''), id), COALESCE(ke_hoach_id, ''))
         WHERE is_latest = 1
     """)
 
@@ -342,58 +342,114 @@ def _ensure_runtime_indexes(cursor):
         _assert_safe_table(table)
         cursor.execute(f"""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_{column}_owner_latest_unique
-            ON {table} (owner_id, {column})
+            ON {table} (organization_id, {column})
             WHERE is_latest = 1 AND {column} IS NOT NULL AND {column} != ''
         """)
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_ma_goi_thau_owner_plan_latest_unique
-        ON goi_thau (owner_id, COALESCE(ke_hoach_id, ''), ma_goi_thau)
+        ON goi_thau (organization_id, COALESCE(ke_hoach_id, ''), ma_goi_thau)
         WHERE is_latest = 1 AND ma_goi_thau IS NOT NULL AND ma_goi_thau != ''
     """)
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_ke_hoach ON goi_thau (ke_hoach_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_nha_thau_trung ON goi_thau (nha_thau_trung_thau_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (owner_id, ke_hoach_id, loai, sort_order)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (owner_id, goi_thau_id, sort_order)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_tuy_chon_parent ON goi_thau_tuy_chon_mua_them (owner_id, goi_thau_id, sort_order)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_gia_han_parent ON goi_thau_gia_han (owner_id, goi_thau_id, sort_order)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_parent ON goi_thau_lam_ro (owner_id, goi_thau_id, loai, sort_order)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_parent ON nha_thau_lien_danh_thanh_vien (owner_id, nha_thau_id, sort_order)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_parent ON thong_tin_mo_thau_lien_danh_thanh_vien (owner_id, thong_tin_mo_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ke_hoach_cong_viec_parent ON ke_hoach_cong_viec (organization_id, ke_hoach_id, loai, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_parent ON goi_thau_phan_lo (organization_id, goi_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_tuy_chon_parent ON goi_thau_tuy_chon_mua_them (organization_id, goi_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_gia_han_parent ON goi_thau_gia_han (organization_id, goi_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_parent ON goi_thau_lam_ro (organization_id, goi_thau_id, loai, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_parent ON nha_thau_lien_danh_thanh_vien (organization_id, nha_thau_id, sort_order)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_parent ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thong_tin_mo_thau_id, sort_order)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_ke_hoach ON hop_dong (ke_hoach_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_chu_dau_tu ON hop_dong (chu_dau_tu_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau ON hop_dong (nha_thau_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_goi_thau_owner_hd ON hop_dong_goi_thau (owner_id, hop_dong_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_goi_thau_owner_gt ON hop_dong_goi_thau (owner_id, goi_thau_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_gt ON goi_thau_chuyen_gia (owner_id, goi_thau_id, loai)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_cg ON goi_thau_chuyen_gia (owner_id, chuyen_gia_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_goi_thau_owner_hd ON hop_dong_goi_thau (organization_id, hop_dong_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_hop_dong_goi_thau_owner_gt ON hop_dong_goi_thau (organization_id, goi_thau_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_gt ON goi_thau_chuyen_gia (organization_id, goi_thau_id, loai)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_chuyen_gia_owner_cg ON goi_thau_chuyen_gia (organization_id, chuyen_gia_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_goi_thau ON thong_tin_mo_thau (goi_thau_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_nha_thau ON thong_tin_mo_thau (nha_thau_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (owner_id, id_muc_tieu, loai_doi_tuong)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)")
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tai_khoan_token ON tai_khoan (token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tai_khoan_email ON tai_khoan (email) WHERE email != ''")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tai_khoan_ten_dang_nhap ON tai_khoan (ten_dang_nhap)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_user_active ON password_reset_tokens (user_id, used_at, expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limit_expires ON rate_limit_buckets (expires_at)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (to_chuc_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (organization_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_to_chuc_quan_ly ON to_chuc (quan_ly_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (owner_id, deleted_at)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (owner_id, delete_version)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_table ON deleted_records (owner_id, table_name)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_mutations_owner_created ON sync_mutations (owner_id, created_at)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (owner_id, created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (organization_id, deleted_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (organization_id, delete_version)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_table ON deleted_records (organization_id, table_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_mutations_owner_created ON sync_mutations (organization_id, created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (organization_id, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log (actor_user_id, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_action_created ON audit_log (action, created_at)")
 
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record
-        ON deleted_records (owner_id, table_name, record_id)
+        ON deleted_records (organization_id, table_name, record_id)
     """)
     cursor.execute("DELETE FROM sync_mutations WHERE created_at < datetime('now', 'localtime', '-7 days')")
 
     _ensure_fts_indexes(cursor)
     _ensure_delta_sync_triggers(cursor, synced_tables)
+    _ensure_assignment_tenant_triggers(cursor)
+
+
+def _ensure_assignment_tenant_triggers(cursor):
+    """Enforce the polymorphic assignment target inside SQLite.
+
+    ``id_muc_tieu`` can point to one of three tables, so a declarative FK cannot
+    express the invariant. Paired INSERT/UPDATE triggers provide the equivalent
+    tenant-bound check even when service validation is bypassed.
+    """
+    condition = """
+        NEW.loai_doi_tuong NOT IN ('kehoach', 'goithau', 'hopdong')
+        OR (
+            NEW.loai_doi_tuong = 'kehoach'
+            AND NOT EXISTS (
+                SELECT 1 FROM ke_hoach_lcnt
+                WHERE organization_id = NEW.organization_id AND id = NEW.id_muc_tieu
+            )
+        )
+        OR (
+            NEW.loai_doi_tuong = 'goithau'
+            AND NOT EXISTS (
+                SELECT 1 FROM goi_thau
+                WHERE organization_id = NEW.organization_id AND id = NEW.id_muc_tieu
+            )
+        )
+        OR (
+            NEW.loai_doi_tuong = 'hopdong'
+            AND NOT EXISTS (
+                SELECT 1 FROM hop_dong
+                WHERE organization_id = NEW.organization_id AND id = NEW.id_muc_tieu
+            )
+        )
+    """
+    for operation in ("INSERT", "UPDATE"):
+        trigger_name = f"trg_phan_cong_tenant_{operation.lower()}"
+        cursor.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+        cursor.execute(f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE {operation} ON phan_cong_nhan_su
+            FOR EACH ROW
+            WHEN {condition}
+            BEGIN
+                SELECT RAISE(ABORT, 'ASSIGNMENT_TENANT_MISMATCH');
+            END
+        """)
+
+
+def _assert_foreign_key_integrity(cursor):
+    violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        sample = ", ".join(
+            f"{row[0]}(rowid={row[1]}, parent={row[2]})"
+            for row in violations[:5]
+        )
+        raise RuntimeError(f"Foreign key integrity check failed: {sample}")
 
 
 def _ensure_fts_indexes(cursor):
@@ -414,7 +470,7 @@ def _ensure_fts_indexes(cursor):
             cursor.execute(f"""
                 CREATE VIRTUAL TABLE IF NOT EXISTS {fts_table}
                 USING fts5(
-                    owner_id UNINDEXED,
+                    organization_id UNINDEXED,
                     id UNINDEXED,
                     {cols_sql},
                     content='{table}',
@@ -428,24 +484,24 @@ def _ensure_fts_indexes(cursor):
             cursor.execute(f"""
                 CREATE TRIGGER trg_{table}_fts_ai AFTER INSERT ON {table}
                 BEGIN
-                    INSERT INTO {fts_table}(rowid, owner_id, id, {cols_sql})
-                    VALUES (new.rowid, new.owner_id, new.id, {new_cols});
+                    INSERT INTO {fts_table}(rowid, organization_id, id, {cols_sql})
+                    VALUES (new.rowid, new.organization_id, new.id, {new_cols});
                 END
             """)
             cursor.execute(f"""
                 CREATE TRIGGER trg_{table}_fts_ad AFTER DELETE ON {table}
                 BEGIN
-                    INSERT INTO {fts_table}({fts_table}, rowid, owner_id, id, {cols_sql})
-                    VALUES ('delete', old.rowid, old.owner_id, old.id, {old_cols});
+                    INSERT INTO {fts_table}({fts_table}, rowid, organization_id, id, {cols_sql})
+                    VALUES ('delete', old.rowid, old.organization_id, old.id, {old_cols});
                 END
             """)
             cursor.execute(f"""
                 CREATE TRIGGER trg_{table}_fts_au AFTER UPDATE ON {table}
                 BEGIN
-                    INSERT INTO {fts_table}({fts_table}, rowid, owner_id, id, {cols_sql})
-                    VALUES ('delete', old.rowid, old.owner_id, old.id, {old_cols});
-                    INSERT INTO {fts_table}(rowid, owner_id, id, {cols_sql})
-                    VALUES (new.rowid, new.owner_id, new.id, {new_cols});
+                    INSERT INTO {fts_table}({fts_table}, rowid, organization_id, id, {cols_sql})
+                    VALUES ('delete', old.rowid, old.organization_id, old.id, {old_cols});
+                    INSERT INTO {fts_table}(rowid, organization_id, id, {cols_sql})
+                    VALUES (new.rowid, new.organization_id, new.id, {new_cols});
                 END
             """)
         except Exception as exc:
@@ -465,23 +521,23 @@ def _ensure_delta_sync_triggers(cursor, synced_tables):
             FOR EACH ROW
             WHEN OLD.updated_at = NEW.updated_at
              AND COALESCE(OLD.sync_version, 0) = COALESCE(NEW.sync_version, 0)
-             AND NEW.owner_id IS NOT NULL
-             AND NEW.owner_id != ''
+             AND NEW.organization_id IS NOT NULL
+             AND NEW.organization_id != ''
             BEGIN
-                INSERT OR IGNORE INTO sync_metadata (owner_id, current_version)
-                VALUES (NEW.owner_id, 0);
+                INSERT OR IGNORE INTO sync_metadata (organization_id, current_version)
+                VALUES (NEW.organization_id, 0);
 
                 UPDATE sync_metadata
                 SET current_version = current_version + 1,
                     updated_at = datetime('now', 'localtime')
-                WHERE owner_id = NEW.owner_id;
+                WHERE organization_id = NEW.organization_id;
 
                 UPDATE {table}
                 SET updated_at = datetime('now', 'localtime'),
                     sync_version = (
                         SELECT current_version
                         FROM sync_metadata
-                        WHERE owner_id = NEW.owner_id
+                        WHERE organization_id = NEW.organization_id
                     )
                 WHERE id = NEW.id;
             END
@@ -491,26 +547,26 @@ def _ensure_delta_sync_triggers(cursor, synced_tables):
             CREATE TRIGGER trg_{table}_deleted_log
             AFTER DELETE ON {table}
             FOR EACH ROW
-            WHEN OLD.owner_id IS NOT NULL
-             AND OLD.owner_id != ''
+            WHEN OLD.organization_id IS NOT NULL
+             AND OLD.organization_id != ''
             BEGIN
-                INSERT OR IGNORE INTO sync_metadata (owner_id, current_version)
-                VALUES (OLD.owner_id, 0);
+                INSERT OR IGNORE INTO sync_metadata (organization_id, current_version)
+                VALUES (OLD.organization_id, 0);
 
                 UPDATE sync_metadata
                 SET current_version = current_version + 1,
                     updated_at = datetime('now', 'localtime')
-                WHERE owner_id = OLD.owner_id;
+                WHERE organization_id = OLD.organization_id;
 
-                INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version)
+                INSERT INTO deleted_records (table_name, record_id, organization_id, deleted_at, delete_version)
                 VALUES (
                     '{table}',
                     OLD.id,
-                    OLD.owner_id,
+                    OLD.organization_id,
                     datetime('now', 'localtime'),
-                    (SELECT current_version FROM sync_metadata WHERE owner_id = OLD.owner_id)
+                    (SELECT current_version FROM sync_metadata WHERE organization_id = OLD.organization_id)
                 )
-                ON CONFLICT(owner_id, table_name, record_id) DO UPDATE SET
+                ON CONFLICT(organization_id, table_name, record_id) DO UPDATE SET
                     deleted_at = excluded.deleted_at,
                     delete_version = MAX(
                         COALESCE(deleted_records.delete_version, 0),
@@ -520,7 +576,7 @@ def _ensure_delta_sync_triggers(cursor, synced_tables):
         """)
 
 
-def recalculate_is_latest(cursor, table_name, owner_id=None):
+def recalculate_is_latest(cursor, table_name, organization_id=None):
     """
     Tính lại cờ is_latest cho bảng versioned (chu_dau_tu, ke_hoach_lcnt, goi_thau, nha_thau).
     Hàm dùng chung — tránh duplicate logic giữa sync_api và các tác vụ bảo trì.
@@ -528,7 +584,7 @@ def recalculate_is_latest(cursor, table_name, owner_id=None):
     Args:
         cursor: DB cursor đang mở
         table_name: Tên bảng cần cập nhật
-        owner_id: Nếu cung cấp, chỉ cập nhật bản ghi của owner đó (dùng khi sync).
+        organization_id: Nếu cung cấp, chỉ cập nhật bản ghi của owner đó (dùng khi sync).
                   Nếu None, cập nhật toàn bộ.
     """
     partition_expr = (
@@ -537,10 +593,10 @@ def recalculate_is_latest(cursor, table_name, owner_id=None):
         else "CASE WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc ELSE id END"
     )
 
-    if owner_id:
-        cursor.execute(f"UPDATE {table_name} SET is_latest = 0 WHERE owner_id = ?", (owner_id,))
+    if organization_id:
+        cursor.execute(f"UPDATE {table_name} SET is_latest = 0 WHERE organization_id = ?", (organization_id,))
         cursor.execute(f"""
-            UPDATE {table_name} SET is_latest = 1 WHERE owner_id = ? AND id IN (
+            UPDATE {table_name} SET is_latest = 1 WHERE organization_id = ? AND id IN (
                 SELECT id FROM (
                     SELECT
                         id,
@@ -549,11 +605,11 @@ def recalculate_is_latest(cursor, table_name, owner_id=None):
                             ORDER BY CAST(phien_ban AS INTEGER) DESC, updated_at DESC, id DESC
                         ) AS rn
                     FROM {table_name}
-                    WHERE owner_id = ?
+                    WHERE organization_id = ? AND archived_at IS NULL
                 )
                 WHERE rn = 1
             )
-        """, (owner_id, owner_id))
+        """, (organization_id, organization_id))
     else:
         cursor.execute(f"UPDATE {table_name} SET is_latest = 0")
         cursor.execute(f"""
@@ -566,6 +622,7 @@ def recalculate_is_latest(cursor, table_name, owner_id=None):
                             ORDER BY CAST(phien_ban AS INTEGER) DESC, updated_at DESC, id DESC
                         ) AS rn
                     FROM {table_name}
+                    WHERE archived_at IS NULL
                 )
                 WHERE rn = 1
             )
@@ -573,22 +630,22 @@ def recalculate_is_latest(cursor, table_name, owner_id=None):
 
 
 
-def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
+def recalculate_tong_muc_dau_tu(cursor, organization_id=None):
     """
     Tính lại tong_muc_dau_tu cho cac ke_hoach_lcnt co is_tong_muc_tu_dong = 1
     dua tren logic tong gia_goi_thau, cv_da_thuc_hien, cv_khong_ap_dung, cv_chua_du_dieu_kien.
     """
-    if owner_id:
+    if organization_id:
         cursor.execute("""
             SELECT id, loai_hinh_mua_sam
             FROM ke_hoach_lcnt
-            WHERE owner_id = ? AND is_tong_muc_tu_dong = 1
-        """, (owner_id,))
+            WHERE organization_id = ? AND is_tong_muc_tu_dong = 1
+        """, (organization_id,))
     else:
         cursor.execute("""
             SELECT id, loai_hinh_mua_sam
             FROM ke_hoach_lcnt
-            WHERE is_tong_muc_tu_dong = 1
+            WHERE is_tong_muc_tu_dong = 1 AND archived_at IS NULL
         """)
     plans = cursor.fetchall()
 
@@ -599,7 +656,7 @@ def recalculate_tong_muc_dau_tu(cursor, owner_id=None):
         cursor.execute("""
             SELECT COALESCE(SUM(gia_goi_thau), 0)
             FROM goi_thau
-            WHERE ke_hoach_id = ? AND is_latest = 1
+            WHERE ke_hoach_id = ? AND is_latest = 1 AND archived_at IS NULL
         """, (plan_id,))
         sum_iv = cursor.fetchone()[0] or 0
 
@@ -685,17 +742,18 @@ def khoi_tao_va_di_tru_he_thong():
                 (org_id, org_name, admin_uuid)
             )
             cursor.execute(
-                "INSERT INTO thanh_vien_to_chuc (user_id, to_chuc_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
+                "INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
                 (admin_uuid, org_id, 'owner')
             )
             cursor.execute(
-                "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, ?)",
                 (org_id, 1)
             )
 
         _ensure_runtime_indexes(cursor)
         _record_schema_version(cursor, previous_schema_version, schema_actions)
         ensure_default_word_mappings_for_all_orgs(cursor)
+        _assert_foreign_key_integrity(cursor)
 
         conn.commit()
         cursor.execute("PRAGMA foreign_keys = ON")

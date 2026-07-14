@@ -120,7 +120,8 @@ def redeem_password_reset(database, token, new_password, now=None):
         updated = conn.execute(
             """
             UPDATE tai_khoan
-            SET mat_khau = ?, token_phien = NULL, han_su_dung_token = NULL
+            SET mat_khau = ?, token_phien = NULL, han_su_dung_token = NULL,
+                privileged_reauth_at = NULL
             WHERE id = ?
             """,
             (hash_password(new_password), user_id),

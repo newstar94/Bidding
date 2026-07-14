@@ -64,5 +64,6 @@ from backend.auth.session_utils import (
 from backend.shared.logging_utils import (
     log_error,
     log_audit,
-    ErrorLoggingMiddleware
+    ErrorLoggingMiddleware,
+    RequestIdMiddleware
 )

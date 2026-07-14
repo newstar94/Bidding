@@ -9,10 +9,12 @@ VERSIONED_TABLES = frozenset({
     "hop_dong",
 })
 
+ARCHIVED_TABLES = VERSIONED_TABLES | {"thong_tin_mo_thau"}
+
 DELETED_RECORD_UPSERT_SQL = """
-    INSERT INTO deleted_records (table_name, record_id, owner_id, deleted_at, delete_version)
+    INSERT INTO deleted_records (table_name, record_id, organization_id, deleted_at, delete_version)
     VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(owner_id, table_name, record_id) DO UPDATE SET
+    ON CONFLICT(organization_id, table_name, record_id) DO UPDATE SET
         deleted_at = excluded.deleted_at,
         delete_version = MAX(COALESCE(deleted_records.delete_version, 0), COALESCE(excluded.delete_version, 0))
 """
@@ -30,22 +32,22 @@ def defer_version_latest_flag(table_name, row_data):
     return row_data
 
 
-def next_sync_version(cursor, owner_id):
+def next_sync_version(cursor, organization_id):
     cursor.execute(
-        "INSERT OR IGNORE INTO sync_metadata (owner_id, current_version) VALUES (?, 0)",
-        (owner_id,),
+        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 0)",
+        (organization_id,),
     )
     cursor.execute(
         "UPDATE sync_metadata SET current_version = current_version + 1, "
-        "updated_at = datetime('now', 'localtime') WHERE owner_id = ?",
-        (owner_id,),
+        "updated_at = datetime('now', 'localtime') WHERE organization_id = ?",
+        (organization_id,),
     )
-    cursor.execute("SELECT current_version FROM sync_metadata WHERE owner_id = ?", (owner_id,))
+    cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))
     row = cursor.fetchone()
     return int(row[0] if row else 0)
 
 
-def get_current_sync_version(cursor, owner_id):
-    cursor.execute("SELECT current_version FROM sync_metadata WHERE owner_id = ?", (owner_id,))
+def get_current_sync_version(cursor, organization_id):
+    cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))
     row = cursor.fetchone()
     return int(row[0] if row else 0)

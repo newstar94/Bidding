@@ -22,6 +22,7 @@ export const isStaleAuthResult = (startedAt) => (
 
 export const isGoogleIdentityInitialized = () => googleIdentityInitialized;
 export const markGoogleIdentityInitialized = () => { googleIdentityInitialized = true; };
+export const resetGoogleIdentityInitialized = () => { googleIdentityInitialized = false; };
 
 export function hideInitLoader() {
   const loader = document.getElementById("system-init-loader");
@@ -44,4 +45,3 @@ export function showInitLoader(message = "Đang tải...") {
   loader.setAttribute("aria-busy", "true");
   return loader;
 }
-

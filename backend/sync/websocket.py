@@ -16,12 +16,12 @@ def resolve_websocket_owner(cursor, user_id, organization_id):
         return None
     cursor.execute(
         """
-        SELECT memberships.to_chuc_id
+        SELECT memberships.organization_id
         FROM thanh_vien_to_chuc AS memberships
         INNER JOIN to_chuc AS organizations
-            ON organizations.id = memberships.to_chuc_id
+            ON organizations.id = memberships.organization_id
         WHERE memberships.user_id = ?
-          AND memberships.to_chuc_id = ?
+          AND memberships.organization_id = ?
           AND organizations.trang_thai = 'active'
         LIMIT 1
         """,
@@ -45,7 +45,7 @@ async def sync_websocket_endpoint(websocket):
 
     await websocket.accept()
 
-    owner_id = None
+    organization_id = None
     user_id = None
     try:
         data = await websocket.receive_text()
@@ -77,16 +77,16 @@ async def sync_websocket_endpoint(websocket):
                 websocket.user_id = user_id
                 conn = database.get_connection()
                 cursor = conn.cursor()
-                owner_id = resolve_websocket_owner(cursor, user_id, requested_org_id)
+                organization_id = resolve_websocket_owner(cursor, user_id, requested_org_id)
                 conn.close()
 
-        if not owner_id:
+        if not organization_id:
             await websocket.close(code=4003)
             return
 
-        if owner_id not in active_connections:
-            active_connections[owner_id] = set()
-        active_connections[owner_id].add(websocket)
+        if organization_id not in active_connections:
+            active_connections[organization_id] = set()
+        active_connections[organization_id].add(websocket)
         import time as _time
         _last_auth_check = _time.time()
         _AUTH_CHECK_INTERVAL = 30 * 60
@@ -109,14 +109,14 @@ async def sync_websocket_endpoint(websocket):
                         FROM tai_khoan AS accounts
                         INNER JOIN thanh_vien_to_chuc AS memberships
                             ON memberships.user_id = accounts.id
-                           AND memberships.to_chuc_id = ?
+                           AND memberships.organization_id = ?
                         INNER JOIN to_chuc AS organizations
-                            ON organizations.id = memberships.to_chuc_id
+                            ON organizations.id = memberships.organization_id
                            AND organizations.trang_thai = 'active'
                         WHERE accounts.id = ?
                         LIMIT 1
                         """,
-                        (owner_id, user_id),
+                        (organization_id, user_id),
                     )
                     _row = _cur.fetchone()
                     _conn.close()
@@ -154,15 +154,15 @@ async def sync_websocket_endpoint(websocket):
     except Exception:
         pass
     finally:
-        if owner_id and owner_id in active_connections:
-            active_connections[owner_id].discard(websocket)
-            if not active_connections[owner_id]:
-                del active_connections[owner_id]
+        if organization_id and organization_id in active_connections:
+            active_connections[organization_id].discard(websocket)
+            if not active_connections[organization_id]:
+                del active_connections[organization_id]
 
-def broadcast_websocket_event(owner_id, message):
-    if owner_id not in active_connections:
+def broadcast_websocket_event(organization_id, message):
+    if organization_id not in active_connections:
         return
-    websockets = list(active_connections[owner_id])
+    websockets = list(active_connections[organization_id])
     msg_str = json.dumps(message)
 
     async def broadcast():
@@ -174,9 +174,9 @@ def broadcast_websocket_event(owner_id, message):
                 dead.append(ws)
 
         for ws in dead:
-            active_connections[owner_id].discard(ws)
-        if not active_connections.get(owner_id):
-            active_connections.pop(owner_id, None)
+            active_connections[organization_id].discard(ws)
+        if not active_connections.get(organization_id):
+            active_connections.pop(organization_id, None)
 
     try:
         loop = asyncio.get_running_loop()
@@ -186,7 +186,7 @@ def broadcast_websocket_event(owner_id, message):
 
 def disconnect_user_websockets(user_id):
     """Tìm và ngắt toàn bộ kết nối WebSocket thuộc về user_id."""
-    for owner_id, sockets in list(active_connections.items()):
+    for organization_id, sockets in list(active_connections.items()):
         for ws in list(sockets):
             if getattr(ws, 'user_id', None) == user_id:
                 try:
@@ -201,6 +201,6 @@ def disconnect_user_websockets(user_id):
                     pass
 
                 sockets.discard(ws)
-        if not active_connections.get(owner_id):
-            active_connections.pop(owner_id, None)
+        if not active_connections.get(organization_id):
+            active_connections.pop(organization_id, None)
 

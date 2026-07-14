@@ -53,7 +53,7 @@ def get_active_org(request, user_id):
         SELECT tc.id, tc.ten_to_chuc, tc.trang_thai,
                tvtc.vai_tro_trong_to_chuc
         FROM thanh_vien_to_chuc tvtc
-        JOIN to_chuc tc ON tvtc.to_chuc_id = tc.id
+        JOIN to_chuc tc ON tvtc.organization_id = tc.id
         WHERE tvtc.user_id = ?
     """, (user_id,))
     rows = cursor.fetchall()

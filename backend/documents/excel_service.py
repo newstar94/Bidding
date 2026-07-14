@@ -155,7 +155,7 @@ def create_opening_fin_template(pkg_id_clean, org_name):
                hieu_luc_hsdt, thoi_gian_thuc_hien,
                danh_gia_hop_le, danh_gia_nang_luc, danh_gia_ky_thuat, danh_gia_ket_luan
         FROM thong_tin_mo_thau
-        WHERE goi_thau_id = ? AND owner_id = ?
+        WHERE goi_thau_id = ? AND organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()
@@ -213,7 +213,7 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
     conn = database.get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT linh_vuc, phuong_thuc_lua_chon, phan_lo FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
+    cursor.execute("SELECT linh_vuc, phuong_thuc_lua_chon, phan_lo FROM goi_thau WHERE id = ? AND organization_id = ?", (pkg_id_clean, org_name))
     gt_row = cursor.fetchone()
     if not gt_row:
         conn.close()
@@ -232,7 +232,7 @@ def create_danhgiahsdt_template(pkg_id_clean, org_name, eval_type):
                danh_gia_tai_chinh,
                nguyen_nhan_khong_dat_hop_le, nguyen_nhan_khong_dat_nang_luc, nguyen_nhan_khong_dat_ky_thuat
         FROM thong_tin_mo_thau
-        WHERE goi_thau_id = ? AND owner_id = ?
+        WHERE goi_thau_id = ? AND organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()
@@ -332,7 +332,7 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
     conn = database.get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau, thoi_gian_hop_dong FROM goi_thau WHERE id = ? AND owner_id = ?", (pkg_id_clean, org_name))
+    cursor.execute("SELECT nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau, thoi_gian_hop_dong FROM goi_thau WHERE id = ? AND organization_id = ?", (pkg_id_clean, org_name))
     gt_row = cursor.fetchone()
     if not gt_row:
         conn.close()
@@ -345,7 +345,7 @@ def create_ketquaqd_template(pkg_id_clean, org_name):
                gia_du_thau, ty_le_giam_gia, gia_sau_giam_gia,
                danh_gia_tai_chinh
         FROM thong_tin_mo_thau
-        WHERE goi_thau_id = ? AND owner_id = ?
+        WHERE goi_thau_id = ? AND organization_id = ?
     """, (pkg_id_clean, org_name))
     bids = cursor.fetchall()
     conn.close()

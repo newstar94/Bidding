@@ -46,7 +46,39 @@ GET /health/ready  # chi san sang nhan traffic sau migration va DB checks
 
 Neu migration, schema version, tai khoan quan tri hoac DB readiness khong hop le, startup se that bai va process khong duoc dua vao traffic.
 
+### Reverse proxy va IP tin cay
+
+Khi production dat sau Nginx, dung mau `deploy/nginx-biddingflow.conf.example` va dat:
+
+```env
+TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128
+SUPER_ADMIN_IP_ALLOWLIST=203.0.113.10/32
+PRIVILEGED_REAUTH_TTL_SECONDS=600
+```
+
+Nginx phai ghi de `X-Forwarded-For` bang socket client, xoa `Forwarded`/`X-Real-IP`, va ung dung phai khoi dong voi proxy header cua Uvicorn bi tat. Khong cong khai cong `8000`; chi reverse proxy duoc ket noi den cong nay. IP allowlist chi la lop phong thu phu: session super-admin va xac thuc lai mat khau van bat buoc cho moi mutation nhay cam.
+
+### Worker xu ly Word/Excel
+
+Import va export DOCX/XLSX duoc thuc hien trong subprocess tam, co timeout, gioi han bo nho/CPU, quota dong thoi va don dep thu muc sau moi tac vu. Sao chep nhom bien `DOCUMENT_WORKER_*` tu `.env.example` khi trien khai.
+
+- Linux: chay dich vu bang tai khoan non-root. Neu process chinh buoc phai khoi dong bang root, dat `DOCUMENT_WORKER_UID`, `DOCUMENT_WORKER_GID` ve mot tai khoan rieng va bat `DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP=true`.
+- Windows: chay toan bo dich vu bang mot tai khoan service rieng khong nam trong nhom Administrators. Ung dung production se fail-fast neu phat hien tai khoan dang co quyen Administrator.
+- Khong dat thu muc tam worker trong `views/`, `dist/` hoac mot thu muc public cua web server. Mac dinh he thong dung thu muc temp cua OS.
+
 ---
+
+### Nhật ký runtime
+
+Ứng dụng ghi `sync_error.log` và `export_error.log` vào `BIDDING_LOG_DIR` (mặc định `data/logs`), không ghi vào thư mục mã nguồn. Mỗi lỗi API có `requestId` trong response và header `X-Request-ID`; dùng giá trị này để đối chiếu log phía server. Cookie, token, email và nội dung tệp nhúng được che trước khi ghi.
+
+Thiết lập `LOG_MAX_BYTES` và `LOG_BACKUP_COUNT` để giới hạn dung lượng và số bản log luân chuyển. Trong production, nên đặt `BIDDING_LOG_DIR` thành đường dẫn tuyệt đối trên runtime volume, chỉ cấp quyền đọc/ghi cho tài khoản chạy dịch vụ và áp dụng retention/thu thập log của hạ tầng.
+
+### Giới hạn tài nguyên request
+
+Ứng dụng kiểm tra số byte thực nhận từ ASGI stream, kể cả request chunked không có `Content-Length`. Các giới hạn JSON, sync và multipart tài liệu được cấu hình riêng bằng `REQUEST_MAX_JSON_BYTES`, `REQUEST_MAX_SYNC_BYTES` và `REQUEST_MAX_DOCUMENT_BYTES`; Nginx cũng phải giữ `client_max_body_size` và `client_body_timeout` như file mẫu trong `deploy/`.
+
+Các lệnh gọi HTTP đồng bộ cũ chạy trong pool có giới hạn `BLOCKING_IO_MAX_WORKERS`/`BLOCKING_IO_MAX_QUEUE`. `/health/ready` trả thêm header về event-loop lag, số tác vụ I/O đang chạy, queue depth và tổng timeout để hệ thống giám sát thu thập.
 
 ## 3. Chạy thử local trong quá trình phát triển (Development Mode)
 Trong quá trình code (ví dụ nâng cấp lên Phiên bản 2):

@@ -21,7 +21,10 @@ export const SCHEMA_CONTRACT = {
     "anh_chung_chi": "anhChungChi",
     "anh_dai_dien": "anhDaiDien",
     "anh_dau": "anhDau",
+    "archived_at": "archivedAt",
+    "attempt_count": "attemptCount",
     "bao_dam_du_thau": "baoDamDuThau",
+    "bucket_key": "bucketKey",
     "chu_dau_tu_id": "chuDauTuId",
     "chu_dau_tu_thanh_ly_id": "chuDauTuThanhLyId",
     "chuc_vu": "chucVu",
@@ -55,6 +58,7 @@ export const SCHEMA_CONTRACT = {
     "don_vi_thuc_hien": "donViThucHien",
     "don_vi_trinh_cdt": "donViTrinhCdt",
     "emp_id": "empId",
+    "expires_at": "expiresAt",
     "gia_ca": "giaCa",
     "gia_du_thau": "giaDuThau",
     "gia_goi_thau": "giaGoiThau",
@@ -110,6 +114,7 @@ export const SCHEMA_CONTRACT = {
     "ma_qhns": "maQHNS",
     "ma_so_thue": "maSoThue",
     "ma_xac_minh": "maXacMinh",
+    "mappings_version": "mappingsVersion",
     "mat_khau": "matKhau",
     "metadata_json": "metadataJson",
     "mo_ta": "moTa",
@@ -141,7 +146,7 @@ export const SCHEMA_CONTRACT = {
     "noi_cap_cccd": "noiCapCCCD",
     "noi_dung": "noiDung",
     "noi_mo_tai_khoan": "noiMoTaiKhoan",
-    "owner_id": "ownerId",
+    "organization_id": "organizationId",
     "owner_type": "ownerType",
     "phan_lo": "phanLo",
     "phan_loai": "phanLoai",
@@ -149,9 +154,11 @@ export const SCHEMA_CONTRACT = {
     "phien_ban": "phienBan",
     "phuong_phap_danh_gia": "phuongPhapDanhGia",
     "phuong_thuc_lua_chon": "phuongThucLuaChon",
+    "privileged_reauth_at": "privilegedReauthAt",
     "quan_ly_id": "quanLyId",
     "quyet_dinh_phe_duyet": "quyetDinhPheDuyet",
     "record_id": "recordId",
+    "requested_ip": "requestedIp",
     "response_json": "responseJson",
     "root_id": "rootId",
     "so_bao_cao_tham_dinh_hsmt": "soBaoCaoThamDinhHsmt",
@@ -204,7 +211,7 @@ export const SCHEMA_CONTRACT = {
     "thong_tin_khac": "thongTinKhac",
     "thong_tin_mo_thau_id": "thongTinMoThauId",
     "thong_tin_thiet_bi_cuoi": "thongTinThietBiCuoi",
-    "to_chuc_id": "toChucId",
+    "token_hash": "tokenHash",
     "token_phien": "tokenPhien",
     "tong_muc_dau_tu": "tongMucDauTu",
     "trang_thai": "trangThai",
@@ -215,11 +222,13 @@ export const SCHEMA_CONTRACT = {
     "ty_le_bao_dam_hop_dong": "tyLeBaoDamHopDong",
     "ty_le_giam_gia": "tyLeGiamGia",
     "updated_at": "updatedAt",
+    "used_at": "usedAt",
     "user_id": "userId",
     "username_da_dat": "usernameDaDat",
     "vai_tro": "vaiTro",
     "vai_tro_trong_to_chuc": "vaiTroTrongToChuc",
     "van_ban_phe_duyet": "vanBanPheDuyet",
+    "window_started_at": "windowStartedAt",
     "yeu_cau_tham_dinh_hsmt": "yeuCauThamDinhHsmt"
   },
   "fieldManifest": {
@@ -280,13 +289,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Metadata json",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "target_id": {
@@ -338,13 +347,13 @@ export const SCHEMA_CONTRACT = {
             "label": "M\u1edf ta",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -396,6 +405,15 @@ export const SCHEMA_CONTRACT = {
       },
       "chu_dau_tu": {
         "fields": {
+          "archived_at": {
+            "column": "archived_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "archivedAt",
+            "label": "Archived at",
+            "wordVariable": null
+          },
           "chuc_vu_dai_dien": {
             "column": "chuc_vu_dai_dien",
             "dataType": "string",
@@ -549,13 +567,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Noi m\u1edf t\u00e0i khoan",
             "wordVariable": "noi_mo_tk_cdt"
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -652,6 +670,15 @@ export const SCHEMA_CONTRACT = {
             "label": "\u1ea2nh chung ch\u1ec9",
             "wordVariable": "anh_chung_chi_cg"
           },
+          "archived_at": {
+            "column": "archived_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "archivedAt",
+            "label": "Archived at",
+            "wordVariable": null
+          },
           "created_at": {
             "column": "created_at",
             "dataType": "string",
@@ -733,13 +760,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Noi c\u1ea5p cccd",
             "wordVariable": "noi_cap_cccd_cg"
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -845,13 +872,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Id",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "record_id": {
@@ -943,6 +970,15 @@ export const SCHEMA_CONTRACT = {
       },
       "goi_thau": {
         "fields": {
+          "archived_at": {
+            "column": "archived_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "archivedAt",
+            "label": "Archived at",
+            "wordVariable": null
+          },
           "created_at": {
             "column": "created_at",
             "dataType": "string",
@@ -1141,13 +1177,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Nh\u00e0 th\u1ea7u trung th\u1ea7u id",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -1442,13 +1478,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Loai",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -1500,13 +1536,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Ly do gi\u00e1 han",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -1603,13 +1639,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Noi dung",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -1733,13 +1769,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Nh\u00e0 th\u1ea7u trung th\u1ea7u id",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -1872,13 +1908,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Id",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -1939,6 +1975,15 @@ export const SCHEMA_CONTRACT = {
       },
       "hop_dong": {
         "fields": {
+          "archived_at": {
+            "column": "archived_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "archivedAt",
+            "label": "Archived at",
+            "wordVariable": null
+          },
           "chu_dau_tu_id": {
             "column": "chu_dau_tu_id",
             "dataType": "string",
@@ -2074,13 +2119,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Nh\u00e0 th\u1ea7u thanh ly id",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -2204,13 +2249,13 @@ export const SCHEMA_CONTRACT = {
             "label": "H\u1ee3p \u0111\u00f3ng id",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -2289,13 +2334,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Loai",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -2356,6 +2401,15 @@ export const SCHEMA_CONTRACT = {
       },
       "ke_hoach_lcnt": {
         "fields": {
+          "archived_at": {
+            "column": "archived_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "archivedAt",
+            "label": "Archived at",
+            "wordVariable": null
+          },
           "chu_dau_tu_id": {
             "column": "chu_dau_tu_id",
             "dataType": "string",
@@ -2518,13 +2572,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Nguon von",
             "wordVariable": "kh_nguon_von"
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -2747,13 +2801,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Nhathau",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -2804,6 +2858,15 @@ export const SCHEMA_CONTRACT = {
             "jsonKey": "anhDau",
             "label": "\u1ea2nh \u0111\u1ea5u",
             "wordVariable": "anh_dau_nt"
+          },
+          "archived_at": {
+            "column": "archived_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "archivedAt",
+            "label": "Archived at",
+            "wordVariable": null
           },
           "chuc_vu_dai_dien": {
             "column": "chuc_vu_dai_dien",
@@ -2949,13 +3012,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Noi m\u1edf t\u00e0i khoan",
             "wordVariable": "noi_mo_tk_nt"
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -3151,13 +3214,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Noi m\u1edf t\u00e0i khoan",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -3243,6 +3306,73 @@ export const SCHEMA_CONTRACT = {
           }
         }
       },
+      "password_reset_tokens": {
+        "fields": {
+          "created_at": {
+            "column": "created_at",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "createdAt",
+            "label": "Created at",
+            "wordVariable": null
+          },
+          "expires_at": {
+            "column": "expires_at",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "expiresAt",
+            "label": "Expires at",
+            "wordVariable": null
+          },
+          "id": {
+            "column": "id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "id",
+            "label": "Id",
+            "wordVariable": null
+          },
+          "requested_ip": {
+            "column": "requested_ip",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "requestedIp",
+            "label": "Requested ip",
+            "wordVariable": null
+          },
+          "token_hash": {
+            "column": "token_hash",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "tokenHash",
+            "label": "Token hash",
+            "wordVariable": null
+          },
+          "used_at": {
+            "column": "used_at",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "usedAt",
+            "label": "Used at",
+            "wordVariable": null
+          },
+          "user_id": {
+            "column": "user_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "userId",
+            "label": "User id",
+            "wordVariable": null
+          }
+        }
+      },
       "phan_cong_nhan_su": {
         "fields": {
           "created_at": {
@@ -3290,13 +3420,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Loai doi tuong",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -3328,6 +3458,46 @@ export const SCHEMA_CONTRACT = {
           }
         }
       },
+      "rate_limit_buckets": {
+        "fields": {
+          "attempt_count": {
+            "column": "attempt_count",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "attemptCount",
+            "label": "Attempt count",
+            "wordVariable": null
+          },
+          "bucket_key": {
+            "column": "bucket_key",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "bucketKey",
+            "label": "Bucket key",
+            "wordVariable": null
+          },
+          "expires_at": {
+            "column": "expires_at",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "expiresAt",
+            "label": "Expires at",
+            "wordVariable": null
+          },
+          "window_started_at": {
+            "column": "window_started_at",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "windowStartedAt",
+            "label": "Window started at",
+            "wordVariable": null
+          }
+        }
+      },
       "sync_metadata": {
         "fields": {
           "current_version": {
@@ -3339,13 +3509,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Current version",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "updated_at": {
@@ -3379,13 +3549,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Created at",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "response_json": {
@@ -3527,6 +3697,15 @@ export const SCHEMA_CONTRACT = {
             "label": "Ng\u00e0y het han g\u00f3i",
             "wordVariable": "tk_ngay_het_han_goi"
           },
+          "privileged_reauth_at": {
+            "column": "privileged_reauth_at",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "privilegedReauthAt",
+            "label": "Privileged reauth at",
+            "wordVariable": null
+          },
           "ten_dang_nhap": {
             "column": "ten_dang_nhap",
             "dataType": "string",
@@ -3594,13 +3773,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Created at",
             "wordVariable": null
           },
-          "to_chuc_id": {
-            "column": "to_chuc_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "toChucId",
-            "label": "To ch\u1ee9c id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "updated_at": {
@@ -3634,6 +3813,15 @@ export const SCHEMA_CONTRACT = {
       },
       "thong_tin_mo_thau": {
         "fields": {
+          "archived_at": {
+            "column": "archived_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "archivedAt",
+            "label": "Archived at",
+            "wordVariable": null
+          },
           "created_at": {
             "column": "created_at",
             "dataType": "string",
@@ -3886,13 +4074,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Nh\u00e0 th\u1ea7u id",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -4061,13 +4249,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Noi m\u1edf t\u00e0i khoan",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -4200,6 +4388,15 @@ export const SCHEMA_CONTRACT = {
             "label": "T\u00ean to ch\u1ee9c",
             "wordVariable": "ten_to_chuc"
           },
+          "trang_thai": {
+            "column": "trang_thai",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "trangThai",
+            "label": "Tr\u1ea1ng thai",
+            "wordVariable": null
+          },
           "updated_at": {
             "column": "updated_at",
             "dataType": "string",
@@ -4249,13 +4446,13 @@ export const SCHEMA_CONTRACT = {
             "label": "Name",
             "wordVariable": null
           },
-          "owner_id": {
-            "column": "owner_id",
+          "organization_id": {
+            "column": "organization_id",
             "dataType": "string",
             "excelCompatible": true,
             "format": "text",
-            "jsonKey": "ownerId",
-            "label": "Owner id",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
             "wordVariable": null
           },
           "owner_type": {
@@ -4286,6 +4483,37 @@ export const SCHEMA_CONTRACT = {
             "wordVariable": null
           }
         }
+      },
+      "word_default_seeds": {
+        "fields": {
+          "mappings_version": {
+            "column": "mappings_version",
+            "dataType": "integer",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "mappingsVersion",
+            "label": "Mappings version",
+            "wordVariable": null
+          },
+          "organization_id": {
+            "column": "organization_id",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "organizationId",
+            "label": "Organization id",
+            "wordVariable": null
+          },
+          "updated_at": {
+            "column": "updated_at",
+            "dataType": "string",
+            "excelCompatible": true,
+            "format": "text",
+            "jsonKey": "updatedAt",
+            "label": "Updated at",
+            "wordVariable": null
+          }
+        }
       }
     },
     "version": 1
@@ -4295,7 +4523,7 @@ export const SCHEMA_CONTRACT = {
       "columns": [
         "id",
         "actor_user_id",
-        "owner_id",
+        "organization_id",
         "action",
         "target_type",
         "target_id",
@@ -4310,7 +4538,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "ip_address": "ipAddress",
         "metadata_json": "metadataJson",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "target_id": "targetId",
         "target_type": "targetType"
       },
@@ -4322,7 +4550,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "ipAddress": "ip_address",
         "metadataJson": "metadata_json",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "targetId": "target_id",
         "targetType": "target_type"
       }
@@ -4330,7 +4558,7 @@ export const SCHEMA_CONTRACT = {
     "cau_hinh_bien_word": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "ten_bien",
         "source_table",
@@ -4343,7 +4571,7 @@ export const SCHEMA_CONTRACT = {
         "created_at": "createdAt",
         "id": "id",
         "mo_ta": "moTa",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "source_column": "sourceColumn",
         "source_table": "sourceTable",
@@ -4355,7 +4583,7 @@ export const SCHEMA_CONTRACT = {
         "createdAt": "created_at",
         "id": "id",
         "moTa": "mo_ta",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "sourceColumn": "source_column",
         "sourceTable": "source_table",
@@ -4366,11 +4594,12 @@ export const SCHEMA_CONTRACT = {
     "chu_dau_tu": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "id_goc",
         "phien_ban",
         "is_latest",
+        "archived_at",
         "ngay_ap_dung",
         "ma_chu_dau_tu",
         "ten_chu_dau_tu",
@@ -4393,6 +4622,7 @@ export const SCHEMA_CONTRACT = {
         "updated_at"
       ],
       "fieldMap": {
+        "archived_at": "archivedAt",
         "chuc_vu_dai_dien": "chucVuDaiDien",
         "chuc_vu_nguoi_dung_dau": "chucVuNguoiDungDau",
         "co_quan_chu_quan": "coQuanChuQuan",
@@ -4410,7 +4640,7 @@ export const SCHEMA_CONTRACT = {
         "ma_so_thue": "maSoThue",
         "ngay_ap_dung": "ngayApDung",
         "noi_mo_tai_khoan": "noiMoTaiKhoan",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "phien_ban": "phienBan",
         "so_dien_thoai": "soDienThoai",
@@ -4422,6 +4652,7 @@ export const SCHEMA_CONTRACT = {
       },
       "jsonFields": [],
       "reverseFieldMap": {
+        "archivedAt": "archived_at",
         "chucVuDaiDien": "chuc_vu_dai_dien",
         "chucVuNguoiDungDau": "chuc_vu_nguoi_dung_dau",
         "coQuanChuQuan": "co_quan_chu_quan",
@@ -4438,7 +4669,7 @@ export const SCHEMA_CONTRACT = {
         "maSoThue": "ma_so_thue",
         "ngayApDung": "ngay_ap_dung",
         "noiMoTaiKhoan": "noi_mo_tai_khoan",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "phienBan": "phien_ban",
         "rootId": "id_goc",
@@ -4453,11 +4684,12 @@ export const SCHEMA_CONTRACT = {
     "chuyen_gia": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "id_goc",
         "phien_ban",
         "is_latest",
+        "archived_at",
         "ho_ten",
         "so_chung_chi",
         "ngay_cap_chung_chi",
@@ -4476,6 +4708,7 @@ export const SCHEMA_CONTRACT = {
       "fieldMap": {
         "anh_chu_ky": "anhChuKy",
         "anh_chung_chi": "anhChungChi",
+        "archived_at": "archivedAt",
         "created_at": "createdAt",
         "don_vi_cap_chung_chi": "donViCapChungChi",
         "ho_ten": "hoTen",
@@ -4485,7 +4718,7 @@ export const SCHEMA_CONTRACT = {
         "ngay_cap_cccd": "ngayCapCCCD",
         "ngay_cap_chung_chi": "ngayCapChungChi",
         "noi_cap_cccd": "noiCapCCCD",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "phien_ban": "phienBan",
         "so_cccd": "soCCCD",
@@ -4499,6 +4732,7 @@ export const SCHEMA_CONTRACT = {
       "reverseFieldMap": {
         "anhChuKy": "anh_chu_ky",
         "anhChungChi": "anh_chung_chi",
+        "archivedAt": "archived_at",
         "createdAt": "created_at",
         "donViCapChungChi": "don_vi_cap_chung_chi",
         "hoTen": "ho_ten",
@@ -4507,7 +4741,7 @@ export const SCHEMA_CONTRACT = {
         "ngayCapCCCD": "ngay_cap_cccd",
         "ngayCapChungChi": "ngay_cap_chung_chi",
         "noiCapCCCD": "noi_cap_cccd",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "phienBan": "phien_ban",
         "rootId": "id_goc",
@@ -4524,7 +4758,7 @@ export const SCHEMA_CONTRACT = {
         "id",
         "table_name",
         "record_id",
-        "owner_id",
+        "organization_id",
         "delete_version",
         "deleted_at"
       ],
@@ -4532,7 +4766,7 @@ export const SCHEMA_CONTRACT = {
         "delete_version": "deleteVersion",
         "deleted_at": "deletedAt",
         "id": "id",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "record_id": "recordId",
         "table_name": "tableName"
       },
@@ -4541,7 +4775,7 @@ export const SCHEMA_CONTRACT = {
         "deleteVersion": "delete_version",
         "deletedAt": "deleted_at",
         "id": "id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "recordId": "record_id",
         "tableName": "table_name"
       }
@@ -4579,12 +4813,13 @@ export const SCHEMA_CONTRACT = {
     "goi_thau": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "id_goc",
         "ma_goi_thau",
         "phien_ban",
         "is_latest",
+        "archived_at",
         "ke_hoach_id",
         "ten_goi_thau",
         "gia_goi_thau",
@@ -4629,6 +4864,7 @@ export const SCHEMA_CONTRACT = {
         "updated_at"
       ],
       "fieldMap": {
+        "archived_at": "archivedAt",
         "created_at": "createdAt",
         "danh_gia_hsdt_metadata": "danhGiaHsdtMetadata",
         "gia_goi_thau": "giaGoiThau",
@@ -4651,7 +4887,7 @@ export const SCHEMA_CONTRACT = {
         "ngay_trinh_hsmt": "ngayTrinhHsmt",
         "nguon_von": "nguonVon",
         "nha_thau_trung_thau_id": "nhaThauTrungThauId",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "phan_lo": "phanLo",
         "phien_ban": "phienBan",
@@ -4681,6 +4917,7 @@ export const SCHEMA_CONTRACT = {
       },
       "jsonFields": [],
       "reverseFieldMap": {
+        "archivedAt": "archived_at",
         "createdAt": "created_at",
         "danhGiaHsdtMetadata": "danh_gia_hsdt_metadata",
         "giaGoiThau": "gia_goi_thau",
@@ -4702,7 +4939,7 @@ export const SCHEMA_CONTRACT = {
         "ngayTrinhHsmt": "ngay_trinh_hsmt",
         "nguonVon": "nguon_von",
         "nhaThauTrungThauId": "nha_thau_trung_thau_id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "phanLo": "phan_lo",
         "phienBan": "phien_ban",
@@ -4734,7 +4971,7 @@ export const SCHEMA_CONTRACT = {
     },
     "goi_thau_chuyen_gia": {
       "columns": [
-        "owner_id",
+        "organization_id",
         "owner_type",
         "goi_thau_id",
         "chuyen_gia_id",
@@ -4750,7 +4987,7 @@ export const SCHEMA_CONTRACT = {
         "created_at": "createdAt",
         "goi_thau_id": "goiThauId",
         "loai": "loai",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType"
       },
       "jsonFields": [],
@@ -4761,14 +4998,14 @@ export const SCHEMA_CONTRACT = {
         "createdAt": "created_at",
         "goiThauId": "goi_thau_id",
         "loai": "loai",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type"
       }
     },
     "goi_thau_gia_han": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "goi_thau_id",
         "thoi_gian_dong_thau",
@@ -4783,7 +5020,7 @@ export const SCHEMA_CONTRACT = {
         "goi_thau_id": "goiThauId",
         "id": "id",
         "ly_do_gia_han": "lyDoGiaHan",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sort_order": "sortOrder",
         "sync_version": "syncVersion",
@@ -4796,7 +5033,7 @@ export const SCHEMA_CONTRACT = {
         "goiThauId": "goi_thau_id",
         "id": "id",
         "lyDoGiaHan": "ly_do_gia_han",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "sortOrder": "sort_order",
         "syncVersion": "sync_version",
@@ -4807,7 +5044,7 @@ export const SCHEMA_CONTRACT = {
     "goi_thau_lam_ro": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "goi_thau_id",
         "loai",
@@ -4824,7 +5061,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "loai": "loai",
         "noi_dung": "noiDung",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sort_order": "sortOrder",
         "sync_version": "syncVersion",
@@ -4838,7 +5075,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "loai": "loai",
         "noiDung": "noi_dung",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "sortOrder": "sort_order",
         "syncVersion": "sync_version",
@@ -4849,7 +5086,7 @@ export const SCHEMA_CONTRACT = {
     "goi_thau_phan_lo": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "goi_thau_id",
         "ma_phan_lo",
@@ -4875,7 +5112,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "ma_phan_lo": "maPhanLo",
         "nha_thau_trung_thau_id": "nhaThauTrungThauId",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sort_order": "sortOrder",
         "sync_version": "syncVersion",
@@ -4895,7 +5132,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "maPhanLo": "ma_phan_lo",
         "nhaThauTrungThauId": "nha_thau_trung_thau_id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "sortOrder": "sort_order",
         "syncVersion": "sync_version",
@@ -4909,7 +5146,7 @@ export const SCHEMA_CONTRACT = {
     "goi_thau_tuy_chon_mua_them": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "goi_thau_id",
         "hang_muc",
@@ -4929,7 +5166,7 @@ export const SCHEMA_CONTRACT = {
         "goi_thau_id": "goiThauId",
         "hang_muc": "hangMuc",
         "id": "id",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "so_luong": "soLuong",
         "sort_order": "sortOrder",
@@ -4945,7 +5182,7 @@ export const SCHEMA_CONTRACT = {
         "goiThauId": "goi_thau_id",
         "hangMuc": "hang_muc",
         "id": "id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "soLuong": "so_luong",
         "sortOrder": "sort_order",
@@ -4957,11 +5194,12 @@ export const SCHEMA_CONTRACT = {
     "hop_dong": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "id_goc",
         "phien_ban",
         "is_latest",
+        "archived_at",
         "ten_hop_dong",
         "so_hop_dong",
         "ngay_ky",
@@ -4984,6 +5222,7 @@ export const SCHEMA_CONTRACT = {
         "updated_at"
       ],
       "fieldMap": {
+        "archived_at": "archivedAt",
         "chu_dau_tu_id": "chuDauTuId",
         "chu_dau_tu_thanh_ly_id": "chuDauTuThanhLyId",
         "co_qd_chi_dinh": "coQdChiDinh",
@@ -4999,7 +5238,7 @@ export const SCHEMA_CONTRACT = {
         "ngay_thanh_ly": "ngayThanhLy",
         "nha_thau_id": "nhaThauId",
         "nha_thau_thanh_ly_id": "nhaThauThanhLyId",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "phan_loai": "phanLoai",
         "phien_ban": "phienBan",
@@ -5013,6 +5252,7 @@ export const SCHEMA_CONTRACT = {
       },
       "jsonFields": [],
       "reverseFieldMap": {
+        "archivedAt": "archived_at",
         "chuDauTuId": "chu_dau_tu_id",
         "chuDauTuThanhLyId": "chu_dau_tu_thanh_ly_id",
         "coQdChiDinh": "co_qd_chi_dinh",
@@ -5027,7 +5267,7 @@ export const SCHEMA_CONTRACT = {
         "ngayThanhLy": "ngay_thanh_ly",
         "nhaThauId": "nha_thau_id",
         "nhaThauThanhLyId": "nha_thau_thanh_ly_id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "phanLoai": "phan_loai",
         "phienBan": "phien_ban",
@@ -5043,7 +5283,7 @@ export const SCHEMA_CONTRACT = {
     },
     "hop_dong_goi_thau": {
       "columns": [
-        "owner_id",
+        "organization_id",
         "owner_type",
         "hop_dong_id",
         "goi_thau_id",
@@ -5054,7 +5294,7 @@ export const SCHEMA_CONTRACT = {
         "created_at": "createdAt",
         "goi_thau_id": "goiThauId",
         "hop_dong_id": "hopDongId",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "updated_at": "updatedAt"
       },
@@ -5063,7 +5303,7 @@ export const SCHEMA_CONTRACT = {
         "createdAt": "created_at",
         "goiThauId": "goi_thau_id",
         "hopDongId": "hop_dong_id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "updatedAt": "updated_at"
       }
@@ -5071,7 +5311,7 @@ export const SCHEMA_CONTRACT = {
     "ke_hoach_cong_viec": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "ke_hoach_id",
         "loai",
@@ -5091,7 +5331,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "ke_hoach_id": "keHoachId",
         "loai": "loai",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sort_order": "sortOrder",
         "sync_version": "syncVersion",
@@ -5107,7 +5347,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "keHoachId": "ke_hoach_id",
         "loai": "loai",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "sortOrder": "sort_order",
         "syncVersion": "sync_version",
@@ -5119,13 +5359,14 @@ export const SCHEMA_CONTRACT = {
     "ke_hoach_lcnt": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "id_goc",
         "ma_ke_hoach",
         "ma_du_an",
         "phien_ban",
         "is_latest",
+        "archived_at",
         "ten_ke_hoach",
         "ten_du_an_du_toan",
         "loai_hinh_mua_sam",
@@ -5154,6 +5395,7 @@ export const SCHEMA_CONTRACT = {
         "updated_at"
       ],
       "fieldMap": {
+        "archived_at": "archivedAt",
         "chu_dau_tu_id": "chuDauTuId",
         "co_quan_phe_duyet_du_an": "coQuanPheDuyetDuAn",
         "created_at": "createdAt",
@@ -5172,7 +5414,7 @@ export const SCHEMA_CONTRACT = {
         "ngay_trinh_du_toan": "ngayTrinhDuToan",
         "ngay_trinh_ke_hoach": "ngayTrinhKeHoach",
         "nguon_von": "nguonVon",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "phe_duyet": "pheDuyet",
         "phien_ban": "phienBan",
@@ -5191,6 +5433,7 @@ export const SCHEMA_CONTRACT = {
       },
       "jsonFields": [],
       "reverseFieldMap": {
+        "archivedAt": "archived_at",
         "chuDauTuId": "chu_dau_tu_id",
         "coQuanPheDuyetDuAn": "co_quan_phe_duyet_du_an",
         "createdAt": "created_at",
@@ -5208,7 +5451,7 @@ export const SCHEMA_CONTRACT = {
         "ngayTrinhDuToan": "ngay_trinh_du_toan",
         "ngayTrinhKeHoach": "ngay_trinh_ke_hoach",
         "nguonVon": "nguon_von",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "pheDuyet": "phe_duyet",
         "phienBan": "phien_ban",
@@ -5230,7 +5473,7 @@ export const SCHEMA_CONTRACT = {
     "ma_tran_phan_quyen": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "emp_id",
         "kehoach",
@@ -5254,7 +5497,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "kehoach": "kehoach",
         "nhathau": "nhathau",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sync_version": "syncVersion",
         "thongtinmothau": "thongtinmothau",
@@ -5271,7 +5514,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "kehoach": "kehoach",
         "nhathau": "nhathau",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "syncVersion": "sync_version",
         "thongtinmothau": "thongtinmothau",
@@ -5281,11 +5524,12 @@ export const SCHEMA_CONTRACT = {
     "nha_thau": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "id_goc",
         "phien_ban",
         "is_latest",
+        "archived_at",
         "ngay_ap_dung",
         "ma_nha_thau",
         "ten_nha_thau",
@@ -5310,6 +5554,7 @@ export const SCHEMA_CONTRACT = {
       ],
       "fieldMap": {
         "anh_dau": "anhDau",
+        "archived_at": "archivedAt",
         "chuc_vu_dai_dien": "chucVuDaiDien",
         "created_at": "createdAt",
         "danh_xung": "danhXung",
@@ -5326,7 +5571,7 @@ export const SCHEMA_CONTRACT = {
         "ngay_ap_dung": "ngayApDung",
         "nguoi_dai_dien": "nguoiDaiDien",
         "noi_mo_tai_khoan": "noiMoTaiKhoan",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "phien_ban": "phienBan",
         "so_dien_thoai": "soDienThoai",
@@ -5340,6 +5585,7 @@ export const SCHEMA_CONTRACT = {
       "jsonFields": [],
       "reverseFieldMap": {
         "anhDau": "anh_dau",
+        "archivedAt": "archived_at",
         "chucVuDaiDien": "chuc_vu_dai_dien",
         "createdAt": "created_at",
         "danhXung": "danh_xung",
@@ -5355,7 +5601,7 @@ export const SCHEMA_CONTRACT = {
         "ngayApDung": "ngay_ap_dung",
         "nguoiDaiDien": "nguoi_dai_dien",
         "noiMoTaiKhoan": "noi_mo_tai_khoan",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "phienBan": "phien_ban",
         "rootId": "id_goc",
@@ -5371,7 +5617,7 @@ export const SCHEMA_CONTRACT = {
     "nha_thau_lien_danh_thanh_vien": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "nha_thau_id",
         "thanh_vien_nha_thau_id",
@@ -5406,7 +5652,7 @@ export const SCHEMA_CONTRACT = {
         "nguoi_dai_dien": "nguoiDaiDien",
         "nha_thau_id": "nhaThauId",
         "noi_mo_tai_khoan": "noiMoTaiKhoan",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "so_dien_thoai": "soDienThoai",
         "so_tai_khoan": "soTaiKhoan",
@@ -5431,7 +5677,7 @@ export const SCHEMA_CONTRACT = {
         "nguoiDaiDien": "nguoi_dai_dien",
         "nhaThauId": "nha_thau_id",
         "noiMoTaiKhoan": "noi_mo_tai_khoan",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "soDienThoai": "so_dien_thoai",
         "soTaiKhoan": "so_tai_khoan",
@@ -5443,10 +5689,40 @@ export const SCHEMA_CONTRACT = {
         "vaiTro": "vai_tro"
       }
     },
+    "password_reset_tokens": {
+      "columns": [
+        "id",
+        "user_id",
+        "token_hash",
+        "expires_at",
+        "used_at",
+        "requested_ip",
+        "created_at"
+      ],
+      "fieldMap": {
+        "created_at": "createdAt",
+        "expires_at": "expiresAt",
+        "id": "id",
+        "requested_ip": "requestedIp",
+        "token_hash": "tokenHash",
+        "used_at": "usedAt",
+        "user_id": "userId"
+      },
+      "jsonFields": [],
+      "reverseFieldMap": {
+        "createdAt": "created_at",
+        "expiresAt": "expires_at",
+        "id": "id",
+        "requestedIp": "requested_ip",
+        "tokenHash": "token_hash",
+        "usedAt": "used_at",
+        "userId": "user_id"
+      }
+    },
     "phan_cong_nhan_su": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "id_nhan_vien",
         "id_muc_tieu",
@@ -5461,7 +5737,7 @@ export const SCHEMA_CONTRACT = {
         "id_muc_tieu": "targetId",
         "id_nhan_vien": "empId",
         "loai_doi_tuong": "type",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sync_version": "syncVersion",
         "updated_at": "updatedAt"
@@ -5471,7 +5747,7 @@ export const SCHEMA_CONTRACT = {
         "createdAt": "created_at",
         "empId": "id_nhan_vien",
         "id": "id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "syncVersion": "sync_version",
         "targetId": "id_muc_tieu",
@@ -5479,27 +5755,48 @@ export const SCHEMA_CONTRACT = {
         "updatedAt": "updated_at"
       }
     },
+    "rate_limit_buckets": {
+      "columns": [
+        "bucket_key",
+        "window_started_at",
+        "attempt_count",
+        "expires_at"
+      ],
+      "fieldMap": {
+        "attempt_count": "attemptCount",
+        "bucket_key": "bucketKey",
+        "expires_at": "expiresAt",
+        "window_started_at": "windowStartedAt"
+      },
+      "jsonFields": [],
+      "reverseFieldMap": {
+        "attemptCount": "attempt_count",
+        "bucketKey": "bucket_key",
+        "expiresAt": "expires_at",
+        "windowStartedAt": "window_started_at"
+      }
+    },
     "sync_metadata": {
       "columns": [
-        "owner_id",
+        "organization_id",
         "current_version",
         "updated_at"
       ],
       "fieldMap": {
         "current_version": "currentVersion",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "updated_at": "updatedAt"
       },
       "jsonFields": [],
       "reverseFieldMap": {
         "currentVersion": "current_version",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "updatedAt": "updated_at"
       }
     },
     "sync_mutations": {
       "columns": [
-        "owner_id",
+        "organization_id",
         "client_mutation_id",
         "response_json",
         "created_at"
@@ -5507,14 +5804,14 @@ export const SCHEMA_CONTRACT = {
       "fieldMap": {
         "client_mutation_id": "clientMutationId",
         "created_at": "createdAt",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "response_json": "responseJson"
       },
       "jsonFields": [],
       "reverseFieldMap": {
         "clientMutationId": "client_mutation_id",
         "createdAt": "created_at",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "responseJson": "response_json"
       }
     },
@@ -5532,6 +5829,7 @@ export const SCHEMA_CONTRACT = {
         "ngay_bat_dau_goi",
         "ngay_het_han_goi",
         "han_su_dung_token",
+        "privileged_reauth_at",
         "thong_tin_thiet_bi_cuoi",
         "da_xac_minh",
         "ma_xac_minh",
@@ -5556,6 +5854,7 @@ export const SCHEMA_CONTRACT = {
         "mat_khau": "matKhau",
         "ngay_bat_dau_goi": "ngayBatDauGoi",
         "ngay_het_han_goi": "ngayHetHanGoi",
+        "privileged_reauth_at": "privilegedReauthAt",
         "ten_dang_nhap": "tenDangNhap",
         "thong_tin_thiet_bi_cuoi": "thongTinThietBiCuoi",
         "token_phien": "tokenPhien",
@@ -5579,6 +5878,7 @@ export const SCHEMA_CONTRACT = {
         "matKhau": "mat_khau",
         "ngayBatDauGoi": "ngay_bat_dau_goi",
         "ngayHetHanGoi": "ngay_het_han_goi",
+        "privilegedReauthAt": "privileged_reauth_at",
         "tenDangNhap": "ten_dang_nhap",
         "thongTinThietBiCuoi": "thong_tin_thiet_bi_cuoi",
         "tokenPhien": "token_phien",
@@ -5590,14 +5890,14 @@ export const SCHEMA_CONTRACT = {
     "thanh_vien_to_chuc": {
       "columns": [
         "user_id",
-        "to_chuc_id",
+        "organization_id",
         "vai_tro_trong_to_chuc",
         "created_at",
         "updated_at"
       ],
       "fieldMap": {
         "created_at": "createdAt",
-        "to_chuc_id": "toChucId",
+        "organization_id": "organizationId",
         "updated_at": "updatedAt",
         "user_id": "userId",
         "vai_tro_trong_to_chuc": "vaiTroTrongToChuc"
@@ -5605,7 +5905,7 @@ export const SCHEMA_CONTRACT = {
       "jsonFields": [],
       "reverseFieldMap": {
         "createdAt": "created_at",
-        "toChucId": "to_chuc_id",
+        "organizationId": "organization_id",
         "updatedAt": "updated_at",
         "userId": "user_id",
         "vaiTroTrongToChuc": "vai_tro_trong_to_chuc"
@@ -5614,8 +5914,9 @@ export const SCHEMA_CONTRACT = {
     "thong_tin_mo_thau": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
+        "archived_at",
         "goi_thau_id",
         "nha_thau_id",
         "ma_phan_lo",
@@ -5651,6 +5952,7 @@ export const SCHEMA_CONTRACT = {
         "updated_at"
       ],
       "fieldMap": {
+        "archived_at": "archivedAt",
         "created_at": "createdAt",
         "dam_bao_du_thau": "damBaoDuThau",
         "danh_gia_hop_le": "danhGiaHopLe",
@@ -5679,7 +5981,7 @@ export const SCHEMA_CONTRACT = {
         "nguyen_nhan_khong_dat_ky_thuat": "nguyenNhanKhongDatKyThuat",
         "nguyen_nhan_khong_dat_nang_luc": "nguyenNhanKhongDatNangLuc",
         "nha_thau_id": "nhaThauId",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sync_version": "syncVersion",
         "ten_nha_thau": "tenNhaThau",
@@ -5690,6 +5992,7 @@ export const SCHEMA_CONTRACT = {
       },
       "jsonFields": [],
       "reverseFieldMap": {
+        "archivedAt": "archived_at",
         "createdAt": "created_at",
         "damBaoDuThau": "dam_bao_du_thau",
         "danhGiaHopLe": "danh_gia_hop_le",
@@ -5718,7 +6021,7 @@ export const SCHEMA_CONTRACT = {
         "nguyenNhanKhongDatKyThuat": "nguyen_nhan_khong_dat_ky_thuat",
         "nguyenNhanKhongDatNangLuc": "nguyen_nhan_khong_dat_nang_luc",
         "nhaThauId": "nha_thau_id",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "syncVersion": "sync_version",
         "tenNhaThau": "ten_nha_thau",
@@ -5731,7 +6034,7 @@ export const SCHEMA_CONTRACT = {
     "thong_tin_mo_thau_lien_danh_thanh_vien": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "thong_tin_mo_thau_id",
         "thanh_vien_nha_thau_id",
@@ -5765,7 +6068,7 @@ export const SCHEMA_CONTRACT = {
         "ma_so_thue": "maSoThue",
         "nguoi_dai_dien": "nguoiDaiDien",
         "noi_mo_tai_khoan": "noiMoTaiKhoan",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "so_dien_thoai": "soDienThoai",
         "so_tai_khoan": "soTaiKhoan",
@@ -5790,7 +6093,7 @@ export const SCHEMA_CONTRACT = {
         "maSoThue": "ma_so_thue",
         "nguoiDaiDien": "nguoi_dai_dien",
         "noiMoTaiKhoan": "noi_mo_tai_khoan",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "soDienThoai": "so_dien_thoai",
         "soTaiKhoan": "so_tai_khoan",
@@ -5808,6 +6111,7 @@ export const SCHEMA_CONTRACT = {
         "id",
         "ten_to_chuc",
         "quan_ly_id",
+        "trang_thai",
         "created_at",
         "updated_at"
       ],
@@ -5816,6 +6120,7 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "quan_ly_id": "quanLyId",
         "ten_to_chuc": "tenToChuc",
+        "trang_thai": "trangThai",
         "updated_at": "updatedAt"
       },
       "jsonFields": [],
@@ -5824,13 +6129,14 @@ export const SCHEMA_CONTRACT = {
         "id": "id",
         "quanLyId": "quan_ly_id",
         "tenToChuc": "ten_to_chuc",
+        "trangThai": "trang_thai",
         "updatedAt": "updated_at"
       }
     },
     "trang_thai_ho_so_giay": {
       "columns": [
         "id",
-        "owner_id",
+        "organization_id",
         "owner_type",
         "name",
         "color",
@@ -5843,7 +6149,7 @@ export const SCHEMA_CONTRACT = {
         "created_at": "createdAt",
         "id": "id",
         "name": "name",
-        "owner_id": "ownerId",
+        "organization_id": "organizationId",
         "owner_type": "ownerType",
         "sync_version": "syncVersion",
         "updated_at": "updatedAt"
@@ -5854,9 +6160,27 @@ export const SCHEMA_CONTRACT = {
         "createdAt": "created_at",
         "id": "id",
         "name": "name",
-        "ownerId": "owner_id",
+        "organizationId": "organization_id",
         "ownerType": "owner_type",
         "syncVersion": "sync_version",
+        "updatedAt": "updated_at"
+      }
+    },
+    "word_default_seeds": {
+      "columns": [
+        "organization_id",
+        "mappings_version",
+        "updated_at"
+      ],
+      "fieldMap": {
+        "mappings_version": "mappingsVersion",
+        "organization_id": "organizationId",
+        "updated_at": "updatedAt"
+      },
+      "jsonFields": [],
+      "reverseFieldMap": {
+        "mappingsVersion": "mappings_version",
+        "organizationId": "organization_id",
         "updatedAt": "updated_at"
       }
     }

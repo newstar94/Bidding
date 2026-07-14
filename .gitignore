@@ -13,6 +13,7 @@ backend/db/bidding.db*
 
 # Log files
 *.log
+data/logs/
 
 # Runtime images and user-specific Word templates
 data/templates/images/

@@ -55,7 +55,14 @@
             </div>
 
 
-            <div id="google-signin-btn-container" style="display:flex;justify-content:center;min-height:44px;margin-bottom:4px;"></div>
+            <div id="google-signin-btn-container" class="google-signin-container" data-state="loading"
+                aria-label="Đăng nhập bằng Google">
+                <div class="google-signin-loading" aria-hidden="true">
+                    <span class="google-signin-spinner"></span>
+                    <span>Đang tải đăng nhập Google...</span>
+                </div>
+            </div>
+            <div id="google-signin-status" class="google-signin-status" role="status" aria-live="polite" hidden></div>
 
             <div class="auth-footer-links">
                 <a href="#" id="link-show-register">Đăng ký tài khoản</a>

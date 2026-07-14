@@ -158,34 +158,34 @@ def _child_number(value):
     return parsed if parsed is not None else 0
 
 
-def save_child_payloads(cursor, table_name, item, owner_id, owner_type, sync_version, updated_at):
+def save_child_payloads(cursor, table_name, item, organization_id, owner_type, sync_version, updated_at):
     parent_id = clean_id(item.get("id"))
     if not parent_id:
         return
     if table_name == "ke_hoach_lcnt":
-        _save_plan_children(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at)
+        _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
     elif table_name == "goi_thau":
-        _save_package_children(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at)
-        _save_package_expert_relations(cursor, parent_id, item, owner_id, owner_type)
+        _save_package_children(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
+        _save_package_expert_relations(cursor, parent_id, item, organization_id, owner_type)
     elif table_name == "nha_thau":
-        _save_member_children(cursor, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", parent_id, item, owner_id, owner_type, sync_version, updated_at)
+        _save_member_children(cursor, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", parent_id, item, organization_id, owner_type, sync_version, updated_at)
     elif table_name == "thong_tin_mo_thau":
-        _save_member_children(cursor, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", parent_id, item, owner_id, owner_type, sync_version, updated_at)
+        _save_member_children(cursor, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", parent_id, item, organization_id, owner_type, sync_version, updated_at)
 
 
-def _save_plan_children(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at):
+def _save_plan_children(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
     rows = []
     for camel_key, (kind, _snake_key) in PLAN_CHILD_LISTS.items():
         if not _has_child_key(item, camel_key):
             continue
         cursor.execute(
-            "DELETE FROM ke_hoach_cong_viec WHERE owner_id = ? AND ke_hoach_id = ? AND loai = ?",
-            (owner_id, parent_id, kind),
+            "DELETE FROM ke_hoach_cong_viec WHERE organization_id = ? AND ke_hoach_id = ? AND loai = ?",
+            (organization_id, parent_id, kind),
         )
         for index, row in enumerate(_parse_child_list(item.get(camel_key))):
             rows.append((
                 _child_row_id(parent_id, kind, index, _first_value(row, "id")),
-                owner_id,
+                organization_id,
                 owner_type,
                 parent_id,
                 kind,
@@ -200,25 +200,25 @@ def _save_plan_children(cursor, parent_id, item, owner_id, owner_type, sync_vers
     if rows:
         cursor.executemany("""
             INSERT INTO ke_hoach_cong_viec (
-                id, owner_id, owner_type, ke_hoach_id, loai, ten_cong_viec, gia_tri,
+                id, organization_id, owner_type, ke_hoach_id, loai, ten_cong_viec, gia_tri,
                 don_vi_thuc_hien, van_ban_phe_duyet, sort_order, sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
 
 
-def _save_package_children(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at):
+def _save_package_children(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
     if _has_child_key(item, "phanLoList") or _has_child_key(item, "awardedPhanLoList"):
-        lots = _parse_child_list(item.get("phanLoList")) if _has_child_key(item, "phanLoList") else _fetch_lots(cursor, parent_id, owner_id)
-        awards = _parse_child_list(item.get("awardedPhanLoList")) if _has_child_key(item, "awardedPhanLoList") else _fetch_awards(cursor, parent_id, owner_id)
-        _save_lots(cursor, parent_id, lots, awards, owner_id, owner_type, sync_version, updated_at)
+        lots = _parse_child_list(item.get("phanLoList")) if _has_child_key(item, "phanLoList") else _fetch_lots(cursor, parent_id, organization_id)
+        awards = _parse_child_list(item.get("awardedPhanLoList")) if _has_child_key(item, "awardedPhanLoList") else _fetch_awards(cursor, parent_id, organization_id)
+        _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, sync_version, updated_at)
     if _has_child_key(item, "tuyChonMuaThemList"):
-        _save_options(cursor, parent_id, item.get("tuyChonMuaThemList"), owner_id, owner_type, sync_version, updated_at)
+        _save_options(cursor, parent_id, item.get("tuyChonMuaThemList"), organization_id, owner_type, sync_version, updated_at)
     if _has_child_key(item, "giaHanList"):
-        _save_extensions(cursor, parent_id, item.get("giaHanList"), owner_id, owner_type, sync_version, updated_at)
-    _save_clarifications(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at)
+        _save_extensions(cursor, parent_id, item.get("giaHanList"), organization_id, owner_type, sync_version, updated_at)
+    _save_clarifications(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
 
 
-def _save_package_expert_relations(cursor, parent_id, item, owner_id, owner_type):
+def _save_package_expert_relations(cursor, parent_id, item, organization_id, owner_type):
     relation_specs = [
         ("toChuyenGia", "chuyen_gia"),
         ("toThamDinh", "tham_dinh"),
@@ -227,8 +227,8 @@ def _save_package_expert_relations(cursor, parent_id, item, owner_id, owner_type
         if not _has_child_key(item, payload_key):
             continue
         cursor.execute(
-            "DELETE FROM goi_thau_chuyen_gia WHERE owner_id = ? AND goi_thau_id = ? AND loai = ?",
-            (owner_id, parent_id, relation_type),
+            "DELETE FROM goi_thau_chuyen_gia WHERE organization_id = ? AND goi_thau_id = ? AND loai = ?",
+            (organization_id, parent_id, relation_type),
         )
         rows = []
         for row in _parse_child_list(item.get(payload_key)):
@@ -236,13 +236,13 @@ def _save_package_expert_relations(cursor, parent_id, item, owner_id, owner_type
             if not expert_id:
                 continue
             cursor.execute(
-                "SELECT 1 FROM chuyen_gia WHERE owner_id = ? AND id = ? LIMIT 1",
-                (owner_id, expert_id),
+                "SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND id = ? LIMIT 1",
+                (organization_id, expert_id),
             )
             if not cursor.fetchone():
                 raise ValueError(f"Chuyen gia {expert_id} khong thuoc owner hien tai.")
             rows.append((
-                owner_id,
+                organization_id,
                 owner_type,
                 parent_id,
                 expert_id,
@@ -253,7 +253,7 @@ def _save_package_expert_relations(cursor, parent_id, item, owner_id, owner_type
         if rows:
             cursor.executemany("""
                 INSERT OR REPLACE INTO goi_thau_chuyen_gia (
-                    owner_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
+                    organization_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """, rows)
 
@@ -262,7 +262,7 @@ def _lot_match_key(row):
     return str(_first_value(row, "maPhanLo", "ma_phan_lo", "tenPhanLo", "ten_phan_lo", default="")).strip().lower()
 
 
-def _save_lots(cursor, parent_id, lots, awards, owner_id, owner_type, sync_version, updated_at):
+def _save_lots(cursor, parent_id, lots, awards, organization_id, owner_type, sync_version, updated_at):
     merged_by_key = {}
     ordered = []
     for index, row in enumerate(lots):
@@ -286,12 +286,12 @@ def _save_lots(cursor, parent_id, lots, awards, owner_id, owner_type, sync_versi
         target["thoiGianGoiThau"] = _first_value(award, "thoiGianGoiThau", "thoi_gian_goi_thau", default="")
         target["thoiGianHopDong"] = _first_value(award, "thoiGianHopDong", "thoi_gian_hop_dong", default="")
 
-    cursor.execute("DELETE FROM goi_thau_phan_lo WHERE owner_id = ? AND goi_thau_id = ?", (owner_id, parent_id))
+    cursor.execute("DELETE FROM goi_thau_phan_lo WHERE organization_id = ? AND goi_thau_id = ?", (organization_id, parent_id))
     rows = []
     for index, row in enumerate(ordered):
         rows.append((
             _child_row_id(parent_id, "lot", index, _first_value(row, "id")),
-            owner_id,
+            organization_id,
             owner_type,
             parent_id,
             _first_value(row, "maPhanLo", "ma_phan_lo", default=""),
@@ -310,7 +310,7 @@ def _save_lots(cursor, parent_id, lots, awards, owner_id, owner_type, sync_versi
     if rows:
         cursor.executemany("""
             INSERT INTO goi_thau_phan_lo (
-                id, owner_id, owner_type, goi_thau_id, ma_phan_lo, ten_phan_lo,
+                id, organization_id, owner_type, goi_thau_id, ma_phan_lo, ten_phan_lo,
                 gia_tri_phan_lo, bao_dam_du_thau, thoi_gian_thuc_hien,
                 nha_thau_trung_thau_id, gia_trung_thau, thoi_gian_goi_thau,
                 thoi_gian_hop_dong, sort_order, sync_version, updated_at
@@ -318,13 +318,13 @@ def _save_lots(cursor, parent_id, lots, awards, owner_id, owner_type, sync_versi
         """, rows)
 
 
-def _save_options(cursor, parent_id, value, owner_id, owner_type, sync_version, updated_at):
-    cursor.execute("DELETE FROM goi_thau_tuy_chon_mua_them WHERE owner_id = ? AND goi_thau_id = ?", (owner_id, parent_id))
+def _save_options(cursor, parent_id, value, organization_id, owner_type, sync_version, updated_at):
+    cursor.execute("DELETE FROM goi_thau_tuy_chon_mua_them WHERE organization_id = ? AND goi_thau_id = ?", (organization_id, parent_id))
     rows = []
     for index, row in enumerate(_parse_child_list(value)):
         rows.append((
             _child_row_id(parent_id, "option", index, _first_value(row, "id")),
-            owner_id,
+            organization_id,
             owner_type,
             parent_id,
             _first_value(row, "hangMuc", "hang_muc", default=""),
@@ -339,14 +339,14 @@ def _save_options(cursor, parent_id, value, owner_id, owner_type, sync_version, 
     if rows:
         cursor.executemany("""
             INSERT INTO goi_thau_tuy_chon_mua_them (
-                id, owner_id, owner_type, goi_thau_id, hang_muc, don_vi, so_luong,
+                id, organization_id, owner_type, goi_thau_id, hang_muc, don_vi, so_luong,
                 ty_le, gia_tri_uoc_tinh, sort_order, sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
 
 
-def _save_extensions(cursor, parent_id, value, owner_id, owner_type, sync_version, updated_at):
-    cursor.execute("DELETE FROM goi_thau_gia_han WHERE owner_id = ? AND goi_thau_id = ?", (owner_id, parent_id))
+def _save_extensions(cursor, parent_id, value, organization_id, owner_type, sync_version, updated_at):
+    cursor.execute("DELETE FROM goi_thau_gia_han WHERE organization_id = ? AND goi_thau_id = ?", (organization_id, parent_id))
     rows = []
     items = _dedupe_child_items(
         _parse_child_list(value),
@@ -355,7 +355,7 @@ def _save_extensions(cursor, parent_id, value, owner_id, owner_type, sync_versio
     for index, row in enumerate(items):
         rows.append((
             _child_row_id(parent_id, "extend", index, _first_value(row, "id")),
-            owner_id,
+            organization_id,
             owner_type,
             parent_id,
             normalize_datetime_value(_first_value(row, "thoiGianDongThau", "thoi_gian_dong_thau", default="")),
@@ -367,13 +367,13 @@ def _save_extensions(cursor, parent_id, value, owner_id, owner_type, sync_versio
     if rows:
         cursor.executemany("""
             INSERT INTO goi_thau_gia_han (
-                id, owner_id, owner_type, goi_thau_id, thoi_gian_dong_thau,
+                id, organization_id, owner_type, goi_thau_id, thoi_gian_dong_thau,
                 ly_do_gia_han, sort_order, sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
 
 
-def _save_clarifications(cursor, parent_id, item, owner_id, owner_type, sync_version, updated_at):
+def _save_clarifications(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
     mapping = [
         ("yeuCauLamRoList", "yeu_cau", "request", "thoiGianYeuCau", "noiDungYeuCau"),
         ("traLoiLamRoList", "tra_loi", "reply", "thoiGianTraLoi", "noiDungTraLoi"),
@@ -383,8 +383,8 @@ def _save_clarifications(cursor, parent_id, item, owner_id, owner_type, sync_ver
         if not _has_child_key(item, key):
             continue
         cursor.execute(
-            "DELETE FROM goi_thau_lam_ro WHERE owner_id = ? AND goi_thau_id = ? AND loai = ?",
-            (owner_id, parent_id, kind),
+            "DELETE FROM goi_thau_lam_ro WHERE organization_id = ? AND goi_thau_id = ? AND loai = ?",
+            (organization_id, parent_id, kind),
         )
         items = _dedupe_child_items(
             _parse_child_list(item.get(key)),
@@ -393,7 +393,7 @@ def _save_clarifications(cursor, parent_id, item, owner_id, owner_type, sync_ver
         for index, row in enumerate(items):
             rows.append((
                 _child_row_id(parent_id, prefix, index, _first_value(row, "id")),
-                owner_id,
+                organization_id,
                 owner_type,
                 parent_id,
                 kind,
@@ -406,21 +406,21 @@ def _save_clarifications(cursor, parent_id, item, owner_id, owner_type, sync_ver
     if rows:
         cursor.executemany("""
             INSERT INTO goi_thau_lam_ro (
-                id, owner_id, owner_type, goi_thau_id, loai, thoi_gian,
+                id, organization_id, owner_type, goi_thau_id, loai, thoi_gian,
                 noi_dung, sort_order, sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
 
 
-def _save_member_children(cursor, child_table, parent_col, parent_id, item, owner_id, owner_type, sync_version, updated_at):
+def _save_member_children(cursor, child_table, parent_col, parent_id, item, organization_id, owner_type, sync_version, updated_at):
     if not _has_child_key(item, CHILD_MEMBER_KEY):
         return
-    cursor.execute(f"DELETE FROM {child_table} WHERE owner_id = ? AND {parent_col} = ?", (owner_id, parent_id))
+    cursor.execute(f"DELETE FROM {child_table} WHERE organization_id = ? AND {parent_col} = ?", (organization_id, parent_id))
     rows = []
     for index, row in enumerate(_parse_child_list(item.get(CHILD_MEMBER_KEY))):
         rows.append((
             _child_row_id(parent_id, "member", index, _first_value(row, "id")),
-            owner_id,
+            organization_id,
             owner_type,
             parent_id,
             clean_id(_first_value(row, "thanhVienNhaThauId", "thanh_vien_nha_thau_id", "nhaThauId")),
@@ -444,7 +444,7 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, owne
     if rows:
         cursor.executemany(f"""
             INSERT INTO {child_table} (
-                id, owner_id, owner_type, {parent_col}, thanh_vien_nha_thau_id,
+                id, organization_id, owner_type, {parent_col}, thanh_vien_nha_thau_id,
                 ten_nha_thau, ma_nha_thau, ma_so_thue,
                 vai_tro, nguoi_dai_dien, danh_xung, so_dien_thoai, email, dia_chi, dia_chi_goc,
                 so_tai_khoan, noi_mo_tai_khoan, ma_ngan_hang, sort_order,
@@ -453,12 +453,12 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, owne
         """, rows)
 
 
-def attach_child_rows(cursor, table_name, item, owner_id=None, naming="camel"):
-    attach_child_rows_to_items(cursor, table_name, [item], owner_id=owner_id, naming=naming)
+def attach_child_rows(cursor, table_name, item, organization_id=None, naming="camel"):
+    attach_child_rows_to_items(cursor, table_name, [item], organization_id=organization_id, naming=naming)
     return item
 
 
-def attach_child_rows_to_items(cursor, table_name, items, owner_id=None, naming="camel"):
+def attach_child_rows_to_items(cursor, table_name, items, organization_id=None, naming="camel"):
     if not items:
         return items
     parent_ids = [clean_id(item.get("id")) for item in items if isinstance(item, dict) and item.get("id")]
@@ -468,34 +468,34 @@ def attach_child_rows_to_items(cursor, table_name, items, owner_id=None, naming=
 
     by_id = {clean_id(item.get("id")): item for item in items if isinstance(item, dict)}
     if table_name == "ke_hoach_lcnt":
-        _attach_plan_children(cursor, by_id, parent_ids, owner_id, naming)
+        _attach_plan_children(cursor, by_id, parent_ids, organization_id, naming)
     elif table_name == "goi_thau":
-        _attach_package_children(cursor, by_id, parent_ids, owner_id, naming)
+        _attach_package_children(cursor, by_id, parent_ids, organization_id, naming)
     elif table_name == "nha_thau":
-        _attach_members(cursor, by_id, parent_ids, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", owner_id, naming)
+        _attach_members(cursor, by_id, parent_ids, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", organization_id, naming)
     elif table_name == "thong_tin_mo_thau":
-        _attach_members(cursor, by_id, parent_ids, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", owner_id, naming)
-        _enrich_opening_bid_contractor_versions(cursor, by_id, owner_id, naming)
+        _attach_members(cursor, by_id, parent_ids, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", organization_id, naming)
+        _enrich_opening_bid_contractor_versions(cursor, by_id, organization_id, naming)
     return items
 
 
-def fetch_package_lot_codes(cursor, goi_thau_id, owner_id):
+def fetch_package_lot_codes(cursor, goi_thau_id, organization_id):
     cursor.execute("""
         SELECT ma_phan_lo
         FROM goi_thau_phan_lo
-        WHERE goi_thau_id = ? AND owner_id = ? AND COALESCE(ma_phan_lo, '') != ''
+        WHERE goi_thau_id = ? AND organization_id = ? AND COALESCE(ma_phan_lo, '') != ''
         ORDER BY sort_order, id
-    """, (goi_thau_id, owner_id))
+    """, (goi_thau_id, organization_id))
     return [row[0] for row in cursor.fetchall()]
 
 
-def _select_children(cursor, table, parent_col, parent_ids, owner_id=None, extra_order="sort_order, id"):
+def _select_children(cursor, table, parent_col, parent_ids, organization_id=None, extra_order="sort_order, id"):
     placeholders = ", ".join(["?"] * len(parent_ids))
     params = list(parent_ids)
     owner_filter = ""
-    if owner_id is not None:
-        owner_filter = " AND owner_id = ?"
-        params.append(owner_id)
+    if organization_id is not None:
+        owner_filter = " AND organization_id = ?"
+        params.append(organization_id)
     cursor.execute(
         f"SELECT * FROM {table} WHERE {parent_col} IN ({placeholders}){owner_filter} ORDER BY {parent_col}, {extra_order}",
         params,
@@ -503,7 +503,7 @@ def _select_children(cursor, table, parent_col, parent_ids, owner_id=None, extra
     return [dict(row) for row in cursor.fetchall()]
 
 
-def _attach_plan_children(cursor, by_id, parent_ids, owner_id, naming):
+def _attach_plan_children(cursor, by_id, parent_ids, organization_id, naming):
     defaults = (
         {camel: [] for camel in PLAN_CHILD_LISTS}
         if naming == "camel"
@@ -516,14 +516,14 @@ def _attach_plan_children(cursor, by_id, parent_ids, owner_id, naming):
         kind: camel if naming == "camel" else snake
         for camel, (kind, snake) in PLAN_CHILD_LISTS.items()
     }
-    for row in _select_children(cursor, "ke_hoach_cong_viec", "ke_hoach_id", parent_ids, owner_id):
+    for row in _select_children(cursor, "ke_hoach_cong_viec", "ke_hoach_id", parent_ids, organization_id):
         item = by_id.get(row.get("ke_hoach_id"))
         key = kind_to_key.get(row.get("loai"))
         if item and key:
             item[key].append(_format_plan_child(row, naming))
 
 
-def _attach_package_children(cursor, by_id, parent_ids, owner_id, naming):
+def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming):
     defaults = {
         "camel": ["phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"],
         "snake": ["phan_lo_list", "awarded_phan_lo_list", "tuy_chon_mua_them_list", "gia_han_list", "yeu_cau_lam_ro_list", "tra_loi_lam_ro_list"],
@@ -531,7 +531,7 @@ def _attach_package_children(cursor, by_id, parent_ids, owner_id, naming):
     for item in by_id.values():
         item.update({key: [] for key in defaults})
 
-    for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", parent_ids, owner_id):
+    for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", parent_ids, organization_id):
         item = by_id.get(row.get("goi_thau_id"))
         if not item:
             continue
@@ -539,17 +539,17 @@ def _attach_package_children(cursor, by_id, parent_ids, owner_id, naming):
         if _has_lot_award(row):
             item["awardedPhanLoList" if naming == "camel" else "awarded_phan_lo_list"].append(_format_award_child(row, naming))
 
-    for row in _select_children(cursor, "goi_thau_tuy_chon_mua_them", "goi_thau_id", parent_ids, owner_id):
+    for row in _select_children(cursor, "goi_thau_tuy_chon_mua_them", "goi_thau_id", parent_ids, organization_id):
         item = by_id.get(row.get("goi_thau_id"))
         if item:
             item["tuyChonMuaThemList" if naming == "camel" else "tuy_chon_mua_them_list"].append(_format_option_child(row, naming))
 
-    for row in _select_children(cursor, "goi_thau_gia_han", "goi_thau_id", parent_ids, owner_id):
+    for row in _select_children(cursor, "goi_thau_gia_han", "goi_thau_id", parent_ids, organization_id):
         item = by_id.get(row.get("goi_thau_id"))
         if item:
             item["giaHanList" if naming == "camel" else "gia_han_list"].append(_format_extension_child(row, naming))
 
-    for row in _select_children(cursor, "goi_thau_lam_ro", "goi_thau_id", parent_ids, owner_id):
+    for row in _select_children(cursor, "goi_thau_lam_ro", "goi_thau_id", parent_ids, organization_id):
         item = by_id.get(row.get("goi_thau_id"))
         if not item:
             continue
@@ -559,17 +559,17 @@ def _attach_package_children(cursor, by_id, parent_ids, owner_id, naming):
             item["traLoiLamRoList" if naming == "camel" else "tra_loi_lam_ro_list"].append(_format_clarification_child(row, naming, False))
 
 
-def _attach_members(cursor, by_id, parent_ids, child_table, parent_col, owner_id, naming):
+def _attach_members(cursor, by_id, parent_ids, child_table, parent_col, organization_id, naming):
     key = "thanhVienLienDanh" if naming == "camel" else "thanh_vien_lien_danh"
     for item in by_id.values():
         item[key] = []
-    for row in _select_children(cursor, child_table, parent_col, parent_ids, owner_id):
+    for row in _select_children(cursor, child_table, parent_col, parent_ids, organization_id):
         item = by_id.get(row.get(parent_col))
         if item:
             item[key].append(_format_member_child(row, naming))
 
 
-def _enrich_opening_bid_contractor_versions(cursor, by_id, owner_id, naming):
+def _enrich_opening_bid_contractor_versions(cursor, by_id, organization_id, naming):
     member_key = "thanhVienLienDanh" if naming == "camel" else "thanh_vien_lien_danh"
     bid_contractor_key = "nhaThauId" if naming == "camel" else "nha_thau_id"
     bid_type_key = "loaiNhaThau" if naming == "camel" else "loai_nha_thau"
@@ -590,9 +590,9 @@ def _enrich_opening_bid_contractor_versions(cursor, by_id, owner_id, naming):
     placeholders = ", ".join(["?"] * len(contractor_ids))
     params = list(contractor_ids)
     owner_filter = ""
-    if owner_id is not None:
-        owner_filter = " AND owner_id = ?"
-        params.append(owner_id)
+    if organization_id is not None:
+        owner_filter = " AND organization_id = ?"
+        params.append(organization_id)
     cursor.execute(
         f"SELECT * FROM nha_thau WHERE id IN ({placeholders}){owner_filter}",
         params,
@@ -632,14 +632,14 @@ def _enrich_opening_bid_contractor_versions(cursor, by_id, owner_id, naming):
                 member[target_key] = value or ""
 
 
-def _fetch_lots(cursor, parent_id, owner_id):
-    return [_format_lot_child(row, "camel") for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", [parent_id], owner_id)]
+def _fetch_lots(cursor, parent_id, organization_id):
+    return [_format_lot_child(row, "camel") for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", [parent_id], organization_id)]
 
 
-def _fetch_awards(cursor, parent_id, owner_id):
+def _fetch_awards(cursor, parent_id, organization_id):
     return [
         _format_award_child(row, "camel")
-        for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", [parent_id], owner_id)
+        for row in _select_children(cursor, "goi_thau_phan_lo", "goi_thau_id", [parent_id], organization_id)
         if _has_lot_award(row)
     ]
 

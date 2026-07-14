@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import os
 import re
+import sqlite3
 import traceback
 
 from starlette.responses import JSONResponse
@@ -22,7 +24,13 @@ from backend.shared.helpers import (
     save_base64_image,
     verify_session,
 )
-from backend.shared.access_policy import authorize_record_write
+from backend.shared.access_policy import authorize_record_write, is_organization_manager
+from backend.shared.client_ip import get_client_ip
+from backend.shared.logging_utils import error_response, get_request_id
+from backend.auth.auth_helper import (
+    PRIVILEGED_REAUTH_REQUIRED,
+    PRIVILEGED_REAUTH_TTL_SECONDS,
+)
 from backend.shared.date_utils import is_datetime_column, normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.shared.media_helper import (
@@ -46,8 +54,15 @@ from backend.sync.queries import (
 )
 from backend.sync.ownership import get_owner_type, validate_owner_scoped_references
 from backend.sync.delete_policy import (
+    ALWAYS_ARCHIVE_TABLES,
+    ARCHIVABLE_TABLES,
+    HIGH_IMPACT_DELETE_TABLES,
+    archive_versioned_record,
+    build_delete_impact,
     delete_assignment_dependents,
     find_blocking_delete_references,
+    has_recent_password_reauthentication,
+    insert_delete_audit,
 )
 from backend.sync.repository import (
     DELETED_RECORD_UPSERT_SQL,
@@ -58,6 +73,26 @@ from backend.sync.repository import (
 )
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
 from backend.sync.validator import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
+
+
+def _sync_batch_limit():
+    try:
+        value = int(os.environ.get("SYNC_MAX_BATCH_ITEMS", "2000"))
+    except (TypeError, ValueError):
+        value = 2000
+    return min(10_000, max(100, value))
+
+
+def _sync_batch_size(payload):
+    if not isinstance(payload, dict):
+        return 0
+    keys = set(TABLE_KEYS)
+    keys.add("deletions")
+    return sum(
+        len(payload.get(key) or [])
+        for key in keys
+        if isinstance(payload.get(key), list)
+    )
 
 
 @dataclass(frozen=True)
@@ -100,7 +135,7 @@ async def process_sync_request(request, broadcast_callback=None):
     Đồng bộ dữ liệu thay đổi từ ứng dụng Frontend vào cơ sở dữ liệu SQLite.
     """
     def log_sync_error(msg):
-        log_error(msg, "SyncAPI")
+        log_error(msg, "SyncAPI", request_id=get_request_id(request))
 
     conn = None
     transaction_committed = False
@@ -113,6 +148,23 @@ async def process_sync_request(request, broadcast_callback=None):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         data = await request.json()
+        if not isinstance(data, dict):
+            return error_response(
+                request,
+                "SYNC_PAYLOAD_INVALID",
+                "Dữ liệu đồng bộ phải là một JSON object.",
+                status_code=400,
+            )
+        batch_size = _sync_batch_size(data)
+        batch_limit = _sync_batch_limit()
+        if batch_size > batch_limit:
+            return error_response(
+                request,
+                "SYNC_BATCH_TOO_LARGE",
+                "Số lượng bản ghi đồng bộ vượt quá giới hạn cho phép.",
+                status_code=413,
+                fields={"maxItems": batch_limit, "receivedItems": batch_size},
+            )
         conn = database.get_connection()
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=10000")
@@ -128,7 +180,7 @@ async def process_sync_request(request, broadcast_callback=None):
         if client_mutation_id:
             client_mutation_id = client_mutation_id[:128]
             cursor.execute(
-                "SELECT response_json FROM sync_mutations WHERE owner_id = ? AND client_mutation_id = ?",
+                "SELECT response_json FROM sync_mutations WHERE organization_id = ? AND client_mutation_id = ?",
                 (org_name, client_mutation_id)
             )
             existing_mutation = cursor.fetchone()
@@ -143,7 +195,7 @@ async def process_sync_request(request, broadcast_callback=None):
         if owner_type != "organization":
             cursor.execute("SELECT 1 FROM tai_khoan WHERE id = ?", (org_name,))
             if not cursor.fetchone():
-                log_sync_error(f"owner_id không hợp lệ: {org_name}")
+                log_sync_error(f"organization_id không hợp lệ: {org_name}")
                 return JSONResponse({"error": "Không thể xác định tổ chức hoặc tài khoản sở hữu dữ liệu."}, status_code=400)
 
 
@@ -180,6 +232,7 @@ async def process_sync_request(request, broadcast_callback=None):
 
         updated_versioned_tables = set()
         orphaned_ids = []
+        delete_impacts = []
 
         sync_item_errors = []
 
@@ -218,6 +271,13 @@ async def process_sync_request(request, broadcast_callback=None):
                     item_errors.append(access_decision.message)
                 c_id = get_clean_id(table_name, item.get('id'))
                 c_root_id = get_clean_id(table_name, item.get('rootId')) or c_id
+                if c_id and table_name in ARCHIVABLE_TABLES:
+                    archived_row = cursor.execute(
+                        f"SELECT archived_at FROM {table_name} WHERE organization_id = ? AND id = ?",
+                        (org_name, c_id),
+                    ).fetchone()
+                    if archived_row and archived_row[0]:
+                        item_errors.append("Bản ghi đã được lưu trữ và không thể chỉnh sửa.")
                 item, pure_errors, requested_paper_statuses = validate_sync_item(
                     table_name,
                     item,
@@ -238,7 +298,7 @@ async def process_sync_request(request, broadcast_callback=None):
                 item_errors.extend(reference_errors)
                 for status_name in requested_paper_statuses:
                     cursor.execute(
-                        "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ?",
+                        "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND name = ?",
                         (org_name, status_name)
                     )
                     if not cursor.fetchone():
@@ -249,12 +309,12 @@ async def process_sync_request(request, broadcast_callback=None):
                     ma = item.get("maChuDauTu")
                     mst = item.get("maSoThue")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT id FROM chu_dau_tu WHERE owner_id = ? AND ma_chu_dau_tu = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM chu_dau_tu WHERE organization_id = ? AND archived_at IS NULL AND ma_chu_dau_tu = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã chủ đầu tư '{ma}' đã tồn tại.", "conflictingId": conflict[0]})
                     if mst and str(mst).strip():
-                        cursor.execute("SELECT id FROM chu_dau_tu WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM chu_dau_tu WHERE organization_id = ? AND archived_at IS NULL AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã số thuế '{mst}' đã tồn tại.", "conflictingId": conflict[0]})
@@ -262,14 +322,14 @@ async def process_sync_request(request, broadcast_callback=None):
                 elif table_name == "ke_hoach_lcnt":
                     ma = item.get("maKeHoach")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT 1 FROM ke_hoach_lcnt WHERE owner_id = ? AND ma_ke_hoach = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM ke_hoach_lcnt WHERE organization_id = ? AND archived_at IS NULL AND ma_ke_hoach = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Mã kế hoạch '{ma}' đã tồn tại.")
 
                 elif table_name == "goi_thau":
                     ma = item.get("maGoiThau")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT 1 FROM goi_thau WHERE owner_id = ? AND ma_goi_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM goi_thau WHERE organization_id = ? AND archived_at IS NULL AND ma_goi_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Mã gói thầu '{ma}' đã tồn tại.")
 
@@ -277,12 +337,12 @@ async def process_sync_request(request, broadcast_callback=None):
                     ma = item.get("maNhaThau")
                     mst = item.get("maSoThue")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT id FROM nha_thau WHERE owner_id = ? AND ma_nha_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM nha_thau WHERE organization_id = ? AND archived_at IS NULL AND ma_nha_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã nhà thầu '{ma}' đã tồn tại.", "conflictingId": conflict[0]})
                     if mst and str(mst).strip():
-                        cursor.execute("SELECT id FROM nha_thau WHERE owner_id = ? AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM nha_thau WHERE organization_id = ? AND archived_at IS NULL AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã số thuế '{mst}' đã tồn tại.", "conflictingId": conflict[0]})
@@ -290,14 +350,14 @@ async def process_sync_request(request, broadcast_callback=None):
                 elif table_name == "chuyen_gia":
                     cccd = item.get("soCCCD")
                     if cccd and str(cccd).strip():
-                        cursor.execute("SELECT 1 FROM chuyen_gia WHERE owner_id = ? AND so_cccd = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(cccd).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND archived_at IS NULL AND so_cccd = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(cccd).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Số CCCD chuyên gia '{cccd}' đã tồn tại.")
 
                 elif table_name == "hop_dong":
                     so_hd = item.get("soHopDong")
                     if so_hd and str(so_hd).strip():
-                        cursor.execute("SELECT 1 FROM hop_dong WHERE owner_id = ? AND so_hop_dong = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(so_hd).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM hop_dong WHERE organization_id = ? AND archived_at IS NULL AND so_hop_dong = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(so_hd).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Số hợp đồng '{so_hd}' đã tồn tại.")
 
@@ -305,7 +365,7 @@ async def process_sync_request(request, broadcast_callback=None):
                     status_name = item.get("name") or item.get("tenTrangThai")
                     if status_name and str(status_name).strip():
                         cursor.execute(
-                            "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ? AND id != ?",
+                            "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND name = ? AND id != ?",
                             (org_name, str(status_name).strip(), c_id)
                         )
                         if cursor.fetchone():
@@ -337,13 +397,13 @@ async def process_sync_request(request, broadcast_callback=None):
 
         for status_name in paper_statuses_to_seed:
             cursor.execute(
-                "SELECT 1 FROM trang_thai_ho_so_giay WHERE owner_id = ? AND name = ?",
+                "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND name = ?",
                 (org_name, status_name)
             )
             if not cursor.fetchone():
                 cursor.execute("""
                     INSERT INTO trang_thai_ho_so_giay
-                        (id, owner_id, owner_type, name, color, sync_version, updated_at)
+                        (id, organization_id, owner_type, name, color, sync_version, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     generate_record_id("trang_thai_ho_so_giay"),
@@ -372,7 +432,7 @@ async def process_sync_request(request, broadcast_callback=None):
                 try:
                     db_row_data = {}
                     for col in columns:
-                        if col == "owner_id":
+                        if col == "organization_id":
                             db_row_data[col] = org_name
                             continue
                         elif col == "owner_type":
@@ -444,7 +504,7 @@ async def process_sync_request(request, broadcast_callback=None):
                                     if record_id:
                                         cursor.execute(
                                             f"SELECT {col} FROM {table_name} "
-                                            "WHERE owner_id = ? AND id = ? LIMIT 1",
+                                            "WHERE organization_id = ? AND id = ? LIMIT 1",
                                             (org_name, record_id),
                                         )
                                         previous_row = cursor.fetchone()
@@ -506,8 +566,8 @@ async def process_sync_request(request, broadcast_callback=None):
                     elif table_name == "ma_tran_phan_quyen":
                         cursor.execute("""
                             DELETE FROM ma_tran_phan_quyen
-                            WHERE owner_id = ? AND emp_id = ? AND id != ?
-                        """, (db_row_data.get("owner_id"), db_row_data.get("emp_id"), db_row_data.get("id")))
+                            WHERE organization_id = ? AND emp_id = ? AND id != ?
+                        """, (db_row_data.get("organization_id"), db_row_data.get("emp_id"), db_row_data.get("id")))
 
 
                     cols_str = ", ".join(db_row_data.keys())
@@ -539,17 +599,17 @@ async def process_sync_request(request, broadcast_callback=None):
                         c_hd_id = get_clean_id("hop_dong", item.get('id'))
                         cursor.execute("""
                             DELETE FROM hop_dong_goi_thau
-                            WHERE owner_id = ? AND hop_dong_id = ?
+                            WHERE organization_id = ? AND hop_dong_id = ?
                         """, (org_name, c_hd_id))
                         for gt_id_str in item.get('goiThauIds', []):
                             if gt_id_str:
                                 gt_id = clean_id(gt_id_str)
                                 if gt_id is not None:
-                                    cursor.execute("SELECT 1 FROM goi_thau WHERE owner_id = ? AND id = ? LIMIT 1", (org_name, gt_id))
+                                    cursor.execute("SELECT 1 FROM goi_thau WHERE organization_id = ? AND id = ? LIMIT 1", (org_name, gt_id))
                                     if not cursor.fetchone():
                                         raise ValueError(f"Goi thau {gt_id} khong thuoc owner hien tai.")
                                     cursor.execute(
-                                        "INSERT OR REPLACE INTO hop_dong_goi_thau (owner_id, owner_type, hop_dong_id, goi_thau_id) VALUES (?, ?, ?, ?)",
+                                        "INSERT OR REPLACE INTO hop_dong_goi_thau (organization_id, owner_type, hop_dong_id, goi_thau_id) VALUES (?, ?, ?, ?)",
                                         (org_name, owner_type, c_hd_id, gt_id)
                                     )
 
@@ -559,7 +619,7 @@ async def process_sync_request(request, broadcast_callback=None):
 
 
                         if 'toChuyenGia' in item:
-                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE owner_id = ? AND goi_thau_id = ? AND loai = 'chuyen_gia'", (org_name, c_gt_id))
+                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE organization_id = ? AND goi_thau_id = ? AND loai = 'chuyen_gia'", (org_name, c_gt_id))
                             cg_raw = item.get('toChuyenGia') or []
                             if isinstance(cg_raw, str):
                                 try:
@@ -572,19 +632,19 @@ async def process_sync_request(request, broadcast_callback=None):
                                         cg_id = cg_item.get('chuyenGiaId') or cg_item.get('id')
                                         if cg_id:
                                             clean_cg_id = clean_id(cg_id)
-                                            cursor.execute("SELECT 1 FROM chuyen_gia WHERE owner_id = ? AND id = ? LIMIT 1", (org_name, clean_cg_id))
+                                            cursor.execute("SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND id = ? LIMIT 1", (org_name, clean_cg_id))
                                             if not cursor.fetchone():
                                                 raise ValueError(f"Chuyen gia {clean_cg_id} khong thuoc owner hien tai.")
                                             chuc_vu = cg_item.get('chucVu') or 'Tổ viên'
                                             cong_viec = cg_item.get('congViec') or ''
                                             cursor.execute("""
-                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (owner_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
+                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (organization_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, ?, ?, 'chuyen_gia', ?, ?)
                                             """, (org_name, owner_type, c_gt_id, clean_cg_id, chuc_vu, cong_viec))
 
 
                         if 'toThamDinh' in item:
-                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE owner_id = ? AND goi_thau_id = ? AND loai = 'tham_dinh'", (org_name, c_gt_id))
+                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE organization_id = ? AND goi_thau_id = ? AND loai = 'tham_dinh'", (org_name, c_gt_id))
                             td_raw = item.get('toThamDinh') or []
                             if isinstance(td_raw, str):
                                 try:
@@ -597,13 +657,13 @@ async def process_sync_request(request, broadcast_callback=None):
                                         td_id = td_item.get('chuyenGiaId') or td_item.get('id')
                                         if td_id:
                                             clean_td_id = clean_id(td_id)
-                                            cursor.execute("SELECT 1 FROM chuyen_gia WHERE owner_id = ? AND id = ? LIMIT 1", (org_name, clean_td_id))
+                                            cursor.execute("SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND id = ? LIMIT 1", (org_name, clean_td_id))
                                             if not cursor.fetchone():
                                                 raise ValueError(f"Chuyen gia {clean_td_id} khong thuoc owner hien tai.")
                                             chuc_vu = td_item.get('chucVu') or 'Tổ viên'
                                             cong_viec = td_item.get('congViec') or ''
                                             cursor.execute("""
-                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (owner_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
+                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (organization_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
                                                 VALUES (?, ?, ?, ?, 'tham_dinh', ?, ?)
                                             """, (org_name, owner_type, c_gt_id, clean_td_id, chuc_vu, cong_viec))
                 except Exception as item_err:
@@ -642,16 +702,19 @@ async def process_sync_request(request, broadcast_callback=None):
                                 "nha_thau": ("anh_dau",),
                                 "chuyen_gia": ("anh_chung_chi", "anh_chu_ky"),
                             }.get(table_name, ())
-                            selected_columns = ", ".join(image_columns) if image_columns else "1"
                             cursor.execute(
-                                f"SELECT {selected_columns} FROM {table_name} "
-                                "WHERE owner_id = ? AND id = ? LIMIT 1",
+                                f"SELECT * FROM {table_name} "
+                                "WHERE organization_id = ? AND id = ? LIMIT 1",
                                 (org_name, c_id),
                             )
                             existing_row = cursor.fetchone()
                             if not existing_row:
                                 continue
-                            for image_value in existing_row if image_columns else ():
+                            existing_record = dict(existing_row)
+                            if table_name in ARCHIVABLE_TABLES and existing_record.get("archived_at"):
+                                continue
+                            for image_column in image_columns:
+                                image_value = existing_record.get(image_column)
                                 managed_path = normalize_managed_image_path(image_value)
                                 if managed_path:
                                     image_cleanup_candidates.add(managed_path)
@@ -671,13 +734,71 @@ async def process_sync_request(request, broadcast_callback=None):
                                     "message": access_decision.message
                                 })
                                 continue
+                            impact = build_delete_impact(
+                                cursor,
+                                org_name,
+                                table_name,
+                                c_id,
+                            )
+                            if table_name in HIGH_IMPACT_DELETE_TABLES:
+                                if not is_organization_manager(
+                                    cursor,
+                                    role_str,
+                                    user_id,
+                                    org_name,
+                                ):
+                                    sync_item_errors.append({
+                                        "table": table_name,
+                                        "id": c_id,
+                                        "code": "DELETE_ELEVATED_PERMISSION_REQUIRED",
+                                        "message": "Chỉ owner/manager của tổ chức được xóa aggregate nghiệp vụ.",
+                                        "impact": impact,
+                                    })
+                                    continue
+                                if not has_recent_password_reauthentication(
+                                    cursor,
+                                    user_id,
+                                    PRIVILEGED_REAUTH_TTL_SECONDS,
+                                ):
+                                    conn.rollback()
+                                    return JSONResponse(
+                                        {
+                                            "error": PRIVILEGED_REAUTH_REQUIRED,
+                                            "code": "PRIVILEGED_REAUTH_REQUIRED",
+                                            "deleteImpact": {
+                                                "table": tbl_key,
+                                                "id": c_id,
+                                                **impact,
+                                            },
+                                        },
+                                        status_code=403,
+                                    )
                             blocking_references = find_blocking_delete_references(
                                 cursor,
                                 org_name,
                                 table_name,
                                 c_id,
                             )
-                            if blocking_references:
+                            delete_action = "deleted"
+                            if (
+                                blocking_references or table_name in ALWAYS_ARCHIVE_TABLES
+                            ) and table_name in ARCHIVABLE_TABLES:
+                                delete_assignment_dependents(
+                                    cursor,
+                                    org_name,
+                                    table_name,
+                                    c_id,
+                                )
+                                archive_versioned_record(
+                                    cursor,
+                                    org_name,
+                                    table_name,
+                                    c_id,
+                                    current_time,
+                                    batch_sync_version,
+                                )
+                                delete_action = "archived"
+                            elif blocking_references:
                                 relation_summary = ", ".join(
                                     f"{item['label']} ({item['count']})"
                                     for item in blocking_references
@@ -690,17 +811,48 @@ async def process_sync_request(request, broadcast_callback=None):
                                     "references": blocking_references,
                                 })
                                 continue
-                            delete_assignment_dependents(
-                                cursor,
-                                org_name,
-                                table_name,
-                                c_id,
-                            )
-                            cursor.execute(f"DELETE FROM {table_name} WHERE owner_id = ? AND id = ?", (org_name, c_id))
+                            else:
+                                delete_assignment_dependents(
+                                    cursor,
+                                    org_name,
+                                    table_name,
+                                    c_id,
+                                )
+                                try:
+                                    cursor.execute(
+                                        f"DELETE FROM {table_name} WHERE organization_id = ? AND id = ?",
+                                        (org_name, c_id),
+                                    )
+                                except sqlite3.IntegrityError:
+                                    sync_item_errors.append({
+                                        "table": table_name,
+                                        "id": c_id,
+                                        "code": "DELETE_REFERENCED",
+                                        "message": "Không thể xóa vì bản ghi đang được tham chiếu.",
+                                    })
+                                    continue
 
                             cursor.execute(
                                 DELETED_RECORD_UPSERT_SQL,
                                 (table_name, c_id, org_name, current_time, batch_sync_version)
+                            )
+
+                            impact_result = {
+                                "table": tbl_key,
+                                "id": c_id,
+                                "action": delete_action,
+                                **impact,
+                            }
+                            delete_impacts.append(impact_result)
+                            insert_delete_audit(
+                                cursor,
+                                actor_user_id=user_id,
+                                organization_id=org_name,
+                                table_name=table_name,
+                                record_id=c_id,
+                                action=f"sync.record_{delete_action}",
+                                impact=impact_result,
+                                ip_address=get_client_ip(request),
                             )
 
 
@@ -709,11 +861,11 @@ async def process_sync_request(request, broadcast_callback=None):
 
 
         for tbl in updated_versioned_tables:
-            recalculate_is_latest(cursor, tbl, owner_id=org_name)
+            recalculate_is_latest(cursor, tbl, organization_id=org_name)
 
 
         if "ke_hoach_lcnt" in updated_versioned_tables or "goi_thau" in updated_versioned_tables:
-            recalculate_tong_muc_dau_tu(cursor, owner_id=org_name)
+            recalculate_tong_muc_dau_tu(cursor, organization_id=org_name)
 
         if sync_item_errors:
             return rollback_sync_response(
@@ -724,6 +876,8 @@ async def process_sync_request(request, broadcast_callback=None):
 
         current_sync_version = get_current_sync_version(cursor, org_name)
         response_data = {"status": "success", "timestamp": current_time, "syncVersion": current_sync_version}
+        if delete_impacts:
+            response_data["deleteImpacts"] = delete_impacts
         if data.get("includeDashboardSummary") is True:
             response_data["dashboardSummary"] = build_dashboard_summary(
                 cursor, org_name, role_str, user_id
@@ -732,7 +886,7 @@ async def process_sync_request(request, broadcast_callback=None):
             response_data["orphanedIds"] = orphaned_ids
         if client_mutation_id:
             cursor.execute(
-                "INSERT OR REPLACE INTO sync_mutations (owner_id, client_mutation_id, response_json) VALUES (?, ?, ?)",
+                "INSERT OR REPLACE INTO sync_mutations (organization_id, client_mutation_id, response_json) VALUES (?, ?, ?)",
                 (org_name, client_mutation_id, json.dumps(response_data))
             )
         conn.commit()
@@ -762,7 +916,12 @@ async def process_sync_request(request, broadcast_callback=None):
                 conn.rollback()
             except Exception:
                 pass
-        return JSONResponse({"error": str(e)}, status_code=403)
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
     except Exception as e:
         if conn:
             try:

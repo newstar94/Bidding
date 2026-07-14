@@ -5,7 +5,7 @@ import threading
 import time
 from datetime import datetime
 from backend.db.db_helper import database
-from backend.shared.client_ip import get_client_ip
+from backend.shared.client_ip import get_client_ip, is_client_ip_allowed
 from backend.auth.roles import effective_access_roles, normalize_platform_role
 
 ROLE_HIERARCHY = {
@@ -14,6 +14,12 @@ ROLE_HIERARCHY = {
 }
 
 PASSWORD_HASH_ITERATIONS = int(os.environ.get("PASSWORD_HASH_ITERATIONS", "310000"))
+PRIVILEGED_REAUTH_TTL_SECONDS = max(
+    60,
+    int(os.environ.get("PRIVILEGED_REAUTH_TTL_SECONDS", "600")),
+)
+PRIVILEGED_REAUTH_REQUIRED = "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm."
+SUPER_ADMIN_NETWORK_DENIED = "Truy cập bị từ chối: mạng hiện tại không được phép dùng quyền quản trị tối cao."
 
 def get_effective_roles(role_str):
     platform_role = normalize_platform_role(role_str)
@@ -111,22 +117,29 @@ class SessionRole(str):
         instance.user_id = user_id
         return instance
 
+
+def verify_super_admin_controls(request, user, *, require_reauth=None):
+    """Apply network allowlisting and recent password step-up after authentication."""
+    if not is_client_ip_allowed(get_client_ip(request)):
+        return False, SUPER_ADMIN_NETWORK_DENIED
+    unsafe_method = str(getattr(request, "method", "GET") or "GET").upper() not in {
+        "GET", "HEAD", "OPTIONS"
+    }
+    should_require_reauth = unsafe_method if require_reauth is None else bool(require_reauth)
+    if should_require_reauth:
+        try:
+            reauthenticated_at = int(user.get("privileged_reauth_at") or 0)
+        except (TypeError, ValueError):
+            reauthenticated_at = 0
+        if reauthenticated_at <= 0 or time.time() - reauthenticated_at > PRIVILEGED_REAUTH_TTL_SECONDS:
+            return False, PRIVILEGED_REAUTH_REQUIRED
+    return True, None
+
 def verify_session(request, required_role=None):
     token = request.cookies.get('session_token')
 
     if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
-
-    if required_role == 'super_admin':
-
-        import os
-        allowlist_str = os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", "127.0.0.1,::1,localhost")
-        allowlist = [ip.strip() for ip in allowlist_str.split(",") if ip.strip()]
-
-        if "*" not in allowlist:
-            client_ip = get_client_ip(request)
-            if client_ip not in allowlist:
-                return False, "Truy cập bị từ chối: IP không được phép truy cập quyền quản trị tối cao!"
 
     cached_user = _session_cache_get(token)
     if cached_user:
@@ -135,6 +148,10 @@ def verify_session(request, required_role=None):
         else:
             if required_role and required_role not in get_effective_roles(cached_user['vai_tro']):
                 return False, "Bạn không có quyền thực hiện thao tác này!"
+            if required_role == 'super_admin':
+                controls_valid, controls_error = verify_super_admin_controls(request, cached_user)
+                if not controls_valid:
+                    return False, controls_error
             return True, SessionRole(normalize_platform_role(cached_user['vai_tro']), cached_user['id'])
 
     conn = database.get_connection()
@@ -161,6 +178,11 @@ def verify_session(request, required_role=None):
 
     if required_role and required_role not in get_effective_roles(user['vai_tro']):
         return False, "Bạn không có quyền thực hiện thao tác này!"
+
+    if required_role == 'super_admin':
+        controls_valid, controls_error = verify_super_admin_controls(request, user)
+        if not controls_valid:
+            return False, controls_error
 
 
 

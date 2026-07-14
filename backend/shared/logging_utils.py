@@ -3,46 +3,138 @@ import traceback
 import json
 import sqlite3
 import time
-from datetime import datetime
+import re
+import threading
+import uuid
+from datetime import datetime, timezone
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from backend.shared.client_ip import get_client_ip
+from backend.shared.paths import LOG_DIR
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))
+_log_lock = threading.Lock()
+_request_id_pattern = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+_secret_patterns = (
+    (
+        re.compile(r"(?i)\b(authorization|cookie|set-cookie)\b\s*[\"']?\s*[:=]\s*[^\r\n]+"),
+        "[REDACTED_HEADER]",
+    ),
+    (
+        re.compile(
+            r"(?i)[\"']?\b(session_token|csrf_token|access_token|refresh_token|password|mat_khau)\b"
+            r"[\"']?\s*[:=]\s*[\"']?[^\s,;\]}\"']+"
+        ),
+        "[REDACTED_SECRET]",
+    ),
+    (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer [REDACTED_SECRET]"),
+    (re.compile(r"(?i)([?&]token=)[^&\s]+"), r"\1[REDACTED_SECRET]"),
+    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[REDACTED_EMAIL]"),
+    (re.compile(r"(?i)data:[^;\s]+;base64,[A-Za-z0-9+/=]{32,}"), "[REDACTED_FILE_CONTENT]"),
+    (
+        re.compile(
+            r"(?i)[\"']?\b(file_content|image_data|document_content|base64)\b"
+            r"[\"']?\s*[:=]\s*[\"']?[A-Za-z0-9+/=]{32,}"
+        ),
+        "[REDACTED_FILE_CONTENT]",
+    ),
+)
 
-def log_error(e_or_msg, context="System", level="ERROR"):
-    log_file = os.path.join(project_root, "sync_error.log")
+
+def redact_log_value(value):
+    text = str(value or "")
+    for pattern, replacement in _secret_patterns:
+        text = pattern.sub(replacement, text)
+    return text[:500_000]
+
+
+def _rotate_log(path, max_bytes, backup_count):
+    if not path.exists() or path.stat().st_size < max_bytes:
+        return
+    oldest = path.with_name(f"{path.name}.{backup_count}")
+    if oldest.exists():
+        oldest.unlink()
+    for index in range(backup_count - 1, 0, -1):
+        source = path.with_name(f"{path.name}.{index}")
+        if source.exists():
+            source.replace(path.with_name(f"{path.name}.{index + 1}"))
+    path.replace(path.with_name(f"{path.name}.1"))
+
+
+def append_runtime_log(filename, content):
+    """Append a redacted entry to a rotated runtime log outside source artifacts."""
+    configured_log_dir = os.environ.get("BIDDING_LOG_DIR", "").strip()
+    log_dir = (type(LOG_DIR)(configured_log_dir) if configured_log_dir else LOG_DIR).resolve()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    path = (log_dir / os.path.basename(filename)).resolve()
+    if path.parent != log_dir:
+        raise ValueError("Invalid runtime log path")
+    max_bytes = max(64 * 1024, int(os.environ.get("LOG_MAX_BYTES", 5 * 1024 * 1024)))
+    backup_count = min(30, max(1, int(os.environ.get("LOG_BACKUP_COUNT", 5))))
+    with _log_lock:
+        _rotate_log(path, max_bytes, backup_count)
+        with path.open("a", encoding="utf-8") as log_file:
+            log_file.write(redact_log_value(content))
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+
+
+def get_request_id(request=None):
+    if request is not None:
+        existing = str(getattr(getattr(request, "state", None), "request_id", "") or "")
+        if _request_id_pattern.fullmatch(existing):
+            return existing
+        headers = getattr(request, "headers", {}) or {}
+        incoming = str(headers.get("X-Request-ID", "") or "")
+        if _request_id_pattern.fullmatch(incoming):
+            request_id = incoming
+        else:
+            request_id = uuid.uuid4().hex
+        try:
+            request.state.request_id = request_id
+        except Exception:
+            pass
+        return request_id
+    return uuid.uuid4().hex
+
+
+def error_response(request, code, message, status_code=500, fields=None):
+    request_id = get_request_id(request)
+    payload = {
+        "code": str(code),
+        "message": str(message),
+        "fields": fields if isinstance(fields, dict) else {},
+        "requestId": request_id,
+        # Temporary compatibility alias until P2-04 migrates every caller.
+        "error": str(message),
+    }
+    return JSONResponse(payload, status_code=status_code, headers={"X-Request-ID": request_id})
+
+
+def log_and_error(request, exception, context, code, message, status_code=500, fields=None):
+    request_id = get_request_id(request)
+    log_error(exception, context, request_id=request_id)
+    return error_response(request, code, message, status_code=status_code, fields=fields)
+
+
+def log_error(e_or_msg, context="System", level="ERROR", request_id=None):
     try:
-
-        if os.path.exists(log_file) and os.path.getsize(log_file) > 5 * 1024 * 1024:
-            try:
-                backup_file = log_file + ".1"
-                if os.path.exists(backup_file):
-                    os.remove(backup_file)
-                os.rename(log_file, backup_file)
-            except Exception:
-                try:
-                    with open(log_file, "w", encoding="utf-8") as f:
-                        f.write(f"[{datetime.now().isoformat()}] Log file truncated due to size limit.\n")
-                except Exception:
-                    pass
-
-        now_str = datetime.now().isoformat()
+        now_str = datetime.now(timezone.utc).isoformat()
+        request_part = f" [requestId={request_id}]" if request_id else ""
         if isinstance(e_or_msg, Exception):
             tb = traceback.format_exc()
-            msg = f"[{now_str}] [{context}] [{level}] LỖI: {str(e_or_msg)}\n{tb}\n"
+            msg = f"[{now_str}] [{context}] [{level}]{request_part} LỖI: {e_or_msg}\n{tb}\n"
         else:
-            msg = f"[{now_str}] [{context}] [{level}] THÔNG BÁO: {str(e_or_msg)}\n"
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(msg)
+            msg = f"[{now_str}] [{context}] [{level}]{request_part} THÔNG BÁO: {e_or_msg}\n"
+        append_runtime_log("sync_error.log", msg)
     except Exception:
         pass
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
-        print(f"[{context}] [{level}] {e_or_msg}")
+        print(redact_log_value(f"[{context}] [{level}] {e_or_msg}"))
 
 
-def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, target_id=None, request=None, metadata=None):
+def log_audit(action, actor_user_id=None, organization_id=None, target_type=None, target_id=None, request=None, metadata=None):
 
     conn = None
     try:
@@ -56,12 +148,12 @@ def log_audit(action, actor_user_id=None, owner_id=None, target_type=None, targe
 
         sql = """
             INSERT INTO audit_log (
-                actor_user_id, owner_id, action, target_type, target_id, ip_address, metadata_json
+                actor_user_id, organization_id, action, target_type, target_id, ip_address, metadata_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             actor_user_id,
-            owner_id,
+            organization_id,
             action,
             target_type,
             target_id,
@@ -117,8 +209,25 @@ class ErrorLoggingMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             if response.status_code >= 500:
-                log_error(f"Phản hồi lỗi server {response.status_code}", f"HTTP {request.method} {request.url.path}")
+                log_error(
+                    f"Phản hồi lỗi server {response.status_code}",
+                    f"HTTP {request.method} {request.url.path}",
+                    request_id=get_request_id(request),
+                )
             return response
         except Exception as e:
-            log_error(e, f"HTTP {request.method} {request.url.path}")
-            raise e
+            return log_and_error(
+                request,
+                e,
+                f"HTTP {request.method} {request.url.path}",
+                "INTERNAL_SERVER_ERROR",
+                "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.",
+            )
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        request_id = get_request_id(request)
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response

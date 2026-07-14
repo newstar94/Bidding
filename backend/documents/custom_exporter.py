@@ -3,6 +3,7 @@ import re
 import json
 import sqlite3
 import zipfile
+import traceback
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from docxtpl import DocxTemplate, InlineImage
@@ -15,6 +16,7 @@ from backend.documents.template_security import (
     validate_template_statements,
 )
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
+from backend.shared.logging_utils import append_runtime_log
 
 
 _IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
@@ -833,34 +835,17 @@ def generate_report_from_custom_template(template_path, context, custom_vars=Non
         convert_images_in_context(doc, context)
         doc.render(context, jinja_env=create_template_environment())
     except Exception as e:
-
-        log_path = os.path.join(project_root, 'export_error.log')
         try:
-
-            masked_context = {}
-            if isinstance(context, dict):
-                def mask_sensitive(d):
-                    res = {}
-                    for k, v in d.items():
-                        if isinstance(v, dict):
-                            res[k] = mask_sensitive(v)
-                        elif isinstance(v, list):
-                            res[k] = [mask_sensitive(x) if isinstance(x, dict) else x for x in v]
-                        elif any(sub in str(k).lower() for sub in ['cccd', 'cmt', 'passport', 'token', 'mat_khau', 'password', 'anh_chung_chi', 'anh_chu_ky', 'anh_dau', 'signature', 'base64']):
-                            res[k] = '[MASKED]'
-                        else:
-                            res[k] = v
-                    return res
-                masked_context = mask_sensitive(context)
-            else:
-                masked_context = context
-
-            with open(log_path, 'a', encoding='utf-8') as lf:
-                import traceback
-                lf.write(f"[{datetime.now().isoformat()}] ERROR: Failed rendering template {template_path}\n")
-                lf.write(f"Context: {json.dumps(masked_context, ensure_ascii=False, default=str)}\n")
-                lf.write(traceback.format_exc())
-                lf.write("\n" + "="*50 + "\n")
+            # Do not persist the document context: it may contain identities,
+            # signatures, email addresses, access tokens, or embedded files.
+            append_runtime_log(
+                "export_error.log",
+                (
+                    f"[{datetime.now().isoformat()}] ERROR: Failed rendering "
+                    f"template {os.path.basename(template_path)}\n"
+                    f"{traceback.format_exc()}\n{'=' * 50}\n"
+                ),
+            )
         except Exception:
             pass
 

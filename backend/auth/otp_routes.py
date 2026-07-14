@@ -17,7 +17,8 @@ from backend.shared.helpers import (
 )
 from backend.auth.auth_service import (
     get_client_ip,
-    check_rate_limit,
+    get_rate_limit_decision,
+    rate_limit_response,
     generate_otp,
     provision_user_organization,
 )
@@ -39,8 +40,9 @@ async def register_api(request):
     conn = None
     try:
         ip = get_client_ip(request)
-        if not check_rate_limit(f"register:{ip}"):
-            return JSONResponse({"error": "Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau 60 giây."}, status_code=429)
+        register_limit = get_rate_limit_decision(f"register:{ip}")
+        if not register_limit.allowed:
+            return rate_limit_response("Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau.", register_limit)
 
         data = await request.json()
         username = data.get('username', '').strip().lower()
@@ -51,6 +53,18 @@ async def register_api(request):
 
         if not username or not password or not name or not email:
             return JSONResponse({"error": "Vui lòng nhập đầy đủ thông tin bắt buộc!"}, status_code=400)
+
+        register_identity = hashlib.sha256(
+            f"{username}\0{email.lower()}".encode("utf-8")
+        ).hexdigest()[:24]
+        register_identity_limit = get_rate_limit_decision(
+            f"register_identity:{register_identity}"
+        )
+        if not register_identity_limit.allowed:
+            return rate_limit_response(
+                "Quá nhiều yêu cầu đăng ký cho thông tin này. Vui lòng thử lại sau.",
+                register_identity_limit,
+            )
 
 
         valid, reason = validate_username(username)
@@ -122,8 +136,13 @@ async def verify_email_api(request):
             return JSONResponse({"error": "Thiếu thông tin xác thực!"}, status_code=400)
 
         ip = get_client_ip(request)
-        if not check_rate_limit(f"verify:{ip}:{username.lower()}"):
-            return JSONResponse({"error": "Quá nhiều lần xác thực thất bại. Vui lòng thử lại sau 60 giây."}, status_code=429)
+        verify_ip_limit = get_rate_limit_decision(f"verify:{ip}")
+        verify_identity_limit = get_rate_limit_decision(f"verify_identity:{username.lower()}")
+        if not verify_ip_limit.allowed or not verify_identity_limit.allowed:
+            return rate_limit_response(
+                "Quá nhiều lần xác thực thất bại. Vui lòng thử lại sau.",
+                verify_ip_limit if not verify_ip_limit.allowed else verify_identity_limit,
+            )
 
         conn = database.get_connection()
         cursor = conn.cursor()
@@ -162,6 +181,17 @@ async def resend_code_api(request):
         if not username:
             return JSONResponse({"error": "Thiếu thông tin người dùng!"}, status_code=400)
 
+        ip = get_client_ip(request)
+        resend_ip_limit = get_rate_limit_decision(f"resend:{ip}")
+        resend_identity_limit = get_rate_limit_decision(
+            f"resend_identity:{username.lower()}"
+        )
+        if not resend_ip_limit.allowed or not resend_identity_limit.allowed:
+            return rate_limit_response(
+                "Quá nhiều yêu cầu gửi lại OTP. Vui lòng thử lại sau.",
+                resend_ip_limit if not resend_ip_limit.allowed else resend_identity_limit,
+            )
+
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT id, ho_ten, email, da_xac_minh FROM tai_khoan WHERE ten_dang_nhap = ?", (username,))
@@ -177,10 +207,6 @@ async def resend_code_api(request):
         if is_verified:
             conn.close()
             return JSONResponse({"error": "Tài khoản này đã được xác thực trước đó!"}, status_code=400)
-
-        ip = get_client_ip(request)
-        if not check_rate_limit(f"resend:{ip}"):
-            return JSONResponse({"error": "Quá nhiều yêu cầu gửi lại OTP. Vui lòng thử lại sau 60 giây."}, status_code=429)
 
         code = generate_otp()
         expiry = int(time.time()) + 600
@@ -228,11 +254,13 @@ async def forgot_password_api(request):
         identity_hash = hashlib.sha256(
             f"{username.lower()}\0{email.lower()}".encode("utf-8")
         ).hexdigest()[:24]
-        if (
-            not check_rate_limit(f"forgot:{ip}")
-            or not check_rate_limit(f"forgot_identity:{identity_hash}")
-        ):
-            return JSONResponse({"error": "Quá nhiều yêu cầu. Vui lòng thử lại sau 60 giây."}, status_code=429)
+        forgot_ip_limit = get_rate_limit_decision(f"forgot:{ip}")
+        forgot_identity_limit = get_rate_limit_decision(f"forgot_identity:{identity_hash}")
+        if not forgot_ip_limit.allowed or not forgot_identity_limit.allowed:
+            return rate_limit_response(
+                "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
+                forgot_ip_limit if not forgot_ip_limit.allowed else forgot_identity_limit,
+            )
 
         reset_request = None
         if username and email:
@@ -282,11 +310,13 @@ async def reset_password_api(request):
         token = str(data.get('token') or '').strip()
         new_password = data.get('new_password')
         token_key = hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]
-        if (
-            not check_rate_limit(f"reset_password:{ip}")
-            or not check_rate_limit(f"reset_password_token:{token_key}")
-        ):
-            return JSONResponse({"error": "Quá nhiều yêu cầu. Vui lòng thử lại sau 60 giây."}, status_code=429)
+        reset_ip_limit = get_rate_limit_decision(f"reset_password:{ip}")
+        reset_token_limit = get_rate_limit_decision(f"reset_password_token:{token_key}")
+        if not reset_ip_limit.allowed or not reset_token_limit.allowed:
+            return rate_limit_response(
+                "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
+                reset_ip_limit if not reset_ip_limit.allowed else reset_token_limit,
+            )
 
         valid_password, password_error = validate_new_password(new_password)
         if not valid_password:

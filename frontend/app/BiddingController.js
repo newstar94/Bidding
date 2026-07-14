@@ -598,6 +598,55 @@ export class BiddingController {
         options.headers = headers;
       }
       const response = await originalFetch(url, options);
+      if (response.status === 403 && typeof url === "string" && url.startsWith("/api/") && !url.includes("/api/auth/privileged-reauth")) {
+        let requiresPrivilegedReauth = false;
+        try {
+          const payload = await response.clone().json();
+          requiresPrivilegedReauth = String(payload?.error || "").startsWith("Cần xác thực lại mật khẩu");
+        } catch {
+          requiresPrivilegedReauth = false;
+        }
+        if (requiresPrivilegedReauth) {
+          if (!this._privilegedReauthPromise) {
+            this._privilegedReauthPromise = (async () => {
+              const password = await this.view.customPrompt(
+                "Xác thực thao tác quản trị",
+                "Nhập lại mật khẩu. Quyền thao tác nhạy cảm sẽ có hiệu lực trong thời gian ngắn.",
+                "",
+                "Mật khẩu hiện tại",
+                false,
+                null,
+                "password"
+              );
+              if (password === null) return false;
+              const headers = new Headers({ "Content-Type": "application/json" });
+              const csrfToken = readCookie("csrf_token");
+              if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+              const reauthResponse = await originalFetch("/api/auth/privileged-reauth", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ password })
+              });
+              if (!reauthResponse.ok) {
+                let error = "Không thể xác thực lại quyền quản trị.";
+                try {
+                  error = (await reauthResponse.json())?.error || error;
+                } catch {
+                }
+                await this.view.customAlert("Xác thực thất bại", error, "shield-alert");
+                return false;
+              }
+              return true;
+            })().finally(() => {
+              this._privilegedReauthPromise = null;
+            });
+          }
+          if (await this._privilegedReauthPromise) {
+            return originalFetch(url, options);
+          }
+          return response;
+        }
+      }
       if (response.status === 403 && typeof url === "string" && url.startsWith("/api/") && !url.includes("/api/auth/login") && !url.includes("/api/auth/check-session")) {
         let errorMsg = "Yêu cầu bị từ chối do không đủ quyền hạn hoặc vi phạm cấu hình hệ thống.";
         let isSessionError = false;
@@ -670,6 +719,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       }
       return response;
     };
+    window.fetch.__bfSecurityTransport = true;
     sessionStorage.removeItem("bf_session_token");
     localStorage.removeItem("bf_session_token");
     const rememberedUserId = localStorage.getItem("bf_user_id");

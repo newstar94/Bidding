@@ -10,7 +10,6 @@
 
 ### Mức độ nghiêm trọng
 
-- **P0 – Blocker:** phải sửa trước khi chạy production hoặc nhập dữ liệu thật.
 - **P1 – Cao:** phải sửa trước pilot/nghiệm thu với người dùng thật.
 - **P2 – Trung bình:** sửa sau khi invariant P0/P1 ổn định, nhưng phải đưa vào kế hoạch phát hành.
 
@@ -21,254 +20,19 @@
 - **S2 – Một luồng/module:** ảnh hưởng một nhóm người dùng hoặc tính năng xác định.
 - **S1 – Cục bộ/bảo trì:** ít ảnh hưởng trực tiếp tới dữ liệu nhưng làm tăng chi phí và nguy cơ regression.
 
-Trong từng mức P0/P1/P2, các mục dưới đây đã được xếp theo phạm vi và mức ảnh hưởng giảm dần. Thứ tự triển khai kỹ thuật có thể điều chỉnh theo dependency ở mục 6.
+Trong từng mức P1/P2, các mục dưới đây đã được xếp theo phạm vi và mức ảnh hưởng giảm dần. Thứ tự triển khai kỹ thuật có thể điều chỉnh theo dependency ở mục 5.
 
 ### Tổng hợp
 
-| Mức | Số nhóm | Điều kiện |
+| Mức | Số nhóm còn lại | Điều kiện |
 |---|---:|---|
-| P0 | 8 (đã xong 5) | Phải đóng 100% trước production |
-| P1 | 13 | Phải đóng trước pilot có dữ liệu thật |
+| P1 | 8 | Phải đóng trước pilot có dữ liệu thật |
 | P2 | 11 | Hoàn thành theo các đợt tối ưu sau baseline |
-| **Tổng** | **32** | Mỗi mục cần code, test regression và bằng chứng nghiệm thu |
+| **Tổng** | **19** | Mỗi mục cần code, test regression và bằng chứng nghiệm thu |
 
 ---
 
-## 2. P0 – Blocker
-
-### [x] P0-01 / R-03 – S4: Sửa phân quyền đa tổ chức
-
-**Ảnh hưởng:** leo thang quyền giữa các tổ chức; manager ở tổ chức A có thể được coi là manager ở tổ chức B.
-
-**Chỗ cần sửa:**
-
-- `backend/db/schema.py`
-- `backend/auth/auth_service.py`
-- `backend/auth/session_utils.py`
-- `backend/shared/access_policy.py`
-- `backend/auth/auth_routes.py`
-- `backend/api/org_routes.py`
-- Các API đang kiểm tra `tai_khoan.vai_tro` trực tiếp
-
-**Việc phải làm:**
-
-- [x] Chỉ giữ quyền nền tảng như `super_admin` ở tài khoản; chuyển `owner/manager/employee/viewer` thành role của membership.
-- [x] Dùng `organization_memberships.role` làm nguồn sự thật cho mọi authorization trong tổ chức.
-- [x] Request context phải nạp `active_org_id`, membership role và trạng thái organization từ server.
-- [x] Policy mặc định deny; loại bỏ bypass “manager toàn cục”.
-- [x] Chặn tự nâng quyền, sửa/xóa peer cao hơn, sửa super-admin và xóa owner cuối cùng.
-- [x] Thay đổi membership/role phải có transaction và audit event.
-- [x] Rà toàn bộ route để không còn kiểm tra role nghiệp vụ từ `tai_khoan.vai_tro`.
-
-**Hoàn thành khi:** manager A/employee B không có quyền quản lý tại B; không thể tạo tổ chức không có owner; ma trận allow/deny có integration test.
-
-**Bằng chứng hoàn thành:** tài khoản chỉ còn hai quyền nền tảng `super_admin/user`; payload phiên tách riêng `platform_role`, `membership_role`, `effective_roles` và danh sách tổ chức theo ID. Toàn bộ route nghiệp vụ dùng membership của tổ chức đang hoạt động; frontend tính lại quyền ngay khi đổi workspace. Các luồng sửa/xóa role chặn tự nâng quyền, peer cao hơn, owner cuối cùng và super-admin cuối cùng; thay đổi được bọc transaction, vô hiệu hóa cache/session liên quan và ghi audit. Đã đạt 11 test API về authorization/access contract, 3 test frontend về access context; toàn bộ 136 unit test, 106 API test, lint, audit module/dead-code và build đều đạt.
-
-### [x] P0-02 / R-02 – S4: Tách hoàn toàn state offline/sync theo tổ chức
-
-**Ảnh hưởng:** mutation, tombstone hoặc snapshot của tổ chức A có thể được gửi/merge vào tổ chức B.
-
-**Chỗ cần sửa:**
-
-- `frontend/app/BiddingModel.js`
-- `frontend/app/BiddingControllerSync.js`
-- `frontend/app/BiddingController.js`
-- `frontend/admin/AdminUserController.js`
-- `backend/sync/websocket.py`
-- Các key IndexedDB/localStorage liên quan mutation, deletion và sync version
-
-**Việc phải làm:**
-
-- [x] Scope IndexedDB, mutation queue, tombstone, draft, cache và sync cursor bằng `{userId}:{organizationId}`.
-- [x] Tạo một state machine duy nhất cho đổi workspace.
-- [x] Khi đổi org: khóa ghi, xử lý pending mutation, đóng WS/DB, xóa state memory, đổi active org, hydrate không track mutation, reconnect.
-- [x] Tách rõ `applyServerSnapshot()` và `commitLocalMutation()`.
-- [x] Không gọi `persistData()` theo hướng tạo mutation cho dữ liệu vừa nhận từ server.
-- [x] Không dùng tên tổ chức làm khóa; chỉ dùng organization ID.
-- [x] Xử lý hai tab, offline và logout/session expiry.
-
-**Hoàn thành khi:** E2E A → B → A với pending mutation/tombstone/two-tab không gây đọc, ghi hoặc broadcast chéo tổ chức.
-
-**Bằng chứng hoàn thành:** IndexedDB và toàn bộ queue/tombstone/cursor/cache phiên làm việc dùng namespace `{userId}:{organizationId}`; active organization của từng tab được giữ trong `sessionStorage` và chỉ lưu ID. Luồng `switchWorkspaceContext()` khóa ghi, làm mất hiệu lực phản hồi cũ bằng workspace epoch, thử đẩy mutation đang chờ nhưng vẫn bảo toàn queue khi offline, đóng WebSocket/IndexedDB cũ, xóa state memory, hydrate DB mới không tạo mutation và kết nối lại WebSocket đã xác thực membership đúng organization ID. Snapshot server đi qua `applyServerSnapshot()`, mutation cục bộ đi qua `commitLocalMutation()`. E2E Chromium A → B → A với hai tab, offline, pending mutation và tombstone đạt; toàn bộ 140 unit test, 107 API test, lint, audit module/dead-code và build đều đạt.
-
-### [x] P0-03 / R-04 – S4: Viết lại luồng quên/reset mật khẩu
-
-**Ảnh hưởng:** người biết username và email có thể làm đổi mật khẩu nạn nhân; SMTP lỗi có thể khóa tài khoản.
-
-**Chỗ cần sửa:**
-
-- `backend/auth/otp_routes.py`
-- Các service gửi email/reset token
-- Schema token/session trong `backend/db/schema.py`
-- Form reset trong frontend auth
-
-**Việc phải làm:**
-
-- [x] Endpoint yêu cầu reset không đổi password ngay.
-- [x] Trả response chung, không tiết lộ username/email có tồn tại.
-- [x] Sinh token ngẫu nhiên; DB chỉ lưu hash, `expires_at`, `used_at`, `user_id`.
-- [x] Chỉ đổi password khi redeem token hợp lệ trong transaction.
-- [x] Không gửi password tạm qua email.
-- [x] Sau reset thành công, revoke mọi session và WebSocket.
-- [x] Rate limit theo IP + identity hash; chống token reuse/concurrent redeem.
-- [x] Không log token/link đầy đủ; URL dùng fragment và mock mail ẩn nội dung nhạy cảm.
-
-**Hoàn thành khi:** SMTP lỗi không làm đổi mật khẩu; token hết hạn/đã dùng bị từ chối; response không hỗ trợ account enumeration.
-
-**Đã nghiệm thu:** thêm `password_reset_tokens`, service token dùng một lần, endpoint redeem, form đặt mật khẩu mới và `APP_PUBLIC_URL`. 5 test reset mới, toàn bộ 79 API test, 133 unit test, lint và secure build đều đạt.
-
-### [ ] P0-04 / R-05 – S4: Sửa trusted proxy, IP allowlist và rate limiter
-
-**Ảnh hưởng:** có thể giả IP để bypass allowlist/rate limit; limiter mất khi restart hoặc chạy nhiều worker.
-
-**Chỗ cần sửa:**
-
-- `backend/auth/auth_service.py`
-- `backend/auth/auth_helper.py`
-- `backend/app.py`
-- Cấu hình reverse proxy và `.env.example`
-- Storage/rate-limit service mới
-
-**Việc phải làm:**
-
-- [x] Mặc định dùng socket peer IP.
-- [x] Chỉ tin forwarded header khi peer thuộc CIDR proxy tin cậy; duyệt chuỗi proxy từ phải sang trái.
-- [ ] Reverse proxy phải xóa/ghi đè header do client gửi.
-- [ ] Không dùng IP allowlist như lớp xác thực duy nhất cho super-admin.
-- [ ] Bổ sung MFA/re-auth cho quyền cao.
-- [x] Thay limiter trỏ tới `sys_config` không tồn tại bằng DB operation nguyên tử có TTL.
-- [x] Limiter dùng DB chung qua restart/nhiều worker; lỗi storage fail-closed và có warning log.
-
-**Hoàn thành khi:** tự đặt `X-Forwarded-For` không thay đổi IP tin cậy; test nhiều worker/restart vẫn giữ giới hạn đăng nhập.
-
-**Tiến độ:** phần trusted-proxy và limiter DB đã triển khai, gồm fail-closed khi storage lỗi; 5 test mới và toàn bộ 84 API test đạt. Mục vẫn để mở cho tới khi cấu hình proxy triển khai thực tế và MFA/re-auth quyền cao hoàn thành.
-
-### [ ] P0-05 / R-06 – S4: Sandbox template và chống file nén độc hại
-
-**Ảnh hưởng:** rủi ro SSTI chưa được cô lập, zip bomb và tác vụ parse/render có thể làm cạn CPU/RAM.
-
-**Chỗ cần sửa:**
-
-- `backend/documents/custom_exporter.py`
-- `backend/documents/routes_docx.py`
-- `backend/documents/routes_excel.py`
-- Các helper giải nén/parse DOCX/XLSX
-- Hạ tầng job/worker và thư mục tạm
-
-**Việc phải làm:**
-
-- [x] Render bằng `SandboxedEnvironment` + `StrictUndefined` và allowlist tag/filter/test.
-- [ ] Nếu chỉ cần placeholder, thay Jinja tổng quát bằng grammar placeholder giới hạn.
-- [x] Parse và từ chối template tag ngoài allowlist trước render.
-- [x] Giới hạn số ZIP entry, kích thước từng entry, tổng giải nén, compression ratio và XML depth/size.
-- [x] Chặn traversal, encrypted entry và file không đúng cấu trúc/MIME.
-- [ ] Chạy import/export trong worker quyền thấp, có timeout, memory/concurrency quota và cleanup.
-- [x] Bỏ fallback trả template gốc khi render lỗi.
-- [x] Viết security test SSTI/zip bomb; không coi rủi ro RCE là đã loại trừ cho tới khi test đạt.
-
-**Hoàn thành khi:** payload ngoài allowlist bị từ chối trước render; file bomb không làm worker web mất đáp ứng; lỗi trả mã an toàn.
-
-**Tiến độ:** đã thêm sandbox Jinja fail-closed, allowlist tag/filter, kiểm tra cấu trúc OOXML và giới hạn ZIP/XML dùng chung cho DOCX/XLSX; đã bỏ fallback trả mẫu gốc. 7 security/regression test đạt. Mục vẫn để mở vì chưa tách tác vụ parse/render sang worker quyền thấp có timeout và quota tài nguyên.
-
-### [x] P0-06 / R-01 – S4: Làm startup fail-fast và có readiness thực
-
-**Ảnh hưởng:** process vẫn phục vụ dù migration/bootstrap admin thất bại hoặc DB chưa sẵn sàng.
-
-**Chỗ cần sửa:**
-
-- `backend/db/db_utils.py`
-- `backend/app.py`
-- `.env.example`
-- `README.md`
-- Cấu hình health check/deployment
-
-**Việc phải làm:**
-
-- [x] Validate config bắt buộc trước khi ứng dụng được phép nhận traffic.
-- [x] Migration/bootstrap admin lỗi phải làm startup thất bại và process thoát khác 0.
-- [x] Tách `/health/live` và `/health/ready`.
-- [x] Readiness chỉ đạt sau migration, schema version, admin invariant và DB read/write check.
-- [x] Không log secret; thông báo rõ tên cấu hình bị thiếu.
-- [x] Cung cấp readiness endpoint và hướng dẫn để orchestrator chỉ đưa instance vào traffic khi đạt.
-
-**Hoàn thành khi:** fresh DB thiếu `ADMIN_PASSWORD` không mở cổng/không ready; cấu hình đúng tạo admin và ready ổn định.
-
-**Đã nghiệm thu:** `backend/startup.py`, fail-closed lifespan và hai health endpoint đã được bổ sung; 5 test startup/readiness mới và toàn bộ 71 API test đều đạt.
-
-### [x] P0-07 / R-08 – S3: Loại bỏ full-state write trong export
-
-**Ảnh hưởng:** tab/client cũ có thể ghi đè dữ liệu mới chỉ vì người dùng bấm export.
-
-**Chỗ cần sửa:**
-
-- `frontend/app/BiddingController.js`
-- `frontend/app/BiddingControllerSync.js`
-- `frontend/app/BiddingModel.js`
-- `backend/sync/service.py`
-- API export tài liệu
-
-**Việc phải làm:**
-
-- [x] Export trở thành read-only trên snapshot server đã commit.
-- [x] Trước export chỉ flush mutation theo protocol chuẩn; conflict phải được xử lý trước.
-- [x] Luồng chuẩn bị export không còn tạo write ngoài protocol có concurrency token/idempotency key.
-- [x] Export nhận `snapshotVersion`; stale version hoặc version đổi trong lúc render trả `409`.
-- [x] Không cho client gửi full object để chuẩn bị export.
-
-**Hoàn thành khi:** export từ tab stale không phát sinh write; concurrent edit không bị ghi đè và có regression test.
-
-**Đã nghiệm thu:** full-state `/api/sync` đã bị loại khỏi export hợp đồng; export hợp đồng/kết quả flush mutation chuẩn và gửi snapshot version. 3 unit test mới, 3 API snapshot test, toàn bộ 133 unit test và 74 API test đều đạt.
-
-### [ ] P0-08 / R-07 – S3: Đưa quy tắc xóa và bảo vệ tham chiếu xuống server/DB
-
-**Ảnh hưởng:** gọi API trực tiếp có thể xóa lịch sử, null liên kết hoặc cascade cả cây nghiệp vụ.
-
-**Chỗ cần sửa:**
-
-- `frontend/shared/VersionedEntityService.js`
-- `backend/sync/service.py`
-- `backend/db/schema.py`
-- Các API delete/archive và bảng có `CASCADE`/`SET NULL`
-
-**Việc phải làm:**
-
-- [x] Lập ma trận ban đầu cho quan hệ lịch sử `RESTRICT` và aggregate được cascade có chủ đích.
-- [x] Guard tham chiếu chạy ở backend trong cùng transaction với delete và trả mã `DELETE_REFERENCED`.
-- [ ] Master/version đã xuất hiện trong lịch sử chỉ được archive.
-- [x] Dùng `ON DELETE RESTRICT` cho snapshot/chứng từ lịch sử trong clean schema.
-- [ ] Endpoint xóa aggregate phải báo impact count, kiểm tra quyền cao và ghi audit.
-- [x] Frontend guard chỉ giữ vai trò UX; server/DB đã trở thành security boundary.
-
-**Hoàn thành khi:** direct API không thể xóa record đang được tham chiếu trái policy; mọi cascade còn lại có test và tài liệu.
-
-**Tiến độ:** đã có server delete policy, owner-scoped reference count, cleanup assignment con và FK `RESTRICT`; 3 test mới đạt. Mục vẫn mở cho tới khi master/version chuyển sang archive và endpoint xóa aggregate có re-auth/audit đầy đủ.
-
----
-
-## 3. P1 – Mức cao
-
-### [ ] P1-01 / R-12 – S4: Thêm khóa ngoại kép để cô lập tenant ở DB
-
-**Ảnh hưởng:** DB vẫn chấp nhận parent org A liên kết với child org B nếu route/import bỏ sót kiểm tra.
-
-**Chỗ cần sửa:**
-
-- `backend/db/schema.py`
-- `backend/sync/ownership.py`
-- `backend/sync/mapper.py`
-- `backend/sync/service.py`
-- Tất cả bảng có `owner_id`/`organization_id`
-
-**Việc phải làm:**
-
-- [ ] Chuẩn hóa tên tenant key thành `organization_id`.
-- [ ] Parent có `UNIQUE(organization_id, id)`.
-- [ ] Child dùng composite FK `(organization_id, parent_id)`.
-- [ ] Bật foreign keys trên mọi connection.
-- [ ] Chạy `foreign_key_check` sau migration/test.
-- [ ] Xử lý assignment đa hình bằng bảng subtype/supertype hoặc trigger + invariant rõ.
-
-**Hoàn thành khi:** quan hệ chéo tenant bị DB từ chối, kể cả khi bypass service.
+## 2. P1 – Mức cao
 
 ### [ ] P1-02 / R-21 – S4: Thay migration runtime chắp vá bằng clean baseline có version
 
@@ -339,29 +103,6 @@ Trong từng mức P0/P1/P2, các mục dưới đây đã được xếp theo p
 - [ ] Xóa nguồn sự thật localStorage và dữ liệu UI suy ra từ manager bất kỳ.
 
 **Hoàn thành khi:** hết hạn/locked/quota full bị server từ chối dù gọi API trực tiếp; UI luôn render từ response server.
-
-### [ ] P1-05 / R-19 – S4: Loại blocking I/O khỏi async và giới hạn tài nguyên request
-
-**Ảnh hưởng:** một số request chậm/file lớn có thể chặn event loop hoặc làm cạn worker.
-
-**Chỗ cần sửa:**
-
-- `backend/partners/address_routes.py`
-- `backend/auth/google_auth_routes.py`
-- `backend/documents/routes_docx.py`
-- `backend/documents/routes_excel.py`
-- `backend/app.py`
-
-**Việc phải làm:**
-
-- [ ] Dùng async HTTP client hoặc bounded thread pool với timeout đầy đủ.
-- [ ] Cache address lookup và bảo vệ endpoint bằng auth/rate limit phù hợp.
-- [ ] Đưa import/export nặng sang worker/job queue.
-- [ ] Giới hạn byte stream thật ở proxy/ASGI, không chỉ dựa `Content-Length`.
-- [ ] Đặt limit riêng cho JSON, ảnh, DOCX/XLSX, số dòng và sync batch.
-- [ ] Theo dõi event-loop lag, queue depth và timeout.
-
-**Hoàn thành khi:** request chậm/upload lớn không làm latency API thường tăng mất kiểm soát; chunked oversized body bị chặn.
 
 ### [ ] P1-06 / R-11 – S3: Ràng buộc WebSocket với active organization và revoke tức thời
 
@@ -473,73 +214,7 @@ Trong từng mức P0/P1/P2, các mục dưới đây đã được xếp theo p
 
 **Hoàn thành khi:** edit khác record không conflict; edit cùng record stale trả `409`; retry mutation không ghi hai lần.
 
-### [ ] P1-11 / R-20 – S2: Chuẩn hóa lỗi và không trả exception nội bộ
-
-**Ảnh hưởng:** lộ path, SQL/schema hoặc thông tin thư viện cho client.
-
-**Chỗ cần sửa:**
-
-- `backend/documents/routes_docx.py`
-- `backend/documents/routes_excel.py`
-- `backend/api/org_routes.py`
-- `backend/partners/address_routes.py`
-- Global exception handler/logging
-
-**Việc phải làm:**
-
-- [ ] Không trả `str(exception)` cho client.
-- [ ] Chuẩn hóa `{code, message, fields, requestId}`.
-- [ ] Log chi tiết ở server có redaction cookie/token/email/file content.
-- [ ] Có rotation/retention cho `export_error.log`, `sync_error.log`.
-- [ ] Không để log runtime trong source/deploy artifact.
-
-**Hoàn thành khi:** response production không lộ stack/path/SQL; request ID tra được log đã redaction.
-
-### [ ] P1-12 / R-10 – S2: Sửa CSRF ở Google set-username
-
-**Ảnh hưởng:** người dùng Google lần đầu có thể nhận `403` và không hoàn tất onboarding.
-
-**Chỗ cần sửa:**
-
-- `frontend/auth/AuthController.js`
-- `frontend/shared/apiClient.js`
-- `backend/app.py`
-- `backend/auth/auth_routes.py`
-
-**Việc phải làm:**
-
-- [ ] Mọi authenticated write đi qua API client có CSRF bootstrap/refresh.
-- [ ] Không phụ thuộc monkeypatch fetch được cài sau login.
-- [ ] Sửa import `_get_username_setup_state`; không nuốt lỗi logic.
-- [ ] Thêm integration test Google first-login → set username → session ready.
-
-**Hoàn thành khi:** onboarding Google lần đầu thành công với CSRF hợp lệ và request thiếu token vẫn bị chặn.
-
-### [ ] P1-13 / R-15 – S2: Sửa contract custom status và organization profile
-
-**Ảnh hưởng:** custom status biến mất sau reload; UI báo đổi tên tổ chức thành công dù server bỏ qua.
-
-**Chỗ cần sửa:**
-
-- `frontend/admin/AdminUserController.js`
-- `frontend/admin/SystemUserView.js`
-- `frontend/contracts/HopDongWorkflow.js`
-- `backend/auth/auth_routes.py`
-- Endpoint custom status/profile liên quan
-
-**Việc phải làm:**
-
-- [ ] Bỏ `orgId="1"`; dùng `ownerId`/active organization ID từ server context.
-- [ ] Không lọc lại theo org ở client nếu endpoint đã tenant-scope, hoặc dùng đúng ID.
-- [ ] Tên tổ chức trong profile phải read-only hoặc đi qua endpoint đổi tên có quyền/audit.
-- [ ] Client chỉ cập nhật state từ response server, không tự báo thành công cho field bị bỏ qua.
-- [ ] Thêm test create → list → reload → use custom status.
-
-**Hoàn thành khi:** dữ liệu round-trip không mất; đổi tên chỉ thành công khi DB thực sự đổi.
-
----
-
-## 4. P2 – Mức trung bình
+## 3. P2 – Mức trung bình
 
 ### [ ] P2-01 / R-32 – S4: Đưa SQLite khỏi OneDrive và bổ sung backup/restore
 
@@ -708,7 +383,7 @@ Trong từng mức P0/P1/P2, các mục dưới đây đã được xếp theo p
 
 ---
 
-## 5. Các thay đổi xuyên suốt phải áp dụng cho mọi mục
+## 4. Các thay đổi xuyên suốt phải áp dụng cho mọi mục
 
 - [ ] Mọi API write: authentication, active-org binding, authorization, typed validation, concurrency và idempotency phù hợp.
 - [ ] Mọi bảng tenant: `organization_id NOT NULL`, composite FK và index bắt đầu bằng organization ID khi phù hợp query.
@@ -721,50 +396,40 @@ Trong từng mức P0/P1/P2, các mục dưới đây đã được xếp theo p
 
 ---
 
-## 6. Thứ tự triển khai tránh làm lại
+## 5. Thứ tự triển khai tránh làm lại
 
-Danh sách trên được xếp theo mức độ nghiêm trọng/ảnh hưởng. Khi thực hiện, nên chia thành các đợt dependency-aware sau:
+Danh sách còn lại nên được triển khai theo dependency để hạn chế sửa đi sửa lại:
 
 ### Đợt A – Chốt nền dữ liệu và quyền
 
 1. R-21 clean migration framework và baseline.
-2. R-03 role theo membership.
-3. R-12 composite tenant foreign key.
-4. R-09 identity/password invariant.
-5. R-13 subscription theo organization.
-6. R-16 money/type/constraint.
-7. R-22/R-23/R-24 canonical field và API contract.
+2. R-09 identity/password invariant.
+3. R-13 subscription theo organization.
+4. R-16 money/type/constraint.
+5. R-22/R-23/R-24 canonical field và API contract.
 
-### Đợt B – Đóng các đường mất dữ liệu/chiếm quyền
+### Đợt B – Đóng các đường lỗi dữ liệu còn lại
 
-1. R-01 startup fail-fast.
-2. R-04 reset password.
-3. R-05 trusted proxy/rate/MFA.
-4. R-07 server-side delete policy.
-5. R-08 bỏ write trong export.
-6. R-17 typed validation.
+1. R-17 typed validation.
 
-### Đợt C – Viết lại workspace/sync trên invariant mới
+### Đợt C – Hoàn thiện workspace/sync
 
 1. R-18 row-level concurrency + change log.
-2. R-02 org-scoped local state/workspace switch.
-3. R-11 WebSocket org subscription/revoke.
-4. R-15 custom status/profile contract.
-5. R-26 API client trung tâm.
+2. R-11 WebSocket org subscription/revoke.
+3. R-26 API client trung tâm.
 
-### Đợt D – Hardening, hiệu năng và UX
+### Đợt D – Hardening, vận hành, hiệu năng và UX
 
-1. R-06 sandbox upload/template và R-19 job/resource limits.
-2. R-14 DOM XSS và R-20 safe error handling.
-3. R-32 backup/deployment DB và R-30 dependency reproducibility.
-4. R-31 isolated E2E/security tests.
-5. R-25/R-27/R-28/R-29 bundle, offline, UX và refactor.
+1. R-14 DOM XSS.
+2. R-32 backup/deployment DB và R-30 dependency reproducibility.
+3. R-31 isolated E2E/security tests.
+4. R-25/R-27/R-28/R-29 bundle, offline, UX và refactor.
 
-P0 không được trì hoãn vì nằm ở đợt sau: nếu một dependency lớn chưa hoàn tất, cần vá an toàn/fail-closed trước rồi mới thay bằng thiết kế cuối.
+Các mục P1 phải được ưu tiên trước pilot; nếu dependency lớn chưa hoàn tất, cần vá an toàn/fail-closed trước rồi mới thay bằng thiết kế cuối.
 
 ---
 
-## 7. Definition of Done chung
+## 6. Definition of Done chung
 
 Một checkbox chỉ được đánh dấu hoàn thành khi:
 
