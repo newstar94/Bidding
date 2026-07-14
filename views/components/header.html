@@ -9,7 +9,7 @@
                 <div class="header-right">
                     <button type="button" class="sync-status-pill" id="btn-force-sync"
                         data-sync-state="local" aria-live="polite"
-                        aria-label="Dữ liệu cục bộ. Nhấn để đồng bộ.">
+                        aria-label="Dữ liệu cục bộ. Nhấn để đồng bộ." hidden>
                         <span class="sync-status-dot" aria-hidden="true"></span>
                         <span id="sync-status-text" data-sync-label>Dữ liệu cục bộ</span>
                         <span class="sync-pending-count" data-sync-count hidden>0</span>
@@ -87,13 +87,6 @@
                             </div>
 
                             <div class="dropdown-divider"></div>
-                            <label class="dropdown-item" style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; white-space:normal;">
-                                <input type="checkbox" id="logout-clear-local-data" checked
-                                    style="margin-top:3px; accent-color:var(--primary);">
-                                <span>Xóa dữ liệu offline trên thiết bị khi đăng xuất<br>
-                                    <small style="color:var(--text-light);">Nên bật trên máy dùng chung</small>
-                                </span>
-                            </label>
                             <button class="dropdown-item text-danger" id="btn-auth-logout"
                                 style="border: none; background: none; display: flex; align-items: center; gap: 10px;">
                                 <i data-lucide="log-out" style="width:16px; height:16px;"></i>

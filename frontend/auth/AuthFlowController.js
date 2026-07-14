@@ -265,22 +265,12 @@ export function setupAuth() {
     btnLogout.onclick = async () => {
       const confirmed = await this.view.customConfirm("Xác nhận đăng xuất", "Bạn có chắc chắn muốn đăng xuất tài khoản này không?", "log-out");
       if (confirmed) {
-        let clearLocalData = document.getElementById("logout-clear-local-data")?.checked !== false;
-        let finalSyncFailed = false;
         try {
           if (typeof this.autoSync === "function") {
             await this.autoSync();
           }
         } catch (e) {
-          finalSyncFailed = true;
           console.error("Failed final sync during logout:", e);
-        }
-        if (clearLocalData && finalSyncFailed) {
-          clearLocalData = await this.view.customConfirm(
-            "Dữ liệu chưa đồng bộ",
-            "Không thể đồng bộ lần cuối. Nếu tiếp tục xóa dữ liệu offline, các thay đổi đang chờ có thể mất. Bạn vẫn muốn xóa dữ liệu trên thiết bị này?",
-            "cloud-off"
-          );
         }
         try {
           await apiFetch("/api/auth/logout", {
@@ -291,7 +281,7 @@ export function setupAuth() {
         } catch (e) {
           console.error("Failed to clear server session during logout:", e);
         }
-        if (clearLocalData && typeof this.model.purgeWorkspaceData === "function") {
+        if (typeof this.model.purgeWorkspaceData === "function") {
           this.disconnectWebSocket?.(false);
           setActiveOrganizationId("");
           try {

@@ -129,6 +129,10 @@ a:hover {
   cursor: pointer;
 }
 
+.sync-status-pill[hidden] {
+  display: none;
+}
+
 .sync-status-pill:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
   outline-offset: 2px;

@@ -40,6 +40,7 @@ export function renderSyncStatus(element, input = {}) {
   if (!element) return null;
   const status = deriveSyncStatus(input);
   element.dataset.syncState = status.state;
+  element.hidden = ["synced", "local", "syncing"].includes(status.state);
   element.setAttribute("aria-live", status.assertive ? "assertive" : "polite");
   element.setAttribute("aria-label", `${status.label}. Nhấn để đồng bộ hoặc xử lý lỗi.`);
   const label = element.querySelector?.("[data-sync-label]");
