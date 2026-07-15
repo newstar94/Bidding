@@ -36,7 +36,9 @@ export function organizationEmployeeProfile(payload = {}, organizationId = getAc
   );
   if (membership?.scope_type === "organization") {
     return {
-      name: membership.employee_name,
+      name: membership.employee_name || (
+        membership.role === "manager" ? String(payload?.name || "").trim() : ""
+      ),
       phone: membership.employee_phone
     };
   }
