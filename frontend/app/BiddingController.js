@@ -10,6 +10,7 @@ import { hideInitLoader, isAuthTransitionActive } from "../auth/authRuntimeState
 import {
   applyAccessContext,
   normalizeOrganizations,
+  organizationEmployeeProfile,
   selectActiveOrganization
 } from "../auth/accessContext.js";
 import { reconcileRouteDataAtStartup } from "./startupReconciliation.js";
@@ -553,15 +554,18 @@ export class BiddingController {
         ]);
         if (usersRes.ok) {
           const users = await usersRes.json();
-          this.model.state.employees = users.map((u) => ({
+          this.model.state.employees = users.map((u) => {
+            const employeeProfile = organizationEmployeeProfile(u);
+            return {
               id: u.id,
               username: u.username,
-              name: u.name,
+              name: employeeProfile.name,
               email: u.email || "",
-              phone: "",
+              phone: employeeProfile.phone,
               role: u.role,
               organizations: normalizeOrganizations(u)
-            }));
+            };
+          });
           this.model.persistData("employees");
           this.view.populateNhanVienPhuTrachDropdowns();
         }

@@ -1,6 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
-import { businessOrganizations, normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
+import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -73,17 +73,6 @@ export async function changeUserRole(userId, newRole) {
 function idempotencyKey(prefix) {
   const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}:${random}`;
-}
-
-function organizationEmployeeProfile(user, organizationId = getActiveOrganizationId()) {
-  const membership = normalizeOrganizations(user).find(
-    (organization) => organization.id === organizationId
-  );
-  const isBusinessMembership = membership?.scope_type === "organization";
-  return {
-    name: isBusinessMembership ? membership.employee_name : String(user?.name || "").trim(),
-    phone: isBusinessMembership ? membership.employee_phone : ""
-  };
 }
 
 async function updateOrganizationSubscription(organizationId, action, extra = {}) {

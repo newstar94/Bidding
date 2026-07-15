@@ -2,7 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
-import { businessOrganizations, normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
+import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 
@@ -215,20 +215,24 @@ export function renderSuperAdminPanel() {
           };
         }
         if (organization.role === "manager" || !orgMap[organization.id].contact) {
-          orgMap[organization.id].contact = u.name;
+          orgMap[organization.id].contact = organization.employee_name || u.name;
+          orgMap[organization.id].phone = organization.employee_phone || "";
         }
       });
     });
     this.model.state.organizations = Object.values(orgMap);
-    this.model.state.employees = users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email || "",
-      phone: "",
-      role: u.role,
-      username: u.username,
-      organizations: normalizeOrganizations(u)
-    }));
+    this.model.state.employees = users.map((u) => {
+      const employeeProfile = organizationEmployeeProfile(u);
+      return {
+        id: u.id,
+        name: employeeProfile.name,
+        email: u.email || "",
+        phone: employeeProfile.phone,
+        role: u.role,
+        username: u.username,
+        organizations: normalizeOrganizations(u)
+      };
+    });
     const activeOrgs = this.model.state.organizations.filter((o) => o.status === "Hoạt động");
     const calculatedRevenue = this.model.sumVND(this.model.state.organizations
       .filter((org) => org.status === "Hoạt động")

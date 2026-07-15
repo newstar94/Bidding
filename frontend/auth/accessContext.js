@@ -30,6 +30,22 @@ export function organizationDisplayName(payload = {}) {
   return businessOrganizations(payload).map((organization) => organization.name).join(", ");
 }
 
+export function organizationEmployeeProfile(payload = {}, organizationId = getActiveOrganizationId()) {
+  const membership = normalizeOrganizations(payload).find(
+    (organization) => organization.id === String(organizationId || "")
+  );
+  if (membership?.scope_type === "organization") {
+    return {
+      name: membership.employee_name,
+      phone: membership.employee_phone
+    };
+  }
+  return {
+    name: String(payload?.name || "").trim(),
+    phone: ""
+  };
+}
+
 export function selectActiveOrganization(payload = {}, storage = null) {
   const organizations = normalizeOrganizations(payload);
   const accessible = organizations.filter((organization) => organization.status === "active");

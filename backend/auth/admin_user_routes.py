@@ -116,22 +116,31 @@ async def list_users_api(request):
                   )
             """, user_ids)
             for row in cursor.fetchall():
+                scope_type = str(row['scope_type'] or 'organization').strip().lower()
+                has_subscription = row['package_id'] is not None
                 expires_at = int(row['expires_at']) if row['expires_at'] is not None else None
-                subscription_status = str(row['subscription_status'] or 'missing').strip().lower()
-                if expires_at is not None and expires_at <= int(time.time()):
+                subscription_status = (
+                    str(row['subscription_status'] or 'missing').strip().lower()
+                    if has_subscription
+                    else None
+                )
+                if subscription_status and expires_at is not None and expires_at <= int(time.time()):
                     subscription_status = 'expired'
                 effective_status = 'active'
-                if row['organization_status'] != 'active' or subscription_status == 'suspended':
+                if row['organization_status'] != 'active':
                     effective_status = 'suspended'
-                elif subscription_status != 'active':
-                    effective_status = subscription_status
-                elif row['package_status'] != 'active':
-                    effective_status = 'package_inactive'
+                elif scope_type != 'personal':
+                    if subscription_status == 'suspended':
+                        effective_status = 'suspended'
+                    elif subscription_status != 'active':
+                        effective_status = subscription_status or 'missing'
+                    elif row['package_status'] != 'active':
+                        effective_status = 'package_inactive'
                 starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
                 orgs_by_user[row['user_id']].append({
                     "id": row['id'],
                     "name": row['ten_to_chuc'],
-                    "scope_type": row['scope_type'],
+                    "scope_type": scope_type,
                     "status": effective_status,
                     "role": row['vai_tro_trong_to_chuc'],
                     "employee_name": row['ten_nhan_su'],
@@ -146,7 +155,7 @@ async def list_users_api(request):
                         "member_quota": int(row['member_quota'] or 0),
                         "member_count": int(row['member_count'] or 0),
                         "revision": int(row['revision'] or 0),
-                    },
+                    } if has_subscription else None,
                 })
 
         users = []

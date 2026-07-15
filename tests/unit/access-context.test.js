@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   applyAccessContext,
   organizationDisplayName,
+  organizationEmployeeProfile,
   selectActiveOrganization
 } from "../../frontend/auth/accessContext.js";
 
@@ -95,4 +96,24 @@ test("personal workspace is usable but is not displayed as an organization", () 
   assert.equal(selected.id, "personal-user-1");
   assert.equal(user.activeOrganizationId, "personal-user-1");
   assert.equal(organizationDisplayName(user), "");
+});
+
+test("organization personnel name is independent from the account profile name", () => {
+  const profile = organizationEmployeeProfile({
+    name: "Tên hồ sơ tài khoản",
+    organizations: [{
+      id: "org-a",
+      name: "Công ty A",
+      scope_type: "organization",
+      role: "employee",
+      status: "active",
+      employee_name: "Tên do quản lý đặt",
+      employee_phone: "0912345678"
+    }]
+  }, "org-a");
+
+  assert.deepEqual(profile, {
+    name: "Tên do quản lý đặt",
+    phone: "0912345678"
+  });
 });

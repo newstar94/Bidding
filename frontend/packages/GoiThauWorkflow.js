@@ -7,6 +7,7 @@ import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } fro
 import { persistAndSync } from "../shared/MutationService.js";
 import { createInitialVersion, createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { organizationEmployeeProfile } from "../auth/accessContext.js";
 export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
 
 export async function editGoiThau(id, isReadOnly = false) {
@@ -71,13 +72,16 @@ export async function editGoiThau(id, isReadOnly = false) {
   };
   if (!this.model.state.employees || this.model.state.employees.length === 0) {
     apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
-      this.model.state.employees = users.map((u) => ({
-        id: String(u.id || ""),
-        name: u.name,
-        email: u.email || "",
-        phone: "",
-        role: u.role
-      }));
+      this.model.state.employees = users.map((u) => {
+        const employeeProfile = organizationEmployeeProfile(u);
+        return {
+          id: String(u.id || ""),
+          name: employeeProfile.name,
+          email: u.email || "",
+          phone: employeeProfile.phone,
+          role: u.role
+        };
+      });
       _populateEmpDropdown();
     }).catch((err) => {
       console.error("Failed to load users:", err);

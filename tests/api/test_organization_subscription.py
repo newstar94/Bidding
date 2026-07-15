@@ -90,8 +90,16 @@ async def test_add_member_quota_is_enforced_inside_server_transaction(monkeypatc
     database = _subscription_database(tmp_path / "quota.db", quota=2)
     _patch_org_routes(monkeypatch, database)
 
-    added = await org_routes.add_user_to_org_api(_Request({"user_id": "member-1"}))
-    rejected = await org_routes.add_user_to_org_api(_Request({"user_id": "member-2"}))
+    added = await org_routes.add_user_to_org_api(_Request({
+        "user_id": "member-1",
+        "employee_name": "Tên nhân sự do quản lý đặt",
+        "phone": "0912345678",
+    }))
+    rejected = await org_routes.add_user_to_org_api(_Request({
+        "user_id": "member-2",
+        "employee_name": "Nhân sự thứ hai",
+        "phone": "",
+    }))
 
     assert added.status_code == 200
     assert rejected.status_code == 409
@@ -100,6 +108,12 @@ async def test_add_member_quota_is_enforced_inside_server_transaction(monkeypatc
     assert connection.execute(
         "SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = 'org-a'"
     ).fetchone()[0] == 2
+    stored_profile = connection.execute(
+        """SELECT ten_nhan_su, so_dien_thoai
+           FROM thanh_vien_to_chuc
+           WHERE organization_id = 'org-a' AND user_id = 'member-1'"""
+    ).fetchone()
+    assert tuple(stored_profile) == ("Tên nhân sự do quản lý đặt", "0912345678")
     connection.close()
 
 

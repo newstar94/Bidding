@@ -5,6 +5,7 @@ import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../s
 import { persistAndSync } from "../shared/MutationService.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { organizationEmployeeProfile } from "../auth/accessContext.js";
 export async function deleteHopDong(id) {
   const targetHd = this.model.state.hopdong.find((h) => h.id === id);
   if (!targetHd) return;
@@ -302,13 +303,16 @@ export async function editHopDong(id) {
     };
     if (!this.model.state.employees || this.model.state.employees.length === 0) {
       apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
-        this.model.state.employees = users.map((u) => ({
-          id: String(u.id || ""),
-          name: u.name,
-          email: u.email || "",
-          phone: "",
-          role: u.role
-        }));
+        this.model.state.employees = users.map((u) => {
+          const employeeProfile = organizationEmployeeProfile(u);
+          return {
+            id: String(u.id || ""),
+            name: employeeProfile.name,
+            email: u.email || "",
+            phone: employeeProfile.phone,
+            role: u.role
+          };
+        });
         _populateHdEmpDropdown();
       }).catch((err) => {
         console.error("Failed to load users:", err);
