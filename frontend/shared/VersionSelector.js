@@ -27,8 +27,8 @@ export function renderVersionSelector({
     return `<option value="${safeAttr(version.id)}" ${String(version.id) === String(selectedId) ? "selected" : ""}>${escapeHtml(label)}</option>`;
   }).join("");
   return `
-    <select class="${safeAttr(className)}" data-bf-change="${safeAttr(changeAction)}" data-root="${safeAttr(rootId)}"
-      style="width:52px;display:inline-block;padding:2px;height:22px;font-size:.8rem;border-radius:4px;border:1px solid var(--border-color,#ccc);background:var(--bg-card);color:var(--text-main);text-align-last:center;cursor:pointer;margin:0;outline:none;vertical-align:middle;">
+    <select class="${safeAttr(className)} bf-s-1249e0db6b" data-bf-change="${safeAttr(changeAction)}" data-root="${safeAttr(rootId)}"
+     >
       ${options}
     </select>`;
 }

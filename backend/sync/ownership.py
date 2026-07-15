@@ -1,5 +1,6 @@
 from backend.shared.helpers import clean_id
 from backend.sync.mapper import get_payload_value
+from backend.shared.domain_enums import enum_label
 from backend.shared.numeric_utils import parse_vnd_amount
 
 
@@ -102,6 +103,7 @@ def validate_owner_scoped_references(
             errors.append(f"Tham chieu {col_name}={ref_id} khong thuoc owner hien tai.")
 
     if table_name == "goi_thau":
+        package_id = clean_id(item.get("id"))
         rebid_from_id = clean_id(get_payload_value(table_name, item, "rebid_from_package_id"))
         if rebid_from_id:
             source = cursor.execute(
@@ -115,12 +117,27 @@ def validate_owner_scoped_references(
             ).fetchone()
             if not source:
                 errors.append(f"Goi thau nguon {rebid_from_id} khong ton tai hoac da duoc luu tru.")
-            elif str(source[0] or "").strip() != "Hủy thầu":
+            elif str(enum_label("goi_thau", "trang_thai", source[0]) or "").strip() != "Hủy thầu":
                 errors.append("Chỉ được đấu thầu lại từ một gói đã hủy thầu.")
+            if package_id:
+                creates_cycle = cursor.execute(
+                    """WITH RECURSIVE source_chain(id) AS (
+                           SELECT ?
+                           UNION
+                           SELECT packages.rebid_from_package_id
+                           FROM goi_thau AS packages
+                           INNER JOIN source_chain ON packages.id = source_chain.id
+                           WHERE packages.organization_id = ?
+                             AND packages.rebid_from_package_id IS NOT NULL
+                       )
+                       SELECT 1 FROM source_chain WHERE id = ? LIMIT 1""",
+                    (rebid_from_id, organization_id, package_id),
+                ).fetchone() is not None
+                if creates_cycle:
+                    errors.append("Chuỗi đấu thầu lại không được tạo vòng tham chiếu.")
 
-        package_id = clean_id(item.get("id"))
         winner_id = clean_id(get_payload_value(table_name, item, "nha_thau_trung_thau_id"))
-        status = str(get_payload_value(table_name, item, "trang_thai") or "").strip()
+        status = str(enum_label("goi_thau", "trang_thai", get_payload_value(table_name, item, "trang_thai")) or "").strip()
         selection_method = str(get_payload_value(table_name, item, "hinh_thuc_lua_chon") or "").strip()
         requires_opening = selection_method not in {
             "Chỉ định thầu rút gọn",
@@ -199,7 +216,7 @@ def validate_owner_scoped_references(
                     continue
                 package_plan_id, package_status, winner_id, package_award, package_budget = package_row
                 package_plan_id = clean_id(package_plan_id)
-                package_status = str(package_status or "").strip()
+                package_status = str(enum_label("goi_thau", "trang_thai", package_status) or "").strip()
                 winner_id = clean_id(winner_id)
                 package_award = parse_vnd_amount(package_award)
                 package_budget = parse_vnd_amount(package_budget)
@@ -279,4 +296,38 @@ def validate_owner_scoped_references(
             )
             if not cursor.fetchone():
                 errors.append(f"Thanh vien lien danh nha_thau_id={contractor_id} khong thuoc owner hien tai.")
+
+    if table_name in {"nha_thau", "thong_tin_mo_thau"}:
+        member_root_ids = []
+        for member in item.get("thanhVienLienDanh") or []:
+            if not isinstance(member, dict):
+                continue
+            contractor_id = clean_id(
+                member.get("thanhVienNhaThauId")
+                or member.get("thanh_vien_nha_thau_id")
+            )
+            if not contractor_id:
+                continue
+            incoming_contractor = _incoming_record(
+                incoming_records_by_table, "nha_thau", contractor_id
+            )
+            if incoming_contractor:
+                root_id = clean_id(
+                    incoming_contractor.get("rootId")
+                    or incoming_contractor.get("idGoc")
+                    or incoming_contractor.get("id")
+                )
+            else:
+                root_row = cursor.execute(
+                    """SELECT COALESCE(NULLIF(id_goc, ''), id)
+                       FROM nha_thau
+                       WHERE organization_id = ? AND id = ? AND archived_at IS NULL
+                       LIMIT 1""",
+                    (organization_id, contractor_id),
+                ).fetchone()
+                root_id = clean_id(root_row[0]) if root_row else None
+            if root_id:
+                member_root_ids.append(root_id)
+        if len(member_root_ids) != len(set(member_root_ids)):
+            errors.append("Một nhà thầu logic không được xuất hiện bằng nhiều phiên bản trong cùng liên danh.")
     return errors

@@ -1,0 +1,2 @@
+/* Dynamic rules are inserted into this same-origin stylesheet through CSSOM. */
+@keyframes bf-spin { to { transform: rotate(360deg); } }

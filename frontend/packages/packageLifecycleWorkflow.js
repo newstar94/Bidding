@@ -10,7 +10,7 @@ export function openPackageWizardStep() {
   this.editGoiThau(null);
   const titleEl = document.getElementById("modal-goithau-title");
   if (titleEl) {
-    titleEl.innerHTML = `Thêm Gói thầu <span style="font-size: 0.85rem; color: var(--primary); font-weight: normal; margin-left: 8px;">(Gói thầu số ${this.packageWizard.currentCount} trên tổng số ${this.packageWizard.totalCount})</span>`;
+    titleEl.innerHTML = `Thêm Gói thầu <span class="bf-s-e5cb2683fc">(Gói thầu số ${this.packageWizard.currentCount} trên tổng số ${this.packageWizard.totalCount})</span>`;
   }
   const planSelect = document.getElementById("gt-kehoachid");
   if (planSelect) {

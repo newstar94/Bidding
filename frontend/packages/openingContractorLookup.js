@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { normalizeTaxCodeForCompare } from "../app/domUtils.js";
 import { parseVietnamAddress } from "../shared/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
@@ -59,7 +60,7 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
     const lookupInput = getPartnerLookupInput(code);
     if (!lookupInput) return;
     try {
-      if (codeInput) codeInput.style.opacity = "0.7";
+      if (codeInput) setRuntimeStyle(codeInput, "opacity", "0.7");
       const info = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
       if (!info?.name) return;
       row._leadMemberLookupData = await mapPartnerLookupToContractor(code, info);
@@ -75,7 +76,7 @@ async function enrichOpeningRowsWithPartnerInfo(rows, model) {
     } catch (error) {
       console.error("Contractor lookup before saving bid opening failed:", error);
     } finally {
-      if (codeInput) codeInput.style.opacity = "1";
+      if (codeInput) setRuntimeStyle(codeInput, "opacity", "1");
     }
   }));
 }

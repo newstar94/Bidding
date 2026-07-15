@@ -10,10 +10,16 @@ from .queries import TABLE_KEYS
 from backend.shared.date_utils import is_datetime_column, parse_datetime_value
 from backend.shared.text_utils import safe_int
 from backend.shared.numeric_utils import parse_vnd_amount
+from backend.shared.domain_enums import (
+    CONTRACT_STATUS_CODES,
+    PACKAGE_STATUS_CODES,
+    PACKAGE_STATUS_LABELS,
+    enum_label,
+)
 from backend.sync.evaluation_metadata import parse_evaluation_metadata
 
 
-PACKAGE_STATUSES = {"Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"}
+PACKAGE_STATUSES = set(PACKAGE_STATUS_LABELS.values())
 LEGACY_PACKAGE_STATUS_ALIASES = {
     "Huỷ thầu": "Hủy thầu"
 }
@@ -36,10 +42,7 @@ PACKAGE_STATUS_TRANSITIONS = {
     # Khôi phục hủy thầu dùng trạng thái nghiệp vụ đã lưu ở phía client.
     "Hủy thầu": PACKAGE_STATUSES - {"Hủy thầu"},
 }
-CONTRACT_STATUSES = {
-    "Chưa hiệu lực", "Đang thực hiện", "Tạm dừng",
-    "Đã hoàn thành", "Đã thanh lý", "Đã hủy",
-}
+CONTRACT_STATUSES = set(CONTRACT_STATUS_CODES)
 CONTRACT_STATUS_TRANSITIONS = {
     "Chưa hiệu lực": {"Đang thực hiện", "Đã hủy"},
     "Đang thực hiện": {"Tạm dừng", "Đã hoàn thành", "Đã thanh lý", "Đã hủy"},
@@ -64,6 +67,15 @@ PACKAGE_LOCKED_FIELDS_AFTER_INVITATION = {
     "phanLo": "phan_lo",
     "tuyChonMuaThem": "tuy_chon_mua_them",
 }
+
+
+def get_package_field_policy():
+    """Public, presentation-neutral policy consumed by the frontend form."""
+    return {
+        "lockedAfterInvitation": sorted(PACKAGE_LOCKED_FIELDS_AFTER_INVITATION),
+        "statusOrder": list(PACKAGE_STATUS_LABELS.values()),
+        "statusCodes": dict(PACKAGE_STATUS_LABELS),
+    }
 
 SYNC_CHILD_FIELDS = {
     "ke_hoach_lcnt": {
@@ -135,6 +147,7 @@ def _validate_single_team_leader(item, field_name, label, errors):
 
 
 def validate_package_status_transition(previous_status, item):
+    previous_status = enum_label("goi_thau", "trang_thai", previous_status)
     old_status = LEGACY_PACKAGE_STATUS_ALIASES.get(
         str(previous_status or "").strip(), str(previous_status or "").strip()
     )
@@ -159,9 +172,9 @@ def validate_package_status_transition(previous_status, item):
 
 def validate_package_locked_fields(previous_record, item):
     """Reject material edits on an already-issued package version."""
+    previous_status = enum_label("goi_thau", "trang_thai", (previous_record or {}).get("trang_thai"))
     previous_status = LEGACY_PACKAGE_STATUS_ALIASES.get(
-        str((previous_record or {}).get("trang_thai") or "Chuẩn bị").strip(),
-        str((previous_record or {}).get("trang_thai") or "Chuẩn bị").strip(),
+        str(previous_status or "Chuẩn bị").strip(), str(previous_status or "Chuẩn bị").strip(),
     )
     if previous_status == "Chuẩn bị":
         return []
@@ -182,7 +195,7 @@ def validate_package_locked_fields(previous_record, item):
 
 
 def validate_contract_status_transition(previous_status, item):
-    old_status = str(previous_status or "Đang thực hiện").strip()
+    old_status = str(enum_label("hop_dong", "trang_thai_hop_dong", previous_status) or "Đang thực hiện").strip()
     new_status = str(item.get("trangThaiHopDong") or "Đang thực hiện").strip()
     if old_status == new_status:
         return []
@@ -197,6 +210,16 @@ def _field_error(path, code, message):
 
 def _is_strict_integer(value):
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _has_supported_decimal_precision(value, decimal_places=4):
+    try:
+        decimal_value = Decimal(str(value))
+        return decimal_value.is_finite() and decimal_value == decimal_value.quantize(
+            Decimal(1).scaleb(-decimal_places)
+        )
+    except (InvalidOperation, ValueError):
+        return False
 
 
 def _validate_json_depth(value, depth=0):
@@ -390,6 +413,8 @@ def validate_sync_payload_shape(payload):
                 elif "REAL" in definition:
                     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                         errors.append(_field_error(field_path, "INVALID_NUMBER", "Giá trị phải là số hữu hạn."))
+                    elif not _has_supported_decimal_precision(value):
+                        errors.append(_field_error(field_path, "DECIMAL_PRECISION_EXCEEDED", "Giá trị chỉ được có tối đa 4 chữ số thập phân."))
                 elif "TEXT" in definition and not isinstance(value, str):
                     errors.append(_field_error(field_path, "INVALID_STRING", "Giá trị phải là chuỗi."))
                 elif isinstance(value, str) and len(value) > MAX_SYNC_TEXT_LENGTH:
@@ -467,6 +492,40 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
         ), errors)
         if not _as_list(item.get("goiThauIds")):
             errors.append("Hợp đồng phải liên kết với ít nhất một gói thầu.")
+
+    if table_name in {"nha_thau", "thong_tin_mo_thau"}:
+        members = _as_list(item.get("thanhVienLienDanh"))
+        is_joint_venture = str(item.get("loaiNhaThau") or "").strip().casefold() == "liên danh"
+        if members and not is_joint_venture:
+            errors.append("Nhà thầu độc lập không được chứa danh sách thành viên liên danh.")
+        if is_joint_venture:
+            if len(members) < 2:
+                errors.append("Liên danh phải có ít nhất hai thành viên.")
+            member_ids = []
+            leader_count = 0
+            allowed_roles = {"Đứng đầu liên danh", "Thành viên liên danh"}
+            for index, member in enumerate(members):
+                if not isinstance(member, dict):
+                    errors.append(f"Thành viên liên danh thứ {index + 1} không hợp lệ.")
+                    continue
+                member_id = str(
+                    member.get("thanhVienNhaThauId")
+                    or member.get("thanh_vien_nha_thau_id")
+                    or ""
+                ).strip()
+                role = str(member.get("vaiTro") or member.get("vai_tro") or "").strip()
+                if not member_id:
+                    errors.append(f"Thành viên liên danh thứ {index + 1} chưa liên kết nhà thầu.")
+                else:
+                    member_ids.append(member_id)
+                if role not in allowed_roles:
+                    errors.append(f"Vai trò thành viên liên danh thứ {index + 1} không hợp lệ.")
+                elif role == "Đứng đầu liên danh":
+                    leader_count += 1
+            if len(member_ids) != len(set(member_ids)):
+                errors.append("Một nhà thầu không được xuất hiện nhiều lần trong cùng liên danh.")
+            if leader_count != 1:
+                errors.append("Liên danh phải có đúng một thành viên đứng đầu.")
 
     table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
     explicit_json_fields = set(table_spec.get("json_fields", []))
@@ -636,9 +695,10 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
                     awarded_total += value
             if len(awarded_codes) != len(set(awarded_codes)):
                 errors.append("Một phần lô không được xuất hiện nhiều lần trong kết quả trúng thầu.")
-            winning_value = parse_vnd_amount(item.get("giaTrungThau"))
-            if winning_value is not None and awarded_lots and awarded_total != winning_value:
-                errors.append("Tổng giá trúng các phần lô phải bằng giá trúng thầu của gói.")
+            if awarded_lots:
+                # Derived financial totals are server-authoritative. The UI may
+                # preview the value, but cannot persist a divergent total.
+                item["giaTrungThau"] = str(awarded_total)
 
         option_list = _as_list(item.get("tuyChonMuaThemList"))
         if str(item.get("tuyChonMuaThem") or "").strip() == "Có" and not option_list:
@@ -742,15 +802,16 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
         bid_price = parse_vnd_amount(item.get("giaDuThau"))
         discounted_price = parse_vnd_amount(item.get("giaSauGiamGia"))
         discount_rate = item.get("tyLeGiamGia")
-        if bid_price is not None and discounted_price is not None and discount_rate not in (None, ""):
+        if bid_price is not None and discount_rate not in (None, ""):
             try:
                 rate = Decimal(str(discount_rate))
                 expected = (
                     Decimal(bid_price) * (Decimal("100") - rate) / Decimal("100")
                 ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-                if int(expected) != discounted_price:
-                    errors.append("Giá sau giảm giá không khớp giá dự thầu và tỷ lệ giảm giá (làm tròn đến 1 VND).")
+                item["giaSauGiamGia"] = str(int(expected))
             except (InvalidOperation, ValueError):
                 errors.append("Tỷ lệ giảm giá không hợp lệ.")
+        elif bid_price is not None and discount_rate in (None, ""):
+            item["giaSauGiamGia"] = str(bid_price)
 
     return item, errors, set()

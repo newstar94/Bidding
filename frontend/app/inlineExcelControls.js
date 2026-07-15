@@ -45,7 +45,7 @@ function handleInlineExcelUpload(controller, file, type) {
   const tbody = document.getElementById(`${type}-tbody`);
   if (!tbody) return;
   const originalHTML = tbody.innerHTML;
-  tbody.innerHTML = `<tr><td colspan="${type === "phanlo" ? 5 : 6}" style="text-align: center; padding: 20px; font-weight: bold; color: var(--primary);">
+  tbody.innerHTML = `<tr><td colspan="${type === "phanlo" ? 5 : 6}" class="bf-s-d6ce8fac83">
         Đang tải dữ liệu và phân tích file Excel...
     </td></tr>`;
   apiFetch("/api/import-excel", {

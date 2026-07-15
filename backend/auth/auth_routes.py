@@ -194,7 +194,7 @@ async def login_api(request):
     finally:
         if conn:
             try: conn.close()
-            except Exception: pass
+            except sqlite3.Error: pass
 
 def _load_user_by_session_token(session_token):
     # Session revocation is security-sensitive and must be visible across workers.
@@ -417,7 +417,7 @@ async def update_profile_api(request):
     finally:
         if conn:
             try: conn.close()
-            except Exception: pass
+            except sqlite3.Error: pass
 
 async def change_password_api(request):
     conn = None
@@ -496,7 +496,7 @@ async def change_password_api(request):
     finally:
         if conn:
             try: conn.close()
-            except Exception: pass
+            except sqlite3.Error: pass
 
 async def logout_api(request):
     conn = None
@@ -531,7 +531,7 @@ async def logout_api(request):
     finally:
         if conn:
             try: conn.close()
-            except Exception: pass
+            except sqlite3.Error: pass
 
 
 async def privileged_reauth_api(request):
@@ -994,5 +994,5 @@ async def set_username_api(request):
         if conn:
             try:
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass

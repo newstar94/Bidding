@@ -1,48 +1,47 @@
 
 <section class="tab-pane" id="tab-danhgiahsdt">
-    <div class="dashboard-grid" style="grid-template-columns: 1fr; gap: 20px; margin-bottom: 20px;">
-        <div class="dashboard-card card-primary" style="padding: 24px;">
-            <div class="card-header"
-                style="border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+    <div class="dashboard-grid bf-s-52f34b94e3">
+        <div class="dashboard-card card-primary bf-s-3edb22cde1">
+            <div class="card-header bf-s-14099a038e"
+               >
                 <div>
-                    <h3 class="card-title"
-                        style="font-size: 1.15rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px;">
-                        <i data-lucide="clipboard-check" style="width: 20px; height: 20px;"></i>
+                    <h3 class="card-title bf-s-0814f180e3"
+                       >
+                        <i data-lucide="clipboard-check" class="bf-s-a547c164b2"></i>
                         Đánh giá Hồ sơ dự thầu (E-HSDT)
                     </h3>
-                    <p class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">Nhập báo cáo đánh
+                    <p class="text-muted bf-s-20c96e1b9b">Nhập báo cáo đánh
                         giá và kết quả đánh giá chi tiết cho gói thầu đang chấm thầu.</p>
                 </div>
             </div>
 
             <div class="card-body">
-                <div class="form-grid"
-                    style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; margin-bottom: 24px;">
-                    <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                <div class="form-grid bf-s-381fbb17aa"
+                   >
+                    <div class="form-group bf-s-bd53bc7485">
                         <label for="danhgiahsdt-goithau-select"
-                            style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">1.
+                            class="bf-s-f2bc309e47">1.
                             Chọn Gói thầu cần đánh giá <span class="required">*</span></label>
                         <div class="select-wrapper">
-                            <select id="danhgiahsdt-goithau-select" class="form-control" required
-                                style="font-weight: 600;">
+                            <select id="danhgiahsdt-goithau-select" class="form-control bf-s-018e18ec8e" required
+                               >
                                 <option value="">-- Chọn Gói thầu (Đang chấm thầu) --</option>
                             </select>
                         </div>
                     </div>
-                    <div class="form-group" id="danhgiahsdt-goithau-summary"
-                        style="display: none; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6;">
+                    <div class="form-group bf-s-7a17f440ae" id="danhgiahsdt-goithau-summary"
+                       >
                     </div>
                 </div>
 
-                <div id="danhgiahsdt-container" style="display: none;">
+                <div id="danhgiahsdt-container" class="bf-s-65d1f1c3d7">
                     <div id="danhgiahsdt-tabs-header"
-                        style="display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 20px; gap: 8px;">
-                        <button type="button" id="tab-btn-hsdxt-kt" class="btn active"
-                            style="border-radius: var(--radius-md) var(--radius-md) 0 0; border: 1px solid var(--border-color); border-bottom: none; margin-bottom: -2px; font-weight: 700; font-size: 0.85rem; padding: 10px 20px; background: var(--bg-card); color: var(--primary);">
+                        class="bf-s-f82406dbf8">
+                        <button type="button" id="tab-btn-hsdxt-kt" class="btn active bf-s-704be8367d"
+                           >
                             Báo cáo đánh giá E-HSĐXKT
                         </button>
-                        <button type="button" id="tab-btn-hsdxt-tc" class="btn"
-                            style="border-radius: var(--radius-md) var(--radius-md) 0 0; border: 1px solid transparent; margin-bottom: -2px; font-weight: 700; font-size: 0.85rem; padding: 10px 20px; background: transparent; color: var(--text-muted); cursor: not-allowed; opacity: 0.6;"
+                        <button type="button" id="tab-btn-hsdxt-tc" class="btn bf-s-ea96cb5680"
                             disabled>
                             Báo cáo đánh giá E-HSĐXTC
                         </button>
@@ -50,29 +49,29 @@
 
 
                     <div id="danhgiahsdt-quytrinh-container"
-                        style="display:none; margin-bottom: 20px; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); align-items: center; gap: 24px;">
-                        <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">Quy trình đánh
+                        class="bf-s-f78137256c">
+                        <span class="bf-s-f2bc309e47">Quy trình đánh
                             giá:</span>
                         <label
-                            style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main);">
+                            class="bf-s-172d7e6d90">
                             <input type="radio" name="danhgiahsdt-quytrinh" value="quytrinh1" checked
-                                style="accent-color: var(--primary); cursor: pointer;">
+                                class="bf-s-f2a8ca49b7">
                             Quy trình 1
                         </label>
                         <label
-                            style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; color: var(--text-main);">
+                            class="bf-s-172d7e6d90">
                             <input type="radio" name="danhgiahsdt-quytrinh" value="quytrinh2"
-                                style="accent-color: var(--primary); cursor: pointer;">
+                                class="bf-s-f2a8ca49b7">
                             Quy trình 2
                         </label>
                     </div>
 
 
-                    <div id="danhgiahsdt-fields-row" class="form-grid"
-                        style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 20px;">
+                    <div id="danhgiahsdt-fields-row" class="form-grid bf-s-06c2a52d49"
+                       >
                         <div class="form-group">
                             <label
-                                style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); display: block; margin-bottom: 6px;">Số
+                                class="bf-s-0e2230d7fe">Số
                                 báo cáo đánh giá <span class="required">*</span></label>
                             <input type="text" id="danhgiahsdt-so-baocao" class="form-control" required
                                 placeholder="Ví dụ: 12/BC-TCD">
@@ -80,29 +79,29 @@
                         </div>
                         <div class="form-group">
                             <label
-                                style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); display: block; margin-bottom: 6px;">Ngày
+                                class="bf-s-0e2230d7fe">Ngày
                                 báo cáo đánh giá <span class="required">*</span></label>
                             <input type="text" id="danhgiahsdt-ngay-baocao" class="form-control flatpickr-date" required placeholder="dd/MM/yyyy">
                             <span class="error-text">Vui lòng chọn ngày báo cáo đánh giá</span>
                         </div>
-                        <div class="form-group evaluation-extra-field" style="display: none;">
+                        <div class="form-group evaluation-extra-field bf-s-65d1f1c3d7">
                             <label
-                                style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); display: block; margin-bottom: 6px;">Ngày mời đối chiếu tài liệu/Thương thảo</label>
+                                class="bf-s-0e2230d7fe">Ngày mời đối chiếu tài liệu/Thương thảo</label>
                             <input type="text" id="danhgiahsdt-ngay-moi-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
-                        <div class="form-group evaluation-extra-field" style="display: none;">
+                        <div class="form-group evaluation-extra-field bf-s-65d1f1c3d7">
                             <label
-                                style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); display: block; margin-bottom: 6px;">Ngày đối chiếu tài liệu/Thương thảo</label>
+                                class="bf-s-0e2230d7fe">Ngày đối chiếu tài liệu/Thương thảo</label>
                             <input type="text" id="danhgiahsdt-ngay-doichieu" class="form-control flatpickr-date" placeholder="dd/MM/yyyy">
                         </div>
                     </div>
 
 
                     <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <h4 id="danhgiahsdt-table-title" style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); margin: 0;">
+                        class="bf-s-40863e8fe4">
+                        <h4 id="danhgiahsdt-table-title" class="bf-s-d2148d304a">
                             Đánh giá chi tiết các HSDT nộp</h4>
-                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <div class="bf-s-3a4d50c9e0">
                             <button class="btn-excel-action btn-download-excel-template-direct" data-type="danhgiahsdt"
                                 id="btn-danhgiahsdt-download-excel"><i data-lucide="download"></i> Tải Excel
                                 Mẫu</button>
@@ -110,31 +109,31 @@
                                 id="btn-danhgiahsdt-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
                         </div>
                     </div>
-                    <div class="table-container"
-                        style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 24px;">
-                        <table class="data-table" id="danhgiahsdt-table" style="min-width: 100%;">
+                    <div class="table-container bf-s-d4e7ea1f46"
+                       >
+                        <table class="data-table bf-s-448ca2b6ae" id="danhgiahsdt-table">
                             <thead id="danhgiahsdt-table-thead"></thead>
                             <tbody id="danhgiahsdt-table-tbody"></tbody>
                         </table>
                     </div>
 
-                    <div style="display: flex; justify-content: flex-end; gap: 12px;">
-                        <button class="btn btn-outline" data-bf-action="switch-tab" data-tab="goithau"
-                            style="padding: 10px 20px; font-weight: 600;">Quay lại danh sách</button>
-                        <button class="btn btn-primary" id="btn-danhgiahsdt-save"
-                            style="padding: 10px 24px; font-weight: 700;">
+                    <div class="bf-s-7ecb73148b">
+                        <button class="btn btn-outline bf-s-797135b735" data-bf-action="switch-tab" data-tab="goithau"
+                           >Quay lại danh sách</button>
+                        <button class="btn btn-primary bf-s-8b00aa151b" id="btn-danhgiahsdt-save"
+                           >
                             <i data-lucide="save"></i> Lưu thông tin đánh giá
                         </button>
                     </div>
                 </div>
 
                 <div id="danhgiahsdt-empty-state"
-                    style="text-align: center; padding: 48px 24px; color: var(--text-muted);">
+                    class="bf-s-a746d9264d">
                     <i data-lucide="inbox"
-                        style="width: 48px; height: 48px; color: var(--neutral-dark); margin: 0 auto 16px;"></i>
-                    <h4 style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); margin-bottom: 6px;">
+                        class="bf-s-5fb7c74ab9"></i>
+                    <h4 class="bf-s-ef247219b1">
                         Chưa chọn Gói thầu</h4>
-                    <p style="font-size: 0.82rem;">Vui lòng chọn một gói thầu ở danh sách phía trên để
+                    <p class="bf-s-9f9981a394">Vui lòng chọn một gói thầu ở danh sách phía trên để
                         tiến hành đánh giá HSDT.</p>
                 </div>
             </div>

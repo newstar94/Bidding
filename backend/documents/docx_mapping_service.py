@@ -24,7 +24,7 @@ def apply_custom_mappings(context, mappings_rows):
         if isinstance(val, (int, float)) and ('gia' in col_name or 'tong_muc' in col_name or 'gia_tri' in col_name or 'tong_tien' in col_name):
             try:
                 return f'{VietnameseFloat(val)}'
-            except Exception:
+            except (TypeError, ValueError, OverflowError):
                 pass
         return val
 
@@ -238,5 +238,4 @@ def apply_custom_mappings(context, mappings_rows):
                         context[ten_bien] = context.get('investor_name', '--')
                     elif src_column == 'dia_chi':
                         context[ten_bien] = context.get('investor_address', '--')
-
 

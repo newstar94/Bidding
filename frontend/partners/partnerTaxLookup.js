@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import {
   isVietnamTaxCode,
   normalizeProcurementOrgCode,
@@ -73,7 +74,7 @@ export function bindPartnerTaxCodeLookup({
   let activeLookupKey = "";
   let lastSuccessfulKey = "";
   const setLoading = (isLoading) => {
-    taxInput.style.opacity = isLoading ? "0.7" : "1";
+    setRuntimeStyle(taxInput, "opacity", isLoading ? "0.7" : "1");
   };
   const cancelPendingLookup = () => {
     clearTimeout(lookupTimer);

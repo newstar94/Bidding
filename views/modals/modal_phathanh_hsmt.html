@@ -8,7 +8,7 @@
         <form id="form-phathanh-hsmt" novalidate>
             <input type="hidden" id="phathanh-gt-id">
             <div class="modal-body">
-                <div style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted);">
+                <div class="bf-s-4c3ee9dde3">
                     Vui lòng nhập các thông tin bắt buộc dưới đây để tiến hành phát hành hồ sơ mời thầu và chuyển
                     trạng thái gói thầu sang <strong>Đang mời thầu</strong>.
                 </div>
@@ -42,27 +42,27 @@
                     </div>
                     <div class="form-group col-span-2" id="phathanh-thamdinh-section">
                         <label>Yêu cầu thẩm định HSMT <span class="required">*</span></label>
-                        <div class="radio-group"
-                            style="display: flex; gap: 16px; margin-top: 8px; align-items: center; height: 38px;">
+                        <div class="radio-group bf-s-d4de0fb277"
+                           >
                             <label
-                                style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
-                                <input type="radio" name="phathanh-yeucauthamdinh" value="Có" style="cursor: pointer;">
+                                class="bf-s-3e57c38550">
+                                <input type="radio" name="phathanh-yeucauthamdinh" value="Có" class="bf-s-ecfbb78629">
                                 Có
                             </label>
                             <label
-                                style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
+                                class="bf-s-3e57c38550">
                                 <input type="radio" name="phathanh-yeucauthamdinh" value="Không" checked
-                                    style="cursor: pointer;">
+                                    class="bf-s-ecfbb78629">
                                 Không
                             </label>
                         </div>
                     </div>
-                    <div class="form-group" id="phathanh-sobaocao-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="phathanh-sobaocao-container">
                         <label for="phathanh-sobaocaothamdinh">Số BCTĐ HSMT <span class="required">*</span></label>
                         <input type="text" id="phathanh-sobaocaothamdinh" placeholder="Ví dụ: 789/BC-TĐ">
                         <span class="error-text">Vui lòng nhập Số báo cáo thẩm định</span>
                     </div>
-                    <div class="form-group" id="phathanh-ngaybaocao-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="phathanh-ngaybaocao-container">
                         <label for="phathanh-ngaybaocaothamdinh">Ngày BCTĐ HSMT <span class="required">*</span></label>
                         <input type="text" id="phathanh-ngaybaocaothamdinh" class="flatpickr-date"
                             placeholder="dd/MM/yyyy">
@@ -88,15 +88,15 @@
                         <input type="text" id="phathanh-giatribaomothau" placeholder="Nhập giá trị bảo đảm dự thầu">
                         <span class="error-text">Vui lòng nhập giá trị bảo đảm dự thầu</span>
                     </div>
-                    <div class="form-group col-span-2" id="phathanh-phanlo-baodam-container"
-                        style="display: none; margin-top: 10px;">
+                    <div class="form-group col-span-2 bf-s-8371fe9633" id="phathanh-phanlo-baodam-container"
+                       >
                         <div
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                            <label style="margin-bottom: 0;">Giá trị bảo đảm dự thầu theo từng phần lô <span
+                            class="bf-s-5512e7ba1e">
+                            <label class="bf-s-4bbf3df076">Giá trị bảo đảm dự thầu theo từng phần lô <span
                                     class="required">*</span></label>
-                            <div style="display: flex; gap: 8px;">
-                                <button type="button" id="btn-phathanh-export-excel" class="btn-add-row"
-                                    style="background: var(--neutral-soft); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.8rem; padding: 4px 8px; display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); cursor: pointer;">
+                            <div class="bf-s-b2ab1a4a76">
+                                <button type="button" id="btn-phathanh-export-excel" class="btn-add-row bf-s-b8fdafabf2"
+                                   >
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -105,8 +105,8 @@
                                     </svg>
                                     Xuất Excel
                                 </button>
-                                <button type="button" id="btn-phathanh-import-excel" class="btn-add-row"
-                                    style="background: var(--neutral-soft); border: 1px solid var(--border-color); color: var(--text-main); font-size: 0.8rem; padding: 4px 8px; display: flex; align-items: center; gap: 4px; border-radius: var(--radius-sm); cursor: pointer;">
+                                <button type="button" id="btn-phathanh-import-excel" class="btn-add-row bf-s-b8fdafabf2"
+                                   >
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -115,20 +115,20 @@
                                     </svg>
                                     Nhập Excel
                                 </button>
-                                <input type="file" id="phathanh-excel-file-input" style="display: none;"
-                                    accept=".xlsx, .xls">
+                                <input type="file" id="phathanh-excel-file-input"
+                                    accept=".xlsx, .xls" class="bf-s-65d1f1c3d7">
                             </div>
                         </div>
-                        <div class="table-responsive"
-                            style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 5px;">
-                            <table class="table" style="margin-bottom: 0; width: 100%; font-size: 0.8rem;">
+                        <div class="table-responsive bf-s-5600ab4dc4"
+                           >
+                            <table class="table bf-s-694c8cf5c3">
                                 <thead>
                                     <tr>
-                                        <th style="padding: 8px; width: 15%;">Mã phần lô</th>
-                                        <th style="padding: 8px; width: 25%;">Tên phần lô</th>
-                                        <th style="padding: 8px; width: 25%;">Giá trị phần lô (VNĐ)</th>
-                                        <th style="padding: 8px; width: 20%;">Bảo đảm dự thầu (VNĐ)</th>
-                                        <th style="padding: 8px; width: 15%;">Thời gian thực hiện</th>
+                                        <th class="bf-s-a561398e77">Mã phần lô</th>
+                                        <th class="bf-s-604cfcc0e4">Tên phần lô</th>
+                                        <th class="bf-s-604cfcc0e4">Giá trị phần lô (VNĐ)</th>
+                                        <th class="bf-s-331edbd497">Bảo đảm dự thầu (VNĐ)</th>
+                                        <th class="bf-s-a561398e77">Thời gian thực hiện</th>
                                     </tr>
                                 </thead>
                                 <tbody id="phathanh-phanlo-baodam-tbody">
@@ -147,9 +147,9 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline" data-close="modal-phathanh-hsmt">Hủy</button>
-                <button type="submit" class="btn btn-primary" id="btn-confirm-phathanh"
-                    style="display: flex; align-items: center; gap: 8px;">
-                    <i data-lucide="send" style="width:16px; height:16px;"></i> Phát hành HSMT
+                <button type="submit" class="btn btn-primary bf-s-300b373f25" id="btn-confirm-phathanh"
+                   >
+                    <i data-lucide="send" class="bf-s-3e32597019"></i> Phát hành HSMT
                 </button>
             </div>
         </form>

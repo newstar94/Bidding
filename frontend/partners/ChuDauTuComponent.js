@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
@@ -63,26 +64,26 @@ export async function renderChuDauTuTable() {
       return `
             <tr>
                 <td>
-                    <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" data-bf-action="show-investor" data-id="${safeAttr(displayedCdt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Chủ đầu tư" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code partner-identity-code" style="margin: 0; line-height: 1;">${esc(displayedCdt.maChuDauTu || "")}</span></a>
-                        <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                    <div class="bf-s-8c8dc52ed7">
+                        <a href="#" data-bf-action="show-investor" data-id="${safeAttr(displayedCdt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Chủ đầu tư"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(displayedCdt.maChuDauTu || "")}</span></a>
+                        <span class="bf-s-db1d8f859f">-</span>
                         ${dropdownHtml}
                     </div>
                 </td>
-                <td style="min-width: 220px; max-width: 320px;" class="fw-bold text-wrap">
+                <td class="fw-bold text-wrap bf-s-2281f122ad">
                     ${esc(displayedCdt.tenChuDauTu || "")}
-                    ${displayedCdt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedCdt.tenVietTat)}</div>` : ""}
-                    ${displayedCdt.coQuanChuQuan ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">CQ chủ quản: ${esc(displayedCdt.coQuanChuQuan)}</div>` : ""}
+                    ${displayedCdt.tenVietTat ? `<div class="bf-s-92c49ab355">Tên viết tắt: ${esc(displayedCdt.tenVietTat)}</div>` : ""}
+                    ${displayedCdt.coQuanChuQuan ? `<div class="bf-s-92c49ab355">CQ chủ quản: ${esc(displayedCdt.coQuanChuQuan)}</div>` : ""}
                 </td>
                 <td>${esc(displayedCdt.maSoThue || "--")}</td>
                 <td><span class="fw-bold">${esc(displayedCdt.danhXung || "Ông")} ${esc(displayedCdt.daiDienCdt || "--")}</span></td>
-                <td style="min-width: 240px; max-width: 360px;" class="text-wrap">
-                    <div style="font-size:0.85rem;" class="fw-bold">${esc((displayedCdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}</div>
-                    <div style="font-size:0.75rem; color:var(--text-light);">${esc(displayedCdt.soDienThoai || "")}${displayedCdt.email ? " | " + esc(displayedCdt.email) : ""}</div>
+                <td class="text-wrap bf-s-e7d9f0dfa1">
+                    <div class="fw-bold bf-s-6bcb39735e">${esc((displayedCdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}</div>
+                    <div class="bf-s-06f7fa3856">${esc(displayedCdt.soDienThoai || "")}${displayedCdt.email ? " | " + esc(displayedCdt.email) : ""}</div>
                 </td>
                 <td>
-                    <div style="font-size:0.85rem;" class="fw-bold">${esc(displayedCdt.soTaiKhoan || "--")}</div>
-                    <div style="font-size:0.75rem; color:var(--text-light);">${esc(displayedCdt.noiMoTaiKhoan || "--")}${displayedCdt.maQHNS ? " | QHNS: " + esc(displayedCdt.maQHNS) : ""}</div>
+                    <div class="fw-bold bf-s-6bcb39735e">${esc(displayedCdt.soTaiKhoan || "--")}</div>
+                    <div class="bf-s-06f7fa3856">${esc(displayedCdt.noiMoTaiKhoan || "--")}${displayedCdt.maQHNS ? " | QHNS: " + esc(displayedCdt.maQHNS) : ""}</div>
                 </td>
                 <td class="text-right">
                     ${actionHtml}
@@ -115,12 +116,12 @@ export function renderChuDauTuVersionDetails(versionId) {
   const editBtn = document.getElementById("btn-edit-chudautu-fullpage");
   if (editBtn) {
     if (isLatest) {
-      editBtn.style.display = "flex";
+      setRuntimeStyle(editBtn, "display", "flex");
       editBtn.onclick = () => {
         executeAppCommand("editChuDauTu", versionId);
       };
     } else {
-      editBtn.style.display = "none";
+      setRuntimeStyle(editBtn, "display", "none");
     }
   }
   const selectOptionsHtml = allRelated.map((v) => {
@@ -136,15 +137,15 @@ export function renderChuDauTuVersionDetails(versionId) {
   const addressStr = addressParts.filter(Boolean).join(", ");
   const html = `
         <div class="detail-section">
-            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${escapeHtml(cdt.maChuDauTu || "--")}</span>
-                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+            <div class="detail-header-block bf-s-08b722fa44">
+                <div class="bf-s-a36b98e9db">
+                    <div class="bf-s-bbf072f32c">
+                        <span class="detail-code partner-identity-code bf-s-018b1c91c7">${escapeHtml(cdt.maChuDauTu || "--")}</span>
+                        <span class="version-separator bf-s-ada7b4c5a3">-</span>
                         ${versionSelectHtml}
                     </div>
                 </div>
-                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${escapeHtml(cdt.tenChuDauTu || "Chủ đầu tư chưa có tên")}</h4>
+                <h4 class="detail-title bf-s-4749e65682">${escapeHtml(cdt.tenChuDauTu || "Chủ đầu tư chưa có tên")}</h4>
             </div>
 
             <div class="detail-grid">
@@ -172,7 +173,7 @@ export function renderChuDauTuVersionDetails(versionId) {
                     <div class="detail-label">Chức vụ người đứng đầu</div>
                     <div class="detail-value">${escapeHtml(cdt.chucVuNguoiDungDau || "--")}</div>
                 </div>
-                <div class="detail-item" style="grid-column: span 2;">
+                <div class="detail-item bf-s-6d00fde401">
                     <div class="detail-label">Địa chỉ</div>
                     <div class="detail-value">${escapeHtml(addressStr || "--")}</div>
                 </div>

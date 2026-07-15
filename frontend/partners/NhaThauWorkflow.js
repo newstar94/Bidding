@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 import { persistAndSync } from "../shared/MutationService.js";
@@ -30,9 +31,9 @@ const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "") => {
   const removeBtn = document.getElementById("btn-nt-remove-file-dau");
   const src = safeStampSrc(value);
   if (previewImg) previewImg.src = safeImageSrc(src, cacheKey);
-  if (previewContainer) previewContainer.style.display = src ? "flex" : "none";
-  if (uploadZone) uploadZone.style.display = src || isReadOnly ? "none" : "flex";
-  if (removeBtn) removeBtn.style.display = isReadOnly ? "none" : "";
+  if (previewContainer) setRuntimeStyle(previewContainer, "display", src ? "flex" : "none");
+  if (uploadZone) setRuntimeStyle(uploadZone, "display", src || isReadOnly ? "none" : "flex");
+  if (removeBtn) setRuntimeStyle(removeBtn, "display", isReadOnly ? "none" : "");
 };
 export async function deleteNhaThau(id) {
   const nt = this.model.state.nhathau.find((n) => n.id === id);
@@ -105,7 +106,7 @@ export async function editNhaThau(id, isReadOnly = false) {
     });
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) {
-      submitBtn.style.display = isReadOnly ? "none" : "";
+      setRuntimeStyle(submitBtn, "display", isReadOnly ? "none" : "");
     }
     const cancelBtn = form.querySelector('button[data-close="modal-nhathau"]');
     if (cancelBtn) {
@@ -247,7 +248,7 @@ export async function handleNhaThauSubmit(e) {
   if (contractModal && contractModal.classList.contains("active")) {
     const ntSelect = document.getElementById("hd-nhathauid");
     if (ntSelect) {
-      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
+      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
       ntSelect.value = data.id;
       ntSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }

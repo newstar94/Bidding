@@ -2,6 +2,7 @@ import os
 import time
 import secrets
 import hashlib
+import sqlite3
 from dataclasses import dataclass
 from starlette.responses import JSONResponse
 from backend.db.id_utils import stable_org_id
@@ -88,7 +89,7 @@ def get_rate_limit_decision(
         if conn is not None:
             try:
                 conn.rollback()
-            except Exception:
+            except sqlite3.Error:
                 pass
         from backend.shared.logging_utils import log_error
         log_error(rate_limit_error, "rate_limit", level="WARN")

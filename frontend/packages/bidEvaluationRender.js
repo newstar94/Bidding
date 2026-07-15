@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderEvaluationLockNotice } from "./detail/EvaluationConclusion.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 
@@ -6,30 +7,30 @@ export function addEvaluationLetterRow({ view, model, containerId, letter = { so
   if (!container) return;
   const div = document.createElement("div");
   div.className = "letter-row";
-  div.style.display = "grid";
-  div.style.gridTemplateColumns = "1fr 1fr auto";
-  div.style.gap = "6px";
-  div.style.alignItems = "center";
-  div.style.marginBottom = "6px";
+  setRuntimeStyle(div, "display", "grid");
+  setRuntimeStyle(div, "gridTemplateColumns", "1fr 1fr auto");
+  setRuntimeStyle(div, "gap", "6px");
+  setRuntimeStyle(div, "alignItems", "center");
+  setRuntimeStyle(div, "marginBottom", "6px");
   const ngayFormattedDisplay = letter.ngayCv ? model.formatDate(letter.ngayCv) : "";
   const ngayFormattedInput = letter.ngayCv ? model.formatForDateInput(letter.ngayCv) : "";
   div.innerHTML = readOnly ? `
-        <div style="font-size: 0.8rem; font-weight: 600; padding: 6px; background: rgba(0,0,0,0.02); border-radius: 4px;">${escapeHtml(letter.soCv || "--")}</div>
-        <div style="font-size: 0.8rem; padding: 6px; background: rgba(0,0,0,0.02); border-radius: 4px;">${escapeHtml(ngayFormattedDisplay || "--")}</div>
+        <div class="bf-s-6aa064f9ce">${escapeHtml(letter.soCv || "--")}</div>
+        <div class="bf-s-4a866e47a9">${escapeHtml(ngayFormattedDisplay || "--")}</div>
         <div></div>
     ` : `
-        <input type="text" class="form-control letter-so-cv" placeholder="Số công văn" value="${escapeHtml(letter.soCv || "")}" style="padding: 4px 8px; font-size: 0.8rem;" required>
-        <input type="date" class="form-control letter-ngay-cv" value="${escapeHtml(ngayFormattedInput)}" style="padding: 4px 8px; font-size: 0.8rem;" required>
-        <button type="button" class="btn-delete-row" style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;" data-bf-action="remove-closest" data-selector=".letter-row">&times;</button>
+        <input type="text" class="form-control letter-so-cv bf-s-6621c14642" placeholder="Số công văn" value="${escapeHtml(letter.soCv || "")}" required>
+        <input type="date" class="form-control letter-ngay-cv bf-s-6621c14642" value="${escapeHtml(ngayFormattedInput)}" required>
+        <button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="remove-closest" data-selector=".letter-row">&times;</button>
     `;
   container.appendChild(div);
 }
 export function renderEvaluationSummary({ container, gt, tenCdt, tenKhStr, model, is1G2T, isReadOnly, currentTab }) {
   if (!container) return;
-  container.style.display = "block";
+  setRuntimeStyle(container, "display", "block");
   container.innerHTML = `
-        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem; margin-bottom: 12px;">
+        <div class="bf-s-5d398becec">Thông số Gói thầu</div>
+        <div class="bf-s-5219e35258">
             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
             <div>• <strong>Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml(tenKhStr)}</span></div>
             <div>• <strong>Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>

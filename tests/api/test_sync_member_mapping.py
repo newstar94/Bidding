@@ -1,7 +1,7 @@
 import sqlite3
 
 from backend.app import app  # noqa: F401 - initializes backend import paths
-from backend.sync.mapper import _format_member_child, _save_member_children, map_db_to_json
+from backend.sync.mapper import _format_member_child, _save_member_children, map_db_to_json, save_child_payloads
 from backend.shared.date_utils import is_datetime_column
 from backend.sync.ownership import validate_owner_scoped_references
 from backend.sync.payload_validation import DATE_KEYS_BY_TABLE, validate_sync_item
@@ -137,7 +137,7 @@ def test_same_batch_plan_reference_is_allowed_but_foreign_assignment_is_rejected
 def test_joint_venture_member_version_must_belong_to_current_owner():
     connection = sqlite3.connect(":memory:")
     cursor = connection.cursor()
-    cursor.execute("CREATE TABLE nha_thau (id TEXT, organization_id TEXT, archived_at TEXT)")
+    cursor.execute("CREATE TABLE nha_thau (id TEXT, organization_id TEXT, archived_at TEXT, id_goc TEXT)")
     cursor.execute("CREATE TABLE goi_thau (id TEXT, organization_id TEXT, archived_at TEXT)")
     cursor.execute("CREATE TABLE thong_tin_mo_thau (id TEXT, organization_id TEXT)")
     cursor.execute("INSERT INTO nha_thau (id, organization_id) VALUES ('nt-foreign', 'org-2')")
@@ -156,3 +156,50 @@ def test_joint_venture_member_version_must_belong_to_current_owner():
     assert errors == [
         "Thanh vien lien danh nha_thau_id=nt-foreign khong thuoc owner hien tai."
     ]
+
+
+def test_joint_venture_cannot_use_two_versions_of_one_contractor():
+    connection = sqlite3.connect(":memory:")
+    cursor = connection.cursor()
+    cursor.execute("CREATE TABLE nha_thau (id TEXT, organization_id TEXT, archived_at TEXT, id_goc TEXT)")
+    cursor.execute("CREATE TABLE goi_thau (id TEXT, organization_id TEXT, archived_at TEXT, phan_lo TEXT)")
+    cursor.execute("CREATE TABLE goi_thau_phan_lo (organization_id TEXT, goi_thau_id TEXT, ma_phan_lo TEXT)")
+    cursor.executemany(
+        "INSERT INTO nha_thau VALUES (?, 'org-1', NULL, 'nt-root')",
+        [("nt-v0",), ("nt-v1",)],
+    )
+
+    errors = validate_owner_scoped_references(
+        cursor,
+        "org-1",
+        "thong_tin_mo_thau",
+        {
+            "thanhVienLienDanh": [
+                {"thanhVienNhaThauId": "nt-v0"},
+                {"thanhVienNhaThauId": "nt-v1"},
+            ]
+        },
+    )
+
+    assert "Một nhà thầu logic không được xuất hiện bằng nhiều phiên bản trong cùng liên danh." in errors
+
+
+def test_partial_parent_update_does_not_delete_absent_child_lists():
+    class RecordingCursor:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, sql, _params=()):
+            self.statements.append(" ".join(sql.split()))
+            return self
+
+        def executemany(self, sql, _rows):
+            self.statements.append(" ".join(sql.split()))
+            return self
+
+    cursor = RecordingCursor()
+    save_child_payloads(
+        cursor, "goi_thau", {"id": "package-1", "tenGoiThau": "Only parent changed"},
+        "org-1", "organization", 2, "2026-07-15 00:00:00",
+    )
+    assert cursor.statements == []

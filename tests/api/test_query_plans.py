@@ -1,5 +1,8 @@
 import sqlite3
 
+from backend.db.db_utils import _build_create_table_sql, _create_baseline_indexes_and_triggers, _ensure_fts_indexes
+from backend.db.schema import SCHEMA_DINH_NGHIA
+
 
 def _details(connection, sql, params):
     return " ".join(
@@ -68,3 +71,87 @@ def test_large_list_filters_and_latest_dashboard_use_indexes():
     assert "idx_ke_hoach_lcnt_latest_" in latest_plan
     assert "SCAN ke_hoach_lcnt" not in range_plan
     assert "SCAN ke_hoach_lcnt" not in month_plan
+
+
+def test_fts5_matches_vietnamese_with_or_without_diacritics_and_tracks_updates():
+    connection = sqlite3.connect(":memory:")
+    connection.executescript("""
+        CREATE TABLE ke_hoach_lcnt (organization_id TEXT, id TEXT, ma_ke_hoach TEXT, ten_ke_hoach TEXT, ten_du_an_du_toan TEXT);
+        CREATE TABLE goi_thau (organization_id TEXT, id TEXT, ma_goi_thau TEXT, ten_goi_thau TEXT);
+        CREATE TABLE chu_dau_tu (organization_id TEXT, id TEXT, ma_chu_dau_tu TEXT, ten_chu_dau_tu TEXT, ten_viet_tat TEXT, ma_so_thue TEXT);
+        CREATE TABLE nha_thau (organization_id TEXT, id TEXT, ma_nha_thau TEXT, ten_nha_thau TEXT, ten_viet_tat TEXT, ma_so_thue TEXT);
+        CREATE TABLE hop_dong (organization_id TEXT, id TEXT, so_hop_dong TEXT, ten_hop_dong TEXT);
+    """)
+    _ensure_fts_indexes(connection.cursor())
+    connection.execute(
+        "INSERT INTO goi_thau VALUES ('org-1', 'package-1', 'GT-01', 'Mua sắm thiết bị y tế')"
+    )
+    assert connection.execute(
+        "SELECT id FROM fts_goi_thau WHERE fts_goi_thau MATCH 'thiet bi' AND organization_id = 'org-1'"
+    ).fetchone()[0] == "package-1"
+    connection.execute("UPDATE goi_thau SET ten_goi_thau = 'Dịch vụ tư vấn' WHERE id = 'package-1'")
+    assert connection.execute(
+        "SELECT id FROM fts_goi_thau WHERE fts_goi_thau MATCH 'tu van' AND organization_id = 'org-1'"
+    ).fetchone()[0] == "package-1"
+    assert connection.execute(
+        "SELECT id FROM fts_goi_thau WHERE fts_goi_thau MATCH 'thiet bi' AND organization_id = 'org-1'"
+    ).fetchone() is None
+    connection.close()
+
+
+def test_fts5_file_database_accepts_first_business_row(tmp_path):
+    connection = sqlite3.connect(tmp_path / "fts-file.db")
+    connection.executescript("""
+        CREATE TABLE ke_hoach_lcnt (organization_id TEXT, id TEXT, ma_ke_hoach TEXT, ten_ke_hoach TEXT, ten_du_an_du_toan TEXT);
+        CREATE TABLE goi_thau (organization_id TEXT, id TEXT, ma_goi_thau TEXT, ten_goi_thau TEXT);
+        CREATE TABLE chu_dau_tu (organization_id TEXT, id TEXT, ma_chu_dau_tu TEXT, ten_chu_dau_tu TEXT, ten_viet_tat TEXT, ma_so_thue TEXT);
+        CREATE TABLE nha_thau (organization_id TEXT, id TEXT, ma_nha_thau TEXT, ten_nha_thau TEXT, ten_viet_tat TEXT, ma_so_thue TEXT);
+        CREATE TABLE hop_dong (organization_id TEXT, id TEXT, so_hop_dong TEXT, ten_hop_dong TEXT);
+    """)
+    _ensure_fts_indexes(connection.cursor())
+    connection.execute("INSERT INTO chu_dau_tu VALUES ('org-1','investor-1','CDT-1','Bệnh viện tỉnh',NULL,NULL)")
+    connection.commit()
+    assert connection.execute(
+        "SELECT id FROM fts_chu_dau_tu WHERE fts_chu_dau_tu MATCH 'benh vien'"
+    ).fetchone()[0] == "investor-1"
+    assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    connection.close()
+
+
+def test_fts_trigger_tolerates_lineage_update_during_insert(tmp_path):
+    connection = sqlite3.connect(tmp_path / "fts-lineage.db")
+    connection.execute("CREATE TABLE chu_dau_tu (organization_id TEXT, id TEXT, id_goc TEXT, ma_chu_dau_tu TEXT, ten_chu_dau_tu TEXT, ten_viet_tat TEXT, ma_so_thue TEXT)")
+    connection.executescript("""
+        CREATE TABLE ke_hoach_lcnt (organization_id TEXT, id TEXT, ma_ke_hoach TEXT, ten_ke_hoach TEXT, ten_du_an_du_toan TEXT);
+        CREATE TABLE goi_thau (organization_id TEXT, id TEXT, ma_goi_thau TEXT, ten_goi_thau TEXT);
+        CREATE TABLE nha_thau (organization_id TEXT, id TEXT, ma_nha_thau TEXT, ten_nha_thau TEXT, ten_viet_tat TEXT, ma_so_thue TEXT);
+        CREATE TABLE hop_dong (organization_id TEXT, id TEXT, so_hop_dong TEXT, ten_hop_dong TEXT);
+        CREATE TRIGGER lineage AFTER INSERT ON chu_dau_tu BEGIN UPDATE chu_dau_tu SET id_goc=NEW.id WHERE rowid=NEW.rowid; END;
+    """)
+    _ensure_fts_indexes(connection.cursor())
+    connection.execute("INSERT INTO chu_dau_tu VALUES ('org-1','investor-1',NULL,'CDT-1','Bệnh viện tỉnh',NULL,NULL)")
+    assert connection.execute("SELECT COUNT(*) FROM fts_chu_dau_tu WHERE fts_chu_dau_tu MATCH 'benh vien'").fetchone()[0] == 1
+    connection.close()
+
+
+def test_baseline_has_no_duplicate_non_unique_indexes():
+    connection = sqlite3.connect(":memory:")
+    for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
+        connection.execute(_build_create_table_sql(table_name, table_spec))
+    _create_baseline_indexes_and_triggers(connection.cursor())
+    duplicates = []
+    tables = [row[0] for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'fts_%'"
+    )]
+    for table_name in tables:
+        signatures = {}
+        for index_row in connection.execute(f"PRAGMA index_list('{table_name}')"):
+            index_name, unique, partial = index_row[1], index_row[2], index_row[4]
+            if index_name.startswith("sqlite_autoindex") or unique or partial:
+                continue
+            columns = tuple(row[2] for row in connection.execute(f"PRAGMA index_info('{index_name}')"))
+            if columns in signatures:
+                duplicates.append((table_name, signatures[columns], index_name, columns))
+            signatures[columns] = index_name
+    connection.close()
+    assert duplicates == []

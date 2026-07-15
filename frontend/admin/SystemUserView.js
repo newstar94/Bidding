@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
@@ -27,10 +28,10 @@ export function updateActiveUserProfileDisplay() {
     if (orgPill && orgPillName) {
       if (activeOrg) {
         orgPillName.textContent = orgs.find((organization) => organization.id === activeOrg)?.name || activeOrg;
-        orgPill.style.display = "flex";
-        orgPill.style.cursor = "default";
+        setRuntimeStyle(orgPill, "display", "flex");
+        setRuntimeStyle(orgPill, "cursor", "default");
       } else {
-        orgPill.style.display = "none";
+        setRuntimeStyle(orgPill, "display", "none");
       }
     }
     const appController = getAppController();
@@ -44,45 +45,45 @@ export function updateActiveUserProfileDisplay() {
       image.src = avatarSrc;
       image.alt = "Avatar";
       avatar.appendChild(image);
-      avatar.style.background = "none";
+      setRuntimeStyle(avatar, "background", "none");
     } else {
       avatar.textContent = user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
       if (this.model.state.activerole === "super_admin") {
-        avatar.style.background = "linear-gradient(135deg, #a855f7 0%, #4f46e5 100%)";
+        setRuntimeStyle(avatar, "background", "linear-gradient(135deg, #a855f7 0%, #4f46e5 100%)");
       } else if (this.model.state.activerole === "manager") {
-        avatar.style.background = "linear-gradient(135deg, #3b82f6 0%, #10b981 100%)";
+        setRuntimeStyle(avatar, "background", "linear-gradient(135deg, #3b82f6 0%, #10b981 100%)");
       } else {
-        avatar.style.background = "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)";
+        setRuntimeStyle(avatar, "background", "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)");
       }
     }
     const saSwitchSection = document.getElementById("sa-role-switch-section");
     if (saSwitchSection) {
       const effectiveRoles = Array.isArray(user.dbRoles) ? user.dbRoles : [];
       if (effectiveRoles.includes("super_admin") || effectiveRoles.includes("manager")) {
-        saSwitchSection.style.display = "block";
+        setRuntimeStyle(saSwitchSection, "display", "block");
         const superAdminBtn = document.querySelector('.dropdown-role-btn[data-switch-role="super_admin"]');
         const managerBtn = document.querySelector('.dropdown-role-btn[data-switch-role="manager"]');
         const employeeBtn = document.querySelector('.dropdown-role-btn[data-switch-role="employee"]');
         if (effectiveRoles.includes("super_admin")) {
-          if (superAdminBtn) superAdminBtn.style.display = "flex";
-          if (managerBtn) managerBtn.style.display = "flex";
-          if (employeeBtn) employeeBtn.style.display = "flex";
+          if (superAdminBtn) setRuntimeStyle(superAdminBtn, "display", "flex");
+          if (managerBtn) setRuntimeStyle(managerBtn, "display", "flex");
+          if (employeeBtn) setRuntimeStyle(employeeBtn, "display", "flex");
         } else if (effectiveRoles.includes("manager")) {
-          if (superAdminBtn) superAdminBtn.style.display = "none";
-          if (managerBtn) managerBtn.style.display = "flex";
-          if (employeeBtn) employeeBtn.style.display = "flex";
+          if (superAdminBtn) setRuntimeStyle(superAdminBtn, "display", "none");
+          if (managerBtn) setRuntimeStyle(managerBtn, "display", "flex");
+          if (employeeBtn) setRuntimeStyle(employeeBtn, "display", "flex");
         }
       } else {
-        saSwitchSection.style.display = "none";
+        setRuntimeStyle(saSwitchSection, "display", "none");
       }
       document.querySelectorAll(".dropdown-role-btn").forEach((btn) => {
         const role = btn.getAttribute("data-switch-role");
         if (role === this.model.state.activerole) {
-          btn.style.background = "rgba(147, 51, 234, 0.08)";
-          btn.style.color = "#a855f7";
+          setRuntimeStyle(btn, "background", "rgba(147, 51, 234, 0.08)");
+          setRuntimeStyle(btn, "color", "#a855f7");
         } else {
-          btn.style.background = "transparent";
-          btn.style.color = "var(--text-main)";
+          setRuntimeStyle(btn, "background", "transparent");
+          setRuntimeStyle(btn, "color", "var(--text-main)");
         }
       });
     }
@@ -91,13 +92,13 @@ export function updateActiveUserProfileDisplay() {
   const managerItems = document.querySelectorAll(".role-menu-manager");
   const clientItems = document.querySelectorAll(".role-menu-client");
   saItems.forEach((item) => {
-    item.style.display = this.model.state.activerole === "super_admin" ? "block" : "none";
+    setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "block" : "none");
   });
   managerItems.forEach((item) => {
-    item.style.display = this.model.state.activerole === "manager" ? "block" : "none";
+    setRuntimeStyle(item, "display", this.model.state.activerole === "manager" ? "block" : "none");
   });
   clientItems.forEach((item) => {
-    item.style.display = this.model.state.activerole === "super_admin" ? "none" : "block";
+    setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "none" : "block");
   });
   this.applySecurityLockOverlay();
   this.populateNhanVienPhuTrachDropdowns();
@@ -227,7 +228,7 @@ export function renderSuperAdminPanel() {
         const statusBadge = org.status === "Hoạt động" ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Hoạt động</span>' : '<span class="badge badge-danger"><i data-lucide="lock"></i> Đã khóa</span>';
         const toggleArgsKey = registerCommandArgs([String(org.id || "")]);
         const renewArgsKey = registerCommandArgs([String(org.id || "")]);
-        const toggleLockBtn = org.status === "Hoạt động" ? `<button class="action-btn btn-delete" data-bf-action="call" data-fn="toggleOrgLock" data-arg-key="${toggleArgsKey}" title="Khóa Đơn vị"><i data-lucide="lock"></i></button>` : `<button class="action-btn btn-edit" style="color:var(--success); background:rgba(16,185,129,0.1);" data-bf-action="call" data-fn="toggleOrgLock" data-arg-key="${toggleArgsKey}" title="Mở khóa Đơn vị"><i data-lucide="unlock"></i></button>`;
+        const toggleLockBtn = org.status === "Hoạt động" ? `<button class="action-btn btn-delete" data-bf-action="call" data-fn="toggleOrgLock" data-arg-key="${toggleArgsKey}" title="Khóa Đơn vị"><i data-lucide="lock"></i></button>` : `<button class="action-btn btn-edit bf-s-362d0a3203" data-bf-action="call" data-fn="toggleOrgLock" data-arg-key="${toggleArgsKey}" title="Mở khóa Đơn vị"><i data-lucide="unlock"></i></button>`;
         return `
                         <tr>
                             <td class="fw-bold">${escapeHTML(org.name)}</td>
@@ -238,7 +239,7 @@ export function renderSuperAdminPanel() {
                             <td><small class="fw-bold">${escapeHTML(this.model.formatDate(org.expDate))}</small></td>
                             <td>${statusBadge}</td>
                             <td class="text-right">
-                                <div class="action-btn-group" style="justify-content: flex-end;">
+                                <div class="action-btn-group bf-s-225682f723">
                                     <button class="action-btn btn-view" data-bf-action="call" data-fn="renewOrgSubscription" data-arg-key="${renewArgsKey}" title="Gia hạn 1 năm"><i data-lucide="calendar-plus"></i></button>
                                     ${toggleLockBtn}
                                 </div>
@@ -269,13 +270,13 @@ export function renderManagerNhanVienPanel() {
   const progressFill = document.getElementById("manager-quota-progress-fill");
   if (progressFill) {
     const percent = quotaLimit === 999 ? 20 : memberCount / quotaLimit * 100;
-    progressFill.style.width = `${Math.min(percent, 100)}%`;
+    setRuntimeStyle(progressFill, "width", `${Math.min(percent, 100)}%`);
     if (percent >= 90) {
-      progressFill.style.background = "var(--danger)";
+      setRuntimeStyle(progressFill, "background", "var(--danger)");
     } else if (percent >= 70) {
-      progressFill.style.background = "var(--warning)";
+      setRuntimeStyle(progressFill, "background", "var(--warning)");
     } else {
-      progressFill.style.background = "linear-gradient(90deg, var(--primary) 0%, #1d4ed8 100%)";
+      setRuntimeStyle(progressFill, "background", "linear-gradient(90deg, var(--primary) 0%, #1d4ed8 100%)");
     }
   }
   const pkgNameSpan = document.getElementById("manager-package-name");
@@ -287,10 +288,10 @@ export function renderManagerNhanVienPanel() {
       const assignedTasks = empAssignments.map((a) => {
         if (a.type === "goithau") {
           const gt = this.model.state.goithau.find((g) => g.id === a.targetId);
-          return gt ? `<span class="badge badge-neutral" style="margin:2px;">GT: ${escapeHTML(gt.maGoiThau)}</span>` : "";
+          return gt ? `<span class="badge badge-neutral bf-s-032fd79442">GT: ${escapeHTML(gt.maGoiThau)}</span>` : "";
         } else if (a.type === "hopdong") {
           const hd = this.model.state.hopdong.find((h) => h.id === a.targetId);
-          return hd ? `<span class="badge badge-info" style="margin:2px;">HD: ${escapeHTML(hd.soHopDong)}</span>` : "";
+          return hd ? `<span class="badge badge-info bf-s-032fd79442">HD: ${escapeHTML(hd.soHopDong)}</span>` : "";
         }
         return "";
       }).filter(Boolean).join(" ");
@@ -298,12 +299,12 @@ export function renderManagerNhanVienPanel() {
       const deleteArgsKey = registerCommandArgs([String(emp.id || "")]);
       return `
                 <tr>
-                    <td class="fw-bold" style="text-align: center; vertical-align: middle;">${escapeHTML(emp.name)}</td>
-                    <td style="text-align: center; vertical-align: middle;">${escapeHTML(emp.email)}</td>
-                    <td style="text-align: center; vertical-align: middle;">${escapeHTML(emp.phone)}</td>
-                    <td style="max-width: 250px; text-align: center; vertical-align: middle;">${assignedTasks || '<span class="text-muted">Chưa giao thầu</span>'}</td>
-                    <td style="text-align: center; vertical-align: middle;">
-                        <div class="action-btn-group" style="justify-content: center; display: inline-flex;">
+                    <td class="fw-bold bf-s-0c5104285b">${escapeHTML(emp.name)}</td>
+                    <td class="bf-s-0c5104285b">${escapeHTML(emp.email)}</td>
+                    <td class="bf-s-0c5104285b">${escapeHTML(emp.phone)}</td>
+                    <td class="bf-s-922aea7b47">${assignedTasks || '<span class="text-muted">Chưa giao thầu</span>'}</td>
+                    <td class="bf-s-0c5104285b">
+                        <div class="action-btn-group bf-s-273ba347d4">
                             <button class="action-btn btn-edit" data-bf-action="call" data-fn="editEmployee" data-arg-key="${editArgsKey}" title="Sửa"><i data-lucide="edit-2"></i></button>
                             <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteEmployee" data-arg-key="${deleteArgsKey}" title="Xóa"><i data-lucide="trash-2"></i></button>
                         </div>
@@ -327,7 +328,7 @@ export function renderManagerNhanVienPanel() {
         const mode = matrix[moduleName] || "view";
         return `
                     <td class="matrix-checkbox-cell">
-                        <select class="form-control matrix-select" data-emp-id="${safeAttr(emp.id)}" data-module="${safeAttr(moduleName)}" style="width: 100px; display: inline-block; padding: 2px 4px; height: auto; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main);">
+                        <select class="form-control matrix-select bf-s-c75f9a3f39" data-emp-id="${safeAttr(emp.id)}" data-module="${safeAttr(moduleName)}">
                             <option value="view" ${mode === "view" ? "selected" : ""}>Xem</option>
                             <option value="edit" ${mode === "edit" ? "selected" : ""}>Sửa đổi</option>
                         </select>
@@ -394,10 +395,10 @@ export function renderProfileTab(user) {
   if (orgContainer && orgInput) {
     const organizationNames = organizationDisplayName(user);
     if (organizationNames) {
-      orgContainer.style.display = "block";
+      setRuntimeStyle(orgContainer, "display", "block");
       orgInput.value = organizationNames;
     } else {
-      orgContainer.style.display = "none";
+      setRuntimeStyle(orgContainer, "display", "none");
       orgInput.value = "";
     }
   }
@@ -407,17 +408,17 @@ export function renderProfileTab(user) {
   if (avatarSrc) {
     if (avatarPreview) {
       avatarPreview.src = avatarSrc;
-      avatarPreview.style.display = "block";
+      setRuntimeStyle(avatarPreview, "display", "block");
     }
-    if (avatarFallback) avatarFallback.style.display = "none";
+    if (avatarFallback) setRuntimeStyle(avatarFallback, "display", "none");
   } else {
     if (avatarPreview) {
       avatarPreview.src = "";
-      avatarPreview.style.display = "none";
+      setRuntimeStyle(avatarPreview, "display", "none");
     }
     if (avatarFallback) {
       avatarFallback.textContent = (user.name || "AD").split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
-      avatarFallback.style.display = "flex";
+      setRuntimeStyle(avatarFallback, "display", "flex");
     }
   }
 }
@@ -429,7 +430,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
     return;
   }
   const calculateRemainingDays = (endDateStr) => {
-    if (!endDateStr) return '<span class="text-muted" style="font-size:0.8rem;">Chưa kích hoạt</span>';
+    if (!endDateStr) return '<span class="text-muted bf-s-51a7b72acc">Chưa kích hoạt</span>';
     const endDate = new Date(endDateStr);
     const today = /* @__PURE__ */ new Date();
     endDate.setHours(0, 0, 0, 0);
@@ -437,31 +438,31 @@ export function renderSystemUsersTable(usersList, currentUsername) {
     const diffTime = endDate - today;
     const diffDays = Math.ceil(diffTime / (1e3 * 60 * 60 * 24));
     if (diffDays < 0) {
-      return `<span class="badge badge-danger" style="background-color: rgba(239,68,68,0.1); color: var(--danger); font-size: 0.8rem; font-weight: 600;"><i data-lucide="alert-circle" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Hết hạn (${Math.abs(diffDays)} ngày trước)</span>`;
+      return `<span class="badge badge-danger bf-s-bfbf914aa8"><i data-lucide="alert-circle" class="bf-s-03467ee7d0"></i> Hết hạn (${Math.abs(diffDays)} ngày trước)</span>`;
     } else if (diffDays === 0) {
-      return `<span class="badge badge-warning" style="background-color: rgba(245,158,11,0.1); color: #f59e0b; font-size: 0.8rem; font-weight: 600;"><i data-lucide="alert-triangle" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Hôm nay hết hạn</span>`;
+      return `<span class="badge badge-warning bf-s-72cba8a381"><i data-lucide="alert-triangle" class="bf-s-03467ee7d0"></i> Hôm nay hết hạn</span>`;
     } else if (diffDays <= 30) {
-      return `<span class="badge badge-warning" style="background-color: rgba(245,158,11,0.1); color: #f59e0b; font-size: 0.8rem; font-weight: 600;">Còn ${diffDays} ngày</span>`;
+      return `<span class="badge badge-warning bf-s-72cba8a381">Còn ${diffDays} ngày</span>`;
     } else {
-      return `<span class="badge badge-success" style="background-color: rgba(16,185,129,0.1); color: var(--success); font-size: 0.8rem; font-weight: 600;">Còn ${diffDays} ngày</span>`;
+      return `<span class="badge badge-success bf-s-fd8a67d847">Còn ${diffDays} ngày</span>`;
     }
   };
   const getRoleBadge = (role) => {
     const map = {
-      super_admin: '<span class="badge badge-purple" style="font-size:0.8rem; font-weight:600;"><i data-lucide="shield-alert" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Super Admin</span>',
-      manager: '<span class="badge badge-info" style="font-size:0.8rem; font-weight:600;"><i data-lucide="shield" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Quản lý</span>',
-      employee: '<span class="badge badge-neutral" style="font-size:0.8rem; font-weight:600;"><i data-lucide="user" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Chuyên viên</span>'
+      super_admin: '<span class="badge badge-purple bf-s-13c364ba41"><i data-lucide="shield-alert" class="bf-s-03467ee7d0"></i> Super Admin</span>',
+      manager: '<span class="badge badge-info bf-s-13c364ba41"><i data-lucide="shield" class="bf-s-03467ee7d0"></i> Quản lý</span>',
+      employee: '<span class="badge badge-neutral bf-s-13c364ba41"><i data-lucide="user" class="bf-s-03467ee7d0"></i> Chuyên viên</span>'
     };
     return map[role] || `<span class="badge badge-neutral">${escapeHTML(role)}</span>`;
   };
   const getPackageBadge = (pkgId) => {
     const map = {
-      silver: '<span class="badge badge-neutral" style="font-size:0.8rem; font-weight:600; background:rgba(148,163,184,0.1); color:#475569; border:1px solid rgba(148,163,184,0.2);">Gói Bạc (Silver)</span>',
-      gold: '<span class="badge badge-warning" style="font-size:0.8rem; font-weight:600; background:rgba(245,158,11,0.1); color:#b45309; border:1px solid rgba(245,158,11,0.2);">Gói Vàng (Gold)</span>',
-      diamond: '<span class="badge badge-info" style="font-size:0.8rem; font-weight:600; background:rgba(14,165,233,0.1); color:#0284c7; border:1px solid rgba(14,165,233,0.2);">Gói Kim Cương (Diamond)</span>',
-      none: '<span class="text-muted" style="font-size:0.8rem;">Chưa chọn gói</span>'
+      silver: '<span class="badge badge-neutral bf-s-70ac53c242">Gói Bạc (Silver)</span>',
+      gold: '<span class="badge badge-warning bf-s-456836f1dd">Gói Vàng (Gold)</span>',
+      diamond: '<span class="badge badge-info bf-s-aa701780d4">Gói Kim Cương (Diamond)</span>',
+      none: '<span class="text-muted bf-s-51a7b72acc">Chưa chọn gói</span>'
     };
-    return map[pkgId] || '<span class="text-muted" style="font-size:0.8rem;">Chưa chọn gói</span>';
+    return map[pkgId] || '<span class="text-muted bf-s-51a7b72acc">Chưa chọn gói</span>';
   };
   tbody.innerHTML = usersList.map((user) => {
     const subscription = normalizeOrganizations(user).find((organization) => organization.status === "active")?.subscription
@@ -470,18 +471,18 @@ export function renderSystemUsersTable(usersList, currentUsername) {
     const isSelf = user.username === currentUsername;
     const detailArgsKey = registerCommandArgs([String(user.id || "")]);
     const deleteArgsKey = registerCommandArgs([String(user.id || ""), String(user.username || "")]);
-    const deleteBtn = isSelf ? `<span class="text-muted" style="font-size:0.8rem; font-style:italic;">(Tài khoản hiện tại)</span>` : `<button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteSystemUser" data-arg-key="${deleteArgsKey}" title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
+    const deleteBtn = isSelf ? `<span class="text-muted bf-s-09c7718479">(Tài khoản hiện tại)</span>` : `<button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteSystemUser" data-arg-key="${deleteArgsKey}" title="Xóa tài khoản"><i data-lucide="trash-2"></i></button>`;
     const detailBtn = `<button class="action-btn btn-edit" data-bf-action="call" data-fn="showSystemUserDetail" data-arg-key="${detailArgsKey}" title="Xem chi tiết & Cấu hình"><i data-lucide="user-cog"></i></button>`;
     return `
-            <tr style="cursor: pointer;" data-bf-action="call" data-fn="showSystemUserDetail" data-arg-key="${detailArgsKey}">
-                <td class="fw-bold" style="color: var(--text-main);">${escapeHTML(user.username)}</td>
-                <td style="font-weight: 600;">${escapeHTML(user.name)}</td>
+            <tr data-bf-action="call" data-fn="showSystemUserDetail" data-arg-key="${detailArgsKey}" class="bf-s-ecfbb78629">
+                <td class="fw-bold bf-s-a8a12e586e">${escapeHTML(user.username)}</td>
+                <td class="bf-s-018e18ec8e">${escapeHTML(user.name)}</td>
                 <td>${escapeHTML(user.email) || "--"}</td>
                 <td>${getRoleBadge(user.role)}</td>
                 <td>${getPackageBadge(subscription.package_id)}</td>
                 <td>${calculateRemainingDays(subscription.end_date)}</td>
                 <td class="text-right" data-bf-stop>
-                    <div class="action-btn-group" style="justify-content: flex-end;">
+                    <div class="action-btn-group bf-s-225682f723">
                         ${detailBtn}
                         ${deleteBtn}
                     </div>

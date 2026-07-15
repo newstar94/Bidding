@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { ApiError, apiFetch, postJson } from "../shared/apiClient.js";
@@ -61,12 +62,12 @@ export function setupGoogleSignIn() {
     const descEl = modalOverlay.querySelector("[data-username-modal-desc]");
     if (descEl) {
       if (accountLinked) {
-        descEl.innerHTML = 'Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span style="color: #ef4444; font-weight: 600;">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
+        descEl.innerHTML = 'Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
       } else {
-        descEl.innerHTML = 'Tài khoản Google của bạn đã được tạo. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span style="color: #ef4444; font-weight: 600;">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
+        descEl.innerHTML = 'Tài khoản Google của bạn đã được tạo. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
       }
     }
-    modalOverlay.style.display = "flex";
+    setRuntimeStyle(modalOverlay, "display", "flex");
     if (suggestedUsername) {
       input.value = suggestedUsername;
     } else {
@@ -77,7 +78,7 @@ export function setupGoogleSignIn() {
       input.setSelectionRange(input.value.length, input.value.length);
     } catch (_) {
     }
-    if (errorDiv) errorDiv.style.display = "none";
+    if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
     if (typeof lucide !== "undefined") lucide.createIcons();
     input.oninput = () => {
       const val = input.value.toLowerCase();
@@ -87,14 +88,14 @@ export function setupGoogleSignIn() {
         const check = validateUsernameClient(input.value);
         if (!check.ok) {
           hint.textContent = check.message;
-          hint.style.color = "#ef4444";
+          setRuntimeStyle(hint, "color", "#ef4444");
         } else {
           hint.textContent = "Chỉ chữ thường (a-z), số (0-9) và dấu gạch dưới (_). Từ 3 đến 30 ký tự.";
-          hint.style.color = "#22c55e";
+          setRuntimeStyle(hint, "color", "#22c55e");
         }
       } else if (hint) {
         hint.textContent = "Chỉ chữ thường (a-z), số (0-9) và dấu gạch dưới (_). Từ 3 đến 30 ký tự.";
-        hint.style.color = "";
+        setRuntimeStyle(hint, "color", "");
       }
     };
     const _doSubmit = async () => {
@@ -103,32 +104,32 @@ export function setupGoogleSignIn() {
       if (!usernameCheck.ok) {
         if (errorDiv) {
           errorDiv.textContent = usernameCheck.message;
-          errorDiv.style.display = "block";
+          setRuntimeStyle(errorDiv, "display", "block");
         }
         return;
       }
       submitBtn.disabled = true;
-      submitBtn.style.opacity = "0.7";
+      setRuntimeStyle(submitBtn, "opacity", "0.7");
       const btnSpan = submitBtn.querySelector("span");
       if (btnSpan) btnSpan.textContent = "Đang lưu...";
-      if (errorDiv) errorDiv.style.display = "none";
+      if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
       try {
         const result = await postJson("/api/auth/set-username", { username });
         if (this.model?.state?.activeuser) {
           this.model.state.activeuser.username = result.username;
         }
         sessionStorage.setItem("bf_username", result.username);
-        modalOverlay.style.display = "none";
+        setRuntimeStyle(modalOverlay, "display", "none");
         onSuccess();
       } catch (err) {
         if (errorDiv) {
           errorDiv.textContent = err instanceof ApiError
             ? err.message
             : "Lỗi kết nối. Vui lòng thử lại.";
-          errorDiv.style.display = "block";
+          setRuntimeStyle(errorDiv, "display", "block");
         }
         submitBtn.disabled = false;
-        submitBtn.style.opacity = "1";
+        setRuntimeStyle(submitBtn, "opacity", "1");
         if (btnSpan) btnSpan.textContent = "Xác nhận tên đăng nhập";
       }
     };
@@ -141,7 +142,7 @@ export function setupGoogleSignIn() {
     if (!response || !response.credential) return;
     setAuthFlowInProgress(true);
     const errorDiv = document.getElementById("login-error");
-    if (errorDiv) errorDiv.style.display = "none";
+    if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
     hideAuthOverlay();
     showGoogleAuthPending();
     const showGoogleLoginError = (message) => {
@@ -150,19 +151,19 @@ export function setupGoogleSignIn() {
       hideGoogleAuthPending();
       const overlay = document.getElementById("auth-overlay");
       const appContainer = document.querySelector(".app-container");
-      if (overlay) overlay.style.display = "flex";
-      if (appContainer) appContainer.style.filter = "blur(10px)";
+      if (overlay) setRuntimeStyle(overlay, "display", "flex");
+      if (appContainer) setRuntimeStyle(appContainer, "filter", "blur(10px)");
       const formLogin = document.getElementById("form-auth-login");
       const formRegister = document.getElementById("form-auth-register");
       const formForgot = document.getElementById("form-auth-forgot");
       const formVerify = document.getElementById("form-auth-verify");
-      if (formLogin) formLogin.style.display = "block";
-      if (formRegister) formRegister.style.display = "none";
-      if (formForgot) formForgot.style.display = "none";
-      if (formVerify) formVerify.style.display = "none";
+      if (formLogin) setRuntimeStyle(formLogin, "display", "block");
+      if (formRegister) setRuntimeStyle(formRegister, "display", "none");
+      if (formForgot) setRuntimeStyle(formForgot, "display", "none");
+      if (formVerify) setRuntimeStyle(formVerify, "display", "none");
       if (errorDiv) {
         errorDiv.textContent = message;
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
       }
     };
     try {
@@ -177,8 +178,6 @@ export function setupGoogleSignIn() {
         return;
       }
       setAuthSessionActive(true);
-      sessionStorage.removeItem("bf_session_token");
-      localStorage.removeItem("bf_session_token");
       if (data.username) {
         sessionStorage.setItem("bf_username", data.username);
       } else {

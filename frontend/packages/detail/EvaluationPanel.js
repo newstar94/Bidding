@@ -10,7 +10,7 @@ export function renderEvaluationPanel(container, pkg, {
   const packageId = escapeHtml(pkg?.id || "");
   const packageName = escapeHtml(pkg?.tenGoiThau || "");
   const processOptions = isTechnical ? `
-    <div id="danhgiahsdt-quytrinh-container" class="evaluation-process-options" style="display:none;">
+    <div id="danhgiahsdt-quytrinh-container" class="evaluation-process-options bf-s-6aa34d7432">
       <span class="evaluation-process-title">Quy trình đánh giá:</span>
       <label class="evaluation-process-choice">
         <input type="radio" name="danhgiahsdt-quytrinh" value="quytrinh1" checked class="evaluation-choice-input"> Quy trình 1
@@ -21,14 +21,14 @@ export function renderEvaluationPanel(container, pkg, {
       <label class="evaluation-process-choice is-separated">
         <input type="checkbox" id="eval-co-uu-dai" class="evaluation-choice-input"> Có nhà thầu được hưởng ưu đãi
       </label>
-      <span id="quytrinh2-warning-msg" class="evaluation-warning" style="display: none;"></span>
+      <span id="quytrinh2-warning-msg" class="evaluation-warning bf-s-65d1f1c3d7"></span>
     </div>
   ` : "";
   container.innerHTML = `
-    <select id="danhgiahsdt-goithau-select" style="display:none;"><option value="${packageId}" selected>${packageName}</option></select>
-    <div id="danhgiahsdt-goithau-summary" style="display:none;"></div>
-    <div id="danhgiahsdt-container" style="display:none;">
-      <div id="danhgiahsdt-tabs-header" style="display:none;">
+    <select id="danhgiahsdt-goithau-select" class="bf-s-6aa34d7432"><option value="${packageId}" selected>${packageName}</option></select>
+    <div id="danhgiahsdt-goithau-summary" class="bf-s-6aa34d7432"></div>
+    <div id="danhgiahsdt-container" class="bf-s-6aa34d7432">
+      <div id="danhgiahsdt-tabs-header" class="bf-s-6aa34d7432">
         <button type="button" id="tab-btn-hsdxt-kt" class="${isTechnical ? "active" : ""}">KT</button>
         <button type="button" id="tab-btn-hsdxt-tc" class="${isTechnical ? "" : "active"}">TC</button>
       </div>
@@ -67,6 +67,6 @@ export function renderEvaluationPanel(container, pkg, {
         <button class="btn btn-primary workflow-primary-action" id="btn-danhgiahsdt-save"><i data-lucide="save"></i> Lưu thông tin đánh giá</button>
       </div>
     </div>
-    <div id="danhgiahsdt-empty-state" style="display:none;"></div>
+    <div id="danhgiahsdt-empty-state" class="bf-s-6aa34d7432"></div>
   `;
 }

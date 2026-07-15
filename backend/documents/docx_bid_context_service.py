@@ -314,7 +314,7 @@ def enrich_context_with_lot_summaries(context):
             })
             try:
                 group['_tong_gia_tri_trung_thau_raw'] += int(winner_item.get('_gia_trung_thau_raw') or 0)
-            except Exception:
+            except (TypeError, ValueError):
                 pass
             won_lot_item = {
                 'ma_phan_lo': code,
@@ -344,6 +344,5 @@ def enrich_context_with_lot_summaries(context):
     context['so_phan_lo_khong_co_nha_thau_tham_du'] = len(lots_without_participants)
     context['so_phan_lo_co_nha_thau_trung'] = len(lots_with_winner)
     context['so_phan_lo_tham_du_khong_trung'] = len(lots_participated_without_winner)
-
 
 

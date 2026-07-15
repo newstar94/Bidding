@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { getExcelPreviewFieldError } from "./excelPreviewValidation.js";
@@ -56,24 +57,24 @@ export function renderExcelPreview(rows, importType) {
                     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2) !important;
                 }
             </style>
-            <div class="modal-card" style="max-width: 95%; width: 1300px;">
-                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <h3 style="margin: 0;">Xem trước dữ liệu nhập từ Excel</h3>
+            <div class="modal-card bf-s-5447c39f9a">
+                <div class="modal-header bf-s-d5564bfe2a">
+                    <h3 class="bf-s-de52e3be99">Xem trước dữ liệu nhập từ Excel</h3>
                     <button type="button" class="modal-close" data-bf-action="close-modal" data-modal-id="modal-excel-preview">&times;</button>
                 </div>
-                <div class="modal-body" style="max-height: 70vh; overflow-y: auto; padding: 20px;">
-                    <div id="excel-preview-container" style="display: none;">
-                        <div class="table-container" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto;">
-                            <table class="data-table" style="min-width: 100%;">
+                <div class="modal-body bf-s-829c923308">
+                    <div id="excel-preview-container" class="bf-s-65d1f1c3d7">
+                        <div class="table-container bf-s-c90c7cddfd">
+                            <table class="data-table bf-s-448ca2b6ae">
                                 <thead id="excel-preview-header"></thead>
                                 <tbody id="excel-preview-tbody"></tbody>
                             </table>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid var(--border-color);">
+                <div class="modal-footer bf-s-6dd5824fd5">
                     <button type="button" class="btn btn-outline" id="btn-cancel-excel-import" data-bf-action="close-modal" data-modal-id="modal-excel-preview">Hủy bỏ</button>
-                    <button type="button" class="btn btn-primary" id="btn-save-excel-import" style="display: none;">Lưu dữ liệu</button>
+                    <button type="button" class="btn btn-primary bf-s-65d1f1c3d7" id="btn-save-excel-import">Lưu dữ liệu</button>
                 </div>
             </div>
         `;
@@ -91,8 +92,8 @@ export function renderExcelPreview(rows, importType) {
   if (!previewContainer || !tableBody || !tableHeader) return;
   modal.classList.add("active");
   if (rows.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Không tìm thấy dữ liệu hợp lệ trong file Excel</td></tr>`;
-    previewContainer.style.display = "block";
+    tableBody.innerHTML = `<tr><td colspan="5" class="bf-s-ed899dffb6">Không tìm thấy dữ liệu hợp lệ trong file Excel</td></tr>`;
+    setRuntimeStyle(previewContainer, "display", "block");
     return;
   }
   const labelMap = {
@@ -179,7 +180,7 @@ export function renderExcelPreview(rows, importType) {
     }
     headerHtml += `<th style="text-align: ${align} !important;">${escapeHtml(label)}</th>`;
   });
-  headerHtml += '<th style="text-align: center !important;">Thông tin kiểm tra</th></tr>';
+  headerHtml += '<th class="bf-s-c84c3abe48">Thông tin kiểm tra</th></tr>';
   tableHeader.innerHTML = headerHtml;
   tableBody.innerHTML = rows.map((r, rowIndex) => {
     const rowErrors = [];
@@ -239,10 +240,10 @@ export function renderExcelPreview(rows, importType) {
       const errorText = fieldErrorMap[k];
       rowHtml += `<td style="text-align: ${align} !important; ${style}; padding: 4px; vertical-align: top;">
                 <input type="${inputType}" class="${inputClass} ${errorText ? "is-invalid" : ""}" data-key="${escapeAttribute(k)}" value="${escapeAttribute(val !== void 0 && val !== null && val !== "" ? val : "")}" style="text-align: ${align};">
-                ${errorText ? `<div class="invalid-feedback" style="color: #ef4444; font-size: 0.7rem; margin-top: 2px; text-align: left; font-weight: 500;">${escapeHtml(errorText)}</div>` : ""}
+                ${errorText ? `<div class="invalid-feedback bf-s-1fd4829323">${escapeHtml(errorText)}</div>` : ""}
             </td>`;
     });
-    rowHtml += `<td style="text-align: center; vertical-align: middle;">${statusHtml}</td></tr>`;
+    rowHtml += `<td class="bf-s-0c5104285b">${statusHtml}</td></tr>`;
     return rowHtml;
   }).join("");
   tableBody.onchange = (e) => {
@@ -306,11 +307,11 @@ export function renderExcelPreview(rows, importType) {
             inp.classList.add("is-invalid");
             const feedback = document.createElement("div");
             feedback.className = "invalid-feedback";
-            feedback.style.color = "#ef4444";
-            feedback.style.fontSize = "0.7rem";
-            feedback.style.marginTop = "2px";
-            feedback.style.textAlign = "left";
-            feedback.style.fontWeight = "500";
+            setRuntimeStyle(feedback, "color", "#ef4444");
+            setRuntimeStyle(feedback, "fontSize", "0.7rem");
+            setRuntimeStyle(feedback, "marginTop", "2px");
+            setRuntimeStyle(feedback, "textAlign", "left");
+            setRuntimeStyle(feedback, "fontWeight", "500");
             feedback.innerText = err;
             td.appendChild(feedback);
           } else {
@@ -335,7 +336,7 @@ export function renderExcelPreview(rows, importType) {
     const input = e.target.closest("input.excel-preview-input");
     if (input) input.select();
   };
-  previewContainer.style.display = "block";
+  setRuntimeStyle(previewContainer, "display", "block");
   getAppController()?.initFlatpickr?.(tableBody);
   lucide.createIcons();
 }
@@ -360,7 +361,7 @@ export function populatePhathanhHsmtForm(gt, model) {
   setVal("phathanh-thoigiandongthau", gt.thoiGianDongThau ? model.formatForDatetimeLocal(gt.thoiGianDongThau) : "");
   const isCompetitiveQuotation = isCompetitiveQuotationPackage(gt);
   const appraisalSection = document.getElementById("phathanh-thamdinh-section");
-  if (appraisalSection) appraisalSection.style.display = isCompetitiveQuotation ? "none" : "block";
+  if (appraisalSection) setRuntimeStyle(appraisalSection, "display", isCompetitiveQuotation ? "none" : "block");
   const hasAudit = !isCompetitiveQuotation && gt.yeuCauThamDinhHsmt === "Có";
   const auditRadios = document.querySelectorAll('input[name="phathanh-yeucauthamdinh"]');
   auditRadios.forEach((radio) => {
@@ -372,8 +373,8 @@ export function populatePhathanhHsmtForm(gt, model) {
   const ngayBaoCaoContainer = document.getElementById("phathanh-ngaybaocao-container");
   const soBaoCaoInp = document.getElementById("phathanh-sobaocaothamdinh");
   const ngayBaoCaoInp = document.getElementById("phathanh-ngaybaocaothamdinh");
-  if (soBaoCaoContainer) soBaoCaoContainer.style.display = hasAudit ? "block" : "none";
-  if (ngayBaoCaoContainer) ngayBaoCaoContainer.style.display = hasAudit ? "block" : "none";
+  if (soBaoCaoContainer) setRuntimeStyle(soBaoCaoContainer, "display", hasAudit ? "block" : "none");
+  if (ngayBaoCaoContainer) setRuntimeStyle(ngayBaoCaoContainer, "display", hasAudit ? "block" : "none");
   if (hasAudit) {
     if (soBaoCaoInp) soBaoCaoInp.setAttribute("required", "true");
     if (ngayBaoCaoInp) ngayBaoCaoInp.setAttribute("required", "true");
@@ -389,15 +390,15 @@ export function populatePhathanhHsmtForm(gt, model) {
   const phanloBaodamTbody = document.getElementById("phathanh-phanlo-baodam-tbody");
   if (baodamContainer && baodamInput && phanloBaodamContainer && phanloBaodamTbody) {
     if (isTuVan) {
-      baodamContainer.style.display = "none";
+      setRuntimeStyle(baodamContainer, "display", "none");
       baodamInput.removeAttribute("required");
-      phanloBaodamContainer.style.display = "none";
+      setRuntimeStyle(phanloBaodamContainer, "display", "none");
       phanloBaodamTbody.innerHTML = "";
     } else {
       if (isPhanLo) {
-        baodamContainer.style.display = "none";
+        setRuntimeStyle(baodamContainer, "display", "none");
         baodamInput.removeAttribute("required");
-        phanloBaodamContainer.style.display = "block";
+        setRuntimeStyle(phanloBaodamContainer, "display", "block");
         phanloBaodamTbody.innerHTML = "";
         const list = gt.phanLoList || [];
         list.forEach((item) => {
@@ -406,20 +407,20 @@ export function populatePhathanhHsmtForm(gt, model) {
           const baoDamVal = item.baoDamDuThau || "";
           const giaTriVal = item.giaTriPhanLo || 0;
           tr.innerHTML = `
-                        <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-code-input" value="${escapeAttribute(item.maPhanLo || "")}" placeholder="Mã..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        <td class="bf-s-36242379f4">
+                            <input type="text" class="phathanh-pl-code-input bf-s-f94af44de1" value="${escapeAttribute(item.maPhanLo || "")}" placeholder="Mã...">
                         </td>
-                        <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-name-input" value="${escapeAttribute(item.tenPhanLo || "")}" placeholder="Tên..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        <td class="bf-s-36242379f4">
+                            <input type="text" class="phathanh-pl-name-input bf-s-f94af44de1" value="${escapeAttribute(item.tenPhanLo || "")}" placeholder="Tên...">
                         </td>
-                        <td style="padding: 6px 8px;">
-                             <input type="text" class="phathanh-pl-price-input mt-format-vnd" value="${escapeAttribute(giaTriVal ? model.formatVND(giaTriVal) : "")}" placeholder="Giá trị..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        <td class="bf-s-36242379f4">
+                             <input type="text" class="phathanh-pl-price-input mt-format-vnd bf-s-f94af44de1" value="${escapeAttribute(giaTriVal ? model.formatVND(giaTriVal) : "")}" placeholder="Giá trị...">
                         </td>
-                        <td style="padding: 6px 8px;">
-                             <input type="text" class="phathanh-pl-baodam-input mt-format-vnd" required value="${escapeAttribute(baoDamVal ? model.formatVND(baoDamVal) : "")}" placeholder="Bảo đảm..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        <td class="bf-s-36242379f4">
+                             <input type="text" class="phathanh-pl-baodam-input mt-format-vnd bf-s-f94af44de1" required value="${escapeAttribute(baoDamVal ? model.formatVND(baoDamVal) : "")}" placeholder="Bảo đảm...">
                         </td>
-                        <td style="padding: 6px 8px;">
-                             <input type="text" class="phathanh-pl-duration-input" value="${escapeAttribute(item.thoiGianThucHien || "")}" placeholder="Thời gian..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                        <td class="bf-s-36242379f4">
+                             <input type="text" class="phathanh-pl-duration-input bf-s-f94af44de1" value="${escapeAttribute(item.thoiGianThucHien || "")}" placeholder="Thời gian...">
                         </td>
                     `;
           phanloBaodamTbody.appendChild(tr);
@@ -427,11 +428,11 @@ export function populatePhathanhHsmtForm(gt, model) {
           bindCurrencyElement(tr.querySelector(".phathanh-pl-baodam-input"), (value) => model.formatVND(model.parseVND(value)));
         });
       } else {
-        baodamContainer.style.display = "block";
+        setRuntimeStyle(baodamContainer, "display", "block");
         baodamInput.setAttribute("required", "");
         baodamInput.setAttribute("required", "true");
         baodamInput.value = gt.giaTriDamBaoDuThau ? model.formatVND(gt.giaTriDamBaoDuThau) : "";
-        phanloBaodamContainer.style.display = "none";
+        setRuntimeStyle(phanloBaodamContainer, "display", "none");
         phanloBaodamTbody.innerHTML = "";
       }
     }

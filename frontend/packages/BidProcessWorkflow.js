@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { bindCurrencyElement, debounce } from "../app/domUtils.js";
@@ -11,7 +12,7 @@ import {
   isNextEvaluationStepSaved,
   validateOpeningTime
 } from "./bidProcessValidation.js";
-import { collectOpeningBidsFromRows, resolveOpeningLookupNames, validateOpeningJointVentureMembers, validateOpeningRows } from "./bidProcessOpeningData.js";
+import { collectOpeningBidsFromRows, resolveOpeningLookupNames, validateOpeningJointVentureMembers, validateOpeningParticipantScopes, validateOpeningRows } from "./bidProcessOpeningData.js";
 import {
   applyAutoPassedEvaluation,
   applyAwardMetadata,
@@ -320,17 +321,17 @@ export function renderMoThauPanel() {
     const importExcelBtnTop = document.getElementById("btn-mothau-import-excel");
     const downloadExcelBtnTop = document.getElementById("btn-mothau-download-excel");
     if (addBidBtn2) {
-      addBidBtn2.style.display = isEditable ? "" : "none";
+      setRuntimeStyle(addBidBtn2, "display", isEditable ? "" : "none");
       addBidBtn2.innerHTML = `<i data-lucide="plus"></i> ${isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ"}`;
     }
-    if (importExcelBtnTop) importExcelBtnTop.style.display = isEditable ? "" : "none";
-    if (downloadExcelBtnTop) downloadExcelBtnTop.style.display = isEditable ? "" : "none";
+    if (importExcelBtnTop) setRuntimeStyle(importExcelBtnTop, "display", isEditable ? "" : "none");
+    if (downloadExcelBtnTop) setRuntimeStyle(downloadExcelBtnTop, "display", isEditable ? "" : "none");
     if (saveBtn2) {
       if (isReadOnly) {
         if (isNextStepSaved || isLocked) {
-          saveBtn2.style.display = "none";
+          setRuntimeStyle(saveBtn2, "display", "none");
         } else {
-          saveBtn2.style.display = "";
+          setRuntimeStyle(saveBtn2, "display", "");
           saveBtn2.innerHTML = '<i data-lucide="edit"></i> Chỉnh sửa';
           saveBtn2.className = "btn btn-primary";
           saveBtn2.onclick = () => {
@@ -340,7 +341,7 @@ export function renderMoThauPanel() {
           };
         }
       } else {
-        saveBtn2.style.display = "";
+        setRuntimeStyle(saveBtn2, "display", "");
         saveBtn2.innerHTML = `<i data-lucide="save"></i> ${isDirectOrSpecial ? "Lưu thông tin" : "Lưu thông tin mở thầu"}`;
         saveBtn2.className = "btn btn-primary";
         saveBtn2.onclick = () => this.saveThongTinMoThau();
@@ -360,96 +361,96 @@ export function renderMoThauPanel() {
     if (caseType === "TU_VAN") {
       theadHtml = `
                 <tr>
-                    <th style="width: 15%;">Loại nhà thầu</th>
-                    <th style="width: 20%;">Mã nhà thầu</th>
-                    <th style="width: 30%;">Tên nhà thầu</th>
-                    <th style="width: 15%;">Hiệu lực E-HSĐXKT</th>
-                    <th style="width: 12%;">Thời gian thực hiện</th>
-                    ${isEditable ? '<th style="width: 8%; text-align: center;">Thao tác</th>' : ""}
+                    <th class="bf-s-ad8c93e5fe">Loại nhà thầu</th>
+                    <th class="bf-s-a01153c965">Mã nhà thầu</th>
+                    <th class="bf-s-eb7671413b">Tên nhà thầu</th>
+                    <th class="bf-s-ad8c93e5fe">Hiệu lực E-HSĐXKT</th>
+                    <th class="bf-s-2811ee8f01">Thời gian thực hiện</th>
+                    ${isEditable ? '<th class="bf-s-bcc505298c">Thao tác</th>' : ""}
                 </tr>
             `;
     } else if (caseType === "1G2T_NO_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 12%;">Loại nhà thầu</th>
-                    <th style="width: 18%;">Mã nhà thầu</th>
-                    <th style="width: 25%;">Tên nhà thầu</th>
-                    <th style="width: 12%;">Đảm bảo dự thầu</th>
-                    <th style="width: 12%;">Hiệu lực đảm bảo</th>
-                    <th style="width: 13%;">Hiệu lực E-HSĐXKT</th>
-                    ${isEditable ? '<th style="width: 8%; text-align: center;">Thao tác</th>' : ""}
+                    <th class="bf-s-2811ee8f01">Loại nhà thầu</th>
+                    <th class="bf-s-fa210469db">Mã nhà thầu</th>
+                    <th class="bf-s-4a13035285">Tên nhà thầu</th>
+                    <th class="bf-s-2811ee8f01">Đảm bảo dự thầu</th>
+                    <th class="bf-s-2811ee8f01">Hiệu lực đảm bảo</th>
+                    <th class="bf-s-1e5172f548">Hiệu lực E-HSĐXKT</th>
+                    ${isEditable ? '<th class="bf-s-bcc505298c">Thao tác</th>' : ""}
                 </tr>
             `;
     } else if (caseType === "1G2T_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 10%;">Mã phần lô</th>
-                    <th style="width: 10%;">Tên phần lô</th>
-                    <th style="width: 10%;">Loại nhà thầu</th>
-                    <th style="width: 15%;">Mã nhà thầu</th>
-                    <th style="width: 20%;">Tên nhà thầu</th>
-                    <th style="width: 9%;">Đảm bảo</th>
-                    <th style="width: 9%;">Hiệu lực ĐB</th>
-                    <th style="width: 11%;">Hiệu lực E-HSĐXKT</th>
-                    ${isEditable ? '<th style="width: 6%; text-align: center;">Thao tác</th>' : ""}
+                    <th class="bf-s-ae54075f01">Mã phần lô</th>
+                    <th class="bf-s-ae54075f01">Tên phần lô</th>
+                    <th class="bf-s-ae54075f01">Loại nhà thầu</th>
+                    <th class="bf-s-ad8c93e5fe">Mã nhà thầu</th>
+                    <th class="bf-s-a01153c965">Tên nhà thầu</th>
+                    <th class="bf-s-3faf34a5d2">Đảm bảo</th>
+                    <th class="bf-s-3faf34a5d2">Hiệu lực ĐB</th>
+                    <th class="bf-s-17cdc62f3d">Hiệu lực E-HSĐXKT</th>
+                    ${isEditable ? '<th class="bf-s-e131b09644">Thao tác</th>' : ""}
                 </tr>
             `;
     } else if (caseType === "1G1T_NO_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 10%;">Loại nhà thầu</th>
-                    <th style="width: 14%;">Mã nhà thầu</th>
-                    <th style="width: 20%;">Tên nhà thầu</th>
-                    <th style="width: 10%;">Giá dự thầu</th>
-                    <th style="width: 7%;">Tỷ lệ giảm (%)</th>
-                    <th style="width: 11%;">Giá sau giảm</th>
-                    <th style="width: 9%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 9%;">Giá trị ĐB DT</th>
-                    <th style="width: 6%;">Hiệu lực ĐB</th>
-                    <th style="width: 6%;">Thời gian TH</th>
-                    ${isEditable ? '<th style="width: 4%; text-align: center;">Thao tác</th>' : ""}
+                    <th class="bf-s-ae54075f01">Loại nhà thầu</th>
+                    <th class="bf-s-c83ebbe56b">Mã nhà thầu</th>
+                    <th class="bf-s-a01153c965">Tên nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Giá dự thầu</th>
+                    <th class="bf-s-b258c3e162">Tỷ lệ giảm (%)</th>
+                    <th class="bf-s-17cdc62f3d">Giá sau giảm</th>
+                    <th class="bf-s-3faf34a5d2">Hiệu lực E-HSDT</th>
+                    <th class="bf-s-3faf34a5d2">Giá trị ĐB DT</th>
+                    <th class="bf-s-415b5d64b8">Hiệu lực ĐB</th>
+                    <th class="bf-s-415b5d64b8">Thời gian TH</th>
+                    ${isEditable ? '<th class="bf-s-f58493ae29">Thao tác</th>' : ""}
                 </tr>
             `;
     } else if (caseType === "1G1T_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 8%;">Mã phần lô</th>
-                    <th style="width: 8%;">Tên phần lô</th>
-                    <th style="width: 8%;">Loại nhà thầu</th>
-                    <th style="width: 12%;">Mã nhà thầu</th>
-                    <th style="width: 16%;">Tên nhà thầu</th>
-                    <th style="width: 8%;">Giá dự thầu</th>
-                    <th style="width: 6%;">Tỷ lệ giảm (%)</th>
-                    <th style="width: 10%;">Giá sau giảm</th>
-                    <th style="width: 8%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 8%;">Giá trị ĐB</th>
-                    <th style="width: 6%;">Hiệu lực ĐB</th>
-                    <th style="width: 6%;">Thời gian TH</th>
-                    ${isEditable ? '<th style="width: 4%; text-align: center;">Thao tác</th>' : ""}
+                    <th class="bf-s-8523765ec6">Mã phần lô</th>
+                    <th class="bf-s-8523765ec6">Tên phần lô</th>
+                    <th class="bf-s-8523765ec6">Loại nhà thầu</th>
+                    <th class="bf-s-2811ee8f01">Mã nhà thầu</th>
+                    <th class="bf-s-c264699ce5">Tên nhà thầu</th>
+                    <th class="bf-s-8523765ec6">Giá dự thầu</th>
+                    <th class="bf-s-415b5d64b8">Tỷ lệ giảm (%)</th>
+                    <th class="bf-s-ae54075f01">Giá sau giảm</th>
+                    <th class="bf-s-8523765ec6">Hiệu lực E-HSDT</th>
+                    <th class="bf-s-8523765ec6">Giá trị ĐB</th>
+                    <th class="bf-s-415b5d64b8">Hiệu lực ĐB</th>
+                    <th class="bf-s-415b5d64b8">Thời gian TH</th>
+                    ${isEditable ? '<th class="bf-s-f58493ae29">Thao tác</th>' : ""}
                 </tr>
             `;
     } else if (caseType === "DIRECT_SPECIAL_NO_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 12%;">Loại nhà thầu</th>
-                    <th style="width: 15%;">Mã nhà thầu</th>
-                    <th style="width: 25%;">Tên nhà thầu</th>
-                    <th style="width: 15%;">Giá dự thầu</th>
-                    <th style="width: 25%;">Thời gian thực hiện gói thầu</th>
-                    ${isEditable ? '<th style="width: 8%; text-align: center;">Thao tác</th>' : ""}
+                    <th class="bf-s-2811ee8f01">Loại nhà thầu</th>
+                    <th class="bf-s-ad8c93e5fe">Mã nhà thầu</th>
+                    <th class="bf-s-4a13035285">Tên nhà thầu</th>
+                    <th class="bf-s-ad8c93e5fe">Giá dự thầu</th>
+                    <th class="bf-s-4a13035285">Thời gian thực hiện gói thầu</th>
+                    ${isEditable ? '<th class="bf-s-bcc505298c">Thao tác</th>' : ""}
                 </tr>
             `;
     } else if (caseType === "DIRECT_SPECIAL_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 10%;">Mã phần lô</th>
-                    <th style="width: 10%;">Tên phần lô</th>
-                    <th style="width: 10%;">Loại nhà thầu</th>
-                    <th style="width: 12%;">Mã nhà thầu</th>
-                    <th style="width: 18%;">Tên nhà thầu</th>
-                    <th style="width: 10%;">Giá dự thầu</th>
-                    <th style="width: 20%;">Thời gian thực hiện gói thầu</th>
-                    ${isEditable ? '<th style="width: 10%; text-align: center;">Thao tác</th>' : ""}
+                    <th class="bf-s-ae54075f01">Mã phần lô</th>
+                    <th class="bf-s-ae54075f01">Tên phần lô</th>
+                    <th class="bf-s-ae54075f01">Loại nhà thầu</th>
+                    <th class="bf-s-2811ee8f01">Mã nhà thầu</th>
+                    <th class="bf-s-fa210469db">Tên nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Giá dự thầu</th>
+                    <th class="bf-s-a01153c965">Thời gian thực hiện gói thầu</th>
+                    ${isEditable ? '<th class="bf-s-59052b934c">Thao tác</th>' : ""}
                 </tr>
             `;
     }
@@ -511,12 +512,12 @@ export function openMoThauJVManager(tr) {
   modal = document.createElement("div");
   modal.id = modalId;
   modal.className = "modal-overlay active";
-  modal.style.zIndex = "2000";
+  setRuntimeStyle(modal, "zIndex", "2000");
   const card = document.createElement("div");
   card.className = "modal-card";
-  card.style.maxWidth = "600px";
-  card.style.width = "95%";
-  card.style.margin = "20px auto";
+  setRuntimeStyle(card, "maxWidth", "600px");
+  setRuntimeStyle(card, "width", "95%");
+  setRuntimeStyle(card, "margin", "20px auto");
   const header = document.createElement("div");
   header.className = "modal-header";
   header.innerHTML = `
@@ -525,7 +526,7 @@ export function openMoThauJVManager(tr) {
     `;
   const body = document.createElement("div");
   body.className = "modal-body";
-  body.style.padding = "20px";
+  setRuntimeStyle(body, "padding", "20px");
   const foundLeadNt = fallbackContractor;
   const currentLeadCode = normalizeContractorLookupCode(leadCode);
   const leadName = tr._leadMemberCode === currentLeadCode
@@ -533,28 +534,28 @@ export function openMoThauJVManager(tr) {
     : resolveLeadMemberName(foundLeadNt, leadCode);
   const displayLeadCode = leadCode || "Chưa nhập";
   body.innerHTML = `
-        <div style="background: var(--primary-soft); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 20px;">
-            <div style="font-size: 0.78rem; font-weight: 800; color: var(--primary); text-transform: uppercase; margin-bottom: 8px;">Thành viên đứng đầu liên danh</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-light); margin-bottom: 4px; display: block;">Mã/MST thành viên đứng đầu</label>
-                    <input type="text" id="jv-input-lead-code" class="form-control" value="${escapeHtml(displayLeadCode)}" readonly style="padding: 6px 10px; font-size: 0.85rem; width:100%; background: rgba(0,0,0,0.05); cursor: not-allowed;">
+        <div class="bf-s-8df25cd500">
+            <div class="bf-s-7f07b6bbca">Thành viên đứng đầu liên danh</div>
+            <div class="bf-s-16fbb6e0cf">
+                <div class="form-group bf-s-4bbf3df076">
+                    <label class="bf-s-7a5db2128e">Mã/MST thành viên đứng đầu</label>
+                    <input type="text" id="jv-input-lead-code" class="form-control bf-s-76939df48e" value="${escapeHtml(displayLeadCode)}" readonly>
                 </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-light); margin-bottom: 4px; display: block;">Tên thành viên đứng đầu</label>
-                    <input type="text" id="jv-input-lead-name" class="form-control" required placeholder="Tên thành viên đứng đầu" value="${escapeHtml(leadName)}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
+                <div class="form-group bf-s-4bbf3df076">
+                    <label class="bf-s-7a5db2128e">Tên thành viên đứng đầu</label>
+                    <input type="text" id="jv-input-lead-name" class="form-control bf-s-810c9fe5d1" required placeholder="Tên thành viên đứng đầu" value="${escapeHtml(leadName)}">
                 </div>
             </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h4 style="margin: 0; font-size: 0.88rem; font-weight: 800;">Danh sách Thành viên liên danh</h4>
-            <button type="button" class="btn btn-primary btn-sm" id="btn-add-mothau-jv-member" style="padding: 4px 10px; font-size: 0.75rem;">
+        <div class="bf-s-48e4421941">
+            <h4 class="bf-s-76334239c2">Danh sách Thành viên liên danh</h4>
+            <button type="button" class="btn btn-primary btn-sm bf-s-186f022dc5" id="btn-add-mothau-jv-member">
                 + Thêm thành viên
             </button>
         </div>
 
-        <div id="mothau-jv-members-list" style="display: flex; flex-direction: column; gap: 12px; max-height: 300px; overflow-y: auto; padding-right: 4px;">
+        <div id="mothau-jv-members-list" class="bf-s-fa71b8d74c">
             <!-- Member inputs dynamic list -->
         </div>
     `;
@@ -575,14 +576,14 @@ export function openMoThauJVManager(tr) {
     const lookupInput = getPartnerLookupInput(code);
     if (!lookupInput) return null;
     try {
-      if (inputToDim) inputToDim.style.opacity = "0.7";
+      if (inputToDim) setRuntimeStyle(inputToDim, "opacity", "0.7");
       const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
       return data ? await mapPartnerLookupToContractor(code, data) : null;
     } catch (err) {
       console.error("Tax-code lookup during bid opening failed: ", err);
       return null;
     } finally {
-      if (inputToDim) inputToDim.style.opacity = "1";
+      if (inputToDim) setRuntimeStyle(inputToDim, "opacity", "1");
     }
   };
   const fillLeadNameFromCode = async () => {
@@ -627,22 +628,22 @@ export function openMoThauJVManager(tr) {
   const addMemberRow = (member = { tenNhaThau: "", maSoThue: "" }) => {
     const rowDiv = document.createElement("div");
     rowDiv.className = "mothau-jv-member-row";
-    rowDiv.style.display = "grid";
-    rowDiv.style.gridTemplateColumns = "1fr 1fr auto";
-    rowDiv.style.gap = "10px";
-    rowDiv.style.alignItems = "center";
-    rowDiv.style.padding = "8px";
-    rowDiv.style.border = "1px solid var(--border-color)";
-    rowDiv.style.borderRadius = "var(--radius-sm)";
-    rowDiv.style.background = "var(--bg-nested, rgba(0,0,0,0.02))";
+    setRuntimeStyle(rowDiv, "display", "grid");
+    setRuntimeStyle(rowDiv, "gridTemplateColumns", "1fr 1fr auto");
+    setRuntimeStyle(rowDiv, "gap", "10px");
+    setRuntimeStyle(rowDiv, "alignItems", "center");
+    setRuntimeStyle(rowDiv, "padding", "8px");
+    setRuntimeStyle(rowDiv, "border", "1px solid var(--border-color)");
+    setRuntimeStyle(rowDiv, "borderRadius", "var(--radius-sm)");
+    setRuntimeStyle(rowDiv, "background", "var(--bg-nested, rgba(0,0,0,0.02))");
     rowDiv.innerHTML = `
-            <div class="form-group" style="margin-bottom: 0;">
-                <input type="text" class="jv-input-mst" required placeholder="Mã số thuế / Mã nhà thầu" value="${escapeHtml(member.maNhaThau || member.maSoThue || "")}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
+            <div class="form-group bf-s-4bbf3df076">
+                <input type="text" class="jv-input-mst bf-s-810c9fe5d1" required placeholder="Mã số thuế / Mã nhà thầu" value="${escapeHtml(member.maNhaThau || member.maSoThue || "")}">
             </div>
-            <div class="form-group" style="margin-bottom: 0;">
-                <input type="text" class="jv-input-ten" required placeholder="Tên nhà thầu thành viên" value="${escapeHtml(member.tenNhaThau || "")}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
+            <div class="form-group bf-s-4bbf3df076">
+                <input type="text" class="jv-input-ten bf-s-810c9fe5d1" required placeholder="Tên nhà thầu thành viên" value="${escapeHtml(member.tenNhaThau || "")}">
             </div>
-            <button type="button" class="action-btn btn-delete btn-remove-jv-row" style="padding: 6px; border:none; background:none;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
+            <button type="button" class="action-btn btn-delete btn-remove-jv-row bf-s-f499e07949"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button>
         `;
     rowDiv.querySelector(".btn-remove-jv-row").onclick = () => {
       rowDiv.remove();
@@ -756,9 +757,9 @@ export function openMoThauJVManager(tr) {
     });
     if (duplicateInputs.length > 0) {
       duplicateInputs.forEach((input) => {
-        input.style.border = "1px solid var(--danger)";
+        setRuntimeStyle(input, "border", "1px solid var(--danger)");
         input.addEventListener("input", () => {
-          input.style.border = "";
+          setRuntimeStyle(input, "border", "");
         }, { once: true });
       });
       controller?.view?.customAlert?.("Trùng mã số thuế", "Các thành viên liên danh không được trùng mã số thuế hoặc mã nhà thầu. Vui lòng kiểm tra lại!", "alert-triangle", duplicateInputs);
@@ -786,18 +787,18 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   modal = document.createElement("div");
   modal.id = modalId;
   modal.className = "modal-overlay active";
-  modal.style.zIndex = "2000";
+  setRuntimeStyle(modal, "zIndex", "2000");
   const card = document.createElement("div");
   card.className = "modal-card";
-  card.style.maxWidth = "600px";
-  card.style.width = "95%";
-  card.style.margin = "20px auto";
+  setRuntimeStyle(card, "maxWidth", "600px");
+  setRuntimeStyle(card, "width", "95%");
+  setRuntimeStyle(card, "margin", "20px auto");
   const header = document.createElement("div");
   header.className = "modal-header";
   header.innerHTML = renderJointVentureModalHeader();
   const body = document.createElement("div");
   body.className = "modal-body";
-  body.style.padding = "20px";
+  setRuntimeStyle(body, "padding", "20px");
   const appController = getAppController();
   const matchedContractor = resolveContractorVersion(appController?.model, {
     contractorVersionId: leadContractorVersionId,
@@ -809,11 +810,11 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   const displayLeadCode = escapeHtml(matchedContractor?.maNhaThau || matchedContractor?.maSoThue || leadCode || "Chưa cập nhật");
   const leadNtId = matchedContractor?.id || null;
   const leadIdAttr = escapeHtml(leadNtId || "");
-  const leadCodeHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadCode}</a>` : displayLeadCode;
-  const leadNameHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${displayLeadName}</a>` : displayLeadName;
+  const leadCodeHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${displayLeadCode}</a>` : displayLeadCode;
+  const leadNameHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${displayLeadName}</a>` : displayLeadName;
   let membersHtml = "";
   if (visibleMembers.length === 0) {
-    membersHtml = `<div style="text-align: center; color: var(--text-muted); padding: 12px;"><small>Không có Thành viên liên danh</small></div>`;
+    membersHtml = `<div class="bf-s-7fa70bc597"><small>Không có Thành viên liên danh</small></div>`;
   } else {
     membersHtml = visibleMembers.map((m, idx) => {
       const memberContractor = resolveContractorVersion(appController?.model, m);
@@ -821,17 +822,17 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
       const memberName = escapeHtml(memberContractor?.tenNhaThau || m.tenNhaThau || "--");
       const memberNtId = memberContractor?.id || null;
       const memberIdAttr = escapeHtml(memberNtId || "");
-      const mCodeHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${memberCode}</a>` : memberCode;
-      const mNameHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover" style="text-decoration: none;">${memberName}</a>` : memberName;
+      const mCodeHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${memberCode}</a>` : memberCode;
+      const mNameHtml = memberNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${memberIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${memberName}</a>` : memberName;
       return `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-nested, rgba(0,0,0,0.01)); margin-bottom: 8px;">
+                <div class="bf-s-a8d71b3a93">
                     <div>
-                        <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Mã số thuế / Mã nhà thầu</div>
-                        <div style="font-size: 0.85rem; font-weight: 600;">${mCodeHtml}</div>
+                        <div class="bf-s-68d41663ac">Mã số thuế / Mã nhà thầu</div>
+                        <div class="bf-s-f41e7182b7">${mCodeHtml}</div>
                     </div>
                     <div>
-                        <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Tên thành viên ${idx + 2}</div>
-                        <div style="font-size: 0.85rem; font-weight: 600;">${mNameHtml}</div>
+                        <div class="bf-s-68d41663ac">Tên thành viên ${idx + 2}</div>
+                        <div class="bf-s-f41e7182b7">${mNameHtml}</div>
                     </div>
                 </div>
             `;
@@ -891,7 +892,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       tr._leadMemberName = resolveLeadMemberName(foundLeadNt, ntCode);
     }
   }
-  const typeSelectHtml = readOnly ? `<span style="font-size:0.9rem;">${escapeHtml(ntType)}</span>` : `<select class="form-control mt-loai-nha-thau" required>
+  const typeSelectHtml = readOnly ? `<span class="bf-s-0e55741611">${escapeHtml(ntType)}</span>` : `<select class="form-control mt-loai-nha-thau" required>
             <option value="Độc lập" ${ntType === "Độc lập" ? "selected" : ""}>Độc lập</option>
             <option value="Liên danh" ${ntType === "Liên danh" ? "selected" : ""}>Liên danh</option>
         </select>`;
@@ -906,9 +907,9 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const lotNameValue = escapeHtml(bidData.tenPhanLo || "");
   let cellHtml = "";
   const jvBtnCount = tr._thanhVienLienDanh.length;
-  const jvDetailsHtml = readOnly ? ntType === "Liên danh" ? `<div style="margin-top:4px; font-size:0.78rem;"><a href="#" class="mt-jv-view-link" style="color:var(--primary); text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:4px;">👥 Liên danh ${jvBtnCount} thành viên</a></div>` : "" : `<div class="mt-jv-members-container" style="margin-top: 4px; display: ${ntType === "Liên danh" ? "block" : "none"};">
-            <button type="button" class="btn btn-outline btn-xs mt-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
-                <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+  const jvDetailsHtml = readOnly ? ntType === "Liên danh" ? `<div class="bf-s-7dd018fd26"><a href="#" class="mt-jv-view-link bf-s-95a6b7be8c">👥 Liên danh ${jvBtnCount} thành viên</a></div>` : "" : `<div class="mt-jv-members-container" style="margin-top: 4px; display: ${ntType === "Liên danh" ? "block" : "none"};">
+            <button type="button" class="btn btn-outline btn-xs mt-btn-manage-members bf-s-32804fa5c4">
+                <i data-lucide="users" class="bf-s-38e6fd7439"></i>
                 <span class="mt-jv-btn-text">Thành viên liên danh (${jvBtnCount})</span>
             </button>
         </div>`;
@@ -928,7 +929,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             </td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" required placeholder="Ví dụ: 120 ngày"></td>
-            <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
+            <td class="bf-s-63dbf5319a"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G2T_NO_LOT") {
     cellHtml = readOnly ? `
@@ -948,7 +949,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || ""}" required placeholder="Số tiền ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-dam-bao" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" placeholder="Hiệu lực bảo đảm"></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
-            <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
+            <td class="bf-s-63dbf5319a"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G2T_WITH_LOT") {
     let defaultLotBaoDam = "";
@@ -982,7 +983,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Số tiền ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-dam-bao" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" placeholder="Hiệu lực ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
-            <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
+            <td class="bf-s-63dbf5319a"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G1T_NO_LOT") {
     cellHtml = readOnly ? `
@@ -990,11 +991,11 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
             <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
-            <td style="text-align:right;">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
+            <td class="bf-s-5f326564a5">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
             <td>${this.model.formatVND(bidData.giaSauGiamGia) || "--"}</td>
             <td>${bidData.hieuLucHsdt || gt.hieuLucHsdt || 90 ? (bidData.hieuLucHsdt || gt.hieuLucHsdt || 90) + " ngày" : "--"}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || "--"}</td>
-            <td style="text-align:right;">${bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120 ? (bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120) + " ngày" : "--"}</td>
+            <td class="bf-s-5f326564a5">${bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120 ? (bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120) + " ngày" : "--"}</td>
             <td>${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "--")}</td>
         ` : `
             <td>${typeSelectHtml}</td>
@@ -1004,13 +1005,13 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
-            <td><input type="text" class="form-control mt-ty-le-giam-gia" value="${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}" required style="text-align: right;" placeholder="Tỷ lệ %"></td>
-            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly placeholder="..." style="background: var(--bg-input-disabled, #f1f5f9); cursor: not-allowed;"></td>
+            <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-8b424f074a" value="${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}" required placeholder="Tỷ lệ %"></td>
+            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd bf-s-d4486f7f3a" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly placeholder="..."></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiực lực"></td>
             <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || ""}" required placeholder="Giá trị ĐB"></td>
-            <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required style="text-align: right;"></td>
+            <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay bf-s-8b424f074a" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" required placeholder="Thực hiện"></td>
-            <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
+            <td class="bf-s-63dbf5319a"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G1T_WITH_LOT") {
     let defaultLotBaoDam = "";
@@ -1025,11 +1026,11 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
             <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
-            <td style="text-align:right;">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
+            <td class="bf-s-5f326564a5">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
             <td>${this.model.formatVND(bidData.giaSauGiamGia) || "--"}</td>
             <td>${bidData.hieuLucHsdt || gt.hieuLucHsdt || 90 ? (bidData.hieuLucHsdt || gt.hieuLucHsdt || 90) + " ngày" : "--"}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam || "--"}</td>
-            <td style="text-align:right;">${bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120 ? (bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120) + " ngày" : "--"}</td>
+            <td class="bf-s-5f326564a5">${bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120 ? (bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120) + " ngày" : "--"}</td>
             <td>${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "--")}</td>
         ` : `
             <td>
@@ -1046,13 +1047,13 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
-            <td><input type="text" class="form-control mt-ty-le-giam-gia" value="${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}" required style="text-align: right;" placeholder="Tỷ lệ %"></td>
-            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly placeholder="..." style="background: var(--bg-input-disabled, #f1f5f9); cursor: not-allowed;"></td>
+            <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-8b424f074a" value="${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}" required placeholder="Tỷ lệ %"></td>
+            <td><input type="text" class="form-control mt-gia-sau-giam-gia mt-format-vnd bf-s-d4486f7f3a" value="${this.model.formatVND(bidData.giaSauGiamGia) || ""}" readonly placeholder="..."></td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Giá trị ĐB"></td>
-            <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required style="text-align: right;"></td>
+            <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay bf-s-8b424f074a" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" required placeholder="Thực hiện"></td>
-            <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
+            <td class="bf-s-63dbf5319a"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "DIRECT_SPECIAL_NO_LOT") {
     const defaultDurationPkg = bidData.thoiGianThucHien || gt.thoiGianThucHien || "";
@@ -1071,7 +1072,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau || gt.giaGoiThau) || ""}" required placeholder="Giá dự thầu"></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(defaultDurationPkg)}" required placeholder="Thời gian gói"></td>
-            <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
+            <td class="bf-s-63dbf5319a"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "DIRECT_SPECIAL_WITH_LOT") {
     const defaultDurationPkg = bidData.thoiGianThucHien || gt.thoiGianThucHien || "";
@@ -1104,7 +1105,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || defaultLotPrice}" required placeholder="Giá dự thầu"></td>
             <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(defaultDurationPkg)}" required placeholder="Thời gian gói"></td>
-            <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
+            <td class="bf-s-63dbf5319a"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   }
   tr.innerHTML = cellHtml;
@@ -1135,7 +1136,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   const jvContainer = tr.querySelector(".mt-jv-members-container");
   if (selectLoai && jvContainer) {
     selectLoai.addEventListener("change", () => {
-      jvContainer.style.display = selectLoai.value === "Liên danh" ? "block" : "none";
+      setRuntimeStyle(jvContainer, "display", selectLoai.value === "Liên danh" ? "block" : "none");
     });
   }
   const btnManage = tr.querySelector(".mt-btn-manage-members");
@@ -1154,7 +1155,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       if (!lookupInput || !tr.isConnected || inputMa.value.trim() !== code) return;
       const requestId = ++lookupRequestId;
       try {
-        inputMa.style.opacity = "0.7";
+        setRuntimeStyle(inputMa, "opacity", "0.7");
         const data = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
         if (requestId !== lookupRequestId || !tr.isConnected || inputMa.value.trim() !== code) return;
         if (data?.name) {
@@ -1177,7 +1178,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       } catch (err) {
         console.error("New-contractor tax-code lookup during bid opening failed: ", err);
       } finally {
-        if (requestId === lookupRequestId) inputMa.style.opacity = "1";
+        if (requestId === lookupRequestId) setRuntimeStyle(inputMa, "opacity", "1");
       }
     };
     const scheduleRemoteLookup = debounce((code) => {
@@ -1195,7 +1196,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
         tr._leadMemberCode = normalizedCode;
       }
       if (!code) {
-        inputMa.style.opacity = "1";
+        setRuntimeStyle(inputMa, "opacity", "1");
         return;
       }
       const latestList = this.model.getLatestNhaThau();
@@ -1349,12 +1350,12 @@ export async function saveThongTinMoThau() {
     const errorEl = document.getElementById("op-thoigianmothau-error");
     if (errorEl) {
       errorEl.textContent = openingTimeValidation.message;
-      errorEl.style.display = "block";
+      setRuntimeStyle(errorEl, "display", "block");
       if (inputOpTime) {
-        inputOpTime.style.borderColor = "var(--danger)";
+        setRuntimeStyle(inputOpTime, "borderColor", "var(--danger)");
         const clearError = () => {
-          errorEl.style.display = "none";
-          inputOpTime.style.borderColor = "";
+          setRuntimeStyle(errorEl, "display", "none");
+          setRuntimeStyle(inputOpTime, "borderColor", "");
         };
         inputOpTime.addEventListener("input", clearError, { once: true });
         inputOpTime.addEventListener("change", clearError, { once: true });
@@ -1380,6 +1381,18 @@ export async function saveThongTinMoThau() {
     model: this.model,
     isDirectOrSpecial
   });
+  const participantValidation = validateOpeningParticipantScopes(tempBids, this.model.state.nhathau);
+  if (!participantValidation.valid) {
+    const lotLabel = participantValidation.lotScope === "__PACKAGE__"
+      ? "gói thầu"
+      : `phần lô ${participantValidation.bid?.maPhanLo || ""}`;
+    await this.view.customAlert(
+      "Nhà thầu tham dự bị trùng",
+      `Một nhà thầu chỉ được xuất hiện một lần trong biên bản mở thầu của cùng ${lotLabel}, kể cả khi tham dự qua liên danh khác.`,
+      "alert-triangle"
+    );
+    return;
+  }
   this.model.state.thongtinmothau = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) !== String(gtId));
   this.model.state.thongtinmothau.push(...tempBids);
   await this.model.persistData("thongtinmothau");

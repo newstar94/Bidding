@@ -44,7 +44,7 @@ export function mergeReferenceRecords(model, key, incoming) {
   });
 }
 export function applyServerSnapshot(model, dbData, options = {}) {
-  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "dashboardSummary", "partial"]);
+  const metadataKeys = /* @__PURE__ */ new Set(["deletions", "useServerSidePagination", "timestamp", "paginatedKeys", "recordManifest", "referenceData", "syncVersion", "dashboardSummary", "domainContract", "partial"]);
   const changedKeys = /* @__PURE__ */ new Set();
   const deletionsByTable = {};
   const replacementsByTable = {};
@@ -52,6 +52,9 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   const paginatedKeys = new Set(dbData.paginatedKeys || []);
   const useServerSidePagination = !!dbData.useServerSidePagination;
   const isFullInitialSync = !options.useVersionDelta && options.since === "0";
+  if (dbData.domainContract && typeof dbData.domainContract === "object") {
+    model.domainContract = Object.freeze(dbData.domainContract);
+  }
   if (isFullInitialSync || useServerSidePagination) {
     model.useServerSidePagination = useServerSidePagination;
   }

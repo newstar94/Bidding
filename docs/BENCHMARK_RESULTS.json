@@ -1,0 +1,46 @@
+{
+  "dataset": {
+    "plans": 20000,
+    "packages": 100000
+  },
+  "seedSeconds": 13.575,
+  "databaseMiB": 119.02,
+  "measurements": {
+    "dashboard": {
+      "p50Ms": 102.115,
+      "p95Ms": 108.992,
+      "maxMs": 199.495,
+      "rows": 5
+    },
+    "search": {
+      "p50Ms": 0.16,
+      "p95Ms": 0.194,
+      "maxMs": 1.083,
+      "rows": 50
+    },
+    "keysetPage": {
+      "p50Ms": 39.709,
+      "p95Ms": 41.518,
+      "maxMs": 42.669,
+      "rows": 50
+    },
+    "detail": {
+      "p50Ms": 0.014,
+      "p95Ms": 0.04,
+      "maxMs": 0.141,
+      "rows": 1
+    },
+    "syncDelta": {
+      "p50Ms": 0.397,
+      "p95Ms": 0.628,
+      "maxMs": 0.674,
+      "rows": 500
+    },
+    "fullBootstrapPage": {
+      "p50Ms": 0.635,
+      "p95Ms": 0.663,
+      "maxMs": 0.827,
+      "rows": 500
+    }
+  }
+}

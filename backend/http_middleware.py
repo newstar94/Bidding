@@ -48,16 +48,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "script-src 'self' https://accounts.google.com https://apis.google.com; "
             "style-src 'self' https://fonts.googleapis.com https://accounts.google.com; "
             "style-src-elem 'self' https://fonts.googleapis.com https://accounts.google.com; "
-            "style-src-attr 'unsafe-inline'; "
+            "style-src-attr 'none'; "
             "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
             f"connect-src {_connect_sources()}; "
             "font-src 'self' https://fonts.gstatic.com; "
             "frame-src 'self' https://accounts.google.com; "
-            "worker-src 'self'; base-uri 'self'; object-src 'none';"
+            "worker-src 'self'; base-uri 'self'; object-src 'none'; "
+            "require-trusted-types-for 'script'; trusted-types default goog#html;"
         )
-        response.headers["Content-Security-Policy-Report-Only"] = (
-            "require-trusted-types-for 'script'; trusted-types biddingflow-default;"
-        )
+        if "Content-Security-Policy-Report-Only" in response.headers:
+            del response.headers["Content-Security-Policy-Report-Only"]
         path = request.url.path
         if is_request_secure(request):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

@@ -49,6 +49,24 @@ def _xlsx_bytes():
     return output.getvalue()
 
 
+def _xlsx_formula_bytes():
+    output = io.BytesIO()
+    workbook = Workbook()
+    workbook.active["A1"] = "=WEBSERVICE(\"https://example.invalid\")"
+    workbook.save(output)
+    return output.getvalue()
+
+
+def _with_external_link_part(content):
+    source = io.BytesIO(content)
+    output = io.BytesIO()
+    with zipfile.ZipFile(source) as existing, zipfile.ZipFile(output, "w") as rewritten:
+        for info in existing.infolist():
+            rewritten.writestr(info, existing.read(info.filename))
+        rewritten.writestr("xl/externalLinks/externalLink1.xml", "<externalLink/>")
+    return output.getvalue()
+
+
 def _minimal_content_types(main_part, content_type):
     return f"""<?xml version="1.0" encoding="UTF-8"?>
     <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -67,6 +85,13 @@ def test_valid_docx_and_xlsx_uploads_pass_structural_validation():
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     _validate_excel_upload(upload, xlsx_data)
+
+
+def test_xlsx_import_rejects_formulas_and_external_link_parts():
+    with pytest.raises(UnsafeArchiveError, match="công thức"):
+        validate_ooxml_archive(_xlsx_formula_bytes(), "xlsx")
+    with pytest.raises(UnsafeArchiveError, match="liên kết ngoài"):
+        validate_ooxml_archive(_with_external_link_part(_xlsx_bytes()), "xlsx")
 
 
 def test_upload_routes_require_authentication_before_parsing_files(monkeypatch):

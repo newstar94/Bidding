@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatDate, formatCurrency, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
@@ -6,6 +7,7 @@ import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSel
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
+import { renderNeutralStatusBadge } from "../shared/statusBadges.js";
 export async function renderHopDongTable() {
   const tableBody = document.getElementById("hopdong-table").querySelector("tbody");
   const searchVal = document.getElementById("search-hopdong").value.toLowerCase();
@@ -80,12 +82,9 @@ export async function renderHopDongTable() {
       const linkedPkgs = (displayedHd.goiThauIds || []).map((gtId) => {
         const gt = goithauList.find((g) => g.id === gtId);
         if (!gt) return "";
-        return `<a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" style="margin:2px; display:inline-block;" title="${safeAttr(gt.tenGoiThau || "")}"><span class="detail-code link-hover">${escapeHtml(gt.maGoiThau || "Gói")}</span></a>`;
+        return `<a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" title="${safeAttr(gt.tenGoiThau || "")}" class="bf-s-1ab2d5a4d0"><span class="detail-code link-hover">${escapeHtml(gt.maGoiThau || "Gói")}</span></a>`;
       }).filter(Boolean).join(" ");
-      const custompaperstatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses : [];
-      const statusObj = custompaperstatuses.find((s) => s.name === displayedHd.trangThaiHoSo);
-      const statusColor = /^#[0-9a-fA-F]{6}$/.test(statusObj?.color || "") ? statusObj.color : "#6b7280";
-      const statusBadge = displayedHd.trangThaiHoSo ? `<span class="status-pill" style="background-color: ${statusColor}; color: white; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.78rem;">${escapeHtml(displayedHd.trangThaiHoSo)}</span>` : '<span class="text-muted" style="font-size:0.8rem;">Chưa cập nhật</span>';
+      const statusBadge = renderNeutralStatusBadge(displayedHd.trangThaiHoSo);
       const contractStatusBadge = `<span class="badge badge-info">${escapeHtml(displayedHd.trangThaiHopDong || "Đang thực hiện")}</span>`;
       const contractActions = displayedHd.goiThauIds?.length ? [{
         id: displayedHd.goiThauIds[0],
@@ -105,19 +104,19 @@ export async function renderHopDongTable() {
       return `
                 <tr>
                     <td>
-                        <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                            <a href="#" data-bf-action="show-contract" data-id="${safeAttr(displayedHd.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Hợp đồng" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code link-hover" style="margin: 0; line-height: 1;">${escapeHtml(displayedHd.soHopDong)}</span></a>
-                            <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                        <div class="bf-s-8c8dc52ed7">
+                            <a href="#" data-bf-action="show-contract" data-id="${safeAttr(displayedHd.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Hợp đồng"><span class="detail-code link-hover bf-s-dc5de304c3">${escapeHtml(displayedHd.soHopDong)}</span></a>
+                            <span class="bf-s-db1d8f859f">-</span>
                             ${dropdownHtml}
                         </div>
                     </td>
-                    <td style="min-width: 200px; max-width: 300px;" class="fw-bold text-wrap">${escapeHtml(displayedHd.tenHopDong)}</td>
+                    <td class="fw-bold text-wrap bf-s-0569d2208a">${escapeHtml(displayedHd.tenHopDong)}</td>
                     <td>${displayedHd.ngayKy ? formatDate(displayedHd.ngayKy) : "--"}</td>
-                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${escapeHtml(cdtName)}</td>
-                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${ntNameHtml}</td>
+                    <td class="text-wrap bf-s-3ce088a59b">${escapeHtml(cdtName)}</td>
+                    <td class="text-wrap bf-s-3ce088a59b">${ntNameHtml}</td>
                     <td class="fw-bold text-blue">${formatCurrency(displayedHd.giaTri)}</td>
                     <td><span class="badge badge-info">${escapeHtml(displayedHd.loaiHopDong || "Trọn gói")}</span></td>
-                    <td><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${escapeHtml(displayedHd.phanLoai || "Tư vấn")}</span></td>
+                    <td><span class="badge badge-secondary bf-s-f9ecd915ac">${escapeHtml(displayedHd.phanLoai || "Tư vấn")}</span></td>
                     <td>${escapeHtml(displayedHd.soNgayThucHien ? isNaN(displayedHd.soNgayThucHien) ? displayedHd.soNgayThucHien : `${displayedHd.soNgayThucHien} ngày` : "--")}</td>
                     <td>${contractStatusBadge}</td>
                     <td>${statusBadge}</td>
@@ -158,12 +157,12 @@ export function renderContractVersionDetails(versionId) {
     const latestContract = this.model.getLatestContract(versionId);
     const isLatest = latestContract && latestContract.id === versionId;
     if (isLatest) {
-      editBtn.style.display = "flex";
+      setRuntimeStyle(editBtn, "display", "flex");
       editBtn.onclick = () => {
         executeAppCommand("editHopDong", versionId);
       };
     } else {
-      editBtn.style.display = "none";
+      setRuntimeStyle(editBtn, "display", "none");
     }
   }
   const cdt = this.model.state.chudautu.find((c) => c.id === hd.chuDauTuId);
@@ -175,10 +174,7 @@ export function renderContractVersionDetails(versionId) {
   const linkedPkgs = (hd.goiThauIds || []).map((gtId) => {
     return goithauList.find((g) => g.id === gtId);
   }).filter(Boolean);
-  const custompaperstatuses = this.model.state.custompaperstatuses || [];
-  const statusObj = custompaperstatuses.find((s) => s.name === hd.trangThaiHoSo);
-  const statusColor = /^#[0-9a-fA-F]{6}$/.test(statusObj?.color || "") ? statusObj.color : "#6b7280";
-  const statusBadge = hd.trangThaiHoSo ? `<span class="status-pill" style="background-color: ${statusColor}; color: white; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.85rem;">${escapeHtml(hd.trangThaiHoSo)}</span>` : '<span class="text-muted">Chưa cập nhật</span>';
+  const statusBadge = renderNeutralStatusBadge(hd.trangThaiHoSo);
   const contractStatusBadge = `<span class="badge badge-info">${escapeHtml(hd.trangThaiHopDong || "Đang thực hiện")}</span>`;
   const rootId = hd.rootId || hd.id;
   const allRelated = this.model.state.hopdong.filter((h) => (h.rootId || h.id) === rootId);
@@ -201,22 +197,22 @@ export function renderContractVersionDetails(versionId) {
     return `<option value="${safeAttr(h.id)}" ${h.id === versionId ? "selected" : ""}>${escapeHtml(label)}</option>`;
   }).join("");
   const versionSelectHtml = `
-        <select id="fullpage-hd-version-select" class="page-version-select" style="min-width: 100px; max-width: 320px; width: auto;">
+        <select id="fullpage-hd-version-select" class="page-version-select bf-s-0c44a9336a">
             ${selectOptionsHtml}
         </select>
     `;
   const html = `
         <div class="detail-section">
-            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${escapeHtml(hd.soHopDong || "--")}</span>
-                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+            <div class="detail-header-block bf-s-08b722fa44">
+                <div class="bf-s-a36b98e9db">
+                    <div class="bf-s-bbf072f32c">
+                        <span class="detail-code bf-s-018b1c91c7">${escapeHtml(hd.soHopDong || "--")}</span>
+                        <span class="version-separator bf-s-ada7b4c5a3">-</span>
                         ${versionSelectHtml}
                     </div>
                 </div>
-                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${escapeHtml(hd.tenHopDong || "Hợp đồng không có tên")}</h4>
-                <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <h4 class="detail-title bf-s-4749e65682">${escapeHtml(hd.tenHopDong || "Hợp đồng không có tên")}</h4>
+                <div class="bf-s-2d505736cb">
                     ${contractStatusBadge}
                     ${statusBadge}
                 </div>
@@ -237,7 +233,7 @@ export function renderContractVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Giá trị hợp đồng</div>
-                    <div class="detail-value text-blue fw-bold" style="font-size: 1.15rem;">${formatCurrency(hd.giaTri)}</div>
+                    <div class="detail-value text-blue fw-bold bf-s-61f44adbb8">${formatCurrency(hd.giaTri)}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Loại hợp đồng</div>
@@ -245,7 +241,7 @@ export function renderContractVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Phân loại</div>
-                    <div class="detail-value"><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">${escapeHtml(hd.phanLoai || "Tư vấn")}</span></div>
+                    <div class="detail-value"><span class="badge badge-secondary bf-s-f9ecd915ac">${escapeHtml(hd.phanLoai || "Tư vấn")}</span></div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Thời gian thực hiện</div>
@@ -253,7 +249,7 @@ export function renderContractVersionDetails(versionId) {
                 </div>
             </div>
 
-            <div class="detail-grid" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+            <div class="detail-grid bf-s-090b21d06a">
                 <div class="detail-item">
                     <div class="detail-label">Quyết định chỉ định thầu</div>
                     <div class="detail-value">${hd.coQdChiDinh === 1 ? '<span class="badge badge-success">Có quyết định</span>' : '<span class="badge badge-secondary">Không</span>'}</div>
@@ -270,12 +266,12 @@ export function renderContractVersionDetails(versionId) {
                 ` : ""}
             </div>
 
-            <div class="detail-sub-section" style="margin-top: 24px;">
+            <div class="detail-sub-section bf-s-a005516828">
                 <h5 class="detail-sub-title">Thông tin Chủ đầu tư</h5>
                 ${cdt ? `
                     <div class="associated-item">
                         <div>
-                            <strong style="font-size: 0.9rem;">${escapeHtml(cdt.tenChuDauTu)}</strong><br>
+                            <strong class="bf-s-a91dac6c9e">${escapeHtml(cdt.tenChuDauTu)}</strong><br>
                             <small class="text-muted">Mã số thuế: ${escapeHtml(cdt.maSoThue || "--")} | Địa chỉ: ${escapeHtml((cdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}</small>
                         </div>
                         <span class="associated-badge">${escapeHtml(cdt.maChuDauTu || "--")}</span>
@@ -284,7 +280,7 @@ export function renderContractVersionDetails(versionId) {
             </div>
 
             ${hd.ngayThanhLy ? `
-            <div class="detail-sub-section" style="margin-top: 24px;">
+            <div class="detail-sub-section bf-s-a005516828">
                 <h5 class="detail-sub-title">Thông tin đối tác tại thời điểm thanh lý</h5>
                 <div class="associated-item">
                     <div><strong>Chủ đầu tư:</strong> ${escapeHtml(liquidationCdt?.tenChuDauTu || "--")} (phiên bản ${escapeHtml(liquidationCdt?.phienBan || "--")})</div>
@@ -292,12 +288,12 @@ export function renderContractVersionDetails(versionId) {
                 </div>
             </div>` : ""}
 
-            <div class="detail-sub-section" style="margin-top: 24px;">
+            <div class="detail-sub-section bf-s-a005516828">
                 <h5 class="detail-sub-title">Thông tin Nhà thầu trúng thầu</h5>
                 ${nt ? `
                     <div class="associated-item">
                         <div>
-                            <strong style="font-size: 0.9rem;">${escapeHtml(nt.tenNhaThau)}</strong><br>
+                            <strong class="bf-s-a91dac6c9e">${escapeHtml(nt.tenNhaThau)}</strong><br>
                             <small class="text-muted">Mã số thuế: ${escapeHtml(nt.maSoThue || "--")} | Đại diện: ${escapeHtml(nt.nguoiDaiDien || "--")}</small>
                         </div>
                         <span class="associated-badge">${escapeHtml(nt.maNhaThau || "NHA_THAU")}</span>
@@ -306,24 +302,24 @@ export function renderContractVersionDetails(versionId) {
             </div>
 
             ${kh ? `
-                <div class="detail-sub-section" style="margin-top: 24px;">
+                <div class="detail-sub-section bf-s-a005516828">
                     <h5 class="detail-sub-title">Kế hoạch lựa chọn nhà thầu liên kết</h5>
-                    <div class="associated-item" style="cursor: pointer;" data-bf-action="show-plan" data-id="${safeAttr(kh.id)}">
+                    <div class="associated-item bf-s-ecfbb78629" data-bf-action="show-plan" data-id="${safeAttr(kh.id)}">
                         <div>
-                            <strong style="font-size: 0.9rem; color: var(--primary);">${escapeHtml(kh.tenKeHoach)}</strong><br>
+                            <strong class="bf-s-bafb444301">${escapeHtml(kh.tenKeHoach)}</strong><br>
                             <small class="text-muted">Mã KH: ${escapeHtml(kh.maKeHoach || "--")} | Tổng mức: ${formatCurrency(kh.tongMucDauTu)}</small>
                         </div>
                     </div>
                 </div>
             ` : ""}
 
-            <div class="detail-sub-section" style="margin-top: 24px;">
-                <h5 class="detail-sub-title" style="color: var(--primary);">Các gói thầu thuộc hợp đồng (${linkedPkgs.length})</h5>
+            <div class="detail-sub-section bf-s-a005516828">
+                <h5 class="detail-sub-title bf-s-fcb5ddef65">Các gói thầu thuộc hợp đồng (${linkedPkgs.length})</h5>
                 <div class="associated-list">
                     ${linkedPkgs.length > 0 ? linkedPkgs.map((gt) => `
-                        <div class="associated-item" style="cursor: pointer;" data-bf-action="show-package" data-id="${safeAttr(gt.id)}">
+                        <div class="associated-item bf-s-ecfbb78629" data-bf-action="show-package" data-id="${safeAttr(gt.id)}">
                             <div class="associated-info">
-                                <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
+                                <i data-lucide="briefcase" class="text-blue bf-s-0f88141c20"></i>
                                 <span><strong>${escapeHtml(gt.maGoiThau || "--")}</strong> - ${escapeHtml(gt.tenGoiThau || "--")}</span>
                             </div>
                             <span class="badge badge-success">${formatCurrency(gt.giaGoiThau)}</span>

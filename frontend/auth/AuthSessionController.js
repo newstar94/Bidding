@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { applyAccessContext } from "./accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -40,7 +41,7 @@ export function checkInactivity() {
           await this.view.customAlert("Phiên làm việc hết hạn", "Bạn đã không hoạt động trong ứng dụng hơn " + timeoutHours + " giờ. Vui lòng đăng nhập lại để đảm bảo bảo mật thông tin.", "clock");
         } else {
           const banner = document.createElement("div");
-          banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-weight:700;font-size:0.9rem;text-align:center;";
+          setRuntimeStyle(banner, "cssText", "position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-weight:700;font-size:0.9rem;text-align:center;");
           banner.textContent = "⏳ Phiên làm việc hết hạn — Vui lòng đăng nhập lại để đảm bảo bảo mật.";
           document.body.prepend(banner);
           setTimeout(() => banner.remove(), 5e3);
@@ -49,14 +50,14 @@ export function checkInactivity() {
       showSessionExpired();
       const overlay = document.getElementById("auth-overlay");
       if (overlay) {
-        overlay.style.display = "flex";
-        document.querySelector(".app-container").style.filter = "blur(10px)";
+        setRuntimeStyle(overlay, "display", "flex");
+        setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
         const formLogin = document.getElementById("form-auth-login");
         const formRegister = document.getElementById("form-auth-register");
         const formForgot = document.getElementById("form-auth-forgot");
-        formLogin.style.display = "block";
-        formRegister.style.display = "none";
-        formForgot.style.display = "none";
+        setRuntimeStyle(formLogin, "display", "block");
+        setRuntimeStyle(formRegister, "display", "none");
+        setRuntimeStyle(formForgot, "display", "none");
         document.getElementById("login-username").value = "";
         document.getElementById("login-password").value = "";
       }
@@ -89,14 +90,14 @@ export function startBackgroundSessionChecker() {
         this.model.clearSessionData();
         const overlay = document.getElementById("auth-overlay");
         if (overlay) {
-          overlay.style.display = "flex";
-          document.querySelector(".app-container").style.filter = "blur(10px)";
+          setRuntimeStyle(overlay, "display", "flex");
+          setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
           const formLogin = document.getElementById("form-auth-login");
           const formRegister = document.getElementById("form-auth-register");
           const formForgot = document.getElementById("form-auth-forgot");
-          if (formLogin) formLogin.style.display = "block";
-          if (formRegister) formRegister.style.display = "none";
-          if (formForgot) formForgot.style.display = "none";
+          if (formLogin) setRuntimeStyle(formLogin, "display", "block");
+          if (formRegister) setRuntimeStyle(formRegister, "display", "none");
+          if (formForgot) setRuntimeStyle(formForgot, "display", "none");
           document.getElementById("login-username").value = "";
           document.getElementById("login-password").value = "";
         }

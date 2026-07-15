@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 from io import BytesIO
 from urllib.parse import quote
 from starlette.responses import StreamingResponse, JSONResponse
@@ -23,6 +24,7 @@ from backend.documents.document_worker import (
     run_document_job,
     run_document_job_async,
 )
+from backend.documents.upload_spooling import spooled_upload
 import backend.documents.docx_service as docx_service
 from backend.documents.docx_bid_context_service import (
     enrich_context_with_filtered_bidders,
@@ -201,14 +203,23 @@ def _persist_user_template(user_id, filename, content):
     custom_exporter.set_active_template(filename, user_id)
 
 
-def _validate_docx_upload(filename, content, *, deep_validation=True):
+def _persist_user_template_from_path(user_id, filename, source_path):
+    user_dir = os.path.realpath(custom_exporter.get_user_template_dir(user_id))
+    dest_path = os.path.realpath(os.path.join(user_dir, filename))
+    if not dest_path.startswith(user_dir + os.sep):
+        raise ValueError("Tên tệp không hợp lệ")
+    shutil.copyfile(source_path, dest_path)
+    custom_exporter.set_active_template(filename, user_id)
+
+
+def _validate_docx_upload(filename, content, *, deep_validation=True, total_size=None):
     safe_name = _safe_filename(filename, f"template_{uuid.uuid4().hex[:8]}.docx")
     root, ext = os.path.splitext(safe_name)
     if ext.lower() != '.docx':
         raise ValueError('Chỉ cho phép tải lên tệp .docx')
     if not content:
         raise ValueError('Tệp tải lên đang trống')
-    if len(content) > MAX_TEMPLATE_UPLOAD_BYTES:
+    if (total_size if total_size is not None else len(content)) > MAX_TEMPLATE_UPLOAD_BYTES:
         raise ValueError('Tệp mẫu vượt quá giới hạn 10MB')
     if deep_validation:
         run_document_job("validate_docx", {"content": content}, timeout_seconds=15)
@@ -417,28 +428,20 @@ async def upload_template_api(request):
         if not file_obj:
             return JSONResponse({"success": False, "error": "Không tìm thấy tệp tin tải lên!"}, status_code=400)
 
-        content = await file_obj.read()
-        try:
-            filename = _validate_docx_upload(
-                file_obj.filename,
-                content,
-                deep_validation=False,
-            )
-            await run_document_job_async(
-                "validate_docx",
-                {"content": content},
-                timeout_seconds=15,
-            )
-        except ValueError as e:
-            return _docx_error(request, e, "upload_template_api")
+        async with spooled_upload(file_obj, max_bytes=MAX_TEMPLATE_UPLOAD_BYTES, suffix=".docx") as (upload_path, upload_size, head):
+            try:
+                filename = _validate_docx_upload(
+                    file_obj.filename, head, deep_validation=False, total_size=upload_size,
+                )
+                await run_document_job_async(
+                    "validate_docx", {"content_path": str(upload_path)}, timeout_seconds=15,
+                )
+            except ValueError as e:
+                return _docx_error(request, e, "upload_template_api")
 
-        await run_blocking_io(
-            _persist_user_template,
-            user_id,
-            filename,
-            content,
-            timeout_seconds=10,
-        )
+            await run_blocking_io(
+                _persist_user_template_from_path, user_id, filename, str(upload_path), timeout_seconds=10,
+            )
         return JSONResponse({"success": True, "filename": filename})
     except DocumentWorkerError as e:
         return _docx_error(request, e, "upload_template_api")

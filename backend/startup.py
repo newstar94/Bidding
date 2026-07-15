@@ -6,6 +6,7 @@ without starting the ASGI server or touching the configured application DB.
 
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -109,6 +110,18 @@ def validate_startup_configuration(database, environ=None):
         if str(environ.get("DATA_AT_REST_ENCRYPTION_CONFIRMED", "")).strip().lower() != "true":
             raise StartupValidationError(
                 "DATA_AT_REST_ENCRYPTION_CONFIRMED=true is required after verifying encrypted runtime and backup volumes."
+            )
+        rotation_text = str(environ.get("SECRET_ROTATION_CONFIRMED_AT", "")).strip()
+        try:
+            rotation_date = datetime.strptime(rotation_text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError as exc:
+            raise StartupValidationError(
+                "SECRET_ROTATION_CONFIRMED_AT must be an ISO date recording the latest credential rotation."
+            ) from exc
+        rotation_age_days = (datetime.now(timezone.utc).date() - rotation_date.date()).days
+        if rotation_age_days < 0 or rotation_age_days > 90:
+            raise StartupValidationError(
+                "SMTP/OAuth/application credentials must be rotated and SECRET_ROTATION_CONFIRMED_AT refreshed at least every 90 days."
             )
         if str(environ.get("APP_DEBUG", "")).strip().lower() not in {"false", "0", "no"}:
             raise StartupValidationError("APP_DEBUG=False is required in production.")

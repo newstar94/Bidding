@@ -36,7 +36,7 @@ function createAuthModel() {
           sessionStorage.removeItem(storageKey);
         }
       });
-      ["bf_session_token", "bf_username", "bf_user_id"].forEach((key) => {
+      ["bf_username", "bf_user_id"].forEach((key) => {
         localStorage.removeItem(key);
         sessionStorage.removeItem(key);
       });

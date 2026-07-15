@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "./runtimeStyles.js";
 export { getAuthDownloadUrl, authFetchDownload } from "./workflow_helpers.js";
 import { formatCurrency as formatVndCurrency, formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "./formatters.js";
 import { hasUnifiedSelectListener, markUnifiedSelectListenerRegistered } from "./runtimeState.js";
@@ -55,7 +56,7 @@ export function formatDateOnly(dateStr) {
 export function initCustomSelect(selectId) {
   const select = document.getElementById(selectId);
   if (!select) return;
-  select.setAttribute("style", "display: none !important;");
+  setRuntimeStyle(select, "display", "none");
   if (!hasUnifiedSelectListener()) {
     document.addEventListener("click", (e) => {
       document.querySelectorAll(".custom-select-container.open").forEach((w) => {
@@ -64,7 +65,7 @@ export function initCustomSelect(selectId) {
         if (!w.contains(e.target) && !(absoluteDropdown && absoluteDropdown.contains(e.target))) {
           w.classList.remove("open");
           if (absoluteDropdown) {
-            absoluteDropdown.style.display = "none";
+            setRuntimeStyle(absoluteDropdown, "display", "none");
             w.appendChild(absoluteDropdown);
           }
         }
@@ -77,7 +78,7 @@ export function initCustomSelect(selectId) {
         const absoluteDropdown = document.querySelector(`.custom-select-options[data-parent="${targetId}"]`);
         w.classList.remove("open");
         if (absoluteDropdown) {
-          absoluteDropdown.style.display = "none";
+          setRuntimeStyle(absoluteDropdown, "display", "none");
           w.appendChild(absoluteDropdown);
         }
       });
@@ -104,14 +105,14 @@ export function initCustomSelect(selectId) {
     if (isVersionSelect) wrapper.classList.add("version-select-container");
     if (select.classList.contains("page-version-select")) wrapper.classList.add("page-version-select");
     wrapper.setAttribute("data-target", selectId);
-    wrapper.style.position = "relative";
+    setRuntimeStyle(wrapper, "position", "relative");
     select.parentNode.insertBefore(wrapper, select.nextSibling);
     wrapper.innerHTML = `
             <div class="custom-select-trigger">
                 <span>${safeTriggerText}</span>
                 ${isVersionSelect ? "" : `
                 <div class="custom-select-trigger-arrow">
-                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                    <i data-lucide="chevron-down" class="bf-s-58050124fc"></i>
                 </div>
                 `}
             </div>
@@ -134,21 +135,21 @@ export function initCustomSelect(selectId) {
       if (!wasOpen && optionsList) {
         wrapper.classList.add("open");
         document.body.appendChild(optionsList);
-        optionsList.style.display = "block";
+        setRuntimeStyle(optionsList, "display", "block");
         const rect = trigger.getBoundingClientRect();
         const scrollX = window.scrollX || window.pageXOffset;
         const scrollY = window.scrollY || window.pageYOffset;
-        optionsList.style.position = "absolute";
-        optionsList.style.minWidth = rect.width + "px";
-        optionsList.style.left = rect.left + scrollX + "px";
+        setRuntimeStyle(optionsList, "position", "absolute");
+        setRuntimeStyle(optionsList, "minWidth", rect.width + "px");
+        setRuntimeStyle(optionsList, "left", rect.left + scrollX + "px");
         const dropdownHeight = optionsList.offsetHeight || 200;
         const spaceBelow = window.innerHeight - rect.bottom;
         if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
           wrapper.classList.add("drop-up");
-          optionsList.style.top = rect.top + scrollY - dropdownHeight - 4 + "px";
+          setRuntimeStyle(optionsList, "top", rect.top + scrollY - dropdownHeight - 4 + "px");
         } else {
           wrapper.classList.remove("drop-up");
-          optionsList.style.top = rect.bottom + scrollY + 4 + "px";
+          setRuntimeStyle(optionsList, "top", rect.bottom + scrollY + 4 + "px");
         }
       }
     });
@@ -181,14 +182,14 @@ export function initCustomSelect(selectId) {
     activeOptionsList.querySelectorAll(".custom-option-item").forEach((li) => {
       li.addEventListener("mouseover", () => {
         if (!li.classList.contains("selected")) {
-          li.style.backgroundColor = "var(--neutral-soft)";
-          li.style.color = "var(--primary)";
+          setRuntimeStyle(li, "backgroundColor", "var(--neutral-soft)");
+          setRuntimeStyle(li, "color", "var(--primary)");
         }
       });
       li.addEventListener("mouseout", () => {
         if (!li.classList.contains("selected")) {
-          li.style.backgroundColor = "";
-          li.style.color = "var(--text-main)";
+          setRuntimeStyle(li, "backgroundColor", "");
+          setRuntimeStyle(li, "color", "var(--text-main)");
         }
       });
       li.addEventListener("click", (e) => {
@@ -196,7 +197,7 @@ export function initCustomSelect(selectId) {
         select.value = li.getAttribute("data-value");
         select.dispatchEvent(new Event("change", { bubbles: true }));
         wrapper.classList.remove("open");
-        activeOptionsList.style.display = "none";
+        setRuntimeStyle(activeOptionsList, "display", "none");
         wrapper.appendChild(activeOptionsList);
         initCustomSelect(selectId);
       });
@@ -212,7 +213,7 @@ export function syncCustomSelectDisabled(selectEl) {
     wrapper.classList.remove("open");
     const optionsList = document.body.querySelector(`.custom-select-options[data-parent="${selectEl.id}"]`) || wrapper.querySelector(".custom-select-options");
     if (optionsList) {
-      optionsList.style.display = "none";
+      setRuntimeStyle(optionsList, "display", "none");
       wrapper.appendChild(optionsList);
     }
   }

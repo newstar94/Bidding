@@ -3,10 +3,13 @@
 import asyncio
 import json
 
+from starlette.websockets import WebSocketDisconnect
+
 from backend.shared.helpers import database
 from backend.shared.async_io import run_blocking_io
 from backend.shared.origin_policy import is_websocket_origin_allowed
 from backend.auth.session_store import load_session_user, session_invalid_reason
+from backend.shared.logging_utils import log_error
 
 
 active_connections = {}
@@ -103,8 +106,10 @@ async def sync_websocket_endpoint(websocket):
                     if not _owner:
                         await websocket.close(code=4001)
                         return
-                except Exception:
-                    pass
+                except Exception as auth_recheck_error:
+                    log_error(auth_recheck_error, "websocket_auth_recheck", level="WARN")
+                    await websocket.close(code=4001)
+                    return
 
             try:
 
@@ -117,7 +122,7 @@ async def sync_websocket_endpoint(websocket):
                     msg_in = json.loads(raw)
 
 
-                except Exception:
+                except (json.JSONDecodeError, TypeError):
                     pass
             except asyncio.TimeoutError:
                 if _waiting_pong:
@@ -128,7 +133,7 @@ async def sync_websocket_endpoint(websocket):
                 await websocket.send_text('{"type":"ping"}')
                 _waiting_pong = True
 
-    except Exception:
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         if organization_id and organization_id in active_connections:
@@ -260,8 +265,8 @@ async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
             cleanup_counter = 0
             try:
                 await run_blocking_io(_cleanup_broker_events, timeout_seconds=10.0)
-            except Exception:
-                pass
+            except Exception as broker_cleanup_error:
+                log_error(broker_cleanup_error, "websocket_broker_cleanup", level="WARN")
         await asyncio.sleep(poll_interval)
 
 
@@ -280,8 +285,8 @@ def disconnect_user_websockets(user_id):
         return
     try:
         _store_broker_event("revoke_user", user_id=normalized_user_id)
-    except Exception:
-        pass
+    except Exception as revoke_store_error:
+        log_error(revoke_store_error, "websocket_revoke_store", level="WARN")
     try:
         asyncio.get_running_loop().create_task(_disconnect_user_local(normalized_user_id))
     except RuntimeError:

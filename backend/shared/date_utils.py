@@ -47,6 +47,14 @@ def normalize_datetime_value(value):
     return parsed.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def normalize_date_value(value):
+    """Canonical persisted business date without a synthetic midnight."""
+    parsed = parse_datetime_value(value)
+    if not parsed:
+        return value
+    return parsed.strftime("%Y-%m-%d")
+
+
 def utc_now_sql():
     """Canonical persisted technical timestamp: UTC, second precision."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")

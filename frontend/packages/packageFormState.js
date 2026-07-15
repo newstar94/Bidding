@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 export function resetPackageFormEditableState(form) {
   if (!form) return;
   form.querySelectorAll(".form-group").forEach((group) => group.classList.remove("invalid"));
@@ -9,10 +10,10 @@ export function resetPackageFormEditableState(form) {
   });
   form.querySelectorAll("button").forEach((button) => {
     button.disabled = false;
-    button.style.display = "";
+    setRuntimeStyle(button, "display", "");
   });
   const submitButton = form.querySelector('button[type="submit"]');
-  if (submitButton) submitButton.style.display = "";
+  if (submitButton) setRuntimeStyle(submitButton, "display", "");
 }
 export function setPackageSubTableActionsVisible(visible) {
   const display = visible ? "" : "none";
@@ -22,19 +23,19 @@ export function setPackageSubTableActionsVisible(visible) {
     "btn-them-traloilamro"
   ].forEach((buttonId) => {
     const button = document.getElementById(buttonId);
-    if (button) button.style.display = display;
+    if (button) setRuntimeStyle(button, "display", display);
   });
   document.querySelectorAll(
     "#giahan-table .col-action, #yeucaulamro-table .col-action, #traloilamro-table .col-action"
   ).forEach((cell) => {
-    cell.style.display = display;
+    setRuntimeStyle(cell, "display", display);
   });
   document.querySelectorAll(
     "#gt-giahan-tbody .remove-gh-row-btn, #gt-yeucaulamro-tbody .remove-yc-row-btn, #gt-traloilamro-tbody .remove-tl-row-btn"
   ).forEach((button) => {
     const cell = button.closest("td");
-    if (cell) cell.style.display = display;
-    button.style.display = display;
+    if (cell) setRuntimeStyle(cell, "display", display);
+    setRuntimeStyle(button, "display", display);
   });
 }
 
@@ -42,10 +43,6 @@ export function unifyTableInputsHeight(container) {
   const parent = container || document;
   const elements = parent.querySelectorAll(".data-table .form-control, #mothau-table .form-control, #danhgiahsdt-table .form-control");
   elements.forEach((element) => {
-    element.style.setProperty("height", "38px", "important");
-    element.style.setProperty("box-sizing", "border-box", "important");
-    element.style.setProperty("padding", "6px 12px", "important");
-    element.style.setProperty("font-size", "0.85rem", "important");
-    element.style.setProperty("border-radius", "var(--radius-md)", "important");
+    setRuntimeStyle(element, "cssText", "height:38px!important;box-sizing:border-box!important;padding:6px 12px!important;font-size:.85rem!important;border-radius:var(--radius-md)!important");
   });
 }

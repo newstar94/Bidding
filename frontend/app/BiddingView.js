@@ -1,3 +1,4 @@
+import { getRuntimeStyle, setRuntimeStyle } from "../shared/runtimeStyles.js";
 import * as SystemUser from "../admin/SystemUserView.js";
 import { escapeHtml, initCustomSelect, syncCustomSelectDisabled } from "../shared/view_helpers.js";
 import { ensureFlatpickrLoaded } from "../shared/externalAssets.js";
@@ -6,6 +7,7 @@ import { validateForm as validateConfiguredForm } from "../shared/FormValidation
 import { installPrototypeModules } from "./moduleRegistry.js";
 import { executeAppCommand } from "./commandBus.js";
 import { getAppController } from "./controllerRef.js";
+import { renderPackageStatusBadge } from "../shared/statusBadges.js";
 
 const VIEW_MODULE_LOADERS = Object.freeze({
   dashboard: () => import("./DashboardView.js"),
@@ -133,7 +135,7 @@ export class BiddingView {
           if (existingContainer) {
             existingContainer.remove();
             if (!hasSearchableWrapper) {
-              select.style.display = "";
+              setRuntimeStyle(select, "display", "");
             }
           }
         }
@@ -148,9 +150,9 @@ export class BiddingView {
   enhanceTableHeaders(tableOrId, tableKey) {
     let table = typeof tableOrId === "string" ? document.getElementById(tableOrId) : tableOrId;
     if (!table) return;
-    const svgUnsorted = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-up-down" style="display: block;"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>`;
-    const svgAsc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up" style="display: block;"><path d="m18 15-6-6-6 6"/></svg>`;
-    const svgDesc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" style="display: block;"><path d="m6 9 6 6 6-6"/></svg>`;
+    const svgUnsorted = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-up-down bf-s-bd877e16c3"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>`;
+    const svgAsc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up bf-s-bd877e16c3"><path d="m18 15-6-6-6 6"/></svg>`;
+    const svgDesc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down bf-s-bd877e16c3"><path d="m6 9 6 6 6-6"/></svg>`;
     if (!tableKey && table.id) {
       const idMap = {
         "kehoach-table": "kehoach",
@@ -245,15 +247,15 @@ export class BiddingView {
       const field = mapping ? mapping[normText] : null;
       let container = th.querySelector(".sort-header-container");
       if (!container) {
-        th.style.cursor = "pointer";
-        th.style.userSelect = "none";
+        setRuntimeStyle(th, "cursor", "pointer");
+        setRuntimeStyle(th, "userSelect", "none");
         const headerText = th.textContent;
         const sortContainer = document.createElement("div");
         sortContainer.className = "sort-header-container";
         const label = document.createElement("span");
         label.className = "th-label";
-        label.style.flexGrow = "1";
-        label.style.textAlign = "inherit";
+        setRuntimeStyle(label, "flexGrow", "1");
+        setRuntimeStyle(label, "textAlign", "inherit");
         label.textContent = headerText;
         const icon = document.createElement("span");
         icon.className = "sort-icon-btn";
@@ -273,9 +275,9 @@ export class BiddingView {
                 if (otherIcon) {
                   otherIcon.innerHTML = svgUnsorted;
                   otherIcon.classList.remove("active");
-                  otherIcon.style.opacity = "";
-                  otherIcon.style.color = "";
-                  otherIcon.style.fontWeight = "";
+                  setRuntimeStyle(otherIcon, "opacity", "");
+                  setRuntimeStyle(otherIcon, "color", "");
+                  setRuntimeStyle(otherIcon, "fontWeight", "");
                 }
               }
             });
@@ -284,9 +286,9 @@ export class BiddingView {
             if (iconBtn) {
               iconBtn.innerHTML = currentOrder === "asc" ? svgAsc : svgDesc;
               iconBtn.classList.add("active");
-              iconBtn.style.opacity = "";
-              iconBtn.style.color = "";
-              iconBtn.style.fontWeight = "";
+              setRuntimeStyle(iconBtn, "opacity", "");
+              setRuntimeStyle(iconBtn, "color", "");
+              setRuntimeStyle(iconBtn, "fontWeight", "");
             }
             const tbody = table.querySelector("tbody");
             if (tbody) {
@@ -329,15 +331,15 @@ export class BiddingView {
           if (currentSort.field === field) {
             iconBtn.innerHTML = currentSort.order === "asc" ? svgAsc : svgDesc;
             iconBtn.classList.add("active");
-            iconBtn.style.opacity = "";
-            iconBtn.style.color = "";
-            iconBtn.style.fontWeight = "";
+            setRuntimeStyle(iconBtn, "opacity", "");
+            setRuntimeStyle(iconBtn, "color", "");
+            setRuntimeStyle(iconBtn, "fontWeight", "");
           } else {
             iconBtn.innerHTML = svgUnsorted;
             iconBtn.classList.remove("active");
-            iconBtn.style.opacity = "";
-            iconBtn.style.color = "";
-            iconBtn.style.fontWeight = "";
+            setRuntimeStyle(iconBtn, "opacity", "");
+            setRuntimeStyle(iconBtn, "color", "");
+            setRuntimeStyle(iconBtn, "fontWeight", "");
           }
         }
       }
@@ -370,14 +372,14 @@ export class BiddingView {
     const setupPlugins = (instance) => {
       const footer = document.createElement("div");
       footer.className = "flatpickr-footer";
-      footer.style.display = "flex";
-      footer.style.justifyContent = "flex-end";
-      footer.style.gap = "8px";
+      setRuntimeStyle(footer, "display", "flex");
+      setRuntimeStyle(footer, "justifyContent", "flex-end");
+      setRuntimeStyle(footer, "gap", "8px");
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
       cancelBtn.className = "btn btn-outline";
       cancelBtn.textContent = "Hủy";
-      cancelBtn.style.borderRadius = "var(--radius-sm)";
+      setRuntimeStyle(cancelBtn, "borderRadius", "var(--radius-sm)");
       cancelBtn.onclick = (e) => {
         e.stopPropagation();
         instance.close();
@@ -386,7 +388,7 @@ export class BiddingView {
       confirmBtn.type = "button";
       confirmBtn.className = "btn btn-primary";
       confirmBtn.textContent = "Xác nhận";
-      confirmBtn.style.borderRadius = "var(--radius-sm)";
+      setRuntimeStyle(confirmBtn, "borderRadius", "var(--radius-sm)");
       confirmBtn.onclick = (e) => {
         e.stopPropagation();
         instance.close();
@@ -399,7 +401,7 @@ export class BiddingView {
       if (!gridOverlay) {
         gridOverlay = document.createElement("div");
         gridOverlay.className = "flatpickr-grid-overlay";
-        gridOverlay.style.display = "none";
+        setRuntimeStyle(gridOverlay, "display", "none");
         const footerEl = container2.querySelector(".flatpickr-footer");
         if (footerEl) {
           container2.insertBefore(gridOverlay, footerEl);
@@ -409,14 +411,14 @@ export class BiddingView {
       }
       const showGrid = (type) => {
         const innerContainer = container2.querySelector(".flatpickr-innerContainer");
-        if (innerContainer) innerContainer.style.display = "none";
+        if (innerContainer) setRuntimeStyle(innerContainer, "display", "none");
         const timeContainer = container2.querySelector(".flatpickr-time");
-        if (timeContainer) timeContainer.style.display = "none";
+        if (timeContainer) setRuntimeStyle(timeContainer, "display", "none");
         const prevMonth = container2.querySelector(".flatpickr-prev-month");
         const nextMonth = container2.querySelector(".flatpickr-next-month");
-        if (prevMonth) prevMonth.style.display = "none";
-        if (nextMonth) nextMonth.style.display = "none";
-        gridOverlay.style.display = "block";
+        if (prevMonth) setRuntimeStyle(prevMonth, "display", "none");
+        if (nextMonth) setRuntimeStyle(nextMonth, "display", "none");
+        setRuntimeStyle(gridOverlay, "display", "block");
         gridOverlay.innerHTML = "";
         if (type === "month") {
           gridOverlay.className = "flatpickr-grid-overlay flatpickr-month-grid-mode";
@@ -485,24 +487,24 @@ export class BiddingView {
         }
       };
       const hideGrid = () => {
-        gridOverlay.style.display = "none";
+        setRuntimeStyle(gridOverlay, "display", "none");
         const innerContainer = container2.querySelector(".flatpickr-innerContainer");
-        if (innerContainer) innerContainer.style.display = "";
+        if (innerContainer) setRuntimeStyle(innerContainer, "display", "");
         const timeContainer = container2.querySelector(".flatpickr-time");
-        if (timeContainer) timeContainer.style.display = "";
+        if (timeContainer) setRuntimeStyle(timeContainer, "display", "");
         const prevMonth = container2.querySelector(".flatpickr-prev-month");
         const nextMonth = container2.querySelector(".flatpickr-next-month");
-        if (prevMonth) prevMonth.style.display = "";
-        if (nextMonth) nextMonth.style.display = "";
+        if (prevMonth) setRuntimeStyle(prevMonth, "display", "");
+        if (nextMonth) setRuntimeStyle(nextMonth, "display", "");
       };
       const monthElement = container2.querySelector(".flatpickr-current-month");
       if (monthElement) {
         const curMonthSpan = monthElement.querySelector(".cur-month");
         if (curMonthSpan) {
-          curMonthSpan.style.cursor = "pointer";
+          setRuntimeStyle(curMonthSpan, "cursor", "pointer");
           curMonthSpan.onclick = (e) => {
             e.stopPropagation();
-            if (gridOverlay.style.display === "block" && gridOverlay.classList.contains("flatpickr-month-grid-mode")) {
+            if (getRuntimeStyle(gridOverlay, "display") === "block" && gridOverlay.classList.contains("flatpickr-month-grid-mode")) {
               hideGrid();
             } else {
               showGrid("month");
@@ -511,10 +513,10 @@ export class BiddingView {
         }
         const yearInputWrapper = monthElement.querySelector(".numInputWrapper");
         if (yearInputWrapper) {
-          yearInputWrapper.style.cursor = "pointer";
+          setRuntimeStyle(yearInputWrapper, "cursor", "pointer");
           yearInputWrapper.onclick = (e) => {
             e.stopPropagation();
-            if (gridOverlay.style.display === "block" && gridOverlay.classList.contains("flatpickr-year-grid-mode")) {
+            if (getRuntimeStyle(gridOverlay, "display") === "block" && gridOverlay.classList.contains("flatpickr-year-grid-mode")) {
               hideGrid();
             } else {
               showGrid("year");
@@ -522,7 +524,7 @@ export class BiddingView {
           };
           const yearInput = yearInputWrapper.querySelector(".cur-year");
           if (yearInput) {
-            yearInput.style.pointerEvents = "none";
+            setRuntimeStyle(yearInput, "pointerEvents", "none");
           }
         }
       }
@@ -594,27 +596,27 @@ export class BiddingView {
       const closeBtn = document.getElementById("btn-dialog-close");
       titleEl.textContent = title;
       messageEl.textContent = message;
-      cancelBtn.style.display = "block";
-      if (closeBtn) closeBtn.style.display = "block";
+      setRuntimeStyle(cancelBtn, "display", "block");
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       iconEl.setAttribute("data-lucide", iconName);
       if (iconName === "trash-2" || iconName === "user-x" || iconName === "log-out") {
-        iconContainer.style.background = "var(--danger-soft)";
-        iconContainer.style.color = "var(--danger)";
+        setRuntimeStyle(iconContainer, "background", "var(--danger-soft)");
+        setRuntimeStyle(iconContainer, "color", "var(--danger)");
         okBtn.className = "btn btn-primary bg-danger";
-        okBtn.style.background = "var(--danger)";
-        okBtn.style.borderColor = "var(--danger)";
+        setRuntimeStyle(okBtn, "background", "var(--danger)");
+        setRuntimeStyle(okBtn, "borderColor", "var(--danger)");
       } else if (iconName === "alert-triangle" || iconName === "alert-circle" || iconName === "info" || iconName === "help-circle" || iconName === "save") {
-        iconContainer.style.background = "var(--warning-soft)";
-        iconContainer.style.color = "var(--warning)";
+        setRuntimeStyle(iconContainer, "background", "var(--warning-soft)");
+        setRuntimeStyle(iconContainer, "color", "var(--warning)");
         okBtn.className = "btn btn-primary bg-warning";
-        okBtn.style.background = "var(--warning)";
-        okBtn.style.borderColor = "var(--warning)";
+        setRuntimeStyle(okBtn, "background", "var(--warning)");
+        setRuntimeStyle(okBtn, "borderColor", "var(--warning)");
       } else {
-        iconContainer.style.background = "rgba(59, 130, 246, 0.1)";
-        iconContainer.style.color = "var(--primary)";
+        setRuntimeStyle(iconContainer, "background", "rgba(59, 130, 246, 0.1)");
+        setRuntimeStyle(iconContainer, "color", "var(--primary)");
         okBtn.className = "btn btn-primary";
-        okBtn.style.background = "";
-        okBtn.style.borderColor = "";
+        setRuntimeStyle(okBtn, "background", "");
+        setRuntimeStyle(okBtn, "borderColor", "");
       }
       lucide.createIcons();
       const onOk = () => {
@@ -652,38 +654,38 @@ export class BiddingView {
       const closeBtn = document.getElementById("btn-dialog-close");
       titleEl.textContent = title;
       messageEl.textContent = message;
-      if (closeBtn) closeBtn.style.display = "block";
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       iconEl.setAttribute("data-lucide", "trash-2");
-      iconContainer.style.background = "var(--danger-soft)";
-      iconContainer.style.color = "var(--danger)";
+      setRuntimeStyle(iconContainer, "background", "var(--danger-soft)");
+      setRuntimeStyle(iconContainer, "color", "var(--danger)");
       const originalButtonsHtml = buttonContainer.innerHTML;
-      const originalFlexDirection = buttonContainer.style.flexDirection;
-      const originalGap = buttonContainer.style.gap;
+      const originalFlexDirection = getRuntimeStyle(buttonContainer, "flex-direction");
+      const originalGap = getRuntimeStyle(buttonContainer, "gap");
       const cardEl = modal.querySelector(".modal-card");
-      const originalCardWidth = cardEl.style.width;
-      const originalCardMaxWidth = cardEl.style.maxWidth;
-      cardEl.style.setProperty("width", "480px", "important");
-      cardEl.style.setProperty("max-width", "480px", "important");
-      buttonContainer.style.flexDirection = "row";
-      buttonContainer.style.gap = "10px";
+      const originalCardWidth = getRuntimeStyle(cardEl, "width");
+      const originalCardMaxWidth = getRuntimeStyle(cardEl, "max-width");
+      setRuntimeStyle(cardEl, "width", "480px");
+      setRuntimeStyle(cardEl, "maxWidth", "480px");
+      setRuntimeStyle(buttonContainer, "flexDirection", "row");
+      setRuntimeStyle(buttonContainer, "gap", "10px");
       buttonContainer.replaceChildren();
       const cancelChoiceBtn = document.createElement("button");
       cancelChoiceBtn.type = "button";
       cancelChoiceBtn.className = "btn btn-outline";
       cancelChoiceBtn.id = "btn-dialog-cancel";
-      cancelChoiceBtn.style.cssText = "flex: 1; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; height: 38px;";
+      setRuntimeStyle(cancelChoiceBtn, "cssText", "flex: 1; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; height: 38px;");
       cancelChoiceBtn.textContent = "Huy";
       const opt1ChoiceBtn = document.createElement("button");
       opt1ChoiceBtn.type = "button";
       opt1ChoiceBtn.className = "btn btn-primary";
       opt1ChoiceBtn.id = "btn-dialog-opt1";
-      opt1ChoiceBtn.style.cssText = "flex: 1.6; background: var(--warning); border-color: var(--warning); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;";
+      setRuntimeStyle(opt1ChoiceBtn, "cssText", "flex: 1.6; background: var(--warning); border-color: var(--warning); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;");
       opt1ChoiceBtn.textContent = option1Text;
       const opt2ChoiceBtn = document.createElement("button");
       opt2ChoiceBtn.type = "button";
       opt2ChoiceBtn.className = "btn btn-primary";
       opt2ChoiceBtn.id = "btn-dialog-opt2";
-      opt2ChoiceBtn.style.cssText = "flex: 1.6; background: var(--danger); border-color: var(--danger); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;";
+      setRuntimeStyle(opt2ChoiceBtn, "cssText", "flex: 1.6; background: var(--danger); border-color: var(--danger); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;");
       opt2ChoiceBtn.textContent = option2Text;
       buttonContainer.append(cancelChoiceBtn, opt1ChoiceBtn, opt2ChoiceBtn);
       lucide.createIcons();
@@ -712,10 +714,10 @@ export class BiddingView {
         cancelBtn.removeEventListener("click", onCancel);
         if (closeBtn) closeBtn.removeEventListener("click", onClose);
         modal.classList.remove("active");
-        cardEl.style.width = originalCardWidth;
-        cardEl.style.maxWidth = originalCardMaxWidth;
-        buttonContainer.style.flexDirection = originalFlexDirection;
-        buttonContainer.style.gap = originalGap;
+        setRuntimeStyle(cardEl, "width", originalCardWidth);
+        setRuntimeStyle(cardEl, "maxWidth", originalCardMaxWidth);
+        setRuntimeStyle(buttonContainer, "flexDirection", originalFlexDirection);
+        setRuntimeStyle(buttonContainer, "gap", originalGap);
         buttonContainer.innerHTML = originalButtonsHtml;
       };
       opt1Btn.addEventListener("click", onOpt1);
@@ -737,22 +739,22 @@ export class BiddingView {
       const closeBtn = document.getElementById("btn-dialog-close");
       titleEl.textContent = title;
       iconEl.setAttribute("data-lucide", "help-circle");
-      iconContainer.style.background = "rgba(59, 130, 246, 0.1)";
-      iconContainer.style.color = "var(--primary)";
+      setRuntimeStyle(iconContainer, "background", "rgba(59, 130, 246, 0.1)");
+      setRuntimeStyle(iconContainer, "color", "var(--primary)");
       okBtn.className = "btn btn-primary";
-      okBtn.style.background = "";
-      okBtn.style.borderColor = "";
+      setRuntimeStyle(okBtn, "background", "");
+      setRuntimeStyle(okBtn, "borderColor", "");
       const originalMessageText = messageEl.textContent;
-      const originalMessageStyle = messageEl.style.display;
-      cancelBtn.style.display = "block";
-      if (closeBtn) closeBtn.style.display = "block";
+      const originalMessageStyle = getRuntimeStyle(messageEl, "display");
+      setRuntimeStyle(cancelBtn, "display", "block");
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       const promptText = document.createElement("div");
-      promptText.style.marginBottom = "12px";
+      setRuntimeStyle(promptText, "marginBottom", "12px");
       promptText.textContent = message;
       const selectEl = document.createElement("select");
       selectEl.id = "dialog-custom-select";
       selectEl.className = "form-control";
-      selectEl.style.cssText = "width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;";
+      setRuntimeStyle(selectEl, "cssText", "width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;");
       options.forEach((opt) => {
         const optionEl = document.createElement("option");
         optionEl.value = String(opt?.value ?? "");
@@ -782,7 +784,7 @@ export class BiddingView {
         if (closeBtn) closeBtn.removeEventListener("click", onClose);
         modal.classList.remove("active");
         messageEl.textContent = originalMessageText;
-        messageEl.style.display = originalMessageStyle;
+        setRuntimeStyle(messageEl, "display", originalMessageStyle);
       };
       okBtn.addEventListener("click", onOk);
       cancelBtn.addEventListener("click", onCancel);
@@ -797,9 +799,9 @@ export class BiddingView {
       document.body.appendChild(loader);
     }
     loader.className = "loading";
-    loader.style.width = "0%";
+    setRuntimeStyle(loader, "width", "0%");
     loader.offsetWidth;
-    loader.style.width = "90%";
+    setRuntimeStyle(loader, "width", "90%");
   }
   hideLoader() {
     const loader = document.getElementById("top-bar-loader");
@@ -863,7 +865,7 @@ export class BiddingView {
       actionButton.type = "button";
       actionButton.className = "bf-toast-action";
       actionButton.textContent = options.actionLabel;
-      actionButton.style.cssText = "margin-top: 8px; align-self: flex-start; border: 0; background: transparent; color: var(--primary); font-weight: 700; cursor: pointer; padding: 0;";
+      setRuntimeStyle(actionButton, "cssText", "margin-top: 8px; align-self: flex-start; border: 0; background: transparent; color: var(--primary); font-weight: 700; cursor: pointer; padding: 0;");
       actionButton.addEventListener("click", () => {
         options.onAction();
         dismissToast();
@@ -918,22 +920,22 @@ export class BiddingView {
       titleEl.textContent = title;
       const plainMessage = String(message || "").replace(/<br\s*\/?>/gi, "\n");
       if (plainMessage && plainMessage.includes("\n")) {
-        messageEl.style.whiteSpace = "pre-wrap";
-        messageEl.style.textAlign = "left";
-        messageEl.style.fontSize = "0.85rem";
-        messageEl.style.maxHeight = "340px";
-        messageEl.style.overflowY = "auto";
+        setRuntimeStyle(messageEl, "whiteSpace", "pre-wrap");
+        setRuntimeStyle(messageEl, "textAlign", "left");
+        setRuntimeStyle(messageEl, "fontSize", "0.85rem");
+        setRuntimeStyle(messageEl, "maxHeight", "340px");
+        setRuntimeStyle(messageEl, "overflowY", "auto");
         messageEl.textContent = plainMessage;
       } else {
-        messageEl.style.whiteSpace = "";
-        messageEl.style.textAlign = "";
-        messageEl.style.fontSize = "";
-        messageEl.style.maxHeight = "";
-        messageEl.style.overflowY = "";
+        setRuntimeStyle(messageEl, "whiteSpace", "");
+        setRuntimeStyle(messageEl, "textAlign", "");
+        setRuntimeStyle(messageEl, "fontSize", "");
+        setRuntimeStyle(messageEl, "maxHeight", "");
+        setRuntimeStyle(messageEl, "overflowY", "");
         messageEl.textContent = plainMessage;
       }
-      cancelBtn.style.display = "none";
-      if (closeBtn) closeBtn.style.display = "block";
+      setRuntimeStyle(cancelBtn, "display", "none");
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       let elements = [];
       if (focusTarget) {
         const activePane = document.querySelector(".tab-pane.active");
@@ -972,29 +974,29 @@ export class BiddingView {
       });
       iconEl.setAttribute("data-lucide", iconName);
       if (iconName === "check-circle") {
-        iconContainer.style.background = "rgba(16, 185, 129, 0.1)";
-        iconContainer.style.color = "var(--success)";
+        setRuntimeStyle(iconContainer, "background", "rgba(16, 185, 129, 0.1)");
+        setRuntimeStyle(iconContainer, "color", "var(--success)");
         okBtn.className = "btn btn-primary";
-        okBtn.style.background = "";
-        okBtn.style.borderColor = "";
+        setRuntimeStyle(okBtn, "background", "");
+        setRuntimeStyle(okBtn, "borderColor", "");
       } else if (iconName === "alert-triangle" || iconName === "alert-circle" || iconName === "info" || iconName === "save") {
-        iconContainer.style.background = "var(--warning-soft)";
-        iconContainer.style.color = "var(--warning)";
+        setRuntimeStyle(iconContainer, "background", "var(--warning-soft)");
+        setRuntimeStyle(iconContainer, "color", "var(--warning)");
         okBtn.className = "btn btn-primary bg-warning";
-        okBtn.style.background = "var(--warning)";
-        okBtn.style.borderColor = "var(--warning)";
+        setRuntimeStyle(okBtn, "background", "var(--warning)");
+        setRuntimeStyle(okBtn, "borderColor", "var(--warning)");
       } else if (iconName === "x-circle" || iconName === "trash-2" || iconName === "user-x" || iconName === "log-out") {
-        iconContainer.style.background = "var(--danger-soft)";
-        iconContainer.style.color = "var(--danger)";
+        setRuntimeStyle(iconContainer, "background", "var(--danger-soft)");
+        setRuntimeStyle(iconContainer, "color", "var(--danger)");
         okBtn.className = "btn btn-primary bg-danger";
-        okBtn.style.background = "var(--danger)";
-        okBtn.style.borderColor = "var(--danger)";
+        setRuntimeStyle(okBtn, "background", "var(--danger)");
+        setRuntimeStyle(okBtn, "borderColor", "var(--danger)");
       } else {
-        iconContainer.style.background = "rgba(59, 130, 246, 0.1)";
-        iconContainer.style.color = "var(--primary)";
+        setRuntimeStyle(iconContainer, "background", "rgba(59, 130, 246, 0.1)");
+        setRuntimeStyle(iconContainer, "color", "var(--primary)");
         okBtn.className = "btn btn-primary";
-        okBtn.style.background = "";
-        okBtn.style.borderColor = "";
+        setRuntimeStyle(okBtn, "background", "");
+        setRuntimeStyle(okBtn, "borderColor", "");
       }
       lucide.createIcons();
       const triggerFocus = () => {
@@ -1034,28 +1036,28 @@ export class BiddingView {
       const closeBtn = document.getElementById("btn-dialog-close");
       titleEl.textContent = title;
       messageEl.textContent = message;
-      cancelBtn.style.display = "block";
-      if (closeBtn) closeBtn.style.display = "block";
+      setRuntimeStyle(cancelBtn, "display", "block");
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       const inputContainer = document.createElement("div");
       inputContainer.id = "dialog-prompt-container";
-      inputContainer.style.marginTop = "8px";
-      inputContainer.style.marginBottom = "20px";
-      inputContainer.style.textAlign = "left";
+      setRuntimeStyle(inputContainer, "marginTop", "8px");
+      setRuntimeStyle(inputContainer, "marginBottom", "20px");
+      setRuntimeStyle(inputContainer, "textAlign", "left");
       const inputEl = document.createElement("input");
       inputEl.type = inputType;
       inputEl.id = "dialog-prompt-input";
       inputEl.value = defaultValue;
       inputEl.placeholder = placeholder;
-      inputEl.style.width = "100%";
-      inputEl.style.padding = "10px 14px";
-      inputEl.style.border = "1px solid var(--border-color)";
-      inputEl.style.borderRadius = "var(--radius-md)";
-      inputEl.style.background = "var(--bg-card)";
-      inputEl.style.color = "var(--text-main)";
-      inputEl.style.fontFamily = "inherit";
-      inputEl.style.fontSize = "0.95rem";
-      inputEl.style.outline = "none";
-      inputEl.style.boxSizing = "border-box";
+      setRuntimeStyle(inputEl, "width", "100%");
+      setRuntimeStyle(inputEl, "padding", "10px 14px");
+      setRuntimeStyle(inputEl, "border", "1px solid var(--border-color)");
+      setRuntimeStyle(inputEl, "borderRadius", "var(--radius-md)");
+      setRuntimeStyle(inputEl, "background", "var(--bg-card)");
+      setRuntimeStyle(inputEl, "color", "var(--text-main)");
+      setRuntimeStyle(inputEl, "fontFamily", "inherit");
+      setRuntimeStyle(inputEl, "fontSize", "0.95rem");
+      setRuntimeStyle(inputEl, "outline", "none");
+      setRuntimeStyle(inputEl, "boxSizing", "border-box");
       inputContainer.appendChild(inputEl);
       messageEl.parentNode.insertBefore(inputContainer, messageEl.nextSibling);
       if (isDatePicker) {
@@ -1069,11 +1071,11 @@ export class BiddingView {
         setTimeout(() => inputEl.focus(), 100);
       }
       iconEl.setAttribute("data-lucide", "calendar");
-      iconContainer.style.background = "rgba(59, 130, 246, 0.1)";
-      iconContainer.style.color = "var(--primary)";
+      setRuntimeStyle(iconContainer, "background", "rgba(59, 130, 246, 0.1)");
+      setRuntimeStyle(iconContainer, "color", "var(--primary)");
       okBtn.className = "btn btn-primary";
-      okBtn.style.background = "";
-      okBtn.style.borderColor = "";
+      setRuntimeStyle(okBtn, "background", "");
+      setRuntimeStyle(okBtn, "borderColor", "");
       lucide.createIcons();
       const onOk = async () => {
         let val = inputEl.value;
@@ -1087,18 +1089,18 @@ export class BiddingView {
             if (!errEl) {
               errEl = document.createElement("div");
               errEl.id = "dialog-prompt-error";
-              errEl.style.color = "var(--danger)";
-              errEl.style.fontSize = "0.78rem";
-              errEl.style.marginTop = "6px";
-              errEl.style.fontWeight = "600";
+              setRuntimeStyle(errEl, "color", "var(--danger)");
+              setRuntimeStyle(errEl, "fontSize", "0.78rem");
+              setRuntimeStyle(errEl, "marginTop", "6px");
+              setRuntimeStyle(errEl, "fontWeight", "600");
               inputEl.parentNode.appendChild(errEl);
             }
             errEl.textContent = errorMsg;
-            errEl.style.display = "block";
-            inputEl.style.borderColor = "var(--danger)";
+            setRuntimeStyle(errEl, "display", "block");
+            setRuntimeStyle(inputEl, "borderColor", "var(--danger)");
             const clearError = () => {
-              errEl.style.display = "none";
-              inputEl.style.borderColor = "";
+              setRuntimeStyle(errEl, "display", "none");
+              setRuntimeStyle(inputEl, "borderColor", "");
             };
             inputEl.addEventListener("input", clearError, { once: true });
             inputEl.addEventListener("change", clearError, { once: true });
@@ -1199,25 +1201,25 @@ export class BiddingView {
       }
       titleEl.textContent = title;
       messageEl.textContent = message;
-      if (closeBtn) closeBtn.style.display = "none";
+      if (closeBtn) setRuntimeStyle(closeBtn, "display", "none");
       if (iconContainer && iconEl) {
-        iconContainer.style.background = "var(--warning-soft)";
-        iconContainer.style.color = "var(--warning)";
+        setRuntimeStyle(iconContainer, "background", "var(--warning-soft)");
+        setRuntimeStyle(iconContainer, "color", "var(--warning)");
         iconEl.setAttribute("data-lucide", "alert-circle");
         if (window.lucide) window.lucide.createIcons({ root: iconContainer });
       }
       buttonsContainer.innerHTML = `
-                <button type="button" class="btn btn-outline" id="btn-conflict-server" style="flex: 1; font-size: 0.8rem; padding: 6px 8px;">Dùng bản Server</button>
-                <button type="button" class="btn btn-outline" id="btn-conflict-local" style="flex: 1; font-size: 0.8rem; padding: 6px 8px;">Dùng bản Local</button>
-                <button type="button" class="btn btn-primary" id="btn-conflict-new" style="flex: 1; font-size: 0.8rem; padding: 6px 8px;">Tạo bản mới</button>
+                <button type="button" class="btn btn-outline bf-s-f6af272ae6" id="btn-conflict-server">Dùng bản Server</button>
+                <button type="button" class="btn btn-outline bf-s-f6af272ae6" id="btn-conflict-local">Dùng bản Local</button>
+                <button type="button" class="btn btn-primary bf-s-f6af272ae6" id="btn-conflict-new">Tạo bản mới</button>
             `;
       const cleanUp = (result) => {
         modal.classList.remove("active");
         buttonsContainer.innerHTML = `
-                    <button type="button" class="btn btn-outline" id="btn-dialog-cancel" style="flex: 1;">Hủy</button>
-                    <button type="button" class="btn btn-primary" id="btn-dialog-ok" style="flex: 1;">Xác nhận</button>
+                    <button type="button" class="btn btn-outline bf-s-649f9eeb60" id="btn-dialog-cancel">Hủy</button>
+                    <button type="button" class="btn btn-primary bf-s-649f9eeb60" id="btn-dialog-ok">Xác nhận</button>
                 `;
-        if (closeBtn) closeBtn.style.display = "block";
+        if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
         resolve(result);
       };
       const btnServer = document.getElementById("btn-conflict-server");
@@ -1230,15 +1232,7 @@ export class BiddingView {
     });
   }
   getStatusBadge(status) {
-    const maps = {
-      "Chuẩn bị": '<span class="badge badge-neutral"><i data-lucide="circle-dot"></i> Chuẩn bị</span>',
-      "Đang mời thầu": '<span class="badge badge-info"><i data-lucide="megaphone"></i> Đang mời thầu</span>',
-      "Đã mở thầu": '<span class="badge" style="background-color: #f59e0b; color: white;"><i data-lucide="folder-open"></i> Đã mở thầu</span>',
-      "Đang chấm thầu": '<span class="badge badge-warning"><i data-lucide="award"></i> Đang chấm thầu</span>',
-      "Đã có kết quả": '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đã có kết quả</span>',
-      "Hủy thầu": '<span class="badge badge-danger"><i data-lucide="x-circle"></i> Hủy thầu</span>'
-    };
-    return maps[status] || `<span class="badge">${escapeHtml(status)}</span>`;
+    return renderPackageStatusBadge(status);
   }
 }
 installPrototypeModules(BiddingView, [

@@ -26,9 +26,12 @@ def test_homepage_serves_compiled_html():
     csp = response.headers["content-security-policy"]
     assert "style-src 'self' https://fonts.googleapis.com" in csp
     assert "style-src-elem 'self'" in csp
-    assert "style-src-attr 'unsafe-inline'" in csp
+    assert "style-src-attr 'none'" in csp
     assert "style-src 'self' 'unsafe-inline'" not in csp
-    assert "require-trusted-types-for 'script'" in response.headers["content-security-policy-report-only"]
+    assert "style-src-attr 'unsafe-inline'" not in csp
+    assert "require-trusted-types-for 'script'" in csp
+    assert "trusted-types default goog#html" in csp
+    assert "content-security-policy-report-only" not in response.headers
 
 
 def test_holidays_api_returns_json_object():

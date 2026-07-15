@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "./runtimeStyles.js";
 const virtualStates = /* @__PURE__ */ new WeakMap();
 export function clearVirtualTable(tbody) {
   const state = virtualStates.get(tbody);
@@ -26,9 +27,9 @@ export function renderVirtualTable(tbody, rows, renderRow, options = {}) {
     return false;
   }
   container.classList.add("virtual-table-container");
-  container.style.overflow = "auto";
-  if (!container.style.maxHeight) {
-    container.style.maxHeight = options.maxHeight || "calc(100vh - 280px)";
+  setRuntimeStyle(container, "overflow", "auto");
+  if (!getComputedStyle(container).maxHeight || getComputedStyle(container).maxHeight === "none") {
+    setRuntimeStyle(container, "maxHeight", options.maxHeight || "calc(100vh - 280px)");
   }
   let rafId = null;
   const renderWindow = () => {

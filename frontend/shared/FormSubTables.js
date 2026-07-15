@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "./runtimeStyles.js";
 ﻿import { parseBidDateTime } from "./dateParseUtils.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { escapeHtml } from "./view_helpers.js";
@@ -27,12 +28,12 @@ export function addPhanLoRow(data = {}) {
   const displayStyle = linhVuc !== "Tư vấn" && !isDirectOrSpecial ? "" : "display: none;";
   const requiredAttr = isBaoDamRequired ? "required" : "";
   tr.innerHTML = `
-        <td><input type="text" class="pl-code-input" value="${escapeHtml(code)}" placeholder="Mã phần lô..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="pl-name-input" value="${escapeHtml(name)}" placeholder="Nhập tên Lô/Phần..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="pl-price-input" value="${price ? this.model.formatVND(price) : ""}" placeholder="Nhập giá trị Lô (VND)..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td class="col-baodam-phanlo-cell" style="${displayStyle}"><input type="text" class="pl-baodam-input mt-format-vnd" ${requiredAttr} value="${baoDamVal ? this.model.formatVND(baoDamVal) : ""}" placeholder="Bảo đảm dự thầu..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="pl-duration-input" value="${escapeHtml(duration)}" placeholder="Ví dụ: 90 ngày..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-pl-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
+        <td><input type="text" class="pl-code-input bf-s-e278f41ed9" value="${escapeHtml(code)}" placeholder="Mã phần lô..."></td>
+        <td><input type="text" class="pl-name-input bf-s-e278f41ed9" value="${escapeHtml(name)}" placeholder="Nhập tên Lô/Phần..."></td>
+        <td><input type="text" class="pl-price-input bf-s-e278f41ed9" value="${price ? this.model.formatVND(price) : ""}" placeholder="Nhập giá trị Lô (VND)..."></td>
+        <td class="col-baodam-phanlo-cell" style="${displayStyle}"><input type="text" class="pl-baodam-input mt-format-vnd bf-s-e278f41ed9" ${requiredAttr} value="${baoDamVal ? this.model.formatVND(baoDamVal) : ""}" placeholder="Bảo đảm dự thầu..."></td>
+        <td><input type="text" class="pl-duration-input bf-s-e278f41ed9" value="${escapeHtml(duration)}" placeholder="Ví dụ: 90 ngày..."></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-pl-row-btn bf-s-b1e83e90e6"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
     `;
   const priceInput = tr.querySelector(".pl-price-input");
   bindCurrencyElement(priceInput, (value) => this.model.formatVND(this.model.parseVND(value)));
@@ -94,12 +95,12 @@ export function addTuyChonMuaThemRow(data = {}) {
   const tyLe = data.tyLe || data.percent || "";
   const giaTriUocTinh = data.giaTriUocTinh || data.price || 0;
   tr.innerHTML = `
-        <td><input type="text" class="tc-name-input" value="${escapeHtml(hangMuc)}" placeholder="Tên tùy chọn mua thêm..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="tc-unit-input" value="${escapeHtml(donVi)}" placeholder="Ví dụ: Cái, Bộ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="number" class="tc-quantity-input" value="${escapeHtml(soLuong)}" placeholder="Khối lượng..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="number" class="tc-percent-input" value="${escapeHtml(tyLe)}" placeholder="Tỷ lệ %..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="tc-price-input" value="${giaTriUocTinh ? this.model.formatVND(giaTriUocTinh) : ""}" placeholder="Giá trị (VND)..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-tc-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
+        <td><input type="text" class="tc-name-input bf-s-e278f41ed9" value="${escapeHtml(hangMuc)}" placeholder="Tên tùy chọn mua thêm..."></td>
+        <td><input type="text" class="tc-unit-input bf-s-e278f41ed9" value="${escapeHtml(donVi)}" placeholder="Ví dụ: Cái, Bộ..."></td>
+        <td><input type="number" class="tc-quantity-input bf-s-e278f41ed9" value="${escapeHtml(soLuong)}" placeholder="Khối lượng..."></td>
+        <td><input type="number" class="tc-percent-input bf-s-e278f41ed9" value="${escapeHtml(tyLe)}" placeholder="Tỷ lệ %..."></td>
+        <td><input type="text" class="tc-price-input bf-s-e278f41ed9" value="${giaTriUocTinh ? this.model.formatVND(giaTriUocTinh) : ""}" placeholder="Giá trị (VND)..."></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-tc-row-btn bf-s-b1e83e90e6"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
     `;
   const priceInput = tr.querySelector(".tc-price-input");
   bindCurrencyElement(priceInput, (value) => this.model.formatVND(this.model.parseVND(value)));
@@ -161,7 +162,7 @@ export function validateGiaHanRealtime() {
   rows.forEach((tr, index) => {
     const timeInput = tr.querySelector(".gh-time-input");
     if (!timeInput) return;
-    timeInput.style.borderColor = "";
+    setRuntimeStyle(timeInput, "borderColor", "");
     const oldErr = tr.querySelector(".gh-row-error");
     if (oldErr) oldErr.remove();
     const timeStr = timeInput.value.trim();
@@ -185,10 +186,10 @@ export function validateGiaHanRealtime() {
     ghRowsData.push({ timeStr, date: currentGiaHanDate });
   });
   function showRowError(row, input, message) {
-    input.style.borderColor = "var(--danger)";
+    setRuntimeStyle(input, "borderColor", "var(--danger)");
     const errSpan = document.createElement("span");
     errSpan.className = "gh-row-error";
-    errSpan.style.cssText = "display:block;color:var(--danger);font-size:0.75rem;margin-top:4px;font-weight:600;";
+    setRuntimeStyle(errSpan, "cssText", "display:block;color:var(--danger);font-size:0.75rem;margin-top:4px;font-weight:600;");
     errSpan.textContent = message;
     input.parentNode.appendChild(errSpan);
   }
@@ -200,10 +201,10 @@ export function addGiaHanRow(data = {}) {
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
-        <td class="gh-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">Lần ...</td>
-        <td><input type="text" class="gh-time-input flatpickr-datetime" value="${escapeHtml(data.thoiGianDongThau ? this.model.formatForDatetimeLocal(data.thoiGianDongThau) : "")}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td><input type="text" class="gh-reason-input" value="${escapeHtml(data.lyDoGiaHan || "")}" placeholder="Nhập lý do gia hạn..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
-        <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-gh-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
+        <td class="gh-index-cell bf-s-d5b21f1b33">Lần ...</td>
+        <td><input type="text" class="gh-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianDongThau ? this.model.formatForDatetimeLocal(data.thoiGianDongThau) : "")}" placeholder="dd/MM/yyyy HH:mm"></td>
+        <td><input type="text" class="gh-reason-input bf-s-e278f41ed9" value="${escapeHtml(data.lyDoGiaHan || "")}" placeholder="Nhập lý do gia hạn..."></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-gh-row-btn bf-s-b1e83e90e6"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
     `;
   const timeInput = tr.querySelector(".gh-time-input");
   timeInput.addEventListener("change", () => this.validateGiaHanRealtime());
@@ -257,10 +258,10 @@ export function addYeuCauLamRoRow(data = {}) {
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
-        <td class="yc-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">...</td>
-        <td><input type="text" class="yc-time-input flatpickr-datetime" value="${escapeHtml(data.thoiGianYeuCau ? this.model.formatForDatetimeLocal(data.thoiGianYeuCau) : "")}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
-        <td><input type="text" class="yc-content-input" value="${escapeHtml(data.noiDungYeuCau || "")}" placeholder="Nhập nội dung yêu cầu làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
-        <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-yc-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
+        <td class="yc-index-cell bf-s-d5b21f1b33">...</td>
+        <td><input type="text" class="yc-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianYeuCau ? this.model.formatForDatetimeLocal(data.thoiGianYeuCau) : "")}" placeholder="dd/MM/yyyy HH:mm" required></td>
+        <td><input type="text" class="yc-content-input bf-s-e278f41ed9" value="${escapeHtml(data.noiDungYeuCau || "")}" placeholder="Nhập nội dung yêu cầu làm rõ..." required></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-yc-row-btn bf-s-b1e83e90e6"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
     `;
   tr.querySelector(".remove-yc-row-btn").addEventListener("click", () => {
     tr.remove();
@@ -311,10 +312,10 @@ export function addTraLoiLamRoRow(data = {}) {
   const tr = document.createElement("tr");
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
-        <td class="tl-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">...</td>
-        <td><input type="text" class="tl-time-input flatpickr-datetime" value="${escapeHtml(data.thoiGianTraLoi ? this.model.formatForDatetimeLocal(data.thoiGianTraLoi) : "")}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
-        <td><input type="text" class="tl-content-input" value="${escapeHtml(data.noiDungTraLoi || "")}" placeholder="Nhập nội dung trả lời làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
-        <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-tl-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
+        <td class="tl-index-cell bf-s-d5b21f1b33">...</td>
+        <td><input type="text" class="tl-time-input flatpickr-datetime bf-s-e278f41ed9" value="${escapeHtml(data.thoiGianTraLoi ? this.model.formatForDatetimeLocal(data.thoiGianTraLoi) : "")}" placeholder="dd/MM/yyyy HH:mm" required></td>
+        <td><input type="text" class="tl-content-input bf-s-e278f41ed9" value="${escapeHtml(data.noiDungTraLoi || "")}" placeholder="Nhập nội dung trả lời làm rõ..." required></td>
+        <td class="bf-s-63dbf5319a"><button type="button" class="btn btn-icon btn-danger remove-tl-row-btn bf-s-b1e83e90e6"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button></td>
     `;
   tr.querySelector(".remove-tl-row-btn").addEventListener("click", () => {
     tr.remove();

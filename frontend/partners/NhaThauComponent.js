@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, initCustomSelect, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
@@ -68,21 +69,21 @@ export async function renderNhaThauTable() {
         const msts = members.map((m) => esc(m.maSoThue || "")).join(", ");
         const leaders = members.length > 0 ? `${esc(members[0].danhXung || "Ông")} ${esc(members[0].nguoiDaiDien || "--")} (Trưởng LD)` : "--";
         const contacts = members.length > 0 ? `<small>SĐT: ${esc(members[0].soDienThoai || "--")}</small><br><small>Email: ${esc(members[0].email || "--")}</small>` : "--";
-        const bankAccs = members.length > 0 ? `<div style="font-size:0.85rem;" class="fw-bold">${esc(members[0].soTaiKhoan || "--")}</div><div style="font-size:0.75rem; color:var(--text-light);">${esc(members[0].noiMoTaiKhoan || "--")} (+${members.length - 1} TV)</div>` : "--";
+        const bankAccs = members.length > 0 ? `<div class="fw-bold bf-s-6bcb39735e">${esc(members[0].soTaiKhoan || "--")}</div><div class="bf-s-06f7fa3856">${esc(members[0].noiMoTaiKhoan || "--")} (+${members.length - 1} TV)</div>` : "--";
         return `
                     <tr>
                         <td>
-                            <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code partner-identity-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || "")}</span></a>
-                                <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                            <div class="bf-s-8c8dc52ed7">
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Nhà thầu"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(displayedNt.maNhaThau || "")}</span></a>
+                                <span class="bf-s-db1d8f859f">-</span>
                                 ${dropdownHtml}
                             </div>
                         </td>
-                        <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
+                        <td class="fw-bold text-wrap bf-s-e7d9f0dfa1">
                             <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu">${esc(displayedNt.tenNhaThau || "")}</a>
-                            ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
-                            <div style="margin-top: 4px;"><span class="badge badge-info">Liên danh (${members.length} TV)</span></div>
-                            <div style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--primary-soft); white-space: normal !important;">
+                            ${displayedNt.tenVietTat ? `<div class="bf-s-92c49ab355">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
+                            <div class="bf-s-597bc8fb90"><span class="badge badge-info">Liên danh (${members.length} TV)</span></div>
+                            <div class="bf-s-77e56bd1c2">
                                 + ${names}
                             </div>
                         </td>
@@ -98,19 +99,19 @@ export async function renderNhaThauTable() {
       } else {
         const rep = `${esc(displayedNt.danhXung || "Ông")} ${esc(displayedNt.nguoiDaiDien || "--")}`;
         const contact = `<small>SĐT: ${esc(displayedNt.soDienThoai || "--")}</small><br><small>Email: ${esc(displayedNt.email || "--")}</small>`;
-        const bankAcc = `<div style="font-size:0.85rem;" class="fw-bold">${esc(displayedNt.soTaiKhoan || "--")}</div><div style="font-size:0.75rem; color:var(--text-light);">${esc(displayedNt.noiMoTaiKhoan || "--")}${displayedNt.maNganHang ? " (" + esc(displayedNt.maNganHang) + ")" : ""}</div>`;
+        const bankAcc = `<div class="fw-bold bf-s-6bcb39735e">${esc(displayedNt.soTaiKhoan || "--")}</div><div class="bf-s-06f7fa3856">${esc(displayedNt.noiMoTaiKhoan || "--")}${displayedNt.maNganHang ? " (" + esc(displayedNt.maNganHang) + ")" : ""}</div>`;
         return `
                     <tr>
                         <td>
-                            <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code partner-identity-code" style="margin: 0; line-height: 1;">${esc(displayedNt.maNhaThau || "")}</span></a>
-                                <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                            <div class="bf-s-8c8dc52ed7">
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Nhà thầu"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(displayedNt.maNhaThau || "")}</span></a>
+                                <span class="bf-s-db1d8f859f">-</span>
                                 ${dropdownHtml}
                             </div>
                         </td>
-                        <td style="min-width: 240px; max-width: 360px;" class="fw-bold text-wrap">
+                        <td class="fw-bold text-wrap bf-s-e7d9f0dfa1">
                             <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Nhà thầu">${esc(displayedNt.tenNhaThau || "")}</a>
-                            ${displayedNt.tenVietTat ? `<div style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); margin-top:2px;">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
+                            ${displayedNt.tenVietTat ? `<div class="bf-s-92c49ab355">Tên viết tắt: ${esc(displayedNt.tenVietTat)}</div>` : ""}
                         </td>
                         <td>${esc(displayedNt.maSoThue || "--")}</td>
                         <td>${rep}</td>
@@ -148,12 +149,12 @@ export function renderNhaThauVersionDetails(versionId) {
   const editBtn = document.getElementById("btn-edit-nhathau-fullpage");
   if (editBtn) {
     if (isLatest) {
-      editBtn.style.display = "flex";
+      setRuntimeStyle(editBtn, "display", "flex");
       editBtn.onclick = () => {
         executeAppCommand("editNhaThau", versionId);
       };
     } else {
-      editBtn.style.display = "none";
+      setRuntimeStyle(editBtn, "display", "none");
     }
   }
   const selectOptionsHtml = allRelated.map((v) => {
@@ -174,7 +175,7 @@ export function renderNhaThauVersionDetails(versionId) {
   if (isJV) {
     const members = nt.thanhVienLienDanh || [];
     detailsHtml = `
-            <div class="detail-grid" style="margin-bottom: 24px;">
+            <div class="detail-grid bf-s-6f7f7fd51b">
                 <div class="detail-item">
                     <div class="detail-label">Ngày áp dụng</div>
                     <div class="detail-value fw-bold">${escapeHtml(nt.ngayApDung ? this.model.formatDate(nt.ngayApDung) : "--")}</div>
@@ -193,7 +194,7 @@ export function renderNhaThauVersionDetails(versionId) {
                 </div>
             </div>
 
-            <h5 class="detail-sub-title" style="margin-top: 24px; color: var(--primary); font-weight: 700;">Danh sách thành viên liên danh</h5>
+            <h5 class="detail-sub-title bf-s-e677e891f7">Danh sách thành viên liên danh</h5>
             <div class="associated-list">
                 ${members.map((m, index) => {
       const memberAddress = (m.diaChi || "").split(" | ").filter(Boolean).join(", ");
@@ -204,16 +205,16 @@ export function renderNhaThauVersionDetails(versionId) {
       const nameHtml = memberId ? `<a href="#" data-bf-action="show-contractor" data-id="${memberId}" class="text-blue link-hover">${memberName}</a>` : memberName;
       const codeHtml = memberId ? `<a href="#" data-bf-action="show-contractor" data-id="${memberId}" class="text-blue link-hover">${memberCode}</a>` : memberCode;
       return `
-                        <div class="associated-item" style="flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px;">
-                            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
-                                <strong style="font-size: 0.95rem; color: var(--text-main);">${index + 1}. ${nameHtml} ${index === 0 ? '<span class="badge badge-primary" style="margin-left: 8px; font-size: 0.7rem;">Trưởng Liên danh</span>' : ""}</strong>
-                                <span class="badge badge-secondary" style="background-color: var(--primary-soft); color: var(--primary); font-weight: 600;">Mã/MST: ${codeHtml}</span>
+                        <div class="associated-item bf-s-cbe87aeaba">
+                            <div class="bf-s-d21628051b">
+                                <strong class="bf-s-81227e2dc7">${index + 1}. ${nameHtml} ${index === 0 ? '<span class="badge badge-primary bf-s-cef2961f3b">Trưởng Liên danh</span>' : ""}</strong>
+                                <span class="badge badge-secondary bf-s-01d9db4be2">Mã/MST: ${codeHtml}</span>
                             </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; margin-top: 4px; font-size: 0.85rem;">
+                            <div class="bf-s-b373b969d2">
                                 <div><span class="text-muted">Đại diện:</span> ${escapeHtml(m.danhXung || "Ông")} ${escapeHtml(m.nguoiDaiDien || "--")} (${escapeHtml(m.chucVu || "--")})</div>
                                 <div><span class="text-muted">Liên hệ:</span> SĐT: ${escapeHtml(m.soDienThoai || "--")} | Email: ${escapeHtml(m.email || "--")}</div>
-                                <div style="grid-column: span 2;"><span class="text-muted">Tài khoản ngân hàng:</span> <strong>${escapeHtml(m.soTaiKhoan || "--")}</strong> tại ${escapeHtml(m.noiMoTaiKhoan || "--")} ${m.maNganHang ? `(${escapeHtml(m.maNganHang)})` : ""}</div>
-                                <div style="grid-column: span 2;"><span class="text-muted">Địa chỉ:</span> ${escapeHtml(memberAddress || "--")}</div>
+                                <div class="bf-s-6d00fde401"><span class="text-muted">Tài khoản ngân hàng:</span> <strong>${escapeHtml(m.soTaiKhoan || "--")}</strong> tại ${escapeHtml(m.noiMoTaiKhoan || "--")} ${m.maNganHang ? `(${escapeHtml(m.maNganHang)})` : ""}</div>
+                                <div class="bf-s-6d00fde401"><span class="text-muted">Địa chỉ:</span> ${escapeHtml(memberAddress || "--")}</div>
                             </div>
                         </div>
                     `;
@@ -229,7 +230,7 @@ export function renderNhaThauVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Loại nhà thầu</div>
-                    <div class="detail-value"><span class="badge badge-secondary" style="background-color: var(--primary-light); color: var(--primary); font-weight: 600;">Độc lập</span></div>
+                    <div class="detail-value"><span class="badge badge-secondary bf-s-f9ecd915ac">Độc lập</span></div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Mã số thuế</div>
@@ -247,7 +248,7 @@ export function renderNhaThauVersionDetails(versionId) {
                     <div class="detail-label">Chức vụ người đại diện</div>
                     <div class="detail-value">${escapeHtml(nt.chucVuDaiDien || "--")}</div>
                 </div>
-                <div class="detail-item" style="grid-column: span 2;">
+                <div class="detail-item bf-s-6d00fde401">
                     <div class="detail-label">Địa chỉ</div>
                     <div class="detail-value">${escapeHtml(addressStr || "--")}</div>
                 </div>
@@ -276,25 +277,25 @@ export function renderNhaThauVersionDetails(versionId) {
   }
   const html = `
         <div class="detail-section">
-            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${escapeHtml(nt.maNhaThau || "--")}</span>
-                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+            <div class="detail-header-block bf-s-08b722fa44">
+                <div class="bf-s-a36b98e9db">
+                    <div class="bf-s-bbf072f32c">
+                        <span class="detail-code partner-identity-code bf-s-018b1c91c7">${escapeHtml(nt.maNhaThau || "--")}</span>
+                        <span class="version-separator bf-s-ada7b4c5a3">-</span>
                         ${versionSelectHtml}
                     </div>
                 </div>
-                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${escapeHtml(nt.tenNhaThau || "Nhà thầu chưa có tên")}</h4>
+                <h4 class="detail-title bf-s-4749e65682">${escapeHtml(nt.tenNhaThau || "Nhà thầu chưa có tên")}</h4>
             </div>
             ${detailsHtml}
             ${stampSrc ? `
-              <div style="margin-top: 24px;">
+              <div class="bf-s-a005516828">
                 <h5 class="detail-sub-title">Ảnh dấu nhà thầu</h5>
-                <div class="file-preview-container" style="display: inline-flex; max-width: 360px;">
+                <div class="file-preview-container bf-s-a66ba50765">
                   <a href="${stampSrc}" target="_blank" rel="noopener noreferrer" title="Xem ảnh dấu">
-                    <img src="${stampSrc}" alt="${stampFileName}" style="max-height: 180px; max-width: 320px; object-fit: contain;">
+                    <img src="${stampSrc}" alt="${stampFileName}" class="bf-s-fefe4d57e7">
                   </a>
-                  <div class="text-muted" style="font-size: 0.8rem;">${stampFileName}</div>
+                  <div class="text-muted bf-s-56af3282d2">${stampFileName}</div>
                 </div>
               </div>
             ` : ""}

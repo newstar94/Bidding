@@ -160,7 +160,7 @@ async def register_api(request):
     finally:
         if conn:
             try: conn.close()
-            except Exception: pass
+            except sqlite3.Error: pass
 
 async def verify_email_api(request):
     try:

@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
 import { normalizeOrganizations } from "../auth/accessContext.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -61,7 +62,7 @@ export function renderDashboard() {
     });
     const donutElement2 = document.querySelector(".status-donut-chart");
     if (donutElement2) {
-      donutElement2.style.background = gradientParts2.length > 0 ? `conic-gradient(${gradientParts2.join(", ")})` : "var(--neutral-soft)";
+      setRuntimeStyle(donutElement2, "background", gradientParts2.length > 0 ? `conic-gradient(${gradientParts2.join(", ")})` : "var(--neutral-soft)");
     }
     document.getElementById("status-legend-list").innerHTML = legendHTML2;
     const recentTableBody2 = document.getElementById("recent-packages-table").querySelector("tbody");
@@ -162,9 +163,9 @@ export function renderDashboard() {
   const donutElement = document.querySelector(".status-donut-chart");
   if (donutElement) {
     if (gradientParts.length > 0) {
-      donutElement.style.background = `conic-gradient(${gradientParts.join(", ")})`;
+      setRuntimeStyle(donutElement, "background", `conic-gradient(${gradientParts.join(", ")})`);
     } else {
-      donutElement.style.background = "var(--neutral-soft)";
+      setRuntimeStyle(donutElement, "background", "var(--neutral-soft)");
     }
   }
   document.getElementById("status-legend-list").innerHTML = legendHTML;
@@ -243,12 +244,12 @@ export function renderSuperAdminDashboard() {
           const pkgClass = org.package_id === "diamond" ? "badge-primary" : org.package_id === "gold" ? "badge-warning" : org.package_id === "silver" ? "badge-success" : "badge-neutral";
           return `
                             <tr>
-                                <td style="font-weight:700; color:var(--text-main);">${escapeHtml(org.name)}</td>
+                                <td class="bf-s-78e97210a5">${escapeHtml(org.name)}</td>
                                 <td>${org.manager ? escapeHtml(org.manager) : '<span class="text-muted">Chưa cấu hình</span>'}</td>
                                 <td>${org.email ? escapeHtml(org.email) : '<span class="text-muted">Chưa có</span>'}</td>
                                 <td><span class="badge ${pkgClass}">${pkgName}</span></td>
-                                <td style="font-weight:600;">${org.end ? escapeHtml(org.end) : '<span class="text-muted">Vô thời hạn</span>'}</td>
-                                <td style="font-weight:700; text-align:center;">${org.userCount}</td>
+                                <td class="bf-s-6e8bcfac8d">${org.end ? escapeHtml(org.end) : '<span class="text-muted">Vô thời hạn</span>'}</td>
+                                <td class="bf-s-ef70dae7ee">${org.userCount}</td>
                                 <td class="text-right">
                                     <div class="actions-group">
                                         <button class="btn btn-icon btn-neutral" data-bf-action="switch-tab" data-tab="superadmin" title="Quản lý chi tiết"><i data-lucide="edit"></i></button>

@@ -49,15 +49,15 @@
                         </select>
                         <span class="error-text">Vui lòng chọn lĩnh vực</span>
                     </div>
-                    <div class="form-group" id="gt-goithauthuoc-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-goithauthuoc-container">
                         <label>Gói thầu thuốc? <span class="required">*</span></label>
-                        <div class="radio-group" style="display: flex; gap: 16px; margin-top: 8px; align-items: center; height: 38px;">
-                            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
-                                <input type="radio" name="gt-goithauthuoc" value="1" style="cursor: pointer;">
+                        <div class="radio-group bf-s-d4de0fb277">
+                            <label class="bf-s-3e57c38550">
+                                <input type="radio" name="gt-goithauthuoc" value="1" class="bf-s-ecfbb78629">
                                 Có
                             </label>
-                            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main);">
-                                <input type="radio" name="gt-goithauthuoc" value="0" checked style="cursor: pointer;">
+                            <label class="bf-s-3e57c38550">
+                                <input type="radio" name="gt-goithauthuoc" value="0" checked class="bf-s-ecfbb78629">
                                 Không
                             </label>
                         </div>
@@ -74,7 +74,7 @@
                                 trường hợp đặc biệt</option>
                         </select>
                     </div>
-                    <div class="form-group" id="gt-phuongthuc-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-phuongthuc-container">
                         <label for="gt-phuongthuc">Phương thức lựa chọn <span class="required">*</span></label>
                         <select id="gt-phuongthuc" required>
                             <option value="Một giai đoạn một túi hồ sơ">Một giai đoạn một túi hồ sơ</option>
@@ -83,13 +83,13 @@
                             <option value="Không có">Không có</option>
                         </select>
                     </div>
-                    <div class="form-group" id="gt-phuongphapdanhgia-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-phuongphapdanhgia-container">
                         <label for="gt-phuongphapdanhgia">Phương pháp đánh giá <span class="required">*</span></label>
                         <select id="gt-phuongphapdanhgia">
 
                         </select>
                     </div>
-                    <div class="form-group" id="gt-trongsokythuat-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-trongsokythuat-container">
                         <label for="gt-trongsokythuat">Trọng số kỹ thuật (%) <span class="required">*</span></label>
                         <input type="number" id="gt-trongsokythuat" min="0" max="100" placeholder="Ví dụ: 75">
                         <span class="error-text" id="gt-trongsokythuat-error">Trọng số không hợp lệ</span>
@@ -108,7 +108,7 @@
                             <option value="Quốc tế">Quốc tế</option>
                         </select>
                     </div>
-                    <div class="form-group" id="gt-tuychonmuathem-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-tuychonmuathem-container">
                         <label for="gt-tuychonmuathem">Tùy chọn mua thêm <span class="required">*</span></label>
                         <select id="gt-tuychonmuathem">
                             <option value="Không">Không</option>
@@ -116,12 +116,12 @@
                         </select>
                     </div>
 
-                    <div class="col-span-2" id="gt-tuychonmuathem-table-container" style="display: none;">
+                    <div class="col-span-2 bf-s-65d1f1c3d7" id="gt-tuychonmuathem-table-container">
                         <div class="phanlo-header">
                             <label>Danh sách tùy chọn mua thêm</label>
-                            <div style="display: flex; gap: 8px;">
-                                <button type="button" id="btn-template-tuychonmuathem" class="btn-add-row"
-                                    style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                            <div class="bf-s-b2ab1a4a76">
+                                <button type="button" id="btn-template-tuychonmuathem" class="btn-add-row bf-s-966ee547aa"
+                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -130,8 +130,8 @@
                                     </svg>
                                     Tải Excel Mẫu
                                 </button>
-                                <button type="button" id="btn-import-excel-tuychonmuathem" class="btn-add-row"
-                                    style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                                <button type="button" id="btn-import-excel-tuychonmuathem" class="btn-add-row bf-s-966ee547aa"
+                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -149,8 +149,8 @@
                                     Thêm hạng mục
                                 </button>
                             </div>
-                            <input type="file" id="excel-file-input-tuychonmuathem" style="display: none;"
-                                accept=".xlsx, .xls">
+                            <input type="file" id="excel-file-input-tuychonmuathem"
+                                accept=".xlsx, .xls" class="bf-s-65d1f1c3d7">
                         </div>
                         <div class="phanlo-table-wrap">
                             <table class="phanlo-table" id="tuychonmuathem-table">
@@ -170,7 +170,7 @@
                             </table>
                         </div>
                     </div>
-                    <div class="form-group" id="gt-phanlo-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-phanlo-container">
                         <label for="gt-phanlo">Phân lô <span class="required">*</span></label>
                         <select id="gt-phanlo">
                             <option value="Không">Không</option>
@@ -178,12 +178,12 @@
                         </select>
                     </div>
 
-                    <div class="col-span-2" id="gt-phanlo-table-container" style="display: none;">
+                    <div class="col-span-2 bf-s-65d1f1c3d7" id="gt-phanlo-table-container">
                         <div class="phanlo-header">
                             <label>Danh sách phần lô</label>
-                            <div style="display: flex; gap: 8px;">
-                                <button type="button" id="btn-template-phanlo" class="btn-add-row"
-                                    style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                            <div class="bf-s-b2ab1a4a76">
+                                <button type="button" id="btn-template-phanlo" class="btn-add-row bf-s-966ee547aa"
+                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -192,8 +192,8 @@
                                     </svg>
                                     Tải Excel Mẫu
                                 </button>
-                                <button type="button" id="btn-import-excel-phanlo" class="btn-add-row"
-                                    style="background: var(--neutral-soft); border-color: var(--border-color); color: var(--text-main);">
+                                <button type="button" id="btn-import-excel-phanlo" class="btn-add-row bf-s-966ee547aa"
+                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -211,7 +211,7 @@
                                     Thêm phần lô
                                 </button>
                             </div>
-                            <input type="file" id="excel-file-input-phanlo" style="display: none;" accept=".xlsx, .xls">
+                            <input type="file" id="excel-file-input-phanlo" accept=".xlsx, .xls" class="bf-s-65d1f1c3d7">
                         </div>
                         <div class="phanlo-table-wrap">
                             <table class="phanlo-table" id="phanlo-table">
@@ -220,7 +220,7 @@
                                         <th class="col-ma-phanlo" id="th-ma-phanlo">Mã phần lô</th>
                                         <th>Tên phần lô <span class="required">*</span></th>
                                         <th>Giá trị phần lô (VNĐ) <span class="required">*</span></th>
-                                        <th class="col-baodam-phanlo" id="th-baodam-phanlo" style="display: none;">
+                                        <th class="col-baodam-phanlo bf-s-65d1f1c3d7" id="th-baodam-phanlo">
                                             Bảo đảm dự thầu (VNĐ) <span class="required">*</span></th>
                                         <th>Thời gian thực hiện <span class="required">*</span></th>
                                         <th class="col-action"></th>
@@ -282,7 +282,7 @@
                         <label for="gt-thoigianmothau" id="label-gt-thoigianmothau">Thời gian mở thầu</label>
                         <input type="text" id="gt-thoigianmothau" class="flatpickr-datetime" placeholder="dd/MM/yyyy HH:mm">
                     </div>
-                    <div class="form-group" id="gt-thoigianmoehsdxtc-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-thoigianmoehsdxtc-container">
                         <label for="gt-thoigianmoehsdxtc">Thời gian mở E-HSĐXTC</label>
                         <input type="text" id="gt-thoigianmoehsdxtc" class="flatpickr-datetime" placeholder="dd/MM/yyyy HH:mm">
                     </div>
@@ -305,31 +305,31 @@
                     </div>
 
 
-                    <div class="form-group" id="gt-giatribaomothau-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-giatribaomothau-container">
                         <label for="gt-giatribaomothau">Giá trị bảo đảm dự thầu (VNĐ)</label>
                         <input type="text" id="gt-giatribaomothau" placeholder="Nhập giá trị bảo đảm dự thầu">
                         <span class="error-text">Vui lòng nhập giá trị bảo đảm dự thầu</span>
                     </div>
-                    <div class="form-group" id="gt-tylebaodamhopdong-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-tylebaodamhopdong-container">
                         <label for="gt-tylebaodamhopdong">Tỷ lệ bảo đảm hợp đồng (%)</label>
                         <input type="number" id="gt-tylebaodamhopdong" min="0" max="100" placeholder="Ví dụ: 5">
                         <span class="error-text">Tỷ lệ bảo đảm hợp đồng không hợp lệ</span>
                     </div>
-                    <div class="form-group" id="gt-hieuluchsdt-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-hieuluchsdt-container">
                         <label for="gt-hieuluchsdt">Thời gian hiệu lực hồ sơ dự thầu (ngày)</label>
                         <input type="number" id="gt-hieuluchsdt" min="1" placeholder="Ví dụ: 90">
                         <span class="error-text">Thời gian hiệu lực phải lớn hơn 0</span>
                     </div>
-                    <div class="form-group" id="gt-hieuluchbaomothau-container" style="display: none;">
+                    <div class="form-group bf-s-65d1f1c3d7" id="gt-hieuluchbaomothau-container">
                         <label for="gt-hieuluchbaomothau">Thời gian hiệu lực bảo đảm dự thầu (ngày)</label>
                         <input type="text" id="gt-hieuluchbaomothau" readonly placeholder="">
                     </div>
 
 
-                    <div class="form-group col-span-2" id="gt-giahan-container"
-                        style="margin-top: 15px; display: none;">
+                    <div class="form-group col-span-2 bf-s-e3f4543d24" id="gt-giahan-container"
+                       >
                         <div class="phanlo-header">
-                            <label style="font-weight: 700; color: var(--primary);">Gia hạn thời điểm đóng
+                            <label class="bf-s-12e0dbebf7">Gia hạn thời điểm đóng
                                 thầu</label>
                             <button type="button" id="btn-them-giahan" class="btn-add-row">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -344,10 +344,10 @@
                             <table class="phanlo-table" id="giahan-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 120px; text-align: center !important;">Lần gia hạn</th>
+                                        <th class="bf-s-d0462b6a38">Lần gia hạn</th>
                                         <th>Thời gian đóng thầu <span class="required">*</span></th>
                                         <th>Lý do gia hạn <span class="required">*</span></th>
-                                        <th class="col-action" style="width: 50px;"></th>
+                                        <th class="col-action bf-s-f0c291e23f"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="gt-giahan-tbody">
@@ -358,10 +358,10 @@
                     </div>
 
 
-                    <div class="form-group col-span-2" id="gt-yeucaulamro-container"
-                        style="margin-top: 15px; display: none;">
+                    <div class="form-group col-span-2 bf-s-e3f4543d24" id="gt-yeucaulamro-container"
+                       >
                         <div class="phanlo-header">
-                            <label style="font-weight: 700; color: var(--primary);">Yêu cầu làm
+                            <label class="bf-s-12e0dbebf7">Yêu cầu làm
                                 rõ HSMT</label>
                             <button type="button" id="btn-them-yeucaulamro" class="btn-add-row">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -376,10 +376,10 @@
                             <table class="phanlo-table" id="yeucaulamro-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 80px; text-align: center !important;">STT</th>
+                                        <th class="bf-s-511d97c6e8">STT</th>
                                         <th>Yêu cầu làm rõ HSMT <span class="required">*</span></th>
                                         <th>Nội dung yêu cầu <span class="required">*</span></th>
-                                        <th class="col-action" style="width: 50px;"></th>
+                                        <th class="col-action bf-s-f0c291e23f"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="gt-yeucaulamro-tbody">
@@ -390,10 +390,10 @@
                     </div>
 
 
-                    <div class="form-group col-span-2" id="gt-traloilamro-container"
-                        style="margin-top: 15px; display: none;">
+                    <div class="form-group col-span-2 bf-s-e3f4543d24" id="gt-traloilamro-container"
+                       >
                         <div class="phanlo-header">
-                            <label style="font-weight: 700; color: var(--primary);">Trả lời làm rõ</label>
+                            <label class="bf-s-12e0dbebf7">Trả lời làm rõ</label>
                             <button type="button" id="btn-them-traloilamro" class="btn-add-row">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2.5">
@@ -407,10 +407,10 @@
                             <table class="phanlo-table" id="traloilamro-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 80px; text-align: center !important;">STT</th>
+                                        <th class="bf-s-511d97c6e8">STT</th>
                                         <th>Thời gian trả lời làm rõ <span class="required">*</span></th>
                                         <th>Nội dung trả lời <span class="required">*</span></th>
-                                        <th class="col-action" style="width: 50px;"></th>
+                                        <th class="col-action bf-s-f0c291e23f"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="gt-traloilamro-tbody">
@@ -421,11 +421,11 @@
                     </div>
 
 
-                    <div class="form-group-conditional col-span-2" id="conditional-awarded-contractor"
-                        style="display: none;">
+                    <div class="form-group-conditional col-span-2 bf-s-65d1f1c3d7" id="conditional-awarded-contractor"
+                       >
                         <div class="form-grid border-nested" id="awarded-single-container">
-                            <h4 class="col-span-2"
-                                style="font-size: 0.88rem; font-weight: 700; color: var(--primary); margin-bottom: 8px;">
+                            <h4 class="col-span-2 bf-s-6fb095b1e8"
+                               >
                                 Thông tin Nhà thầu trúng thầu</h4>
                             <div class="form-group">
                                 <label for="gt-nhathautrungthauid">Nhà thầu trúng thầu <span
@@ -457,9 +457,9 @@
                         </div>
 
 
-                        <div class="col-span-2" id="awarded-multi-container" style="display: none; margin-top: 10px;">
+                        <div class="col-span-2 bf-s-8371fe9633" id="awarded-multi-container">
                             <h4
-                                style="font-size: 0.88rem; font-weight: 700; color: var(--primary); margin-bottom: 8px;">
+                                class="bf-s-6fb095b1e8">
                                 Thông tin Nhà thầu trúng thầu theo Phần lô</h4>
                             <div class="phanlo-table-wrap">
                                 <table class="phanlo-table" id="awarded-phanlo-table">
@@ -481,16 +481,16 @@
                     </div>
 
 
-                    <div class="form-group col-span-2" id="to-chuyengia-section" style="margin-top: 15px;">
-                        <label style="font-weight: 700; color: var(--primary);">Tổ Chuyên gia</label>
+                    <div class="form-group col-span-2 bf-s-d13405ae7c" id="to-chuyengia-section">
+                        <label class="bf-s-12e0dbebf7">Tổ Chuyên gia</label>
                         <div class="phanlo-table-wrap">
                             <table class="phanlo-table" id="table-to-chuyengia">
                                 <thead>
                                     <tr>
-                                        <th style="width: 50px; text-align: center;">Chọn</th>
-                                        <th style="text-align: left !important;">Họ và tên</th>
-                                        <th style="width: 150px; text-align: left !important;">Chức vụ trong tổ</th>
-                                        <th style="text-align: left !important;">Công việc</th>
+                                        <th class="bf-s-b9575b8c87">Chọn</th>
+                                        <th class="bf-s-74f75d9183">Họ và tên</th>
+                                        <th class="bf-s-37a1c3d22b">Chức vụ trong tổ</th>
+                                        <th class="bf-s-74f75d9183">Công việc</th>
                                     </tr>
                                 </thead>
                                 <tbody id="to-chuyengia-tbody">
@@ -501,16 +501,16 @@
                     </div>
 
 
-                    <div class="form-group col-span-2" id="to-thamdinh-section" style="margin-top: 15px;">
-                        <label style="font-weight: 700; color: var(--primary);">Tổ Thẩm định</label>
+                    <div class="form-group col-span-2 bf-s-d13405ae7c" id="to-thamdinh-section">
+                        <label class="bf-s-12e0dbebf7">Tổ Thẩm định</label>
                         <div class="phanlo-table-wrap">
                             <table class="phanlo-table" id="table-to-thamdinh">
                                 <thead>
                                     <tr>
-                                        <th style="width: 50px; text-align: center;">Chọn</th>
-                                        <th style="text-align: left !important;">Họ và tên</th>
-                                        <th style="width: 150px; text-align: left !important;">Chức vụ trong tổ</th>
-                                        <th style="text-align: left !important;">Công việc</th>
+                                        <th class="bf-s-b9575b8c87">Chọn</th>
+                                        <th class="bf-s-74f75d9183">Họ và tên</th>
+                                        <th class="bf-s-37a1c3d22b">Chức vụ trong tổ</th>
+                                        <th class="bf-s-74f75d9183">Công việc</th>
                                     </tr>
                                 </thead>
                                 <tbody id="to-thamdinh-tbody">

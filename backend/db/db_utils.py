@@ -151,6 +151,13 @@ def _create_baseline_indexes_and_triggers(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_lam_ro_parent ON goi_thau_lam_ro (organization_id, goi_thau_id, loai, sort_order)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_parent ON nha_thau_lien_danh_thanh_vien (organization_id, nha_thau_id, sort_order)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_parent ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thong_tin_mo_thau_id, sort_order)")
+    cursor.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_one_leader
+                      ON nha_thau_lien_danh_thanh_vien (organization_id, nha_thau_id)
+                      WHERE vai_tro = 'Đứng đầu liên danh'""")
+    cursor.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_one_leader
+                      ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thong_tin_mo_thau_id)
+                      WHERE vai_tro = 'Đứng đầu liên danh'""")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_mo_thau_bid ON nha_thau_tham_du_mo_thau (organization_id, thong_tin_mo_thau_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vong_danh_gia_package ON vong_danh_gia (organization_id, goi_thau_id, thu_tu)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tieu_chi_danh_gia_round ON tieu_chi_danh_gia (organization_id, vong_danh_gia_id, thu_tu)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ket_qua_danh_gia_opening ON ket_qua_danh_gia_nha_thau (organization_id, thong_tin_mo_thau_id)")
@@ -318,7 +325,7 @@ def _ensure_contract_package_triggers(cursor):
               AND (
                   hd.co_qd_chi_dinh = 1
                   OR (
-                      gt.trang_thai = 'Đã có kết quả'
+                      gt.trang_thai = 'AWARDED'
                       AND gt.nha_thau_trung_thau_id IS NOT NULL
                       AND gt.nha_thau_trung_thau_id = hd.nha_thau_id
                   )
@@ -362,42 +369,42 @@ def _ensure_fts_indexes(cursor):
         fts_table = f"fts_{table}"
         cols_sql = ", ".join(columns)
         new_cols = ", ".join(f"new.{col}" for col in columns)
-        old_cols = ", ".join(f"old.{col}" for col in columns)
         try:
+            cursor.execute(f"DROP TABLE IF EXISTS {fts_table}")
             cursor.execute(f"""
-                CREATE VIRTUAL TABLE IF NOT EXISTS {fts_table}
+                CREATE VIRTUAL TABLE {fts_table}
                 USING fts5(
                     organization_id UNINDEXED,
                     id UNINDEXED,
                     {cols_sql},
-                    content='{table}',
-                    content_rowid='rowid'
+                    tokenize='unicode61 remove_diacritics 2'
                 )
             """)
-            cursor.execute(f"INSERT INTO {fts_table}({fts_table}) VALUES('rebuild')")
+            cursor.execute(f"""
+                INSERT INTO {fts_table}(rowid, organization_id, id, {cols_sql})
+                SELECT rowid, organization_id, id, {cols_sql} FROM {table}
+            """)
             cursor.execute(f"DROP TRIGGER IF EXISTS trg_{table}_fts_ai")
             cursor.execute(f"DROP TRIGGER IF EXISTS trg_{table}_fts_ad")
             cursor.execute(f"DROP TRIGGER IF EXISTS trg_{table}_fts_au")
             cursor.execute(f"""
                 CREATE TRIGGER trg_{table}_fts_ai AFTER INSERT ON {table}
                 BEGIN
-                    INSERT INTO {fts_table}(rowid, organization_id, id, {cols_sql})
+                    INSERT OR REPLACE INTO {fts_table}(rowid, organization_id, id, {cols_sql})
                     VALUES (new.rowid, new.organization_id, new.id, {new_cols});
                 END
             """)
             cursor.execute(f"""
                 CREATE TRIGGER trg_{table}_fts_ad AFTER DELETE ON {table}
                 BEGIN
-                    INSERT INTO {fts_table}({fts_table}, rowid, organization_id, id, {cols_sql})
-                    VALUES ('delete', old.rowid, old.organization_id, old.id, {old_cols});
+                    DELETE FROM {fts_table} WHERE rowid = old.rowid;
                 END
             """)
             cursor.execute(f"""
                 CREATE TRIGGER trg_{table}_fts_au AFTER UPDATE ON {table}
                 BEGIN
-                    INSERT INTO {fts_table}({fts_table}, rowid, organization_id, id, {cols_sql})
-                    VALUES ('delete', old.rowid, old.organization_id, old.id, {old_cols});
-                    INSERT INTO {fts_table}(rowid, organization_id, id, {cols_sql})
+                    DELETE FROM {fts_table} WHERE rowid = old.rowid;
+                    INSERT OR REPLACE INTO {fts_table}(rowid, organization_id, id, {cols_sql})
                     VALUES (new.rowid, new.organization_id, new.id, {new_cols});
                 END
             """)

@@ -10,6 +10,7 @@ from backend.db.db_utils import (
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.shared.numeric_utils import MAX_SQLITE_INTEGER, parse_vnd_amount
 from backend.sync.mapper import map_db_to_json
+from backend.shared.domain_enums import enum_code
 
 
 def _connection_with(*table_names):
@@ -28,6 +29,15 @@ def test_vnd_amount_is_exact_and_has_sqlite_integer_bounds():
     assert parse_vnd_amount(-1) is None
     assert parse_vnd_amount(MAX_SQLITE_INTEGER + 1) is None
     assert parse_vnd_amount(True) is None
+
+
+def test_stable_status_codes_are_persisted_and_vietnamese_labels_are_serialized():
+    assert enum_code("goi_thau", "trang_thai", "Đang mời thầu") == "INVITED"
+    assert enum_code("hop_dong", "trang_thai_hop_dong", "Đã thanh lý") == "LIQUIDATED"
+    package = map_db_to_json("goi_thau", {"trang_thai": "AWARDED"})
+    contract = map_db_to_json("hop_dong", {"trang_thai_hop_dong": "ACTIVE"})
+    assert package["trangThai"] == "Đã có kết quả"
+    assert contract["trangThaiHopDong"] == "Đang thực hiện"
 
 
 def test_every_explicit_json_mapping_targets_a_real_column():
@@ -103,6 +113,21 @@ def test_database_rejects_invalid_flags_ranges_permissions_and_timeline():
     connection.close()
 
 
+def test_ratio_score_and_weight_precision_is_limited_to_four_decimal_places():
+    connection = _connection_with("goi_thau", "tieu_chi_danh_gia", "ket_qua_danh_gia_nha_thau")
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "INSERT INTO goi_thau (id, organization_id, ten_goi_thau, ty_le_bao_dam_hop_dong) VALUES (?, ?, ?, ?)",
+            ("precision", "org-1", "Precision", 12.34567),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "INSERT INTO tieu_chi_danh_gia (id, organization_id, vong_danh_gia_id, ma_tieu_chi, trong_so) VALUES (?, ?, ?, ?, ?)",
+            ("criterion", "org-1", "round-1", "C1", 10.12345),
+        )
+    connection.close()
+
+
 def test_database_enforces_rebid_pair_and_plan_total_excludes_rebids():
     connection = _connection_with("ke_hoach_lcnt", "ke_hoach_cong_viec", "goi_thau")
     connection.execute(
@@ -122,7 +147,7 @@ def test_database_enforces_rebid_pair_and_plan_total_excludes_rebids():
             thoi_gian_thuc_hien, nguon_von, thoi_gian_to_chuc,
             thoi_gian_bat_dau_to_chuc, trang_thai
         ) VALUES ('source', 'org-1', 'plan-1', 'Source', 100,
-                  '30 ngày', 'Ngân sách', '30 ngày', 'Quý I/2026', 'Hủy thầu')
+                  '30 ngày', 'Ngân sách', '30 ngày', 'Quý I/2026', 'CANCELLED')
         """
     )
     connection.execute(
@@ -201,4 +226,35 @@ def test_opening_bid_business_key_is_unique_only_while_active():
             VALUES ('duplicate', ?, ?, ?, ?)""",
             values,
         )
+    connection.close()
+
+
+def test_normalized_contractor_tax_code_is_unique_per_workspace_latest_record():
+    connection = _connection_with("to_chuc", "nha_thau")
+    connection.execute("""
+        CREATE UNIQUE INDEX idx_nha_thau_ma_so_thue_owner_latest_unique
+        ON nha_thau (organization_id, lower(trim(ma_so_thue)))
+        WHERE is_latest = 1 AND ma_so_thue IS NOT NULL AND trim(ma_so_thue) != ''
+    """)
+    connection.execute("INSERT INTO to_chuc (id, ten_to_chuc) VALUES ('org-1', 'Workspace')")
+    connection.execute(
+        """INSERT INTO nha_thau
+           (id, organization_id, ten_nha_thau, ma_so_thue, is_latest)
+           VALUES ('contractor-a', 'org-1', 'A', ' 0312345678 ', 1)"""
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """INSERT INTO nha_thau
+               (id, organization_id, ten_nha_thau, ma_so_thue, is_latest)
+               VALUES ('contractor-b', 'org-1', 'B', '0312345678', 1)"""
+        )
+
+    # A historical version is legal; only the latest record represents the
+    # logical contractor in current catalog lookups.
+    connection.execute(
+        """INSERT INTO nha_thau
+           (id, organization_id, ten_nha_thau, ma_so_thue, is_latest)
+           VALUES ('contractor-history', 'org-1', 'History', '0312345678', 0)"""
+    )
     connection.close()

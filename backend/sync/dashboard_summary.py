@@ -2,6 +2,7 @@
 
 from backend.shared.access_policy import can_read_table, is_organization_manager
 from backend.sync.mapper import map_db_to_json
+from backend.shared.domain_enums import enum_label
 
 
 def build_dashboard_summary(cursor, organization_id, role_str, user_id):
@@ -121,7 +122,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             GROUP BY COALESCE(trang_thai, '')
         """, tuple(package_params))
         for row in cursor.fetchall():
-            status_counts[str(row[0] or "")] = int(row[1] or 0)
+            status_counts[str(enum_label("goi_thau", "trang_thai", row[0]) or "")] = int(row[1] or 0)
         counts["goithau"] = sum(status_counts.values())
         counts["activeGoithau"] = sum(
             count for status, count in status_counts.items()
@@ -143,14 +144,14 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             cursor.execute(
                 f"""SELECT id, gia_tri, trang_thai_hop_dong
                     FROM ({latest_contracts_sql}) latest_rows
-                    WHERE trang_thai_hop_dong NOT IN ('Chưa hiệu lực', 'Đã hủy')""",
+                    WHERE trang_thai_hop_dong NOT IN ('NOT_EFFECTIVE', 'CANCELLED')""",
                 (organization_id,),
             )
         else:
             cursor.execute(f"""
                 SELECT hd.id, hd.gia_tri, hd.trang_thai_hop_dong
                 FROM ({latest_contracts_sql}) hd
-                WHERE hd.trang_thai_hop_dong NOT IN ('Chưa hiệu lực', 'Đã hủy')
+                WHERE hd.trang_thai_hop_dong NOT IN ('NOT_EFFECTIVE', 'CANCELLED')
                   AND EXISTS (
                     SELECT 1 FROM phan_cong_nhan_su pc
                     WHERE pc.organization_id = hd.organization_id
@@ -165,9 +166,9 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
 
         cursor.execute(f"""
             SELECT COUNT(*),
-                   SUM(CASE WHEN hd.trang_thai_hop_dong = 'Đang thực hiện' THEN 1 ELSE 0 END)
+                   SUM(CASE WHEN hd.trang_thai_hop_dong = 'ACTIVE' THEN 1 ELSE 0 END)
             FROM ({latest_contracts_sql}) hd
-            WHERE hd.trang_thai_hop_dong NOT IN ('Chưa hiệu lực', 'Đã hủy')
+            WHERE hd.trang_thai_hop_dong NOT IN ('NOT_EFFECTIVE', 'CANCELLED')
               AND EXISTS (
                 SELECT 1 FROM phan_cong_nhan_su pc
                 WHERE pc.organization_id = hd.organization_id

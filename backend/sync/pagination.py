@@ -2,6 +2,7 @@
 
 import base64
 import json
+import sqlite3
 
 from starlette.responses import JSONResponse
 
@@ -28,6 +29,7 @@ from backend.sync.queries import (
     get_contract_package_ids as _get_contract_package_ids,
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
+from backend.shared.domain_enums import enum_code
 from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
 from backend.shared.logging_utils import error_response, log_and_error
 
@@ -220,7 +222,7 @@ async def paginate_records(request):
             hinh_thuc = params.get("hinhThuc", "")
             if trang_thai:
                 query_parts.append("trang_thai = ?")
-                query_params.append(trang_thai)
+                query_params.append(enum_code("goi_thau", "trang_thai", trang_thai))
             if hinh_thuc:
                 query_parts.append("hinh_thuc_lua_chon = ?")
                 query_params.append(hinh_thuc)
@@ -454,5 +456,5 @@ async def paginate_records(request):
         if conn:
             try:
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass

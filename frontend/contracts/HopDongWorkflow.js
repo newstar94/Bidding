@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
 import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
@@ -77,11 +78,11 @@ export async function editHopDong(id) {
     const ngayQdInput = document.getElementById("hd-ngayqdchidinh");
     const toggleQdFields = () => {
       if (coQdSelect.value === "1") {
-        qdFieldsContainer.style.display = "block";
+        setRuntimeStyle(qdFieldsContainer, "display", "block");
         soQdInput.setAttribute("required", "required");
         ngayQdInput.setAttribute("required", "required");
       } else {
-        qdFieldsContainer.style.display = "none";
+        setRuntimeStyle(qdFieldsContainer, "display", "none");
         soQdInput.removeAttribute("required");
         ngayQdInput.removeAttribute("required");
         soQdInput.closest(".form-group")?.classList.remove("invalid");
@@ -92,12 +93,12 @@ export async function editHopDong(id) {
     const cdtSelect = document.getElementById("hd-chudautuid");
     document.getElementById("hd-chudautu-version-select").dataset.manualOverride = "";
     const chudautuList = this.model.getLatestChuDauTu();
-    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
     this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
     const ntSelect = document.getElementById("hd-nhathauid");
     document.getElementById("hd-nhathau-version-select").dataset.manualOverride = "";
     const nhathauList = this.model.getLatestNhaThau();
-    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm nhà thầu mới</option>';
+    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
     this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu...");
     const khSelect = document.getElementById("hd-kehoachid");
     const planList = typeof this.model.getLatestPlans === "function" ? this.model.getLatestPlans() : Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : [];
@@ -114,7 +115,7 @@ export async function editHopDong(id) {
       const planVersionIds = getPlanVersionIds(selectedPlanId);
       const gtContainer = document.getElementById("hd-goithau-list");
       if (!selectedPlanId) {
-        gtContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding: 8px 0;">Vui lòng chọn Kế hoạch LCNT để hiển thị gói thầu</p>';
+        gtContainer.innerHTML = '<p class="text-muted bf-s-64c2770c2f">Vui lòng chọn Kế hoạch LCNT để hiển thị gói thầu</p>';
         return;
       }
       const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : Array.isArray(this.model.state.goithau) ? this.model.state.goithau : [];
@@ -127,10 +128,10 @@ export async function editHopDong(id) {
           (!selectedContractorId || String(g.nhaThauTrungThauId || "") === String(selectedContractorId));
       });
       if (filteredGoithau.length === 0) {
-        gtContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding: 8px 0;">Không có gói thầu đủ điều kiện lập hợp đồng</p>';
+        gtContainer.innerHTML = '<p class="text-muted bf-s-64c2770c2f">Không có gói thầu đủ điều kiện lập hợp đồng</p>';
       } else {
         gtContainer.innerHTML = filteredGoithau.map((g) => `
-                    <label class="checkbox-item" style="display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer; font-size:0.85rem;">
+                    <label class="checkbox-item bf-s-64d00981be">
                          <input type="checkbox" name="hd-goithau-checkbox" value="${escapeHtml(g.id)}" ${checkedIds.includes(g.id) ? "checked" : ""}>
                          <span><strong>${escapeHtml(g.maGoiThau || "")}</strong> - ${escapeHtml(g.tenGoiThau || "")}</span>
                     </label>
@@ -156,8 +157,8 @@ export async function editHopDong(id) {
       const confirmContainer = document.getElementById("hd-chudautu-confirm-container");
       const confirmInfo = document.getElementById("hd-chudautu-confirm-info");
       if (!selectedCdtId) {
-        if (versionGroup) versionGroup.style.display = "none";
-        if (confirmContainer) confirmContainer.style.display = "none";
+        if (versionGroup) setRuntimeStyle(versionGroup, "display", "none");
+        if (confirmContainer) setRuntimeStyle(confirmContainer, "display", "none");
         return;
       }
       const cdt = this.model.state.chudautu.find((c) => c.id === selectedCdtId);
@@ -171,12 +172,12 @@ export async function editHopDong(id) {
           const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
           return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
         }).join("");
-        versionGroup.style.display = "flex";
+        setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
           if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
           const selectedVerCdt = this.model.state.chudautu.find((c) => c.id === e.target.value);
           if (selectedVerCdt && confirmContainer && confirmInfo) {
-            confirmContainer.style.display = "block";
+            setRuntimeStyle(confirmContainer, "display", "block");
             confirmInfo.innerHTML = `
                             <strong>Mã:</strong> ${escapeHtml(selectedVerCdt.maChuDauTu || "--")}<br>
                             <strong>Tên:</strong> ${escapeHtml(selectedVerCdt.tenChuDauTu || "--")}<br>
@@ -206,8 +207,8 @@ export async function editHopDong(id) {
       const confirmContainer = document.getElementById("hd-nhathau-confirm-container");
       const confirmInfo = document.getElementById("hd-nhathau-confirm-info");
       if (!selectedNtId) {
-        if (versionGroup) versionGroup.style.display = "none";
-        if (confirmContainer) confirmContainer.style.display = "none";
+        if (versionGroup) setRuntimeStyle(versionGroup, "display", "none");
+        if (confirmContainer) setRuntimeStyle(confirmContainer, "display", "none");
         return;
       }
       const nt = this.model.state.nhathau.find((n) => n.id === selectedNtId);
@@ -221,12 +222,12 @@ export async function editHopDong(id) {
           const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
           return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
         }).join("");
-        versionGroup.style.display = "flex";
+        setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
           if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
           const selectedVerNt = this.model.state.nhathau.find((n) => n.id === e.target.value);
           if (selectedVerNt && confirmContainer && confirmInfo) {
-            confirmContainer.style.display = "block";
+            setRuntimeStyle(confirmContainer, "display", "block");
             const isJV = selectedVerNt.loaiNhaThau === "Liên danh";
             let detailsHtml = `
                             <strong>Mã:</strong> ${escapeHtml(selectedVerNt.maNhaThau || "--")}<br>
@@ -241,7 +242,7 @@ export async function editHopDong(id) {
               const memberDetails = members.map((m, idx) => `
                                 <div>+ TV ${idx + 1}: ${escapeHtml(m.tenNhaThau || "--")} (MST: ${escapeHtml(m.maSoThue || "--")}, Đại diện: ${escapeHtml(m.danhXung || "Ông")} ${escapeHtml(m.nguoiDaiDien || "--")})</div>
                             `).join("");
-              detailsHtml += `<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-color);">
+              detailsHtml += `<div class="bf-s-f699900d34">
                                 <strong>Thành viên Liên danh (${members.length}):</strong>
                                 ${memberDetails}
                             </div>`;

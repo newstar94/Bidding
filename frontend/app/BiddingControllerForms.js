@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { bindCurrencyElement, bindCurrencyInput, debounce, onAll, onById } from "./domUtils.js";
 import { bindImageUploadPreview } from "./fileUploadUtils.js";
 import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisible } from "./formStateUtils.js";
@@ -515,9 +516,9 @@ export function setupActionListeners() {
         options.forEach((opt) => {
           const optVal = opt.value;
           if (optVal === "Đấu thầu rộng rãi" || optVal === "Chỉ định thầu" || optVal === "Chỉ định thầu rút gọn" || optVal === "" || optVal === "Tất cả hình thức") {
-            opt.style.display = "";
+            setRuntimeStyle(opt, "display", "");
           } else {
-            opt.style.display = "none";
+            setRuntimeStyle(opt, "display", "none");
           }
         });
         if (gtHinhThucSelect.value !== "Đấu thầu rộng rãi" && gtHinhThucSelect.value !== "Chỉ định thầu" && gtHinhThucSelect.value !== "Chỉ định thầu rút gọn") {
@@ -525,7 +526,7 @@ export function setupActionListeners() {
         }
         setDisabled(gtHinhThucSelect, false);
       } else {
-        options.forEach((opt) => opt.style.display = "");
+        options.forEach((opt) => setRuntimeStyle(opt, "display", ""));
         setDisabled(gtHinhThucSelect, false);
       }
       if (this.handleHinhThucChange) {
@@ -672,11 +673,22 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
       setRequired(gtTrangThai, true);
     }
   }
-  const statusOrder = ["Chuẩn bị", "Đang mời thầu", "Đã mở thầu", "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"];
+  const fieldPolicy = this.model?.domainContract?.packageFieldPolicy || {};
+  const statusOrder = Array.isArray(fieldPolicy.statusOrder) ? fieldPolicy.statusOrder : [];
   const currentIdx = statusOrder.indexOf(trangThai);
   const originalIdx = statusOrder.indexOf(originalStatus);
   const statusSelect = document.getElementById("gt-trangthai");
   if (statusSelect) {
+    if (statusOrder.length && statusSelect.querySelectorAll("option").length !== statusOrder.length) {
+      const selectedStatus = statusSelect.value || trangThai;
+      statusSelect.replaceChildren(...statusOrder.map((label) => {
+        const option = document.createElement("option");
+        option.value = label;
+        option.textContent = label;
+        option.selected = label === selectedStatus;
+        return option;
+      }));
+    }
     statusSelect.querySelectorAll("option").forEach((opt) => {
       const optVal = opt.value;
       const optIdx = statusOrder.indexOf(optVal);
@@ -687,23 +699,16 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
       }
     });
   }
-  const lockedFields = [
-    "gt-kehoachid",
-    "gt-ten",
-    "gt-gia",
-    "gt-thoigian",
-    "gt-linhvuc",
-    "gt-hinhthuc",
-    "gt-phuongthuc",
-    "gt-quatmang",
-    "gt-trongnuocquocte",
-    "gt-tuychonmuathem",
-    "gt-phanlo",
-    "gt-nguonvon",
-    "gt-loaihopdong",
-    "gt-thoigiantochuc",
-    "gt-thoigianbatdautochuc"
-  ];
+  const fieldControlIds = {
+    keHoachId: "gt-kehoachid", tenGoiThau: "gt-ten", giaGoiThau: "gt-gia",
+    thoiGianThucHien: "gt-thoigian", linhVuc: "gt-linhvuc",
+    hinhThucLuaChon: "gt-hinhthuc", phuongThucLuaChon: "gt-phuongthuc",
+    quaMang: "gt-quatmang", trongNuocQuocTe: "gt-trongnuocquocte",
+    tuyChonMuaThem: "gt-tuychonmuathem", phanLo: "gt-phanlo",
+    nguonVon: "gt-nguonvon", loaiHopDong: "gt-loaihopdong"
+  };
+  const lockedFields = (fieldPolicy.lockedAfterInvitation || [])
+    .map((field) => fieldControlIds[field]).filter(Boolean);
   const isLocked = isReadOnly ? false : originalIdx >= 1;
   lockedFields.forEach((id) => {
     const input = document.getElementById(id);
@@ -955,7 +960,7 @@ export function updateAwardedContractorUI(defaultDataList = null) {
       });
       tbody.innerHTML = "";
       if (phanLoList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 16px; color: var(--text-muted); font-weight: 600;">Vui lòng thêm danh sách phần lô ở trên trước.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="bf-s-45a963221a">Vui lòng thêm danh sách phần lô ở trên trước.</td></tr>`;
         return;
       }
       const goiThauId = document.getElementById("form-goithau-id")?.value;
@@ -994,21 +999,21 @@ export function updateAwardedContractorUI(defaultDataList = null) {
         const tgGoiThau = matchedData?.thoiGianGoiThau || "";
         const tgHopDong = matchedData?.thoiGianHopDong || "";
         row.innerHTML = `
-                    <td style="font-weight: 600; font-size: 0.84rem; color: var(--text-main);">${escapeHtml(pl.tenPhanLo)}</td>
+                    <td class="bf-s-9595fa5530">${escapeHtml(pl.tenPhanLo)}</td>
                     <td>
-                        <select class="awarded-pl-nhathau" required style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                        <select class="awarded-pl-nhathau bf-s-80504d4030" required>
                             <option value="">-- Chọn Nhà thầu --</option>
                             ${nhathauOptions}
                         </select>
                     </td>
                     <td>
-                        <input type="text" class="awarded-pl-gia input-gia" required value="${escapeHtml(giaTri)}" placeholder="Nhập giá trúng" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                        <input type="text" class="awarded-pl-gia input-gia bf-s-80504d4030" required value="${escapeHtml(giaTri)}" placeholder="Nhập giá trúng">
                     </td>
                     <td>
-                        <input type="text" class="awarded-pl-tggoithau" required value="${escapeHtml(tgGoiThau)}" placeholder="Ví dụ: 90 ngày" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                        <input type="text" class="awarded-pl-tggoithau bf-s-80504d4030" required value="${escapeHtml(tgGoiThau)}" placeholder="Ví dụ: 90 ngày">
                     </td>
                     <td>
-                        <input type="text" class="awarded-pl-tghopdong" required value="${escapeHtml(tgHopDong)}" placeholder="Ví dụ: 90 ngày" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                        <input type="text" class="awarded-pl-tghopdong bf-s-80504d4030" required value="${escapeHtml(tgHopDong)}" placeholder="Ví dụ: 90 ngày">
                     </td>
                 `;
         const sel = row.querySelector(".awarded-pl-nhathau");

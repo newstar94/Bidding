@@ -37,6 +37,14 @@ function createModel() {
     };
 }
 
+test('sync snapshot installs the backend package field policy', () => {
+    const model = createModel();
+    const contract = { packageFieldPolicy: { lockedAfterInvitation: ['giaGoiThau'], statusOrder: ['Chuẩn bị'] } };
+    applySyncPayload(model, { domainContract: contract, partial: true }, { since: '1', useVersionDelta: true });
+    assert.deepEqual(model.domainContract, contract);
+    assert.equal(Object.isFrozen(model.domainContract), true);
+});
+
 test('WebSocket heartbeat replies to server ping without reconnecting', () => {
     const originalWindow = globalThis.window;
     const originalWebSocket = globalThis.WebSocket;
@@ -98,6 +106,50 @@ test('WebSocket authentication failures do not start a reconnect loop', () => {
     assert.equal(shouldReconnectWebSocket(4003), false);
     assert.equal(shouldReconnectWebSocket(4403), false);
     assert.equal(shouldReconnectWebSocket(1006), true);
+});
+
+test('WebSocket reconnects after network loss and schedules delta sync', () => {
+    const originalWindow = globalThis.window;
+    const originalWebSocket = globalThis.WebSocket;
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    const sockets = [];
+    let reconnectCallback = null;
+    let backgroundSyncDelay = null;
+    class MockWebSocket {
+        static CONNECTING = 0;
+        static OPEN = 1;
+        constructor() { this.readyState = 0; sockets.push(this); }
+        send() {}
+        close() { this.readyState = 3; }
+    }
+    try {
+        globalThis.window = { location: { protocol: 'http:', host: 'localhost' } };
+        globalThis.WebSocket = MockWebSocket;
+        globalThis.setTimeout = callback => { reconnectCallback = callback; return 1; };
+        globalThis.clearTimeout = () => {};
+        const controller = {
+            model: {
+                workspaceScope: { organizationId: 'org-a' },
+                getWorkspaceToken: () => 'scope-a',
+                isWorkspaceCurrent: token => token === 'scope-a'
+            },
+            setupWebSocketConnection,
+            scheduleBackgroundSync(delay) { backgroundSyncDelay = delay; }
+        };
+        setupWebSocketConnection.call(controller);
+        sockets[0].onclose({ code: 1006, reason: 'offline' });
+        assert.equal(typeof reconnectCallback, 'function');
+        reconnectCallback();
+        assert.equal(sockets.length, 2);
+        sockets[1].onmessage({ data: JSON.stringify({ event: 'db_changed' }) });
+        assert.equal(backgroundSyncDelay, 300);
+    } finally {
+        globalThis.window = originalWindow;
+        globalThis.WebSocket = originalWebSocket;
+        globalThis.setTimeout = originalSetTimeout;
+        globalThis.clearTimeout = originalClearTimeout;
+    }
 });
 
 test('collects tables that must refresh after committed upserts and deletions', () => {

@@ -1,6 +1,7 @@
 import json
 import re
 import traceback
+import sqlite3
 
 from starlette.responses import JSONResponse
 
@@ -27,7 +28,13 @@ from backend.auth.auth_helper import (
     PRIVILEGED_REAUTH_REQUIRED,
     PRIVILEGED_REAUTH_TTL_SECONDS,
 )
-from backend.shared.date_utils import is_datetime_column, normalize_datetime_value, utc_now_sql
+from backend.shared.date_utils import (
+    is_datetime_column,
+    normalize_date_value,
+    normalize_datetime_value,
+    utc_now_sql,
+)
+from backend.shared.domain_enums import enum_code
 from backend.db.id_utils import generate_record_id
 from backend.shared.media_helper import (
     normalize_managed_image_path,
@@ -46,7 +53,6 @@ from backend.db.schema import MONEY_COLUMNS
 from backend.shared.numeric_utils import parse_vnd_amount
 from backend.sync.queries import (
     ALLOWED_ORPHAN_TABLES,
-    OWNER_TYPES,
     SYNCED_TABLES,
     TABLE_KEYS,
 )
@@ -77,6 +83,7 @@ from backend.sync.request_contract import (
     sync_batch_size as _sync_batch_size,
 )
 from backend.sync.response import commit_sync_response
+from backend.sync.opening_uniqueness import validate_opening_participant_uniqueness
 
 
 async def process_sync_request(request, broadcast_callback=None):
@@ -147,7 +154,7 @@ async def process_sync_request(request, broadcast_callback=None):
                 conn.commit()
                 try:
                     return JSONResponse(json.loads(existing_mutation[0] or "{}"))
-                except Exception:
+                except (json.JSONDecodeError, TypeError):
                     return JSONResponse({"status": "success"})
 
 
@@ -268,6 +275,12 @@ async def process_sync_request(request, broadcast_callback=None):
             if str(row[0] or "").strip()
         }
         allowed_paper_status_names = existing_paper_status_names | incoming_paper_status_names
+
+        validation_errors.extend(validate_opening_participant_uniqueness(
+            cursor,
+            org_name,
+            data.get("thongtinmothau", []),
+        ))
 
 
         for payload_key, table_name, items in iter_sync_table_payloads(data):
@@ -472,6 +485,20 @@ async def process_sync_request(request, broadcast_callback=None):
                 headers=dict(response.headers),
             )
 
+        incoming_opening_ids = [
+            get_clean_id("thong_tin_mo_thau", item.get("id"))
+            for item in data.get("thongtinmothau", [])
+            if isinstance(item, dict) and item.get("id")
+        ]
+        incoming_opening_ids = [value for value in incoming_opening_ids if value]
+        if incoming_opening_ids:
+            placeholders = ", ".join("?" for _ in incoming_opening_ids)
+            cursor.execute(
+                f"""DELETE FROM nha_thau_tham_du_mo_thau
+                    WHERE organization_id = ? AND thong_tin_mo_thau_id IN ({placeholders})""",
+                (org_name, *incoming_opening_ids),
+            )
+
         for payload_key, table_name, items in iter_sync_table_payloads(data):
             table_spec = SCHEMA_DINH_NGHIA[table_name]
             columns = list(table_spec["columns"].keys())
@@ -543,7 +570,9 @@ async def process_sync_request(request, broadcast_callback=None):
                                 ):
                                     val = normalize_person_name(val)
 
-                                if is_datetime_column(col):
+                                if col.startswith("ngay_"):
+                                    val = normalize_date_value(val)
+                                elif is_datetime_column(col):
                                     val = normalize_datetime_value(val)
 
 
@@ -607,11 +636,7 @@ async def process_sync_request(request, broadcast_callback=None):
 
 
 
-                                if col == 'trang_thai' and val is not None:
-                                    if str(val).strip() == 'Huỷ thầu':
-                                        val = 'Hủy thầu'
-
-                                db_row_data[col] = val
+                                db_row_data[col] = enum_code(table_name, col, val)
 
 
 
@@ -738,8 +763,8 @@ async def process_sync_request(request, broadcast_callback=None):
                                 (table_name, item_id, org_name, current_time, batch_sync_version)
                             )
                             orphaned_ids.append({"table": table_name, "id": item_id})
-                        except Exception:
-                            pass
+                        except sqlite3.Error as orphan_cleanup_error:
+                            log_sync_error(f"Không thể đánh dấu bản ghi mồ côi {item_id}: {orphan_cleanup_error}")
                     else:
                         log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
                         sync_item_errors.append({
@@ -825,7 +850,7 @@ async def process_sync_request(request, broadcast_callback=None):
         if conn:
             try:
                 conn.rollback()
-            except Exception:
+            except sqlite3.Error:
                 pass
         return error_response(
             request,
@@ -837,7 +862,7 @@ async def process_sync_request(request, broadcast_callback=None):
         if conn:
             try:
                 conn.rollback()
-            except Exception:
+            except sqlite3.Error:
                 pass
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
         return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)
@@ -845,7 +870,7 @@ async def process_sync_request(request, broadcast_callback=None):
         if conn:
             try:
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass
         if not transaction_committed and newly_written_images:
             cleanup_conn = None

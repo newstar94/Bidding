@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { ensureXlsxLoaded } from "../shared/externalAssets.js";
 export async function readExcelRows(file) {
   const XLSX = await ensureXlsxLoaded();
@@ -21,5 +22,5 @@ export function showExcelImportSaveButton() {
   const saveBtn = document.getElementById("btn-save-excel-import");
   if (!saveBtn) return;
   saveBtn.disabled = false;
-  saveBtn.style.display = "inline-flex";
+  setRuntimeStyle(saveBtn, "display", "inline-flex");
 }

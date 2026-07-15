@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import {
@@ -103,7 +104,7 @@ export async function editKeHoach(id) {
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
   const latestCDTs = this.model.getLatestChuDauTu() || [];
-  cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+  cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
   // The plan modal is lazy-loaded, so this select does not exist when the
   // application's one-time conditional handlers are registered.
   cdtSelect.onchange = (event) => {
@@ -116,9 +117,9 @@ export async function editKeHoach(id) {
   const projectFields = document.getElementById("kh-project-fields");
   const toggleProjectFields = () => {
     if (loaiHinhSelect.value === "Dự án") {
-      projectFields.style.display = "block";
+      setRuntimeStyle(projectFields, "display", "block");
     } else {
-      projectFields.style.display = "none";
+      setRuntimeStyle(projectFields, "display", "none");
     }
   };
   loaiHinhSelect.onchange = toggleProjectFields;
@@ -130,20 +131,20 @@ export async function editKeHoach(id) {
     const labelPheDuyet = document.getElementById("lbl-ngaypheduyet");
     const labelQuyetDinh = document.getElementById("lbl-quyetdinh");
     if (pheDuyetSelect.value === "Kế hoạch") {
-      pheDuyetFields.style.display = "block";
-      if (container) container.style.display = "block";
+      setRuntimeStyle(pheDuyetFields, "display", "block");
+      if (container) setRuntimeStyle(container, "display", "block");
       if (label) label.textContent = "Ngày trình kế hoạch";
       if (labelPheDuyet) labelPheDuyet.textContent = "Ngày phê duyệt kế hoạch";
       if (labelQuyetDinh) labelQuyetDinh.textContent = "Số QĐ phê duyệt kế hoạch";
     } else if (pheDuyetSelect.value === "Dự toán và kế hoạch") {
-      pheDuyetFields.style.display = "none";
-      if (container) container.style.display = "block";
+      setRuntimeStyle(pheDuyetFields, "display", "none");
+      if (container) setRuntimeStyle(container, "display", "block");
       if (label) label.textContent = "Ngày trình dự toán và kế hoạch";
       if (labelPheDuyet) labelPheDuyet.textContent = "Ngày phê duyệt dự toán và kế hoạch";
       if (labelQuyetDinh) labelQuyetDinh.textContent = "Số QĐ phê duyệt dự toán và kế hoạch";
     } else {
-      pheDuyetFields.style.display = "none";
-      if (container) container.style.display = "none";
+      setRuntimeStyle(pheDuyetFields, "display", "none");
+      if (container) setRuntimeStyle(container, "display", "none");
       if (labelPheDuyet) labelPheDuyet.textContent = "Ngày phê duyệt";
       if (labelQuyetDinh) labelQuyetDinh.textContent = "Số QĐ phê duyệt";
     }
@@ -443,8 +444,8 @@ export async function openPlanBreakdownModal(planId) {
   if (!kh) return;
   document.getElementById("breakdown-plan-id").value = planId;
   document.getElementById("breakdown-modal-subtitle").innerHTML = `
-        <strong>Kế hoạch:</strong> ${escapeHtml(kh.tenKeHoach)} <span class="badge badge-info" style="margin-left:8px;">${escapeHtml(this.model.getVersionLabel(kh.phienBan))}</span><br>
-        <span style="display:inline-block; margin-top:4px;"><strong>Mã:</strong> ${escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach) || "(Chưa có)")} | <span id="breakdown-total-display"></span></span>
+        <strong>Kế hoạch:</strong> ${escapeHtml(kh.tenKeHoach)} <span class="badge badge-info bf-s-9d5367afed">${escapeHtml(this.model.getVersionLabel(kh.phienBan))}</span><br>
+        <span class="bf-s-d922053a79"><strong>Mã:</strong> ${escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach) || "(Chưa có)")} | <span id="breakdown-total-display"></span></span>
     `;
   const tbody1 = document.getElementById("tbody-breakdown-dathuchien");
   tbody1.innerHTML = "";
@@ -479,8 +480,8 @@ export async function openPlanBreakdownModal(planId) {
       if (planSelect) {
         planSelect.value = planId;
         planSelect.setAttribute("readonly", "true");
-        planSelect.style.pointerEvents = "none";
-        planSelect.style.background = "var(--neutral-soft)";
+        setRuntimeStyle(planSelect, "pointerEvents", "none");
+        setRuntimeStyle(planSelect, "background", "var(--neutral-soft)");
         planSelect.dispatchEvent(new Event("change"));
       }
     };
@@ -493,15 +494,15 @@ export async function openPlanBreakdownModal(planId) {
     btn.onclick = () => {
       tabBtns.forEach((b) => {
         b.classList.remove("active");
-        b.style.borderBottomColor = "transparent";
-        b.style.color = "var(--text-muted)";
+        setRuntimeStyle(b, "borderBottomColor", "transparent");
+        setRuntimeStyle(b, "color", "var(--text-muted)");
       });
-      panes.forEach((p) => p.style.display = "none");
+      panes.forEach((p) => setRuntimeStyle(p, "display", "none"));
       btn.classList.add("active");
-      btn.style.borderBottomColor = "var(--primary)";
-      btn.style.color = "var(--primary)";
+      setRuntimeStyle(btn, "borderBottomColor", "var(--primary)");
+      setRuntimeStyle(btn, "color", "var(--primary)");
       const targetTab = btn.getAttribute("data-breakdown-tab");
-      document.getElementById(`pane-${targetTab}`).style.display = "block";
+      setRuntimeStyle(document.getElementById(`pane-${targetTab}`), "display", "block");
     };
   });
   tabBtns[0].click();
@@ -533,7 +534,7 @@ export function renderBreakdownPackagesList(planId) {
   if (!tbody) return;
   const pkgs = this.model.getLatestPackagesForPlan(planId);
   if (pkgs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;"><small>Chưa có gói thầu nào được tạo cho kế hoạch này.</small></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="bf-s-058d4c8b3d"><small>Chưa có gói thầu nào được tạo cho kế hoạch này.</small></td></tr>`;
     return;
   }
   tbody.innerHTML = pkgs.map((gt) => {
@@ -543,14 +544,14 @@ export function renderBreakdownPackagesList(planId) {
       ? getStatusBadge.call(this.view || this, gt.trangThai)
       : escapeHtml(gt.trangThai || "--");
     return `
-            <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding: 10px 14px; font-weight: 700; color: var(--text-muted);">${escapeHtml(this.model.getPackageBaseCode(gt.maGoiThau) || "--")}</td>
-                <td style="padding: 10px 14px; font-weight: 600; color: var(--text-main);">${escapeHtml(gt.tenGoiThau)}</td>
-                <td style="padding: 10px 14px; font-weight: 700; text-align: right; color: var(--primary);">${this.model.formatCurrency(gt.giaGoiThau)}</td>
-                <td style="padding: 10px 14px; font-weight: 500; color: var(--text-muted);">${escapeHtml(hinhThuc)}</td>
-                <td style="padding: 10px 14px;">${trangThaiBadge}</td>
-                <td style="padding: 10px 14px; text-align: center;">
-                    ${gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" ? `<button type="button" class="btn btn-outline btn-sm" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}" style="padding: 4px 8px; font-size: 0.78rem;">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}" style="padding: 4px 8px; font-size: 0.78rem;">Sửa</button>`}
+            <tr class="bf-s-ddc4ced4b2">
+                <td class="bf-s-e69a70165f">${escapeHtml(this.model.getPackageBaseCode(gt.maGoiThau) || "--")}</td>
+                <td class="bf-s-5af3dfe0e6">${escapeHtml(gt.tenGoiThau)}</td>
+                <td class="bf-s-fa7d102d10">${this.model.formatCurrency(gt.giaGoiThau)}</td>
+                <td class="bf-s-c6760d4ab4">${escapeHtml(hinhThuc)}</td>
+                <td class="bf-s-69a042494b">${trangThaiBadge}</td>
+                <td class="bf-s-59809c145b">
+                    ${gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" ? `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm bf-s-882b8568ba" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}">Sửa</button>`}
                 </td>
             </tr>
         `;
@@ -561,27 +562,27 @@ export function addBreakdownRow(type, data = null) {
   if (!tbody) return;
   const planId = document.getElementById("breakdown-plan-id").value;
   const row = document.createElement("tr");
-  row.style.borderBottom = "1px solid var(--border-color)";
+  setRuntimeStyle(row, "borderBottom", "1px solid var(--border-color)");
   if (type === "dathuchien") {
     row.innerHTML = `
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-doc" value="${escapeHtml(data?.vanBanPheDuyet || "")}" placeholder="Văn bản phê duyệt..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"dathuchien"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-unit bf-s-fa7eceb10a" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..."></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-doc bf-s-fa7eceb10a" value="${escapeHtml(data?.vanBanPheDuyet || "")}" placeholder="Văn bản phê duyệt..."></td>
+            <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"dathuchien"]'>&times;</button></td>
         `;
   } else if (type === "khongapdung") {
     row.innerHTML = `
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-unit" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"khongapdung"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-unit bf-s-fa7eceb10a" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..."></td>
+            <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"khongapdung"]'>&times;</button></td>
         `;
   } else if (type === "chuadudieuKien") {
     row.innerHTML = `
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-name" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem;"></td>
-            <td style="padding: 6px 10px;"><input type="text" class="breakdown-value text-right" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..." style="width: 100%; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-size: 0.84rem; font-weight: 700;"></td>
-            <td style="padding: 6px 10px; text-align: center;"><button type="button" class="btn-delete-row" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"chuadudieuKien"]' style="border: none; background: transparent; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 4px;">&times;</button></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
+            <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
+            <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"chuadudieuKien"]'>&times;</button></td>
         `;
   }
   const priceInput = row.querySelector(".breakdown-value");
@@ -628,7 +629,7 @@ export function updateBreakdownTotal(planId) {
   const labelTitle = isProject ? "Tổng mức đầu tư" : "Tổng dự toán";
   const totalSpan = document.getElementById("breakdown-total-display");
   if (totalSpan) {
-    totalSpan.innerHTML = `<strong>${labelTitle}:</strong> <span class="text-blue" style="font-size: inherit; font-weight: 700;">${this.model.formatCurrency(kh.tongMucDauTu)}</span>`;
+    totalSpan.innerHTML = `<strong>${labelTitle}:</strong> <span class="text-blue bf-s-9ffafcc45f">${this.model.formatCurrency(kh.tongMucDauTu)}</span>`;
   }
 }
 export function recalculatePlanTotal(planId) {

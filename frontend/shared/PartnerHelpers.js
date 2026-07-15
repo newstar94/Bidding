@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "./runtimeStyles.js";
 import { apiFetch } from "./apiClient.js";
 
 function addressCacheRoot() {
@@ -51,7 +52,7 @@ function syncCustomSelectDisplay(select) {
   if (optionsList) {
     optionsList.querySelectorAll("li").forEach((li) => {
       li.className = li.getAttribute("data-value") === select.value ? "selected" : "";
-      li.style.display = "";
+      setRuntimeStyle(li, "display", "");
     });
   }
 }
@@ -311,7 +312,7 @@ export function makeSearchableSelect(select, placeholder) {
   wrapper = document.createElement("div");
   wrapper.className = "custom-select-wrapper";
   wrapper.setAttribute("data-select-id", select.id);
-  select.style.display = "none";
+  setRuntimeStyle(select, "display", "none");
   select.parentNode.insertBefore(wrapper, select.nextSibling);
   const input = document.createElement("input");
   input.type = "text";
@@ -321,7 +322,7 @@ export function makeSearchableSelect(select, placeholder) {
   input.disabled = select.disabled;
   const arrow = document.createElement("div");
   arrow.className = "custom-select-arrow";
-  arrow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down" style="display: block;"><path d="m6 9 6 6 6-6"/></svg>`;
+  arrow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down bf-s-bd877e16c3"><path d="m6 9 6 6 6-6"/></svg>`;
   const optionsList = document.createElement("ul");
   optionsList.className = "custom-select-options";
   optionsList.setAttribute("data-parent", select.id);
@@ -343,22 +344,22 @@ export function makeSearchableSelect(select, placeholder) {
       document.dispatchEvent(new Event("click"));
       wrapper.classList.add("open");
       document.body.appendChild(optionsList);
-      optionsList.style.display = "block";
-      optionsList.style.zIndex = "999999";
+      setRuntimeStyle(optionsList, "display", "block");
+      setRuntimeStyle(optionsList, "zIndex", "999999");
       const rect = input.getBoundingClientRect();
       const scrollX = window.scrollX || window.pageXOffset;
       const scrollY = window.scrollY || window.pageYOffset;
-      optionsList.style.position = "absolute";
-      optionsList.style.minWidth = rect.width + "px";
-      optionsList.style.left = rect.left + scrollX + "px";
+      setRuntimeStyle(optionsList, "position", "absolute");
+      setRuntimeStyle(optionsList, "minWidth", rect.width + "px");
+      setRuntimeStyle(optionsList, "left", rect.left + scrollX + "px");
       const dropdownHeight = optionsList.offsetHeight || 200;
       const spaceBelow = window.innerHeight - rect.bottom;
       if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
         wrapper.classList.add("drop-up");
-        optionsList.style.top = rect.top + scrollY - dropdownHeight - 4 + "px";
+        setRuntimeStyle(optionsList, "top", rect.top + scrollY - dropdownHeight - 4 + "px");
       } else {
         wrapper.classList.remove("drop-up");
-        optionsList.style.top = rect.bottom + scrollY + 4 + "px";
+        setRuntimeStyle(optionsList, "top", rect.bottom + scrollY + 4 + "px");
       }
       const selectedItem = optionsList.querySelector(".selected");
       if (selectedItem) {
@@ -366,7 +367,7 @@ export function makeSearchableSelect(select, placeholder) {
       }
     } else {
       wrapper.classList.remove("open");
-      optionsList.style.display = "none";
+      setRuntimeStyle(optionsList, "display", "none");
       wrapper.appendChild(optionsList);
     }
   };
@@ -392,10 +393,10 @@ export function makeSearchableSelect(select, placeholder) {
       const searchAttr = opt ? opt.getAttribute("data-search") || "" : "";
       const text = (item.textContent + " " + searchAttr).toLowerCase();
       if (text.includes(query)) {
-        item.style.display = "";
+        setRuntimeStyle(item, "display", "");
         hasResults = true;
       } else {
-        item.style.display = "none";
+        setRuntimeStyle(item, "display", "none");
       }
     });
     let noResultsMsg = optionsList.querySelector(".custom-select-no-results");
@@ -415,7 +416,7 @@ export function makeSearchableSelect(select, placeholder) {
       toggleDropdown(false);
       const selectedOpt = select.options[select.selectedIndex];
       input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : "";
-      optionsList.querySelectorAll("li").forEach((item) => item.style.display = "");
+      optionsList.querySelectorAll("li").forEach((item) => setRuntimeStyle(item, "display", ""));
       const noResultsMsg = optionsList.querySelector(".custom-select-no-results");
       if (noResultsMsg) noResultsMsg.remove();
     }
@@ -426,7 +427,7 @@ export function makeSearchableSelect(select, placeholder) {
       toggleDropdown(false);
       const selectedOpt = select.options[select.selectedIndex];
       input.value = selectedOpt && selectedOpt.value ? selectedOpt.text : "";
-      optionsList.querySelectorAll("li").forEach((item) => item.style.display = "");
+      optionsList.querySelectorAll("li").forEach((item) => setRuntimeStyle(item, "display", ""));
     }
   }, { capture: true, passive: true });
   select.addEventListener("change", () => {
@@ -484,7 +485,7 @@ function refreshCustomOptions(select, wrapper) {
       li.classList.add("selected");
       input.value = opt.value ? opt.text : "";
       wrapper.classList.remove("open");
-      optionsList.style.display = "none";
+      setRuntimeStyle(optionsList, "display", "none");
       wrapper.appendChild(optionsList);
     });
     optionsList.appendChild(li);

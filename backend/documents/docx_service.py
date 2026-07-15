@@ -33,7 +33,7 @@ def parse_json_fields(row_dict):
                 try:
                     parsed = json.loads(val)
                     row_dict[col] = normalize_dict_keys(parsed)
-                except Exception:
+                except (json.JSONDecodeError, TypeError):
                     row_dict[col] = [] if col != "thong_tin_thiet_bi_cuoi" else {}
         elif val is None and (
             col.endswith("_list")
@@ -109,7 +109,7 @@ def extract_evaluation_dates(pkg):
 
                 pkg['ngay_moi_doi_chieu'] = format_date(ngay_moi_doichieu)
                 pkg['ngay_doi_chieu'] = format_date(ngay_doichieu)
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             pass
     return pkg
 

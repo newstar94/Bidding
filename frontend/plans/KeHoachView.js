@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatCurrency, formatDate, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
@@ -72,7 +73,7 @@ export async function renderKeHoachTable() {
         return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
       }).join("");
       const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-plan-version" data-root="${esc(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist bf-s-b41ce2ea44" data-bf-change="change-plan-version" data-root="${esc(root)}">
                     ${optionsHtml}
                 </select>
             `;
@@ -87,16 +88,16 @@ export async function renderKeHoachTable() {
       return `
                 <tr>
                     <td>
-                        <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                            <a href="#" data-bf-action="show-plan" data-id="${esc(displayedKh.id)}" class="text-blue fw-bold link-hover" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPlanBaseCode(displayedKh.maKeHoach) ? esc(this.model.getPlanBaseCode(displayedKh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
-                            <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                        <div class="bf-s-8c8dc52ed7">
+                            <a href="#" data-bf-action="show-plan" data-id="${esc(displayedKh.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d"><span class="detail-code bf-s-dc5de304c3">${this.model.getPlanBaseCode(displayedKh.maKeHoach) ? esc(this.model.getPlanBaseCode(displayedKh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
+                            <span class="bf-s-db1d8f859f">-</span>
                             ${dropdownHtml}
                         </div>
                     </td>
-                    <td style="min-width: 240px; max-width: 320px;" class="fw-bold text-wrap">${esc(displayedKh.tenKeHoach)}</td>
+                    <td class="fw-bold text-wrap bf-s-861d2aedee">${esc(displayedKh.tenKeHoach)}</td>
                     <td>${displayedKh.loaiHinhMuaSam ? `<span class="badge ${displayedKh.loaiHinhMuaSam === "Dự án" ? "badge-info" : "badge-warning"}">${esc(displayedKh.loaiHinhMuaSam)}</span>` : '<span class="text-muted">--</span>'}</td>
-                    <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${esc(displayedKh.tenDuAnDuToan || "--")}</td>
-                    <td style="min-width: 180px; max-width: 280px;" class="text-wrap">${cdt ? esc(cdt.tenChuDauTu) : '<span class="text-danger">Không rõ</span>'}</td>
+                    <td class="text-muted text-wrap bf-s-0569d2208a">${esc(displayedKh.tenDuAnDuToan || "--")}</td>
+                    <td class="text-wrap bf-s-3ce088a59b">${cdt ? esc(cdt.tenChuDauTu) : '<span class="text-danger">Không rõ</span>'}</td>
                     <td class="text-blue fw-bold">${formatCurrency(displayedKh.tongMucDauTu)}</td>
                     <td>${formatDate(displayedKh.ngayPheDuyet)}</td>
                     <td>${esc(displayedKh.quyetDinhPheDuyet)}</td>
@@ -154,12 +155,12 @@ export async function renderPlanVersionDetails(versionId) {
     const latestPlan = this.model.getLatestPlan(versionId);
     const isLatest = latestPlan && latestPlan.id === versionId;
     if (isLatest) {
-      editBtn.style.display = "flex";
+      setRuntimeStyle(editBtn, "display", "flex");
       editBtn.onclick = () => {
         executeAppCommand("editKeHoach", versionId);
       };
     } else {
-      editBtn.style.display = "none";
+      setRuntimeStyle(editBtn, "display", "none");
     }
   }
   const rootId = kh.rootId || kh.id;
@@ -208,25 +209,25 @@ export async function renderPlanVersionDetails(versionId) {
   let breakdownSection1 = "";
   if (list1.length > 0) {
     breakdownSection1 = `
-            <div class="detail-sub-section" style="margin-top: 16px;">
-                <h5 class="detail-sub-title" style="color: var(--primary);">I. Phần công việc đã thực hiện</h5>
-                <div class="phanlo-table-wrap" style="overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-top: 8px;">
-                    <table class="phanlo-table" style="width: 100%; border-collapse: collapse;">
+            <div class="detail-sub-section bf-s-2e21a57cf0">
+                <h5 class="detail-sub-title bf-s-fcb5ddef65">I. Phần công việc đã thực hiện</h5>
+                <div class="phanlo-table-wrap bf-s-d49e7f30b4">
+                    <table class="phanlo-table bf-s-a2e921d929">
                         <thead>
-                            <tr style="background: var(--neutral-soft); text-align: left; border-bottom: 1px solid var(--border-color);">
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 220px;">Đơn vị thực hiện</th>
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 220px;">Văn bản phê duyệt</th>
+                            <tr class="bf-s-b2b45352a8">
+                                <th class="bf-s-c3fc104bea">Tên phần công việc</th>
+                                <th class="bf-s-c7351276e7">Giá trị (VND)</th>
+                                <th class="bf-s-369f705937">Đơn vị thực hiện</th>
+                                <th class="bf-s-369f705937">Văn bản phê duyệt</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${list1.map((item) => `
-                                <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${escapeHtml(item.tenCongViec)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${escapeHtml(item.donViThucHien || "--")}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${escapeHtml(item.vanBanPheDuyet || "--")}</td>
+                                <tr class="bf-s-ddc4ced4b2">
+                                    <td class="bf-s-8cebed82f0">${escapeHtml(item.tenCongViec)}</td>
+                                    <td class="bf-s-c1b2008170">${formatCurrency(item.giaTri)}</td>
+                                    <td class="bf-s-8e0dc07fff">${escapeHtml(item.donViThucHien || "--")}</td>
+                                    <td class="bf-s-8e0dc07fff">${escapeHtml(item.vanBanPheDuyet || "--")}</td>
                                 </tr>
                             `).join("")}
                         </tbody>
@@ -238,23 +239,23 @@ export async function renderPlanVersionDetails(versionId) {
   let breakdownSection2 = "";
   if (list2.length > 0) {
     breakdownSection2 = `
-            <div class="detail-sub-section" style="margin-top: 20px;">
-                <h5 class="detail-sub-title" style="color: var(--primary);">II. Phần công việc không áp dụng được hình thức LCNT</h5>
-                <div class="phanlo-table-wrap" style="overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-top: 8px;">
-                    <table class="phanlo-table" style="width: 100%; border-collapse: collapse;">
+            <div class="detail-sub-section bf-s-93688d4ac4">
+                <h5 class="detail-sub-title bf-s-fcb5ddef65">II. Phần công việc không áp dụng được hình thức LCNT</h5>
+                <div class="phanlo-table-wrap bf-s-d49e7f30b4">
+                    <table class="phanlo-table bf-s-a2e921d929">
                         <thead>
-                            <tr style="background: var(--neutral-soft); text-align: left; border-bottom: 1px solid var(--border-color);">
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important; width: 300px;">Đơn vị thực hiện</th>
+                            <tr class="bf-s-b2b45352a8">
+                                <th class="bf-s-c3fc104bea">Tên phần công việc</th>
+                                <th class="bf-s-c7351276e7">Giá trị (VND)</th>
+                                <th class="bf-s-e8c0087267">Đơn vị thực hiện</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${list2.map((item) => `
-                                <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${escapeHtml(item.tenCongViec)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${escapeHtml(item.donViThucHien || "--")}</td>
+                                <tr class="bf-s-ddc4ced4b2">
+                                    <td class="bf-s-8cebed82f0">${escapeHtml(item.tenCongViec)}</td>
+                                    <td class="bf-s-c1b2008170">${formatCurrency(item.giaTri)}</td>
+                                    <td class="bf-s-8e0dc07fff">${escapeHtml(item.donViThucHien || "--")}</td>
                                 </tr>
                             `).join("")}
                         </tbody>
@@ -266,21 +267,21 @@ export async function renderPlanVersionDetails(versionId) {
   let breakdownSection3 = "";
   if (list3.length > 0) {
     breakdownSection3 = `
-            <div class="detail-sub-section" style="margin-top: 20px;">
-                <h5 class="detail-sub-title" style="color: var(--primary);">III. Phần công việc chưa đủ điều kiện lập kế hoạch LCNT</h5>
-                <div class="phanlo-table-wrap" style="overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); margin-top: 8px;">
-                    <table class="phanlo-table" style="width: 100%; border-collapse: collapse;">
+            <div class="detail-sub-section bf-s-93688d4ac4">
+                <h5 class="detail-sub-title bf-s-fcb5ddef65">III. Phần công việc chưa đủ điều kiện lập kế hoạch LCNT</h5>
+                <div class="phanlo-table-wrap bf-s-d49e7f30b4">
+                    <table class="phanlo-table bf-s-a2e921d929">
                         <thead>
-                            <tr style="background: var(--neutral-soft); text-align: left; border-bottom: 1px solid var(--border-color);">
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: left !important;">Tên phần công việc</th>
-                                <th style="padding: 10px 14px; font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-muted); text-align: right !important; width: 180px;">Giá trị (VND)</th>
+                            <tr class="bf-s-b2b45352a8">
+                                <th class="bf-s-c3fc104bea">Tên phần công việc</th>
+                                <th class="bf-s-c7351276e7">Giá trị (VND)</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${list3.map((item) => `
-                                <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${escapeHtml(item.tenCongViec)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
+                                <tr class="bf-s-ddc4ced4b2">
+                                    <td class="bf-s-8cebed82f0">${escapeHtml(item.tenCongViec)}</td>
+                                    <td class="bf-s-c1b2008170">${formatCurrency(item.giaTri)}</td>
                                 </tr>
                             `).join("")}
                         </tbody>
@@ -300,7 +301,7 @@ export async function renderPlanVersionDetails(versionId) {
                 <div class="detail-label">Ngày phê duyệt dự toán</div>
                 <div class="detail-value">${formatDate(kh.ngayPheDuyetDuToan) || "--"}</div>
             </div>
-            <div class="detail-item" style="grid-column: span 2;">
+            <div class="detail-item bf-s-6d00fde401">
                 <div class="detail-label">Số QĐ phê duyệt dự toán</div>
                 <div class="detail-value">${escapeHtml(kh.soQdPheDuyetDuToan || "--")}</div>
             </div>
@@ -309,7 +310,7 @@ export async function renderPlanVersionDetails(versionId) {
   let projectDetailHtml = "";
   if (kh.loaiHinhMuaSam === "Dự án") {
     projectDetailHtml = `
-            <div class="detail-item" style="grid-column: span 2;">
+            <div class="detail-item bf-s-6d00fde401">
                 <div class="detail-label">Mã dự án</div>
                 <div class="detail-value">${escapeHtml(kh.maDuan || "--")}</div>
             </div>
@@ -321,7 +322,7 @@ export async function renderPlanVersionDetails(versionId) {
                 <div class="detail-label">Ngày QĐ phê duyệt dự án</div>
                 <div class="detail-value">${formatDate(kh.ngayQdPheDuyetDuAn) || "--"}</div>
             </div>
-            <div class="detail-item" style="grid-column: span 2;">
+            <div class="detail-item bf-s-6d00fde401">
                 <div class="detail-label">Cơ quan phê duyệt dự án</div>
                 <div class="detail-value">${escapeHtml(kh.coQuanPheDuyetDuAn || "--")}</div>
             </div>
@@ -329,23 +330,23 @@ export async function renderPlanVersionDetails(versionId) {
   }
   const html = `
         <div class="detail-section">
-            <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">${this.model.getPlanBaseCode(kh.maKeHoach) ? escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span>
-                        <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
+            <div class="detail-header-block bf-s-08b722fa44">
+                <div class="bf-s-a36b98e9db">
+                    <div class="bf-s-bbf072f32c">
+                        <span class="detail-code bf-s-4ec19854c0">${this.model.getPlanBaseCode(kh.maKeHoach) ? escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span>
+                        <span class="version-separator bf-s-ada7b4c5a3">-</span>
                         <select id="fullpage-kh-version-select" class="page-version-select" ${allVersions.length < 2 ? "disabled" : ""}>
                             ${allVersions.map((k) => `<option value="${safeAttr(k.id)}" ${k.id === versionId ? "selected" : ""}>${escapeHtml(k.phienBan || "00")}</option>`).join("")}
                         </select>
                     </div>
                 </div>
-                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${escapeHtml(kh.tenKeHoach)}</h4>
+                <h4 class="detail-title bf-s-4749e65682">${escapeHtml(kh.tenKeHoach)}</h4>
             </div>
 
             <div class="detail-grid">
-                <div class="detail-item" style="grid-column: span 2;">
+                <div class="detail-item bf-s-6d00fde401">
                     <div class="detail-label">Tên Dự án / Dự toán</div>
-                    <div class="detail-value text-blue" style="font-size: 1.1rem;">${escapeHtml(kh.tenDuAnDuToan || "--")}</div>
+                    <div class="detail-value text-blue bf-s-fb9381027e">${escapeHtml(kh.tenDuAnDuToan || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Hình thức</div>
@@ -365,7 +366,7 @@ export async function renderPlanVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tổng Giá Trị Kế Hoạch</div>
-                    <div class="detail-value text-blue" style="font-size: 1.15rem;">${formatCurrency(kh.tongMucDauTu)}</div>
+                    <div class="detail-value text-blue bf-s-61f44adbb8">${formatCurrency(kh.tongMucDauTu)}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Thời gian đăng mã kế hoạch</div>
@@ -388,7 +389,7 @@ export async function renderPlanVersionDetails(versionId) {
                 ${cdt ? `
                     <div class="associated-item">
                         <div>
-                            <strong style="font-size: 0.9rem;">${escapeHtml(cdt.tenChuDauTu)}</strong><br>
+                            <strong class="bf-s-a91dac6c9e">${escapeHtml(cdt.tenChuDauTu)}</strong><br>
                             <small class="text-muted">Mã số thuế: ${escapeHtml(cdt.maSoThue || "--")} | Địa chỉ: ${escapeHtml((cdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}</small>
                         </div>
                         <span class="associated-badge">${escapeHtml(cdt.maChuDauTu || "--")}</span>
@@ -400,13 +401,13 @@ export async function renderPlanVersionDetails(versionId) {
             ${breakdownSection2}
             ${breakdownSection3}
 
-            <div class="detail-sub-section" style="margin-top: 20px;">
-                <h5 class="detail-sub-title" style="color: var(--primary);">IV. Phần công việc thuộc kế hoạch lựa chọn nhà thầu (Các gói thầu - ${uniqueLinkedPackages.length})</h5>
+            <div class="detail-sub-section bf-s-93688d4ac4">
+                <h5 class="detail-sub-title bf-s-fcb5ddef65">IV. Phần công việc thuộc kế hoạch lựa chọn nhà thầu (Các gói thầu - ${uniqueLinkedPackages.length})</h5>
                 <div class="associated-list">
                     ${uniqueLinkedPackages.length > 0 ? uniqueLinkedPackages.map((gt) => `
-                        <div class="associated-item" style="cursor: pointer;" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" title="Xem chi tiết Gói thầu">
+                        <div class="associated-item bf-s-ecfbb78629" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" title="Xem chi tiết Gói thầu">
                             <div class="associated-info">
-                                <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
+                                <i data-lucide="briefcase" class="text-blue bf-s-0f88141c20"></i>
                                 <span><strong>${escapeHtml(gt.maGoiThau || "--")}</strong> - ${escapeHtml(gt.tenGoiThau || "--")}${gt.isRebid ? ' <span class="badge badge-warning">Đấu thầu lại</span>' : ""}</span>
                             </div>
                             <span class="badge badge-success">${formatCurrency(gt.giaGoiThau)}</span>

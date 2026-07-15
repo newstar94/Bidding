@@ -1,61 +1,61 @@
 
                 <section class="tab-pane" id="tab-mothau">
-                    <div class="dashboard-grid" style="grid-template-columns: 1fr; gap: 20px; margin-bottom: 20px;">
-                        <div class="dashboard-card card-primary" style="padding: 24px;">
-                            <div class="card-header"
-                                style="border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                    <div class="dashboard-grid bf-s-52f34b94e3">
+                        <div class="dashboard-card card-primary bf-s-3edb22cde1">
+                            <div class="card-header bf-s-14099a038e"
+                               >
                                 <div>
-                                    <h3 class="card-title"
-                                        style="font-size: 1.15rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px;">
-                                        <i data-lucide="unlock" style="width: 20px; height: 20px;"></i>
+                                    <h3 class="card-title bf-s-0814f180e3"
+                                       >
+                                        <i data-lucide="unlock" class="bf-s-a547c164b2"></i>
                                         Nhập thông tin Mở thầu (E-HSDT / E-HSĐXKT)
                                     </h3>
-                                    <p class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">Hệ thống tự động
+                                    <p class="text-muted bf-s-20c96e1b9b">Hệ thống tự động
                                         hiển thị bảng nhập liệu tương thích với cấu hình gói thầu được chọn.</p>
                                 </div>
                             </div>
 
                             <div class="card-body">
-                                <div class="form-grid"
-                                    style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; margin-bottom: 24px;">
-                                    <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                                <div class="form-grid bf-s-381fbb17aa"
+                                   >
+                                    <div class="form-group bf-s-bd53bc7485">
                                         <label for="mothau-goithau-select"
-                                            style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">1.
+                                            class="bf-s-f2bc309e47">1.
                                             Chọn Gói thầu cần nhập thông tin mở thầu <span
                                                 class="required">*</span></label>
                                         <div class="select-wrapper">
-                                            <select id="mothau-goithau-select" class="form-control" required
-                                                style="font-weight: 600;">
+                                            <select id="mothau-goithau-select" class="form-control bf-s-018e18ec8e" required
+                                               >
                                                 <option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang
                                                     chấm thầu) --</option>
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="form-group" id="mothau-goithau-summary"
-                                        style="display: none; padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6;">
+                                    <div class="form-group bf-s-7a17f440ae" id="mothau-goithau-summary"
+                                       >
 
                                     </div>
                                 </div>
 
-                                <div id="mothau-bid-container" style="display: none;">
+                                <div id="mothau-bid-container" class="bf-s-65d1f1c3d7">
                                     <div
-                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                        class="bf-s-40863e8fe4">
                                         <h4 id="mothau-table-title"
-                                            style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">Danh
+                                            class="bf-s-f25493e3c9">Danh
                                             sách Nhà thầu tham dự & Nộp hồ sơ</h4>
-                                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                        <div class="bf-s-3a4d50c9e0">
                                              <button class="btn-excel-action btn-download-excel-template-direct" data-type="mothau" id="btn-mothau-download-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
                                              <button class="btn-excel-action btn-import-excel-direct" data-type="mothau" id="btn-mothau-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
-                                            <button class="btn btn-outline btn-sm" id="btn-mothau-add-bid"
-                                                style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600;">
+                                            <button class="btn btn-outline btn-sm bf-s-6d0d9114a4" id="btn-mothau-add-bid"
+                                               >
                                                 <i data-lucide="plus"></i> Thêm Nhà thầu nộp hồ sơ
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div class="table-container"
-                                        style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow-x: auto; margin-bottom: 24px;">
-                                        <table class="data-table" id="mothau-table" style="min-width: 100%;">
+                                    <div class="table-container bf-s-d4e7ea1f46"
+                                       >
+                                        <table class="data-table bf-s-448ca2b6ae" id="mothau-table">
                                             <thead id="mothau-table-thead">
 
                                             </thead>
@@ -65,24 +65,24 @@
                                         </table>
                                     </div>
 
-                                    <div style="display: flex; justify-content: flex-end; gap: 12px;">
-                                        <button class="btn btn-outline" data-bf-action="switch-tab" data-tab="goithau"
-                                            style="padding: 10px 20px; font-weight: 600;">Quay lại danh sách</button>
-                                        <button class="btn btn-primary" id="btn-mothau-save"
-                                            style="padding: 10px 24px; font-weight: 700;">
+                                    <div class="bf-s-7ecb73148b">
+                                        <button class="btn btn-outline bf-s-797135b735" data-bf-action="switch-tab" data-tab="goithau"
+                                           >Quay lại danh sách</button>
+                                        <button class="btn btn-primary bf-s-8b00aa151b" id="btn-mothau-save"
+                                           >
                                             <i data-lucide="save"></i> Lưu thông tin mở thầu
                                         </button>
                                     </div>
                                 </div>
 
                                 <div id="mothau-empty-state"
-                                    style="text-align: center; padding: 48px 24px; color: var(--text-muted);">
+                                    class="bf-s-a746d9264d">
                                     <i data-lucide="inbox"
-                                        style="width: 48px; height: 48px; color: var(--neutral-dark); margin: 0 auto 16px;"></i>
+                                        class="bf-s-5fb7c74ab9"></i>
                                     <h4
-                                        style="font-weight: 700; font-size: 0.95rem; color: var(--text-main); margin-bottom: 6px;">
+                                        class="bf-s-ef247219b1">
                                         Chưa chọn Gói thầu</h4>
-                                    <p style="font-size: 0.82rem;">Vui lòng chọn một gói thầu ở danh sách phía trên để
+                                    <p class="bf-s-9f9981a394">Vui lòng chọn một gói thầu ở danh sách phía trên để
                                         tiến hành nhập thông tin mở thầu.</p>
                                 </div>
                             </div>

@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { setActiveOrganizationId } from "../app/workspaceState.js";
@@ -37,21 +38,21 @@ export function setupAuth() {
     this.disconnectWebSocket?.(false);
     void this.model.deactivateWorkspace?.();
     this.model.clearSessionData();
-    overlay.style.display = "flex";
-    document.querySelector(".app-container").style.filter = "blur(10px)";
+    setRuntimeStyle(overlay, "display", "flex");
+    setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
     const showResetForm = Boolean(resetToken && formReset);
-    formLogin.style.display = showResetForm ? "none" : "block";
-    formRegister.style.display = "none";
-    formForgot.style.display = "none";
-    if (formReset) formReset.style.display = showResetForm ? "block" : "none";
-    if (formVerify) formVerify.style.display = "none";
+    setRuntimeStyle(formLogin, "display", showResetForm ? "none" : "block");
+    setRuntimeStyle(formRegister, "display", "none");
+    setRuntimeStyle(formForgot, "display", "none");
+    if (formReset) setRuntimeStyle(formReset, "display", showResetForm ? "block" : "none");
+    if (formVerify) setRuntimeStyle(formVerify, "display", "none");
     document.getElementById("login-username").value = "";
     document.getElementById("login-password").value = "";
     hideInitLoader();
   };
   const showCachedWorkspace = async () => {
-    overlay.style.display = "none";
-    document.querySelector(".app-container").style.filter = "none";
+    setRuntimeStyle(overlay, "display", "none");
+    setRuntimeStyle(document.querySelector(".app-container"), "filter", "none");
     this.view.updateActiveUserProfileDisplay();
     try {
       const initialTab = this.getTabNameForPath?.(window.location.pathname) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
@@ -173,13 +174,13 @@ export function setupAuth() {
         if (effectiveRoles.includes("super_admin")) activeRole = "super_admin";
         else if (effectiveRoles.includes("manager")) activeRole = "manager";
         if (data.user.needs_username) {
-          overlay.style.display = "none";
-          document.querySelector(".app-container").style.filter = "blur(10px)";
+          setRuntimeStyle(overlay, "display", "none");
+          setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
           hideInitLoader();
           this._showSetUsernameModal(
             activeRole,
             () => {
-              document.querySelector(".app-container").style.filter = "none";
+              setRuntimeStyle(document.querySelector(".app-container"), "filter", "none");
               this._finishGoogleLogin(activeRole);
             },
             data.user.suggested_username || "",
@@ -206,13 +207,13 @@ export function setupAuth() {
   const btnShowLoginFromVerify = document.getElementById("link-show-login-from-verify");
   const btnLogout = document.getElementById("btn-auth-logout");
   const switchForm = (showPane) => {
-    formLogin.style.display = "none";
-    formRegister.style.display = "none";
-    formForgot.style.display = "none";
-    if (formReset) formReset.style.display = "none";
-    if (formVerify) formVerify.style.display = "none";
-    document.querySelectorAll(".auth-error-msg, .auth-success-msg").forEach((el) => el.style.display = "none");
-    showPane.style.display = "block";
+    setRuntimeStyle(formLogin, "display", "none");
+    setRuntimeStyle(formRegister, "display", "none");
+    setRuntimeStyle(formForgot, "display", "none");
+    if (formReset) setRuntimeStyle(formReset, "display", "none");
+    if (formVerify) setRuntimeStyle(formVerify, "display", "none");
+    document.querySelectorAll(".auth-error-msg, .auth-success-msg").forEach((el) => setRuntimeStyle(el, "display", "none"));
+    setRuntimeStyle(showPane, "display", "block");
   };
   let countdownInterval;
   const startOtpCountdown = (username) => {
@@ -220,8 +221,8 @@ export function setupAuth() {
     const timerSpan = document.getElementById("otp-timer");
     const countdownSpan = document.getElementById("otp-countdown");
     if (!btnResend2 || !timerSpan || !countdownSpan) return;
-    btnResend2.style.display = "none";
-    timerSpan.style.display = "inline";
+    setRuntimeStyle(btnResend2, "display", "none");
+    setRuntimeStyle(timerSpan, "display", "inline");
     let seconds = 60;
     countdownSpan.textContent = seconds;
     if (countdownInterval) clearInterval(countdownInterval);
@@ -230,8 +231,8 @@ export function setupAuth() {
       countdownSpan.textContent = seconds;
       if (seconds <= 0) {
         clearInterval(countdownInterval);
-        btnResend2.style.display = "inline";
-        timerSpan.style.display = "none";
+        setRuntimeStyle(btnResend2, "display", "inline");
+        setRuntimeStyle(timerSpan, "display", "none");
       }
     }, 1e3);
   };
@@ -263,7 +264,12 @@ export function setupAuth() {
   };
   if (btnLogout) {
     btnLogout.onclick = async () => {
-      const confirmed = await this.view.customConfirm("Xác nhận đăng xuất", "Bạn có chắc chắn muốn đăng xuất tài khoản này không?", "log-out");
+      const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
+      const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
+      const warning = pendingCount || hasUnsavedForm
+        ? ` Cảnh báo: còn ${pendingCount ? `${pendingCount} thay đổi chưa đồng bộ` : ""}${pendingCount && hasUnsavedForm ? " và " : ""}${hasUnsavedForm ? "biểu mẫu chưa lưu" : ""}.`
+        : "";
+      const confirmed = await this.view.customConfirm("Xác nhận đăng xuất", `Bạn có chắc chắn muốn đăng xuất tài khoản này không?${warning}`, "log-out");
       if (confirmed) {
         try {
           if (typeof this.autoSync === "function") {
@@ -299,8 +305,8 @@ export function setupAuth() {
         setAuthSessionActive(false);
         setAuthFlowInProgress(false);
         if (this._sessionInterval) clearInterval(this._sessionInterval);
-        overlay.style.display = "flex";
-        document.querySelector(".app-container").style.filter = "blur(10px)";
+        setRuntimeStyle(overlay, "display", "flex");
+        setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
         switchForm(formLogin);
         document.getElementById("login-username").value = "";
         document.getElementById("login-password").value = "";
@@ -312,7 +318,7 @@ export function setupAuth() {
     const username = document.getElementById("login-username").value.trim();
     const password = document.getElementById("login-password").value;
     const errorDiv = document.getElementById("login-error");
-    errorDiv.style.display = "none";
+    setRuntimeStyle(errorDiv, "display", "none");
     const remember = document.getElementById("login-remember")?.checked || false;
     try {
       const res = await apiFetch("/api/auth/login", {
@@ -323,7 +329,7 @@ export function setupAuth() {
       const data = await res.json();
       if (!res.ok) {
         errorDiv.textContent = data.error || "Đăng nhập không thành công!";
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
         if (data.unverified && formVerify) {
           document.getElementById("verify-username-hidden").value = data.username || username;
           document.getElementById("verify-code").value = "";
@@ -335,8 +341,6 @@ export function setupAuth() {
         return;
       }
       setAuthSessionActive(true);
-      sessionStorage.removeItem("bf_session_token");
-      localStorage.removeItem("bf_session_token");
       sessionStorage.setItem("bf_username", data.username);
       sessionStorage.setItem("bf_user_id", data.id);
       if (remember) {
@@ -396,7 +400,7 @@ export function setupAuth() {
       this.startBackgroundSessionChecker();
     } catch (err) {
       errorDiv.textContent = "Lỗi kết nối máy chủ Starlette: " + err.message;
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
     }
   };
   formRegister.onsubmit = async (e) => {
@@ -409,23 +413,23 @@ export function setupAuth() {
     const role = "employee";
     const errorDiv = document.getElementById("register-error");
     const successDiv = document.getElementById("register-success");
-    errorDiv.style.display = "none";
-    successDiv.style.display = "none";
+    setRuntimeStyle(errorDiv, "display", "none");
+    setRuntimeStyle(successDiv, "display", "none");
     const usernameCheck = validateUsernameClient(username);
     if (!usernameCheck.ok) {
       errorDiv.textContent = usernameCheck.message;
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
       document.getElementById("register-username").focus();
       return;
     }
     if (password.length < 8 || password.length > 256) {
       errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự!";
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
     if (password !== confirmPassword) {
       errorDiv.textContent = "Nhập lại mật khẩu không trùng khớp!";
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
     try {
@@ -437,11 +441,11 @@ export function setupAuth() {
       const data = await res.json();
       if (!res.ok) {
         errorDiv.textContent = data.error || "Đăng ký tài khoản thất bại!";
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
         return;
       }
       successDiv.textContent = data.message || "Chúc mừng! Đăng ký tài khoản thành công. Vui lòng nhập mã OTP để xác thực email.";
-      successDiv.style.display = "block";
+      setRuntimeStyle(successDiv, "display", "block");
       document.getElementById("verify-username-hidden").value = username;
       document.getElementById("verify-code").value = "";
       formRegister.reset();
@@ -451,7 +455,7 @@ export function setupAuth() {
       }, 2e3);
     } catch (err) {
       errorDiv.textContent = "Lỗi kết nối máy chủ: " + err.message;
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
     }
   };
   if (formVerify) {
@@ -461,11 +465,11 @@ export function setupAuth() {
       const code = document.getElementById("verify-code").value.trim();
       const errorDiv = document.getElementById("verify-error");
       const successDiv = document.getElementById("verify-success");
-      errorDiv.style.display = "none";
-      successDiv.style.display = "none";
+      setRuntimeStyle(errorDiv, "display", "none");
+      setRuntimeStyle(successDiv, "display", "none");
       if (code.length !== 6) {
         errorDiv.textContent = "Mã xác thực OTP phải gồm đúng 6 chữ số!";
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
         return;
       }
       try {
@@ -477,18 +481,18 @@ export function setupAuth() {
         const data = await res.json();
         if (!res.ok) {
           errorDiv.textContent = data.error || "Xác thực OTP thất bại!";
-          errorDiv.style.display = "block";
+          setRuntimeStyle(errorDiv, "display", "block");
           return;
         }
         successDiv.textContent = data.message || "Đang tải...";
-        successDiv.style.display = "block";
+        setRuntimeStyle(successDiv, "display", "block");
         if (countdownInterval) clearInterval(countdownInterval);
         setTimeout(() => {
           switchForm(formLogin);
         }, 2e3);
       } catch (err) {
         errorDiv.textContent = "Lỗi kết nối máy chủ: " + err.message;
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
       }
     };
   }
@@ -499,11 +503,11 @@ export function setupAuth() {
       const username = document.getElementById("verify-username-hidden").value.trim();
       const errorDiv = document.getElementById("verify-error");
       const successDiv = document.getElementById("verify-success");
-      errorDiv.style.display = "none";
-      successDiv.style.display = "none";
+      setRuntimeStyle(errorDiv, "display", "none");
+      setRuntimeStyle(successDiv, "display", "none");
       if (!username) {
         errorDiv.textContent = "Không tìm thấy thông tin tài khoản để gửi lại mã!";
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
         return;
       }
       try {
@@ -515,15 +519,15 @@ export function setupAuth() {
         const data = await res.json();
         if (!res.ok) {
           errorDiv.textContent = data.error || "Không thể gửi lại mã OTP!";
-          errorDiv.style.display = "block";
+          setRuntimeStyle(errorDiv, "display", "block");
           return;
         }
         successDiv.textContent = data.message || "Đã gửi lại mã OTP mới!";
-        successDiv.style.display = "block";
+        setRuntimeStyle(successDiv, "display", "block");
         startOtpCountdown(username);
       } catch (err) {
         errorDiv.textContent = "Lỗi kết nối máy chủ: " + err.message;
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
       }
     };
   }
@@ -533,8 +537,8 @@ export function setupAuth() {
     const email = document.getElementById("forgot-email").value.trim();
     const errorDiv = document.getElementById("forgot-error");
     const successDiv = document.getElementById("forgot-success");
-    errorDiv.style.display = "none";
-    successDiv.style.display = "none";
+    setRuntimeStyle(errorDiv, "display", "none");
+    setRuntimeStyle(successDiv, "display", "none");
     try {
       const res = await apiFetch("/api/auth/forgot-password", {
         method: "POST",
@@ -544,14 +548,14 @@ export function setupAuth() {
       const data = await res.json();
       if (!res.ok) {
         errorDiv.textContent = data.error || "Thông tin khôi phục không hợp lệ!";
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
         return;
       }
       successDiv.textContent = data.message;
-      successDiv.style.display = "block";
+      setRuntimeStyle(successDiv, "display", "block");
     } catch (err) {
       errorDiv.textContent = "Lỗi kết nối máy chủ: " + err.message;
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
     }
   };
   document.querySelectorAll(".toggle-password").forEach((btn) => {
@@ -576,7 +580,7 @@ export function setupAuth() {
         lucide.createIcons();
         const newSvg = btn.querySelector("svg");
         if (newSvg) {
-          newSvg.style.cssText = "position:static; pointer-events:none; width:16px; height:16px;";
+          setRuntimeStyle(newSvg, "cssText", "position:static; pointer-events:none; width:16px; height:16px;");
         }
       }
     };
@@ -592,21 +596,21 @@ export function setupAuth() {
     const confirmPassword = document.getElementById("reset-confirm-password").value;
     const errorDiv = document.getElementById("reset-error");
     const successDiv = document.getElementById("reset-success");
-    errorDiv.style.display = "none";
-    successDiv.style.display = "none";
+    setRuntimeStyle(errorDiv, "display", "none");
+    setRuntimeStyle(successDiv, "display", "none");
     if (!resetToken) {
       errorDiv.textContent = "Liên kết đặt lại mật khẩu không hợp lệ.";
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
     if (newPassword.length < 8 || newPassword.length > 256) {
       errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự.";
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
     if (newPassword !== confirmPassword) {
       errorDiv.textContent = "Mật khẩu xác nhận không khớp.";
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
     const csrfToken = document.cookie
@@ -626,19 +630,19 @@ export function setupAuth() {
       const data = await res.json();
       if (!res.ok) {
         errorDiv.textContent = data.error || "Không thể đặt lại mật khẩu.";
-        errorDiv.style.display = "block";
+        setRuntimeStyle(errorDiv, "display", "block");
         return;
       }
       resetToken = "";
       window.history.replaceState({}, "", "/");
       formReset.reset();
       successDiv.textContent = data.message;
-      successDiv.style.display = "block";
+      setRuntimeStyle(successDiv, "display", "block");
       const submitButton = formReset.querySelector('button[type="submit"]');
       if (submitButton) submitButton.disabled = true;
     } catch (err) {
       errorDiv.textContent = "Lỗi kết nối máy chủ: " + err.message;
-      errorDiv.style.display = "block";
+      setRuntimeStyle(errorDiv, "display", "block");
     }
   };
   const loadGoogleIdentity = () => {
@@ -647,18 +651,28 @@ export function setupAuth() {
       return;
     }
     const existingScript = document.querySelector("script[data-bf-google-identity]");
-    if (existingScript) return;
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.dataset.bfGoogleIdentity = "true";
-    script.addEventListener("load", initGoogle, { once: true });
+    const script = existingScript || document.createElement("script");
+    const timeout = setTimeout(() => {
+      if (typeof google === "undefined" || !google.accounts) {
+        showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng.", "error");
+      }
+    }, 8_000);
+    script.addEventListener("load", () => {
+      clearTimeout(timeout);
+      initGoogle();
+    }, { once: true });
     script.addEventListener("error", () => {
+      clearTimeout(timeout);
       console.warn("Google Sign-In could not be loaded.");
       showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng.", "error");
     }, { once: true });
-    document.head.appendChild(script);
+    if (!existingScript) {
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.dataset.bfGoogleIdentity = "true";
+      document.head.appendChild(script);
+    }
   };
   if (document.readyState === "complete") {
     setTimeout(loadGoogleIdentity, 0);

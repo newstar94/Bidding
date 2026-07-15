@@ -1,7 +1,7 @@
 """Parsing and bounded-size validation for sync request metadata."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 from backend.sync.queries import TABLE_KEYS
@@ -42,7 +42,7 @@ def parse_sync_read_window(query_params) -> SyncReadWindow:
             since = "1970-01-01 00:00:00"
         else:
             try:
-                since = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                since = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             except (ValueError, OverflowError, OSError):
                 since = "1970-01-01 00:00:00"
     else:

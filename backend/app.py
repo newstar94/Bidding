@@ -1,6 +1,8 @@
 import sys
 import os
 
+from backend.shared.windows_socket_adapter import install_windows_socket_shutdown_adapter
+
 
 if hasattr(sys.stdout, 'reconfigure'):
     try:
@@ -14,18 +16,7 @@ if hasattr(sys.stderr, 'reconfigure'):
         pass
 
 
-if sys.platform == 'win32':
-    try:
-        import socket
-        _orig_shutdown = socket.socket.shutdown
-        def _patched_shutdown(self, how):
-            try:
-                _orig_shutdown(self, how)
-            except OSError:
-                pass
-        socket.socket.shutdown = _patched_shutdown
-    except Exception:
-        pass
+install_windows_socket_shutdown_adapter()
 
 import re
 import threading
@@ -483,8 +474,7 @@ class ProductionViewStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         normalized = path.replace("\\", "/").lstrip("/")
         allowed = (
-            normalized == "style.css"
-            or normalized == "service-worker.js"
+            normalized == "service-worker.js"
             or (normalized.startswith("css/") and normalized.endswith(".css"))
             or (normalized.startswith("vendor/") and normalized.endswith((".js", ".css", ".woff2", ".woff", ".ttf")))
             or (normalized.startswith("tabs/") and normalized.endswith(".html"))

@@ -12,6 +12,7 @@ import {
 } from '../../frontend/packages/bidProcessAwardResult.js';
 import {
   validateOpeningJointVentureMembers,
+  validateOpeningParticipantScopes,
   validateOpeningRows
 } from '../../frontend/packages/bidProcessOpeningData.js';
 
@@ -119,6 +120,33 @@ test('opening validation rejects missing contractor identity and duplicate joint
 
   assert.equal(validateOpeningRows([missing]).valid, false);
   assert.equal(validateOpeningJointVentureMembers([duplicate]).valid, false);
+});
+
+test('opening scope rejects contractor versions reused independently or through a joint venture', () => {
+  const contractors = [
+    { id: 'nt-a-00', rootId: 'nt-a-00' },
+    { id: 'nt-a-01', rootId: 'nt-a-00' },
+    { id: 'nt-jv', rootId: 'nt-jv' }
+  ];
+  const bids = [
+    { id: 'bid-1', goiThauId: 'gt-1', maPhanLo: 'L1', nhaThauId: 'nt-a-00', loaiNhaThau: 'Độc lập' },
+    {
+      id: 'bid-2', goiThauId: 'gt-1', maPhanLo: 'l1', nhaThauId: 'nt-jv', loaiNhaThau: 'Liên danh',
+      thanhVienLienDanh: [{ thanhVienNhaThauId: 'nt-a-01' }]
+    }
+  ];
+
+  assert.equal(validateOpeningParticipantScopes(bids, contractors).valid, false);
+});
+
+test('opening scope allows the same contractor in different lots', () => {
+  const contractors = [{ id: 'nt-a', rootId: 'nt-a' }];
+  const bids = [
+    { id: 'bid-1', goiThauId: 'gt-1', maPhanLo: 'L1', nhaThauId: 'nt-a', loaiNhaThau: 'Độc lập' },
+    { id: 'bid-2', goiThauId: 'gt-1', maPhanLo: 'L2', nhaThauId: 'nt-a', loaiNhaThau: 'Độc lập' }
+  ];
+
+  assert.equal(validateOpeningParticipantScopes(bids, contractors).valid, true);
 });
 
 test('automatic evaluation marks direct-selection bids as passed without discarding metadata', () => {

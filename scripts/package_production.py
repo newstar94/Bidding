@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -18,6 +22,7 @@ RUNTIME_DIRECTORIES = {
     "views": lambda path: path.is_file(),
     "deploy": lambda path: path.is_file(),
     "sbom": lambda path: path.suffix == ".json",
+    "docs": lambda path: path.suffix == ".md",
 }
 
 RUNTIME_FILES = (
@@ -136,10 +141,66 @@ def build_archive(output: Path) -> tuple[int, int]:
     return len(files), output.stat().st_size
 
 
+def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
+    """Boot the application from extracted bytes, not from the source tree."""
+    with zipfile.ZipFile(archive_path) as archive:
+        archive.extractall(extraction_root)
+    database_path = extraction_root / "runtime" / "smoke.db"
+    database_path.parent.mkdir()
+    environment = os.environ.copy()
+    environment.update({
+        "APP_ENV": "test",
+        "ADMIN_PASSWORD": "Production-smoke-only-123!",  # pragma: allowlist secret
+        "BIDDING_DB_PATH": str(database_path.resolve()),
+        "PYTHONPATH": str(extraction_root.resolve()),
+    })
+    smoke_code = """
+from starlette.testclient import TestClient
+from backend.app import app
+with TestClient(app) as client:
+    home = client.get('/')
+    holidays = client.get('/api/holidays')
+    session = client.post('/api/auth/check-session', json={'remember': False})
+assert home.status_code == 200 and 'BiddingFlow' in home.text
+assert holidays.status_code == 200 and isinstance(holidays.json(), dict)
+assert session.status_code == 200 and session.json().get('valid') is False
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", smoke_code],
+        cwd=extraction_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if result.returncode:
+        raise RuntimeError(f"Extracted production smoke test failed:\n{result.stdout}\n{result.stderr}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Build and validate a temporary archive without keeping an artifact.",
+    )
     args = parser.parse_args()
+    if args.check:
+        with tempfile.TemporaryDirectory(prefix="biddingflow-package-check-") as directory:
+            output = Path(directory) / "biddingflow-production.zip"
+            file_count, archive_size = build_archive(output)
+            with zipfile.ZipFile(output) as archive:
+                manifest = json.loads(archive.read("PRODUCTION_MANIFEST.json"))
+                if len(manifest.get("files", [])) != file_count:
+                    raise RuntimeError("Production manifest file count does not match archive selection.")
+            smoke_test_archive(output, Path(directory) / "extracted")
+            print(
+                f"Production package and extracted-runtime smoke check passed ({file_count} runtime files, "
+                f"{archive_size} bytes)."
+            )
+            return 0
     file_count, archive_size = build_archive(args.output)
     print(
         f"Production archive created: {args.output.resolve()} "

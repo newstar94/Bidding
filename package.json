@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "npm run lint && npm run audit:modules && npm run audit:dead && npm run audit:vendor && python -m compileall -q backend scripts && npm run build && npm run audit:bundle && npm run test:unit && npm run test:api",
+    "check": "npm run lint && npm run audit:modules && npm run audit:size && npm run audit:dead && npm run audit:a11y && npm run audit:styles && npm run audit:vendor && python -m compileall -q backend scripts && npm run build && npm run audit:package && npm run audit:bundle && npm run test:unit && npm run test:api",
     "audit:modules": "node scripts/audit_module_references.mjs",
+    "audit:size": "node scripts/audit_source_size.mjs",
     "audit:dead": "node scripts/audit_dead_code.mjs",
+    "audit:a11y": "node scripts/audit_accessibility.mjs",
+    "audit:styles": "node scripts/audit_inline_styles.mjs",
     "audit:bundle": "node scripts/audit_bundle_budget.mjs",
+    "audit:package": "python scripts/package_production.py --check",
     "audit:npm": "npm audit --audit-level=high",
     "audit:python": "python -m pip_audit --no-deps -r requirements/runtime.lock.txt",
     "audit:vendor": "node scripts/audit_vendor_assets.mjs && retire --path views/vendor",
@@ -31,6 +35,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:install-browsers": "playwright install"
+    ,"benchmark:database": "python scripts/benchmark_database.py --output docs/BENCHMARK_RESULTS.json"
   },
   "devDependencies": {
     "@cyclonedx/cyclonedx-npm": "6.0.0",

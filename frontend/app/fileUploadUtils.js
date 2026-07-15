@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 export function bindImageUploadPreview(config) {
   const {
     uploadZone,
@@ -28,8 +29,8 @@ export function bindImageUploadPreview(config) {
       const dataUrl = event.target.result;
       onLoad?.(dataUrl);
       previewImg.src = dataUrl;
-      previewContainer.style.display = "flex";
-      uploadZone.style.display = "none";
+      setRuntimeStyle(previewContainer, "display", "flex");
+      setRuntimeStyle(uploadZone, "display", "none");
     };
     reader.readAsDataURL(file);
   };
@@ -59,8 +60,8 @@ export function bindImageUploadPreview(config) {
       onRemove?.();
       fileInput.value = "";
       previewImg.src = "";
-      previewContainer.style.display = "none";
-      uploadZone.style.display = "flex";
+      setRuntimeStyle(previewContainer, "display", "none");
+      setRuntimeStyle(uploadZone, "display", "flex");
     });
   }
 }

@@ -90,6 +90,68 @@ def test_sync_schema_requires_a_consistent_rebid_source_pair():
     assert any("không được tham chiếu" in error for error in stray_source)
 
 
+def test_joint_venture_requires_unique_members_and_exactly_one_leader():
+    _, errors, _ = validate_sync_item(
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-jv",
+            "loaiNhaThau": "Liên danh",
+            "thanhVienLienDanh": [
+                {"thanhVienNhaThauId": "nt-a", "vaiTro": "Đứng đầu liên danh"},
+                {"thanhVienNhaThauId": "nt-a", "vaiTro": "Đứng đầu liên danh"},
+            ],
+        },
+        set(),
+    )
+
+    assert "Một nhà thầu không được xuất hiện nhiều lần trong cùng liên danh." in errors
+    assert "Liên danh phải có đúng một thành viên đứng đầu." in errors
+
+
+def test_valid_joint_venture_has_one_leader_and_at_least_two_members():
+    _, errors, _ = validate_sync_item(
+        "thong_tin_mo_thau",
+        {
+            "id": "opening-jv",
+            "loaiNhaThau": "Liên danh",
+            "thanhVienLienDanh": [
+                {"thanhVienNhaThauId": "nt-a", "vaiTro": "Đứng đầu liên danh"},
+                {"thanhVienNhaThauId": "nt-b", "vaiTro": "Thành viên liên danh"},
+            ],
+        },
+        set(),
+    )
+
+    assert errors == []
+
+
+def test_backend_recalculates_discounted_bid_price_instead_of_trusting_client_total():
+    item, errors, _ = validate_sync_item("thong_tin_mo_thau", {
+        "id": "opening-1", "goiThauId": "package-1", "nhaThauId": "contractor-1",
+        "giaDuThau": "1000001", "tyLeGiamGia": 10,
+        "giaSauGiamGia": "1",
+    })
+    assert not any("giảm giá" in str(error).lower() for error in errors)
+    assert item["giaSauGiamGia"] == "900001"
+
+
+def test_backend_recalculates_package_award_total_from_awarded_lots():
+    item, _errors, _ = validate_sync_item("goi_thau", {
+        "id": "package-1", "tenGoiThau": "Package", "giaGoiThau": "300",
+        "trangThai": "Đã có kết quả", "phanLo": "Có",
+        "phanLoList": [
+            {"maPhanLo": "L1", "tenPhanLo": "Lot 1", "giaTriPhanLo": "100"},
+            {"maPhanLo": "L2", "tenPhanLo": "Lot 2", "giaTriPhanLo": "200"},
+        ],
+        "awardedPhanLoList": [
+            {"maPhanLo": "L1", "nhaThauTrungThauId": "contractor-1", "giaTrungThau": "90"},
+            {"maPhanLo": "L2", "nhaThauTrungThauId": "contractor-2", "giaTrungThau": "180"},
+        ],
+        "giaTrungThau": "1",
+    })
+    assert item["giaTrungThau"] == "270"
+
+
 def test_issued_package_requires_a_new_version_for_material_changes():
     errors = validate_package_locked_fields(
         {

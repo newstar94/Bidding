@@ -61,7 +61,12 @@ export function activateDialogAccessibility(modal, trigger = null) {
   if (!card.hasAttribute?.("tabindex")) card.setAttribute?.("tabindex", "-1");
   const onKeydown = (event) => handleDialogKeydown(event, modal);
   modal.addEventListener?.("keydown", onKeydown);
-  modalState.set(modal, { restoreTarget, onKeydown });
+  modalState.set(modal, {
+    restoreTarget,
+    restoreTargetId: restoreTarget?.id || "",
+    ownerDocument,
+    onKeydown
+  });
   queueMicrotask(() => (getFocusableElements(modal)[0] || card).focus?.());
 }
 
@@ -70,7 +75,16 @@ export function deactivateDialogAccessibility(modal) {
   if (!state) return;
   modal.removeEventListener?.("keydown", state.onKeydown);
   modalState.delete(modal);
-  if (state.restoreTarget?.isConnected !== false) queueMicrotask(() => state.restoreTarget?.focus?.());
+  const restoreFocus = () => {
+    const target = state.restoreTarget?.isConnected !== false
+      ? state.restoreTarget
+      : state.ownerDocument?.getElementById?.(state.restoreTargetId);
+    target?.focus?.();
+  };
+  queueMicrotask(restoreFocus);
+  // Closing a routed modal may synchronously rerender and replace its trigger.
+  // Retry after that render so focus lands on the new element with the same ID.
+  setTimeout(restoreFocus, 0);
 }
 
 export function installDialogAccessibility(root = globalThis.document) {

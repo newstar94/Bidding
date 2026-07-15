@@ -137,7 +137,7 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
         pass
     try:
         process.communicate(timeout=5)
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         pass
 
 

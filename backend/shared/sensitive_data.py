@@ -30,3 +30,21 @@ def redact_expert_item(item):
             redacted[key] = None
     redacted["sensitiveDataMasked"] = True
     return redacted
+
+
+def redact_contractor_financial_item(item):
+    """Mask bank details for users who only have view access to contractors."""
+    redacted = dict(item or {})
+    for key in ("soTaiKhoan", "so_tai_khoan"):
+        if key in redacted:
+            redacted[key] = mask_identifier(redacted.get(key))
+    for key in ("noiMoTaiKhoan", "noi_mo_tai_khoan", "maNganHang", "ma_ngan_hang"):
+        if key in redacted:
+            redacted[key] = None
+    for member_key in ("thanhVienLienDanh", "thanh_vien_lien_danh"):
+        if isinstance(redacted.get(member_key), list):
+            redacted[member_key] = [
+                redact_contractor_financial_item(member) for member in redacted[member_key]
+            ]
+    redacted["sensitiveFinancialDataMasked"] = True
+    return redacted

@@ -18,6 +18,7 @@ from backend.documents.document_worker import (
     run_document_job,
     run_document_job_async,
 )
+from backend.documents.upload_spooling import spooled_upload
 
 MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -91,14 +92,14 @@ def _can_export_package(role_or_err, org_name, package_id):
         conn.close()
 
 
-def _validate_excel_upload(file_obj, file_bytes, *, deep_validation=True):
+def _validate_excel_upload(file_obj, file_bytes, *, deep_validation=True, total_size=None):
     filename = os.path.basename(str(getattr(file_obj, 'filename', '') or ''))
     _, ext = os.path.splitext(filename)
     if ext.lower() not in ALLOWED_EXCEL_EXTENSIONS:
         raise ValueError('Chỉ cho phép tải lên tệp Excel .xlsx hoặc .xls')
     if not file_bytes:
         raise ValueError('Tệp Excel tải lên đang trống')
-    if len(file_bytes) > MAX_EXCEL_UPLOAD_BYTES:
+    if (total_size if total_size is not None else len(file_bytes)) > MAX_EXCEL_UPLOAD_BYTES:
         raise ValueError('Tệp Excel vượt quá giới hạn 10MB')
 
     content_type = (getattr(file_obj, 'content_type', '') or '').lower()
@@ -139,18 +140,18 @@ async def import_excel_api(request):
         if not file_obj or not import_type:
             return JSONResponse({"error": "Missing file or type parameter"}, status_code=400)
 
-        file_bytes = await file_obj.read()
-        _validate_excel_upload(file_obj, file_bytes, deep_validation=False)
         _, extension = os.path.splitext(os.path.basename(file_obj.filename or ""))
-        rows = await run_document_job_async(
-            "parse_excel",
-            {
-                "content": file_bytes,
-                "kind": extension.lower().lstrip("."),
-                "import_type": import_type,
-            },
-            timeout_seconds=30,
-        )
+        async with spooled_upload(file_obj, max_bytes=MAX_EXCEL_UPLOAD_BYTES, suffix=extension) as (upload_path, upload_size, head):
+            _validate_excel_upload(file_obj, head, deep_validation=False, total_size=upload_size)
+            rows = await run_document_job_async(
+                "parse_excel",
+                {
+                    "content_path": str(upload_path),
+                    "kind": extension.lower().lstrip("."),
+                    "import_type": import_type,
+                },
+                timeout_seconds=30,
+            )
         if not isinstance(rows, list):
             raise ValueError("Invalid Excel parser result")
         if len(rows) > MAX_EXCEL_IMPORT_ROWS:

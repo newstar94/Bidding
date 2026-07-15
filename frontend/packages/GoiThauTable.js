@@ -154,7 +154,7 @@ export async function renderGoiThauTable() {
               };
             });
             const totalGiaTrung = this.model.sumVND(winningLots.map((pl) => pl.giaTrungThau));
-            winnerInfoHtml = `<a href="#" data-bf-action="show-lot-winners" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover" style="text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
+            winnerInfoHtml = `<a href="#" data-bf-action="show-lot-winners" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a><br><small class="text-muted">Tổng giá: ${this.model.formatCurrency(totalGiaTrung)}</small>`;
           } else if (uniqueWinnerIds.length === 1) {
             const singleWinnerId = uniqueWinnerIds[0];
             const singleWinnerNt = this.model.state.nhathau.find((n) => String(n.id) === String(singleWinnerId));
@@ -196,7 +196,7 @@ export async function renderGoiThauTable() {
         return `<option value="${esc(v.id)}" ${isSel}>${esc(label)}</option>`;
       }).join("");
       const dropdownHtml = `
-                <select class="form-control version-droplist" data-bf-change="change-package-version" data-root="${esc(root)}" style="width: 52px; display: inline-block; padding: 2px; height: 22px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color, #ccc); background-color: var(--bg-card); color: var(--text-main); text-align-last: center; cursor: pointer; margin: 0; outline: none; vertical-align: middle;">
+                <select class="form-control version-droplist bf-s-b41ce2ea44" data-bf-change="change-package-version" data-root="${esc(root)}">
                     ${optionsHtml}
                 </select>
             `;
@@ -225,18 +225,18 @@ export async function renderGoiThauTable() {
       return `
             <tr class="${isCanceledPackage ? "cancelled-package" : ""}">
                 <td>
-                    <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu" style="display: inline-flex; align-items: center; line-height: 1;"><span class="detail-code" style="margin: 0; line-height: 1;">${this.model.getPackageBaseCode(displayedGt.maGoiThau) ? esc(this.model.getPackageBaseCode(displayedGt.maGoiThau)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
-                        <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                    <div class="bf-s-8c8dc52ed7">
+                        <a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Gói thầu"><span class="detail-code bf-s-dc5de304c3">${this.model.getPackageBaseCode(displayedGt.maGoiThau) ? esc(this.model.getPackageBaseCode(displayedGt.maGoiThau)) : '<span class="text-muted">(Chưa nhập)</span>'}</span></a>
+                        <span class="bf-s-db1d8f859f">-</span>
                         ${dropdownHtml}
                     </div>
                 </td>
-                <td style="min-width: 240px; max-width: 320px;" class="text-wrap"><a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover">${esc(displayedGt.tenGoiThau)}</a></td>
-                <td style="min-width: 240px; max-width: 320px;" class="text-wrap">${kh ? '<a href="#" data-bf-action="show-plan" data-id="' + esc(kh.id) + '" class="text-blue fw-bold link-hover">' + esc(kh.tenKeHoach) + "</a>" : '<span class="text-danger">Không liên kết</span>'}</td>
+                <td class="text-wrap bf-s-861d2aedee"><a href="#" data-bf-action="show-package" data-id="${esc(displayedGt.id)}" class="text-blue fw-bold link-hover">${esc(displayedGt.tenGoiThau)}</a></td>
+                <td class="text-wrap bf-s-861d2aedee">${kh ? '<a href="#" data-bf-action="show-plan" data-id="' + esc(kh.id) + '" class="text-blue fw-bold link-hover">' + esc(kh.tenKeHoach) + "</a>" : '<span class="text-danger">Không liên kết</span>'}</td>
                 <td class="fw-bold">${this.model.formatCurrency(displayedGt.giaGoiThau)}</td>
                 <td>${esc(displayedGt.hinhThucLuaChon || "--")}</td>
                 <td>${this.getStatusBadge(displayedGt.trangThai)}</td>
-                <td style="min-width: 200px; max-width: 300px;" class="text-wrap">${winnerInfoHtml}</td>
+                <td class="text-wrap bf-s-0569d2208a">${winnerInfoHtml}</td>
                 <td class="text-right">
                     ${actionHtml}
                 </td>

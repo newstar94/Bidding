@@ -1,8 +1,9 @@
+import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 
 export function renderPackageTabHeaders(container, tabs, activeTab, onSelect) {
   if (!container) return;
-  container.style.display = "flex";
+  setRuntimeStyle(container, "display", "flex");
   container.innerHTML = (tabs || []).map((tab) => {
     const active = activeTab === tab.id;
     const style = active

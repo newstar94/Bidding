@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getJvData } from "../packages/jvDataStore.js";
 import { safeImageSrc } from "../shared/view_helpers.js";
 import { installPrototypeModules } from "./moduleRegistry.js";
@@ -385,6 +386,20 @@ export class BiddingController {
     if (currentOrganizationId === organizationId && this.model?.workspaceScope?.organizationId === organizationId) {
       return { changed: false, organizationId };
     }
+    const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
+    const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
+    if (!options.accessRevoked && !options.skipUnsyncedWarning && (pendingCount > 0 || hasUnsavedForm)) {
+      const details = [
+        pendingCount > 0 ? `${pendingCount} thay đổi chưa đồng bộ` : "",
+        hasUnsavedForm ? "biểu mẫu đang nhập chưa được lưu" : ""
+      ].filter(Boolean).join(" và ");
+      const confirmed = await this.view?.customConfirm?.(
+        "Đổi workspace?",
+        `Workspace hiện tại còn ${details}. Dữ liệu đã lưu trên thiết bị vẫn được giữ riêng theo workspace; nội dung biểu mẫu chưa lưu sẽ không tự chuyển sang workspace mới.`,
+        "refresh-cw"
+      );
+      if (!confirmed) return { changed: false, cancelled: true, organizationId: currentOrganizationId };
+    }
     this._workspaceTransitionPromise = (async () => {
       this._workspaceSwitching = true;
       this.model.beginWorkspaceTransition?.();
@@ -625,21 +640,21 @@ export class BiddingController {
         if (isSessionError) {
           if (isAuthTransitionActive()) return null;
           const overlay = document.getElementById("auth-overlay");
-          if (overlay && overlay.style.display !== "flex") {
+          if (overlay && getComputedStyle(overlay).display !== "flex") {
             this.disconnectWebSocket?.(false);
             const localCleanup = this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.();
             void Promise.resolve(localCleanup).catch((error) => {
               console.error("Failed to clear expired workspace data:", error);
             });
             this.model.clearSessionData();
-            overlay.style.display = "flex";
-            document.querySelector(".app-container").style.filter = "blur(10px)";
+            setRuntimeStyle(overlay, "display", "flex");
+            setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
             const formLogin = document.getElementById("form-auth-login");
             const formRegister = document.getElementById("form-auth-register");
             const formForgot = document.getElementById("form-auth-forgot");
-            if (formLogin) formLogin.style.display = "block";
-            if (formRegister) formRegister.style.display = "none";
-            if (formForgot) formForgot.style.display = "none";
+            if (formLogin) setRuntimeStyle(formLogin, "display", "block");
+            if (formRegister) setRuntimeStyle(formRegister, "display", "none");
+            if (formForgot) setRuntimeStyle(formForgot, "display", "none");
           }
           return null;
         }
@@ -659,8 +674,6 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         return null;
       }
     });
-    sessionStorage.removeItem("bf_session_token");
-    localStorage.removeItem("bf_session_token");
     const rememberedUserId = localStorage.getItem("bf_user_id");
     const rememberedUsername = localStorage.getItem("bf_username");
     if (rememberedUserId && !sessionStorage.getItem("bf_user_id")) {
@@ -888,10 +901,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       img.alt = "Chu ky Zoom";
       img.loading = "lazy";
       img.decoding = "async";
-      img.style.maxHeight = "60vh";
-      img.style.background = "#fff";
-      img.style.padding = "24px";
-      img.style.borderRadius = "12px";
+      setRuntimeStyle(img, "maxHeight", "60vh");
+      setRuntimeStyle(img, "background", "#fff");
+      setRuntimeStyle(img, "padding", "24px");
+      setRuntimeStyle(img, "borderRadius", "12px");
       lightbox.appendChild(img);
       lightbox.onclick = () => lightbox.remove();
       document.body.appendChild(lightbox);
@@ -930,7 +943,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       const origHTML = btn ? btn.innerHTML : "";
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="animate-spin" style="width:14px;height:14px;"></i>';
+        btn.innerHTML = '<i data-lucide="loader-2" class="animate-spin bf-s-641778be2c"></i>';
         lucide.createIcons({ root: btn });
       }
       try {
@@ -992,10 +1005,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
                 </div>
                 <div class="pagination-buttons">
                     <button class="pagination-btn" ${currentPage === 1 ? "disabled" : ""} data-bf-action="page" data-container-id="${containerId}" data-page="1" title="Trang đầu">
-                        <i data-lucide="chevrons-left" style="width:14px; height:14px;"></i>
+                        <i data-lucide="chevrons-left" class="bf-s-641778be2c"></i>
                     </button>
                     <button class="pagination-btn" ${currentPage === 1 ? "disabled" : ""} data-bf-action="page" data-container-id="${containerId}" data-page="${currentPage - 1}" title="Trang trước">
-                        <i data-lucide="chevron-left" style="width:14px; height:14px;"></i>
+                        <i data-lucide="chevron-left" class="bf-s-641778be2c"></i>
                     </button>
             `;
       const maxVisiblePages = 5;
@@ -1013,10 +1026,10 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       }
       html += `
                     <button class="pagination-btn" ${currentPage === totalPages ? "disabled" : ""} data-bf-action="page" data-container-id="${containerId}" data-page="${currentPage + 1}" title="Trang sau">
-                        <i data-lucide="chevron-right" style="width:14px; height:14px;"></i>
+                        <i data-lucide="chevron-right" class="bf-s-641778be2c"></i>
                     </button>
                     <button class="pagination-btn" ${currentPage === totalPages ? "disabled" : ""} data-bf-action="page" data-container-id="${containerId}" data-page="${totalPages}" title="Trang cuối">
-                        <i data-lucide="chevrons-right" style="width:14px; height:14px;"></i>
+                        <i data-lucide="chevrons-right" class="bf-s-641778be2c"></i>
                     </button>
                 </div>
             `;

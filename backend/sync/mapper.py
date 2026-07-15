@@ -3,6 +3,7 @@ import re
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
+from backend.shared.domain_enums import enum_label
 from backend.shared.date_utils import normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.sync.evaluation_metadata import dump_evaluation_metadata, parse_evaluation_metadata
@@ -93,7 +94,7 @@ def map_db_to_json(table_name, row_dict):
     explicit_json_fields = set(table_spec.get("json_fields", []))
     for col in table_spec["columns"].keys():
         json_key = json_key_for_column(table_name, col)
-        val = row_dict.get(col)
+        val = enum_label(table_name, col, row_dict.get(col))
         if (
             (table_name == "chu_dau_tu" and col == "dai_dien_cdt")
             or (table_name == "nha_thau" and col == "nguoi_dai_dien")
@@ -201,6 +202,7 @@ def save_child_payloads(cursor, table_name, item, organization_id, owner_type, s
         _save_member_children(cursor, "nha_thau_lien_danh_thanh_vien", "nha_thau_id", parent_id, item, organization_id, owner_type, sync_version, updated_at)
     elif table_name == "thong_tin_mo_thau":
         _save_member_children(cursor, "thong_tin_mo_thau_lien_danh_thanh_vien", "thong_tin_mo_thau_id", parent_id, item, organization_id, owner_type, sync_version, updated_at)
+        _save_opening_participant_registry(cursor, parent_id, item, organization_id, owner_type)
         _save_bid_evaluation_result(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at, actor_user_id)
 
 
@@ -610,6 +612,82 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, orga
                 sync_version, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows)
+
+
+def _save_opening_participant_registry(cursor, opening_id, item, organization_id, owner_type):
+    """Materialize bidder identities so SQLite can enforce scope uniqueness."""
+    cursor.execute(
+        "DELETE FROM nha_thau_tham_du_mo_thau WHERE organization_id = ? AND thong_tin_mo_thau_id = ?",
+        (organization_id, opening_id),
+    )
+    stored_bid = cursor.execute(
+        """SELECT goi_thau_id, nha_thau_id, ma_phan_lo, loai_nha_thau
+           FROM thong_tin_mo_thau
+           WHERE organization_id = ? AND id = ?""",
+        (organization_id, opening_id),
+    ).fetchone()
+    if not stored_bid:
+        return
+    is_joint_venture = str(stored_bid[3] or "").strip().casefold() == "liên danh"
+    if is_joint_venture and not _has_child_key(item, CHILD_MEMBER_KEY):
+        member_values = [
+            {"thanhVienNhaThauId": row[0]}
+            for row in cursor.execute(
+                """SELECT thanh_vien_nha_thau_id
+                   FROM thong_tin_mo_thau_lien_danh_thanh_vien
+                   WHERE organization_id = ? AND thong_tin_mo_thau_id = ?
+                   ORDER BY sort_order, id""",
+                (organization_id, opening_id),
+            ).fetchall()
+        ]
+    else:
+        member_values = _parse_child_list(item.get(CHILD_MEMBER_KEY))
+    participant_ids = (
+        [
+            clean_id(_first_value(member, "thanhVienNhaThauId", "thanh_vien_nha_thau_id", "nhaThauId"))
+            for member in member_values
+        ]
+        if is_joint_venture
+        else [clean_id(stored_bid[1])]
+    )
+    participant_ids = list(dict.fromkeys(value for value in participant_ids if value))
+    if not participant_ids:
+        return
+    placeholders = ", ".join("?" for _ in participant_ids)
+    roots = {
+        str(row[0]): str(row[1])
+        for row in cursor.execute(
+            f"""SELECT id, COALESCE(NULLIF(id_goc, ''), id)
+                FROM nha_thau
+                WHERE organization_id = ? AND id IN ({placeholders})""",
+            (organization_id, *participant_ids),
+        ).fetchall()
+    }
+    package_id = clean_id(stored_bid[0])
+    lot_scope = " ".join(str(stored_bid[2] or "").strip().casefold().split()) or "__PACKAGE__"
+    rows = []
+    for participant_id in participant_ids:
+        root_id = roots.get(participant_id)
+        if not root_id:
+            continue
+        rows.append((
+            f"opening-participant:{opening_id}:{root_id}",
+            organization_id,
+            owner_type,
+            opening_id,
+            package_id,
+            lot_scope,
+            root_id,
+            participant_id,
+        ))
+    if rows:
+        cursor.executemany(
+            """INSERT INTO nha_thau_tham_du_mo_thau (
+                   id, organization_id, owner_type, thong_tin_mo_thau_id,
+                   goi_thau_id, lot_scope, nha_thau_goc_id, nha_thau_phien_ban_id
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
 
 
 def attach_child_rows(cursor, table_name, item, organization_id=None, naming="camel"):

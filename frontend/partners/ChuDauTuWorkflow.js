@@ -134,7 +134,7 @@ export async function handleChuDauTuSubmit(e) {
   if (planModal && planModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("kh-chudautuid");
     if (cdtSelect) {
-      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.tenChuDauTu)}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.tenChuDauTu)}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
       cdtSelect.value = data.id;
     }
   }
@@ -142,7 +142,7 @@ export async function handleChuDauTuSubmit(e) {
   if (contractModal && contractModal.classList.contains("active")) {
     const cdtSelect = document.getElementById("hd-chudautuid");
     if (cdtSelect) {
-      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" style="color: var(--primary); font-weight: 700;">+ Thêm chủ đầu tư mới</option>';
+      cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + this.model.getLatestChuDauTu().map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
       cdtSelect.value = data.id;
       cdtSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }

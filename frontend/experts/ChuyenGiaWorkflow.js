@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { safeImageSrc } from "../shared/view_helpers.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import { persistAndSync } from "../shared/MutationService.js";
@@ -80,12 +81,12 @@ export function editChuyenGia(id) {
   const previewContainerChuky = document.getElementById("cg-preview-container-chuky");
   const previewImgChuky = document.getElementById("cg-anh-preview-chuky");
   previewImg.onerror = () => {
-    previewContainer.style.display = "none";
-    uploadZone.style.display = "flex";
+    setRuntimeStyle(previewContainer, "display", "none");
+    setRuntimeStyle(uploadZone, "display", "flex");
   };
   previewImgChuky.onerror = () => {
-    previewContainerChuky.style.display = "none";
-    uploadZoneChuky.style.display = "flex";
+    setRuntimeStyle(previewContainerChuky, "display", "none");
+    setRuntimeStyle(uploadZoneChuky, "display", "flex");
   };
   if (id) {
     this.switchTab("chuyengia", "chinhsua", true);
@@ -101,25 +102,25 @@ export function editChuyenGia(id) {
     if (certificateImageSrc) {
       this.tempChuyenGiaImageBase64 = certificateImageSrc;
       previewImg.src = safeImageSrc(certificateImageSrc, cg.updatedAt || cg.createdAt);
-      previewContainer.style.display = "flex";
-      uploadZone.style.display = "none";
+      setRuntimeStyle(previewContainer, "display", "flex");
+      setRuntimeStyle(uploadZone, "display", "none");
     } else {
       this.tempChuyenGiaImageBase64 = "";
       previewImg.src = "";
-      previewContainer.style.display = "none";
-      uploadZone.style.display = "flex";
+      setRuntimeStyle(previewContainer, "display", "none");
+      setRuntimeStyle(uploadZone, "display", "flex");
     }
     const signatureImageSrc = safeExpertImageSrc(cg.anhChuKy);
     if (signatureImageSrc) {
       this.tempChuyenGiaSignatureBase64 = signatureImageSrc;
       previewImgChuky.src = safeImageSrc(signatureImageSrc, cg.updatedAt || cg.createdAt);
-      previewContainerChuky.style.display = "flex";
-      uploadZoneChuky.style.display = "none";
+      setRuntimeStyle(previewContainerChuky, "display", "flex");
+      setRuntimeStyle(uploadZoneChuky, "display", "none");
     } else {
       this.tempChuyenGiaSignatureBase64 = "";
       previewImgChuky.src = "";
-      previewContainerChuky.style.display = "none";
-      uploadZoneChuky.style.display = "flex";
+      setRuntimeStyle(previewContainerChuky, "display", "none");
+      setRuntimeStyle(uploadZoneChuky, "display", "flex");
     }
   } else {
     this.switchTab("chuyengia", "taomoi", true);
@@ -130,12 +131,12 @@ export function editChuyenGia(id) {
     document.getElementById("cg-ngaycapchungchi").value = "";
     this.tempChuyenGiaImageBase64 = "";
     previewImg.src = "";
-    previewContainer.style.display = "none";
-    uploadZone.style.display = "flex";
+    setRuntimeStyle(previewContainer, "display", "none");
+    setRuntimeStyle(uploadZone, "display", "flex");
     this.tempChuyenGiaSignatureBase64 = "";
     previewImgChuky.src = "";
-    previewContainerChuky.style.display = "none";
-    uploadZoneChuky.style.display = "flex";
+    setRuntimeStyle(previewContainerChuky, "display", "none");
+    setRuntimeStyle(uploadZoneChuky, "display", "flex");
   }
   this.view.openModal("modal-chuyengia");
 }

@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { validateExtensionRows } from "./packageValidation.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -88,36 +89,36 @@ export async function editGoiThau(id, isReadOnly = false) {
   const toChuyenGiaTbody = document.getElementById("to-chuyengia-tbody");
   toChuyenGiaTbody.innerHTML = this.model.state.chuyengia.map((cg) => `
         <tr data-expert-id="${escapeHtml(cg.id)}">
-            <td style="text-align: center; vertical-align: middle;">
-                <input type="checkbox" name="tochuyengia-select" value="${escapeHtml(cg.id)}" style="width: 18px; height: 18px; min-width: auto; cursor: pointer; display: inline-block;">
+            <td class="bf-s-0c5104285b">
+                <input type="checkbox" name="tochuyengia-select" value="${escapeHtml(cg.id)}" class="bf-s-e3145ce1fc">
             </td>
-            <td style="font-weight: 600; padding: 10px 14px; vertical-align: middle; color: var(--text-main); text-align: left !important;">${escapeHtml(cg.hoTen)} <small class="text-muted" style="display: block;">Số CC: ${escapeHtml(cg.soChungChi)}</small></td>
-            <td style="vertical-align: middle;">
-                <select name="tochuyengia-chucvu" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-family: var(--font-primary); font-size: 0.84rem; font-weight: 600;" disabled>
+            <td class="bf-s-fc40eefe32">${escapeHtml(cg.hoTen)} <small class="text-muted bf-s-bd877e16c3">Số CC: ${escapeHtml(cg.soChungChi)}</small></td>
+            <td class="bf-s-e3cb7ade2b">
+                <select name="tochuyengia-chucvu" disabled class="bf-s-ee9dcf138f">
                     <option value="Tổ viên">Tổ viên</option>
                     <option value="Tổ trưởng">Tổ trưởng</option>
                 </select>
             </td>
-            <td style="vertical-align: middle;">
-                <input type="text" name="tochuyengia-congviec" placeholder="Nhập công việc..." disabled style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-family: var(--font-primary); font-size: 0.84rem; font-weight: 600;">
+            <td class="bf-s-e3cb7ade2b">
+                <input type="text" name="tochuyengia-congviec" placeholder="Nhập công việc..." disabled class="bf-s-ee9dcf138f">
             </td>
         </tr>
     `).join("");
   const toThamDinhTbody = document.getElementById("to-thamdinh-tbody");
   toThamDinhTbody.innerHTML = this.model.state.chuyengia.map((cg) => `
         <tr data-expert-id="${escapeHtml(cg.id)}">
-            <td style="text-align: center; vertical-align: middle;">
-                <input type="checkbox" name="tothamdinh-select" value="${escapeHtml(cg.id)}" style="width: 18px; height: 18px; min-width: auto; cursor: pointer; display: inline-block;">
+            <td class="bf-s-0c5104285b">
+                <input type="checkbox" name="tothamdinh-select" value="${escapeHtml(cg.id)}" class="bf-s-e3145ce1fc">
             </td>
-            <td style="font-weight: 600; padding: 10px 14px; vertical-align: middle; color: var(--text-main); text-align: left !important;">${escapeHtml(cg.hoTen)} <small class="text-muted" style="display: block;">Số CC: ${escapeHtml(cg.soChungChi)}</small></td>
-            <td style="vertical-align: middle;">
-                <select name="tothamdinh-chucvu" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-family: var(--font-primary); font-size: 0.84rem; font-weight: 600;" disabled>
+            <td class="bf-s-fc40eefe32">${escapeHtml(cg.hoTen)} <small class="text-muted bf-s-bd877e16c3">Số CC: ${escapeHtml(cg.soChungChi)}</small></td>
+            <td class="bf-s-e3cb7ade2b">
+                <select name="tothamdinh-chucvu" disabled class="bf-s-ee9dcf138f">
                     <option value="Tổ viên">Tổ viên</option>
                     <option value="Tổ trưởng">Tổ trưởng</option>
                 </select>
             </td>
-            <td style="vertical-align: middle;">
-                <input type="text" name="tothamdinh-congviec" placeholder="Nhập công việc..." disabled style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-family: var(--font-primary); font-size: 0.84rem; font-weight: 600;">
+            <td class="bf-s-e3cb7ade2b">
+                <input type="text" name="tothamdinh-congviec" placeholder="Nhập công việc..." disabled class="bf-s-ee9dcf138f">
             </td>
         </tr>
     `).join("");
@@ -175,7 +176,7 @@ export async function editGoiThau(id, isReadOnly = false) {
         }
         const otherRow = document.querySelector(`#${otherTbodyId} tr[data-expert-id="${expertId}"]`);
         if (otherRow) {
-          otherRow.style.display = newChecked ? "none" : "";
+          setRuntimeStyle(otherRow, "display", newChecked ? "none" : "");
         }
         this.enforceSingleLeader(tbodyId, roleName, roleSelect2);
       });
@@ -484,7 +485,7 @@ export async function editGoiThau(id, isReadOnly = false) {
       btn.disabled = true;
     });
     const formSubmitBtn = form.querySelector('button[type="submit"]');
-    if (formSubmitBtn) formSubmitBtn.style.display = "none";
+    if (formSubmitBtn) setRuntimeStyle(formSubmitBtn, "display", "none");
     document.querySelectorAll("#phanlo-tbody input, #phanlo-tbody select, #phanlo-tbody button, #tuychonmuathem-tbody input, #tuychonmuathem-tbody select, #tuychonmuathem-tbody button").forEach((el) => {
       el.disabled = true;
     });
@@ -518,7 +519,7 @@ export async function editGoiThau(id, isReadOnly = false) {
       const btn = document.getElementById(btnId);
       if (btn) {
         btn.disabled = true;
-        btn.style.display = "none";
+        setRuntimeStyle(btn, "display", "none");
       }
     });
     setPackageSubTableActionsVisible(false);
@@ -644,7 +645,7 @@ export async function handleGoiThauSubmit(e) {
     }
   });
   const toChuyenGiaSection = document.getElementById("to-chuyengia-section");
-  const isChuyenGiaVisible = toChuyenGiaSection && toChuyenGiaSection.style.display !== "none";
+  const isChuyenGiaVisible = toChuyenGiaSection && getComputedStyle(toChuyenGiaSection).display !== "none";
   if (isChuyenGiaVisible) {
     const hasLeaderChuyenGia = toChuyenGia.some((cg) => cg.chucVu === "Tổ trưởng");
     if (!hasLeaderChuyenGia) {
@@ -654,7 +655,7 @@ export async function handleGoiThauSubmit(e) {
     }
   }
   const toThamDinhSection = document.getElementById("to-thamdinh-section");
-  const isThamDinhVisible = toThamDinhSection && toThamDinhSection.style.display !== "none";
+  const isThamDinhVisible = toThamDinhSection && getComputedStyle(toThamDinhSection).display !== "none";
   if (isThamDinhVisible) {
     const hasLeaderThamDinh = toThamDinh.some((cg) => cg.chucVu === "Tổ trưởng");
     if (!hasLeaderThamDinh) {
@@ -726,9 +727,9 @@ export async function handleGoiThauSubmit(e) {
         }
       });
       if (duplicateInput) {
-        duplicateInput.style.borderColor = "var(--danger)";
+        setRuntimeStyle(duplicateInput, "borderColor", "var(--danger)");
         const clearError = () => {
-          duplicateInput.style.borderColor = "";
+          setRuntimeStyle(duplicateInput, "borderColor", "");
           duplicateInput.removeEventListener("input", clearError);
           duplicateInput.removeEventListener("change", clearError);
         };

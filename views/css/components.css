@@ -514,6 +514,10 @@
   background-color: var(--warning-soft);
   color: var(--warning);
 }
+.badge-opened {
+  background-color: var(--warning-soft);
+  color: var(--warning);
+}
 .badge-success {
   background-color: var(--success-soft);
   color: var(--success);
@@ -1018,7 +1022,7 @@ select[disabled],
 textarea[disabled] {
   background-color: #e2e8f0 !important;
   background: #e2e8f0 !important;
-  color: #64748b !important;
+  color: #475569 !important;
   pointer-events: none !important;
   cursor: not-allowed !important;
 }
@@ -1369,7 +1373,9 @@ textarea[disabled] {
   border-color: var(--primary);
 }
 .pagination-btn:disabled {
-  opacity: 0.5;
+  background: var(--neutral-soft);
+  color: var(--text-muted);
+  border-color: var(--border-color);
   cursor: not-allowed;
 }
 .sort-header-container {
@@ -1651,4 +1657,15 @@ textarea[disabled] {
   font-size: 16px !important;
   background: var(--bg-card);
   color: var(--text-main);
+}
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }

@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { setJvData } from "./jvDataStore.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { setVisible } from "../app/formStateUtils.js";
@@ -31,9 +32,9 @@ export function renderDanhGiaHsdtPanel() {
   const handlePackageSelection = () => {
     const gtId = select.value;
     if (!gtId) {
-      summaryContainer.style.display = "none";
-      evaluationContainer.style.display = "none";
-      emptyState.style.display = "block";
+      setRuntimeStyle(summaryContainer, "display", "none");
+      setRuntimeStyle(evaluationContainer, "display", "none");
+      setRuntimeStyle(emptyState, "display", "block");
       return;
     }
     const gt = this.model.state.goithau.find((g) => g.id === gtId);
@@ -80,15 +81,15 @@ export function renderDanhGiaHsdtPanel() {
       isReadOnly,
       currentTab: this.currentDanhGiaTab
     });
-    emptyState.style.display = "none";
-    evaluationContainer.style.display = "block";
+    setRuntimeStyle(emptyState, "display", "none");
+    setRuntimeStyle(evaluationContainer, "display", "block");
     const quyTrinhContainer = this.view.getActiveElement("danhgiahsdt-quytrinh-container");
     const isGoodsOrNonConsulting = gt.linhVuc === "Hàng hóa" || gt.linhVuc === "Phi tư vấn";
     const is1G1T = gt.phuongThucLuaChon === "Một giai đoạn một túi hồ sơ";
     const showQuyTrinh = isGoodsOrNonConsulting && is1G1T;
     if (quyTrinhContainer) {
       if (showQuyTrinh) {
-        quyTrinhContainer.style.display = "flex";
+        setRuntimeStyle(quyTrinhContainer, "display", "flex");
         const currentQuyTrinh = gt.quyTrinhDanhGia || "quytrinh1";
         const radio1 = quyTrinhContainer.querySelector('input[value="quytrinh1"]');
         const radio2 = quyTrinhContainer.querySelector('input[value="quytrinh2"]');
@@ -138,14 +139,14 @@ export function renderDanhGiaHsdtPanel() {
             }
             if (warningMsg) {
               warningMsg.textContent = `(Bắt buộc dùng Quy trình 1 do: ${reasons.join(", ")})`;
-              warningMsg.style.display = "inline";
+              setRuntimeStyle(warningMsg, "display", "inline");
             }
           } else {
             if (!isReadOnly) {
               radio2.removeAttribute("disabled");
             }
             if (warningMsg) {
-              warningMsg.style.display = "none";
+              setRuntimeStyle(warningMsg, "display", "none");
             }
           }
         };
@@ -205,7 +206,7 @@ export function renderDanhGiaHsdtPanel() {
           updateQuyTrinh2Eligibility();
         }
       } else {
-        quyTrinhContainer.style.display = "none";
+        setRuntimeStyle(quyTrinhContainer, "display", "none");
       }
     }
     const tabsHeader = this.view.getActiveElement("danhgiahsdt-tabs-header");
@@ -225,7 +226,7 @@ export function renderDanhGiaHsdtPanel() {
     if (is1G2T) {
       const isWorkflowView = this.view.isGoiThauDetailTabActive();
       if (tabsHeader) {
-        tabsHeader.style.display = isWorkflowView ? "none" : "flex";
+        setRuntimeStyle(tabsHeader, "display", isWorkflowView ? "none" : "flex");
       }
       if (!this.currentDanhGiaTab || this.currentDanhGiaTab !== "technical" && this.currentDanhGiaTab !== "financial") {
         this.currentDanhGiaTab = "technical";
@@ -243,34 +244,34 @@ export function renderDanhGiaHsdtPanel() {
       if (tabBtnKt && tabBtnTc) {
         if (isKtSaved) {
           tabBtnTc.removeAttribute("disabled");
-          tabBtnTc.style.opacity = "1";
-          tabBtnTc.style.cursor = "pointer";
+          setRuntimeStyle(tabBtnTc, "opacity", "1");
+          setRuntimeStyle(tabBtnTc, "cursor", "pointer");
         } else {
           tabBtnTc.setAttribute("disabled", "true");
-          tabBtnTc.style.opacity = "0.6";
-          tabBtnTc.style.cursor = "not-allowed";
+          setRuntimeStyle(tabBtnTc, "opacity", "0.6");
+          setRuntimeStyle(tabBtnTc, "cursor", "not-allowed");
           this.currentDanhGiaTab = "technical";
         }
         if (this.currentDanhGiaTab === "technical") {
           tabBtnKt.className = "btn active";
-          tabBtnKt.style.background = "var(--bg-card)";
-          tabBtnKt.style.color = "var(--primary)";
-          tabBtnKt.style.border = "1px solid var(--border-color)";
-          tabBtnKt.style.borderBottom = "none";
+          setRuntimeStyle(tabBtnKt, "background", "var(--bg-card)");
+          setRuntimeStyle(tabBtnKt, "color", "var(--primary)");
+          setRuntimeStyle(tabBtnKt, "border", "1px solid var(--border-color)");
+          setRuntimeStyle(tabBtnKt, "borderBottom", "none");
           tabBtnTc.className = "btn";
-          tabBtnTc.style.background = "transparent";
-          tabBtnTc.style.color = "var(--text-muted)";
-          tabBtnTc.style.border = "1px solid transparent";
+          setRuntimeStyle(tabBtnTc, "background", "transparent");
+          setRuntimeStyle(tabBtnTc, "color", "var(--text-muted)");
+          setRuntimeStyle(tabBtnTc, "border", "1px solid transparent");
         } else {
           tabBtnTc.className = "btn active";
-          tabBtnTc.style.background = "var(--bg-card)";
-          tabBtnTc.style.color = "var(--primary)";
-          tabBtnTc.style.border = "1px solid var(--border-color)";
-          tabBtnTc.style.borderBottom = "none";
+          setRuntimeStyle(tabBtnTc, "background", "var(--bg-card)");
+          setRuntimeStyle(tabBtnTc, "color", "var(--primary)");
+          setRuntimeStyle(tabBtnTc, "border", "1px solid var(--border-color)");
+          setRuntimeStyle(tabBtnTc, "borderBottom", "none");
           tabBtnKt.className = "btn";
-          tabBtnKt.style.background = "transparent";
-          tabBtnKt.style.color = "var(--text-muted)";
-          tabBtnKt.style.border = "1px solid transparent";
+          setRuntimeStyle(tabBtnKt, "background", "transparent");
+          setRuntimeStyle(tabBtnKt, "color", "var(--text-muted)");
+          setRuntimeStyle(tabBtnKt, "border", "1px solid transparent");
         }
         tabBtnKt.onclick = () => {
           if (this.currentDanhGiaTab !== "technical") {
@@ -286,7 +287,7 @@ export function renderDanhGiaHsdtPanel() {
         };
       }
     } else {
-      if (tabsHeader) tabsHeader.style.display = "none";
+      if (tabsHeader) setRuntimeStyle(tabsHeader, "display", "none");
       this.currentDanhGiaTab = "unified";
     }
     let activeMeta = metadata;
@@ -313,9 +314,9 @@ export function renderDanhGiaHsdtPanel() {
     const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
     const showExtraFields = !isDirectOrSpecial && (!is1G2T || this.currentDanhGiaTab === "financial");
     if (fieldsRow) {
-      fieldsRow.style.gridTemplateColumns = showExtraFields ? "repeat(4, 1fr)" : "repeat(2, 1fr)";
+      setRuntimeStyle(fieldsRow, "gridTemplateColumns", showExtraFields ? "repeat(4, 1fr)" : "repeat(2, 1fr)");
       fieldsRow.querySelectorAll(".evaluation-extra-field").forEach((el) => {
-        el.style.display = showExtraFields ? "block" : "none";
+        setRuntimeStyle(el, "display", showExtraFields ? "block" : "none");
       });
     }
     if (ngayMoiDoichieuInput) {
@@ -420,147 +421,147 @@ export function renderDanhGiaHsdtPanel() {
     if (caseType === "TU_VAN") {
       theadHtml = `
                 <tr>
-                    <th style="width: 8%;">Loại nhà thầu</th>
-                    <th style="width: 10%;">Mã nhà thầu</th>
-                    <th style="width: 14%;">Tên nhà thầu</th>
-                    <th style="width: 10%;">Hiệu lực E-HSĐXKT</th>
-                    <th style="width: 10%;">Thời gian thực hiện</th>
-                    <th style="width: 8%;">Đánh giá hợp lệ</th>
-                    <th style="width: 8%;">Làm rõ tính hợp lệ</th>
-                    <th style="width: 8%;">Đánh giá năng lực</th>
-                    <th style="width: 8%;">Làm rõ năng lực kinh nghiệm</th>
-                    <th style="width: 8%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 8%;">Làm rõ kỹ thuật</th>
-                    ${showCombinedScore ? '<th style="width: 6%;">Điểm tổng hợp</th>' : ""}
-                    <th style="width: 8%;">Kết luận</th>
+                    <th class="bf-s-8523765ec6">Loại nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Mã nhà thầu</th>
+                    <th class="bf-s-c83ebbe56b">Tên nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Hiệu lực E-HSĐXKT</th>
+                    <th class="bf-s-ae54075f01">Thời gian thực hiện</th>
+                    <th class="bf-s-8523765ec6">Đánh giá hợp lệ</th>
+                    <th class="bf-s-8523765ec6">Làm rõ tính hợp lệ</th>
+                    <th class="bf-s-8523765ec6">Đánh giá năng lực</th>
+                    <th class="bf-s-8523765ec6">Làm rõ năng lực kinh nghiệm</th>
+                    <th class="bf-s-8523765ec6">Đánh giá kỹ thuật</th>
+                    <th class="bf-s-8523765ec6">Làm rõ kỹ thuật</th>
+                    ${showCombinedScore ? '<th class="bf-s-415b5d64b8">Điểm tổng hợp</th>' : ""}
+                    <th class="bf-s-8523765ec6">Kết luận</th>
                 </tr>
             `;
     } else if (caseType === "1G2T_NO_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 8%;">Loại nhà thầu</th>
-                    <th style="width: 8%;">Mã nhà thầu</th>
-                    <th style="width: 12%;">Tên nhà thầu</th>
-                    <th style="width: 8%;">Đảm bảo dự thầu</th>
-                    <th style="width: 8%;">Hiệu lực đảm bảo</th>
-                    <th style="width: 8%;">Hiệu lực E-HSĐXKT</th>
-                    <th style="width: 8%;">Đánh giá hợp lệ</th>
-                    <th style="width: 8%;">Làm rõ tính hợp lệ</th>
-                    <th style="width: 8%;">Đánh giá năng lực</th>
-                    <th style="width: 8%;">Làm rõ năng lực kinh nghiệm</th>
-                    <th style="width: 8%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 8%;">Làm rõ kỹ thuật</th>
-                    <th style="width: 8%;">Kết luận</th>
+                    <th class="bf-s-8523765ec6">Loại nhà thầu</th>
+                    <th class="bf-s-8523765ec6">Mã nhà thầu</th>
+                    <th class="bf-s-2811ee8f01">Tên nhà thầu</th>
+                    <th class="bf-s-8523765ec6">Đảm bảo dự thầu</th>
+                    <th class="bf-s-8523765ec6">Hiệu lực đảm bảo</th>
+                    <th class="bf-s-8523765ec6">Hiệu lực E-HSĐXKT</th>
+                    <th class="bf-s-8523765ec6">Đánh giá hợp lệ</th>
+                    <th class="bf-s-8523765ec6">Làm rõ tính hợp lệ</th>
+                    <th class="bf-s-8523765ec6">Đánh giá năng lực</th>
+                    <th class="bf-s-8523765ec6">Làm rõ năng lực kinh nghiệm</th>
+                    <th class="bf-s-8523765ec6">Đánh giá kỹ thuật</th>
+                    <th class="bf-s-8523765ec6">Làm rõ kỹ thuật</th>
+                    <th class="bf-s-8523765ec6">Kết luận</th>
                 </tr>
             `;
     } else if (caseType === "1G2T_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 5%;">Mã phần lô</th>
-                    <th style="width: 5%;">Tên phần lô</th>
-                    <th style="width: 6%;">Loại nhà thầu</th>
-                    <th style="width: 6%;">Mã nhà thầu</th>
-                    <th style="width: 10%;">Tên nhà thầu</th>
-                    <th style="width: 7%;">Đảm bảo dự thầu</th>
-                    <th style="width: 7%;">Hiệu lực đảm bảo</th>
-                    <th style="width: 7%;">Hiệu lực E-HSĐXKT</th>
-                    <th style="width: 7%;">Đánh giá hợp lệ</th>
-                    <th style="width: 7%;">Làm rõ hợp lệ</th>
-                    <th style="width: 7%;">Đánh giá năng lực</th>
-                    <th style="width: 7%;">Làm rõ năng lực</th>
-                    <th style="width: 7%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 7%;">Làm rõ kỹ thuật</th>
-                    <th style="width: 8%;">Kết luận</th>
+                    <th class="bf-s-aed34ad439">Mã phần lô</th>
+                    <th class="bf-s-aed34ad439">Tên phần lô</th>
+                    <th class="bf-s-415b5d64b8">Loại nhà thầu</th>
+                    <th class="bf-s-415b5d64b8">Mã nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Tên nhà thầu</th>
+                    <th class="bf-s-b258c3e162">Đảm bảo dự thầu</th>
+                    <th class="bf-s-b258c3e162">Hiệu lực đảm bảo</th>
+                    <th class="bf-s-b258c3e162">Hiệu lực E-HSĐXKT</th>
+                    <th class="bf-s-b258c3e162">Đánh giá hợp lệ</th>
+                    <th class="bf-s-b258c3e162">Làm rõ hợp lệ</th>
+                    <th class="bf-s-b258c3e162">Đánh giá năng lực</th>
+                    <th class="bf-s-b258c3e162">Làm rõ năng lực</th>
+                    <th class="bf-s-b258c3e162">Đánh giá kỹ thuật</th>
+                    <th class="bf-s-b258c3e162">Làm rõ kỹ thuật</th>
+                    <th class="bf-s-8523765ec6">Kết luận</th>
                 </tr>
             `;
     } else if (caseType === "1G2T_TC_NO_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 8%;">Loại nhà thầu</th>
-                    <th style="width: 8%;">Mã nhà thầu</th>
-                    <th style="width: 12%;">Tên nhà thầu</th>
-                    <th style="width: 10%;">Giá dự thầu</th>
-                    <th style="width: 6%;">Tỷ lệ %</th>
-                    <th style="width: 10%;">Giá sau giảm</th>
-                    ${isTuVan ? '<th style="width: 10%;">Hiệu lực E-HSĐXTC</th>' : ""}
-                    <th style="width: 8%;">Làm rõ tài chính</th>
+                    <th class="bf-s-8523765ec6">Loại nhà thầu</th>
+                    <th class="bf-s-8523765ec6">Mã nhà thầu</th>
+                    <th class="bf-s-2811ee8f01">Tên nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Giá dự thầu</th>
+                    <th class="bf-s-415b5d64b8">Tỷ lệ %</th>
+                    <th class="bf-s-ae54075f01">Giá sau giảm</th>
+                    ${isTuVan ? '<th class="bf-s-ae54075f01">Hiệu lực E-HSĐXTC</th>' : ""}
+                    <th class="bf-s-8523765ec6">Làm rõ tài chính</th>
                     ${showCombinedScore ? `
-                        <th style="width: 6%;">Đánh giá KT</th>
-                        <th style="width: 6%;">Điểm tổng hợp</th>
+                        <th class="bf-s-415b5d64b8">Đánh giá KT</th>
+                        <th class="bf-s-415b5d64b8">Điểm tổng hợp</th>
                     ` : ""}
-                    <th style="width: 6%;">Xếp hạng</th>
+                    <th class="bf-s-415b5d64b8">Xếp hạng</th>
                 </tr>
             `;
     } else if (caseType === "1G2T_TC_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 6%;">Mã phần lô</th>
-                    <th style="width: 6%;">Tên phần lô</th>
-                    <th style="width: 6%;">Loại nhà thầu</th>
-                    <th style="width: 6%;">Mã nhà thầu</th>
-                    <th style="width: 10%;">Tên nhà thầu</th>
-                    <th style="width: 9%;">Giá dự thầu</th>
-                    <th style="width: 5%;">Tỷ lệ %</th>
-                    <th style="width: 9%;">Giá sau giảm</th>
-                    ${isTuVan ? '<th style="width: 8%;">Hiệu lực E-HSĐXTC</th>' : ""}
-                    <th style="width: 8%;">Làm rõ tài chính</th>
+                    <th class="bf-s-415b5d64b8">Mã phần lô</th>
+                    <th class="bf-s-415b5d64b8">Tên phần lô</th>
+                    <th class="bf-s-415b5d64b8">Loại nhà thầu</th>
+                    <th class="bf-s-415b5d64b8">Mã nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Tên nhà thầu</th>
+                    <th class="bf-s-3faf34a5d2">Giá dự thầu</th>
+                    <th class="bf-s-aed34ad439">Tỷ lệ %</th>
+                    <th class="bf-s-3faf34a5d2">Giá sau giảm</th>
+                    ${isTuVan ? '<th class="bf-s-8523765ec6">Hiệu lực E-HSĐXTC</th>' : ""}
+                    <th class="bf-s-8523765ec6">Làm rõ tài chính</th>
                     ${showCombinedScore ? `
-                        <th style="width: 6%;">Đánh giá KT</th>
-                        <th style="width: 6%;">Điểm tổng hợp</th>
+                        <th class="bf-s-415b5d64b8">Đánh giá KT</th>
+                        <th class="bf-s-415b5d64b8">Điểm tổng hợp</th>
                     ` : ""}
-                    <th style="width: 6%;">Xếp hạng</th>
+                    <th class="bf-s-415b5d64b8">Xếp hạng</th>
                 </tr>
             `;
     } else if (caseType === "1G1T_NO_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 5%;">Loại nhà thầu</th>
-                    <th style="width: 5%;">Mã nhà thầu</th>
-                    <th style="width: 10%;">Tên nhà thầu</th>
-                    <th style="width: 8%;">Giá dự thầu</th>
-                    <th style="width: 4%;">Tỷ lệ %</th>
-                    <th style="width: 8%;">Giá sau giảm</th>
-                    <th style="width: 6%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 6%;">Giá trị ĐB</th>
-                    <th style="width: 6%;">Hiệu lực ĐB</th>
-                    <th style="width: 6%;">Thời gian TH</th>
-                    <th style="width: 6%;">Đánh giá hợp lệ</th>
-                    <th style="width: 6%;">Làm rõ hợp lệ</th>
-                    <th style="width: 6%;">Đánh giá năng lực</th>
-                    <th style="width: 6%;">Làm rõ năng lực</th>
-                    <th style="width: 6%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 6%;">Làm rõ kỹ thuật</th>
-                    <th style="width: 6%;">Làm rõ tài chính</th>
-                    ${isCombinedMethod ? '<th style="width: 6%;">Điểm tổng hợp</th>' : ""}
-                    <th style="width: 8%;">Kết luận</th>
-                    <th style="width: 6%;">Xếp hạng</th>
+                    <th class="bf-s-aed34ad439">Loại nhà thầu</th>
+                    <th class="bf-s-aed34ad439">Mã nhà thầu</th>
+                    <th class="bf-s-ae54075f01">Tên nhà thầu</th>
+                    <th class="bf-s-8523765ec6">Giá dự thầu</th>
+                    <th class="bf-s-6a7768ee0d">Tỷ lệ %</th>
+                    <th class="bf-s-8523765ec6">Giá sau giảm</th>
+                    <th class="bf-s-415b5d64b8">Hiệu lực E-HSDT</th>
+                    <th class="bf-s-415b5d64b8">Giá trị ĐB</th>
+                    <th class="bf-s-415b5d64b8">Hiệu lực ĐB</th>
+                    <th class="bf-s-415b5d64b8">Thời gian TH</th>
+                    <th class="bf-s-415b5d64b8">Đánh giá hợp lệ</th>
+                    <th class="bf-s-415b5d64b8">Làm rõ hợp lệ</th>
+                    <th class="bf-s-415b5d64b8">Đánh giá năng lực</th>
+                    <th class="bf-s-415b5d64b8">Làm rõ năng lực</th>
+                    <th class="bf-s-415b5d64b8">Đánh giá kỹ thuật</th>
+                    <th class="bf-s-415b5d64b8">Làm rõ kỹ thuật</th>
+                    <th class="bf-s-415b5d64b8">Làm rõ tài chính</th>
+                    ${isCombinedMethod ? '<th class="bf-s-415b5d64b8">Điểm tổng hợp</th>' : ""}
+                    <th class="bf-s-8523765ec6">Kết luận</th>
+                    <th class="bf-s-415b5d64b8">Xếp hạng</th>
                 </tr>
             `;
     } else if (caseType === "1G1T_WITH_LOT") {
       theadHtml = `
                 <tr>
-                    <th style="width: 5%;">Mã phần lô</th>
-                    <th style="width: 5%;">Tên phần lô</th>
-                    <th style="width: 4%;">Loại nhà thầu</th>
-                    <th style="width: 6%;">Mã nhà thầu</th>
-                    <th style="width: 8%;">Tên nhà thầu</th>
-                    <th style="width: 7%;">Giá dự thầu</th>
-                    <th style="width: 4%;">Tỷ lệ %</th>
-                    <th style="width: 7%;">Giá sau giảm</th>
-                    <th style="width: 5%;">Hiệu lực E-HSDT</th>
-                    <th style="width: 5%;">Giá trị ĐB</th>
-                    <th style="width: 5%;">Hiệu lực ĐB</th>
-                    <th style="width: 5%;">Thời gian TH</th>
-                    <th style="width: 5%;">Đánh giá hợp lệ</th>
-                    <th style="width: 5%;">Làm rõ hợp lệ</th>
-                    <th style="width: 5%;">Đánh giá năng lực</th>
-                    <th style="width: 5%;">Làm rõ năng lực</th>
-                    <th style="width: 5%;">Đánh giá kỹ thuật</th>
-                    <th style="width: 5%;">Làm rõ kỹ thuật</th>
-                    <th style="width: 5%;">Làm rõ tài chính</th>
-                    ${isCombinedMethod ? '<th style="width: 6%;">Điểm tổng hợp</th>' : ""}
-                    <th style="width: 8%;">Kết luận</th>
-                    <th style="width: 6%;">Xếp hạng</th>
+                    <th class="bf-s-aed34ad439">Mã phần lô</th>
+                    <th class="bf-s-aed34ad439">Tên phần lô</th>
+                    <th class="bf-s-6a7768ee0d">Loại nhà thầu</th>
+                    <th class="bf-s-415b5d64b8">Mã nhà thầu</th>
+                    <th class="bf-s-8523765ec6">Tên nhà thầu</th>
+                    <th class="bf-s-b258c3e162">Giá dự thầu</th>
+                    <th class="bf-s-6a7768ee0d">Tỷ lệ %</th>
+                    <th class="bf-s-b258c3e162">Giá sau giảm</th>
+                    <th class="bf-s-aed34ad439">Hiệu lực E-HSDT</th>
+                    <th class="bf-s-aed34ad439">Giá trị ĐB</th>
+                    <th class="bf-s-aed34ad439">Hiệu lực ĐB</th>
+                    <th class="bf-s-aed34ad439">Thời gian TH</th>
+                    <th class="bf-s-aed34ad439">Đánh giá hợp lệ</th>
+                    <th class="bf-s-aed34ad439">Làm rõ hợp lệ</th>
+                    <th class="bf-s-aed34ad439">Đánh giá năng lực</th>
+                    <th class="bf-s-aed34ad439">Làm rõ năng lực</th>
+                    <th class="bf-s-aed34ad439">Đánh giá kỹ thuật</th>
+                    <th class="bf-s-aed34ad439">Làm rõ kỹ thuật</th>
+                    <th class="bf-s-aed34ad439">Làm rõ tài chính</th>
+                    ${isCombinedMethod ? '<th class="bf-s-415b5d64b8">Điểm tổng hợp</th>' : ""}
+                    <th class="bf-s-8523765ec6">Kết luận</th>
+                    <th class="bf-s-415b5d64b8">Xếp hạng</th>
                 </tr>
             `;
     }
@@ -584,12 +585,12 @@ export function renderDanhGiaHsdtPanel() {
         const valKyThuat = inpKyThuat ? (inpKyThuat.value || inpKyThuat.textContent || "").trim() : "";
         const reasonHopLe = tr.querySelector(".mt-reason-fail-hople");
         if (reasonHopLe) {
-          reasonHopLe.style.display = valHopLe === "Không đạt" ? "block" : "none";
+          setRuntimeStyle(reasonHopLe, "display", valHopLe === "Không đạt" ? "block" : "none");
           if (valHopLe !== "Không đạt") reasonHopLe.value = "";
         }
         const reasonNangLuc = tr.querySelector(".mt-reason-fail-nangluc");
         if (reasonNangLuc) {
-          reasonNangLuc.style.display = valNangLuc === "Không đạt" ? "block" : "none";
+          setRuntimeStyle(reasonNangLuc, "display", valNangLuc === "Không đạt" ? "block" : "none");
           if (valNangLuc !== "Không đạt") reasonNangLuc.value = "";
         }
         const reasonKyThuat = tr.querySelector(".mt-reason-fail-kythuat");
@@ -600,7 +601,7 @@ export function renderDanhGiaHsdtPanel() {
           } else if (isNumeric(valKyThuat)) {
             shouldShowKyThuatFail = conclusionText.startsWith("Không đạt");
           }
-          reasonKyThuat.style.display = shouldShowKyThuatFail ? "block" : "none";
+          setRuntimeStyle(reasonKyThuat, "display", shouldShowKyThuatFail ? "block" : "none");
           if (!shouldShowKyThuatFail) reasonKyThuat.value = "";
         }
       };
@@ -619,21 +620,21 @@ export function renderDanhGiaHsdtPanel() {
           if (!isReadOnly && forceRowDisabled) {
             tr.querySelectorAll(".mt-dg-hop-le, .mt-dg-nang-luc, .mt-dg-ky-thuat, .mt-lam-ro-hop-le, .mt-lam-ro-nang-luc, .mt-lam-ro-ky-thuat, .mt-lam-ro-tai-chinh, .mt-reason-fail-hople, .mt-reason-fail-nangluc, .mt-reason-fail-kythuat").forEach((el) => {
               el.setAttribute("disabled", "true");
-              el.style.background = "var(--neutral-soft)";
-              el.style.cursor = "not-allowed";
+              setRuntimeStyle(el, "background", "var(--neutral-soft)");
+              setRuntimeStyle(el, "cursor", "not-allowed");
             });
           } else if (!isReadOnly) {
             const inpHopLe2 = tr.querySelector(".mt-dg-hop-le");
             const inpLamRoHopLe = tr.querySelector(".mt-lam-ro-hop-le");
             if (inpHopLe2) {
               inpHopLe2.removeAttribute("disabled");
-              inpHopLe2.style.background = "";
-              inpHopLe2.style.cursor = "";
+              setRuntimeStyle(inpHopLe2, "background", "");
+              setRuntimeStyle(inpHopLe2, "cursor", "");
             }
             if (inpLamRoHopLe) {
               inpLamRoHopLe.removeAttribute("disabled");
-              inpLamRoHopLe.style.background = "";
-              inpLamRoHopLe.style.cursor = "";
+              setRuntimeStyle(inpLamRoHopLe, "background", "");
+              setRuntimeStyle(inpLamRoHopLe, "cursor", "");
             }
           }
           if (!is1G2T && gt.quyTrinhDanhGia === "quytrinh2" && foundPassedBidder) {
@@ -745,7 +746,7 @@ export function renderDanhGiaHsdtPanel() {
       });
     }
     if (bids.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="15" style="text-align:center; padding: 24px; color: var(--text-muted);"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="15" class="bf-s-7fa1ce09fc"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>`;
     } else {
       let previousAllFailed = true;
       bids.forEach((bid) => {
@@ -801,28 +802,28 @@ export function renderDanhGiaHsdtPanel() {
           if (isReadOnly) {
             cellHtml += `
                             <td><span>${valGiaDuThau || "--"}</span></td>
-                            <td style="text-align:right;"><span>${valTyLeGiam}</span></td>
+                            <td class="bf-s-5f326564a5"><span>${valTyLeGiam}</span></td>
                             <td><span>${valGiaSauGiam || "--"}</span></td>
                             ${isTuVan ? `<td><span>${valHieuLucHsdt ? valHieuLucHsdt + " ngày" : "--"}</span></td>` : ""}
                             <td><span>${escapeHtml(valLamRoTaiChinh || "--")}</span></td>
                             ${showCombinedScore ? `
                                 <td><span>${escapeHtml(bid.danhGiaKyThuat || "--")}</span></td>
-                                <td><span class="mt-combined-score" style="font-weight:700;">--</span></td>
+                                <td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>
                             ` : ""}
-                            <td><span style="font-weight:600;">${escapeHtml(valTaiChinh || "--")}</span></td>
+                            <td><span class="bf-s-6e8bcfac8d">${escapeHtml(valTaiChinh || "--")}</span></td>
                         `;
           } else {
             cellHtml += `
-                            <td><input type="text" class="form-control mt-gia-du-thau" value="${valGiaDuThau}" readonly placeholder="Ví dụ: 1.000.000.000" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                            <td><input type="text" class="form-control mt-ty-le-giam-gia" value="${valTyLeGiam}" readonly placeholder="0" style="background:#f1f5f9; text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
-                            <td><input type="text" class="form-control mt-gia-sau-giam-gia" value="${valGiaSauGiam}" readonly placeholder="......" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                            ${isTuVan ? `<td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + " ngày" : ""}" readonly placeholder="Ví dụ: 90 ngày" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>` : ""}
-                            <td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${escapeHtml(valLamRoTaiChinh)}" placeholder="Nhập làm rõ tài chính..." style="padding: 4px 6px; font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control mt-gia-du-thau bf-s-9eae6acf9f" value="${valGiaDuThau}" readonly placeholder="Ví dụ: 1.000.000.000"></td>
+                            <td><input type="text" class="form-control mt-ty-le-giam-gia bf-s-b42165990f" value="${valTyLeGiam}" readonly placeholder="0"></td>
+                            <td><input type="text" class="form-control mt-gia-sau-giam-gia bf-s-9eae6acf9f" value="${valGiaSauGiam}" readonly placeholder="......"></td>
+                            ${isTuVan ? `<td><input type="text" class="form-control mt-hieu-luc-hsdt bf-s-9eae6acf9f" value="${valHieuLucHsdt ? valHieuLucHsdt + " ngày" : ""}" readonly placeholder="Ví dụ: 90 ngày"></td>` : ""}
+                            <td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(valLamRoTaiChinh)}" placeholder="Nhập làm rõ tài chính..."></td>
                             ${showCombinedScore ? `
                                 <td><span>${escapeHtml(bid.danhGiaKyThuat || "--")}</span></td>
-                                <td><span class="mt-combined-score" style="font-weight:700;">--</span></td>
+                                <td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>
                             ` : ""}
-                            <td><input type="text" class="form-control mt-dg-tai-chinh" value="${escapeHtml(valTaiChinh)}" placeholder="Xếp hạng..." style="padding: 4px 6px; font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control mt-dg-tai-chinh bf-s-bce22e1c53" value="${escapeHtml(valTaiChinh)}" placeholder="Xếp hạng..."></td>
                         `;
           }
         } else {
@@ -842,7 +843,7 @@ export function renderDanhGiaHsdtPanel() {
             if (!isTechnical) {
               cellHtml += `
                                 <td><span>${bid.giaDuThau ? this.model.formatVND(bid.giaDuThau) : "--"}</span></td>
-                                <td style="text-align:right;"><span>${bid.tyLeGiamGia !== void 0 ? this.model.formatVND(bid.tyLeGiamGia) : "0"}</span></td>
+                                <td class="bf-s-5f326564a5"><span>${bid.tyLeGiamGia !== void 0 ? this.model.formatVND(bid.tyLeGiamGia) : "0"}</span></td>
                                 <td><span>${bid.giaSauGiamGia ? this.model.formatVND(bid.giaSauGiamGia) : "--"}</span></td>
                                 <td><span>${valHieuLucHsdtDisplay}</span></td>
                                 <td><span>${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : "--"}</span></td>
@@ -865,77 +866,77 @@ export function renderDanhGiaHsdtPanel() {
             }
             cellHtml += `
                             <td>
-                                <span class="mt-dg-hop-le" style="font-weight:600;">${escapeHtml(valHopLe || "--")}</span>
-                                ${bid.nguyenNhanKhongDatHopLe ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatHopLe)}</div>` : ""}
+                                <span class="mt-dg-hop-le bf-s-6e8bcfac8d">${escapeHtml(valHopLe || "--")}</span>
+                                ${bid.nguyenNhanKhongDatHopLe ? `<div class="bf-s-1e3e1388dc">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatHopLe)}</div>` : ""}
                             </td>
                             <td><span>${escapeHtml(valLamRoHopLe || "--")}</span></td>
                             <td>
-                                <span class="mt-dg-nang-luc" style="font-weight:600;">${escapeHtml(valNangLuc || "--")}</span>
-                                ${bid.nguyenNhanKhongDatNangLuc ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatNangLuc)}</div>` : ""}
+                                <span class="mt-dg-nang-luc bf-s-6e8bcfac8d">${escapeHtml(valNangLuc || "--")}</span>
+                                ${bid.nguyenNhanKhongDatNangLuc ? `<div class="bf-s-1e3e1388dc">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatNangLuc)}</div>` : ""}
                             </td>
                             <td><span>${escapeHtml(valLamRoNangLuc || "--")}</span></td>
                             <td>
-                                <span class="mt-dg-ky-thuat" style="font-weight:600;">${escapeHtml(valKyThuat || "--")}</span>
-                                ${bid.nguyenNhanKhongDatKyThuat ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatKyThuat)}</div>` : ""}
+                                <span class="mt-dg-ky-thuat bf-s-6e8bcfac8d">${escapeHtml(valKyThuat || "--")}</span>
+                                ${bid.nguyenNhanKhongDatKyThuat ? `<div class="bf-s-1e3e1388dc">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatKyThuat)}</div>` : ""}
                             </td>
                             <td><span>${escapeHtml(valLamRoKyThuat || "--")}</span></td>
                             ${isTechnical ? "" : `<td><span>${escapeHtml(valLamRoTaiChinh || "--")}</span></td>`}
-                            ${showCombinedScore ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ""}
-                            <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
-                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
+                            ${showCombinedScore ? `<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>` : ""}
+                            <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
                         `;
           } else {
             const forceRowDisabled = !is1G2T && gt.quyTrinhDanhGia === "quytrinh2" && !previousAllFailed;
             if (!isTechnical) {
               cellHtml += `
-                                <td><input type="text" class="form-control" value="${bid.giaDuThau ? this.model.formatVND(bid.giaDuThau) : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${bid.tyLeGiamGia !== void 0 ? this.model.formatVND(bid.tyLeGiamGia) : "0"}" readonly style="background:#f1f5f9; text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${bid.giaSauGiamGia ? this.model.formatVND(bid.giaSauGiamGia) : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${bid.hieuLucHsdt ? bid.hieuLucHsdt + " ngày" : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + " ngày" : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "")}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaDuThau ? this.model.formatVND(bid.giaDuThau) : ""}" readonly></td>
+                                <td><input type="text" class="form-control bf-s-b42165990f" value="${bid.tyLeGiamGia !== void 0 ? this.model.formatVND(bid.tyLeGiamGia) : "0"}" readonly></td>
+                                <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaSauGiamGia ? this.model.formatVND(bid.giaSauGiamGia) : ""}" readonly></td>
+                                <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.hieuLucHsdt ? bid.hieuLucHsdt + " ngày" : ""}" readonly></td>
+                                <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : ""}" readonly></td>
+                                <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + " ngày" : ""}" readonly></td>
+                                <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "")}" readonly></td>
                             `;
             } else {
               if (caseType === "TU_VAN") {
                 cellHtml += `
-                                    <td><input type="text" class="form-control" value="${valHieuLucHsdtInput}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                    <td><input type="text" class="form-control" value="${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "")}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${valHieuLucHsdtInput}" readonly></td>
+                                    <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "")}" readonly></td>
                                 `;
               } else if (caseType === "1G2T_NO_LOT" || caseType === "1G2T_WITH_LOT") {
                 cellHtml += `
-                                    <td><input type="text" class="form-control" value="${finalGiaTriDamBao ? this.model.formatVND(finalGiaTriDamBao) : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                    <td><input type="text" class="form-control" value="${finalHieuLucDamBao}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                    <td><input type="text" class="form-control" value="${valHieuLucHsdtInput}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${finalGiaTriDamBao ? this.model.formatVND(finalGiaTriDamBao) : ""}" readonly></td>
+                                    <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${finalHieuLucDamBao}" readonly></td>
+                                    <td><input type="text" class="form-control bf-s-9eae6acf9f" value="${valHieuLucHsdtInput}" readonly></td>
                                 `;
               }
             }
             cellHtml += `
                             <td>
-                                <select class="form-control mt-dg-hop-le" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+                                <select class="form-control mt-dg-hop-le bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
                                     <option value="Đạt" ${valHopLe === "Đạt" || valHopLe === "" ? "selected" : ""}>Đạt</option>
                                     <option value="Không đạt" ${valHopLe === "Không đạt" ? "selected" : ""}>Không đạt</option>
                                 </select>
                                 <input type="text" class="form-control mt-reason-fail-hople" value="${escapeHtml(bid.nguyenNhanKhongDatHopLe || "")}" placeholder="Lý do không đạt hợp lệ..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valHopLe === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-hop-le" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoHopLe)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ hợp lệ..."}"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-hop-le bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoHopLe)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ hợp lệ..."}"></td>
                             <td>
-                                <select class="form-control mt-dg-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
+                                <select class="form-control mt-dg-nang-luc bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
                                     <option value="Đạt" ${valNangLuc === "Đạt" || valNangLuc === "" ? "selected" : ""}>Đạt</option>
                                     <option value="Không đạt" ${valNangLuc === "Không đạt" ? "selected" : ""}>Không đạt</option>
                                 </select>
                                 <input type="text" class="form-control mt-reason-fail-nangluc" value="${escapeHtml(bid.nguyenNhanKhongDatNangLuc || "")}" placeholder="Lý do không đạt năng lực..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valNangLuc === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoNangLuc)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ năng lực..."}"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-nang-luc bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoNangLuc)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ năng lực..."}"></td>
                             <td>
-                                <input type="text" class="form-control mt-dg-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" ? "Nhập điểm kỹ thuật..." : "Điểm hoặc Đạt..."}">
-                                <input type="text" class="form-control mt-reason-fail-kythuat" value="${escapeHtml(bid.nguyenNhanKhongDatKyThuat || "")}" placeholder="Lý do không đạt kỹ thuật..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: none;" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
+                                <input type="text" class="form-control mt-dg-ky-thuat bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" ? "Nhập điểm kỹ thuật..." : "Điểm hoặc Đạt..."}">
+                                <input type="text" class="form-control mt-reason-fail-kythuat bf-s-32fe8a23fe" value="${escapeHtml(bid.nguyenNhanKhongDatKyThuat || "")}" placeholder="Lý do không đạt kỹ thuật..." ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ kỹ thuật..."}"></td>
-                            ${isTechnical ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoTaiChinh)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ tài chính..."}"></td>`}
-                            ${showCombinedScore ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ""}
-                            <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
-                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
+                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ kỹ thuật..."}"></td>
+                            ${isTechnical ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh bf-s-7c66cdedec" ${forceRowDisabled ? 'disabled' : ""} value="${escapeHtml(valLamRoTaiChinh)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ tài chính..."}"></td>`}
+                            ${showCombinedScore ? `<td><span class="mt-combined-score bf-s-c6fa01b3f1">--</span></td>` : ""}
+                            <td class="mt-ketluan-cell bf-s-0c5104285b"></td>
+                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang bf-s-6e8bcfac8d">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
                         `;
           }
         }
@@ -1044,24 +1045,24 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
     if (inpNangLuc) {
       if (valHopLe.toLowerCase() === "đạt") {
         inpNangLuc.removeAttribute("disabled");
-        inpNangLuc.style.background = "";
-        inpNangLuc.style.cursor = "auto";
+        setRuntimeStyle(inpNangLuc, "background", "");
+        setRuntimeStyle(inpNangLuc, "cursor", "auto");
       } else {
         inpNangLuc.setAttribute("disabled", "true");
-        inpNangLuc.style.background = "var(--neutral-soft)";
-        inpNangLuc.style.cursor = "not-allowed";
+        setRuntimeStyle(inpNangLuc, "background", "var(--neutral-soft)");
+        setRuntimeStyle(inpNangLuc, "cursor", "not-allowed");
         inpNangLuc.value = "";
       }
     }
     if (inpKyThuat) {
       if (valHopLe.toLowerCase() === "đạt" && valNangLuc.toLowerCase() === "đạt") {
         inpKyThuat.removeAttribute("disabled");
-        inpKyThuat.style.background = "";
-        inpKyThuat.style.cursor = "auto";
+        setRuntimeStyle(inpKyThuat, "background", "");
+        setRuntimeStyle(inpKyThuat, "cursor", "auto");
       } else {
         inpKyThuat.setAttribute("disabled", "true");
-        inpKyThuat.style.background = "var(--neutral-soft)";
-        inpKyThuat.style.cursor = "not-allowed";
+        setRuntimeStyle(inpKyThuat, "background", "var(--neutral-soft)");
+        setRuntimeStyle(inpKyThuat, "cursor", "not-allowed");
         inpKyThuat.value = "";
       }
     }
@@ -1109,20 +1110,20 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
   if (isReadOnly) {
     const finalConclusion = savedKetLuan || conclusion;
     if (finalConclusion === "Đạt" || finalConclusion === "Đạt (Xếp hạng 1)" || finalConclusion.startsWith("Đạt")) {
-      cell.innerHTML = `<span class="badge badge-success" style="font-weight:700;">Đạt</span>`;
+      cell.innerHTML = `<span class="badge badge-success bf-s-c6fa01b3f1">Đạt</span>`;
     } else if (finalConclusion && finalConclusion.startsWith("Không đạt")) {
-      cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${escapeHtml(finalConclusion)}</span>`;
+      cell.innerHTML = `<span class="badge badge-danger bf-s-fc8cc31ae8">${escapeHtml(finalConclusion)}</span>`;
     } else {
       cell.innerHTML = `<span>${escapeHtml(finalConclusion || "--")}</span>`;
     }
   } else {
     if (status === "fixed_pass") {
       if (cell.textContent.trim() !== "Đạt" || !cell.querySelector(".badge-success")) {
-        cell.innerHTML = `<span class="badge badge-success" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block;">Đạt</span>`;
+        cell.innerHTML = `<span class="badge badge-success bf-s-a9d5133cd4">Đạt</span>`;
       }
     } else if (status === "fixed_fail") {
       if (cell.textContent.trim() !== conclusion || !cell.querySelector(".badge-danger")) {
-        cell.innerHTML = `<span class="badge badge-danger" style="font-weight:700; padding:6px 12px; border-radius:4px; display:inline-block; background-color:rgba(239,68,68,0.08); color:#dc2626; border:1px solid rgba(239,68,68,0.25);">${escapeHtml(conclusion)}</span>`;
+        cell.innerHTML = `<span class="badge badge-danger bf-s-18dd987272">${escapeHtml(conclusion)}</span>`;
       }
     } else if (status === "user_select") {
       const existingSelect = cell.querySelector(".mt-dg-ketluan");
@@ -1132,7 +1133,7 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
         }
       } else {
         cell.innerHTML = `
-                    <select class="form-control mt-dg-ketluan" style="padding: 4px 6px; font-size:0.8rem; font-weight:600; border-color:var(--primary); width: 100%;">
+                    <select class="form-control mt-dg-ketluan bf-s-9bdb7b6b47">
                         <option value="">-- Chọn --</option>
                         <option value="Đạt" ${conclusion === "Đạt" ? "selected" : ""}>Đạt</option>
                         <option value="Không đạt" ${conclusion === "Không đạt" ? "selected" : ""}>Không đạt</option>
@@ -1141,7 +1142,7 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
       }
     } else {
       if (cell.textContent.trim() !== "Chờ đánh giá") {
-        cell.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">Chờ đánh giá</span>`;
+        cell.innerHTML = `<span class="bf-s-77eff41817">Chờ đánh giá</span>`;
       }
     }
   }
@@ -1194,7 +1195,7 @@ export async function saveDanhGiaHsdt() {
   const cvTraLoi = collectLetters("list-cv-traloi");
   const cvGuiCdt = collectLetters("list-cv-guicdt");
   const quyTrinhContainer = this.view.getActiveElement("danhgiahsdt-quytrinh-container");
-  if (quyTrinhContainer && quyTrinhContainer.style.display !== "none") {
+  if (quyTrinhContainer && getComputedStyle(quyTrinhContainer).display !== "none") {
     const radio2 = quyTrinhContainer.querySelector('input[value="quytrinh2"]');
     if (radio2) {
       gt.quyTrinhDanhGia = radio2.checked ? "quytrinh2" : "quytrinh1";

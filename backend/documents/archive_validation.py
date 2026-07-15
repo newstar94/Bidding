@@ -77,7 +77,7 @@ def _validate_content_types(zf: zipfile.ZipFile, archive_kind: str) -> None:
         raise UnsafeArchiveError("Loại nội dung bên trong tệp Office không phù hợp.")
 
 
-def _validate_xml_part(zf: zipfile.ZipFile, name: str) -> None:
+def _validate_xml_part(zf: zipfile.ZipFile, name: str, archive_kind: str) -> None:
     raw = zf.read(name)
     upper_raw = raw.upper()
     if b"<!DOCTYPE" in upper_raw or b"<!ENTITY" in upper_raw:
@@ -85,13 +85,18 @@ def _validate_xml_part(zf: zipfile.ZipFile, name: str) -> None:
 
     depth = 0
     try:
-        for event, _node in ElementTree.iterparse(
+        for event, node in ElementTree.iterparse(
             io.BytesIO(raw), events=("start", "end")
         ):
             if event == "start":
                 depth += 1
                 if depth > MAX_XML_DEPTH:
                     raise UnsafeArchiveError("Độ sâu XML của tệp Office vượt quá giới hạn.")
+                local_name = node.tag.rsplit("}", 1)[-1]
+                if local_name == "Relationship" and str(node.attrib.get("TargetMode", "")).casefold() == "external":
+                    raise UnsafeArchiveError("Tệp Office chứa liên kết ngoài không được phép.")
+                if archive_kind == "xlsx" and name.startswith("xl/worksheets/") and local_name == "f":
+                    raise UnsafeArchiveError("Tệp Excel import không được chứa công thức.")
             else:
                 depth -= 1
     except ElementTree.ParseError as exc:
@@ -118,6 +123,8 @@ def validate_ooxml_archive(content: bytes, archive_kind: str) -> None:
             total_xml_size = 0
             for info in infos:
                 name = _normalise_entry_name(info.filename)
+                if archive_kind == "xlsx" and name.casefold().startswith("xl/externallinks/"):
+                    raise UnsafeArchiveError("Tệp Excel chứa liên kết ngoài không được phép.")
                 folded_name = name.casefold()
                 if name in names or folded_name in names_casefolded:
                     raise UnsafeArchiveError("Tệp Office chứa thành phần trùng tên.")
@@ -145,7 +152,7 @@ def validate_ooxml_archive(content: bytes, archive_kind: str) -> None:
                     total_xml_size += info.file_size
                     if total_xml_size > MAX_TOTAL_XML_BYTES:
                         raise UnsafeArchiveError("Tổng kích thước XML vượt quá giới hạn.")
-                    _validate_xml_part(zf, name)
+                    _validate_xml_part(zf, name, archive_kind)
 
             if not _REQUIRED_PARTS[archive_kind].issubset(names):
                 raise UnsafeArchiveError("Cấu trúc tệp Office không hợp lệ.")

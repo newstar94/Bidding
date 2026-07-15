@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleDialogKeydown } from "../../frontend/shared/dialogAccessibility.js";
+import {
+  activateDialogAccessibility,
+  deactivateDialogAccessibility,
+  handleDialogKeydown
+} from "../../frontend/shared/dialogAccessibility.js";
 
 function keyEvent(key, shiftKey = false) {
   return {
@@ -39,4 +43,32 @@ test("dialog Escape invokes its close control", () => {
   assert.equal(handleDialogKeydown(event, modal), true);
   assert.equal(close.clicked, true);
   assert.equal(event.prevented, true);
+});
+
+test("dialog restores focus to a rerendered trigger with the same id", async () => {
+  const oldTrigger = { id: "add-record", isConnected: true, focus() {} };
+  const newTrigger = { id: "add-record", isConnected: true, focus() { this.focused = true; } };
+  const card = {
+    setAttribute() {}, getAttribute: () => "title", hasAttribute: () => true,
+    querySelector: () => null, focus() {}
+  };
+  const ownerDocument = {
+    activeElement: oldTrigger,
+    getElementById: () => newTrigger
+  };
+  const modal = {
+    id: "modal-record",
+    ownerDocument,
+    querySelector: () => card,
+    querySelectorAll: () => [],
+    addEventListener() {},
+    removeEventListener() {}
+  };
+
+  activateDialogAccessibility(modal);
+  oldTrigger.isConnected = false;
+  deactivateDialogAccessibility(modal);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.equal(newTrigger.focused, true);
 });

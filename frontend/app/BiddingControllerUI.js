@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { consumeModalReturnState } from "./modalReturnState.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
 function requiredRoleForTab(tabName) {
@@ -71,7 +72,7 @@ export function setupSidebar() {
   this.view.elements.currentDateSpan.textContent = `${weekday}, ${this.model.formatDate(currentDate)}`;
   const profileCard = document.querySelector(".profile-card");
   if (profileCard) {
-    profileCard.style.cursor = "pointer";
+    setRuntimeStyle(profileCard, "cursor", "pointer");
     profileCard.addEventListener("click", () => {
       this.switchTab("profile");
       sidebar.classList.remove("active");
@@ -415,7 +416,7 @@ export function switchTab(tabName, action = null, updateState = true) {
     document.querySelectorAll(".modal-overlay:not(#modal-custom-dialog)").forEach((el) => el.classList.remove("active"));
     const activeModals = document.querySelectorAll(".modal-overlay.active");
     if (activeModals.length === 0) {
-      document.body.style.overflow = "";
+      setRuntimeStyle(document.body, "overflow", "");
     }
   }
 }

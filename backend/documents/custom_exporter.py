@@ -298,7 +298,7 @@ class SmartDate(str):
             dt_other = parse_to_datetime(other)
             if dt_self and dt_other:
                 return (dt_self - dt_other).days
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             pass
         return ''
 
@@ -307,7 +307,7 @@ class SmartDate(str):
 
 
             return SmartDate(other).__sub__(self)
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             pass
         return ''
 
@@ -403,7 +403,7 @@ def get_active_template(user_id=None):
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 return config.get('active_template', 'mau_bao_cao_dau_thau.docx')
-        except Exception:
+        except (OSError, json.JSONDecodeError, TypeError):
             pass
     return 'mau_bao_cao_dau_thau.docx'
 
@@ -846,8 +846,8 @@ def generate_report_from_custom_template(template_path, context, custom_vars=Non
                     f"{traceback.format_exc()}\n{'=' * 50}\n"
                 ),
             )
-        except Exception:
-            pass
+        except OSError as log_write_error:
+            log_error(log_write_error, "Document.RenderErrorLog")
 
 
         raise TemplateRenderError(

@@ -1,66 +1,66 @@
 
     <div class="modal-overlay" id="modal-plan-breakdown">
-        <div class="modal-card modal-lg" style="max-width: 1000px; width: 95%;">
+        <div class="modal-card modal-lg bf-s-1e6cf7638c">
             <div class="modal-header">
                 <div>
                     <h3 id="breakdown-modal-title">Phân khai Chi tiết Công việc Kế hoạch</h3>
-                    <p class="text-muted" id="breakdown-modal-subtitle"
-                        style="font-size: 0.82rem; margin-top: 4px; font-weight: 500;"></p>
+                    <p class="text-muted bf-s-328d447767" id="breakdown-modal-subtitle"
+                       ></p>
                 </div>
                 <button class="modal-close" data-close="modal-plan-breakdown">&times;</button>
             </div>
-            <div class="modal-body" style="padding: 0;">
+            <div class="modal-body bf-s-023a711c09">
 
-                <div class="breakdown-tabs"
-                    style="display: flex; background: var(--neutral-soft); border-bottom: 1px solid var(--border-color); padding: 0 16px;">
-                    <button type="button" class="breakdown-tab-btn active" data-breakdown-tab="dathuchien"
-                        style="padding: 12px 16px; font-weight: 700; font-size: 0.86rem; border: none; background: none; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid var(--primary); color: var(--primary) !important; transition: all var(--transition-fast);">I.
+                <div class="breakdown-tabs bf-s-129f96b45a"
+                   >
+                    <button type="button" class="breakdown-tab-btn active bf-s-a21a7a6322" data-breakdown-tab="dathuchien"
+                       >I.
                         Công việc đã thực hiện</button>
-                    <button type="button" class="breakdown-tab-btn" data-breakdown-tab="khongapdung"
-                        style="padding: 12px 16px; font-weight: 700; font-size: 0.86rem; border: none; background: none; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; transition: all var(--transition-fast);">II.
+                    <button type="button" class="breakdown-tab-btn bf-s-b4175edefe" data-breakdown-tab="khongapdung"
+                       >II.
                         Không áp dụng LCNT</button>
-                    <button type="button" class="breakdown-tab-btn" data-breakdown-tab="chuadudieuKien"
-                        style="padding: 12px 16px; font-weight: 700; font-size: 0.86rem; border: none; background: none; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; transition: all var(--transition-fast);">III.
+                    <button type="button" class="breakdown-tab-btn bf-s-b4175edefe" data-breakdown-tab="chuadudieuKien"
+                       >III.
                         Chưa đủ điều kiện LCNT</button>
-                    <button type="button" class="breakdown-tab-btn" data-breakdown-tab="goithau"
-                        style="padding: 12px 16px; font-weight: 700; font-size: 0.86rem; border: none; background: none; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; transition: all var(--transition-fast);">IV.
+                    <button type="button" class="breakdown-tab-btn bf-s-b4175edefe" data-breakdown-tab="goithau"
+                       >IV.
                         Các gói thầu</button>
                 </div>
 
-                <div class="breakdown-tab-panes" style="padding: 20px;">
+                <div class="breakdown-tab-panes bf-s-329d735f9d">
                     <input type="hidden" id="breakdown-plan-id">
 
 
                     <div class="breakdown-pane active" id="pane-dathuchien">
                         <div
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <h4 style="margin: 0; font-size: 0.95rem; color: var(--text-main);">Danh sách phần công việc
+                            class="bf-s-48e4421941">
+                            <h4 class="bf-s-29a92cb589">Danh sách phần công việc
                                 đã thực hiện</h4>
-                            <button type="button" class="btn btn-primary btn-sm"
+                            <button type="button" class="btn btn-primary btn-sm bf-s-8f8586830d"
                                 data-bf-action="call" data-fn="addBreakdownRow" data-args='["dathuchien"]'
-                                style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 0.8rem;">
-                                <i data-lucide="plus" style="width:14px; height:14px;"></i> Thêm công việc
+                               >
+                                <i data-lucide="plus" class="bf-s-641778be2c"></i> Thêm công việc
                             </button>
                         </div>
-                        <div class="table-responsive"
-                            style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-card);">
-                            <table class="table" style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+                        <div class="table-responsive bf-s-39e3259823"
+                           >
+                            <table class="table bf-s-88cda4ede7">
                                 <thead>
                                     <tr
-                                        style="background: var(--neutral-soft); border-bottom: 1px solid var(--border-color);">
+                                        class="bf-s-baaa3b5617">
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left;">
+                                            class="bf-s-fb9917d21c">
                                             Tên công việc <span class="required">*</span></th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: right; width: 180px;">
+                                            class="bf-s-c74ce299d4">
                                             Giá trị (VND)</th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left; width: 220px;">
+                                            class="bf-s-65287bccc0">
                                             Đơn vị thực hiện</th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left; width: 220px;">
+                                            class="bf-s-65287bccc0">
                                             Văn bản phê duyệt</th>
-                                        <th style="padding: 10px 14px; width: 50px; text-align: center;"></th>
+                                        <th class="bf-s-17b403b47c"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-breakdown-dathuchien">
@@ -71,33 +71,33 @@
                     </div>
 
 
-                    <div class="breakdown-pane" id="pane-khongapdung" style="display: none;">
+                    <div class="breakdown-pane bf-s-65d1f1c3d7" id="pane-khongapdung">
                         <div
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <h4 style="margin: 0; font-size: 0.95rem; color: var(--text-main);">Phần công việc không áp
+                            class="bf-s-48e4421941">
+                            <h4 class="bf-s-29a92cb589">Phần công việc không áp
                                 dụng được hình thức LCNT</h4>
-                            <button type="button" class="btn btn-primary btn-sm"
+                            <button type="button" class="btn btn-primary btn-sm bf-s-8f8586830d"
                                 data-bf-action="call" data-fn="addBreakdownRow" data-args='["khongapdung"]'
-                                style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 0.8rem;">
-                                <i data-lucide="plus" style="width:14px; height:14px;"></i> Thêm công việc
+                               >
+                                <i data-lucide="plus" class="bf-s-641778be2c"></i> Thêm công việc
                             </button>
                         </div>
-                        <div class="table-responsive"
-                            style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-card);">
-                            <table class="table" style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+                        <div class="table-responsive bf-s-39e3259823"
+                           >
+                            <table class="table bf-s-88cda4ede7">
                                 <thead>
                                     <tr
-                                        style="background: var(--neutral-soft); border-bottom: 1px solid var(--border-color);">
+                                        class="bf-s-baaa3b5617">
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left;">
+                                            class="bf-s-fb9917d21c">
                                             Tên công việc <span class="required">*</span></th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: right; width: 200px;">
+                                            class="bf-s-efe7951531">
                                             Giá trị (VND)</th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left; width: 300px;">
+                                            class="bf-s-c665134fa1">
                                             Đơn vị thực hiện</th>
-                                        <th style="padding: 10px 14px; width: 50px; text-align: center;"></th>
+                                        <th class="bf-s-17b403b47c"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-breakdown-khongapdung">
@@ -108,30 +108,30 @@
                     </div>
 
 
-                    <div class="breakdown-pane" id="pane-chuadudieuKien" style="display: none;">
+                    <div class="breakdown-pane bf-s-65d1f1c3d7" id="pane-chuadudieuKien">
                         <div
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <h4 style="margin: 0; font-size: 0.95rem; color: var(--text-main);">Phần công việc chưa đủ
+                            class="bf-s-48e4421941">
+                            <h4 class="bf-s-29a92cb589">Phần công việc chưa đủ
                                 điều kiện lập kế hoạch LCNT</h4>
-                            <button type="button" class="btn btn-primary btn-sm"
+                            <button type="button" class="btn btn-primary btn-sm bf-s-8f8586830d"
                                 data-bf-action="call" data-fn="addBreakdownRow" data-args='["chuadudieuKien"]'
-                                style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 0.8rem;">
-                                <i data-lucide="plus" style="width:14px; height:14px;"></i> Thêm công việc
+                               >
+                                <i data-lucide="plus" class="bf-s-641778be2c"></i> Thêm công việc
                             </button>
                         </div>
-                        <div class="table-responsive"
-                            style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-card);">
-                            <table class="table" style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+                        <div class="table-responsive bf-s-39e3259823"
+                           >
+                            <table class="table bf-s-88cda4ede7">
                                 <thead>
                                     <tr
-                                        style="background: var(--neutral-soft); border-bottom: 1px solid var(--border-color);">
+                                        class="bf-s-baaa3b5617">
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left;">
+                                            class="bf-s-fb9917d21c">
                                             Tên công việc <span class="required">*</span></th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: right; width: 250px;">
+                                            class="bf-s-3bcfb45231">
                                             Giá trị (VND)</th>
-                                        <th style="padding: 10px 14px; width: 50px; text-align: center;"></th>
+                                        <th class="bf-s-17b403b47c"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-breakdown-chuadudieuKien">
@@ -142,38 +142,38 @@
                     </div>
 
 
-                    <div class="breakdown-pane" id="pane-goithau" style="display: none;">
+                    <div class="breakdown-pane bf-s-65d1f1c3d7" id="pane-goithau">
                         <div
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <h4 style="margin: 0; font-size: 0.95rem; color: var(--text-main);">Phần công việc thuộc kế
+                            class="bf-s-48e4421941">
+                            <h4 class="bf-s-29a92cb589">Phần công việc thuộc kế
                                 hoạch LCNT (Các gói thầu)</h4>
-                            <button type="button" class="btn btn-primary btn-sm" id="btn-breakdown-add-package"
-                                style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 0.8rem;">
-                                <i data-lucide="plus" style="width:14px; height:14px;"></i> Thêm gói thầu mới
+                            <button type="button" class="btn btn-primary btn-sm bf-s-8f8586830d" id="btn-breakdown-add-package"
+                               >
+                                <i data-lucide="plus" class="bf-s-641778be2c"></i> Thêm gói thầu mới
                             </button>
                         </div>
-                        <div class="table-responsive"
-                            style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-card);">
-                            <table class="table" style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+                        <div class="table-responsive bf-s-39e3259823"
+                           >
+                            <table class="table bf-s-88cda4ede7">
                                 <thead>
                                     <tr
-                                        style="background: var(--neutral-soft); border-bottom: 1px solid var(--border-color);">
+                                        class="bf-s-baaa3b5617">
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left; width: 140px;">
+                                            class="bf-s-e683e3b82a">
                                             Mã gói thầu</th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left;">
+                                            class="bf-s-fb9917d21c">
                                             Tên gói thầu</th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: right; width: 180px;">
+                                            class="bf-s-c74ce299d4">
                                             Giá gói thầu (VND)</th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left; width: 180px;">
+                                            class="bf-s-1560fc1149">
                                             Hình thức LCNT</th>
                                         <th
-                                            style="padding: 10px 14px; font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); text-align: left; width: 140px;">
+                                            class="bf-s-e683e3b82a">
                                             Trạng thái</th>
-                                        <th style="padding: 10px 14px; width: 100px; text-align: center;">Thao tác</th>
+                                        <th class="bf-s-a1a4ee93cb">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-breakdown-goithau">
@@ -184,11 +184,11 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer" style="border-top: 1px solid var(--border-color); padding: 16px 20px;">
+            <div class="modal-footer bf-s-d7a966ab95">
                 <button type="button" class="btn btn-outline" data-close="modal-plan-breakdown">Bỏ qua</button>
-                <button type="button" class="btn btn-primary" id="btn-save-plan-breakdown"
-                    style="display: flex; align-items: center; gap: 8px;">
-                    <i data-lucide="save" style="width:16px; height:16px;"></i> Lưu phân chia công việc
+                <button type="button" class="btn btn-primary bf-s-300b373f25" id="btn-save-plan-breakdown"
+                   >
+                    <i data-lucide="save" class="bf-s-3e32597019"></i> Lưu phân chia công việc
                 </button>
             </div>
         </div>

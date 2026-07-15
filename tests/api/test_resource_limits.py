@@ -10,6 +10,8 @@ from starlette.testclient import TestClient
 
 from backend.app import BodySizeLimitMiddleware, app
 from backend.documents import routes_excel
+from backend.documents import export_routes
+from backend.auth.auth_service import RateLimitDecision
 from backend.partners import address_routes
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError, _BlockingIOPool
 from backend.sync import service as sync_service
@@ -224,3 +226,25 @@ def test_readiness_exposes_resource_pressure_headers():
     assert float(response.headers["X-Event-Loop-Lag-Ms"]) >= 0
     assert int(response.headers["X-Blocking-IO-In-Flight"]) >= 0
     assert int(response.headers["X-Blocking-IO-Queue-Depth"]) >= 0
+
+
+def test_heavy_document_exports_are_rate_limited_before_loading_export_module(monkeypatch):
+    calls = []
+
+    async def fake_run(function, *args, **kwargs):
+        calls.append((function, args, kwargs))
+        return RateLimitDecision(False, 17, 0)
+
+    monkeypatch.setattr(export_routes, "run_blocking_io", fake_run)
+    monkeypatch.setattr(
+        export_routes,
+        "import_module",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("export module must not load")),
+    )
+    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"), headers={})
+
+    response = asyncio.run(export_routes.export_plan_api(request))
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "17"
+    assert calls[0][2]["max_attempts"] == 20

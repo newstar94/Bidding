@@ -31,7 +31,6 @@ ALLOWED_ORPHAN_TABLES = {
     "thong_tin_mo_thau",
 }
 
-OWNER_TYPES = {"organization", "user"}
 def build_fts_match_query(search_text):
     tokens = re.findall(r"[\w]+", str(search_text or ""), flags=re.UNICODE)
     tokens = [token for token in tokens if token]

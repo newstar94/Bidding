@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
 import { normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -144,7 +145,7 @@ export async function showSystemUserDetail(userId) {
     document.getElementById("detail-su-package").value = subscription.package_id || "none";
     const orgContainer = document.getElementById("detail-su-org-container");
     if (orgContainer) {
-      orgContainer.style.display = organization ? "block" : "none";
+      setRuntimeStyle(orgContainer, "display", organization ? "block" : "none");
     }
     document.getElementById("detail-su-startdate").value = subscription.start_date ? this.model.formatForDateInput(subscription.start_date) : "";
     document.getElementById("detail-su-enddate").value = subscription.end_date ? this.model.formatForDateInput(subscription.end_date) : "";
@@ -365,7 +366,7 @@ export function setupRBACEvents() {
     bindAdminEvent(suPkgDropdown, "change", "toggle-system-user-org", (e) => {
       const orgContainer = document.getElementById("detail-su-org-container");
       if (orgContainer) {
-        orgContainer.style.display = e.target.value !== "none" ? "block" : "none";
+        setRuntimeStyle(orgContainer, "display", e.target.value !== "none" ? "block" : "none");
       }
     });
   }
@@ -489,10 +490,10 @@ export function setupRBACEvents() {
           this.tempProfileAvatarBase64 = compressedBase64;
           if (profileAvatarPreview) {
             profileAvatarPreview.src = compressedBase64;
-            profileAvatarPreview.style.display = "block";
+            setRuntimeStyle(profileAvatarPreview, "display", "block");
           }
           if (profileAvatarFallback) {
-            profileAvatarFallback.style.display = "none";
+            setRuntimeStyle(profileAvatarFallback, "display", "none");
           }
         };
         img.onerror = () => {
@@ -569,14 +570,14 @@ export function setupRBACEvents() {
           if (this._sessionInterval) clearInterval(this._sessionInterval);
           const overlay = document.getElementById("auth-overlay");
           if (overlay) {
-            overlay.style.display = "flex";
-            document.querySelector(".app-container").style.filter = "blur(10px)";
+            setRuntimeStyle(overlay, "display", "flex");
+            setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
             const formLogin = document.getElementById("form-auth-login");
             const formRegister = document.getElementById("form-auth-register");
             const formForgot = document.getElementById("form-auth-forgot");
-            formLogin.style.display = "block";
-            formRegister.style.display = "none";
-            formForgot.style.display = "none";
+            setRuntimeStyle(formLogin, "display", "block");
+            setRuntimeStyle(formRegister, "display", "none");
+            setRuntimeStyle(formForgot, "display", "none");
             document.getElementById("login-username").value = "";
             document.getElementById("login-password").value = "";
           }
@@ -786,14 +787,14 @@ export function renderWorkspaceSwitcher() {
   const currentUser = this.model.state.activeuser;
   const orgs = normalizeOrganizations(currentUser || {}).filter((organization) => organization.status === "active");
   if (!currentUser || orgs.length === 0) {
-    if (orgSwitchSection) orgSwitchSection.style.display = "none";
+    if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "none");
     return;
   }
   if (orgs.length <= 1) {
-    if (orgSwitchSection) orgSwitchSection.style.display = "none";
+    if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "none");
     return;
   }
-  if (orgSwitchSection) orgSwitchSection.style.display = "block";
+  if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "block");
   let activeOrg = getActiveOrganizationId();
   if (!activeOrg || !orgs.some((organization) => organization.id === activeOrg)) {
     activeOrg = orgs[0].id;
@@ -805,7 +806,7 @@ export function renderWorkspaceSwitcher() {
     const activeBg = isActive ? "var(--primary-soft)" : "transparent";
     return `
             <button class="dropdown-item dropdown-org-btn" data-org="${escapeHtml(org.id)}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; background: ${activeBg}; width: 100%; text-align: left; padding: 8px 16px; cursor: pointer; transition: background 0.15s ease;">
-                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+                <div class="bf-s-1ec945a6d2">
                     <div style="width: 24px; height: 24px; border-radius: 6px; background: ${isActive ? "var(--primary)" : "var(--border-color)"}; color: ${isActive ? "#ffffff" : "var(--text-muted)"}; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; transition: all 0.2s;">
                         ${initials}
                     </div>
@@ -813,7 +814,7 @@ export function renderWorkspaceSwitcher() {
                         ${escapeHtml(org.name)}
                     </span>
                 </div>
-                ${isActive ? `<i data-lucide="check" style="width: 14px; height: 14px; color: var(--primary); flex-shrink: 0;"></i>` : ""}
+                ${isActive ? `<i data-lucide="check" class="bf-s-2238b82015"></i>` : ""}
             </button>
         `;
   }).join("");

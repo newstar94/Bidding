@@ -71,6 +71,17 @@ def test_rounds_criteria_and_bid_results_are_normalized_and_rehydrated():
 
     assert cursor.execute("SELECT count(*) FROM vong_danh_gia").fetchone()[0] == 2
     assert cursor.execute("SELECT count(*) FROM tieu_chi_danh_gia").fetchone()[0] == 1
+    technical_extension = json.loads(cursor.execute(
+        "SELECT extension_json FROM vong_danh_gia WHERE loai_vong = 'technical'"
+    ).fetchone()[0])
+    assert technical_extension == {
+        "cvLamRo": [{"soCv": "CV-01"}],
+        "schemaVersion": 1,
+    }
+    criterion_extension = json.loads(cursor.execute(
+        "SELECT extension_json FROM tieu_chi_danh_gia"
+    ).fetchone()[0])
+    assert criterion_extension == {"schemaVersion": 1}
     result = cursor.execute("SELECT * FROM ket_qua_danh_gia_nha_thau").fetchone()
     assert result["danh_gia_hop_le"] == "Đạt"
     assert result["diem"] == 92.5

@@ -1,6 +1,7 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 export function setVisible(element, visible, display = "flex") {
   if (!element) return;
-  element.style.display = visible ? display : "none";
+  setRuntimeStyle(element, "display", visible ? display : "none");
 }
 export function setRequired(element, required) {
   if (!element) return;
@@ -19,14 +20,14 @@ export function setReadonlyVisual(element, readonly) {
   if (!element) return;
   if (readonly) {
     element.setAttribute("readonly", "true");
-    element.style.pointerEvents = "none";
-    element.style.background = "var(--neutral-soft)";
-    element.style.cursor = "not-allowed";
+    setRuntimeStyle(element, "pointerEvents", "none");
+    setRuntimeStyle(element, "background", "var(--neutral-soft)");
+    setRuntimeStyle(element, "cursor", "not-allowed");
   } else {
     element.removeAttribute("readonly");
-    element.style.pointerEvents = "auto";
-    element.style.background = "";
-    element.style.cursor = "auto";
+    setRuntimeStyle(element, "pointerEvents", "auto");
+    setRuntimeStyle(element, "background", "");
+    setRuntimeStyle(element, "cursor", "auto");
   }
 }
 export function setFieldFeedback(input, { state = "clear", message = "", color = "" } = {}) {
@@ -39,8 +40,8 @@ export function setFieldFeedback(input, { state = "clear", message = "", color =
   }
   if (errorEl) {
     errorEl.textContent = message;
-    errorEl.style.color = color || "";
-    errorEl.style.display = message ? "block" : "";
+    setRuntimeStyle(errorEl, "color", color || "");
+    setRuntimeStyle(errorEl, "display", message ? "block" : "");
   }
 }
 

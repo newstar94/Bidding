@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatDateOnly, safeImageSrc } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
@@ -16,7 +17,7 @@ export async function renderChuyenGiaTable() {
   const isEmployee = this.model.state.activerole === "employee";
   const btnAdd = document.getElementById("btn-add-chuyengia");
   if (btnAdd) {
-    btnAdd.style.display = isEmployee ? "none" : "flex";
+    setRuntimeStyle(btnAdd, "display", isEmployee ? "none" : "flex");
   }
   let slicedData = [];
   let totalItems = 0;
@@ -80,15 +81,15 @@ export async function renderChuyenGiaTable() {
       return `
             <tr>
                 <td class="fw-bold">
-                    <div style="display: inline-flex; align-items: center; gap: 6px; line-height: 1; vertical-align: middle;">
-                        <a href="#" data-bf-action="show-expert" data-id="${displayedId}" class="text-blue fw-bold link-hover" title="Xem chi tiết lý lịch" style="display: inline-flex; align-items: center; line-height: 1;"><span style="margin: 0; line-height: 1;">${expertName}</span></a>
-                        <span style="color: var(--text-muted); font-size: 0.85rem; line-height: 1; display: inline-flex; align-items: center;">-</span>
+                    <div class="bf-s-8c8dc52ed7">
+                        <a href="#" data-bf-action="show-expert" data-id="${displayedId}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết lý lịch"><span class="bf-s-dc5de304c3">${expertName}</span></a>
+                        <span class="bf-s-db1d8f859f">-</span>
                         ${dropdownHtml}
                     </div>
                 </td>
                 <td>${expertCccd}</td>
                 <td><span class="badge badge-info">${certificateNo}</span></td>
-                <td style="min-width: 200px; max-width: 300px;" class="text-muted text-wrap">${certificateIssuer}</td>
+                <td class="text-muted text-wrap bf-s-0569d2208a">${certificateIssuer}</td>
                 <td>${certificateDate}</td>
                 <td class="text-right">
                     ${actionHtml}
@@ -143,12 +144,12 @@ export function showChuyenGiaDetails(id) {
                     </div>
                 </div>
 
-                <div style="margin-top: 18px;">
-                    <div class="passport-detail-label" style="margin-bottom: 6px;">Ảnh chữ ký chuyên gia</div>
+                <div class="bf-s-cfec463e2f">
+                    <div class="passport-detail-label bf-s-06e0ec735a">Ảnh chữ ký chuyên gia</div>
                     <div class="signature-display-frame" data-bf-action="zoom-signature" data-id="${expertId}" title="Bấm để phóng to">
-                        ${signatureSrc ? `<img src="${signatureSrc}" alt="Chữ ký" loading="lazy" decoding="async" style="max-height:80px; max-width:100%; object-fit:contain;">` : `<span class="text-muted" style="font-size:0.78rem;">Chưa có ảnh chữ ký</span>`}
+                        ${signatureSrc ? `<img src="${signatureSrc}" alt="Chữ ký" loading="lazy" decoding="async" class="bf-s-bbda643b79">` : `<span class="text-muted bf-s-e0f1c448f7">Chưa có ảnh chữ ký</span>`}
                     </div>
-                    <div style="margin-top:4px; font-size:0.72rem; color:var(--text-light);">📁 ${sigFileName}</div>
+                    <div class="bf-s-1dbc45152f">📁 ${sigFileName}</div>
                 </div>
             </div>
 
@@ -159,7 +160,7 @@ export function showChuyenGiaDetails(id) {
                         <span class="badge badge-info">Số CC: ${certificateNo}</span>
                     </div>
 
-                    <div class="passport-details-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 0; margin-bottom: 12px;">
+                    <div class="passport-details-list bf-s-d75ff7bc6b">
                         <div class="passport-detail-row">
                             <div class="passport-detail-label">Số chứng chỉ</div>
                             <div class="passport-detail-val fw-bold text-blue">${certificateNo}</div>
@@ -168,18 +169,18 @@ export function showChuyenGiaDetails(id) {
                             <div class="passport-detail-label">Ngày cấp</div>
                             <div class="passport-detail-val">${certificateDate}</div>
                         </div>
-                        <div class="passport-detail-row" style="grid-column: span 2;">
+                        <div class="passport-detail-row bf-s-6d00fde401">
                             <div class="passport-detail-label">Đơn vị cấp chứng chỉ</div>
                             <div class="passport-detail-val fw-bold">${certificateIssuer}</div>
                         </div>
                     </div>
 
-                    <div class="passport-detail-label" style="margin-bottom: 6px;">Ảnh chụp chứng chỉ thực tế</div>
+                    <div class="passport-detail-label bf-s-06e0ec735a">Ảnh chụp chứng chỉ thực tế</div>
                     <div class="cert-image-frame" data-bf-action="zoom-certificate" data-id="${expertId}">
-                        ${certificateSrc ? `<img src="${certificateSrc}" alt="Ảnh chứng chỉ" loading="lazy" decoding="async">` : `<div style="display:flex;align-items:center;justify-content:center;height:120px;color:var(--text-light);">Chưa có ảnh chứng chỉ</div>`}
+                        ${certificateSrc ? `<img src="${certificateSrc}" alt="Ảnh chứng chỉ" loading="lazy" decoding="async">` : `<div class="bf-s-ace9d4de5c">Chưa có ảnh chứng chỉ</div>`}
                         ${certificateSrc ? `<div class="cert-zoom-overlay"><i data-lucide="zoom-in"></i> Phóng to</div>` : ""}
                     </div>
-                    <div style="margin-top:4px; font-size:0.72rem; color:var(--text-light);">📁 ${certFileName}</div>
+                    <div class="bf-s-1dbc45152f">📁 ${certFileName}</div>
                 </div>
             </div>
         </div>

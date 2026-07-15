@@ -377,5 +377,5 @@ async def google_login_api(request):
         if conn:
             try:
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass

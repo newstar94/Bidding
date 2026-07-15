@@ -1,9 +1,11 @@
+import "../shared/trustedTypes.js";
 import { APP_DEBUG } from "./appConfig.js";
 import { bootstrapWorkspace } from "./workspaceBootstrap.js";
 import { bootstrapAuthShell } from "../auth/AuthShell.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { installDialogAccessibility } from "../shared/dialogAccessibility.js";
 import { retryPendingWorkspacePurges } from "./workspaceState.js";
+import { installSemanticAccessibility } from "../shared/semanticAccessibility.js";
 const startupMark = (name) => {
   try {
     performance.mark(`bf:${name}`);
@@ -88,6 +90,7 @@ const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
   await retryPendingWorkspacePurges();
   installDialogAccessibility(document);
+  installSemanticAccessibility(document);
   if ("serviceWorker" in navigator && APP_DEBUG === false) {
     const buildId = new URL(import.meta.url).pathname.split("/").pop() || "app";
     navigator.serviceWorker.register(`/service-worker.js?build=${encodeURIComponent(buildId)}`).catch(() => {

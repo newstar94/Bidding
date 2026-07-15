@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,7 @@ def test_production_accepts_explicit_separated_runtime_layout(tmp_path):
         "BIDDING_DB_PATH": database.db_path,
         "BIDDING_SQLITE_SINGLE_WRITER": "true",
         "DATA_AT_REST_ENCRYPTION_CONFIRMED": "true",
+        "SECRET_ROTATION_CONFIRMED_AT": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "BIDDING_BACKUP_DIR": str((tmp_path / "backups").resolve()),
         "BIDDING_LOG_DIR": str((tmp_path / "logs").resolve()),
         "BIDDING_UPLOAD_DIR": str((tmp_path / "uploads").resolve()),
@@ -180,4 +182,20 @@ def test_production_requires_encrypted_volume_confirmation(tmp_path):
         "DOCUMENT_WORKER_TEMP_DIR": str((tmp_path / "temp").resolve()),
     }
     with pytest.raises(StartupValidationError, match="DATA_AT_REST_ENCRYPTION_CONFIRMED"):
+        validate_startup_configuration(database, environment)
+
+
+def test_production_rejects_stale_secret_rotation_attestation(tmp_path):
+    database = SQLiteDatabase(tmp_path / "database" / "bidding.db")
+    environment = {
+        "APP_ENV": "production", "BIDDING_DB_PATH": database.db_path,
+        "BIDDING_SQLITE_SINGLE_WRITER": "true", "DATA_AT_REST_ENCRYPTION_CONFIRMED": "true",
+        "SECRET_ROTATION_CONFIRMED_AT": "2020-01-01",
+        "BIDDING_BACKUP_DIR": str((tmp_path / "backups").resolve()),
+        "BIDDING_LOG_DIR": str((tmp_path / "logs").resolve()),
+        "BIDDING_UPLOAD_DIR": str((tmp_path / "uploads").resolve()),
+        "BIDDING_WORD_TEMPLATE_DIR": str((tmp_path / "templates").resolve()),
+        "DOCUMENT_WORKER_TEMP_DIR": str((tmp_path / "temp").resolve()),
+    }
+    with pytest.raises(StartupValidationError, match="rotated"):
         validate_startup_configuration(database, environment)

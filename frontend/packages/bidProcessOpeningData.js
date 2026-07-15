@@ -260,6 +260,29 @@ export function validateOpeningJointVentureMembers(rows) {
   });
   return { valid: !hasInvalid, invalidInputs };
 }
+export function validateOpeningParticipantScopes(bids, contractors = []) {
+  const rootsById = new Map((contractors || []).map((contractor) => [
+    String(contractor?.id || ""),
+    String(contractor?.rootId || contractor?.idGoc || contractor?.id || "")
+  ]));
+  const occupied = new Map();
+  for (const bid of bids || []) {
+    const packageId = String(bid?.goiThauId || "").trim();
+    const lotScope = String(bid?.maPhanLo || "").trim().toLocaleLowerCase("vi-VN").replace(/\s+/g, " ") || "__PACKAGE__";
+    const participantIds = isJointVentureType(bid?.loaiNhaThau)
+      ? (bid?.thanhVienLienDanh || []).map((member) => member?.thanhVienNhaThauId).filter(Boolean)
+      : [bid?.nhaThauId].filter(Boolean);
+    for (const participantId of participantIds) {
+      const rootId = rootsById.get(String(participantId)) || String(participantId);
+      const key = `${packageId}\u0000${lotScope}\u0000${rootId}`;
+      if (occupied.has(key)) {
+        return { valid: false, bid, conflictingBid: occupied.get(key), lotScope };
+      }
+      occupied.set(key, bid);
+    }
+  }
+  return { valid: true };
+}
 export function collectOpeningBidsFromRows({ rows, gtId, model, isDirectOrSpecial }) {
   const latestNhaThauList = model.getLatestNhaThau();
   const gt = (model.state.goithau || []).find((item) => String(item.id) === String(gtId));

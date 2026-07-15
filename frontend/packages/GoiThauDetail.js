@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { authFetchDownload, escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { getAppController } from "../app/controllerRef.js";
 import { setFieldFeedback } from "../app/formStateUtils.js";
@@ -54,7 +55,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
     modalMCard.appendChild(formEl);
   }
   const tabHeaders = document.getElementById("detail-workflow-tabs-header");
-  if (tabHeaders) tabHeaders.style.display = "flex";
+  if (tabHeaders) setRuntimeStyle(tabHeaders, "display", "flex");
   const detailPane = document.getElementById("tab-goithau-detail");
   if (!detailPane || !detailPane.classList.contains("active")) {
     executeAppCommand("switchTab", "goithau-detail", id);
@@ -67,7 +68,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
   const gt = this.model.state.goithau.find((g) => g.id === id);
   if (!gt) return;
   const detailCard = document.getElementById("detail-workflow-card");
-  if (detailCard) detailCard.style.visibility = "visible";
+  if (detailCard) setRuntimeStyle(detailCard, "visibility", "visible");
   const is1G2T = gt.phuongThucLuaChon === "Một giai đoạn hai túi hồ sơ";
   const inviteComparisonLabel = is1G2T ? "Ngày mời đối chiếu tài liệu/Thương thảo" : "Ngày mời đối chiếu tài liệu";
   const comparisonLabel = is1G2T ? "Ngày đối chiếu tài liệu/Thương thảo" : "Ngày đối chiếu tài liệu";
@@ -118,7 +119,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
     if (staleWrapper) staleWrapper.remove();
     const staleDropdown = document.body.querySelector('.custom-select-dropdown[data-target="detail-workflow-version-select"]');
     if (staleDropdown) staleDropdown.remove();
-    verSelect.style.display = "none";
+    setRuntimeStyle(verSelect, "display", "none");
     const rootId = gt.rootId || gt.id;
     const allRelated = this.model.state.goithau.filter((g) => (g.rootId || g.id) === rootId);
     const verMap = {};
@@ -144,8 +145,8 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
       const isSelected = (g.phienBan || "00") === (gt.phienBan || "00");
       return `<option value="${g.id}" ${isSelected ? "selected" : ""}>${label}</option>`;
     }).join("");
-    if (separator) separator.style.display = "inline-block";
-    verSelect.style.display = "inline-block";
+    if (separator) setRuntimeStyle(separator, "display", "inline-block");
+    setRuntimeStyle(verSelect, "display", "inline-block");
     if (relatedGts.length >= 2) {
       verSelect.disabled = false;
       verSelect.onchange = (e) => {
@@ -193,15 +194,15 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
           contentWrapper.innerHTML = `
                     ${packageSummaryHtml}
 
-                    <div style="text-align: center; padding: 48px; color: var(--text-muted); background: var(--bg-card); border-radius: var(--radius-lg); border: 1px dashed var(--border-color); margin: 20px 0;">
-                        <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(245, 158, 11, 0.08); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
-                            <i data-lucide="settings" style="width: 32px; height: 32px; color: #f59e0b;"></i>
+                    <div class="bf-s-4cee5cb79b">
+                        <div class="bf-s-dca86ff56c">
+                            <i data-lucide="settings" class="bf-s-f5c02a2822"></i>
                         </div>
-                        <h4 style="font-weight: 700; color: var(--text-main); margin-bottom: 8px; font-size: 1.1rem;">Gói thầu đang trong giai đoạn Chuẩn bị</h4>
-                        <p style="font-size: 0.85rem; margin-bottom: 24px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.5; color: var(--text-muted);">
+                        <h4 class="bf-s-4c428a6a8c">Gói thầu đang trong giai đoạn Chuẩn bị</h4>
+                        <p class="bf-s-ed725428b7">
                             Gói thầu này hiện đang trong giai đoạn Chuẩn bị và chưa phát hành hồ sơ mời thầu. Vui lòng phát hành HSMT để bắt đầu quá trình mời thầu và nhận hồ sơ thầu.
                         </p>
-                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-arg-key="${escapeHtml(releaseArgsKey)}" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
+                        <button class="btn btn-primary bf-s-43ee718714" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-arg-key="${escapeHtml(releaseArgsKey)}">
                             <i data-lucide="send"></i> Phát hành HSMT & Mời thầu
                         </button>
                     </div>
@@ -230,11 +231,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
           if (!this._biddingInfoEditMode) {
             document.querySelectorAll("#gt-giahan-tbody input, #gt-yeucaulamro-tbody input, #gt-traloilamro-tbody input").forEach((input) => {
               input.disabled = true;
-              input.style.background = "var(--neutral-soft)";
-              input.style.cursor = "not-allowed";
+              setRuntimeStyle(input, "background", "var(--neutral-soft)");
+              setRuntimeStyle(input, "cursor", "not-allowed");
             });
             document.querySelectorAll("#gt-giahan-tbody td:last-child, #gt-yeucaulamro-tbody td:last-child, #gt-traloilamro-tbody td:last-child").forEach((td) => {
-              td.style.display = "none";
+              setRuntimeStyle(td, "display", "none");
             });
           }
           const btnThemGiaHan = document.getElementById("btn-them-giahan");
@@ -314,10 +315,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
       }) || ["Kết hợp giữa kỹ thuật và giá", "Giá cố định", "Dựa trên kỹ thuật"].includes(gt.phuongPhapDanhGia);
       if (!isTechEvalSaved) {
         contentWrapper.innerHTML = `
-                    <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                        <i data-lucide="shield-alert" style="width: 48px; height: 48px; margin: 0 auto 16px; color: var(--warning);"></i>
-                        <h4 style="font-weight: 700; color: var(--text-main);">Chưa có Nhà thầu đạt kỹ thuật</h4>
-                        <p style="font-size: 0.85rem;">Vui lòng hoàn thành và Lưu Báo cáo đánh giá E-HSĐXKT trước.</p>
+                    <div class="bf-s-71ff99332d">
+                        <i data-lucide="shield-alert" class="bf-s-106d10c68d"></i>
+                        <h4 class="bf-s-01dd0d67e8">Chưa có Nhà thầu đạt kỹ thuật</h4>
+                        <p class="bf-s-85ddf1c3bf">Vui lòng hoàn thành và Lưu Báo cáo đánh giá E-HSĐXKT trước.</p>
                     </div>
                 `;
       } else {
@@ -357,73 +358,73 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         const canEdit = isReadOnly && isCompleted && !isFinOpened && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu";
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
         contentWrapper.innerHTML = `
-                    <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
-                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
-                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml(tenKhStr)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
-                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
-                            <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
-                            <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
-                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
-                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
-                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
+                    <div class="bf-s-8bd3eb473c">
+                        <div class="bf-s-5d398becec">Thông số Gói thầu</div>
+                        <div class="bf-s-13b5590e90">
+                            <div>• <strong class="bf-s-fcb5ddef65">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml(tenKhStr)}</span></div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+                            <div>• <strong class="bf-s-fcb5ddef65">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
                             ${!isDirectOrSpecial ? `
-                            <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
-                            <div>• <strong style="color: var(--primary);">${is1G2T3 ? "Thời gian mở E-HSĐXKT" : "Thời gian mở thầu"}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</div>
-                            ${is1G2T3 ? `<div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở"}</div>` : ""}
+                            <div>• <strong class="bf-s-fcb5ddef65">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">${is1G2T3 ? "Thời gian mở E-HSĐXKT" : "Thời gian mở thầu"}:</strong> ${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</div>
+                            ${is1G2T3 ? `<div>• <strong class="bf-s-fcb5ddef65">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở"}</div>` : ""}
                             ` : ""}
                         </div>
                     </div>
 
-                    <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
-                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                    <div class="bf-s-098565a16e">
+                        <div class="bf-s-5d398becec">QĐ phê duyệt danh sách nhà thầu đạt kỹ thuật</div>
+                        <div class="bf-s-ed07f78f34">
                             ${gt.hinhThucLuaChon !== "Chào hàng cạnh tranh" ? `
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số BCTĐ kỹ thuật <span class="text-danger">*</span></label>
-                                <input type="text" id="qualified-so-bctd" class="form-control" value="${soBctd}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;" ${isReadOnly ? "readonly" : ""}>
-                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng nhập Số BCTĐ kỹ thuật!</span>
+                            <div class="form-group bf-s-4bbf3df076">
+                                <label class="bf-s-997cdefbc9">Số BCTĐ kỹ thuật <span class="text-danger">*</span></label>
+                                <input type="text" id="qualified-so-bctd" class="form-control bf-s-20e5983dc7" value="${soBctd}" placeholder="Nhập số báo cáo thẩm định..." ${isReadOnly ? "readonly" : ""}>
+                                <span class="error-text bf-s-35a8ff27ff">Vui lòng nhập Số BCTĐ kỹ thuật!</span>
                             </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Ngày BCTĐ kỹ thuật <span class="text-danger">*</span></label>
-                                <input type="text" id="qualified-ngay-bctd" class="form-control flatpickr-date" value="${ngayBctd ? this.model.formatForDateInput(ngayBctd) : ""}" style="width: 100%;" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
-                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày BCTĐ kỹ thuật!</span>
+                            <div class="form-group bf-s-4bbf3df076">
+                                <label class="bf-s-997cdefbc9">Ngày BCTĐ kỹ thuật <span class="text-danger">*</span></label>
+                                <input type="text" id="qualified-ngay-bctd" class="form-control flatpickr-date bf-s-20e5983dc7" value="${ngayBctd ? this.model.formatForDateInput(ngayBctd) : ""}" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-35a8ff27ff">Vui lòng chọn Ngày BCTĐ kỹ thuật!</span>
                             </div>
                             ` : ""}
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Số QĐ phê duyệt nhà thầu đạt kỹ thuật <span class="text-danger">*</span></label>
-                                <input type="text" id="qualified-so-qd" class="form-control" value="${soQd}" placeholder="Ví dụ: 120/QĐ-CDT" style="width: 100%;" ${isReadOnly ? "readonly" : ""}>
-                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng nhập Số QĐ phê duyệt!</span>
+                            <div class="form-group bf-s-4bbf3df076">
+                                <label class="bf-s-997cdefbc9">Số QĐ phê duyệt nhà thầu đạt kỹ thuật <span class="text-danger">*</span></label>
+                                <input type="text" id="qualified-so-qd" class="form-control bf-s-20e5983dc7" value="${soQd}" placeholder="Ví dụ: 120/QĐ-CDT" ${isReadOnly ? "readonly" : ""}>
+                                <span class="error-text bf-s-35a8ff27ff">Vui lòng nhập Số QĐ phê duyệt!</span>
                             </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; display: block;">Ngày QĐ phê duyệt <span class="text-danger">*</span></label>
-                                <input type="text" id="qualified-ngay-qd" class="form-control flatpickr-date" value="${ngayQd ? this.model.formatForDateInput(ngayQd) : ""}" style="width: 100%;" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
-                                <span class="error-text" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px;">Vui lòng chọn Ngày QĐ phê duyệt!</span>
+                            <div class="form-group bf-s-4bbf3df076">
+                                <label class="bf-s-997cdefbc9">Ngày QĐ phê duyệt <span class="text-danger">*</span></label>
+                                <input type="text" id="qualified-ngay-qd" class="form-control flatpickr-date bf-s-20e5983dc7" value="${ngayQd ? this.model.formatForDateInput(ngayQd) : ""}" ${isReadOnly ? "readonly" : ""} placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-35a8ff27ff">Vui lòng chọn Ngày QĐ phê duyệt!</span>
                             </div>
                         </div>
                     </div>
 
-                     <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
+                     <div class="table-container bf-s-674afada30">
                          ${qualifiedBids.length === 0 ? `
-                             <div style="text-align: center; padding: 24px; color: var(--danger); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                                 <i data-lucide="info" style="width: 18px; height: 18px;"></i> Không có nhà thầu nào đạt yêu cầu kỹ thuật. Vui lòng nhập số quyết định phê duyệt và ngày quyết định phía trên để lưu danh sách đạt kỹ thuật trống và chuyển sang bước Hủy thầu.
+                             <div class="bf-s-5835c40555">
+                                 <i data-lucide="info" class="bf-s-ea6824d1aa"></i> Không có nhà thầu nào đạt yêu cầu kỹ thuật. Vui lòng nhập số quyết định phê duyệt và ngày quyết định phía trên để lưu danh sách đạt kỹ thuật trống và chuyển sang bước Hủy thầu.
                              </div>
                          ` : `
-                         <table class="data-table" style="min-width: 100%;">
+                         <table class="data-table bf-s-448ca2b6ae">
                               <thead>
                                   <tr>
                                       ${gt.phanLo === "Có" ? `
-                                          <th style="width: 15%;">Mã phần lô</th>
-                                          <th style="width: 20%;">Tên phần lô</th>
+                                          <th class="bf-s-ad8c93e5fe">Mã phần lô</th>
+                                          <th class="bf-s-a01153c965">Tên phần lô</th>
                                       ` : ""}
-                                      <th style="width: 15%;">Mã nhà thầu</th>
+                                      <th class="bf-s-ad8c93e5fe">Mã nhà thầu</th>
                                       <th style="width: ${gt.phanLo === "Có" ? "25%" : "40%"};">Tên nhà thầu</th>
-                                      ${hasTechScore ? `<th style="width: 15%; text-align: center;">Điểm kỹ thuật</th>` : ""}
-                                      <th style="width: 15%; text-align: center;">Kết quả</th>
+                                      ${hasTechScore ? `<th class="bf-s-1a457d1503">Điểm kỹ thuật</th>` : ""}
+                                      <th class="bf-s-1a457d1503">Kết quả</th>
                                   </tr>
                               </thead>
                               <tbody>
@@ -435,9 +436,9 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                           ` : ""}
                                           <td>${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}</td>
                                           <td>${renderBidContractorLink(this.model, b, `${gt.id}_qualified_${b.id}`)}</td>
-                                          ${hasTechScore ? `<td style="text-align: center;">${escapeHtml(b.danhGiaKyThuat || "--")}</td>` : ""}
-                                          <td style="text-align: center;">
-                                              <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 4px;">Đạt kỹ thuật</span>
+                                          ${hasTechScore ? `<td class="bf-s-63dbf5319a">${escapeHtml(b.danhGiaKyThuat || "--")}</td>` : ""}
+                                          <td class="bf-s-63dbf5319a">
+                                              <span class="badge badge-success bf-s-391321b535">Đạt kỹ thuật</span>
                                           </td>
                                       </tr>
                                   `).join("")}
@@ -445,11 +446,11 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                           </table>
                           `}
                      </div>
-                    <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                    <div class="bf-s-54e8112b47">
                          ${!isReadOnly ? `
-                             <button class="btn btn-primary" id="btn-save-qualified-decision" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
+                             <button class="btn btn-primary bf-s-b69e3fa20a" id="btn-save-qualified-decision"><i data-lucide="save"></i> Lưu QĐ phê duyệt</button>
                          ` : canEdit ? `
-                             <button class="btn btn-primary" id="btn-edit-qualified-decision" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;"><i data-lucide="edit-3"></i> Chỉnh sửa</button>
+                             <button class="btn btn-primary bf-s-b69e3fa20a" id="btn-edit-qualified-decision"><i data-lucide="edit-3"></i> Chỉnh sửa</button>
                          ` : ""}
                      </div>
                  `;
@@ -557,10 +558,10 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
       }) || ["Kết hợp giữa kỹ thuật và giá", "Giá cố định", "Dựa trên kỹ thuật"].includes(gt.phuongPhapDanhGia);
       if (qualifiedBidsForOpening2.length === 0) {
         contentWrapper.innerHTML = `
-                    <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                        <i data-lucide="lock" style="width: 48px; height: 48px; margin: 0 auto 16px; color: var(--text-muted);"></i>
-                        <h4 style="font-weight: 700; color: var(--text-main);">Chưa mở túi hồ sơ Đề xuất Tài chính</h4>
-                        <p style="font-size: 0.85rem;">Vui lòng hoàn thành Đánh giá kỹ thuật để xác định danh sách nhà thầu đủ điều kiện mở túi HSĐXTC.</p>
+                    <div class="bf-s-71ff99332d">
+                        <i data-lucide="lock" class="bf-s-5141e22887"></i>
+                        <h4 class="bf-s-01dd0d67e8">Chưa mở túi hồ sơ Đề xuất Tài chính</h4>
+                        <p class="bf-s-85ddf1c3bf">Vui lòng hoàn thành Đánh giá kỹ thuật để xác định danh sách nhà thầu đủ điều kiện mở túi HSĐXTC.</p>
                     </div>
                 `;
       } else {
@@ -581,49 +582,49 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
         const canEdit = !isFinEvalSaved2 && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu";
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
         contentWrapper.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                        <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin: 0;">
+                    <div class="bf-s-175e7e1f51">
+                        <h4 class="bf-s-ff3bca23d8">
                             Biên bản mở hồ sơ đề xuất tài chính (E-HSĐXTC)
                         </h4>
                         ${!isReadOnly ? `
-                            <div style="display:flex; gap:8px;">
+                            <div class="bf-s-9c40389b4a">
                                 <button class="btn-excel-action btn-download-excel-template-direct" data-type="opening_fin" id="btn-opening-fin-export-excel"><i data-lucide="download"></i> Tải Excel Mẫu</button>
                                 <button class="btn-excel-action btn-import-excel-direct" data-type="opening_fin" id="btn-opening-fin-import-excel"><i data-lucide="upload"></i> Nhập từ Excel</button>
                             </div>
                         ` : ""}
                     </div>
-                    <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
-                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
-                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml((() => {
+                    <div class="bf-s-8bd3eb473c">
+                        <div class="bf-s-5d398becec">Thông số Gói thầu</div>
+                        <div class="bf-s-13b5590e90">
+                            <div>• <strong class="bf-s-fcb5ddef65">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml((() => {
           const khO = this.model.getLatestPlan(gt.keHoachId);
           const cdO = khO ? this.model.state.chudautu.find((c) => c.id === khO.chuDauTuId) : null;
           return cdO ? cdO.tenChuDauTu : "Không rõ";
         })())}</span></div>
-                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml((() => {
+                            <div>• <strong class="bf-s-fcb5ddef65">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml((() => {
           const khO = this.model.getLatestPlan(gt.keHoachId);
           return khO ? khO.tenKeHoach : "Không rõ";
         })())}</span></div>
-                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
-                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
-                            <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
-                            <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
-                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
-                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
-                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Giá gói thầu:</strong> <span class="text-dark fw-bold">${this.model.formatCurrency(gt.giaGoiThau)}</span></div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+                            <div>• <strong class="bf-s-fcb5ddef65">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
                             ${!isDirectOrSpecial ? `
-                            <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXKT:</strong> <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</span></div>
-                            <div style="display: flex; align-items: center; gap: 8px; grid-column: span 2; white-space: nowrap;">
-                                <span>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong></span>
-                                ${isReadOnly ? `<span class="text-dark fw-bold">${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở")}</span>` : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime" style="font-size: 0.82rem; padding: 4px 10px; width: 200px; display: inline-block;" value="${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : "")}" placeholder="dd/MM/yyyy HH:mm">`}
+                            <div>• <strong class="bf-s-fcb5ddef65">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? this.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Thời gian mở E-HSĐXKT:</strong> <span class="text-dark fw-bold">${gt.thoiGianMoThau ? this.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</span></div>
+                            <div class="bf-s-ca978d48b2">
+                                <span>• <strong class="bf-s-fcb5ddef65">Thời gian mở E-HSĐXTC:</strong></span>
+                                ${isReadOnly ? `<span class="text-dark fw-bold">${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở")}</span>` : `<input type="text" id="op-fin-thoigianmothau" class="form-control flatpickr-datetime bf-s-ab24ccb4e7" value="${escapeHtml(gt.thoiGianMoEhsdxtc ? this.model.formatForDatetimeLocal(gt.thoiGianMoEhsdxtc) : "")}" placeholder="dd/MM/yyyy HH:mm">`}
                             </div>
                             ` : ""}
                         </div>
                         ${isReadOnly ? `
-                        <div style="margin-top: 12px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 6px; color: #dc2626; font-weight: 600; font-size: 0.82rem; display: flex; align-items: center; gap: 6px;">
+                        <div class="bf-s-d4b8c020d5">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                             Biên bản mở E-HSĐXTC đã được khóa
                         </div>

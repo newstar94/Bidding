@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { authFetchDownload, escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { bindCurrencyElement } from "../../app/domUtils.js";
 import { setFieldFeedback } from "../../app/formStateUtils.js";
@@ -125,8 +126,8 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             };
           });
           winnerDisplayHtml = `
-                        <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                            <a href="#" data-bf-action="show-lot-winners" data-id="${gt.id}" class="link-hover" style="color:var(--primary); text-decoration: none;" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a>
+                        <h5 class="bf-s-f3bfd10216">
+                            <a href="#" data-bf-action="show-lot-winners" data-id="${gt.id}" class="link-hover bf-s-9be517fbf0" title="Xem chi tiết các nhà thầu trúng thầu">Có nhiều nhà thầu trúng thầu</a>
                         </h5>
                     `;
         } else {
@@ -136,9 +137,9 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             if (currentWinnerBid.loaiNhaThau === "Liên danh") {
               setJvData(gt.id, buildAwardJointVentureViewData(view.model, currentWinnerBid));
               winnerDisplayHtml = `
-                                <div style="display: flex; flex-direction: column; gap: 4px;">
-                                    <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                        <a href="#" data-bf-action="show-jv" data-id="${gt.id}" class="link-hover" title="Xem chi tiết liên danh" style="color:var(--primary);">👥 ${resolveBidContractorName(view.model, currentWinnerBid)}</a>
+                                <div class="bf-s-7d5173b171">
+                                    <h5 class="bf-s-f3bfd10216">
+                                        <a href="#" data-bf-action="show-jv" data-id="${gt.id}" class="link-hover bf-s-b0e08465c2" title="Xem chi tiết liên danh">👥 ${resolveBidContractorName(view.model, currentWinnerBid)}</a>
                                     </h5>
                                 </div>
                             `;
@@ -146,16 +147,16 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               const winnerNt = view.model.state.nhathau.find((n) => String(n.id) === String(currentWinnerBid.nhaThauId));
               const winnerMst = winnerNt ? winnerNt.maSoThue || winnerNt.maNhaThau : currentWinnerBid.maDinhDanh || currentWinnerBid.maNhaThau;
               winnerDisplayHtml = `
-                                <h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">
-                                    <a href="#" data-bf-action="show-contractor" data-id="${currentWinnerBid.nhaThauId}" class="link-hover" style="color:var(--primary);">${resolveBidContractorName(view.model, currentWinnerBid)}</a>
+                                <h5 class="bf-s-f3bfd10216">
+                                    <a href="#" data-bf-action="show-contractor" data-id="${currentWinnerBid.nhaThauId}" class="link-hover bf-s-b0e08465c2">${resolveBidContractorName(view.model, currentWinnerBid)}</a>
                                 </h5>
-                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+                                <div class="bf-s-dfd82ca088">
                                     MST: <strong>${winnerMst || "Chưa có"}</strong>
                                 </div>
                             `;
             }
           } else {
-            winnerDisplayHtml = `<h5 style="margin:4px 0 0; font-size:1.1rem; font-weight:800; color:var(--primary);">Chưa xác định</h5>`;
+            winnerDisplayHtml = `<h5 class="bf-s-f3bfd10216">Chưa xác định</h5>`;
           }
         }
         const allBids = view.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id)).map(bindResultVersion);
@@ -210,7 +211,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               thoiGianThucHienHtml = b.thoiGianThucHien || b.thoiGianGoiThau || "—";
             }
           }
-          const badge = bidIsWinner ? `<span class="badge badge-success" style="font-size:0.75rem; padding: 4px 10px; background-color: rgba(16, 185, 129, 0.08); color: #059669; border: 1px solid rgba(16, 185, 129, 0.25);">Trúng thầu</span>` : `<span class="badge badge-danger" style="font-size:0.75rem; padding: 4px 10px; background-color: rgba(239,68,68,0.08); color: #dc2626; border: 1px solid rgba(239,68,68,0.25);">Trượt thầu</span>`;
+          const badge = bidIsWinner ? `<span class="badge badge-success bf-s-3b94095234">Trúng thầu</span>` : `<span class="badge badge-danger bf-s-514590f0cd">Trượt thầu</span>`;
           let lyDo = "";
           if (bidIsWinner) {
             lyDo = "—";
@@ -256,7 +257,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${escapeHtml(thoiGianThucHienHtml)}</td>
-                                <td style="text-align: center;">${badge}</td>
+                                <td class="bf-s-63dbf5319a">${badge}</td>
                                 <td class="text-muted">${escapeHtml(lyDo)}</td>
                             </tr>
                         `;
@@ -267,7 +268,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${escapeHtml(thoiGianThucHienHtml)}</td>
-                                <td style="text-align: center;">${badge}</td>
+                                <td class="bf-s-63dbf5319a">${badge}</td>
                                 <td class="text-muted">${escapeHtml(lyDo)}</td>
                             </tr>
                         `;
@@ -277,25 +278,25 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
         if (isPhanLo) {
           tableHeaderHtml = `
                         <tr>
-                            <th style="width: 10%;">Mã phần lô</th>
-                            <th style="width: 12%;">Tên phần lô</th>
-                            <th style="width: 10%;">Mã nhà thầu</th>
-                            <th style="width: 20%;">Tên nhà thầu</th>
-                            <th style="width: 13%;">Giá trị trúng thầu</th>
-                            <th style="width: 15%;">Thời gian thực hiện</th>
-                            <th style="width: 10%; text-align: center;">Trạng thái</th>
-                            <th style="width: 10%;">Lý do trượt thầu</th>
+                            <th class="bf-s-ae54075f01">Mã phần lô</th>
+                            <th class="bf-s-2811ee8f01">Tên phần lô</th>
+                            <th class="bf-s-ae54075f01">Mã nhà thầu</th>
+                            <th class="bf-s-a01153c965">Tên nhà thầu</th>
+                            <th class="bf-s-1e5172f548">Giá trị trúng thầu</th>
+                            <th class="bf-s-ad8c93e5fe">Thời gian thực hiện</th>
+                            <th class="bf-s-59052b934c">Trạng thái</th>
+                            <th class="bf-s-ae54075f01">Lý do trượt thầu</th>
                         </tr>
                     `;
         } else {
           tableHeaderHtml = `
                         <tr>
-                            <th style="width: 15%;">Mã nhà thầu</th>
-                            <th style="width: 35%;">Tên nhà thầu</th>
-                            <th style="width: 15%;">Giá trị trúng thầu</th>
-                            <th style="width: 15%;">Thời gian thực hiện</th>
-                            <th style="width: 10%; text-align: center;">Trạng thái</th>
-                            <th style="width: 10%;">Lý do trượt thầu</th>
+                            <th class="bf-s-ad8c93e5fe">Mã nhà thầu</th>
+                            <th class="bf-s-8fd95f72da">Tên nhà thầu</th>
+                            <th class="bf-s-ad8c93e5fe">Giá trị trúng thầu</th>
+                            <th class="bf-s-ad8c93e5fe">Thời gian thực hiện</th>
+                            <th class="bf-s-59052b934c">Trạng thái</th>
+                            <th class="bf-s-ae54075f01">Lý do trượt thầu</th>
                         </tr>
                     `;
         }
@@ -401,8 +402,8 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
         if (isDirectOrSpecial && allBids.length === 0) {
           allBiddersHtml = `
                         <tr>
-                            <td colspan="100%" style="text-align: center; padding: 24px; color: var(--danger); font-weight: 600;">
-                                <i data-lucide="info" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 6px;"></i>
+                            <td colspan="100%" class="bf-s-31769e5aab">
+                                <i data-lucide="info" class="bf-s-26c21ccd54"></i>
                                 Vui lòng nhập và lưu danh sách nhà thầu tại tab "Biên bản mở thầu" trước.
                             </td>
                         </tr>
@@ -486,80 +487,80 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                 <td>
                                     ${escapeHtml(b.tenNhaThau || "--")}
                                     ${b.loaiNhaThau === "Liên danh" ? `
-                                         <div class="row-jv-members-container" style="margin-top: 4px;">
-                                              <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; display: inline-flex; align-items: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
-                                                  <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+                                         <div class="row-jv-members-container bf-s-597bc8fb90">
+                                              <button type="button" class="btn btn-outline btn-xs row-btn-manage-members bf-s-b87f5b7f7c">
+                                                  <i data-lucide="users" class="bf-s-38e6fd7439"></i>
                                                   <span class="row-jv-btn-text">Xem thành viên liên danh (${(b.thanhVienLienDanh || []).filter((m) => m.vaiTro !== "Đứng đầu liên danh" && m.maSoThue !== b.maNhaThau).length})</span>
                                               </button>
                                          </div>
                                     ` : ""}
                                 </td>
                                 ${isCombinedMethod ? `
-                                    <td style="text-align: center; color: var(--primary);">${score !== void 0 && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : "--"}</td>
+                                    <td class="bf-s-1742e3af74">${score !== void 0 && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : "--"}</td>
                                 ` : ""}
                                 ${!isDirectOrSpecial ? `
-                                    <td style="text-align: center; font-weight: bold; color: var(--primary);">${escapeHtml(rankDisplay)}</td>
+                                    <td class="bf-s-81cfd3850c">${escapeHtml(rankDisplay)}</td>
                                     <td>
-                                        <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? "disabled" : ""}>
+                                        <select class="form-control row-status-select bf-s-707df30c7a" ${!isQualified ? "disabled" : ""}>
                                             <option value="truot" ${!isRowWinner ? "selected" : ""}>Trượt thầu</option>
                                             ${isQualified ? `<option value="trung" ${isRowWinner ? "selected" : ""}>Trúng thầu</option>` : ""}
                                         </select>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control row-ly-do-truot" value="${safeAttr(!isRowWinner ? displayReason : "")}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                        <input type="text" class="form-control row-ly-do-truot bf-s-aa4eecce78" value="${safeAttr(!isRowWinner ? displayReason : "")}" placeholder="Lý do trượt..." ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                     </td>
                                 ` : ""}
                                 <td>
-                                    <input type="text" class="form-control row-gia-trung" value="${safeAttr(isRowWinner ? defaultPrice : "")}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                    <input type="text" class="form-control row-gia-trung bf-s-aa4eecce78" value="${safeAttr(isRowWinner ? defaultPrice : "")}" placeholder="Giá trúng..." ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                 </td>
                                 <td>
-                                    <input type="text" class="form-control row-tg-goithau" value="${safeAttr(isRowWinner ? defaultDurationPkg : "")}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                    <input type="text" class="form-control row-tg-goithau bf-s-aa4eecce78" value="${safeAttr(isRowWinner ? defaultDurationPkg : "")}" placeholder="Thời gian gói..." ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                 </td>
                                 <td>
-                                    <input type="text" class="form-control row-tg-hopdong" value="${safeAttr(isRowWinner ? defaultDurationCtr : "")}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                    <input type="text" class="form-control row-tg-hopdong bf-s-aa4eecce78" value="${safeAttr(isRowWinner ? defaultDurationCtr : "")}" placeholder="Thời gian HĐ..." ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                 </td>
                             </tr>
                         `;
           }).join("");
         }
         contentWrapper.innerHTML = `
-                    <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
-                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
-                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml(tenKhStr)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
-                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
-                            <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
-                            <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${view.model.formatCurrency(gt.giaGoiThau)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
-                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
-                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
-                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
+                    <div class="bf-s-8bd3eb473c">
+                        <div class="bf-s-5d398becec">Thông số Gói thầu</div>
+                        <div class="bf-s-13b5590e90">
+                            <div>• <strong class="bf-s-fcb5ddef65">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml(tenKhStr)}</span></div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Giá gói thầu:</strong> <span class="text-dark fw-bold">${view.model.formatCurrency(gt.giaGoiThau)}</span></div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong class="bf-s-fcb5ddef65">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+                            <div>• <strong class="bf-s-fcb5ddef65">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
                             ${!isDirectOrSpecial ? `
-                            <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? view.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
-                            <div>• <strong style="color: var(--primary);">${is1G2T2 ? "Thời gian mở E-HSĐXKT" : "Thời gian mở thầu"}:</strong> ${gt.thoiGianMoThau ? view.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</div>
-                            ${is1G2T2 ? `<div>• <strong style="color: var(--primary);">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? view.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở"}</div>` : ""}
+                            <div>• <strong class="bf-s-fcb5ddef65">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? view.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
+                            <div>• <strong class="bf-s-fcb5ddef65">${is1G2T2 ? "Thời gian mở E-HSĐXKT" : "Thời gian mở thầu"}:</strong> ${gt.thoiGianMoThau ? view.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</div>
+                            ${is1G2T2 ? `<div>• <strong class="bf-s-fcb5ddef65">Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? view.model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở"}</div>` : ""}
                             ` : ""}
                         </div>
                     </div>
 
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                    <div class="bf-s-95b5643dd9">
                         <div>
-                            <h4 style="font-weight: 700; font-size: 1.05rem; color: var(--text-main); margin: 0;">
+                            <h4 class="bf-s-ff3bca23d8">
                                 Phê duyệt kết quả Lựa chọn Nhà thầu (LCNT)
                             </h4>
-                            <p class="text-muted" style="font-size:0.82rem; margin: 4px 0 0 0;">
+                            <p class="text-muted bf-s-2089b6623a">
                                 ${gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt" ? "Kiểm tra danh sách nhà thầu trúng thầu, điền QĐ phê duyệt và nhấn Phê duyệt &amp; Hoàn thành LCNT." : "Vui lòng nhập QĐ phê duyệt và chọn kết quả trúng thầu/trượt thầu cho từng nhà thầu bên dưới."}
                             </p>
                         </div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
+                        <div class="bf-s-c896deef0d">
                             ${!isDirectOrSpecial ? `
-                                <button class="btn-excel-action btn-sm" id="btn-result-export-excel-template" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                <button class="btn-excel-action btn-sm bf-s-5a83b4877e" id="btn-result-export-excel-template">
                                     <i data-lucide="download"></i> Tải Excel Mẫu
                                 </button>
-                                <button class="btn-excel-action btn-sm" id="btn-result-import-excel" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; height: 32px;">
+                                <button class="btn-excel-action btn-sm bf-s-5a83b4877e" id="btn-result-import-excel">
                                     <i data-lucide="upload"></i> Nhập từ Excel
                                 </button>
                             ` : ""}
@@ -567,126 +568,126 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                     </div>
 
                     ${isDirectOrSpecial ? `
-                    <div style="background: var(--neutral-soft); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-                        <div style="font-weight: 700; color: var(--primary); font-size: 0.85rem; min-width: 140px; display: flex; align-items: center; gap: 6px;">
-                            <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Quyết định phê duyệt:
+                    <div class="bf-s-203e309e90">
+                        <div class="bf-s-c9a9faa1a8">
+                            <i data-lucide="check-circle" class="bf-s-c1f1f4a417"></i> Quyết định phê duyệt:
                         </div>
-                        <div style="display: flex; gap: 16px; flex-grow: 1; flex-wrap: wrap;">
-                            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
-                                <input type="text" id="award-decision-no" class="form-control" value="${safeAttr(gt.soQuyetDinhKetQua || "")}" placeholder="Số QĐ phê duyệt *" style="width: 100%; height: 36px; font-size: 0.85rem;">
-                                <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
+                        <div class="bf-s-342dc0e30b">
+                            <div class="form-group bf-s-7f27e3bd8d">
+                                <input type="text" id="award-decision-no" class="form-control bf-s-b3e44dc6d9" value="${safeAttr(gt.soQuyetDinhKetQua || "")}" placeholder="Số QĐ phê duyệt *">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-sm">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
                             </div>
-                            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
-                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${safeAttr(gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : defaultDecDate ? defaultDecDate : "")}" style="width: 100%; height: 36px; font-size: 0.85rem;" placeholder="Ngày ký QĐ * (dd/MM/yyyy)">
-                                <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
+                            <div class="form-group bf-s-7f27e3bd8d">
+                                <input type="text" id="award-decision-date" class="form-control flatpickr-date bf-s-b3e44dc6d9" value="${safeAttr(gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : defaultDecDate ? defaultDecDate : "")}" placeholder="Ngày ký QĐ * (dd/MM/yyyy)">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-sm">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
                             </div>
                         </div>
                     </div>
 
-                    <div style="background: var(--neutral-soft); padding: 12px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 16px;">
-                        <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
-                            <span style="font-weight: 700; color: var(--primary); font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
-                                <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i> Đánh giá năng lực nhà thầu:
+                    <div class="bf-s-c12ee1fe89">
+                        <div class="bf-s-72451a63ba">
+                            <span class="bf-s-ae2dc20bdc">
+                                <i data-lucide="shield-check" class="bf-s-c1f1f4a417"></i> Đánh giá năng lực nhà thầu:
                             </span>
-                            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin-bottom: 0;">
+                            <label class="bf-s-95a4734e91">
                                 <input type="radio" name="result-danh-gia-nang-luc" value="Có" ${danhGiaNangLuc === "Có" ? "checked" : ""}> Có
                             </label>
-                            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin-bottom: 0;">
+                            <label class="bf-s-95a4734e91">
                                 <input type="radio" name="result-danh-gia-nang-luc" value="Không" ${danhGiaNangLuc === "Không" ? "checked" : ""}> Không
                             </label>
                         </div>
 
-                        <div id="result-dates-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                        <div id="result-dates-grid" class="bf-s-d131bccf20">
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày yêu cầu báo giá <span class="text-danger">*</span></label>
-                                <input type="text" id="date-yeu-cau-bao-gia" class="form-control flatpickr-date" value="${safeAttr(ngayYeuCauBaoGia)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
-                                <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày yêu cầu báo giá!</span>
+                                <input type="text" id="date-yeu-cau-bao-gia" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayYeuCauBaoGia)}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày yêu cầu báo giá!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày gửi báo giá <span class="text-danger">*</span></label>
-                                <input type="text" id="date-gui-bao-gia" class="form-control flatpickr-date" value="${safeAttr(ngayGuiBaoGia)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
-                                <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày gửi báo giá!</span>
+                                <input type="text" id="date-gui-bao-gia" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayGuiBaoGia)}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày gửi báo giá!</span>
                             </div>
                             <div class="form-group" id="container-date-bao-cao-danh-gia" style="margin-bottom: 0; display: ${danhGiaNangLuc === "Có" ? "block" : "none"};">
                                 <label class="compact-field-label">Ngày báo cáo đánh giá nhà thầu <span class="text-danger">*</span></label>
-                                <input type="text" id="date-bao-cao-danh-gia" class="form-control flatpickr-date" value="${safeAttr(ngayBaoCaoDanhGiaNhaThau)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
-                                <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày báo cáo đánh giá nhà thầu!</span>
+                                <input type="text" id="date-bao-cao-danh-gia" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayBaoCaoDanhGiaNhaThau)}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày báo cáo đánh giá nhà thầu!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày mời thương thảo <span class="text-danger">*</span></label>
-                                <input type="text" id="date-moi-thuong-thao" class="form-control flatpickr-date" value="${safeAttr(ngayMoiThuongThao)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
-                                <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày mời thương thảo!</span>
+                                <input type="text" id="date-moi-thuong-thao" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayMoiThuongThao)}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày mời thương thảo!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày thương thảo <span class="text-danger">*</span></label>
-                                <input type="text" id="date-thuong-thao" class="form-control flatpickr-date" value="${safeAttr(ngayThuongThao)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
-                                <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày thương thảo!</span>
+                                <input type="text" id="date-thuong-thao" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayThuongThao)}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày thương thảo!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày trình kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="date-trinh-ket-qua" class="form-control flatpickr-date" value="${safeAttr(ngayTrinhKetQua)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
-                                <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày trình kết quả!</span>
+                                <input type="text" id="date-trinh-ket-qua" class="form-control flatpickr-date bf-s-64f2570670" value="${safeAttr(ngayTrinhKetQua)}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-xs">Vui lòng nhập Ngày trình kết quả!</span>
                             </div>
                         </div>
                     </div>
                     ` : `
-                    <div style="background: var(--neutral-soft); padding: 16px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 24px;">
-                        <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Quyết định phê duyệt Kết quả LCNT</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                    <div class="bf-s-098565a16e">
+                        <div class="bf-s-5d398becec">Quyết định phê duyệt Kết quả LCNT</div>
+                        <div class="bf-s-ed07f78f34">
                             ${gt.hinhThucLuaChon !== "Chào hàng cạnh tranh" ? `
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Số BCTĐ kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-so-bctd" class="form-control" value="${safeAttr(soBctdResult)}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;">
-                                <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng nhập Số BCTĐ kết quả!</span>
+                                <input type="text" id="award-so-bctd" class="form-control bf-s-20e5983dc7" value="${safeAttr(soBctdResult)}" placeholder="Nhập số báo cáo thẩm định...">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-sm">Vui lòng nhập Số BCTĐ kết quả!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Ngày BCTĐ kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-ngay-bctd" class="form-control flatpickr-date" value="${safeAttr(ngayBctdResult ? view.model.formatForDateInput(ngayBctdResult) : "")}" style="width: 100%;" placeholder="dd/MM/yyyy">
-                                <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng chọn Ngày BCTĐ kết quả!</span>
+                                <input type="text" id="award-ngay-bctd" class="form-control flatpickr-date bf-s-20e5983dc7" value="${safeAttr(ngayBctdResult ? view.model.formatForDateInput(ngayBctdResult) : "")}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-sm">Vui lòng chọn Ngày BCTĐ kết quả!</span>
                             </div>
                             ` : ""}
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Số QĐ phê duyệt Kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-decision-no" class="form-control" value="${safeAttr(gt.soQuyetDinhKetQua || "")}" placeholder="Số QĐ Kết quả..." style="width: 100%;">
-                                <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
+                                <input type="text" id="award-decision-no" class="form-control bf-s-20e5983dc7" value="${safeAttr(gt.soQuyetDinhKetQua || "")}" placeholder="Số QĐ Kết quả...">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-sm">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Ngày ký QĐ phê duyệt Kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${safeAttr(gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : "")}" style="width: 100%;" placeholder="dd/MM/yyyy">
-                                <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
+                                <input type="text" id="award-decision-date" class="form-control flatpickr-date bf-s-20e5983dc7" value="${safeAttr(gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : "")}" placeholder="dd/MM/yyyy">
+                                <span class="error-text bf-s-65d1f1c3d7" class="field-error field-error-sm">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
                             </div>
                         </div>
                     </div>
                     `}
 
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; margin-bottom: 12px;">
-                        <h5 style="font-weight:700; font-size:0.9rem; color:var(--text-main); display:flex; align-items:center; gap:6px; margin: 0;">
+                    <div class="bf-s-dd5fcc126c">
+                        <h5 class="bf-s-a3c20b1dcc">
                             <i data-lucide="list"></i> ${isDirectOrSpecial ? "Danh sách nhà thầu trúng thầu" : "Danh sách nhà thầu tham dự &amp; Kết quả LCNT"}
                         </h5>
                     </div>
 
-                    <div class="table-container" style="border:1px solid var(--border-color); border-radius:var(--radius-md); overflow-x:auto; margin-bottom:24px; background:var(--bg-card);">
-                        <table class="data-table" style="min-width: 100%;">
+                    <div class="table-container bf-s-674afada30">
+                        <table class="data-table bf-s-448ca2b6ae">
                             <thead>
                                 <tr>
                                     ${gt.phanLo === "Có" ? `
-                                        <th style="width: 10%;">Mã phần lô</th>
-                                        <th style="width: 10%;">Tên phần lô</th>
+                                        <th class="bf-s-ae54075f01">Mã phần lô</th>
+                                        <th class="bf-s-ae54075f01">Tên phần lô</th>
                                     ` : ""}
-                                    ${isDirectOrSpecial ? `<th style="width: 12%;">Loại nhà thầu</th>` : ""}
-                                    <th style="width: 12%;">Mã nhà thầu</th>
-                                    <th style="width: 20%;">Tên nhà thầu</th>
+                                    ${isDirectOrSpecial ? `<th class="bf-s-2811ee8f01">Loại nhà thầu</th>` : ""}
+                                    <th class="bf-s-2811ee8f01">Mã nhà thầu</th>
+                                    <th class="bf-s-a01153c965">Tên nhà thầu</th>
                                     ${isCombinedMethod ? `
-                                        <th style="width: 10%; text-align: center;">Điểm tổng hợp</th>
+                                        <th class="bf-s-59052b934c">Điểm tổng hợp</th>
                                     ` : ""}
                                     ${!isDirectOrSpecial ? `
-                                        <th style="width: 10%; text-align: center;">Xếp hạng nhà thầu</th>
-                                        <th style="width: 10%;">Trúng thầu/trượt thầu</th>
-                                        <th style="width: 14%;">Lý do trượt</th>
+                                        <th class="bf-s-59052b934c">Xếp hạng nhà thầu</th>
+                                        <th class="bf-s-ae54075f01">Trúng thầu/trượt thầu</th>
+                                        <th class="bf-s-c83ebbe56b">Lý do trượt</th>
                                     ` : ""}
-                                    <th style="width: 12%;">Giá trúng thầu</th>
-                                    <th style="width: 14%;">Thời gian thực hiện gói thầu</th>
-                                    <th style="width: 18%;">Thời gian thực hiện hợp đồng</th>
+                                    <th class="bf-s-2811ee8f01">Giá trúng thầu</th>
+                                    <th class="bf-s-c83ebbe56b">Thời gian thực hiện gói thầu</th>
+                                    <th class="bf-s-fa210469db">Thời gian thực hiện hợp đồng</th>
                                 </tr>
                             </thead>
                             <tbody id="approve-bidders-tbody">
@@ -695,8 +696,8 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                         </table>
                     </div>
 
-                    <div style="display:flex; justify-content:flex-end; gap:12px;">
-                        <button class="btn btn-primary" id="btn-approve-award" style="padding:12px 24px; font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <div class="bf-s-004d08f0e5">
+                        <button class="btn btn-primary bf-s-a9f6996ecf" id="btn-approve-award">
                             <i data-lucide="check-circle2"></i> Phê duyệt & Hoàn thành LCNT
                         </button>
                     </div>
@@ -706,7 +707,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
         rads.forEach((rad) => {
           rad.addEventListener("change", () => {
             if (dgContainer) {
-              dgContainer.style.display = rad.value === "Có" ? "block" : "none";
+              setRuntimeStyle(dgContainer, "display", rad.value === "Có" ? "block" : "none");
             }
           });
         });
@@ -758,7 +759,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             const jvContainer = tr.querySelector(".row-jv-members-container");
             if (selectLoai && jvContainer) {
               selectLoai.addEventListener("change", () => {
-                jvContainer.style.display = selectLoai.value === "Liên danh" ? "block" : "none";
+                setRuntimeStyle(jvContainer, "display", selectLoai.value === "Liên danh" ? "block" : "none");
               });
             }
             const btnManage = tr.querySelector(".row-btn-manage-members");
@@ -843,7 +844,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                       const otherLyDo = otherTr.querySelector(".row-ly-do-truot");
                       if (otherLyDo) {
                         otherLyDo.disabled = false;
-                        otherLyDo.style.background = "";
+                        setRuntimeStyle(otherLyDo, "background", "");
                         if (!otherLyDo.value) {
                           otherLyDo.value = otherTr.getAttribute("data-default-reason") || "Nhà thầu xếp hạng 1 trúng thầu";
                         }
@@ -851,19 +852,19 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                       const otherGia = otherTr.querySelector(".row-gia-trung");
                       if (otherGia) {
                         otherGia.disabled = true;
-                        otherGia.style.background = "#f1f5f9";
+                        setRuntimeStyle(otherGia, "background", "#f1f5f9");
                         otherGia.value = "";
                       }
                       const otherDurationPkg = otherTr.querySelector(".row-tg-goithau");
                       if (otherDurationPkg) {
                         otherDurationPkg.disabled = true;
-                        otherDurationPkg.style.background = "#f1f5f9";
+                        setRuntimeStyle(otherDurationPkg, "background", "#f1f5f9");
                         otherDurationPkg.value = "";
                       }
                       const otherDurationCtr = otherTr.querySelector(".row-tg-hopdong");
                       if (otherDurationCtr) {
                         otherDurationCtr.disabled = true;
-                        otherDurationCtr.style.background = "#f1f5f9";
+                        setRuntimeStyle(otherDurationCtr, "background", "#f1f5f9");
                         otherDurationCtr.value = "";
                       }
                     }
@@ -871,50 +872,50 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                   const inpGia = tr.querySelector(".row-gia-trung");
                   if (inpGia) {
                     inpGia.disabled = false;
-                    inpGia.style.background = "";
+                    setRuntimeStyle(inpGia, "background", "");
                     inpGia.value = tr.getAttribute("data-default-price") || "";
                   }
                   const inpDurationPkg = tr.querySelector(".row-tg-goithau");
                   if (inpDurationPkg) {
                     inpDurationPkg.disabled = false;
-                    inpDurationPkg.style.background = "";
+                    setRuntimeStyle(inpDurationPkg, "background", "");
                     inpDurationPkg.value = tr.getAttribute("data-default-duration-pkg") || "";
                   }
                   const inpDurationCtr = tr.querySelector(".row-tg-hopdong");
                   if (inpDurationCtr) {
                     inpDurationCtr.disabled = false;
-                    inpDurationCtr.style.background = "";
+                    setRuntimeStyle(inpDurationCtr, "background", "");
                     inpDurationCtr.value = tr.getAttribute("data-default-duration-ctr") || "";
                   }
                   const inpLyDo = tr.querySelector(".row-ly-do-truot");
                   if (inpLyDo) {
                     inpLyDo.disabled = true;
-                    inpLyDo.style.background = "#f1f5f9";
+                    setRuntimeStyle(inpLyDo, "background", "#f1f5f9");
                     inpLyDo.value = "";
                   }
                 } else {
                   const inpGia = tr.querySelector(".row-gia-trung");
                   if (inpGia) {
                     inpGia.disabled = true;
-                    inpGia.style.background = "#f1f5f9";
+                    setRuntimeStyle(inpGia, "background", "#f1f5f9");
                     inpGia.value = "";
                   }
                   const inpDurationPkg = tr.querySelector(".row-tg-goithau");
                   if (inpDurationPkg) {
                     inpDurationPkg.disabled = true;
-                    inpDurationPkg.style.background = "#f1f5f9";
+                    setRuntimeStyle(inpDurationPkg, "background", "#f1f5f9");
                     inpDurationPkg.value = "";
                   }
                   const inpDurationCtr = tr.querySelector(".row-tg-hopdong");
                   if (inpDurationCtr) {
                     inpDurationCtr.disabled = true;
-                    inpDurationCtr.style.background = "#f1f5f9";
+                    setRuntimeStyle(inpDurationCtr, "background", "#f1f5f9");
                     inpDurationCtr.value = "";
                   }
                   const inpLyDo = tr.querySelector(".row-ly-do-truot");
                   if (inpLyDo) {
                     inpLyDo.disabled = false;
-                    inpLyDo.style.background = "";
+                    setRuntimeStyle(inpLyDo, "background", "");
                     inpLyDo.value = tr.getAttribute("data-default-reason") || "Nhà thầu xếp hạng 1 trúng thầu";
                   }
                 }
@@ -937,27 +938,27 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           tr.setAttribute("data-cdtrug-id", rowId);
           tr.innerHTML = `
                         ${hasPhanLo ? `
-                            <td><select class="form-control cdtrug-ma-phan-lo" style="padding:4px 6px;font-size:0.8rem;">
+                            <td><select class="form-control cdtrug-ma-phan-lo bf-s-1c5ec6d115">
                                 <option value="">-- Chọn --</option>${lotOptions}
                             </select></td>
-                            <td><input type="text" class="form-control cdtrug-ten-phan-lo" value="${safeAttr(bidData.tenPhanLo || "")}" readonly placeholder="Tên lô" style="padding:4px 6px;font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control cdtrug-ten-phan-lo bf-s-1c5ec6d115" value="${safeAttr(bidData.tenPhanLo || "")}" readonly placeholder="Tên lô"></td>
                         ` : ""}
-                        <td><select class="form-control cdtrug-loai-nha-thau" style="padding:4px 6px;font-size:0.8rem;">
+                        <td><select class="form-control cdtrug-loai-nha-thau bf-s-1c5ec6d115">
                             <option value="Độc lập" ${ntType === "Độc lập" ? "selected" : ""}>Độc lập</option>
                             <option value="Liên danh" ${ntType === "Liên danh" ? "selected" : ""}>Liên danh</option>
                         </select></td>
-                        <td><input type="text" class="form-control cdtrug-ma-nha-thau" value="${safeAttr(ntCode)}" required placeholder="Mã NT" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-ten-nha-thau" value="${safeAttr(ntName)}" required placeholder="Tên nhà thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-gia-du-thau cdtrug-format-vnd" value="${safeAttr(bidData.giaDuThau ? view.model.formatVND(bidData.giaDuThau) : "")}" placeholder="Giá dự thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-ty-le-giam-gia" value="${safeAttr(bidData.tyLeGiamGia !== void 0 ? (bidData.tyLeGiamGia || 0).toString().replace(".", ",") : "0")}" style="padding:4px 6px;font-size:0.8rem;text-align:right;"></td>
-                        <td><input type="text" class="form-control cdtrug-gia-sau-giam-gia cdtrug-format-vnd" value="${safeAttr(bidData.giaSauGiamGia ? view.model.formatVND(bidData.giaSauGiamGia) : "")}" readonly placeholder="..." style="padding:4px 6px;font-size:0.8rem;background:var(--bg-input-disabled,#f1f5f9);cursor:not-allowed;"></td>
-                        <td><input type="text" class="form-control cdtrug-hieu-luc-hsdt" value="${safeAttr(bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-gia-tri-dam-bao cdtrug-format-vnd" value="${safeAttr(bidData.giaTriDamBao ? view.model.formatVND(bidData.giaTriDamBao) : "")}" placeholder="Giá trị ĐB" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-hieu-luc-bao-dam-ngay" value="${safeAttr(bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày")}" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-thoi-gian-thuc-hien" value="${safeAttr(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" placeholder="Thực hiện" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td style="text-align:center;">
+                        <td><input type="text" class="form-control cdtrug-ma-nha-thau bf-s-1c5ec6d115" value="${safeAttr(ntCode)}" required placeholder="Mã NT"></td>
+                        <td><input type="text" class="form-control cdtrug-ten-nha-thau bf-s-1c5ec6d115" value="${safeAttr(ntName)}" required placeholder="Tên nhà thầu"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-du-thau cdtrug-format-vnd bf-s-1c5ec6d115" value="${safeAttr(bidData.giaDuThau ? view.model.formatVND(bidData.giaDuThau) : "")}" placeholder="Giá dự thầu"></td>
+                        <td><input type="text" class="form-control cdtrug-ty-le-giam-gia bf-s-f2b3f12563" value="${safeAttr(bidData.tyLeGiamGia !== void 0 ? (bidData.tyLeGiamGia || 0).toString().replace(".", ",") : "0")}"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-sau-giam-gia cdtrug-format-vnd bf-s-67c231a219" value="${safeAttr(bidData.giaSauGiamGia ? view.model.formatVND(bidData.giaSauGiamGia) : "")}" readonly placeholder="..."></td>
+                        <td><input type="text" class="form-control cdtrug-hieu-luc-hsdt bf-s-1c5ec6d115" value="${safeAttr(bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-tri-dam-bao cdtrug-format-vnd bf-s-1c5ec6d115" value="${safeAttr(bidData.giaTriDamBao ? view.model.formatVND(bidData.giaTriDamBao) : "")}" placeholder="Giá trị ĐB"></td>
+                        <td><input type="text" class="form-control cdtrug-hieu-luc-bao-dam-ngay bf-s-1c5ec6d115" value="${safeAttr(bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày")}"></td>
+                        <td><input type="text" class="form-control cdtrug-thoi-gian-thuc-hien bf-s-1c5ec6d115" value="${safeAttr(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" placeholder="Thực hiện"></td>
+                        <td class="bf-s-905008530c">
                             <button type="button" class="action-btn btn-delete cdtrug-remove-row" title="Xóa hàng">
-                                <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                                <i data-lucide="trash-2" class="bf-s-641778be2c"></i>
                             </button>
                         </td>
                     `;
@@ -1075,9 +1076,9 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                   hasError = true;
                   if (f.el) {
                     errorInputs.push(f.el);
-                    f.el.style.border = "1px solid var(--danger)";
+                    setRuntimeStyle(f.el, "border", "1px solid var(--danger)");
                     const clearInvalid = () => {
-                      f.el.style.border = "";
+                      setRuntimeStyle(f.el, "border", "");
                     };
                     f.el.addEventListener("input", clearInvalid);
                   }
@@ -1362,12 +1363,12 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
             const firstLotName = lots[0] ? lots[0].tenPhanLo : "";
             lotCells = `
                             <td>
-                                <select class="form-control row-ma-phan-lo" style="padding:4px 8px; font-size:0.8rem;">
+                                <select class="form-control row-ma-phan-lo bf-s-3f107fe5ee">
                                     ${optionsHtml}
                                 </select>
                             </td>
                             <td>
-                                <input type="text" class="form-control row-ten-phan-lo" value="${safeAttr(firstLotName)}" readonly style="padding:4px 8px; font-size:0.8rem; background:#f1f5f9;">
+                                <input type="text" class="form-control row-ten-phan-lo bf-s-97e02f4332" value="${safeAttr(firstLotName)}" readonly>
                             </td>
                         `;
           }
@@ -1377,34 +1378,34 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           tr.innerHTML = `
                         ${lotCells}
                         <td>
-                            <select class="form-control row-loai-nha-thau" style="padding:4px 8px; font-size:0.8rem;">
+                            <select class="form-control row-loai-nha-thau bf-s-3f107fe5ee">
                                 <option value="Độc lập" selected>Độc lập</option>
                                 <option value="Liên danh">Liên danh</option>
                             </select>
                         </td>
                         <td>
-                            <input type="text" class="form-control row-ma-nha-thau" value="" placeholder="Mã nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
+                            <input type="text" class="form-control row-ma-nha-thau bf-s-3f107fe5ee" value="" placeholder="Mã nhà thầu">
                         </td>
                         <td>
-                            <input type="text" class="form-control row-ten-nha-thau" value="" placeholder="Tên nhà thầu" style="padding:4px 8px; font-size:0.8rem;">
-                            <div class="row-jv-members-container" style="margin-top: 4px; display: none;">
-                                <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
-                                    <i data-lucide="users" style="width: 12px; height: 12px;"></i>
+                            <input type="text" class="form-control row-ten-nha-thau bf-s-3f107fe5ee" value="" placeholder="Tên nhà thầu">
+                            <div class="row-jv-members-container bf-s-e9ebaa0dab">
+                                <button type="button" class="btn btn-outline btn-xs row-btn-manage-members bf-s-32804fa5c4">
+                                    <i data-lucide="users" class="bf-s-38e6fd7439"></i>
                                     <span class="row-jv-btn-text">Xem thành viên liên danh (0)</span>
                                 </button>
                             </div>
                         </td>
                         <td>
-                            <input type="text" class="form-control row-gia-trung" value="" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                            <input type="text" class="form-control row-gia-trung bf-s-aa4eecce78" value="" placeholder="Giá trúng...">
                         </td>
                         <td>
-                            <input type="text" class="form-control row-tg-goithau" value="${safeAttr(gt.thoiGianThucHien || "")}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                            <input type="text" class="form-control row-tg-goithau bf-s-aa4eecce78" value="${safeAttr(gt.thoiGianThucHien || "")}" placeholder="Thời gian gói...">
                         </td>
                         <td>
-                            <input type="text" class="form-control row-tg-hopdong" value="${safeAttr(gt.thoiGianThucHien ? gt.thoiGianThucHien + " + Thời gian thực hiện các nghĩa vụ theo hợp đồng" : "")}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                            <input type="text" class="form-control row-tg-hopdong bf-s-aa4eecce78" value="${safeAttr(gt.thoiGianThucHien ? gt.thoiGianThucHien + " + Thời gian thực hiện các nghĩa vụ theo hợp đồng" : "")}" placeholder="Thời gian HĐ...">
                         </td>
-                        <td style="text-align: center;">
-                            <button class="action-btn btn-delete row-remove-bidder" style="border:none; background:none; cursor:pointer; color:var(--danger);"><i data-lucide="trash-2" style="width:16px; height:16px;"></i></button>
+                        <td class="bf-s-63dbf5319a">
+                            <button class="action-btn btn-delete row-remove-bidder bf-s-2e8164f9a4"><i data-lucide="trash-2" class="bf-s-3e32597019"></i></button>
                         </td>
                     `;
           tbody.appendChild(tr);

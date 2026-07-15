@@ -1,30 +1,30 @@
 
     <div class="modal-overlay" id="modal-nhathau">
         <div class="modal-card modal-lg">
-            <div class="modal-header"
-                style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <div style="display: flex; align-items: center; gap: 16px;">
-                    <h3 id="modal-nhathau-title" style="margin: 0;">Thêm Nhà thầu</h3>
+            <div class="modal-header bf-s-d5564bfe2a"
+               >
+                <div class="bf-s-89f8466bda">
+                    <h3 id="modal-nhathau-title" class="bf-s-de52e3be99">Thêm Nhà thầu</h3>
                 </div>
                 <button type="button" class="modal-close" data-close="modal-nhathau">&times;</button>
             </div>
             <form id="form-nhathau" novalidate>
                 <input type="hidden" id="form-nhathau-id">
-                <div class="modal-body" style="max-height: 72vh; overflow-y: auto;">
+                <div class="modal-body bf-s-2f9edb8cf0">
                     <div class="form-grid">
                         <div class="form-group col-span-2">
-                            <div class="form-grid" style="grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 0;">
-                                <div class="form-group" style="margin-bottom: 0;">
+                            <div class="form-grid bf-s-0426e0d6d3">
+                                <div class="form-group bf-s-4bbf3df076">
                                     <label for="nt-ma">Mã nhà thầu <span class="required">*</span></label>
                                     <input type="text" id="nt-ma" required placeholder="Ví dụ: NT-ECO">
                                     <span class="error-text">Vui lòng nhập mã nhà thầu</span>
                                 </div>
-                                <div class="form-group" style="margin-bottom: 0;">
+                                <div class="form-group bf-s-4bbf3df076">
                                     <label for="nt-mst">Mã số thuế</label>
                                     <input type="text" id="nt-mst" placeholder="Không có nếu Mua Sắm Công không cung cấp">
                                     <span class="error-text">Mã số thuế không đúng định dạng</span>
                                 </div>
-                                <div class="form-group" style="margin-bottom: 0;">
+                                <div class="form-group bf-s-4bbf3df076">
                                     <label for="nt-tenviettat">Tên viết tắt</label>
                                     <input type="text" id="nt-tenviettat" placeholder="Ví dụ: ECO">
                                 </div>
@@ -67,20 +67,20 @@
                             <span class="error-text">Email không hợp lệ</span>
                         </div>
                         <div class="form-group col-span-2">
-                            <div class="form-grid" style="grid-template-columns: 1fr 1fr 2fr; gap: 12px; margin-bottom: 0;">
-                                <div class="form-group" style="margin-bottom: 0;">
+                            <div class="form-grid bf-s-277dcc7f77">
+                                <div class="form-group bf-s-4bbf3df076">
                                     <label>Tỉnh/Thành phố <span class="required">*</span></label>
                                     <select id="nt-tinh" class="select-province" required>
                                         <option value="">-- Chọn Tỉnh/Thành phố --</option>
                                     </select>
                                 </div>
-                                <div class="form-group" style="margin-bottom: 0;">
+                                <div class="form-group bf-s-4bbf3df076">
                                     <label>Xã/Phường <span class="required">*</span></label>
                                     <select id="nt-xa" class="select-ward" required disabled>
                                         <option value="">-- Chọn Xã/Phường --</option>
                                     </select>
                                 </div>
-                                <div class="form-group" style="margin-bottom: 0;">
+                                <div class="form-group bf-s-4bbf3df076">
                                     <label for="nt-diachichitiet">Địa chỉ chi tiết <span class="required">*</span></label>
                                     <input type="text" id="nt-diachichitiet" required
                                         placeholder="Số nhà, tên đường, thôn/xóm...">
@@ -106,12 +106,12 @@
                                 <i data-lucide="image-plus"></i>
                                 <div>
                                     <strong>Chọn ảnh dấu</strong>
-                                    <div class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">PNG, JPG hoặc WEBP, tối đa 3MB</div>
+                                    <div class="text-muted bf-s-20c96e1b9b">PNG, JPG hoặc WEBP, tối đa 3MB</div>
                                 </div>
                                 <input type="file" id="nt-anhdau" accept="image/png,image/jpeg,image/webp" hidden>
                             </div>
-                            <div id="nt-preview-container-dau" class="file-preview-container" style="display: none;">
-                                <img id="nt-anh-preview-dau" alt="Ảnh dấu nhà thầu" style="max-height: 160px; object-fit: contain;">
+                            <div id="nt-preview-container-dau" class="file-preview-container bf-s-65d1f1c3d7">
+                                <img id="nt-anh-preview-dau" alt="Ảnh dấu nhà thầu" class="bf-s-2b7ccf5208">
                                 <button type="button" id="btn-nt-remove-file-dau" class="btn-remove-file" title="Xóa ảnh dấu">
                                     <i data-lucide="x"></i>
                                 </button>

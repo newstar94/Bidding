@@ -7,21 +7,21 @@ export function renderJointVentureModalHeader() {
 
 export function renderJointVentureModalBody({ leadCodeHtml, leadNameHtml, membersHtml }) {
   return `
-    <div style="background: var(--primary-soft); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 20px;">
-      <div style="font-size: 0.78rem; font-weight: 800; color: var(--primary); text-transform: uppercase; margin-bottom: 8px;">Thành viên đứng đầu liên danh</div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+    <div class="bf-s-8df25cd500">
+      <div class="bf-s-7f07b6bbca">Thành viên đứng đầu liên danh</div>
+      <div class="bf-s-16fbb6e0cf">
         <div>
-          <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Mã/MST thành viên đứng đầu</div>
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${leadCodeHtml}</div>
+          <div class="bf-s-68d41663ac">Mã/MST thành viên đứng đầu</div>
+          <div class="bf-s-00e10034b0">${leadCodeHtml}</div>
         </div>
         <div>
-          <div style="font-size: 0.72rem; color: var(--text-light); margin-bottom: 2px;">Tên thành viên đứng đầu</div>
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">${leadNameHtml}</div>
+          <div class="bf-s-68d41663ac">Tên thành viên đứng đầu</div>
+          <div class="bf-s-00e10034b0">${leadNameHtml}</div>
         </div>
       </div>
     </div>
-    <h4 style="margin: 0 0 12px 0; font-size: 0.88rem; font-weight: 800;">Danh sách Thành viên liên danh</h4>
-    <div style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; padding-right: 4px;">${membersHtml}</div>
+    <h4 class="bf-s-7931d119ba">Danh sách Thành viên liên danh</h4>
+    <div class="bf-s-3bd1b07b13">${membersHtml}</div>
   `;
 }
 

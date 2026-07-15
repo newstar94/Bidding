@@ -12,6 +12,7 @@ from typing import Any
 
 
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
+MAX_INPUT_CONTENT_BYTES = 64 * 1024 * 1024
 
 
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -82,12 +83,21 @@ def _validate_job_paths(input_path: Path, result_path: Path) -> None:
         raise ValueError("Tên tệp tác vụ tài liệu không hợp lệ.")
 
 
+def _payload_content(payload):
+    if "content_path" in payload:
+        path = Path(str(payload["content_path"])).resolve()
+        if not path.is_file() or path.stat().st_size > MAX_INPUT_CONTENT_BYTES:
+            raise ValueError("Tệp công việc không tồn tại hoặc vượt giới hạn.")
+        return path.read_bytes()
+    return payload["content"]
+
+
 def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
     if operation == "validate_docx":
         from backend.documents.archive_validation import validate_ooxml_archive
         from backend.documents.template_security import validate_docx_template_statements
 
-        content = payload["content"]
+        content = _payload_content(payload)
         validate_ooxml_archive(content, "docx")
         validate_docx_template_statements(content)
         return True
@@ -98,14 +108,14 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         kind = payload.get("kind")
         if kind not in {"docx", "xlsx"}:
             raise ValueError("Loại tệp Office không được hỗ trợ.")
-        validate_ooxml_archive(payload["content"], kind)
+        validate_ooxml_archive(_payload_content(payload), kind)
         return True
 
     if operation == "parse_excel":
         from backend.documents.archive_validation import validate_ooxml_archive
         from backend.documents.excel_handler import parse_excel
 
-        content = payload["content"]
+        content = _payload_content(payload)
         if payload.get("kind") == "xlsx":
             validate_ooxml_archive(content, "xlsx")
         rows = parse_excel(content, payload["import_type"])

@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 let flowInProgress = false;
 let sessionActive = false;
 let stateChangedAt = 0;
@@ -27,8 +28,8 @@ export const resetGoogleIdentityInitialized = () => { googleIdentityInitialized 
 export function hideInitLoader() {
   const loader = document.getElementById("system-init-loader");
   if (!loader) return;
-  loader.style.opacity = "0";
-  loader.style.visibility = "hidden";
+  setRuntimeStyle(loader, "opacity", "0");
+  setRuntimeStyle(loader, "visibility", "hidden");
   loader.setAttribute("aria-busy", "false");
   document.body.classList.remove("bf-init-loading");
 }
@@ -39,9 +40,9 @@ export function showInitLoader(message = "Đang tải...") {
   document.body.classList.add("bf-init-loading");
   const messageElement = loader.querySelector("#system-init-loader-text");
   if (messageElement) messageElement.textContent = message;
-  loader.style.display = "flex";
-  loader.style.opacity = "1";
-  loader.style.visibility = "visible";
+  setRuntimeStyle(loader, "display", "flex");
+  setRuntimeStyle(loader, "opacity", "1");
+  setRuntimeStyle(loader, "visibility", "visible");
   loader.setAttribute("aria-busy", "true");
   return loader;
 }

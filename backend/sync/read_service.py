@@ -1,6 +1,7 @@
 """Full and delta synchronization read service."""
 
 import time
+import sqlite3
 
 from starlette.responses import JSONResponse
 
@@ -14,7 +15,8 @@ from backend.shared.access_policy import (
 )
 from backend.shared.media_helper import public_image_path
 from backend.shared.date_utils import utc_now_sql
-from backend.shared.sensitive_data import redact_expert_item
+from backend.shared.sensitive_data import redact_contractor_financial_item, redact_expert_item
+from backend.shared.domain_enums import enum_label
 from backend.sync.mapper import (
     attach_child_rows_to_items,
     json_key_for_column,
@@ -28,6 +30,7 @@ from backend.sync.queries import (
 )
 from backend.sync.repository import ARCHIVED_TABLES, get_current_sync_version
 from backend.sync.request_contract import parse_sync_read_window
+from backend.sync.payload_validation import get_package_field_policy
 from backend.shared.logging_utils import error_response, log_and_error
 
 
@@ -68,6 +71,9 @@ async def read_sync_data(request):
         user_id = role_or_err.user_id
         can_view_sensitive_expert = has_module_permission(
             cursor, role_str, user_id, org_name, "chuyengia", "edit"
+        )
+        can_view_sensitive_contractor = has_module_permission(
+            cursor, role_str, user_id, org_name, "nhathau", "edit"
         )
 
         metadata_row = cursor.execute(
@@ -224,8 +230,9 @@ async def read_sync_data(request):
                     cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ?", (org_name,))
                 for row in cursor.fetchall():
                     permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
-        except Exception:
-            pass
+        except sqlite3.Error as permission_read_error:
+            from backend.shared.logging_utils import log_error
+            log_error(permission_read_error, "sync_read_permission_matrix", level="WARN")
 
 
         deletions = []
@@ -259,6 +266,8 @@ async def read_sync_data(request):
         kehoach = filter_items_for_read(cursor, role_str, user_id, org_name, "kehoach", "ke_hoach_lcnt", kehoach)
         chuyengia = filter_items_for_read(cursor, role_str, user_id, org_name, "chuyengia", "chuyen_gia", chuyengia)
         nhathau = filter_items_for_read(cursor, role_str, user_id, org_name, "nhathau", "nha_thau", nhathau)
+        if not can_view_sensitive_contractor:
+            nhathau = [redact_contractor_financial_item(item) for item in nhathau]
         goithau = filter_items_for_read(cursor, role_str, user_id, org_name, "goithau", "goi_thau", goithau)
         hopdong = filter_items_for_read(cursor, role_str, user_id, org_name, "hopdong", "hop_dong", hopdong)
         assignments = filter_items_for_read(cursor, role_str, user_id, org_name, "assignments", "phan_cong_nhan_su", assignments)
@@ -324,7 +333,7 @@ async def read_sync_data(request):
                 for row in cursor.fetchall():
                     row_dict = dict(row)
                     reference_item = {
-                        json_key_for_column(table_name, column): row_dict.get(column)
+                        json_key_for_column(table_name, column): enum_label(table_name, column, row_dict.get(column))
                         for column in selected_columns
                     }
                     # The client must never treat these lightweight dropdown
@@ -343,6 +352,10 @@ async def read_sync_data(request):
                 if payload_key == "chuyengia" and not can_view_sensitive_expert:
                     reference_data[payload_key] = [
                         redact_expert_item(item) for item in reference_data[payload_key]
+                    ]
+                if payload_key == "nhathau" and not can_view_sensitive_contractor:
+                    reference_data[payload_key] = [
+                        redact_contractor_financial_item(item) for item in reference_data[payload_key]
                     ]
 
         if not is_organization_manager(cursor, role_str, user_id, org_name):
@@ -378,6 +391,7 @@ async def read_sync_data(request):
             "timestamp": current_time,
             "syncVersion": current_sync_version,
             "minAvailableSyncVersion": min_available_sync_version,
+            "domainContract": {"packageFieldPolicy": get_package_field_policy()},
         }
         if is_partial_response:
             for payload_key in list(TABLE_KEYS):
@@ -394,7 +408,7 @@ async def read_sync_data(request):
             try:
                 conn.rollback()
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass
         return error_response(
             request,
@@ -414,7 +428,7 @@ async def read_sync_data(request):
         if conn:
             try:
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass
 
 async def read_single_record(request):
@@ -517,5 +531,5 @@ async def read_single_record(request):
         if conn:
             try:
                 conn.close()
-            except Exception:
+            except sqlite3.Error:
                 pass

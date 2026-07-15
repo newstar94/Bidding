@@ -1,3 +1,4 @@
+import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { triggerExcelTemplateDownload as triggerTemplateDownload } from "./excelTemplateAdapter.js";
 import { ensureXlsxLoaded } from "../shared/externalAssets.js";
@@ -109,7 +110,7 @@ export function triggerExcelImport(type) {
     fileInput.id = "excel-file-input-temp";
     fileInput.type = "file";
     fileInput.accept = ".xlsx, .xls";
-    fileInput.style.display = "none";
+    setRuntimeStyle(fileInput, "display", "none");
     document.body.appendChild(fileInput);
     fileInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
@@ -142,7 +143,7 @@ export async function handleExcelUpload(file) {
   if (fileInfo) {
     document.getElementById("excel-filename").textContent = file.name;
     document.getElementById("excel-filesize").textContent = (file.size / 1024).toFixed(2) + " KB";
-    fileInfo.style.display = "flex";
+    setRuntimeStyle(fileInfo, "display", "flex");
   }
   if (this._excelImportType === "opening_fin") {
     await renderClientExcelImport(this, file, parseOpeningFinancialImport);
@@ -340,7 +341,7 @@ export async function handleExcelUpload(file) {
       const saveBtn = document.getElementById("btn-save-excel-import");
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.style.display = "inline-flex";
+        setRuntimeStyle(saveBtn, "display", "inline-flex");
       }
     } else {
       await this.view.customAlert("Thất bại", data.error || "Không thể đọc tệp tin Excel này.", "alert-triangle");

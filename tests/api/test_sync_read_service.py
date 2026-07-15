@@ -68,6 +68,7 @@ async def test_delta_sync_read_returns_response_and_server_timing(monkeypatch):
 
     assert response.status_code == 200
     assert payload["syncVersion"] == 0
+    assert "giaGoiThau" in payload["domainContract"]["packageFieldPolicy"]["lockedAfterInvitation"]
     assert response.headers["Server-Timing"].startswith("sync-read;dur=")
 
 
@@ -136,11 +137,11 @@ def test_dashboard_includes_completed_contracts_but_excludes_cancelled_and_not_e
     cursor.executemany(
         "INSERT INTO hop_dong VALUES (?, 'org-1', ?, 0, '', '', NULL, 1, ?, ?)",
         [
-            ("hd-active", "hd-active", 100, "Đang thực hiện"),
-            ("hd-complete", "hd-complete", 200, "Đã hoàn thành"),
-            ("hd-liquidated", "hd-liquidated", 300, "Đã thanh lý"),
-            ("hd-cancelled", "hd-cancelled", 400, "Đã hủy"),
-            ("hd-future", "hd-future", 500, "Chưa hiệu lực"),
+            ("hd-active", "hd-active", 100, "ACTIVE"),
+            ("hd-complete", "hd-complete", 200, "COMPLETED"),
+            ("hd-liquidated", "hd-liquidated", 300, "LIQUIDATED"),
+            ("hd-cancelled", "hd-cancelled", 400, "CANCELLED"),
+            ("hd-future", "hd-future", 500, "NOT_EFFECTIVE"),
         ],
     )
     cursor.executemany(
