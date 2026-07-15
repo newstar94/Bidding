@@ -61,6 +61,7 @@ pnpm-debug.log*
 # Vite cache & build
 .vite/
 dist/
+release/
 .pw-bidding-profile/
 
 # Temporary and local-only files

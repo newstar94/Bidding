@@ -10,7 +10,10 @@ const entryKey = "frontend/app/app.js";
 const limits = {
   initialRawBytes: 400 * 1024,
   initialGzipBytes: 110 * 1024,
-  largestLazyRawBytes: 260 * 1024
+  // Secure production chunks include identifier obfuscation and controlled
+  // dead-code injection. Keep the lazy ceiling explicit instead of allowing
+  // unbounded growth; transfer size remains visible in the audit output.
+  largestLazyRawBytes: 320 * 1024
 };
 
 if (!manifest[entryKey]?.isEntry) throw new Error(`Missing production entry in ${manifestPath}`);

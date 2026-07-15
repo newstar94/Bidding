@@ -2,21 +2,31 @@ import { defineConfig, loadEnv } from 'vite';
 import path from 'path';
 import JavaScriptObfuscator from 'javascript-obfuscator';
 
-function obfuscatorPlugin({ debugProtection = false } = {}) {
+function obfuscatorPlugin({ debugProtection = false, deadCodeInjection = false } = {}) {
+  const obfuscationFingerprint = JSON.stringify({
+    version: 2,
+    debugProtection,
+    deadCodeInjection,
+    deadCodeInjectionThreshold: deadCodeInjection ? 0.02 : 0,
+    identifierNamesGenerator: 'mangled-shuffled',
+    seed: 794012026
+  });
   const obfuscate = code => JavaScriptObfuscator.obfuscate(code, {
     compact: true,
     // Keep the production source difficult to read without making every page
     // pay a large decode/evaluation cost before the app can start.
     controlFlowFlattening: false,
-    deadCodeInjection: false,
+    deadCodeInjection,
+    deadCodeInjectionThreshold: deadCodeInjection ? 0.02 : 0,
     debugProtection,
     debugProtectionInterval: debugProtection ? 3000 : 0,
     disableConsoleOutput: false,
-    identifierNamesGenerator: 'hexadecimal',
+    identifierNamesGenerator: 'mangled-shuffled',
     log: false,
     numbersToExpressions: false,
     renameGlobals: false,
-    selfDefending: true,
+    seed: 794012026,
+    selfDefending: false,
     simplify: true,
     sourceMap: false,
     splitStrings: false,
@@ -32,6 +42,9 @@ function obfuscatorPlugin({ debugProtection = false } = {}) {
     name: 'vite-plugin-obfuscator',
     enforce: 'post',
     apply: 'build',
+    augmentChunkHash() {
+      return obfuscationFingerprint;
+    },
     generateBundle(_options, bundle) {
       for (const output of Object.values(bundle)) {
         if (output.type !== 'chunk' || !output.fileName.endsWith('.js')) continue;
@@ -41,6 +54,11 @@ function obfuscatorPlugin({ debugProtection = false } = {}) {
         }
         output.map = null;
       }
+      this.emitFile({
+        type: 'asset',
+        fileName: 'secure-build.json',
+        source: `${obfuscationFingerprint}\n`
+      });
     }
   };
 }
@@ -49,12 +67,16 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const enableObfuscation = mode === 'secure' || env.ENABLE_JS_OBFUSCATION === 'true';
   const enableDebugProtection = env.ENABLE_JS_DEBUG_PROTECTION === 'true';
+  const enableDeadCodeInjection = enableObfuscation && env.ENABLE_JS_DEAD_CODE_INJECTION !== 'false';
   const isProductionBuild = mode === 'production' || mode === 'secure';
 
   return {
     root: '.',
     base: '/dist/',
-    plugins: enableObfuscation ? [obfuscatorPlugin({ debugProtection: enableDebugProtection })] : [],
+    plugins: enableObfuscation ? [obfuscatorPlugin({
+      debugProtection: enableDebugProtection,
+      deadCodeInjection: enableDeadCodeInjection
+    })] : [],
     esbuild: isProductionBuild ? {
       drop: ['debugger'],
       pure: ['console.log', 'console.debug', 'console.table']
