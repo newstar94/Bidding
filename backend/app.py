@@ -1,6 +1,14 @@
 import sys
 import os
 
+# When this file is launched as ``python backend/app.py``, Python adds the
+# backend directory (not the project root) to sys.path. Keep direct local
+# startup working while preserving normal ``backend.app`` package imports.
+if __package__ in {None, ""}:
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
 from backend.shared.windows_socket_adapter import install_windows_socket_shutdown_adapter
 
 
