@@ -3,7 +3,7 @@ import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partner
 import { persistAndSync } from "../shared/MutationService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml, safeImageSrc } from "../shared/view_helpers.js";
-import { createInitialVersion, createNextVersion, getNextVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import { createInitialVersion, createNextVersion, getNextVersion, preserveRowVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { getCurrentDateYmd } from "../shared/formatters.js";
 import { setContractorViewOnly } from "../shared/runtimeState.js";
 import { generateRecordId } from "../shared/idUtils.js";
@@ -225,6 +225,7 @@ export async function handleNhaThauSubmit(e) {
       data.isLatest = currentNt.isLatest !== void 0 ? currentNt.isLatest : 1;
       data.createdAt = currentNt.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
+      preserveRowVersion(data, currentNt);
       const idx = this.model.state.nhathau.findIndex((n) => n.id === id);
       this.model.state.nhathau[idx] = data;
     }

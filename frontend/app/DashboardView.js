@@ -34,8 +34,8 @@ export function renderDashboard() {
     if (statCountHopDong2) statCountHopDong2.textContent = counts.hopdong || 0;
     document.getElementById("stat-active-goithau").textContent = `${counts.activeGoithau || 0} gói đang mời thầu`;
     document.getElementById("stat-total-budget").textContent = this.model.formatCurrency(serverSummary.totalContractValue || 0);
-    document.getElementById("stat-savings-value").textContent = `${counts.hopdong || 0} Hợp đồng`;
-    document.getElementById("stat-savings-percent").textContent = "Đang thực hiện";
+    document.getElementById("stat-savings-value").textContent = `${counts.assignedHopdong || 0} Hợp đồng`;
+    document.getElementById("stat-savings-percent").textContent = `${counts.activeAssignedHopdong || 0} đang thực hiện`;
     document.getElementById("donut-total-count").textContent = counts.goithau || 0;
     const total2 = counts.goithau || 1;
     const fallbackPalette = Object.values(PACKAGE_STATUS_COLORS);
@@ -85,19 +85,30 @@ export function renderDashboard() {
   const dashboardSignature = [
     this.model.workspaceStorage?.getItem("bf_last_sync_version") || "",
     listSignature(this.model.state.goithau, ["id", "updatedAt", "syncVersion", "trangThai", "giaGoiThau"]),
-    listSignature(this.model.state.hopdong, ["id", "updatedAt", "syncVersion", "giaTri"])
+    listSignature(this.model.state.hopdong, ["id", "rootId", "phienBan", "isLatest", "updatedAt", "syncVersion", "giaTri", "trangThaiHopDong"]),
+    listSignature(this.model.state.assignments, ["id", "empId", "targetId", "type", "syncVersion"])
   ].join("|");
   let latestPackages;
   let filteredContracts;
+  let assignedContracts;
+  let activeAssignedContracts;
   let totalContractValue;
   let activePackages;
   let statusCounts;
   const cachedAggregate = this._dashboardAggregateCache;
   if (cachedAggregate && cachedAggregate.signature === dashboardSignature) {
-    ({ latestPackages, filteredContracts, totalContractValue, activePackages, statusCounts } = cachedAggregate);
+    ({ latestPackages, filteredContracts, assignedContracts, activeAssignedContracts, totalContractValue, activePackages, statusCounts } = cachedAggregate);
   } else {
     latestPackages = this.model.getFilteredGoiThau();
-    filteredContracts = this.model.getFilteredHopDong();
+    filteredContracts = this.model.getFilteredHopDong().filter(
+      (contract) => !["Chưa hiệu lực", "Đã hủy"].includes(contract.trangThaiHopDong || "Đang thực hiện")
+    );
+    assignedContracts = this.model.getLatestContracts().filter(
+      (contract) => this.model.isAssigned(this.model.state.activeuser?.id, contract.id, "hopdong")
+    );
+    activeAssignedContracts = assignedContracts.filter(
+      (contract) => (contract.trangThaiHopDong || "Đang thực hiện") === "Đang thực hiện"
+    );
     totalContractValue = this.model.sumVND(filteredContracts.map((hd) => hd.giaTri || 0));
     activePackages = 0;
     latestPackages.forEach((gt) => {
@@ -111,7 +122,7 @@ export function renderDashboard() {
         statusCounts[gt.trangThai]++;
       }
     });
-    this._dashboardAggregateCache = { signature: dashboardSignature, latestPackages, filteredContracts, totalContractValue, activePackages, statusCounts };
+    this._dashboardAggregateCache = { signature: dashboardSignature, latestPackages, filteredContracts, assignedContracts, activeAssignedContracts, totalContractValue, activePackages, statusCounts };
   }
   document.getElementById("stat-count-kehoach").textContent = this.model.getFilteredKeHoach().length;
   document.getElementById("stat-count-goithau").textContent = latestPackages.length;
@@ -124,8 +135,8 @@ export function renderDashboard() {
   }
   document.getElementById("stat-active-goithau").textContent = `${activePackages} gói đang mời thầu`;
   document.getElementById("stat-total-budget").textContent = this.model.formatCurrency(totalContractValue);
-  document.getElementById("stat-savings-value").textContent = `${filteredContracts.length} Hợp đồng`;
-  document.getElementById("stat-savings-percent").textContent = `Đang thực hiện`;
+  document.getElementById("stat-savings-value").textContent = `${assignedContracts.length} Hợp đồng`;
+  document.getElementById("stat-savings-percent").textContent = `${activeAssignedContracts.length} đang thực hiện`;
   const total = latestPackages.length || 1;
   document.getElementById("donut-total-count").textContent = latestPackages.length;
   let accum = 0;

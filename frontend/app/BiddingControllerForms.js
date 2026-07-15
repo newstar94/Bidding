@@ -2,7 +2,18 @@ import { bindCurrencyElement, bindCurrencyInput, debounce, onAll, onById } from 
 import { bindImageUploadPreview } from "./fileUploadUtils.js";
 import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisible } from "./formStateUtils.js";
 import { setupInlineExcelControls } from "./inlineExcelControls.js";
-import { initCustomSelect } from "../shared/view_helpers.js";
+import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
+
+function setDynamicFieldLabel(label, text, required = false) {
+  if (!label) return;
+  label.textContent = String(text || "");
+  if (!required) return;
+  label.append(" ");
+  const marker = document.createElement("span");
+  marker.className = "required";
+  marker.textContent = "*";
+  label.appendChild(marker);
+}
 export function updateNguonVonFieldState(planId) {
   const gtNguonVon = document.getElementById("gt-nguonvon");
   if (!gtNguonVon) return;
@@ -773,7 +784,7 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
       setVisible(formGroup, false);
       setRequired(input, false);
       if (label) {
-        label.innerHTML = f.label;
+        setDynamicFieldLabel(label, f.label);
       }
     } else if (trangThai === "Đang mời thầu" && (f.id === "gt-thoigianmothau" || f.id === "gt-thoigianmoehsdxtc")) {
       setVisible(formGroup, false);
@@ -785,15 +796,11 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
       setVisible(formGroup, true);
       if (f.required) {
         setRequired(input, true);
-        if (label && !label.querySelector(".required")) {
-          label.innerHTML = `${f.label} <span class="required">*</span>`;
-        } else if (label) {
-          label.innerHTML = `${f.label} <span class="required">*</span>`;
-        }
+        setDynamicFieldLabel(label, f.label, true);
       } else {
         setRequired(input, false);
         if (label) {
-          label.innerHTML = f.label;
+          setDynamicFieldLabel(label, f.label);
         }
       }
     }
@@ -971,7 +978,9 @@ export function updateAwardedContractorUI(defaultDataList = null) {
           }
         });
         const uniqueBidders = Array.from(uniqueBiddersMap.values());
-        const nhathauOptions = uniqueBidders.length > 0 ? uniqueBidders.map((b) => `<option value="${b.nhaThauId}">${b.tenNhaThau}</option>`).join("") : this.model.state.nhathau.map((n) => `<option value="${n.id}">${n.tenNhaThau}</option>`).join("");
+        const nhathauOptions = uniqueBidders.length > 0
+          ? uniqueBidders.map((b) => `<option value="${escapeHtml(b.nhaThauId)}">${escapeHtml(b.tenNhaThau)}</option>`).join("")
+          : this.model.state.nhathau.map((n) => `<option value="${escapeHtml(n.id)}">${escapeHtml(n.tenNhaThau)}</option>`).join("");
         const row = document.createElement("tr");
         let matchedData = null;
         if (defaultDataList && defaultDataList.length > 0) {
@@ -985,7 +994,7 @@ export function updateAwardedContractorUI(defaultDataList = null) {
         const tgGoiThau = matchedData?.thoiGianGoiThau || "";
         const tgHopDong = matchedData?.thoiGianHopDong || "";
         row.innerHTML = `
-                    <td style="font-weight: 600; font-size: 0.84rem; color: var(--text-main);">${pl.tenPhanLo}</td>
+                    <td style="font-weight: 600; font-size: 0.84rem; color: var(--text-main);">${escapeHtml(pl.tenPhanLo)}</td>
                     <td>
                         <select class="awarded-pl-nhathau" required style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
                             <option value="">-- Chọn Nhà thầu --</option>
@@ -993,13 +1002,13 @@ export function updateAwardedContractorUI(defaultDataList = null) {
                         </select>
                     </td>
                     <td>
-                        <input type="text" class="awarded-pl-gia input-gia" required value="${giaTri}" placeholder="Nhập giá trúng" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                        <input type="text" class="awarded-pl-gia input-gia" required value="${escapeHtml(giaTri)}" placeholder="Nhập giá trúng" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
                     </td>
                     <td>
-                        <input type="text" class="awarded-pl-tggoithau" required value="${tgGoiThau}" placeholder="Ví dụ: 90 ngày" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                        <input type="text" class="awarded-pl-tggoithau" required value="${escapeHtml(tgGoiThau)}" placeholder="Ví dụ: 90 ngày" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
                     </td>
                     <td>
-                        <input type="text" class="awarded-pl-tghopdong" required value="${tgHopDong}" placeholder="Ví dụ: 90 ngày" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
+                        <input type="text" class="awarded-pl-tghopdong" required value="${escapeHtml(tgHopDong)}" placeholder="Ví dụ: 90 ngày" style="width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-app); color: var(--text-main); font-weight: 600;">
                     </td>
                 `;
         const sel = row.querySelector(".awarded-pl-nhathau");

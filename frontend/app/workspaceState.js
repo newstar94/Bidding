@@ -1,6 +1,8 @@
 const ACTIVE_ORG_KEY = "bf_active_org";
 const WORKSPACE_PREFIX = "bf_workspace";
 export const WORKSPACE_PURGE_EVENT_KEY = "bf_workspace_purge";
+export const WORKSPACE_PURGE_CHANNEL = "biddingflow-workspace-purge";
+const WORKSPACE_PURGE_PENDING_PREFIX = "bf_workspace_purge_pending:";
 
 function getStorage(candidate, fallbackName) {
   if (candidate) return candidate;
@@ -60,9 +62,9 @@ export function workspaceDatabaseName(scope) {
   return `BiddingFlowDB_${scope.key}`;
 }
 
-function removeScopedStorage(storage, scope) {
-  if (!storage || !scope?.key) return;
-  const prefix = `${WORKSPACE_PREFIX}:${scope.key}:`;
+function removeUserWorkspaceStorage(storage, userId) {
+  if (!storage || !userId) return;
+  const prefix = `${WORKSPACE_PREFIX}:${encodeURIComponent(userId)}:`;
   const keys = [];
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index);
@@ -71,35 +73,105 @@ function removeScopedStorage(storage, scope) {
   keys.forEach((key) => storage.removeItem(key));
 }
 
+async function deleteWorkspaceDatabase(databaseApi, databaseName) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await new Promise((resolve, reject) => {
+        const request = databaseApi.deleteDatabase(databaseName);
+        const timeout = globalThis.setTimeout(
+          () => reject(new Error(`Workspace database is still open: ${databaseName}`)),
+          2_000
+        );
+        const finish = (callback) => {
+          globalThis.clearTimeout(timeout);
+          callback();
+        };
+        request.onsuccess = () => finish(resolve);
+        request.onerror = () => finish(() => reject(request.error || new Error("Cannot delete workspace database")));
+        request.onblocked = () => finish(() => reject(new Error(`Workspace database deletion is blocked: ${databaseName}`)));
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 export async function purgeWorkspaceLocalData(scope, options = {}) {
   if (!scope?.key) return false;
   const local = getStorage(options.localStorage, "localStorage");
   const session = getStorage(options.sessionStorage, "sessionStorage");
-  local?.setItem(WORKSPACE_PURGE_EVENT_KEY, JSON.stringify({ scopeKey: scope.key, at: Date.now() }));
-  removeScopedStorage(local, scope);
-  removeScopedStorage(session, scope);
+  const purgeMessage = { scopeKey: scope.key, userId: scope.userId, at: Date.now() };
+  const pendingKey = `${WORKSPACE_PURGE_PENDING_PREFIX}${encodeURIComponent(scope.userId)}`;
+  local?.setItem(pendingKey, JSON.stringify({
+    userId: scope.userId,
+    organizationId: scope.organizationId,
+    scopeKey: scope.key,
+  }));
+  local?.setItem(WORKSPACE_PURGE_EVENT_KEY, JSON.stringify(purgeMessage));
+  const channel = typeof globalThis.BroadcastChannel === "function"
+    ? new globalThis.BroadcastChannel(WORKSPACE_PURGE_CHANNEL)
+    : null;
+  channel?.postMessage(purgeMessage);
+  removeUserWorkspaceStorage(local, scope.userId);
+  removeUserWorkspaceStorage(session, scope.userId);
   const databaseApi = options.indexedDB || globalThis.indexedDB;
-  if (!databaseApi?.deleteDatabase) return true;
+  if (!databaseApi?.deleteDatabase) {
+    channel?.close();
+    local?.removeItem(WORKSPACE_PURGE_EVENT_KEY);
+    local?.removeItem(pendingKey);
+    return true;
+  }
   try {
-    await new Promise((resolve, reject) => {
-      const request = databaseApi.deleteDatabase(workspaceDatabaseName(scope));
-      const timeout = globalThis.setTimeout(
-        () => reject(new Error("Workspace database is open in another tab")),
-        2_000
-      );
-      request.onsuccess = () => {
-        globalThis.clearTimeout(timeout);
-        resolve();
-      };
-      request.onerror = () => {
-        globalThis.clearTimeout(timeout);
-        reject(request.error || new Error("Cannot delete workspace database"));
-      };
-    });
+    const currentName = workspaceDatabaseName(scope);
+    let databaseNames = [currentName];
+    if (typeof databaseApi.databases === "function") {
+      const userPrefix = `BiddingFlowDB_${encodeURIComponent(scope.userId)}:`;
+      const knownDatabases = await databaseApi.databases();
+      databaseNames = knownDatabases
+        .map((entry) => entry?.name)
+        .filter((name) => name === currentName || name?.startsWith(userPrefix));
+      if (!databaseNames.includes(currentName)) databaseNames.push(currentName);
+    }
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+    for (const databaseName of new Set(databaseNames)) {
+      await deleteWorkspaceDatabase(databaseApi, databaseName);
+    }
+    local?.removeItem(pendingKey);
   } finally {
+    channel?.close();
     local?.removeItem(WORKSPACE_PURGE_EVENT_KEY);
   }
   return true;
+}
+
+export async function retryPendingWorkspacePurges(options = {}) {
+  const local = getStorage(options.localStorage, "localStorage");
+  if (!local) return 0;
+  const pending = [];
+  for (let index = 0; index < local.length; index += 1) {
+    const key = local.key(index);
+    if (!key?.startsWith(WORKSPACE_PURGE_PENDING_PREFIX)) continue;
+    try {
+      const value = JSON.parse(local.getItem(key) || "null");
+      if (value?.userId && value?.organizationId) pending.push(value);
+    } catch (_) {
+      local.removeItem(key);
+    }
+  }
+  let completed = 0;
+  for (const item of pending) {
+    try {
+      await purgeWorkspaceLocalData(createWorkspaceScope(item.userId, item.organizationId), options);
+      completed += 1;
+    } catch (error) {
+      console.warn("Pending workspace purge is still blocked:", error);
+    }
+  }
+  return completed;
 }
 
 export class ScopedWorkspaceStorage {

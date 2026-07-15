@@ -3,6 +3,7 @@ import { bindCurrencyElement } from "../app/domUtils.js";
 import {
   canDeleteVersions,
   createNextVersion,
+  preparePackageSnapshot,
   rememberSelectedVersion,
   removeAllVersions,
   removeLatestVersion
@@ -184,7 +185,7 @@ export async function editKeHoach(id) {
     document.getElementById("kh-quyetdinhpheduyetdutoan").value = kh.soQdPheDuyetDuToan || "";
     document.getElementById("kh-maduan").value = kh.maDuan || "";
     document.getElementById("kh-nguonvon").value = kh.nguonVon || "";
-    document.getElementById("kh-thoigian-duan").value = kh.thoigianDuan || "";
+    document.getElementById("kh-thoigian-duan").value = kh.thoiGianDuAn || "";
     document.getElementById("kh-soqdpheduyetduan").value = kh.soQdPheDuyetDuAn || "";
     document.getElementById("kh-ngayqdpheduyetduan").value = this.model.formatForDateInput(kh.ngayQdPheDuyetDuAn);
     document.getElementById("kh-coquanpheduyetduan").value = kh.coQuanPheDuyetDuAn || "";
@@ -352,7 +353,7 @@ export async function handleKeHoachSubmit(e) {
   const tenVietTatDonViTrinh = document.getElementById("kh-tenviettatdonvitrinh").value.trim();
   const maDuan = document.getElementById("kh-maduan").value.trim();
   const nguonVon = document.getElementById("kh-nguonvon").value.trim();
-  const thoigianDuan = document.getElementById("kh-thoigian-duan").value.trim();
+  const thoiGianDuAn = document.getElementById("kh-thoigian-duan").value.trim();
   const soQdPheDuyetDuAn = document.getElementById("kh-soqdpheduyetduan").value.trim();
   const ngayQdPheDuyetDuAnRaw = document.getElementById("kh-ngayqdpheduyetduan").value;
   const ngayQdPheDuyetDuAnYMD = this.model.convertDMYToYMD(ngayQdPheDuyetDuAnRaw);
@@ -391,7 +392,7 @@ export async function handleKeHoachSubmit(e) {
     quyetDinhPheDuyet: document.getElementById("kh-quyetdinh").value.trim(),
     thoiGianDangMa: finalPublishTime,
     nguonVon,
-    thoigianDuan,
+    thoiGianDuAn,
     maDuan: loaiHinhVal === "Dự án" ? maDuan : "",
     soQdPheDuyetDuAn: loaiHinhVal === "Dự án" ? soQdPheDuyetDuAn : "",
     ngayQdPheDuyetDuAn: loaiHinhVal === "Dự án" ? ngayQdPheDuyetDuAnYMD : "",
@@ -442,8 +443,8 @@ export async function openPlanBreakdownModal(planId) {
   if (!kh) return;
   document.getElementById("breakdown-plan-id").value = planId;
   document.getElementById("breakdown-modal-subtitle").innerHTML = `
-        <strong>Kế hoạch:</strong> ${kh.tenKeHoach} <span class="badge badge-info" style="margin-left:8px;">${this.model.getVersionLabel(kh.phienBan)}</span><br>
-        <span style="display:inline-block; margin-top:4px;"><strong>Mã:</strong> ${this.model.getPlanBaseCode(kh.maKeHoach) || "(Chưa có)"} | <span id="breakdown-total-display"></span></span>
+        <strong>Kế hoạch:</strong> ${escapeHtml(kh.tenKeHoach)} <span class="badge badge-info" style="margin-left:8px;">${escapeHtml(this.model.getVersionLabel(kh.phienBan))}</span><br>
+        <span style="display:inline-block; margin-top:4px;"><strong>Mã:</strong> ${escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach) || "(Chưa có)")} | <span id="breakdown-total-display"></span></span>
     `;
   const tbody1 = document.getElementById("tbody-breakdown-dathuchien");
   tbody1.innerHTML = "";
@@ -549,7 +550,7 @@ export function renderBreakdownPackagesList(planId) {
                 <td style="padding: 10px 14px; font-weight: 500; color: var(--text-muted);">${escapeHtml(hinhThuc)}</td>
                 <td style="padding: 10px 14px;">${trangThaiBadge}</td>
                 <td style="padding: 10px 14px; text-align: center;">
-                    ${gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" ? `<button type="button" class="btn btn-outline btn-sm" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm" data-bf-action="edit-package" data-id="${gt.id}" style="padding: 4px 8px; font-size: 0.78rem;">Sửa</button>`}
+                    ${gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" ? `<button type="button" class="btn btn-outline btn-sm" data-bf-action="show-package" data-close-before="modal-plan-breakdown" data-id="${escapeHtml(gt.id)}" style="padding: 4px 8px; font-size: 0.78rem;">Xem</button>` : `<button type="button" class="btn btn-outline btn-sm" data-bf-action="edit-package" data-id="${escapeHtml(gt.id)}" style="padding: 4px 8px; font-size: 0.78rem;">Sửa</button>`}
                 </td>
             </tr>
         `;
@@ -709,7 +710,10 @@ export async function savePlanBreakdown() {
       nextPlan.createdAt = oldKh.createdAt || timestamp;
       this.model.state.kehoach.push(nextPlan);
       rememberSelectedVersion(this.model.state, "selectedPlanVersion", nextPlan);
-      const activeUserId = this.model.state.activeuser.id;
+      const previousPlanAssignment = this.model.state.assignments.find(
+        (assignment) => assignment.targetId === oldKh.id && assignment.type === "kehoach"
+      );
+      const activeUserId = previousPlanAssignment?.empId || this.model.state.activeuser.id;
       if (activeUserId) {
         await this.model.addRecord("assignments", {
           id: generateRecordId("assignments"),
@@ -719,24 +723,28 @@ export async function savePlanBreakdown() {
         });
       }
       const oldPackages = this.model.state.goithau.filter((gt) => gt.keHoachId === oldKh.id);
-      oldPackages.forEach((gt) => {
+      for (const gt of oldPackages) {
         const newGtId = generateRecordId("goithau");
-        this.model.state.goithau.push({
-          ...gt,
-          id: newGtId,
+        const nextPackage = createNextVersion(this.model.state.goithau, gt, preparePackageSnapshot(gt, {
           keHoachId: newId
+        }), {
+          id: newGtId,
+          timestamp
         });
-        if (Array.isArray(this.model.state.thongtinmothau)) {
-          const relatedBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gt.id));
-          relatedBids.forEach((b) => {
-            this.model.state.thongtinmothau.push({
-              ...b,
-              id: generateRecordId("assignments"),
-              goiThauId: newGtId
-            });
+        nextPackage.createdAt = gt.createdAt || timestamp;
+        this.model.state.goithau.push(nextPackage);
+        const previousPackageAssignment = this.model.state.assignments.find(
+          (assignment) => assignment.targetId === gt.id && assignment.type === "goithau"
+        );
+        if (previousPackageAssignment?.empId) {
+          await this.model.addRecord("assignments", {
+            id: generateRecordId("assignments"),
+            empId: previousPackageAssignment.empId,
+            targetId: newGtId,
+            type: "goithau"
           });
         }
-      });
+      }
     } else {
       const currentKh = this.model.state.kehoach.find((k) => k.id === planId);
       if (currentKh) {

@@ -1,5 +1,17 @@
 import re
 import datetime
+import unicodedata
+
+
+def normalize_business_identifier(value, *, digits_only=False):
+    """Return the canonical stored representation of a business identifier."""
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    text = text.translate(str.maketrans({
+        "–": "-", "—": "-", "−": "-", "‐": "-", "‑": "-",
+        "／": "/",
+    }))
+    text = re.sub(r"\s+", "", text) if digits_only else re.sub(r"\s+", " ", text).strip()
+    return text.upper()
 
 
 def normalize_person_name(value):

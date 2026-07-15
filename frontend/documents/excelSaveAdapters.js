@@ -1,6 +1,14 @@
 ﻿import { normalizePersonName } from "../app/domUtils.js";
 const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong"]);
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
+import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
+
+function assertImportRecords(type, records, allowedTransforms = []) {
+  records.forEach((record) => assertOutboundRecordFields(record, type, {
+    source: `Excel ${type}`,
+    allowedTransforms
+  }));
+}
 function ensureYMD(controller, dateStr) {
   if (!dateStr) return "";
   if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) return dateStr.substring(0, 10);
@@ -15,7 +23,17 @@ function upsertById(list, items) {
   items.forEach((item) => {
     const idx = list.findIndex((existing) => existing.id === item.id);
     if (idx !== -1) {
-      list[idx] = item;
+      const existing = list[idx];
+      list[idx] = {
+        ...existing,
+        ...item,
+        id: existing.id,
+        rootId: existing.rootId || existing.id,
+        phienBan: existing.phienBan || "00",
+        isLatest: existing.isLatest ?? 1,
+        rowVersion: existing.rowVersion,
+        createdAt: existing.createdAt
+      };
     } else {
       list.push(item);
     }
@@ -31,16 +49,21 @@ export async function saveBasicExcelImport(controller, type, validRows) {
   if (!isBasicExcelImportType(type)) return null;
   if (type === "plan" || type === "kehoach") {
     const mappedData = validRows.map((row) => {
-      const planId = generateRecordId("kehoach");
+      const normalizedCode = String(row.maKeHoach || "").trim().toLocaleLowerCase("vi-VN");
+      const existing = controller.model.state.kehoach.find(
+        (plan) => plan.isLatest === 1 && String(plan.maKeHoach || "").trim().toLocaleLowerCase("vi-VN") === normalizedCode
+      );
+      const planId = existing?.id || generateRecordId("kehoach");
       return {
+        ...(existing || {}),
         id: planId,
         maKeHoach: row.maKeHoach || "",
-        phienBan: "00",
-        isLatest: 1,
-        rootId: planId,
+        phienBan: existing?.phienBan || "00",
+        isLatest: existing?.isLatest ?? 1,
+        rootId: existing?.rootId || planId,
         tenKeHoach: row.tenKeHoach || "",
         tenDuAnDuToan: row.tenDuAnDuToan || "",
-        chuDauTuId: "",
+        chuDauTuId: existing?.chuDauTuId || "",
         donViTrinhCdt: row.donViTrinhCdt || "",
         tenVietTatDonViTrinh: row.tenVietTatDonViTrinh || "",
         tongMucDauTu: controller.model.parseVND(row.tongMucDauTu) || 0,
@@ -49,7 +72,8 @@ export async function saveBasicExcelImport(controller, type, validRows) {
         thoiGianDangMa: row.thoiGianDangMa ? ensureYMDHMS(controller, row.thoiGianDangMa) : ""
       };
     });
-    controller.model.state.kehoach.push(...mappedData);
+    assertImportRecords("kehoach", mappedData);
+    upsertById(controller.model.state.kehoach, mappedData);
     await controller.model.persistData("kehoach");
     return mappedData.length;
   }
@@ -57,41 +81,47 @@ export async function saveBasicExcelImport(controller, type, validRows) {
     const latestPlans = controller.model.getLatestPlans();
     const mappedData = validRows.map((row) => {
       const matchedPlan = latestPlans.find((p) => p.maKeHoach.toLowerCase() === (row.keHoachId || row.maKeHoach || "").toLowerCase());
-      const gtId = generateRecordId("goithau");
+      const normalizedCode = String(row.maGoiThau || "").trim().toLocaleLowerCase("vi-VN");
+      const existing = controller.model.state.goithau.find(
+        (pkg) => pkg.isLatest === 1 && String(pkg.maGoiThau || "").trim().toLocaleLowerCase("vi-VN") === normalizedCode
+      );
+      const gtId = existing?.id || generateRecordId("goithau");
       return {
+        ...(existing || {}),
         id: gtId,
         maGoiThau: row.maGoiThau || "",
-        phienBan: "00",
-        isLatest: 1,
-        rootId: gtId,
-        keHoachId: matchedPlan ? matchedPlan.id : "",
+        phienBan: existing?.phienBan || "00",
+        isLatest: existing?.isLatest ?? 1,
+        rootId: existing?.rootId || gtId,
+        keHoachId: matchedPlan?.id || existing?.keHoachId || "",
         tenGoiThau: row.tenGoiThau || "",
         giaGoiThau: controller.model.parseVND(row.giaGoiThau),
         thoiGianThucHien: parseInt(row.thoiGianThucHien) || 0,
         hinhThucLuaChon: row.hinhThucLuaChon || "Đấu thầu rộng rãi",
         phuongThucLuaChon: row.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ",
-        trangThai: row.trangThai || "Chưa thực hiện",
+        trangThai: row.trangThai || "Chuẩn bị",
         linhVuc: row.linhVuc || "Xây lắp",
-        tuyChonMuaThem: "Không",
-        nguonVon: "Ngân sách nhà nước",
-        loaiHopDong: "Trọn gói",
-        thoiGianToChuc: "",
-        thoiGianBatDauToChuc: "",
-        quaMang: "Qua mạng",
-        trongNuocQuocTe: "Trong nước",
-        phanLo: "Không",
-        phanLoList: [],
-        tuyChonMuaThemList: [],
+        tuyChonMuaThem: existing?.tuyChonMuaThem || "Không",
+        nguonVon: existing?.nguonVon || "Ngân sách nhà nước",
+        loaiHopDong: existing?.loaiHopDong || "Trọn gói",
+        thoiGianToChuc: existing?.thoiGianToChuc || "",
+        thoiGianBatDauToChuc: existing?.thoiGianBatDauToChuc || "",
+        quaMang: existing?.quaMang || "Qua mạng",
+        trongNuocQuocTe: existing?.trongNuocQuocTe || "Trong nước",
+        phanLo: existing?.phanLo || "Không",
+        phanLoList: existing?.phanLoList || [],
+        tuyChonMuaThemList: existing?.tuyChonMuaThemList || [],
         soQuyetDinh: row.soQuyetDinh || "",
         ngayQuyetDinh: ensureYMD(controller, row.ngayQuyetDinh),
         thoiGianDangTai: row.thoiGianDangTai ? ensureYMDHMS(controller, row.thoiGianDangTai) : "",
         thoiGianDongThau: row.thoiGianDongThau ? ensureYMDHMS(controller, row.thoiGianDongThau) : "",
         thoiGianMoThau: row.thoiGianMoThau ? ensureYMDHMS(controller, row.thoiGianMoThau) : "",
-        toChuyenGia: [],
-        toThamDinh: []
+        toChuyenGia: existing?.toChuyenGia || [],
+        toThamDinh: existing?.toThamDinh || []
       };
     });
-    controller.model.state.goithau.push(...mappedData);
+    assertImportRecords("goithau", mappedData);
+    upsertById(controller.model.state.goithau, mappedData);
     [...new Set(mappedData.map((gt) => gt.keHoachId).filter(Boolean))].forEach((pid) => controller.recalculatePlanTotal(pid));
     await Promise.all([
       controller.model.persistData("goithau"),
@@ -128,6 +158,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
         maQHNS: row.maQHNS || ""
       };
     });
+    assertImportRecords("chudautu", mappedData);
     upsertById(controller.model.state.chudautu, mappedData);
     await controller.model.persistData("chudautu");
     return mappedData.length;
@@ -164,6 +195,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
         thanhVienLienDanh: existing ? existing.thanhVienLienDanh : []
       };
     });
+    assertImportRecords("nhathau", mappedData);
     upsertById(controller.model.state.nhathau, mappedData);
     await controller.model.persistData("nhathau");
     return mappedData.length;
@@ -194,6 +226,7 @@ export async function saveBasicExcelImport(controller, type, validRows) {
         tenAnhChuKy: existing ? existing.tenAnhChuKy : ""
       };
     });
+    assertImportRecords("chuyengia", mappedData);
     upsertById(controller.model.state.chuyengia, mappedData);
     await controller.model.persistData("chuyengia");
     return mappedData.length;
@@ -205,6 +238,17 @@ export async function saveBasicExcelImport(controller, type, validRows) {
       const soHd = (row.soHopDong || "").trim().toLowerCase();
       const existing = controller.model.state.hopdong.find((h) => h.soHopDong && h.soHopDong.trim().toLowerCase() === soHd);
       const targetId = existing ? existing.id : generateRecordId("hopdong");
+      const plan = (controller.model.state.kehoach || []).find((item) =>
+        String(item.id) === String(row.keHoachId || "") ||
+        String(item.maKeHoach || "").trim().toLocaleLowerCase("vi-VN") === String(row.keHoachId || row.maKeHoach || "").trim().toLocaleLowerCase("vi-VN")
+      );
+      const packageCodes = String(row.goiThauIds || row.maGoiThau || "")
+        .split(/[,;\n]/)
+        .map((value) => value.trim().toLocaleLowerCase("vi-VN"))
+        .filter(Boolean);
+      const packageIds = (controller.model.state.goithau || [])
+        .filter((item) => packageCodes.includes(String(item.id || "").toLocaleLowerCase("vi-VN")) || packageCodes.includes(String(item.maGoiThau || "").trim().toLocaleLowerCase("vi-VN")))
+        .map((item) => item.id);
       return {
         id: targetId,
         rootId: targetId,
@@ -222,9 +266,13 @@ export async function saveBasicExcelImport(controller, type, validRows) {
         soQdChiDinh: row.soQdChiDinh || "",
         ngayQdChiDinh: ensureYMD(controller, row.ngayQdChiDinh),
         soNgayThucHien: row.soNgayThucHien ? String(row.soNgayThucHien).trim() : "",
-        goiThauIds: existing ? existing.goiThauIds : []
+        keHoachId: plan?.id || existing?.keHoachId || "",
+        goiThauIds: packageIds.length ? packageIds : existing?.goiThauIds || [],
+        trangThaiHopDong: row.trangThaiHopDong || existing?.trangThaiHopDong || "Đang thực hiện",
+        trangThaiHoSo: row.trangThaiHoSo || existing?.trangThaiHoSo || ""
       };
     });
+    assertImportRecords("hopdong", mappedData);
     upsertById(controller.model.state.hopdong, mappedData);
     await controller.model.persistData("hopdong");
     return mappedData.length;
@@ -276,12 +324,18 @@ async function saveOpeningImport(controller, validRows) {
   const select = document.getElementById("mothau-goithau-select");
   const gtId = select ? select.value : "";
   if (!gtId) return 0;
-  controller.model.state.thongtinmothau = controller.model.state.thongtinmothau.filter((b) => String(b.goiThauId) !== String(gtId));
+  const importedBids = [];
   validRows.forEach((row) => {
     const foundNt = ensureContractorForOpeningImport(controller, row);
     const nhaThauId = foundNt ? foundNt.id : row.nhaThauId;
-    controller.model.state.thongtinmothau.push({
-      id: row.id || generateRecordId("thongtinmothau"),
+    const existingBid = controller.model.state.thongtinmothau.find((bid) =>
+      String(bid.goiThauId) === String(gtId) &&
+      ((row.id && String(bid.id) === String(row.id)) ||
+        (String(bid.nhaThauId || "") === String(nhaThauId || "") &&
+          String(bid.maPhanLo || "").trim().toLocaleLowerCase("vi-VN") === String(row.maPhanLo || "").trim().toLocaleLowerCase("vi-VN")))
+    );
+    importedBids.push({
+      id: existingBid?.id || row.id || generateRecordId("thongtinmothau"),
       goiThauId: gtId,
       nhaThauId,
       maPhanLo: row.maPhanLo || "",
@@ -299,6 +353,7 @@ async function saveOpeningImport(controller, validRows) {
       loaiNhaThau: foundNt ? foundNt.loaiNhaThau : row.loaiNhaThau
     });
   });
+  upsertById(controller.model.state.thongtinmothau, importedBids);
   await Promise.all([
     controller.model.persistData("nhathau"),
     controller.model.persistData("thongtinmothau")
@@ -439,6 +494,7 @@ async function saveOpeningFinancialImport(controller, validRows) {
 }
 export async function saveBusinessExcelImport(controller, type, validRows) {
   if (!isBusinessExcelImportType(type)) return null;
+  assertImportRecords("thongtinmothau", validRows, type === "ketquaqd" ? ["trangThai"] : []);
   if (type === "mothau") return await saveOpeningImport(controller, validRows);
   if (type === "danhgiahsdt") return await saveEvaluationImport(controller, validRows);
   if (type === "ketquaqd") return await saveAwardResultImport(controller, validRows);

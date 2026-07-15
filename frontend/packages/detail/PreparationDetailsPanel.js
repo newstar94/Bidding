@@ -1,4 +1,5 @@
 import { savePackagePreparation } from "../packagePreparation.js";
+import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 
 export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, isEditable, appController }) {
       if (true) {
@@ -17,23 +18,23 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
                                     <div class="package-info-row">
                                         <span class="package-info-label">Mã TBMT</span>
-                                        <span class="package-info-value">${gt.maGoiThau || "--"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.maGoiThau || "--")}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Tên gói thầu</span>
-                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right; word-break: break-word;">${gt.tenGoiThau || "--"}</span>
+                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right; word-break: break-word;">${escapeHtml(gt.tenGoiThau || "--")}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Chủ đầu tư</span>
-                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${tenCdtStr}</span>
+                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${escapeHtml(tenCdtStr)}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Kế hoạch LCNT</span>
-                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${tenKhStr}</span>
+                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${escapeHtml(tenKhStr)}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Lĩnh vực</span>
-                                        <span class="package-info-value">${gt.linhVuc || "--"}${gt.linhVuc === "Hàng hóa" ? gt.isThuoc == 1 ? " (Thuốc)" : " (Không phải thuốc)" : ""}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.linhVuc || "--")}${gt.linhVuc === "Hàng hóa" ? gt.isThuoc == 1 ? " (Thuốc)" : " (Không phải thuốc)" : ""}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Giá gói thầu</span>
@@ -41,7 +42,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span class="package-info-label">Nguồn vốn</span>
-                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${gt.nguonVon || "--"}</span>
+                                        <span style="color: var(--text-main); font-weight: 700; max-width: 60%; text-align: right;">${escapeHtml(gt.nguonVon || "--")}</span>
                                     </div>
                                 </div>
                             </div>
@@ -56,32 +57,32 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
                                     <div class="package-info-row">
                                         <span class="package-info-label">Hình thức LCNT</span>
-                                        <span class="package-info-value">${gt.hinhThucLuaChon || "--"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.hinhThucLuaChon || "--")}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Phương thức LCNT</span>
-                                        <span class="package-info-value">${gt.phuongThucLuaChon || "--"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.phuongThucLuaChon || "--")}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Phương pháp đánh giá</span>
-                                        <span class="package-info-value">${gt.phuongPhapDanhGia || "--"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.phuongPhapDanhGia || "--")}</span>
                                     </div>
                                     ${gt.trongSoKyThuat ? `
                                     <div class="package-info-row">
                                         <span class="package-info-label">Trọng số kỹ thuật (%)</span>
-                                        <span class="package-info-value">${gt.trongSoKyThuat}%</span>
+                                        <span class="package-info-value">${escapeHtml(gt.trongSoKyThuat)}%</span>
                                     </div>` : ""}
                                     <div class="package-info-row">
                                         <span class="package-info-label">Đấu thầu qua mạng</span>
-                                        <span class="package-info-value">${gt.quaMang || "Qua mạng"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.quaMang || "Qua mạng")}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Phân lô</span>
-                                        <span class="package-info-value">${gt.phanLo || "Không"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.phanLo || "Không")}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span class="package-info-label">Tùy chọn mua thêm</span>
-                                        <span class="package-info-value">${gt.tuyChonMuaThem || "Không"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.tuyChonMuaThem || "Không")}</span>
                                     </div>
                                 </div>
                             </div>
@@ -96,11 +97,11 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
                                     <div class="package-info-row">
                                         <span class="package-info-label">Thời gian thực hiện</span>
-                                        <span class="package-info-value">${gt.thoiGianThucHien || "--"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.thoiGianThucHien || "--")}</span>
                                     </div>
                                     <div class="package-info-row">
                                         <span class="package-info-label">Bắt đầu tổ chức</span>
-                                        <span class="package-info-value">${gt.thoiGianBatDauToChuc || "--"}</span>
+                                        <span class="package-info-value">${escapeHtml(gt.thoiGianBatDauToChuc || "--")}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; border-bottom: ${gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt" ? "none" : "1px solid rgba(226, 232, 240, 0.5)"}; padding-bottom: 8px; font-size: 0.83rem;">
                                         <span class="package-info-label">${khObj && khObj.pheDuyet === "Kế hoạch" ? "Phê duyệt kế hoạch" : "Phê duyệt dự toán và kế hoạch"}</span>
@@ -157,9 +158,9 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                     <div class="package-info-row">
                                         <span class="package-info-label">Số quyết định phê duyệt HSMT</span>
                                         ${view._inPlaceEditMode ? `
-                                            <input type="text" id="ip-soquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soQuyetDinh || ""}" placeholder="Nhập số quyết định">
+                                            <input type="text" id="ip-soquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${safeAttr(gt.soQuyetDinh || "")}" placeholder="Nhập số quyết định">
                                         ` : `
-                                            <span class="package-info-value">${gt.soQuyetDinh || "--"}</span>
+                                            <span class="package-info-value">${escapeHtml(gt.soQuyetDinh || "--")}</span>
                                         `}
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
@@ -187,9 +188,9 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                     <div class="package-info-row">
                                         <span class="package-info-label">Số tờ trình HSMT</span>
                                         ${view._inPlaceEditMode ? `
-                                            <input type="text" id="ip-sototrinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soToTrinhHsmt || ""}" placeholder="Nhập số tờ trình">
+                                            <input type="text" id="ip-sototrinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${safeAttr(gt.soToTrinhHsmt || "")}" placeholder="Nhập số tờ trình">
                                         ` : `
-                                            <span class="package-info-value">${gt.soToTrinhHsmt || "--"}</span>
+                                            <span class="package-info-value">${escapeHtml(gt.soToTrinhHsmt || "--")}</span>
                                         `}
                                     </div>
                                     <div class="package-info-row">
@@ -203,9 +204,9 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                     <div class="package-info-row">
                                         <span class="package-info-label">Số quyết định phê duyệt HSMT</span>
                                         ${view._inPlaceEditMode ? `
-                                            <input type="text" id="ip-soquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soQuyetDinh || ""}" placeholder="Nhập số quyết định">
+                                            <input type="text" id="ip-soquyetdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${safeAttr(gt.soQuyetDinh || "")}" placeholder="Nhập số quyết định">
                                         ` : `
-                                            <span class="package-info-value">${gt.soQuyetDinh || "--"}</span>
+                                            <span class="package-info-value">${escapeHtml(gt.soQuyetDinh || "--")}</span>
                                         `}
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem;">
@@ -230,18 +231,18 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                                                 </label>
                                             </div>
                                         ` : `
-                                            <span class="package-info-value">${gt.yeuCauThamDinhHsmt || "Không"}</span>
+                                            <span class="package-info-value">${escapeHtml(gt.yeuCauThamDinhHsmt || "Không")}</span>
                                         `}
                                     </div>
                                     <div id="wrapper-sobaocaothamdinh" style="display: ${view._inPlaceEditMode || gt.yeuCauThamDinhHsmt === "Có" ? "flex" : "none"}; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.5); padding-bottom: 8px; font-size: 0.83rem; align-items: center;">
                                         <span class="package-info-label">Số BCTĐ HSMT</span>
                                         ${view._inPlaceEditMode ? `
                                             <div style="display: flex; flex-direction: column; align-items: flex-end;">
-                                                <input type="text" id="ip-sobaocaothamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${gt.soBaoCaoThamDinhHsmt || ""}" placeholder="Nhập số báo cáo">
+                                                <input type="text" id="ip-sobaocaothamdinh" class="form-control" style="width: 180px; height: 28px; padding: 2px 8px; font-size: 0.83rem; text-align: right;" value="${safeAttr(gt.soBaoCaoThamDinhHsmt || "")}" placeholder="Nhập số báo cáo">
                                                 <span class="error-msg-inline" id="err-sobaocao" style="display: none; color: #ef4444; font-size: 0.72rem; margin-top: 4px; font-weight: 600;">Vui lòng nhập số báo cáo</span>
                                             </div>
                                         ` : `
-                                            <span class="package-info-value">${gt.soBaoCaoThamDinhHsmt || "--"}</span>
+                                            <span class="package-info-value">${escapeHtml(gt.soBaoCaoThamDinhHsmt || "--")}</span>
                                         `}
                                     </div>
                                     <div id="wrapper-ngaybaocaothamdinh" style="display: ${view._inPlaceEditMode || gt.yeuCauThamDinhHsmt === "Có" ? "flex" : "none"}; justify-content: space-between; padding-bottom: 8px; font-size: 0.83rem; align-items: center;">

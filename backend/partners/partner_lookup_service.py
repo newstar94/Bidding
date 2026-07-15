@@ -11,6 +11,7 @@ from datetime import datetime
 from backend.shared.helpers import database
 from backend.partners.address_parser import compose_external_address, parse_vietnam_address_to_internal
 from backend.shared.text_utils import normalize_organization_name, normalize_person_name
+from backend.shared.logging_utils import log_error
 
 
 PARTNER_LOOKUP_RETRY_SECONDS = 6 * 60 * 60
@@ -195,7 +196,7 @@ def fetch_muasamcong_info(tax_code="", org_code="", role_name="NT"):
             area_names,
         )
     except Exception as error:
-        print(f"[Partner Lookup] MuaSamCong error for {normalized_org_code}: {error}", flush=True)
+        log_error(error, "PartnerLookup.MuaSamCong")
         return None
 
 def fetch_vietqr_info(tax_code):
@@ -214,7 +215,7 @@ def fetch_vietqr_info(tax_code):
                         "source": "VietQR"
                     }
     except Exception as e:
-        print(f"[Partner Lookup] VietQR error for {tax_code}: {e}", flush=True)
+        log_error(e, "PartnerLookup.VietQR")
     return None
 
 def fetch_escodata_info(tax_code):
@@ -237,7 +238,7 @@ def fetch_escodata_info(tax_code):
                         "source": "Escodata"
                     }
     except Exception as e:
-        print(f"[Partner Lookup] Escodata error for {tax_code}: {e}", flush=True)
+        log_error(e, "PartnerLookup.Escodata")
     return None
 
 def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
@@ -419,7 +420,7 @@ def run_partner_lookup_worker():
 
             conn.close()
         except Exception as e:
-            print(f"[Partner Worker] Error in worker loop: {e}", flush=True)
+            log_error(e, "PartnerLookup.Worker")
             try:
                 conn.close()
             except Exception:

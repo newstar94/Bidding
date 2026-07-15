@@ -1,5 +1,5 @@
-import os
 import json
+from datetime import datetime, timezone
 from backend.shared.helpers import (
     database,
     clean_id,
@@ -165,7 +165,10 @@ def build_plan_context(plan_id, user_id, org_name):
     investor_address = ''
     inv_data = {}
     if plan.get('chu_dau_tu_id'):
-        cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ?", (plan['chu_dau_tu_id'],))
+        cursor.execute(
+            "SELECT * FROM chu_dau_tu WHERE id = ? AND organization_id = ? AND archived_at IS NULL",
+            (plan['chu_dau_tu_id'], org_name),
+        )
         row_inv = cursor.fetchone()
         if row_inv:
             inv_data = parse_json_fields(dict(row_inv))
@@ -176,18 +179,29 @@ def build_plan_context(plan_id, user_id, org_name):
     row_user = cursor.fetchone()
     user_data = parse_json_fields(dict(row_user)) if row_user else {}
 
-    cursor.execute("SELECT * FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
+    cursor.execute("SELECT * FROM to_chuc WHERE id = ?", (org_name,))
     row_org = cursor.fetchone()
     org_data = parse_json_fields(dict(row_org)) if row_org else {}
 
     gdv_data = {}
-    if user_data.get('goi_dich_vu_id'):
-        cursor.execute("SELECT * FROM goi_dich_vu WHERE id = ?", (user_data['goi_dich_vu_id'],))
-        row_gdv = cursor.fetchone()
-        if row_gdv:
-            gdv_data = parse_json_fields(dict(row_gdv))
+    cursor.execute(
+        """SELECT pkg.*
+           FROM organization_subscriptions sub
+           JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
+           WHERE sub.organization_id = ?
+           LIMIT 1""",
+        (org_name,),
+    )
+    row_gdv = cursor.fetchone()
+    if row_gdv:
+        gdv_data = parse_json_fields(dict(row_gdv))
 
-    cursor.execute("SELECT * FROM goi_thau WHERE ke_hoach_id = ? AND organization_id = ?", (plan_id, org_name))
+    cursor.execute(
+        """SELECT * FROM goi_thau
+           WHERE ke_hoach_id = ? AND organization_id = ?
+             AND archived_at IS NULL AND is_latest = 1""",
+        (plan_id, org_name),
+    )
     goi_thau_list = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
     attach_child_rows_to_items(cursor, "goi_thau", goi_thau_list, organization_id=org_name, naming="snake")
     for gt in goi_thau_list:
@@ -195,6 +209,7 @@ def build_plan_context(plan_id, user_id, org_name):
         clear_competitive_quotation_appraisal(gt)
     conn.close()
 
+    now = datetime.now(timezone.utc).astimezone()
     unified_context = {
         'ke_hoach': plan,
         'user': user_data,
@@ -204,8 +219,8 @@ def build_plan_context(plan_id, user_id, org_name):
         'investor_name': investor_name,
         'investor_address': investor_address,
         'chu_dau_tu': inv_data,
-        'current_time': os.environ.get("CURRENT_TIME", ""),
-        'today': os.environ.get("CURRENT_TIME", "")[:10] if os.environ.get("CURRENT_TIME") else ""
+        'current_time': now.isoformat(timespec='seconds'),
+        'today': now.date().isoformat()
     }
     return unified_context
 
@@ -229,13 +244,19 @@ def build_report_context(package_id, user_id, org_name, type_param):
     investor_address = ''
     inv_data = {}
     if pkg.get('ke_hoach_id'):
-        cursor.execute("SELECT * FROM ke_hoach_lcnt WHERE id = ?", (pkg['ke_hoach_id'],))
+        cursor.execute(
+            "SELECT * FROM ke_hoach_lcnt WHERE id = ? AND organization_id = ? AND archived_at IS NULL",
+            (pkg['ke_hoach_id'], org_name),
+        )
         row_plan = cursor.fetchone()
         if row_plan:
             plan = parse_json_fields(dict(row_plan))
             attach_child_rows(cursor, "ke_hoach_lcnt", plan, organization_id=org_name, naming="snake")
             if plan.get('chu_dau_tu_id'):
-                cursor.execute("SELECT * FROM chu_dau_tu WHERE id = ?", (plan['chu_dau_tu_id'],))
+                cursor.execute(
+                    "SELECT * FROM chu_dau_tu WHERE id = ? AND organization_id = ? AND archived_at IS NULL",
+                    (plan['chu_dau_tu_id'], org_name),
+                )
                 row_inv = cursor.fetchone()
                 if row_inv:
                     inv_data = parse_json_fields(dict(row_inv))
@@ -246,16 +267,22 @@ def build_report_context(package_id, user_id, org_name, type_param):
     row_user = cursor.fetchone()
     user_data = parse_json_fields(dict(row_user)) if row_user else {}
 
-    cursor.execute("SELECT * FROM to_chuc WHERE ten_to_chuc = ?", (org_name,))
+    cursor.execute("SELECT * FROM to_chuc WHERE id = ?", (org_name,))
     row_org = cursor.fetchone()
     org_data = parse_json_fields(dict(row_org)) if row_org else {}
 
     gdv_data = {}
-    if user_data.get('goi_dich_vu_id'):
-        cursor.execute("SELECT * FROM goi_dich_vu WHERE id = ?", (user_data['goi_dich_vu_id'],))
-        row_gdv = cursor.fetchone()
-        if row_gdv:
-            gdv_data = parse_json_fields(dict(row_gdv))
+    cursor.execute(
+        """SELECT pkg.*
+           FROM organization_subscriptions sub
+           JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
+           WHERE sub.organization_id = ?
+           LIMIT 1""",
+        (org_name,),
+    )
+    row_gdv = cursor.fetchone()
+    if row_gdv:
+        gdv_data = parse_json_fields(dict(row_gdv))
 
     cursor.execute("SELECT * FROM thong_tin_mo_thau WHERE goi_thau_id = ? AND organization_id = ?", (package_id, org_name))
     bids = [parse_json_fields(dict(r)) for r in cursor.fetchall()]
@@ -352,6 +379,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
 
     conn.close()
 
+    now = datetime.now(timezone.utc).astimezone()
     unified_context = {
         'goi_thau': pkg,
         'goi_thau_versions': goi_thau_versions,
@@ -366,7 +394,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
         'investor_name': investor_name,
         'investor_address': investor_address,
         'chu_dau_tu': inv_data,
-        'current_time': os.environ.get("CURRENT_TIME", ""),
-        'today': os.environ.get("CURRENT_TIME", "")[:10] if os.environ.get("CURRENT_TIME") else ""
+        'current_time': now.isoformat(timespec='seconds'),
+        'today': now.date().isoformat()
     }
     return unified_context

@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency, formatDate, initCustomSelect } from "../shared/view_helpers.js";
+import { escapeHtml, formatCurrency, formatDate, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { matchesYearMonth, populateYearMonthFilters } from "../shared/YearMonthFilter.js";
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
@@ -35,9 +35,10 @@ export async function renderKeHoachTable() {
       slicedData = data.items;
       totalItems = data.totalItems;
     } catch (e) {
+      if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated plans", e);
       clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 10, message: "Không thể tải danh sách kế hoạch. Vui lòng thử lại." });
+      renderTableError(tableBody, { colspan: 10, message: "Không thể tải danh sách kế hoạch. Vui lòng thử lại.", onRetry: () => this.renderKeHoachTable() });
       return;
     }
   } else {
@@ -132,19 +133,17 @@ export function showKeHoachDetails(id, isSwitchingVersion = false) {
 async function fetchPlanPackageSnapshots(planId) {
   if (!planId) return [];
   const pageSize = 200;
-  let page = 1;
-  let totalItems = 0;
+  let cursor = null;
   const items = [];
   do {
     const data = await loadPaginatedRecords(this.model, "goithau", {
-      page, pageSize, keHoachId: planId
+      pagination: "cursor", cursor: cursor || "", pageSize, keHoachId: planId
     });
     const pageItems = data.items;
-    totalItems = data.totalItems || pageItems.length;
     items.push(...pageItems);
-    if (pageItems.length === 0) break;
-    page += 1;
-  } while (items.length < totalItems);
+    cursor = data.nextCursor;
+    if (!data.hasMore || pageItems.length === 0) break;
+  } while (cursor);
   return items;
 }
 export async function renderPlanVersionDetails(versionId) {
@@ -224,10 +223,10 @@ export async function renderPlanVersionDetails(versionId) {
                         <tbody>
                             ${list1.map((item) => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${escapeHtml(item.tenCongViec)}</td>
                                     <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || "--"}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.vanBanPheDuyet || "--"}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${escapeHtml(item.donViThucHien || "--")}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${escapeHtml(item.vanBanPheDuyet || "--")}</td>
                                 </tr>
                             `).join("")}
                         </tbody>
@@ -253,9 +252,9 @@ export async function renderPlanVersionDetails(versionId) {
                         <tbody>
                             ${list2.map((item) => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${escapeHtml(item.tenCongViec)}</td>
                                     <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${item.donViThucHien || "--"}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-align: left !important;">${escapeHtml(item.donViThucHien || "--")}</td>
                                 </tr>
                             `).join("")}
                         </tbody>
@@ -280,7 +279,7 @@ export async function renderPlanVersionDetails(versionId) {
                         <tbody>
                             ${list3.map((item) => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
-                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${item.tenCongViec}</td>
+                                    <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 600; color: var(--text-main); text-align: left !important;">${escapeHtml(item.tenCongViec)}</td>
                                     <td style="padding: 10px 14px; font-size: 0.88rem; font-weight: 700; color: var(--primary); text-align: right !important;">${formatCurrency(item.giaTri)}</td>
                                 </tr>
                             `).join("")}
@@ -303,7 +302,7 @@ export async function renderPlanVersionDetails(versionId) {
             </div>
             <div class="detail-item" style="grid-column: span 2;">
                 <div class="detail-label">Số QĐ phê duyệt dự toán</div>
-                <div class="detail-value">${kh.soQdPheDuyetDuToan || "--"}</div>
+                <div class="detail-value">${escapeHtml(kh.soQdPheDuyetDuToan || "--")}</div>
             </div>
         `;
   }
@@ -312,11 +311,11 @@ export async function renderPlanVersionDetails(versionId) {
     projectDetailHtml = `
             <div class="detail-item" style="grid-column: span 2;">
                 <div class="detail-label">Mã dự án</div>
-                <div class="detail-value">${kh.maDuan || "--"}</div>
+                <div class="detail-value">${escapeHtml(kh.maDuan || "--")}</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Số QĐ phê duyệt dự án</div>
-                <div class="detail-value">${kh.soQdPheDuyetDuAn || "--"}</div>
+                <div class="detail-value">${escapeHtml(kh.soQdPheDuyetDuAn || "--")}</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Ngày QĐ phê duyệt dự án</div>
@@ -324,7 +323,7 @@ export async function renderPlanVersionDetails(versionId) {
             </div>
             <div class="detail-item" style="grid-column: span 2;">
                 <div class="detail-label">Cơ quan phê duyệt dự án</div>
-                <div class="detail-value">${kh.coQuanPheDuyetDuAn || "--"}</div>
+                <div class="detail-value">${escapeHtml(kh.coQuanPheDuyetDuAn || "--")}</div>
             </div>
         `;
   }
@@ -333,36 +332,36 @@ export async function renderPlanVersionDetails(versionId) {
             <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">${this.model.getPlanBaseCode(kh.maKeHoach) || '<span class="text-muted">(Chưa nhập)</span>'}</span>
+                        <span class="detail-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; font-size: 0.85rem; padding: 4px 10px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.15); color: var(--primary); border-radius: 4px; font-weight: 700;">${this.model.getPlanBaseCode(kh.maKeHoach) ? escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach)) : '<span class="text-muted">(Chưa nhập)</span>'}</span>
                         <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
                         <select id="fullpage-kh-version-select" class="page-version-select" ${allVersions.length < 2 ? "disabled" : ""}>
-                            ${allVersions.map((k) => `<option value="${k.id}" ${k.id === versionId ? "selected" : ""}>${k.phienBan || "00"}</option>`).join("")}
+                            ${allVersions.map((k) => `<option value="${safeAttr(k.id)}" ${k.id === versionId ? "selected" : ""}>${escapeHtml(k.phienBan || "00")}</option>`).join("")}
                         </select>
                     </div>
                 </div>
-                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${kh.tenKeHoach}</h4>
+                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${escapeHtml(kh.tenKeHoach)}</h4>
             </div>
 
             <div class="detail-grid">
                 <div class="detail-item" style="grid-column: span 2;">
                     <div class="detail-label">Tên Dự án / Dự toán</div>
-                    <div class="detail-value text-blue" style="font-size: 1.1rem;">${kh.tenDuAnDuToan || "--"}</div>
+                    <div class="detail-value text-blue" style="font-size: 1.1rem;">${escapeHtml(kh.tenDuAnDuToan || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Hình thức</div>
-                    <div class="detail-value">${kh.loaiHinhMuaSam ? `<span class="badge ${kh.loaiHinhMuaSam === "Dự án" ? "badge-info" : "badge-warning"}">${kh.loaiHinhMuaSam}</span>` : '<span class="text-muted">Chưa xác định</span>'}</div>
+                    <div class="detail-value">${kh.loaiHinhMuaSam ? `<span class="badge ${kh.loaiHinhMuaSam === "Dự án" ? "badge-info" : "badge-warning"}">${escapeHtml(kh.loaiHinhMuaSam)}</span>` : '<span class="text-muted">Chưa xác định</span>'}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Phê duyệt</div>
-                    <div class="detail-value">${kh.pheDuyet ? `<span class="badge ${kh.pheDuyet === "Kế hoạch" ? "badge-info" : "badge-success"}">${kh.pheDuyet}</span>` : '<span class="text-muted">--</span>'}</div>
+                    <div class="detail-value">${kh.pheDuyet ? `<span class="badge ${kh.pheDuyet === "Kế hoạch" ? "badge-info" : "badge-success"}">${escapeHtml(kh.pheDuyet)}</span>` : '<span class="text-muted">--</span>'}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Đơn vị trình của chủ đầu tư</div>
-                    <div class="detail-value">${kh.donViTrinhCdt || "--"}</div>
+                    <div class="detail-value">${escapeHtml(kh.donViTrinhCdt || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tên viết tắt đơn vị trình</div>
-                    <div class="detail-value">${kh.tenVietTatDonViTrinh || "--"}</div>
+                    <div class="detail-value">${escapeHtml(kh.tenVietTatDonViTrinh || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tổng Giá Trị Kế Hoạch</div>
@@ -374,7 +373,7 @@ export async function renderPlanVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Số QĐ phê duyệt</div>
-                    <div class="detail-value">${kh.quyetDinhPheDuyet}</div>
+                    <div class="detail-value">${escapeHtml(kh.quyetDinhPheDuyet || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Ngày QĐ phê duyệt</div>
@@ -389,10 +388,10 @@ export async function renderPlanVersionDetails(versionId) {
                 ${cdt ? `
                     <div class="associated-item">
                         <div>
-                            <strong style="font-size: 0.9rem;">${cdt.tenChuDauTu}</strong><br>
-                            <small class="text-muted">Mã số thuế: ${cdt.maSoThue} | Địa chỉ: ${(cdt.diaChi || "").replace(/\s*\|\s*/g, ", ")}</small>
+                            <strong style="font-size: 0.9rem;">${escapeHtml(cdt.tenChuDauTu)}</strong><br>
+                            <small class="text-muted">Mã số thuế: ${escapeHtml(cdt.maSoThue || "--")} | Địa chỉ: ${escapeHtml((cdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}</small>
                         </div>
-                        <span class="associated-badge">${cdt.maChuDauTu}</span>
+                        <span class="associated-badge">${escapeHtml(cdt.maChuDauTu || "--")}</span>
                     </div>
                 ` : '<div class="text-muted"><small>Không tìm thấy thông tin chủ đầu tư.</small></div>'}
             </div>
@@ -405,10 +404,10 @@ export async function renderPlanVersionDetails(versionId) {
                 <h5 class="detail-sub-title" style="color: var(--primary);">IV. Phần công việc thuộc kế hoạch lựa chọn nhà thầu (Các gói thầu - ${uniqueLinkedPackages.length})</h5>
                 <div class="associated-list">
                     ${uniqueLinkedPackages.length > 0 ? uniqueLinkedPackages.map((gt) => `
-                        <div class="associated-item" style="cursor: pointer;" data-bf-action="show-package" data-id="${gt.id}" title="Xem chi tiết Gói thầu">
+                        <div class="associated-item" style="cursor: pointer;" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" title="Xem chi tiết Gói thầu">
                             <div class="associated-info">
                                 <i data-lucide="briefcase" class="text-blue" style="width:16px;"></i>
-                                <span><strong>${gt.maGoiThau}</strong> - ${gt.tenGoiThau}</span>
+                                <span><strong>${escapeHtml(gt.maGoiThau || "--")}</strong> - ${escapeHtml(gt.tenGoiThau || "--")}${gt.isRebid ? ' <span class="badge badge-warning">Đấu thầu lại</span>' : ""}</span>
                             </div>
                             <span class="badge badge-success">${formatCurrency(gt.giaGoiThau)}</span>
                         </div>

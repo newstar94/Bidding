@@ -1,10 +1,11 @@
 import { collectYearMonthOptions, matchesYearMonth } from "./tableDataUtils.js";
+import { escapeHtml } from "./view_helpers.js";
 
 function replaceOptions(select, placeholder, values, label) {
   if (!select) return;
   const selected = select.value;
-  select.innerHTML = `<option value="">${placeholder}</option>`
-    + values.map((value) => `<option value="${value}">${label(value)}</option>`).join("");
+  select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`
+    + values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(label(value))}</option>`).join("");
   select.value = values.includes(selected) ? selected : "";
 }
 

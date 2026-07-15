@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 import json
 import re
 import sqlite3
@@ -20,6 +19,7 @@ from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, next_sync_version
 from backend.shared.access_policy import is_business_organization, is_organization_manager
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import validate_or_response
+from backend.shared.date_utils import utc_now_sql
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -394,7 +394,7 @@ async def remove_user_from_org_api(request):
             return JSONResponse({"error": "Không thể tự gỡ chính mình khỏi tổ chức."}, status_code=400)
 
         org_id = get_active_org(request, role_or_err.user_id)
-        current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        current_time = utc_now_sql()
 
         conn = database.get_connection()
         cursor = conn.cursor()

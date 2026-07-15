@@ -28,12 +28,6 @@ export function mutationQueueHasChanges(queue = {}) {
     || (Array.isArray(queue.deletes) && queue.deletes.length > 0);
 }
 
-function withExpectedVersion(record) {
-  return Number.isInteger(record?.rowVersion)
-    ? { ...record, expectedVersion: record.rowVersion }
-    : record;
-}
-
 export function buildMutationPayload({
   queue,
   state,
@@ -44,24 +38,21 @@ export function buildMutationPayload({
   const payload = {
     clientMutationId: queue.clientMutationId,
     baseSyncVersion: queue.baseSyncVersion,
-    upserts: {},
     deletions: []
   };
   const snapshot = JSON.parse(JSON.stringify(queue));
   Object.keys(queue.dirtyTables || {}).forEach((type) => {
     if (!queue.dirtyTables[type] || !isSyncedType(type)) return;
     payload[type] = Array.isArray(state[type])
-      ? state[type].map((record) => withExpectedVersion(normalizeRecord(record, type)))
+      ? state[type].map((record) => normalizeRecord(record, type))
       : [];
-    payload.upserts[type] = payload[type];
   });
   Object.entries(queue.upserts || {}).forEach(([type, recordsById]) => {
     if (!isSyncedType(type) || payload[type]) return;
     const records = Object.values(recordsById || {})
-      .map((record) => withExpectedVersion(normalizeRecord(record, type)));
+      .map((record) => normalizeRecord(record, type));
     if (records.length > 0) {
       payload[type] = records;
-      payload.upserts[type] = records;
     }
   });
   const deleteMap = new Map();
@@ -74,7 +65,8 @@ export function buildMutationPayload({
     });
   });
   payload.deletions = [...deleteMap.values()];
-  return Object.keys(payload.upserts).length || payload.deletions.length
+  const hasUpserts = Object.keys(payload).some((key) => !["clientMutationId", "baseSyncVersion", "deletions"].includes(key));
+  return hasUpserts || payload.deletions.length
     ? { payload, snapshot }
     : null;
 }

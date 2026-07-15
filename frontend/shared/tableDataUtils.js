@@ -56,11 +56,23 @@ export async function loadPaginatedRecords(model, table, params = {}) {
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) query.set(key, String(value));
   });
-  const data = await getJson(`/api/paginate?${query}`);
-  return {
-    items: cachePaginatedRecords(model, table, data?.items || []),
-    totalItems: Number(data?.totalItems || 0)
-  };
+  model._paginationRequests ||= new Map();
+  model._paginationRequests.get(table)?.abort();
+  const controller = new AbortController();
+  model._paginationRequests.set(table, controller);
+  try {
+    const data = await getJson(`/api/paginate?${query}`, { signal: controller.signal });
+    return {
+      items: cachePaginatedRecords(model, table, data?.items || []),
+      totalItems: Number(data?.totalItems || 0),
+      nextCursor: data?.nextCursor || null,
+      hasMore: Boolean(data?.hasMore)
+    };
+  } finally {
+    if (model._paginationRequests.get(table) === controller) {
+      model._paginationRequests.delete(table);
+    }
+  }
 }
 export function sortRecords(records, field, order = "asc") {
   if (!field) return records;

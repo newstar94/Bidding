@@ -432,7 +432,7 @@ export const FIELD_METADATA_BY_TABLE = {
     },
     "phien_ban": {
       "column": "phien_ban",
-      "dataType": "string",
+      "dataType": "integer",
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "phienBan",
@@ -790,7 +790,7 @@ export const FIELD_METADATA_BY_TABLE = {
       "dataType": "string",
       "excelCompatible": true,
       "format": "text",
-      "jsonKey": "maDuAn",
+      "jsonKey": "maDuan",
       "label": "M\u00e3 d\u1ef1 an",
       "wordVariable": "ma_du_an"
     },
@@ -868,7 +868,7 @@ export const FIELD_METADATA_BY_TABLE = {
     },
     "phien_ban": {
       "column": "phien_ban",
-      "dataType": "string",
+      "dataType": "integer",
       "excelCompatible": true,
       "format": "text",
       "jsonKey": "phienBan",

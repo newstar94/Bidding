@@ -7,6 +7,7 @@ from datetime import datetime
 from backend.db.db_helper import database
 from backend.shared.client_ip import get_client_ip, is_client_ip_allowed
 from backend.auth.roles import effective_access_roles, normalize_platform_role
+from backend.auth.session_store import load_session_user, session_invalid_reason, touch_session
 
 ROLE_HIERARCHY = {
     'super_admin': effective_access_roles('super_admin'),
@@ -20,6 +21,14 @@ PRIVILEGED_REAUTH_TTL_SECONDS = max(
 )
 PRIVILEGED_REAUTH_REQUIRED = "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm."
 SUPER_ADMIN_NETWORK_DENIED = "Truy cập bị từ chối: mạng hiện tại không được phép dùng quyền quản trị tối cao."
+
+SESSION_ACTIVITY_TOUCH_SECONDS = max(
+    30, int(os.environ.get("SESSION_ACTIVITY_TOUCH_SECONDS", "60"))
+)
+SESSION_IDLE_TIMEOUT_SECONDS = max(
+    60, int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10")) * 3600
+)
+
 
 def get_effective_roles(role_str):
     platform_role = normalize_platform_role(role_str)
@@ -112,9 +121,10 @@ def _session_cache_cleanup():
             del _session_cache[k]
 
 class SessionRole(str):
-    def __new__(cls, role, user_id):
+    def __new__(cls, role, user_id, session_id=None):
         instance = super().__new__(cls, role)
         instance.user_id = user_id
+        instance.session_id = session_id
         return instance
 
 
@@ -136,55 +146,39 @@ def verify_super_admin_controls(request, user, *, require_reauth=None):
     return True, None
 
 def verify_session(request, required_role=None):
-    token = request.cookies.get('session_token')
-
+    token = (request.cookies.get('session_token') or '').strip()
     if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
 
-    cached_user = _session_cache_get(token)
-    if cached_user:
-        if cached_user.get('token_phien') != token:
-            _session_cache_invalidate(token)
-        else:
-            if required_role and required_role not in get_effective_roles(cached_user['vai_tro']):
-                return False, "Bạn không có quyền thực hiện thao tác này!"
-            if required_role == 'super_admin':
-                controls_valid, controls_error = verify_super_admin_controls(request, cached_user)
-                if not controls_valid:
-                    return False, controls_error
-            return True, SessionRole(normalize_platform_role(cached_user['vai_tro']), cached_user['id'])
-
-    conn = database.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tai_khoan WHERE token_phien = ?", (token,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        return False, "Tài khoản không tồn tại!"
-
-    user = dict(row)
-    if user['token_phien'] != token:
+    # Read persistent state on every authorization decision so a revocation made
+    # by another worker takes effect immediately instead of waiting for cache TTL.
+    user = load_session_user(database, token)
+    now = int(time.time())
+    if (
+        user
+        and not session_invalid_reason(user, now)
+        and now - int(user.get("last_seen_at") or 0) >= SESSION_ACTIVITY_TOUCH_SECONDS
+    ):
+        touch_session(
+            database,
+            user,
+            idle_timeout_seconds=SESSION_IDLE_TIMEOUT_SECONDS,
+            now=now,
+        )
+    if not user:
         return False, "Phiên làm việc đã hết hạn hoặc không hợp lệ!"
-
-    if user.get('han_su_dung_token'):
-        try:
-            import time as _time
-            if _time.time() > float(user['han_su_dung_token']):
-                _session_cache_invalidate(token)
-                return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
-        except Exception as ex:
-            pass
+    if session_invalid_reason(user):
+        _session_cache_invalidate(token)
+        return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
 
     if required_role and required_role not in get_effective_roles(user['vai_tro']):
         return False, "Bạn không có quyền thực hiện thao tác này!"
-
     if required_role == 'super_admin':
         controls_valid, controls_error = verify_super_admin_controls(request, user)
         if not controls_valid:
             return False, controls_error
 
-
-
     _session_cache_set(token, user)
-    return True, SessionRole(normalize_platform_role(user['vai_tro']), user['id'])
+    return True, SessionRole(
+        normalize_platform_role(user['vai_tro']), user['id'], user.get('session_id')
+    )

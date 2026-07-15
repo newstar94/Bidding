@@ -1,4 +1,4 @@
-import { escapeHtml, initCustomSelect, safeImageSrc } from "../shared/view_helpers.js";
+import { escapeHtml, initCustomSelect, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
 import { resolveContractorVersion } from "./contractorVersionBinding.js";
@@ -25,9 +25,10 @@ export async function renderNhaThauTable() {
       slicedData = data.items;
       totalItems = data.totalItems;
     } catch (e) {
+      if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated contractors", e);
       clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách nhà thầu. Vui lòng thử lại." });
+      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách nhà thầu. Vui lòng thử lại.", onRetry: () => this.renderNhaThauTable() });
       return;
     }
   } else {
@@ -157,7 +158,7 @@ export function renderNhaThauVersionDetails(versionId) {
   }
   const selectOptionsHtml = allRelated.map((v) => {
     const ver = String(parseInt(v.phienBan || 0)).padStart(2, "0");
-    return `<option value="${v.id}" ${v.id === versionId ? "selected" : ""}>${ver}</option>`;
+    return `<option value="${safeAttr(v.id)}" ${v.id === versionId ? "selected" : ""}>${escapeHtml(ver)}</option>`;
   }).join("");
   const versionSelectHtml = `
         <select id="fullpage-nt-version-select" class="page-version-select" style="min-width: 100px; max-width: 320px; width: auto;" ${allRelated.length < 2 ? "disabled" : ""}>
@@ -176,7 +177,7 @@ export function renderNhaThauVersionDetails(versionId) {
             <div class="detail-grid" style="margin-bottom: 24px;">
                 <div class="detail-item">
                     <div class="detail-label">Ngày áp dụng</div>
-                    <div class="detail-value fw-bold">${nt.ngayApDung ? this.model.formatDate(nt.ngayApDung) : "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(nt.ngayApDung ? this.model.formatDate(nt.ngayApDung) : "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Loại nhà thầu</div>
@@ -188,7 +189,7 @@ export function renderNhaThauVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tên viết tắt</div>
-                    <div class="detail-value fw-bold">${nt.tenVietTat || "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(nt.tenVietTat || "--")}</div>
                 </div>
             </div>
 
@@ -209,10 +210,10 @@ export function renderNhaThauVersionDetails(versionId) {
                                 <span class="badge badge-secondary" style="background-color: var(--primary-soft); color: var(--primary); font-weight: 600;">Mã/MST: ${codeHtml}</span>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; margin-top: 4px; font-size: 0.85rem;">
-                                <div><span class="text-muted">Đại diện:</span> ${m.danhXung || "Ông"} ${m.nguoiDaiDien || "--"} (${m.chucVu || "--"})</div>
-                                <div><span class="text-muted">Liên hệ:</span> SĐT: ${m.soDienThoai || "--"} | Email: ${m.email || "--"}</div>
-                                <div style="grid-column: span 2;"><span class="text-muted">Tài khoản ngân hàng:</span> <strong>${m.soTaiKhoan || "--"}</strong> tại ${m.noiMoTaiKhoan || "--"} ${m.maNganHang ? "(" + m.maNganHang + ")" : ""}</div>
-                                <div style="grid-column: span 2;"><span class="text-muted">Địa chỉ:</span> ${memberAddress || "--"}</div>
+                                <div><span class="text-muted">Đại diện:</span> ${escapeHtml(m.danhXung || "Ông")} ${escapeHtml(m.nguoiDaiDien || "--")} (${escapeHtml(m.chucVu || "--")})</div>
+                                <div><span class="text-muted">Liên hệ:</span> SĐT: ${escapeHtml(m.soDienThoai || "--")} | Email: ${escapeHtml(m.email || "--")}</div>
+                                <div style="grid-column: span 2;"><span class="text-muted">Tài khoản ngân hàng:</span> <strong>${escapeHtml(m.soTaiKhoan || "--")}</strong> tại ${escapeHtml(m.noiMoTaiKhoan || "--")} ${m.maNganHang ? `(${escapeHtml(m.maNganHang)})` : ""}</div>
+                                <div style="grid-column: span 2;"><span class="text-muted">Địa chỉ:</span> ${escapeHtml(memberAddress || "--")}</div>
                             </div>
                         </div>
                     `;
@@ -224,7 +225,7 @@ export function renderNhaThauVersionDetails(versionId) {
             <div class="detail-grid">
                 <div class="detail-item">
                     <div class="detail-label">Ngày áp dụng</div>
-                    <div class="detail-value fw-bold">${nt.ngayApDung ? this.model.formatDate(nt.ngayApDung) : "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(nt.ngayApDung ? this.model.formatDate(nt.ngayApDung) : "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Loại nhà thầu</div>
@@ -232,43 +233,43 @@ export function renderNhaThauVersionDetails(versionId) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Mã số thuế</div>
-                    <div class="detail-value fw-bold">${nt.maSoThue || "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(nt.maSoThue || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tên viết tắt</div>
-                    <div class="detail-value fw-bold">${nt.tenVietTat || "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(nt.tenVietTat || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Người đại diện</div>
-                    <div class="detail-value">${nt.nguoiDaiDien ? nt.danhXung + " " + nt.nguoiDaiDien : "--"}</div>
+                    <div class="detail-value">${escapeHtml(nt.nguoiDaiDien ? `${nt.danhXung || ""} ${nt.nguoiDaiDien}`.trim() : "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Chức vụ người đại diện</div>
-                    <div class="detail-value">${nt.chucVuDaiDien || "--"}</div>
+                    <div class="detail-value">${escapeHtml(nt.chucVuDaiDien || "--")}</div>
                 </div>
                 <div class="detail-item" style="grid-column: span 2;">
                     <div class="detail-label">Địa chỉ</div>
-                    <div class="detail-value">${addressStr || "--"}</div>
+                    <div class="detail-value">${escapeHtml(addressStr || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Số điện thoại</div>
-                    <div class="detail-value">${nt.soDienThoai || "--"}</div>
+                    <div class="detail-value">${escapeHtml(nt.soDienThoai || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Email liên hệ</div>
-                    <div class="detail-value">${nt.email || "--"}</div>
+                    <div class="detail-value">${escapeHtml(nt.email || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Số tài khoản</div>
-                    <div class="detail-value fw-bold text-blue">${nt.soTaiKhoan || "--"}</div>
+                    <div class="detail-value fw-bold text-blue">${escapeHtml(nt.soTaiKhoan || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Nơi mở tài khoản</div>
-                    <div class="detail-value">${nt.noiMoTaiKhoan || "--"}</div>
+                    <div class="detail-value">${escapeHtml(nt.noiMoTaiKhoan || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Mã ngân hàng</div>
-                    <div class="detail-value">${nt.maNganHang || "--"}</div>
+                    <div class="detail-value">${escapeHtml(nt.maNganHang || "--")}</div>
                 </div>
             </div>
         `;
@@ -278,12 +279,12 @@ export function renderNhaThauVersionDetails(versionId) {
             <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${nt.maNhaThau || "--"}</span>
+                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${escapeHtml(nt.maNhaThau || "--")}</span>
                         <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
                         ${versionSelectHtml}
                     </div>
                 </div>
-                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${nt.tenNhaThau || "Nhà thầu chưa có tên"}</h4>
+                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${escapeHtml(nt.tenNhaThau || "Nhà thầu chưa có tên")}</h4>
             </div>
             ${detailsHtml}
             ${stampSrc ? `

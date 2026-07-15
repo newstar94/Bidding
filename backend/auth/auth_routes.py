@@ -28,6 +28,15 @@ from backend.shared.helpers import (
 )
 from backend.auth.auth_helper import _session_cache_get, _session_cache_set
 from backend.auth.auth_helper import PRIVILEGED_REAUTH_TTL_SECONDS, verify_super_admin_controls
+from backend.auth.session_store import (
+    create_session,
+    load_session_user,
+    revoke_session,
+    revoke_user_sessions,
+    session_invalid_reason,
+    set_session_reauthentication,
+    touch_session,
+)
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_email, validate_profile_fields
 from backend.auth.identity import (
     conflict_payload,
@@ -135,9 +144,14 @@ async def login_api(request):
             "ip": ip,
             "login_time": datetime.now(timezone.utc).isoformat()
         })
-        cursor.execute(
-            "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ?, privileged_reauth_at = NULL WHERE id = ?",
-            (session_token, token_expiry, device_info, user['id'])
+        create_session(
+            cursor,
+            user_id=user['id'],
+            token=session_token,
+            absolute_expires_at=token_expiry,
+            idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
+            remember=remember,
+            device_info=device_info,
         )
         _session_cache_invalidate_by_user_id(user['id'])
         access_payload = build_user_access_payload(
@@ -183,66 +197,21 @@ async def login_api(request):
             except Exception: pass
 
 def _load_user_by_session_token(session_token):
-    cached = _session_cache_get(session_token)
-    if cached and cached.get('token_phien') == session_token and 'ten_dang_nhap' in cached:
-        return cached
-
-    conn = database.get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien,
-                   token_phien, han_su_dung_token,
-                   thong_tin_thiet_bi_cuoi, mat_khau,
-                   EXISTS(
-                       SELECT 1 FROM dinh_danh_ngoai dd
-                       WHERE dd.user_id = tai_khoan.id
-                   ) AS has_external_identity,
-                   privileged_reauth_at
-            FROM tai_khoan
-            WHERE token_phien = ?
-        """, (session_token,))
-        row = cursor.fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+    # Session revocation is security-sensitive and must be visible across workers.
+    return load_session_user(database, session_token)
 
 
 def _validate_token_expiry(session_token, user):
-    if not user:
-        return "user_not_found"
-    if user.get('token_phien') != session_token:
-        return "logged_in_elsewhere"
-    if user.get('han_su_dung_token'):
-        try:
-            if time.time() > float(user['han_su_dung_token']):
-                _session_cache_invalidate(session_token)
-                return "token_expired"
-        except Exception:
-            pass
-    return None
+    del session_token
+    return session_invalid_reason(user)
 
 
-def _extend_session_if_needed(user, remember):
-    expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
-    now = time.time()
-    current_expiry = float(user.get('han_su_dung_token') or 0)
-    if current_expiry - now >= (expiry_hours * 3600) / 2:
-        return False
-
-    new_expiry = int(now + expiry_hours * 3600)
-    conn = database.get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE tai_khoan SET han_su_dung_token = ? WHERE id = ?",
-            (new_expiry, user['id'])
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    user['han_su_dung_token'] = new_expiry
-    return True
+def _extend_session_if_needed(user):
+    return touch_session(
+        database,
+        user,
+        idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
+    )
 
 
 def _get_access_for_session(user, request):
@@ -295,7 +264,7 @@ def build_session_bootstrap(request):
     _session_cache_set(session_token, user)
     return {
         "valid": True,
-        "device_info": user.get('thong_tin_thiet_bi_cuoi'),
+        "device_info": user.get('device_info'),
         "user": {
             "id": user['id'],
             "username": user['ten_dang_nhap'],
@@ -311,12 +280,12 @@ def build_session_bootstrap(request):
     }
 
 
-def _session_response(user, remember, session_was_extended, request):
+def _session_response(user, request):
     needs_username, suggested_username, account_linked = _get_username_setup_state(user)
     access_payload = _get_access_for_session(user, request)
     response = JSONResponse({
         "valid": True,
-        "device_info": user.get('thong_tin_thiet_bi_cuoi'),
+        "device_info": user.get('device_info'),
         "user": {
             "id": user['id'],
             "username": user['ten_dang_nhap'],
@@ -331,10 +300,6 @@ def _session_response(user, remember, session_was_extended, request):
         }
     })
 
-    if session_was_extended:
-        cookie_max_age = (SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS) * 3600
-        response.set_cookie("session_token", user['token_phien'], httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age)
-        response.delete_cookie("username", path="/")
     return response
 
 
@@ -361,9 +326,9 @@ async def check_session_api(request):
         if invalid_reason:
             return JSONResponse({"valid": False, "reason": invalid_reason})
 
-        session_was_extended = _extend_session_if_needed(user, remember)
+        _extend_session_if_needed(user)
         _session_cache_set(session_token, user)
-        response = _session_response(user, remember, session_was_extended, request)
+        response = _session_response(user, request)
         response.headers["Server-Timing"] = f"session-check;dur={(time.perf_counter() - started_at) * 1000:.1f}"
         return response
     except Exception as e:
@@ -494,8 +459,18 @@ async def change_password_api(request):
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         cursor.execute(
-            "UPDATE tai_khoan SET mat_khau = ?, token_phien = ?, han_su_dung_token = ?, privileged_reauth_at = NULL WHERE id = ?",
-            (hash_password(new_password), new_token, token_expiry, user['id'])
+            "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
+            (hash_password(new_password), user['id'])
+        )
+        revoke_user_sessions(cursor, user['id'])
+        create_session(
+            cursor,
+            user_id=user['id'],
+            token=new_token,
+            absolute_expires_at=token_expiry,
+            idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
+            remember=False,
+            device_info=None,
         )
         conn.commit()
         if old_token:
@@ -533,13 +508,7 @@ async def logout_api(request):
         if token:
             conn = database.get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM tai_khoan WHERE token_phien = ?", (token,))
-            user_row = cursor.fetchone()
-            user_id = user_row['id'] if user_row else None
-            cursor.execute(
-                "UPDATE tai_khoan SET token_phien = NULL, han_su_dung_token = NULL, privileged_reauth_at = NULL WHERE token_phien = ?",
-                (token,)
-            )
+            user_id = revoke_session(cursor, token)
             conn.commit()
             if user_id:
                 disconnect_user_websockets(user_id)
@@ -617,10 +586,10 @@ async def privileged_reauth_api(request):
             )
             return JSONResponse({"error": "Mật khẩu không chính xác."}, status_code=400)
         reauthenticated_at = int(time.time())
-        cursor.execute(
-            "UPDATE tai_khoan SET privileged_reauth_at = ? WHERE id = ?",
-            (reauthenticated_at, role_or_err.user_id),
-        )
+        if not set_session_reauthentication(
+            cursor, request.cookies.get('session_token'), reauthenticated_at
+        ):
+            return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
         conn.commit()
         _session_cache_invalidate_by_user_id(role_or_err.user_id)
         log_audit(
@@ -639,266 +608,7 @@ async def privileged_reauth_api(request):
         if conn:
             conn.close()
 
-async def list_users_api(request):
-    try:
-        is_valid, role_or_err = verify_session(request)
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-
-        conn = database.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
-        requester = cursor.fetchone()
-        if not requester:
-            conn.close()
-            return JSONResponse({"error": "Không tìm thấy thông tin tài khoản yêu cầu!"}, status_code=404)
-
-        req_role = requester['vai_tro']
-        effective_roles = get_effective_roles(req_role)
-
-        sql_base = "SELECT id, ten_dang_nhap AS username, ho_ten AS name, vai_tro AS role, vai_tro AS platform_role, email, anh_dai_dien AS avatar FROM tai_khoan"
-
-        email_query = (request.query_params.get('email') or '').strip().lower()
-        email_filter_sql = " AND email_norm = ?" if email_query else ""
-        email_filter_tk_sql = " AND tk.email_norm = ?" if email_query else ""
-
-        if 'super_admin' in effective_roles:
-            if email_query:
-                cursor.execute(sql_base + " WHERE email_norm = ?", (email_query,))
-            else:
-                cursor.execute(sql_base)
-            users_raw = cursor.fetchall()
-        else:
-            active_org_id = get_active_org(request, role_or_err.user_id)
-            cursor.execute(
-                """
-                SELECT lower(trim(vai_tro_trong_to_chuc))
-                FROM thanh_vien_to_chuc
-                WHERE user_id = ? AND organization_id = ?
-                """,
-                (role_or_err.user_id, active_org_id),
-            )
-            membership = cursor.fetchone()
-            membership_role = str(membership[0] or "").strip().lower() if membership else ""
-            if membership_role not in {'owner', 'manager'}:
-                cursor.execute(f"""
-                    SELECT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
-                           tvtc.vai_tro_trong_to_chuc AS role,
-                           tk.vai_tro AS platform_role,
-                           tk.email, tk.anh_dai_dien AS avatar
-                    FROM tai_khoan AS tk
-                    JOIN thanh_vien_to_chuc AS tvtc ON tvtc.user_id = tk.id
-                    WHERE tk.id = ? AND tvtc.organization_id = ?{email_filter_tk_sql}
-                """, tuple([role_or_err.user_id, active_org_id] + ([email_query] if email_query else [])))
-                users_raw = cursor.fetchall()
-            else:
-                cursor.execute(f"""
-                    SELECT DISTINCT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
-                                    tvtc.vai_tro_trong_to_chuc AS role,
-                                    tk.vai_tro AS platform_role,
-                                    tk.email, tk.anh_dai_dien AS avatar
-                    FROM tai_khoan tk
-                    JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                    WHERE tvtc.organization_id = ?{email_filter_tk_sql}
-                """, tuple([active_org_id] + ([email_query] if email_query else [])))
-                users_raw = cursor.fetchall()
-
-        user_ids = [r['id'] for r in users_raw]
-        orgs_by_user = defaultdict(list)
-        if user_ids:
-            placeholders = ",".join("?" for _ in user_ids)
-            cursor.execute(f"""
-                SELECT tvtc.user_id, tc.id, tc.ten_to_chuc, tc.scope_type,
-                       tc.trang_thai AS organization_status,
-                       tvtc.vai_tro_trong_to_chuc,
-                       sub.package_id, sub.status AS subscription_status,
-                       sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
-                       pkg.trang_thai AS package_status,
-                       (SELECT count(*) FROM thanh_vien_to_chuc members
-                        WHERE members.organization_id = tc.id) AS member_count
-                FROM thanh_vien_to_chuc tvtc
-                JOIN to_chuc tc ON tvtc.organization_id = tc.id
-                LEFT JOIN organization_subscriptions sub ON sub.organization_id = tc.id
-                LEFT JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
-                WHERE tvtc.user_id IN ({placeholders})
-                  AND (
-                      tc.scope_type = 'organization'
-                      OR NOT EXISTS (
-                          SELECT 1
-                          FROM thanh_vien_to_chuc business_membership
-                          JOIN to_chuc business_org
-                            ON business_org.id = business_membership.organization_id
-                          WHERE business_membership.user_id = tvtc.user_id
-                            AND business_org.scope_type = 'organization'
-                      )
-                  )
-            """, user_ids)
-            for row in cursor.fetchall():
-                expires_at = int(row['expires_at']) if row['expires_at'] is not None else None
-                subscription_status = str(row['subscription_status'] or 'missing').strip().lower()
-                if expires_at is not None and expires_at <= int(time.time()):
-                    subscription_status = 'expired'
-                effective_status = 'active'
-                if row['organization_status'] != 'active' or subscription_status == 'suspended':
-                    effective_status = 'suspended'
-                elif subscription_status != 'active':
-                    effective_status = subscription_status
-                elif row['package_status'] != 'active':
-                    effective_status = 'package_inactive'
-                starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
-                orgs_by_user[row['user_id']].append({
-                    "id": row['id'],
-                    "name": row['ten_to_chuc'],
-                    "scope_type": row['scope_type'],
-                    "status": effective_status,
-                    "role": row['vai_tro_trong_to_chuc'],
-                    "subscription": {
-                        "package_id": row['package_id'],
-                        "status": subscription_status,
-                        "starts_at": starts_at,
-                        "expires_at": expires_at,
-                        "start_date": time.strftime('%Y-%m-%d', time.gmtime(starts_at)) if starts_at else None,
-                        "end_date": time.strftime('%Y-%m-%d', time.gmtime(expires_at)) if expires_at else None,
-                        "member_quota": int(row['member_quota'] or 0),
-                        "member_count": int(row['member_count'] or 0),
-                        "revision": int(row['revision'] or 0),
-                    },
-                })
-
-        users = []
-        for row in users_raw:
-            u = dict(row)
-            u['organizations'] = orgs_by_user[u['id']]
-            users.append(u)
-        conn.close()
-        return JSONResponse(users)
-    except OrgPermissionError as e:
-        return error_response(
-            request,
-            "ORG_ACCESS_DENIED",
-            "Không có quyền truy cập tổ chức này.",
-            status_code=403,
-        )
-    except Exception as e:
-        log_error(e, "list_users_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
-
-async def delete_user_api(request):
-    conn = None
-    try:
-        is_valid, role_or_err = verify_session(request, required_role='super_admin')
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-
-        user_id = request.path_params.get('user_id')
-        if str(user_id) == str(role_or_err.user_id):
-            return JSONResponse({"error": "Không thể tự xóa tài khoản quản trị."}, status_code=409)
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("BEGIN IMMEDIATE")
-        cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
-        target = cursor.fetchone()
-        if not target:
-            return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
-        if str(target[0] or '').strip().lower() == 'super_admin':
-            cursor.execute("SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'")
-            if int(cursor.fetchone()[0]) <= 1:
-                return JSONResponse({"error": "Không thể xóa quản trị viên nền tảng cuối cùng."}, status_code=409)
-        cursor.execute(
-            """
-            SELECT membership.organization_id
-            FROM thanh_vien_to_chuc AS membership
-            JOIN to_chuc AS organization
-              ON organization.id = membership.organization_id
-            WHERE membership.user_id = ?
-              AND organization.scope_type = 'organization'
-              AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'owner'
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM thanh_vien_to_chuc AS other_owner
-                  WHERE other_owner.organization_id = membership.organization_id
-                    AND other_owner.user_id != membership.user_id
-                    AND lower(trim(other_owner.vai_tro_trong_to_chuc)) = 'owner'
-              )
-            LIMIT 1
-            """,
-            (user_id,),
-        )
-        if cursor.fetchone():
-            return JSONResponse({"error": "Không thể xóa chủ sở hữu cuối cùng của tổ chức."}, status_code=409)
-        personal_workspace_count = int(cursor.execute(
-            "SELECT COUNT(*) FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
-            (user_id,),
-        ).fetchone()[0])
-        if personal_workspace_count:
-            cursor.execute("SAVEPOINT delete_personal_workspace")
-            try:
-                cursor.execute(
-                    "DELETE FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
-                    (user_id,),
-                )
-                cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
-            except sqlite3.IntegrityError:
-                cursor.execute("ROLLBACK TO SAVEPOINT delete_personal_workspace")
-                cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
-                conn.rollback()
-                return JSONResponse({
-                    "error": "Không thể xóa tài khoản khi không gian cá nhân còn dữ liệu.",
-                    "code": "PERSONAL_WORKSPACE_NOT_EMPTY",
-                }, status_code=409)
-        impact = {
-            "rootCount": 1,
-            "personalWorkspaces": personal_workspace_count,
-            "memberships": int(cursor.execute(
-                "SELECT COUNT(*) FROM thanh_vien_to_chuc WHERE user_id = ?",
-                (user_id,),
-            ).fetchone()[0]),
-            "assignments": int(cursor.execute(
-                "SELECT COUNT(*) FROM phan_cong_nhan_su WHERE id_nhan_vien = ?",
-                (user_id,),
-            ).fetchone()[0]),
-            "permissionRows": int(cursor.execute(
-                "SELECT COUNT(*) FROM ma_tran_phan_quyen WHERE emp_id = ?",
-                (user_id,),
-            ).fetchone()[0]),
-            "passwordResetTokens": int(cursor.execute(
-                "SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = ?",
-                (user_id,),
-            ).fetchone()[0]),
-        }
-        impact["totalCount"] = impact["rootCount"] + sum(
-            value for key, value in impact.items() if key not in {"rootCount", "totalCount"}
-        )
-        cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE emp_id = ?", (user_id,))
-        cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
-        conn.commit()
-
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
-        disconnect_user_websockets(user_id)
-        log_audit(
-            "admin.user_deleted",
-            actor_user_id=role_or_err.user_id,
-            target_type="tai_khoan",
-            target_id=user_id,
-            request=request,
-            metadata={"impact": impact},
-        )
-
-        return JSONResponse({
-            "success": True,
-            "message": "Xóa người dùng thành công!",
-            "deleteImpact": impact,
-        })
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        log_error(e, "delete_user_api")
-        return JSONResponse({"error": "Đã xảy ra lỗi xóa tài khoản."}, status_code=500)
-    finally:
-        if conn:
-            conn.close()
+from backend.auth.admin_user_routes import delete_user_api, list_users_api
 
 async def update_user_role_api(request):
     """Update a platform role or a role in the active organization.

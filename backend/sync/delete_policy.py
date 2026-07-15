@@ -2,6 +2,8 @@
 
 import json
 import time
+
+from backend.shared.audit_chain import insert_audit_row
 from dataclasses import dataclass
 
 from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
@@ -157,10 +159,14 @@ def build_delete_impact(cursor, organization_id, table_name, record_id):
     }
 
 
-def has_recent_password_reauthentication(cursor, user_id, ttl_seconds):
+def has_recent_password_reauthentication(cursor, user_id, ttl_seconds, session_id=None):
     row = cursor.execute(
-        "SELECT privileged_reauth_at FROM tai_khoan WHERE id = ?",
-        (user_id,),
+        """
+        SELECT privileged_reauth_at
+        FROM auth_sessions
+        WHERE user_id = ? AND id = ? AND revoked_at IS NULL
+        """,
+        (user_id, session_id),
     ).fetchone()
     try:
         reauthenticated_at = int(row[0] if row else 0)
@@ -202,20 +208,13 @@ def insert_delete_audit(
     impact,
     ip_address=None,
 ):
-    cursor.execute(
-        """
-        INSERT INTO audit_log (
-            actor_user_id, organization_id, action, target_type, target_id,
-            ip_address, metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            actor_user_id,
-            organization_id,
-            action,
-            table_name,
-            record_id,
-            ip_address,
-            json.dumps({"impact": impact}, ensure_ascii=False, default=str),
-        ),
+    insert_audit_row(
+        cursor,
+        actor_user_id=actor_user_id,
+        organization_id=organization_id,
+        action=action,
+        target_type=table_name,
+        target_id=record_id,
+        ip_address=ip_address,
+        metadata_json=json.dumps({"impact": impact}, ensure_ascii=False, default=str),
     )

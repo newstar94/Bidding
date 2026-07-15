@@ -1,0 +1,24 @@
+[Unit]
+Description=BiddingFlow ASGI service (single SQLite writer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=biddingflow
+Group=biddingflow
+WorkingDirectory=/opt/biddingflow
+EnvironmentFile=/etc/biddingflow/biddingflow.env
+ExecStart=/opt/biddingflow/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/biddingflow /var/log/biddingflow /var/backups/biddingflow /var/tmp/biddingflow-document-worker
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

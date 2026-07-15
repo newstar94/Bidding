@@ -37,6 +37,7 @@ from backend.auth.identity import (
 )
 from backend.shared.request_validation import validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
+from backend.auth.session_store import create_session
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOTimeoutError,
@@ -289,9 +290,14 @@ async def google_login_api(request):
             "login_time": datetime.now(timezone.utc).isoformat(),
             "method": "google",
         })
-        cursor.execute(
-            "UPDATE tai_khoan SET token_phien = ?, han_su_dung_token = ?, thong_tin_thiet_bi_cuoi = ?, privileged_reauth_at = NULL WHERE id = ?",
-            (session_token, token_expiry, device_info, user["id"]),
+        create_session(
+            cursor,
+            user_id=user["id"],
+            token=session_token,
+            absolute_expires_at=token_expiry,
+            idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
+            remember=False,
+            device_info=device_info,
         )
         _session_cache_invalidate_by_user_id(user["id"])
 

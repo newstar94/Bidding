@@ -16,7 +16,7 @@ from backend.documents.template_security import (
     validate_template_statements,
 )
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
-from backend.shared.logging_utils import append_runtime_log
+from backend.shared.logging_utils import append_runtime_log, log_error
 
 
 _IMAGE_THREAD_POOL = ThreadPoolExecutor(max_workers=6)
@@ -705,13 +705,13 @@ def optimize_image_for_docx(filepath, max_width=800):
                 with open(cache_path, "wb") as f:
                     f.write(data)
             except Exception as cache_err:
-                print("Unable to write the optimized image cache:", cache_err)
+                log_error(cache_err, "Document.ImageCacheWrite")
 
             _OPTIMIZED_IMAGE_CACHE[cache_key] = (mtime, data)
             out.seek(0)
             return out
     except Exception as e:
-        print("Image optimization failed:", e)
+        log_error(e, "Document.ImageOptimization")
         return filepath
 
 def prewarm_image_cache():
@@ -751,12 +751,12 @@ def prewarm_image_cache():
                 f.result()
                 count += 1
             except Exception as e:
-                print(f"[prewarm] Image optimization failed: {e}")
+                log_error(e, "Document.ImagePrewarm")
 
-        if count > 0:
-            print(f"[prewarm] Đã tối ưu hóa song song {count} ảnh chuyên gia vào cache.")
+        if count > 0 and os.environ.get("APP_DEBUG", "False").lower() == "true":
+            append_runtime_log("export_error.log", f"Image prewarm completed: {count} files.\n")
     except Exception as e:
-        print(f"[prewarm] Image-cache prewarming failed: {e}")
+        log_error(e, "Document.ImagePrewarm")
 
 
 def _collect_image_tasks(data, project_root, tasks=None):
@@ -814,7 +814,7 @@ def convert_images_in_context(doc, data):
             width_val = usable_width if width_hint == 'full' else Inches(1.5)
             data_ref[k] = InlineImage(doc, image_stream, width=width_val)
         except Exception as img_ex:
-            print("Image conversion in the DOCX context failed:", img_ex)
+            log_error(img_ex, "Document.ImageConversion")
 
 class TemplateRenderError(ValueError):
     """Public, non-sensitive error raised when a DOCX template cannot render."""

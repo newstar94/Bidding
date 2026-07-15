@@ -6,7 +6,14 @@ from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.shared.date_utils import normalize_datetime_value
 from backend.db.id_utils import generate_record_id
 from backend.sync.evaluation_metadata import dump_evaluation_metadata, parse_evaluation_metadata
-from backend.shared.text_utils import clean_id, normalize_organization_name, normalize_person_name, safe_float, to_camel_case
+from backend.shared.text_utils import (
+    clean_id,
+    normalize_business_identifier,
+    normalize_organization_name,
+    normalize_person_name,
+    safe_float,
+    to_camel_case,
+)
 
 
 def json_key_for_column(table_name, col):
@@ -42,6 +49,19 @@ def canonicalize_payload_item(table_name, item):
             normalized[json_key] = item.get(json_key)
         elif col in item:
             normalized[json_key] = item.get(col)
+    business_key_fields = {
+        "chu_dau_tu": (("maChuDauTu", False), ("maSoThue", True)),
+        "ke_hoach_lcnt": (("maKeHoach", False),),
+        "goi_thau": (("maGoiThau", False),),
+        "nha_thau": (("maNhaThau", False), ("maSoThue", True)),
+        "chuyen_gia": (("soCCCD", True),),
+        "hop_dong": (("soHopDong", False),),
+    }
+    for field_name, digits_only in business_key_fields.get(table_name, ()):
+        if field_name in normalized and normalized.get(field_name) not in (None, ""):
+            normalized[field_name] = normalize_business_identifier(
+                normalized[field_name], digits_only=digits_only
+            )
     if table_name == "chu_dau_tu" and normalized.get("tenChuDauTu"):
         normalized["tenChuDauTu"] = normalize_organization_name(normalized["tenChuDauTu"])
     elif table_name == "nha_thau" and normalized.get("tenNhaThau"):

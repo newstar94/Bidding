@@ -8,6 +8,7 @@ PLATFORM_ADMIN_ROLES = {"super_admin"}
 ORGANIZATION_MANAGER_ROLES = {"owner", "manager"}
 WRITE_PROTECTED_KEYS = {
     "assignments",
+    "custompaperstatuses",
     "permissionmatrix",
     "organizations",
     "employees",
@@ -203,6 +204,24 @@ def authorize_payload_key_write(role_str, payload_key, *, organization_manager=F
 
 def authorize_record_write(cursor, role_str, user_id, organization_id, payload_key, table_name, item):
     organization_manager = is_organization_manager(cursor, role_str, user_id, organization_id)
+    if table_name == "phan_cong_nhan_su" and not organization_manager and not is_manager_role(role_str):
+        employee_id = clean_id(item.get("empId") or item.get("id_nhan_vien"))
+        target_id = clean_id(item.get("targetId") or item.get("id_muc_tieu"))
+        target_type = str(item.get("type") or item.get("loai_doi_tuong") or "").strip()
+        if employee_id != clean_id(user_id):
+            return AccessDecision(False, "Chuyên viên chỉ được tự nhận bản ghi do mình tạo.")
+        target_table = {
+            "kehoach": "ke_hoach_lcnt",
+            "goithau": "goi_thau",
+            "hopdong": "hop_dong",
+        }.get(target_type)
+        if not target_id or not target_table:
+            return AccessDecision(False, "Mục tiêu phân công không hợp lệ.")
+        if _table_record_exists(cursor, organization_id, target_table, target_id) and not _assigned(
+            cursor, organization_id, user_id, target_id, target_type
+        ):
+            return AccessDecision(False, "Không được tự nhận một bản ghi đã tồn tại và chưa được phân công.")
+        return AccessDecision(True)
     key_decision = authorize_payload_key_write(
         role_str,
         payload_key,
@@ -263,7 +282,54 @@ def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_ke
         return []
     if table_name not in ASSIGNED_TABLE_TYPES and table_name != "thong_tin_mo_thau":
         return source_items
+    record_ids = [
+        clean_id(item.get("id") if isinstance(item, dict) else item)
+        for item in source_items
+    ]
+    record_ids = [record_id for record_id in record_ids if record_id]
+    if not record_ids:
+        return []
+    placeholders = ", ".join("?" for _ in record_ids)
+    if table_name == "ke_hoach_lcnt":
+        rows = cursor.execute(
+            f"""SELECT pc.id_muc_tieu
+                FROM phan_cong_nhan_su pc
+                WHERE pc.organization_id = ? AND pc.id_nhan_vien = ?
+                  AND pc.loai_doi_tuong = 'kehoach'
+                  AND pc.id_muc_tieu IN ({placeholders})
+                UNION
+                SELECT gt.ke_hoach_id
+                FROM goi_thau gt
+                JOIN phan_cong_nhan_su pc
+                  ON pc.organization_id = gt.organization_id
+                 AND pc.id_muc_tieu = gt.id
+                 AND pc.loai_doi_tuong = 'goithau'
+                WHERE gt.organization_id = ? AND pc.id_nhan_vien = ?
+                  AND gt.ke_hoach_id IN ({placeholders})""",
+            (organization_id, user_id, *record_ids, organization_id, user_id, *record_ids),
+        ).fetchall()
+    elif table_name == "thong_tin_mo_thau":
+        rows = cursor.execute(
+            f"""SELECT mt.id
+                FROM thong_tin_mo_thau mt
+                JOIN phan_cong_nhan_su pc
+                  ON pc.organization_id = mt.organization_id
+                 AND pc.id_muc_tieu = mt.goi_thau_id
+                 AND pc.loai_doi_tuong = 'goithau'
+                WHERE mt.organization_id = ? AND pc.id_nhan_vien = ?
+                  AND mt.id IN ({placeholders})""",
+            (organization_id, user_id, *record_ids),
+        ).fetchall()
+    else:
+        target_type = ASSIGNED_TABLE_TYPES[table_name]
+        rows = cursor.execute(
+            f"""SELECT id_muc_tieu FROM phan_cong_nhan_su
+                WHERE organization_id = ? AND id_nhan_vien = ?
+                  AND loai_doi_tuong = ? AND id_muc_tieu IN ({placeholders})""",
+            (organization_id, user_id, target_type, *record_ids),
+        ).fetchall()
+    allowed_ids = {clean_id(row[0]) for row in rows}
     return [
         item for item in source_items
-        if _assigned_for_table(cursor, organization_id, user_id, table_name, item)
+        if clean_id(item.get("id") if isinstance(item, dict) else item) in allowed_ids
     ]

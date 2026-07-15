@@ -2,6 +2,7 @@ import json
 import math
 import re
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from .mapper import json_key_for_column
@@ -26,6 +27,43 @@ DATE_KEYS_BY_TABLE = {
     ]
     for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
 }
+PACKAGE_STATUS_TRANSITIONS = {
+    "Chuẩn bị": {"Đang mời thầu", "Hủy thầu"},
+    "Đang mời thầu": {"Đã mở thầu", "Hủy thầu"},
+    "Đã mở thầu": {"Đang chấm thầu", "Hủy thầu"},
+    "Đang chấm thầu": {"Đã có kết quả", "Hủy thầu"},
+    "Đã có kết quả": {"Đang chấm thầu", "Hủy thầu"},
+    # Khôi phục hủy thầu dùng trạng thái nghiệp vụ đã lưu ở phía client.
+    "Hủy thầu": PACKAGE_STATUSES - {"Hủy thầu"},
+}
+CONTRACT_STATUSES = {
+    "Chưa hiệu lực", "Đang thực hiện", "Tạm dừng",
+    "Đã hoàn thành", "Đã thanh lý", "Đã hủy",
+}
+CONTRACT_STATUS_TRANSITIONS = {
+    "Chưa hiệu lực": {"Đang thực hiện", "Đã hủy"},
+    "Đang thực hiện": {"Tạm dừng", "Đã hoàn thành", "Đã thanh lý", "Đã hủy"},
+    "Tạm dừng": {"Đang thực hiện", "Đã hủy"},
+    "Đã hoàn thành": {"Đã thanh lý"},
+    "Đã thanh lý": set(),
+    "Đã hủy": set(),
+}
+PACKAGE_LOCKED_FIELDS_AFTER_INVITATION = {
+    "maGoiThau": "ma_goi_thau",
+    "keHoachId": "ke_hoach_id",
+    "tenGoiThau": "ten_goi_thau",
+    "giaGoiThau": "gia_goi_thau",
+    "loaiHopDong": "loai_hop_dong",
+    "hinhThucLuaChon": "hinh_thuc_lua_chon",
+    "phuongThucLuaChon": "phuong_thuc_lua_chon",
+    "phuongPhapDanhGia": "phuong_phap_danh_gia",
+    "quaMang": "qua_mang",
+    "trongNuocQuocTe": "trong_nuoc_quoc_te",
+    "linhVuc": "linh_vuc",
+    "nguonVon": "nguon_von",
+    "phanLo": "phan_lo",
+    "tuyChonMuaThem": "tuy_chon_mua_them",
+}
 
 SYNC_CHILD_FIELDS = {
     "ke_hoach_lcnt": {
@@ -40,6 +78,7 @@ SYNC_CHILD_FIELDS = {
     "hop_dong": {"goiThauIds"},
 }
 SYNC_VIRTUAL_FIELDS = {
+    "goi_thau": {"danhGiaHsdtMetadata"},
     "thong_tin_mo_thau": {
         "danhGiaHopLe", "danhGiaNangLuc", "danhGiaKyThuat", "danhGiaTaiChinh",
         "danhGiaKetLuan", "diemDanhGia", "lyDoTruot", "lamRoHopLe",
@@ -51,7 +90,7 @@ SYNC_VIRTUAL_FIELDS = {
 MAX_SYNC_TEXT_LENGTH = 100_000
 MAX_SYNC_CHILD_ITEMS = 500
 BOOLEAN_COLUMNS = {
-    "is_latest", "is_tong_muc_tu_dong", "is_thuoc", "co_qd_chi_dinh",
+    "is_latest", "is_tong_muc_tu_dong", "is_thuoc", "is_rebid", "co_qd_chi_dinh",
 }
 TABLE_KEYS_FOR_VALIDATION = TABLE_KEYS
 CHILD_MONEY_FIELDS = {
@@ -60,6 +99,96 @@ CHILD_MONEY_FIELDS = {
     "giaTriUocTinh", "gia_tri_uoc_tinh",
 }
 CHILD_NUMBER_FIELDS = {"soLuong", "so_luong", "tyLe", "ty_le"}
+
+
+def _is_blank(value):
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _require_fields(item, fields, errors):
+    for key, label in fields:
+        if _is_blank(item.get(key)):
+            errors.append(f"{label} không được để trống.")
+
+
+def _as_list(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (TypeError, ValueError):
+            return []
+    return []
+
+
+def _validate_single_team_leader(item, field_name, label, errors):
+    members = _as_list(item.get(field_name))
+    if members:
+        leader_count = sum(
+            1 for member in members
+            if isinstance(member, dict) and str(member.get("chucVu") or member.get("chuc_vu") or "").strip() == "Tổ trưởng"
+        )
+        if leader_count != 1:
+            errors.append(f"{label} phải có đúng một Tổ trưởng.")
+
+
+def validate_package_status_transition(previous_status, item):
+    old_status = LEGACY_PACKAGE_STATUS_ALIASES.get(
+        str(previous_status or "").strip(), str(previous_status or "").strip()
+    )
+    new_status = LEGACY_PACKAGE_STATUS_ALIASES.get(
+        str(item.get("trangThai") or "Chuẩn bị").strip(),
+        str(item.get("trangThai") or "Chuẩn bị").strip(),
+    )
+    if not old_status or old_status == new_status:
+        return []
+    direct_or_special = str(item.get("hinhThucLuaChon") or "").strip() in {
+        "Chỉ định thầu rút gọn",
+        "Lựa chọn nhà thầu trong trường hợp đặc biệt",
+    }
+    if direct_or_special and old_status == "Chuẩn bị" and new_status in {
+        "Đang chấm thầu", "Đã có kết quả", "Hủy thầu"
+    }:
+        return []
+    if new_status not in PACKAGE_STATUS_TRANSITIONS.get(old_status, set()):
+        return [f"Không được chuyển trạng thái gói thầu từ '{old_status}' sang '{new_status}'."]
+    return []
+
+
+def validate_package_locked_fields(previous_record, item):
+    """Reject material edits on an already-issued package version."""
+    previous_status = LEGACY_PACKAGE_STATUS_ALIASES.get(
+        str((previous_record or {}).get("trang_thai") or "Chuẩn bị").strip(),
+        str((previous_record or {}).get("trang_thai") or "Chuẩn bị").strip(),
+    )
+    if previous_status == "Chuẩn bị":
+        return []
+
+    errors = []
+    for json_key, column_name in PACKAGE_LOCKED_FIELDS_AFTER_INVITATION.items():
+        if json_key not in item:
+            continue
+        before = (previous_record or {}).get(column_name)
+        after = item.get(json_key)
+        if str(before if before is not None else "").strip() != str(after if after is not None else "").strip():
+            errors.append(_field_error(
+                json_key,
+                "PACKAGE_FIELD_LOCKED",
+                "Trường này không được sửa sau khi phát hành mời thầu; hãy tạo phiên bản gói thầu mới.",
+            ))
+    return errors
+
+
+def validate_contract_status_transition(previous_status, item):
+    old_status = str(previous_status or "Đang thực hiện").strip()
+    new_status = str(item.get("trangThaiHopDong") or "Đang thực hiện").strip()
+    if old_status == new_status:
+        return []
+    if new_status not in CONTRACT_STATUS_TRANSITIONS.get(old_status, set()):
+        return [f"Không được chuyển trạng thái hợp đồng từ '{old_status}' sang '{new_status}'."]
+    return []
 
 
 def _field_error(path, code, message):
@@ -92,7 +221,7 @@ def validate_sync_payload_shape(payload):
         return [_field_error("$", "TYPE_OBJECT_REQUIRED", "Dữ liệu đồng bộ phải là JSON object.")]
 
     allowed_top_level = set(TABLE_KEYS_FOR_VALIDATION) | {
-        "deletions", "baseSyncVersion", "clientMutationId", "upserts",
+        "deletions", "baseSyncVersion", "clientMutationId", "includeDashboardSummary",
     }
     for key in payload:
         if key not in allowed_top_level:
@@ -114,15 +243,12 @@ def validate_sync_payload_shape(payload):
                 "baseSyncVersion phải là số nguyên không âm.",
             ))
 
-    upserts = payload.get("upserts")
-    if upserts is not None and not isinstance(upserts, dict):
-        errors.append(_field_error("upserts", "TYPE_OBJECT_REQUIRED", "upserts phải là object."))
-    elif isinstance(upserts, dict):
-        for key, values in upserts.items():
-            if key not in TABLE_KEYS_FOR_VALIDATION:
-                errors.append(_field_error(f"upserts.{key}", "INVALID_TABLE", "Bảng upsert không hợp lệ."))
-            elif not isinstance(values, (list, dict)) or not _validate_json_depth(values):
-                errors.append(_field_error(f"upserts.{key}", "PAYLOAD_TOO_COMPLEX", "Upsert không hợp lệ hoặc vượt giới hạn."))
+    include_dashboard_summary = payload.get("includeDashboardSummary")
+    if include_dashboard_summary is not None and not isinstance(include_dashboard_summary, bool):
+        errors.append(_field_error(
+            "includeDashboardSummary", "INVALID_BOOLEAN",
+            "includeDashboardSummary phải là boolean.",
+        ))
 
     deletions = payload.get("deletions", [])
     if not isinstance(deletions, list):
@@ -190,7 +316,12 @@ def validate_sync_payload_shape(payload):
                 if key in SYNC_VIRTUAL_FIELDS.get(table_name, set()):
                     value = item[key]
                     field_path = f"{item_path}.{key}"
-                    if key == "diemDanhGia":
+                    if key == "danhGiaHsdtMetadata":
+                        try:
+                            parse_evaluation_metadata(value, require_version=True)
+                        except ValueError as exc:
+                            errors.append(_field_error(field_path, "INVALID_EVALUATION_METADATA", str(exc)))
+                    elif key == "diemDanhGia":
                         if value is not None and (
                             isinstance(value, bool)
                             or not isinstance(value, (int, float))
@@ -243,12 +374,6 @@ def validate_sync_payload_shape(payload):
                 value = item[key]
                 definition = columns[column].upper()
                 field_path = f"{item_path}.{key}"
-                if table_name == "goi_thau" and column == "danh_gia_hsdt_metadata":
-                    try:
-                        parse_evaluation_metadata(value, require_version=True)
-                    except ValueError as exc:
-                        errors.append(_field_error(field_path, "INVALID_EVALUATION_METADATA", str(exc)))
-                    continue
                 if value is None:
                     if "NOT NULL" in definition:
                         errors.append(_field_error(field_path, "NULL_NOT_ALLOWED", "Trường này không được là null."))
@@ -283,10 +408,9 @@ def parse_date(val):
     return parse_datetime_value(val)
 
 
-def validate_sync_item(table_name, item, incoming_paper_status_names=None):
-    incoming_paper_status_names = incoming_paper_status_names or set()
+def validate_sync_item(table_name, item, allowed_paper_status_names=None):
+    allowed_paper_status_names = allowed_paper_status_names or set()
     errors = []
-    paper_statuses_to_seed = set()
 
     if table_name in {"chu_dau_tu", "nha_thau"} and not str(item.get("ngayApDung") or "").strip():
         created_at = str(item.get("createdAt") or "").strip()
@@ -296,14 +420,31 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
         if not str(item.get("tenChuDauTu") or "").strip():
             errors.append("Tên chủ đầu tư không được để trống.")
     elif table_name == "ke_hoach_lcnt":
-        if not str(item.get("tenKeHoach") or "").strip():
-            errors.append("Tên kế hoạch LCNT không được để trống.")
+        _require_fields(item, (
+            ("tenKeHoach", "Tên kế hoạch LCNT"),
+            ("tenDuAnDuToan", "Tên dự án/dự toán"),
+            ("loaiHinhMuaSam", "Loại hình mua sắm"),
+            ("chuDauTuId", "Chủ đầu tư"),
+            ("ngayPheDuyet", "Ngày phê duyệt kế hoạch"),
+            ("quyetDinhPheDuyet", "Quyết định phê duyệt kế hoạch"),
+        ), errors)
     elif table_name == "goi_thau":
-        if not str(item.get("tenGoiThau") or "").strip():
-            errors.append("Tên gói thầu không được để trống.")
+        _require_fields(item, (
+            ("keHoachId", "Kế hoạch LCNT liên kết"),
+            ("tenGoiThau", "Tên gói thầu"),
+            ("giaGoiThau", "Giá gói thầu"),
+            ("thoiGianThucHien", "Thời gian thực hiện"),
+            ("nguonVon", "Nguồn vốn"),
+            ("thoiGianToChuc", "Thời gian tổ chức LCNT"),
+            ("thoiGianBatDauToChuc", "Thời gian bắt đầu tổ chức"),
+        ), errors)
     elif table_name == "nha_thau":
         if not str(item.get("tenNhaThau") or "").strip():
             errors.append("Tên nhà thầu không được để trống.")
+        if str(item.get("loaiNhaThau") or "").strip() == "Liên danh" and str(item.get("maSoThue") or "").strip():
+            errors.append(
+                "Nhà thầu liên danh không dùng mã số thuế chung; mã số thuế thuộc từng thành viên liên danh."
+            )
     elif table_name == "chuyen_gia":
         if not str(item.get("hoTen") or "").strip():
             errors.append("Họ và tên chuyên gia không được để trống.")
@@ -311,10 +452,21 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
         if cccd and not re.match(r"^\d{12}$", str(cccd).strip()):
             errors.append("Số CCCD phải gồm đúng 12 chữ số.")
     elif table_name == "hop_dong":
-        if not str(item.get("tenHopDong") or "").strip():
-            errors.append("Tên hợp đồng không được để trống.")
-        if not str(item.get("soHopDong") or "").strip():
-            errors.append("Số hợp đồng không được để trống.")
+        _require_fields(item, (
+            ("tenHopDong", "Tên hợp đồng"),
+            ("soHopDong", "Số hợp đồng"),
+            ("ngayKy", "Ngày ký hợp đồng"),
+            ("chuDauTuId", "Chủ đầu tư của hợp đồng"),
+            ("nhaThauId", "Nhà thầu của hợp đồng"),
+            ("keHoachId", "Kế hoạch LCNT của hợp đồng"),
+            ("giaTri", "Giá trị hợp đồng"),
+            ("loaiHopDong", "Loại hợp đồng"),
+            ("soNgayThucHien", "Thời gian thực hiện hợp đồng"),
+            ("trangThaiHopDong", "Trạng thái hợp đồng"),
+            ("trangThaiHoSo", "Trạng thái hồ sơ giấy"),
+        ), errors)
+        if not _as_list(item.get("goiThauIds")):
+            errors.append("Hợp đồng phải liên kết với ít nhất một gói thầu.")
 
     table_spec = SCHEMA_DINH_NGHIA.get(table_name, {})
     explicit_json_fields = set(table_spec.get("json_fields", []))
@@ -366,7 +518,19 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
             errors.append(f"Trường ngày/giờ '{date_key}' không đúng định dạng.")
 
     if table_name == "goi_thau":
-        raw_status = item.get("trangThai")
+        is_rebid = item.get("isRebid") in (True, 1, "1", "true", "True")
+        rebid_from = str(item.get("rebidFromPackageId") or "").strip()
+        item["isRebid"] = 1 if is_rebid else 0
+        item["rebidFromPackageId"] = rebid_from or None
+        if is_rebid and not rebid_from:
+            errors.append("Gói đấu thầu lại phải tham chiếu gói thầu nguồn.")
+        if not is_rebid and rebid_from:
+            errors.append("Gói không đấu thầu lại không được tham chiếu gói thầu nguồn.")
+        if rebid_from and str(item.get("id") or "").strip() == rebid_from:
+            errors.append("Gói đấu thầu lại không được tự tham chiếu.")
+
+        raw_status = item.get("trangThai") or "Chuẩn bị"
+        item["trangThai"] = raw_status
         if raw_status:
             normalized_status = LEGACY_PACKAGE_STATUS_ALIASES.get(str(raw_status).strip(), str(raw_status).strip())
             item["trangThai"] = normalized_status
@@ -380,6 +544,110 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
             errors.append("Thời gian đóng thầu phải sau thời gian đăng tải.")
         if dong_thau and mo_thau and mo_thau < dong_thau:
             errors.append("Thời gian mở thầu phải bằng hoặc sau thời gian đóng thầu.")
+
+        status_order = {
+            "Đang mời thầu": 1,
+            "Đã mở thầu": 2,
+            "Đang chấm thầu": 3,
+            "Đã có kết quả": 4,
+        }
+        status_level = status_order.get(item.get("trangThai"), 0)
+        is_direct_or_special = str(item.get("hinhThucLuaChon") or "").strip() in {
+            "Chỉ định thầu rút gọn",
+            "Lựa chọn nhà thầu trong trường hợp đặc biệt",
+        }
+        if status_level >= 1 and not is_direct_or_special:
+            _require_fields(item, (
+                ("thoiGianDangTai", "Thời gian đăng tải"),
+                ("thoiGianDongThau", "Thời gian đóng thầu"),
+            ), errors)
+            hieu_luc = safe_int(item.get("hieuLucHsdt"))
+            if hieu_luc is None or hieu_luc <= 0:
+                errors.append("Hiệu lực HSDT phải lớn hơn 0 khi gói đã mời thầu.")
+        if status_level >= 2 and not is_direct_or_special:
+            _require_fields(item, (("thoiGianMoThau", "Thời gian mở thầu"),), errors)
+        if status_level >= 4:
+            _require_fields(item, (
+                ("soQuyetDinhKetQua", "Số quyết định kết quả"),
+                ("ngayQuyetDinhKetQua", "Ngày quyết định kết quả"),
+                ("nhaThauTrungThauId", "Nhà thầu trúng thầu"),
+                ("giaTrungThau", "Giá trúng thầu"),
+            ), errors)
+
+        phan_lo_list = _as_list(item.get("phanLoList"))
+        if str(item.get("phanLo") or "").strip() == "Có":
+            if not phan_lo_list:
+                errors.append("Gói thầu phân lô phải có ít nhất một phần lô.")
+            normalized_codes = []
+            lot_total = 0
+            for index, lot in enumerate(phan_lo_list):
+                if not isinstance(lot, dict):
+                    continue
+                code = str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
+                if not code:
+                    errors.append(f"Phần lô thứ {index + 1} chưa có mã phần lô.")
+                else:
+                    normalized_codes.append(code)
+                value = parse_vnd_amount(lot.get("giaTriPhanLo", lot.get("gia_tri_phan_lo")))
+                if value is not None:
+                    lot_total += value
+            if len(normalized_codes) != len(set(normalized_codes)):
+                errors.append("Mã phần lô không được trùng trong cùng gói thầu.")
+            package_value = parse_vnd_amount(item.get("giaGoiThau"))
+            if package_value is not None and phan_lo_list and lot_total != package_value:
+                errors.append("Tổng giá trị các phần lô phải bằng giá gói thầu.")
+        elif phan_lo_list:
+            errors.append("Gói không phân lô không được chứa danh sách phần lô.")
+
+        if status_level >= 4 and str(item.get("phanLo") or "").strip() == "Có":
+            awarded_lots = _as_list(item.get("awardedPhanLoList"))
+            if not awarded_lots:
+                awarded_lots = [
+                    lot for lot in phan_lo_list
+                    if isinstance(lot, dict) and (
+                        lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id")
+                    )
+                ]
+            if not awarded_lots:
+                errors.append("Gói phân lô đã có kết quả phải có kết quả trúng thầu từng phần lô.")
+            known_codes = {
+                str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
+                for lot in phan_lo_list if isinstance(lot, dict)
+            }
+            awarded_codes = []
+            awarded_total = 0
+            overall_winner = str(item.get("nhaThauTrungThauId") or "").strip()
+            for lot in awarded_lots:
+                if not isinstance(lot, dict):
+                    continue
+                code = str(lot.get("maPhanLo") or lot.get("ma_phan_lo") or "").strip().casefold()
+                winner = str(lot.get("nhaThauTrungThauId") or lot.get("nha_thau_trung_thau_id") or "").strip()
+                value = parse_vnd_amount(lot.get("giaTrungThau", lot.get("gia_trung_thau")))
+                awarded_codes.append(code)
+                if not code or code not in known_codes:
+                    errors.append("Kết quả trúng thầu chứa phần lô không thuộc gói thầu.")
+                if not winner:
+                    errors.append("Mỗi phần lô trúng thầu phải xác định nhà thầu trúng thầu.")
+                elif overall_winner and winner != overall_winner:
+                    errors.append("Nhà thầu trúng từng phần lô phải khớp nhà thầu trúng thầu của gói.")
+                if value is None:
+                    errors.append("Mỗi phần lô trúng thầu phải có giá trúng thầu hợp lệ.")
+                else:
+                    awarded_total += value
+            if len(awarded_codes) != len(set(awarded_codes)):
+                errors.append("Một phần lô không được xuất hiện nhiều lần trong kết quả trúng thầu.")
+            winning_value = parse_vnd_amount(item.get("giaTrungThau"))
+            if winning_value is not None and awarded_lots and awarded_total != winning_value:
+                errors.append("Tổng giá trúng các phần lô phải bằng giá trúng thầu của gói.")
+
+        option_list = _as_list(item.get("tuyChonMuaThemList"))
+        if str(item.get("tuyChonMuaThem") or "").strip() == "Có" and not option_list:
+            errors.append("Gói có tùy chọn mua thêm phải khai báo ít nhất một hạng mục.")
+        if str(item.get("tuyChonMuaThem") or "").strip() != "Có" and option_list:
+            errors.append("Gói không có tùy chọn mua thêm không được chứa danh sách tùy chọn.")
+
+        _validate_single_team_leader(item, "toChuyenGia", "Tổ chuyên gia", errors)
+        _validate_single_team_leader(item, "toThamDinh", "Tổ thẩm định", errors)
 
         trong_so = item.get("trongSoKyThuat")
         if trong_so is not None:
@@ -403,17 +671,64 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
             if tm_val is None:
                 errors.append("Tổng mức đầu tư không được nhỏ hơn 0.")
 
+        if str(item.get("loaiHinhMuaSam") or "").strip() == "Dự án":
+            _require_fields(item, (
+                ("maDuan", "Mã dự án"),
+                ("soQdPheDuyetDuAn", "Số quyết định phê duyệt dự án"),
+                ("ngayQdPheDuyetDuAn", "Ngày quyết định phê duyệt dự án"),
+                ("coQuanPheDuyetDuAn", "Cơ quan phê duyệt dự án"),
+            ), errors)
+        if str(item.get("pheDuyet") or "").strip() == "Kế hoạch":
+            _require_fields(item, (
+                ("ngayTrinhDuToan", "Ngày trình dự toán"),
+                ("ngayPheDuyetDuToan", "Ngày phê duyệt dự toán"),
+                ("soQdPheDuyetDuToan", "Số quyết định phê duyệt dự toán"),
+                ("ngayTrinhKeHoach", "Ngày trình kế hoạch"),
+            ), errors)
+        plan_date_pairs = (
+            ("ngayTrinhDuToan", "ngayPheDuyetDuToan", "Ngày phê duyệt dự toán không được trước ngày trình dự toán."),
+            ("ngayTrinhKeHoach", "ngayPheDuyet", "Ngày phê duyệt kế hoạch không được trước ngày trình kế hoạch."),
+        )
+        for start_key, end_key, message in plan_date_pairs:
+            start_date = parse_date(item.get(start_key))
+            end_date = parse_date(item.get(end_key))
+            if start_date and end_date and end_date < start_date:
+                errors.append(message)
+
     elif table_name == "hop_dong":
         gia_tri = item.get("giaTri")
         if gia_tri not in (None, ""):
             gt_val = parse_vnd_amount(gia_tri)
             if gt_val is None:
                 errors.append("Giá trị hợp đồng không được nhỏ hơn 0.")
+        signed_date = parse_date(item.get("ngayKy"))
+        liquidation_date = parse_date(item.get("ngayThanhLy"))
+        if signed_date and liquidation_date and liquidation_date < signed_date:
+            errors.append("Ngày thanh lý không được trước ngày ký hợp đồng.")
+        is_direct_award = item.get("coQdChiDinh") in (True, 1, "1", "true", "True")
+        if is_direct_award:
+            _require_fields(item, (
+                ("soQdChiDinh", "Số quyết định chỉ định thầu"),
+                ("ngayQdChiDinh", "Ngày quyết định chỉ định thầu"),
+            ), errors)
+            decision_date = parse_date(item.get("ngayQdChiDinh"))
+            if signed_date and decision_date and decision_date > signed_date:
+                errors.append("Ngày quyết định chỉ định thầu không được sau ngày ký hợp đồng.")
+        elif not _is_blank(item.get("soQdChiDinh")) or not _is_blank(item.get("ngayQdChiDinh")):
+            errors.append("Thông tin quyết định chỉ định thầu phải để trống khi không áp dụng.")
         trang_thai_hs = item.get("trangThaiHoSo")
         if trang_thai_hs:
             trang_thai_hs = str(trang_thai_hs).strip()
-            if trang_thai_hs not in incoming_paper_status_names:
-                paper_statuses_to_seed.add(trang_thai_hs)
+            if trang_thai_hs not in allowed_paper_status_names:
+                errors.append("Trạng thái hồ sơ giấy không tồn tại trong danh mục của tổ chức.")
+        contract_status = str(item.get("trangThaiHopDong") or "Đang thực hiện").strip()
+        item["trangThaiHopDong"] = contract_status
+        if contract_status not in CONTRACT_STATUSES:
+            errors.append("Trạng thái hợp đồng không hợp lệ.")
+        if contract_status == "Đã thanh lý" and not liquidation_date:
+            errors.append("Hợp đồng đã thanh lý phải có ngày thanh lý.")
+        if liquidation_date and contract_status != "Đã thanh lý":
+            errors.append("Hợp đồng có ngày thanh lý phải ở trạng thái Đã thanh lý.")
 
     elif table_name == "trang_thai_ho_so_giay":
         status_name = item.get("name") or item.get("tenTrangThai")
@@ -423,4 +738,19 @@ def validate_sync_item(table_name, item, incoming_paper_status_names=None):
         if status_color and not re.match(r"^#[0-9a-fA-F]{6}$", str(status_color).strip()):
             errors.append("Màu trạng thái hồ sơ giấy phải ở dạng HEX.")
 
-    return item, errors, paper_statuses_to_seed
+    elif table_name == "thong_tin_mo_thau":
+        bid_price = parse_vnd_amount(item.get("giaDuThau"))
+        discounted_price = parse_vnd_amount(item.get("giaSauGiamGia"))
+        discount_rate = item.get("tyLeGiamGia")
+        if bid_price is not None and discounted_price is not None and discount_rate not in (None, ""):
+            try:
+                rate = Decimal(str(discount_rate))
+                expected = (
+                    Decimal(bid_price) * (Decimal("100") - rate) / Decimal("100")
+                ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+                if int(expected) != discounted_price:
+                    errors.append("Giá sau giảm giá không khớp giá dự thầu và tỷ lệ giảm giá (làm tròn đến 1 VND).")
+            except (InvalidOperation, ValueError):
+                errors.append("Tỷ lệ giảm giá không hợp lệ.")
+
+    return item, errors, set()

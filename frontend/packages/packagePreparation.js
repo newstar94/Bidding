@@ -1,5 +1,5 @@
 import { persistAndSync } from "../shared/MutationService.js";
-import { createNextVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import { createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
 
 function dateTimeChanged(previousValue, nextValue) {
@@ -33,37 +33,15 @@ export async function savePackagePreparation(controller, pkg, changes, { generat
     const timestamp = model.getCurrentDateTimeString();
     const packageId = generateRecordId("goithau");
     const latestPlan = model.getLatestPlan(pkg.keHoachId);
-    savedPackage = createNextVersion(model.state.goithau, pkg, {
-      ...pkg,
+    savedPackage = createNextVersion(model.state.goithau, pkg, preparePackageSnapshot(pkg, {
       ...nextData,
       keHoachId: latestPlan?.id || pkg.keHoachId
-    }, { id: packageId, timestamp });
+    }), { id: packageId, timestamp });
     savedPackage.createdAt = pkg.createdAt || timestamp;
     clearCompetitiveQuotationAppraisal(savedPackage);
     model.state.goithau.push(savedPackage);
     rememberSelectedVersion(model.state, "selectedPackageVersion", savedPackage);
 
-    if (Array.isArray(model.state.hopdong)) {
-      model.state.hopdong = model.state.hopdong.map((contract) => {
-        if (!contract.goiThauIds?.includes(pkg.id)) return contract;
-        const packageIds = contract.goiThauIds.includes(packageId)
-          ? [...contract.goiThauIds]
-          : [...contract.goiThauIds, packageId];
-        return { ...contract, goiThauIds: packageIds };
-      });
-      tables.push("hopdong");
-    }
-    if (Array.isArray(model.state.thongtinmothau)) {
-      const copiedBids = model.state.thongtinmothau
-        .filter((bid) => String(bid.goiThauId) === String(pkg.id))
-        .map((bid) => ({
-          ...bid,
-          id: generateRecordId("thongtinmothau"),
-          goiThauId: packageId
-        }));
-      model.state.thongtinmothau = [...model.state.thongtinmothau, ...copiedBids];
-      tables.push("thongtinmothau");
-    }
   } else {
     const latestPlan = model.getLatestPlan(pkg.keHoachId);
     Object.assign(pkg, nextData, {

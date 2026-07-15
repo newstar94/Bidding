@@ -2,6 +2,74 @@ function versionNumber(record) {
   return Number.parseInt(record?.phienBan || "0", 10) || 0;
 }
 
+const NEW_RECORD_SERVER_FIELDS = [
+  "rowVersion",
+  "expectedVersion",
+  "syncVersion",
+  "organizationId",
+  "ownerType",
+  "archivedAt"
+];
+
+export function copyAsNewRecord(source, overrides = {}) {
+  const record = { ...(source || {}), ...overrides };
+  NEW_RECORD_SERVER_FIELDS.forEach((field) => { delete record[field]; });
+  return record;
+}
+
+function copyChildRows(rows, transform = (row) => row) {
+  return (Array.isArray(rows) ? rows : []).map((source) => {
+    const row = copyAsNewRecord(source);
+    delete row.id;
+    return transform(row);
+  });
+}
+
+/**
+ * Create the data portion of a new package snapshot.
+ *
+ * Planning data is retained, while opening/evaluation/award/cancellation data
+ * belongs to the historical package version and must never leak into a new
+ * procurement process. Child IDs are also removed because they are globally
+ * unique database rows, not lineage identifiers.
+ */
+export function preparePackageSnapshot(source, overrides = {}) {
+  const packageData = copyAsNewRecord(source, overrides);
+  return {
+    ...packageData,
+    trangThai: "Chuẩn bị",
+    nhaThauTrungThauId: null,
+    giaTrungThau: null,
+    soQuyetDinhKetQua: "",
+    ngayQuyetDinhKetQua: "",
+    thoiGianGoiThau: "",
+    thoiGianHopDong: "",
+    danhGiaHsdtMetadata: null,
+    phanLoList: copyChildRows(packageData.phanLoList, (row) => ({
+      ...row,
+      nhaThauTrungThauId: null,
+      giaTrungThau: null,
+      thoiGianGoiThau: "",
+      thoiGianHopDong: ""
+    })),
+    awardedPhanLoList: [],
+    tuyChonMuaThemList: copyChildRows(packageData.tuyChonMuaThemList),
+    giaHanList: [],
+    yeuCauLamRoList: [],
+    traLoiLamRoList: []
+  };
+}
+
+export function preserveRowVersion(record, current) {
+  if (Number.isInteger(current?.rowVersion) && current.rowVersion > 0) {
+    record.rowVersion = current.rowVersion;
+  } else {
+    delete record.rowVersion;
+  }
+  delete record.expectedVersion;
+  return record;
+}
+
 export function getVersionFamily(records, target) {
   if (!target) return [];
   const rootId = target.rootId || target.id;
@@ -51,28 +119,26 @@ export function removeAllVersions(records, target) {
 }
 
 export function createInitialVersion(data, { id, timestamp }) {
-  return {
-    ...data,
+  return copyAsNewRecord(data, {
     id,
     rootId: id,
     phienBan: "00",
     isLatest: 1,
     createdAt: timestamp,
     updatedAt: timestamp
-  };
+  });
 }
 
 export function createNextVersion(records, current, data, { id, timestamp }) {
   getVersionFamily(records, current).forEach((record) => { record.isLatest = 0; });
-  return {
-    ...data,
+  return copyAsNewRecord(data, {
     id,
     rootId: current.rootId || current.id,
     phienBan: getNextVersion(records, current),
     isLatest: 1,
     createdAt: timestamp,
     updatedAt: timestamp
-  };
+  });
 }
 
 export function rememberSelectedVersion(state, selectionKey, record) {

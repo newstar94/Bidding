@@ -223,6 +223,11 @@ export async function apiFetch(url, options = {}, fetchImpl = globalThis.fetch) 
       });
     } catch (error) {
       abort.cleanup();
+      if (requestOptions.signal?.aborted) {
+        throw requestOptions.signal.reason instanceof Error
+          ? requestOptions.signal.reason
+          : new DOMException("Request cancelled", "AbortError");
+      }
       if (attempt < maxRetries && !requestOptions.signal?.aborted) {
         await wait(retryDelay(attempt), requestOptions.signal);
         attempt += 1;

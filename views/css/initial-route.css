@@ -1,0 +1,174 @@
+body.bf-init-loading .content-viewport {
+    position: relative;
+}
+
+body.bf-init-loading .sidebar,
+body.bf-init-loading .app-header {
+    visibility: visible !important;
+    opacity: 1 !important;
+    animation: none !important;
+    transition: none !important;
+}
+
+body.bf-init-loading .content-viewport > :not(#initial-route-loading-state):not(#system-init-loader) {
+    visibility: hidden !important;
+}
+
+#initial-route-loading-state {
+    display: none;
+}
+
+body.bf-init-loading #initial-route-loading-state {
+    display: block;
+    visibility: visible;
+    padding: 28px;
+}
+
+.initial-loading-heading {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    margin-bottom: 22px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 14px;
+    background: var(--bg-card, #fff);
+}
+
+.initial-loading-spinner {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    border: 3px solid rgba(59, 130, 246, 0.15);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: bf-initial-spin 0.75s linear infinite;
+}
+
+.initial-loading-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.initial-loading-copy strong {
+    color: var(--text-main, #0f172a);
+    font-size: 0.95rem;
+}
+
+.initial-loading-copy span {
+    color: var(--text-muted, #64748b);
+    font-size: 0.78rem;
+}
+
+.initial-loading-toolbar,
+.initial-loading-table-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.5fr) repeat(2, minmax(110px, 0.8fr)) minmax(150px, 1fr) minmax(130px, 0.9fr) minmax(90px, 0.55fr);
+    gap: 16px;
+    align-items: center;
+}
+
+.initial-loading-toolbar {
+    margin-bottom: 18px;
+}
+
+.initial-loading-table {
+    overflow: hidden;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 16px;
+    background: var(--bg-card, #fff);
+}
+
+.initial-loading-table-row {
+    min-height: 68px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.initial-loading-table-row:first-child {
+    min-height: 54px;
+    background: var(--neutral-soft, #f1f5f9);
+}
+
+.initial-loading-table-row:last-child {
+    border-bottom: 0;
+}
+
+.initial-skeleton-cell {
+    display: block;
+    width: 100%;
+    height: 13px;
+    border-radius: 999px;
+    background: linear-gradient(100deg, var(--neutral-soft, #e8edf4) 25%, var(--neutral-hover, #f8fafc) 45%, var(--neutral-soft, #e8edf4) 65%);
+    background-size: 220% 100%;
+    animation: bf-initial-skeleton 1.15s ease-in-out infinite;
+}
+
+.initial-loading-toolbar .initial-skeleton-cell {
+    height: 42px;
+    border-radius: 12px;
+}
+
+#system-init-loader {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    z-index: 20;
+    overflow: hidden;
+    background: rgba(59, 130, 246, 0.14);
+    transition: opacity 0.08s ease, visibility 0.08s ease;
+}
+
+#system-init-loader::after {
+    content: "";
+    display: block;
+    width: 38%;
+    height: 100%;
+    background: #3b82f6;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.45);
+    animation: bf-initial-progress 0.9s ease-in-out infinite;
+}
+
+#system-init-loader-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+@keyframes bf-initial-progress {
+    from { transform: translateX(-115%); }
+    to { transform: translateX(365%); }
+}
+
+@keyframes bf-initial-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes bf-initial-skeleton {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #system-init-loader::after,
+    .initial-loading-spinner,
+    .initial-skeleton-cell {
+        animation: none;
+    }
+}
+
+@media (max-width: 900px) {
+    .initial-loading-toolbar,
+    .initial-loading-table-row {
+        grid-template-columns: minmax(150px, 1.5fr) repeat(3, minmax(100px, 1fr));
+    }
+
+    .initial-loading-toolbar > :nth-child(n + 5),
+    .initial-loading-table-row > :nth-child(n + 5) {
+        display: none;
+    }
+}

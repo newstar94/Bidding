@@ -43,9 +43,10 @@ export async function renderGoiThauTable() {
       slicedData = data.items;
       totalItems = data.totalItems;
     } catch (e) {
+      if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated packages", e);
       clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách gói thầu. Vui lòng thử lại." });
+      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách gói thầu. Vui lòng thử lại.", onRetry: () => this.renderGoiThauTable() });
       return;
     }
   } else {

@@ -3,6 +3,7 @@ import { bootstrapWorkspace } from "./workspaceBootstrap.js";
 import { bootstrapAuthShell } from "../auth/AuthShell.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { installDialogAccessibility } from "../shared/dialogAccessibility.js";
+import { retryPendingWorkspacePurges } from "./workspaceState.js";
 const startupMark = (name) => {
   try {
     performance.mark(`bf:${name}`);
@@ -85,6 +86,7 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
 });
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
+  await retryPendingWorkspacePurges();
   installDialogAccessibility(document);
   if ("serviceWorker" in navigator && APP_DEBUG === false) {
     const buildId = new URL(import.meta.url).pathname.split("/").pop() || "app";

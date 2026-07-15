@@ -10,9 +10,9 @@ TABLE_KEYS = {
     "goithau": "goi_thau",
     "chuyengia": "chuyen_gia",
     "nhathau": "nha_thau",
+    "custompaperstatuses": "trang_thai_ho_so_giay",
     "hopdong": "hop_dong",
     "assignments": "phan_cong_nhan_su",
-    "custompaperstatuses": "trang_thai_ho_so_giay",
     "thongtinmothau": "thong_tin_mo_thau",
     "permissionmatrix": "ma_tran_phan_quyen"
 }

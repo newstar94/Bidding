@@ -67,7 +67,7 @@ export function checkInactivity() {
 }
 export function startBackgroundSessionChecker() {
   if (this._sessionInterval) clearInterval(this._sessionInterval);
-  this._sessionInterval = setInterval(() => {
+  const checkSession = () => {
     if (this.checkInactivity()) {
       clearInterval(this._sessionInterval);
       return;
@@ -169,5 +169,16 @@ export function startBackgroundSessionChecker() {
     }).catch((err) => {
       console.error("Automatic session check failed:", err);
     });
-  }, 3e4);
+  };
+  this._checkSessionNow = checkSession;
+  if (!this._sessionVisibilityBound) {
+    this._sessionVisibilityBound = true;
+    window.addEventListener("focus", () => this._checkSessionNow?.());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") this._checkSessionNow?.();
+    });
+  }
+  // WebSocket handles immediate revocation notifications; polling remains a
+  // sparse fallback for sleeping tabs and interrupted socket connections.
+  this._sessionInterval = setInterval(checkSession, 5 * 60 * 1e3);
 }

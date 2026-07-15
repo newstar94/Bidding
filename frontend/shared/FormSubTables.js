@@ -201,7 +201,7 @@ export function addGiaHanRow(data = {}) {
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
         <td class="gh-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">Lần ...</td>
-        <td><input type="text" class="gh-time-input flatpickr-datetime" value="${data.thoiGianDongThau ? this.model.formatForDatetimeLocal(data.thoiGianDongThau) : ""}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
+        <td><input type="text" class="gh-time-input flatpickr-datetime" value="${escapeHtml(data.thoiGianDongThau ? this.model.formatForDatetimeLocal(data.thoiGianDongThau) : "")}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td><input type="text" class="gh-reason-input" value="${escapeHtml(data.lyDoGiaHan || "")}" placeholder="Nhập lý do gia hạn..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);"></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-gh-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
@@ -258,7 +258,7 @@ export function addYeuCauLamRoRow(data = {}) {
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
         <td class="yc-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">...</td>
-        <td><input type="text" class="yc-time-input flatpickr-datetime" value="${data.thoiGianYeuCau ? this.model.formatForDatetimeLocal(data.thoiGianYeuCau) : ""}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
+        <td><input type="text" class="yc-time-input flatpickr-datetime" value="${escapeHtml(data.thoiGianYeuCau ? this.model.formatForDatetimeLocal(data.thoiGianYeuCau) : "")}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
         <td><input type="text" class="yc-content-input" value="${escapeHtml(data.noiDungYeuCau || "")}" placeholder="Nhập nội dung yêu cầu làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-yc-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;
@@ -312,7 +312,7 @@ export function addTraLoiLamRoRow(data = {}) {
   tr.setAttribute("data-id", rowId);
   tr.innerHTML = `
         <td class="tl-index-cell" style="font-weight: bold; text-align: center; vertical-align: middle; color: var(--text-main);">...</td>
-        <td><input type="text" class="tl-time-input flatpickr-datetime" value="${data.thoiGianTraLoi ? this.model.formatForDatetimeLocal(data.thoiGianTraLoi) : ""}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
+        <td><input type="text" class="tl-time-input flatpickr-datetime" value="${escapeHtml(data.thoiGianTraLoi ? this.model.formatForDatetimeLocal(data.thoiGianTraLoi) : "")}" placeholder="dd/MM/yyyy HH:mm" style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
         <td><input type="text" class="tl-content-input" value="${escapeHtml(data.noiDungTraLoi || "")}" placeholder="Nhập nội dung trả lời làm rõ..." style="width: 100%; border: 1px solid var(--border-color); padding: 5px 8px; border-radius: var(--radius-sm);" required></td>
         <td style="text-align: center;"><button type="button" class="btn btn-icon btn-danger remove-tl-row-btn" style="padding: 4px; border-radius: 4px;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button></td>
     `;

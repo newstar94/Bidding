@@ -4,10 +4,16 @@ import {
   getActiveOrganizationId,
   getWorkspaceStorage,
   isWorkspaceStorageEvent,
+  WORKSPACE_PURGE_CHANNEL,
   WORKSPACE_PURGE_EVENT_KEY
 } from "./workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
-import { buildConflictDiff, renderSyncStatus } from "./syncStatus.js";
+import {
+  applyFieldConflictChoices,
+  buildConflictDiff,
+  collectFieldConflicts,
+  renderSyncStatus
+} from "./syncStatus.js";
 import { commitSyncCursor, readSyncCursor } from "./syncCursor.js";
 
 function currentWorkspaceStorage(controller) {
@@ -75,32 +81,57 @@ export async function resolveSyncConflict() {
   const conflict = this._syncConflict;
   if (!conflict) return { ok: true, skipped: true };
   const queue = this.model.getMutationQueue();
-  const detail = buildConflictDiff(queue, conflict.data).join("\n");
-  const choice = await this.view.customSelectConfirm(
-    "Giải quyết xung đột đồng bộ",
-    detail,
-    [
-      { value: "local", label: "Giữ thay đổi trên máy này và thử lại" },
-      { value: "server", label: "Bỏ thay đổi chờ và dùng dữ liệu máy chủ" }
-    ]
-  );
-  if (!choice) return { ok: false, cancelled: true };
-  this.updateSyncState({ phase: "syncing" });
-  if (choice === "server") {
-    this.model.discardAllPendingMutations();
-    this._syncConflict = null;
-    return this.forceSyncData(false, true);
+  const fieldConflicts = collectFieldConflicts(queue, conflict.data);
+  let retryQueue = queue;
+  if (fieldConflicts.length > 0) {
+    const choices = {};
+    for (const item of fieldConflicts) {
+      const choice = await this.view.customSelectConfirm(
+        `Xung đột ${item.type}/${item.id} · ${item.field}`,
+        `Máy này: ${JSON.stringify(item.localValue ?? null)}\nMáy chủ: ${JSON.stringify(item.serverValue ?? null)}`,
+        [
+          { value: "local", label: "Giữ giá trị trên máy này" },
+          { value: "server", label: "Dùng giá trị từ máy chủ" }
+        ]
+      );
+      if (!choice) return { ok: false, cancelled: true };
+      choices[item.key] = choice;
+    }
+    retryQueue = applyFieldConflictChoices(queue, fieldConflicts, choices);
+  } else {
+    const detail = buildConflictDiff(queue, conflict.data).join("\n");
+    const choice = await this.view.customSelectConfirm(
+      "Giải quyết xung đột đồng bộ",
+      detail,
+      [
+        { value: "local", label: "Giữ thay đổi trên máy này và thử lại" },
+        { value: "server", label: "Bỏ thay đổi chờ và dùng dữ liệu máy chủ" }
+      ]
+    );
+    if (!choice) return { ok: false, cancelled: true };
+    if (choice === "server") {
+      this.model.discardAllPendingMutations();
+      this._syncConflict = null;
+      return this.forceSyncData(false, true);
+    }
   }
+  this.updateSyncState({ phase: "syncing" });
   const refreshed = await this.forceSyncData(true, true);
   if (!refreshed?.ok) return refreshed;
   const syncVersion = currentWorkspaceStorage(this).getItem("bf_last_sync_version");
-  await this.model.reapplyPendingMutationQueue(queue, syncVersion);
+  await this.model.reapplyPendingMutationQueue(retryQueue, syncVersion);
   this._syncConflict = null;
   return this.autoSync();
 }
 export function collectCommittedMutationKeys(payload = {}) {
+  const mutationKeys = Object.keys(payload).filter((key) => ![
+    "clientMutationId",
+    "baseSyncVersion",
+    "deletions",
+    "includeDashboardSummary"
+  ].includes(key));
   return new Set([
-    ...Object.keys(payload.upserts || {}),
+    ...mutationKeys,
     ...(payload.deletions || []).map((item) => item?.table).filter(Boolean)
   ]);
 }
@@ -120,6 +151,15 @@ export function applyDashboardSummaryAfterMutation(model, payload = {}, response
     ? responseData.dashboardSummary
     : null;
   return true;
+}
+export function selectPostCommitRenderKeys(committedKeys, {
+  hasDeletions = false,
+  serverStateChanged = false
+} = {}) {
+  if (hasDeletions || serverStateChanged) return new Set(committedKeys || []);
+  return new Set(
+    [...(committedKeys || [])].filter((key) => key === "dashboardSummary")
+  );
 }
 export function scheduleBackgroundSync(delay = 500) {
   if (this._backgroundSyncTimer) {
@@ -158,7 +198,8 @@ export function setupAutoSyncBackground() {
       const scope = this.model?.workspaceScope;
       if (scope && event.key === WORKSPACE_PURGE_EVENT_KEY && event.newValue) {
         try {
-          if (JSON.parse(event.newValue).scopeKey === scope.key) {
+          const message = JSON.parse(event.newValue);
+          if (message.scopeKey === scope.key || message.userId === scope.userId) {
             this.disconnectWebSocket?.(false);
             void this.model.deactivateWorkspace?.();
             return;
@@ -169,6 +210,16 @@ export function setupAutoSyncBackground() {
       if (scope && isWorkspaceStorageEvent(event, scope)) this.scheduleBackgroundSync(250);
     };
     window.addEventListener("storage", this._workspaceStorageListener);
+  }
+  if (!this._workspacePurgeChannel && typeof BroadcastChannel === "function") {
+    this._workspacePurgeChannel = new BroadcastChannel(WORKSPACE_PURGE_CHANNEL);
+    this._workspacePurgeChannel.onmessage = (event) => {
+      const scope = this.model?.workspaceScope;
+      if (scope && event.data?.userId === scope.userId) {
+        this.disconnectWebSocket?.(false);
+        void this.model.deactivateWorkspace?.();
+      }
+    };
   }
   this.setupWebSocketConnection();
 }
@@ -444,8 +495,8 @@ export function autoSync() {
     if (Array.isArray(data.rowVersions) && typeof this.model?.applyCommittedRowVersions === "function") {
       await this.model.applyCommittedRowVersions(data.rowVersions);
     }
+    let orphanStateChanged = false;
     if (Array.isArray(data.orphanedIds) && data.orphanedIds.length > 0) {
-      let stateChanged = false;
       for (const orphan of data.orphanedIds) {
         const { table, id } = orphan;
         const tableToStateKey = {
@@ -458,11 +509,11 @@ export function autoSync() {
           this.model.state[stateKey] = this.model.state[stateKey].filter((item) => String(item.id) !== String(id));
           if (this.model.state[stateKey].length < before) {
             this.model.persistData(stateKey, { trackMutation: false });
-            stateChanged = true;
+            orphanStateChanged = true;
           }
         }
       }
-      if (stateChanged) {
+      if (orphanStateChanged) {
         console.info(`[Sync] Đã xóa ${data.orphanedIds.length} record mồ côi khỏi IndexedDB:`, data.orphanedIds);
       }
     }
@@ -477,7 +528,11 @@ export function autoSync() {
         this.model.currentPage[key] = 1;
       }
     });
-    await renderChangedState(this, committedKeys);
+    const postCommitRenderKeys = selectPostCommitRenderKeys(committedKeys, {
+      hasDeletions: deletedKeys.size > 0,
+      serverStateChanged: orphanStateChanged
+    });
+    await renderChangedState(this, postCommitRenderKeys);
     if (Array.isArray(data.deleteImpacts) && data.deleteImpacts.length > 0 && this.view?.showToast) {
       const affected = data.deleteImpacts.reduce((total, impact) => total + Number(impact?.totalCount || 0), 0);
       const archived = data.deleteImpacts.filter((impact) => impact?.action === "archived").length;
@@ -552,6 +607,19 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
         "X-Active-Org": encodeURIComponent(workspace.organizationId)
       }
     });
+    if (response.status === 409 && !forceFull) {
+      let resyncPayload = null;
+      try {
+        resyncPayload = await response.clone().json();
+      } catch (e) {
+        resyncPayload = null;
+      }
+      if (resyncPayload?.code === "FULL_SYNC_REQUIRED" || resyncPayload?.requiresFullSync) {
+        storage.removeItem("bf_last_sync_version");
+        storage.removeItem("bf_last_sync_timestamp");
+        return this.forceSyncData(isBackground, true, routeOnly);
+      }
+    }
     if (response.status === 401 || response.status === 403) {
       let errorMsg = "";
       try {

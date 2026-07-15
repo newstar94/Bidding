@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 DATETIME_COLUMNS = {
@@ -45,3 +45,8 @@ def normalize_datetime_value(value):
     if not parsed:
         return value
     return parsed.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def utc_now_sql():
+    """Canonical persisted technical timestamp: UTC, second precision."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")

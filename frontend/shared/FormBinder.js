@@ -1,3 +1,5 @@
+import { assertOutboundRecordFields } from "../app/outboundSerializer.js";
+
 function resolveControl(root, target) {
   if (!target) return null;
   if (typeof target !== "string") return target;
@@ -25,7 +27,7 @@ export function setFormValues(root, data, mapping) {
   });
 }
 
-export function collectFormValues(root, mapping) {
+export function collectFormValues(root, mapping, schemaType = null) {
   const result = {};
   Object.entries(mapping || {}).forEach(([dataKey, config]) => {
     const descriptor = typeof config === "string" ? { target: config } : config;
@@ -35,6 +37,9 @@ export function collectFormValues(root, mapping) {
     const parsed = descriptor.parse ? descriptor.parse(raw, control) : raw;
     result[dataKey] = descriptor.normalize ? descriptor.normalize(parsed, control) : parsed;
   });
+  if (schemaType) {
+    assertOutboundRecordFields(result, schemaType, { source: `form ${schemaType}` });
+  }
   return result;
 }
 

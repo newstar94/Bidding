@@ -42,24 +42,32 @@ SCHEMA_DINH_NGHIA = {
             "vai_tro": "TEXT NOT NULL DEFAULT 'user' CHECK(vai_tro IN ('super_admin', 'user'))",
             "email": "TEXT NOT NULL",
             "email_norm": "TEXT NOT NULL UNIQUE CHECK(email_norm != '')",
-            "token_phien": "TEXT",
             "anh_dai_dien": "TEXT",
-            "han_su_dung_token": "INTEGER",
-            "privileged_reauth_at": "INTEGER",
-            "thong_tin_thiet_bi_cuoi": "TEXT",
             "da_xac_minh": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(da_xac_minh) = 'integer' AND da_xac_minh IN (0,1))",
             "ma_xac_minh": "TEXT",
             "han_xac_minh": "INTEGER",
             "username_da_dat": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(username_da_dat) = 'integer' AND username_da_dat IN (0,1))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
-        },
-        "field_map": {
-            "ma_so_thue": "maSoThue",
-            "so_cccd": "soCCCD",
-            "ma_qhns": "maQHNS",
-            "id_goc": "rootId"
         }
+    },
+    "auth_sessions": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "user_id": "TEXT NOT NULL",
+            "token_hash": "TEXT NOT NULL UNIQUE CHECK(token_hash != '')",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "last_seen_at": "INTEGER NOT NULL CHECK(last_seen_at > 0)",
+            "idle_expires_at": "INTEGER NOT NULL CHECK(idle_expires_at > 0)",
+            "absolute_expires_at": "INTEGER NOT NULL CHECK(absolute_expires_at > 0)",
+            "revoked_at": "INTEGER",
+            "remember_me": "INTEGER NOT NULL DEFAULT 0 CHECK(remember_me IN (0,1))",
+            "device_info": "TEXT",
+            "privileged_reauth_at": "INTEGER"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
     },
     "dinh_danh_ngoai": {
         "columns": {
@@ -153,15 +161,15 @@ SCHEMA_DINH_NGHIA = {
             "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
             "archived_at": "TEXT",
             "ten_ke_hoach": "TEXT NOT NULL",
-            "ten_du_an_du_toan": "TEXT",
-            "loai_hinh_mua_sam": "TEXT",
-            "chu_dau_tu_id": "TEXT",
+            "ten_du_an_du_toan": "TEXT NOT NULL CHECK(trim(ten_du_an_du_toan) != '')",
+            "loai_hinh_mua_sam": "TEXT NOT NULL CHECK(trim(loai_hinh_mua_sam) != '')",
+            "chu_dau_tu_id": "TEXT NOT NULL CHECK(trim(chu_dau_tu_id) != '')",
             "don_vi_trinh_cdt": "TEXT",
             "ten_viet_tat_don_vi_trinh": "TEXT",
             "tong_muc_dau_tu": "INTEGER CHECK(tong_muc_dau_tu IS NULL OR (typeof(tong_muc_dau_tu) = 'integer' AND tong_muc_dau_tu >= 0))",
             "is_tong_muc_tu_dong": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_tong_muc_tu_dong) = 'integer' AND is_tong_muc_tu_dong IN (0,1))",
-            "ngay_phe_duyet": "TEXT",
-            "quyet_dinh_phe_duyet": "TEXT",
+            "ngay_phe_duyet": "TEXT NOT NULL CHECK(date(ngay_phe_duyet) IS NOT NULL)",
+            "quyet_dinh_phe_duyet": "TEXT NOT NULL CHECK(trim(quyet_dinh_phe_duyet) != '')",
             "thoi_gian_dang_tai": "TEXT",
             "nguon_von": "TEXT",
             "thoi_gian_du_an": "TEXT",
@@ -181,6 +189,7 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": ["FOREIGN KEY (chu_dau_tu_id) REFERENCES chu_dau_tu(id) ON DELETE RESTRICT"],
         "field_map": {
+            "ma_du_an": "maDuan",
             "thoi_gian_dang_tai": "thoiGianDangMa",
             "don_vi_trinh_cdt": "donViTrinhCdt",
             "ten_viet_tat_don_vi_trinh": "tenVietTatDonViTrinh",
@@ -283,20 +292,22 @@ SCHEMA_DINH_NGHIA = {
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
             "archived_at": "TEXT",
-            "ke_hoach_id": "TEXT",
+            "ke_hoach_id": "TEXT NOT NULL CHECK(trim(ke_hoach_id) != '')",
             "ten_goi_thau": "TEXT NOT NULL",
-            "gia_goi_thau": "INTEGER CHECK(gia_goi_thau IS NULL OR (typeof(gia_goi_thau) = 'integer' AND gia_goi_thau >= 0))",
+            "gia_goi_thau": "INTEGER NOT NULL CHECK(typeof(gia_goi_thau) = 'integer' AND gia_goi_thau >= 0)",
             "loai_hop_dong": "TEXT",
             "hinh_thuc_lua_chon": "TEXT",
             "phuong_thuc_lua_chon": "TEXT",
-            "thoi_gian_thuc_hien": "TEXT",
-            "nguon_von": "TEXT",
+            "qua_mang": "TEXT NOT NULL DEFAULT 'Qua mạng' CHECK(qua_mang IN ('Qua mạng', 'Không qua mạng'))",
+            "trong_nuoc_quoc_te": "TEXT NOT NULL DEFAULT 'Trong nước' CHECK(trong_nuoc_quoc_te IN ('Trong nước', 'Quốc tế'))",
+            "thoi_gian_thuc_hien": "TEXT NOT NULL CHECK(trim(thoi_gian_thuc_hien) != '')",
+            "nguon_von": "TEXT NOT NULL CHECK(trim(nguon_von) != '')",
             "nha_thau_trung_thau_id": "TEXT",
             "gia_trung_thau": "INTEGER CHECK(gia_trung_thau IS NULL OR (typeof(gia_trung_thau) = 'integer' AND gia_trung_thau >= 0))",
             "linh_vuc": "TEXT",
             "tuy_chon_mua_them": "TEXT DEFAULT 'Không' CHECK(tuy_chon_mua_them IN ('Có', 'Không') OR tuy_chon_mua_them IS NULL)",
-            "thoi_gian_to_chuc": "TEXT",
-            "thoi_gian_bat_dau_to_chuc": "TEXT",
+            "thoi_gian_to_chuc": "TEXT NOT NULL CHECK(trim(thoi_gian_to_chuc) != '')",
+            "thoi_gian_bat_dau_to_chuc": "TEXT NOT NULL CHECK(trim(thoi_gian_bat_dau_to_chuc) != '')",
             "phan_lo": "TEXT DEFAULT 'Không' CHECK(phan_lo IN ('Có', 'Không') OR phan_lo IS NULL)",
             "thoi_gian_dang_tai": "TEXT",
             "thoi_gian_dong_thau": "TEXT",
@@ -311,12 +322,13 @@ SCHEMA_DINH_NGHIA = {
             "gia_tri_dam_bao_du_thau": "INTEGER CHECK(gia_tri_dam_bao_du_thau IS NULL OR (typeof(gia_tri_dam_bao_du_thau) = 'integer' AND gia_tri_dam_bao_du_thau >= 0))",
             "hieu_luc_hsdt": "INTEGER CHECK(hieu_luc_hsdt IS NULL OR hieu_luc_hsdt >= 0)",
             "hieu_luc_dam_bao_du_thau": "INTEGER CHECK(hieu_luc_dam_bao_du_thau IS NULL OR hieu_luc_dam_bao_du_thau >= 0)",
-            "danh_gia_hsdt_metadata": "TEXT CHECK(danh_gia_hsdt_metadata IS NULL OR (json_valid(danh_gia_hsdt_metadata) AND COALESCE(json_extract(danh_gia_hsdt_metadata, '$.schemaVersion'), 0) = 1 AND length(CAST(danh_gia_hsdt_metadata AS BLOB)) <= 65536))",
             "phuong_phap_danh_gia": "TEXT",
             "trong_so_ky_thuat": "INTEGER CHECK(trong_so_ky_thuat IS NULL OR (typeof(trong_so_ky_thuat) = 'integer' AND trong_so_ky_thuat BETWEEN 0 AND 100))",
             "ty_le_bao_dam_hop_dong": "REAL CHECK(ty_le_bao_dam_hop_dong IS NULL OR (typeof(ty_le_bao_dam_hop_dong) IN ('integer', 'real') AND ty_le_bao_dam_hop_dong BETWEEN 0 AND 100))",
             "is_thuoc": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_thuoc) = 'integer' AND is_thuoc IN (0,1))",
-            "trang_thai": "TEXT CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Hủy thầu') OR trang_thai IS NULL)",
+            "is_rebid": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_rebid) = 'integer' AND is_rebid IN (0,1))",
+            "rebid_from_package_id": "TEXT",
+            "trang_thai": "TEXT NOT NULL DEFAULT 'Chuẩn bị' CHECK(trang_thai IN ('Chuẩn bị', 'Đang mời thầu', 'Đã mở thầu', 'Đang chấm thầu', 'Đã có kết quả', 'Hủy thầu'))",
             "yeu_cau_tham_dinh_hsmt": "TEXT DEFAULT 'Không' CHECK(yeu_cau_tham_dinh_hsmt IN ('Có', 'Không') OR yeu_cau_tham_dinh_hsmt IS NULL)",
             "so_bao_cao_tham_dinh_hsmt": "TEXT",
             "ngay_bao_cao_tham_dinh_hsmt": "TEXT",
@@ -328,11 +340,14 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT",
-            "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT"
+            "FOREIGN KEY (nha_thau_trung_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (rebid_from_package_id) REFERENCES goi_thau(id) ON DELETE RESTRICT"
         ],
         "unique_constraints": [
             "CHECK(NULLIF(thoi_gian_dang_tai, '') IS NULL OR NULLIF(thoi_gian_dong_thau, '') IS NULL OR (datetime(thoi_gian_dang_tai) IS NOT NULL AND datetime(thoi_gian_dong_thau) IS NOT NULL AND datetime(thoi_gian_dong_thau) > datetime(thoi_gian_dang_tai)))",
-            "CHECK(NULLIF(thoi_gian_dong_thau, '') IS NULL OR NULLIF(thoi_gian_mo_thau, '') IS NULL OR (datetime(thoi_gian_dong_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) >= datetime(thoi_gian_dong_thau)))"
+            "CHECK(NULLIF(thoi_gian_dong_thau, '') IS NULL OR NULLIF(thoi_gian_mo_thau, '') IS NULL OR (datetime(thoi_gian_dong_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) IS NOT NULL AND datetime(thoi_gian_mo_thau) >= datetime(thoi_gian_dong_thau)))",
+            "CHECK((is_rebid = 0 AND rebid_from_package_id IS NULL) OR (is_rebid = 1 AND rebid_from_package_id IS NOT NULL AND rebid_from_package_id != id))",
+            "CHECK(trang_thai != 'Đã có kết quả' OR (nha_thau_trung_thau_id IS NOT NULL AND trim(nha_thau_trung_thau_id) != '' AND gia_trung_thau IS NOT NULL AND so_quyet_dinh_ket_qua IS NOT NULL AND trim(so_quyet_dinh_ket_qua) != '' AND ngay_quyet_dinh_ket_qua IS NOT NULL AND date(ngay_quyet_dinh_ket_qua) IS NOT NULL))"
         ],
         "field_map": {
             "nha_thau_trung_thau_id": "nhaThauTrungThauId",
@@ -347,7 +362,6 @@ SCHEMA_DINH_NGHIA = {
             "gia_tri_dam_bao_du_thau": "giaTriDamBaoDuThau",
             "hieu_luc_hsdt": "hieuLucHsdt",
             "hieu_luc_dam_bao_du_thau": "hieuLucDamBaoDuThau",
-            "danh_gia_hsdt_metadata": "danhGiaHsdtMetadata",
             "ty_le_bao_dam_hop_dong": "tyLeBaoDamHopDong",
             "phuong_phap_danh_gia": "phuongPhapDanhGia",
             "trong_so_ky_thuat": "trongSoKyThuat",
@@ -479,18 +493,19 @@ SCHEMA_DINH_NGHIA = {
             "phien_ban": "TEXT NOT NULL DEFAULT '00'",
             "is_latest": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(is_latest) = 'integer' AND is_latest IN (0,1))",
             "archived_at": "TEXT",
-            "ten_hop_dong": "TEXT",
-            "so_hop_dong": "TEXT",
-            "ngay_ky": "TEXT",
-            "chu_dau_tu_id": "TEXT",
-            "nha_thau_id": "TEXT",
+            "ten_hop_dong": "TEXT NOT NULL CHECK(trim(ten_hop_dong) != '')",
+            "so_hop_dong": "TEXT NOT NULL CHECK(trim(so_hop_dong) != '')",
+            "ngay_ky": "TEXT NOT NULL CHECK(date(ngay_ky) IS NOT NULL)",
+            "chu_dau_tu_id": "TEXT NOT NULL CHECK(trim(chu_dau_tu_id) != '')",
+            "nha_thau_id": "TEXT NOT NULL CHECK(trim(nha_thau_id) != '')",
             "ngay_thanh_ly": "TEXT",
             "chu_dau_tu_thanh_ly_id": "TEXT",
             "nha_thau_thanh_ly_id": "TEXT",
-            "ke_hoach_id": "TEXT",
-            "gia_tri": "INTEGER CHECK(gia_tri IS NULL OR (typeof(gia_tri) = 'integer' AND gia_tri >= 0))",
-            "loai_hop_dong": "TEXT",
-            "thoi_gian_thuc_hien": "TEXT",
+            "ke_hoach_id": "TEXT NOT NULL CHECK(trim(ke_hoach_id) != '')",
+            "gia_tri": "INTEGER NOT NULL CHECK(typeof(gia_tri) = 'integer' AND gia_tri >= 0)",
+            "loai_hop_dong": "TEXT NOT NULL CHECK(trim(loai_hop_dong) != '')",
+            "thoi_gian_thuc_hien": "TEXT NOT NULL CHECK(trim(thoi_gian_thuc_hien) != '')",
+            "trang_thai_hop_dong": "TEXT NOT NULL DEFAULT 'Đang thực hiện' CHECK(trang_thai_hop_dong IN ('Chưa hiệu lực','Đang thực hiện','Tạm dừng','Đã hoàn thành','Đã thanh lý','Đã hủy'))",
             "trang_thai_ho_so": "TEXT",
             "phan_loai": "TEXT",
             "co_qd_chi_dinh": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(co_qd_chi_dinh) = 'integer' AND co_qd_chi_dinh IN (0,1))",
@@ -505,10 +520,13 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (nha_thau_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
             "FOREIGN KEY (chu_dau_tu_thanh_ly_id) REFERENCES chu_dau_tu(id) ON DELETE RESTRICT",
             "FOREIGN KEY (nha_thau_thanh_ly_id) REFERENCES nha_thau(id) ON DELETE RESTRICT",
-            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT"
+            "FOREIGN KEY (ke_hoach_id) REFERENCES ke_hoach_lcnt(id) ON DELETE RESTRICT",
+            "FOREIGN KEY (organization_id, trang_thai_ho_so) REFERENCES trang_thai_ho_so_giay(organization_id, name) ON DELETE RESTRICT"
         ],
         "unique_constraints": [
-            "CHECK(NULLIF(ngay_ky, '') IS NULL OR NULLIF(ngay_thanh_ly, '') IS NULL OR (date(ngay_ky) IS NOT NULL AND date(ngay_thanh_ly) IS NOT NULL AND date(ngay_thanh_ly) >= date(ngay_ky)))"
+            "CHECK(NULLIF(ngay_ky, '') IS NULL OR NULLIF(ngay_thanh_ly, '') IS NULL OR (date(ngay_ky) IS NOT NULL AND date(ngay_thanh_ly) IS NOT NULL AND date(ngay_thanh_ly) >= date(ngay_ky)))",
+            "CHECK((co_qd_chi_dinh = 0 AND COALESCE(trim(so_qd_chi_dinh), '') = '' AND COALESCE(trim(ngay_qd_chi_dinh), '') = '') OR (co_qd_chi_dinh = 1 AND COALESCE(trim(so_qd_chi_dinh), '') != '' AND date(ngay_qd_chi_dinh) IS NOT NULL AND date(ngay_qd_chi_dinh) <= date(ngay_ky)))"
+            ,"CHECK((trang_thai_hop_dong = 'Đã thanh lý' AND date(ngay_thanh_ly) IS NOT NULL) OR (trang_thai_hop_dong != 'Đã thanh lý' AND COALESCE(trim(ngay_thanh_ly), '') = ''))"
         ],
         "field_map": {
             "thoi_gian_thuc_hien": "soNgayThucHien",
@@ -567,7 +585,8 @@ SCHEMA_DINH_NGHIA = {
             "sync_version": "INTEGER DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
-        }
+        },
+        "unique_constraints": ["UNIQUE(organization_id, name)"]
     },
 
 
@@ -618,7 +637,10 @@ SCHEMA_DINH_NGHIA = {
             "thoi_gian_thuc_hien": "thoiGianThucHien",
             "ten_nha_thau": "tenNhaThau",
             "loai_nha_thau": "loaiNhaThau",
-        }
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, goi_thau_id, id)"
+        ]
     },
     "thong_tin_mo_thau_lien_danh_thanh_vien": {
         "columns": {
@@ -653,7 +675,7 @@ SCHEMA_DINH_NGHIA = {
     "to_chuc": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
-            "ten_to_chuc": "TEXT UNIQUE NOT NULL",
+            "ten_to_chuc": "TEXT NOT NULL",
             "scope_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(scope_type IN ('organization', 'personal'))",
             "personal_owner_user_id": "TEXT UNIQUE",
             "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'suspended'))",
@@ -752,6 +774,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "organization_id": "TEXT PRIMARY KEY CHECK(organization_id != '')",
             "current_version": "INTEGER NOT NULL DEFAULT 0",
+            "min_available_version": "INTEGER NOT NULL DEFAULT 0 CHECK(min_available_version >= 0)",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
         }
     },
@@ -845,6 +868,7 @@ SCHEMA_DINH_NGHIA = {
         "foreign_keys": [
             "FOREIGN KEY (goi_thau_id) REFERENCES goi_thau(id) ON DELETE CASCADE",
             "FOREIGN KEY (thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(id) ON DELETE CASCADE",
+            "FOREIGN KEY (organization_id, goi_thau_id, thong_tin_mo_thau_id) REFERENCES thong_tin_mo_thau(organization_id, goi_thau_id, id) ON DELETE CASCADE",
             "FOREIGN KEY (nguoi_cham_id) REFERENCES tai_khoan(id) ON DELETE SET NULL"
         ],
         "unique_constraints": ["UNIQUE(organization_id, thong_tin_mo_thau_id)"]
@@ -892,7 +916,9 @@ SCHEMA_DINH_NGHIA = {
             "target_id": "TEXT",
             "ip_address": "TEXT",
             "metadata_json": "TEXT",
-            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
+            "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
+            "previous_hash": "TEXT NOT NULL CHECK(length(previous_hash) = 64)",
+            "entry_hash": "TEXT NOT NULL UNIQUE CHECK(length(entry_hash) = 64)"
         }
     }
 }
@@ -917,6 +943,22 @@ def _apply_row_versions(schema):
             columns["row_version"] = (
                 "INTEGER NOT NULL DEFAULT 1 "
                 "CHECK(typeof(row_version) = 'integer' AND row_version > 0)"
+            )
+
+
+def _apply_numeric_versions(schema):
+    """Use numeric ordering for entity and synchronization versions."""
+    for table_spec in schema.values():
+        columns = table_spec.get("columns", {})
+        if "phien_ban" in columns:
+            columns["phien_ban"] = (
+                "INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(typeof(phien_ban) = 'integer' AND phien_ban >= 0)"
+            )
+        if "sync_version" in columns:
+            columns["sync_version"] = (
+                "INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)"
             )
 
 
@@ -988,5 +1030,6 @@ def _apply_tenant_constraints(schema):
             table_spec["unique_constraints"] = unique_constraints
 
 
+_apply_numeric_versions(SCHEMA_DINH_NGHIA)
 _apply_row_versions(SCHEMA_DINH_NGHIA)
 _apply_tenant_constraints(SCHEMA_DINH_NGHIA)

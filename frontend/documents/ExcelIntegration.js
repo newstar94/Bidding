@@ -179,6 +179,7 @@ export async function handleExcelUpload(file) {
         const item = row.data || row;
         let isValid = true;
         let comment = "Hợp lệ";
+        let operation = "create";
         if (apiType === "kehoach") {
           if (!item.maKeHoach) {
             isValid = false;
@@ -324,14 +325,15 @@ export async function handleExcelUpload(file) {
             isValid = false;
             comment = "Dòng trùng lặp trong file Excel đang nhập";
           } else if (dbExists) {
-            isValid = false;
-            comment = "Dòng đã tồn tại trong hệ thống (trùng mã định danh/CCCD/số hợp đồng)";
+            operation = "update";
+            comment = "Hợp lệ - sẽ cập nhật bản ghi hiện có";
           }
         }
         return {
           ...item,
           _valid: isValid,
-          _comment: comment
+          _comment: comment,
+          _operation: operation
         };
       });
       this.view.renderExcelPreview(this._excelImportData, this._excelImportType);
@@ -380,8 +382,14 @@ export async function saveExcelImport() {
   }
   const syncResult = await this.autoSync();
   if (!syncResult?.ok) return;
+  const updatedCount = validRows.filter((row) => row._operation === "update").length;
+  const createdCount = count - updatedCount;
   this.view.closeModal("modal-excel-preview");
-  await this.view.customAlert("Nhập khẩu thành công", `Đã nhập khẩu thành công ${count} dòng dữ liệu vào hệ thống!`, "check-circle");
+  await this.view.customAlert(
+    "Nhập khẩu thành công",
+    `Đã xử lý ${count} dòng: thêm mới ${createdCount}, cập nhật ${updatedCount}, bỏ qua ${invalidCount}.`,
+    "check-circle"
+  );
 }
 export function exportPhatHanhPhanLoExcel(gt) {
   const rows = [];
@@ -551,6 +559,7 @@ export function revalidateExcelImportData() {
   this._excelImportData.forEach((item) => {
     let isValid = true;
     let comment = "Hợp lệ";
+    let operation = "create";
     if (apiType === "kehoach") {
       if (!item.maKeHoach) {
         isValid = false;
@@ -696,11 +705,12 @@ export function revalidateExcelImportData() {
         isValid = false;
         comment = "Dòng trùng lặp trong file Excel đang nhập";
       } else if (dbExists) {
-        isValid = false;
-        comment = "Dòng đã tồn tại trong hệ thống (trùng mã định danh/CCCD/số hợp đồng)";
+        operation = "update";
+        comment = "Hợp lệ - sẽ cập nhật bản ghi hiện có";
       }
     }
     item._valid = isValid;
     item._comment = comment;
+    item._operation = operation;
   });
 }

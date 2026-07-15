@@ -247,15 +247,19 @@ export class BiddingView {
       if (!container) {
         th.style.cursor = "pointer";
         th.style.userSelect = "none";
-        const thText = th.innerHTML;
-        th.innerHTML = `
-                    <div class="sort-header-container">
-                        <span class="th-label" style="flex-grow: 1; text-align: inherit;">${thText}</span>
-                        <span class="sort-icon-btn">
-                            ${svgUnsorted}
-                        </span>
-                    </div>
-                `;
+        const headerText = th.textContent;
+        const sortContainer = document.createElement("div");
+        sortContainer.className = "sort-header-container";
+        const label = document.createElement("span");
+        label.className = "th-label";
+        label.style.flexGrow = "1";
+        label.style.textAlign = "inherit";
+        label.textContent = headerText;
+        const icon = document.createElement("span");
+        icon.className = "sort-icon-btn";
+        icon.innerHTML = svgUnsorted;
+        sortContainer.append(label, icon);
+        th.replaceChildren(sortContainer);
         th.addEventListener("click", (e) => {
           if (e.target.closest("select") || e.target.closest("input") || e.target.closest("button") || e.target.closest("a")) return;
           if (tableKey && field) {

@@ -1,9 +1,5 @@
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
-import os
 import re
-import sqlite3
 import traceback
 
 from starlette.responses import JSONResponse
@@ -24,14 +20,14 @@ from backend.shared.helpers import (
     save_base64_image,
     verify_session,
 )
-from backend.shared.access_policy import authorize_record_write, is_organization_manager
+from backend.shared.access_policy import authorize_record_write
 from backend.shared.client_ip import get_client_ip
 from backend.shared.logging_utils import error_response, get_request_id
 from backend.auth.auth_helper import (
     PRIVILEGED_REAUTH_REQUIRED,
     PRIVILEGED_REAUTH_TTL_SECONDS,
 )
-from backend.shared.date_utils import is_datetime_column, normalize_datetime_value
+from backend.shared.date_utils import is_datetime_column, normalize_datetime_value, utc_now_sql
 from backend.db.id_utils import generate_record_id
 from backend.shared.media_helper import (
     normalize_managed_image_path,
@@ -53,85 +49,35 @@ from backend.sync.queries import (
     OWNER_TYPES,
     SYNCED_TABLES,
     TABLE_KEYS,
-    build_dashboard_summary,
 )
 from backend.sync.ownership import get_owner_type, validate_owner_scoped_references
 from backend.sync.delete_policy import (
-    ALWAYS_ARCHIVE_TABLES,
     ARCHIVABLE_TABLES,
-    HIGH_IMPACT_DELETE_TABLES,
-    archive_versioned_record,
-    build_delete_impact,
-    delete_assignment_dependents,
-    find_blocking_delete_references,
-    has_recent_password_reauthentication,
-    insert_delete_audit,
 )
+from backend.sync.deletion_service import apply_sync_deletions
 from backend.sync.repository import (
     DELETED_RECORD_UPSERT_SQL,
     VERSIONED_TABLES,
     defer_version_latest_flag,
-    get_current_sync_version,
     next_sync_version,
 )
 from backend.sync.serializer import iter_sync_table_payloads, rollback_sync_response
 from backend.sync.validator import DEFAULT_PAPER_STATUS_COLOR, validate_sync_item
-from backend.sync.payload_validation import validate_sync_payload_shape
+from backend.sync.payload_validation import (
+    validate_contract_status_transition,
+    validate_package_status_transition,
+    validate_package_locked_fields,
+    validate_sync_payload_shape,
+)
 
 
-def _sync_batch_limit():
-    try:
-        value = int(os.environ.get("SYNC_MAX_BATCH_ITEMS", "2000"))
-    except (TypeError, ValueError):
-        value = 2000
-    return min(10_000, max(100, value))
+from backend.sync.request_contract import (
+    parse_sync_read_window,
+    sync_batch_limit as _sync_batch_limit,
+    sync_batch_size as _sync_batch_size,
+)
+from backend.sync.response import commit_sync_response
 
-
-def _sync_batch_size(payload):
-    if not isinstance(payload, dict):
-        return 0
-    keys = set(TABLE_KEYS)
-    keys.add("deletions")
-    return sum(
-        len(payload.get(key) or [])
-        for key in keys
-        if isinstance(payload.get(key), list)
-    )
-
-
-@dataclass(frozen=True)
-class SyncReadWindow:
-    since: str
-    after_version: int | None
-    is_full_initial_fetch: bool
-
-
-def parse_sync_read_window(query_params) -> SyncReadWindow:
-    since_val = query_params.get("since", "0")
-    if since_val.isdigit() and int(since_val) < 10000000000:
-        val = int(since_val)
-        if val == 0:
-            since = "1970-01-01 00:00:00"
-        else:
-            try:
-                since = datetime.fromtimestamp(val).strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                since = "1970-01-01 00:00:00"
-    else:
-        since = since_val
-
-    after_version_raw = query_params.get("after_version")
-    try:
-        after_version = int(after_version_raw) if after_version_raw not in (None, "") else None
-    except (TypeError, ValueError):
-        after_version = None
-
-    is_full_initial_fetch = after_version is None and (since == "1970-01-01 00:00:00" or since == "0")
-    return SyncReadWindow(
-        since=since,
-        after_version=after_version,
-        is_full_initial_fetch=is_full_initial_fetch,
-    )
 
 async def process_sync_request(request, broadcast_callback=None):
     """
@@ -188,7 +134,7 @@ async def process_sync_request(request, broadcast_callback=None):
         role_str = str(role_or_err)
         user_id = role_or_err.user_id
         owner_type = get_owner_type(cursor, org_name)
-        current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        current_time = utc_now_sql()
         client_mutation_id = (data.get("clientMutationId") or "").strip()
         if client_mutation_id:
             client_mutation_id = client_mutation_id[:128]
@@ -224,6 +170,56 @@ async def process_sync_request(request, broadcast_callback=None):
                 status_code=400,
             )
 
+        # Khi request tạo mới chưa chỉ định người phụ trách, backend giao cho
+        # người tạo ngay trong cùng transaction. Một phân công được gửi rõ ràng
+        # (ví dụ quản lý giao cho chuyên viên khác) luôn được giữ nguyên.
+        if owner_type == "organization":
+            assignments = data.setdefault("assignments", [])
+            incoming_targets = {
+                (
+                    clean_id(item.get("targetId") or item.get("id_muc_tieu")),
+                    str(item.get("type") or item.get("loai_doi_tuong") or "").strip(),
+                )
+                for item in assignments
+                if isinstance(item, dict)
+            }
+            for payload_key, table_name, target_type in (
+                ("kehoach", "ke_hoach_lcnt", "kehoach"),
+                ("goithau", "goi_thau", "goithau"),
+                ("hopdong", "hop_dong", "hopdong"),
+            ):
+                for item in data.get(payload_key, []):
+                    if not isinstance(item, dict):
+                        continue
+                    record_id = clean_id(item.get("id"))
+                    if not record_id or (record_id, target_type) in incoming_targets:
+                        continue
+                    exists = cursor.execute(
+                        f"SELECT 1 FROM {table_name} WHERE organization_id = ? AND id = ? LIMIT 1",
+                        (org_name, record_id),
+                    ).fetchone()
+                    if exists:
+                        continue
+                    assignments.append({
+                        "id": generate_record_id("assignments"),
+                        "empId": user_id,
+                        "targetId": record_id,
+                        "type": target_type,
+                    })
+                    incoming_targets.add((record_id, target_type))
+
+            augmented_batch_size = _sync_batch_size(data)
+            if augmented_batch_size > batch_limit:
+                conn.rollback()
+                conn.close()
+                return error_response(
+                    request,
+                    "SYNC_BATCH_TOO_LARGE",
+                    "Số lượng bản ghi đồng bộ vượt quá giới hạn cho phép.",
+                    status_code=413,
+                    fields={"maxItems": batch_limit, "receivedItems": augmented_batch_size},
+                )
+
 
 
         batch_sync_version = next_sync_version(cursor, org_name)
@@ -246,24 +242,39 @@ async def process_sync_request(request, broadcast_callback=None):
         validation_errors = []
         skipped_invalid_records = set()
         incoming_ids_by_table = {}
+        incoming_records_by_table = {}
         for _payload_key, _table_name, _items in iter_sync_table_payloads(data):
-            incoming_ids_by_table.setdefault(_table_name, set()).update(
-                str(get_clean_id(_table_name, _item.get("id")))
-                for _item in _items
-                if isinstance(_item, dict) and get_clean_id(_table_name, _item.get("id"))
-            )
+            table_records = incoming_records_by_table.setdefault(_table_name, {})
+            table_ids = incoming_ids_by_table.setdefault(_table_name, set())
+            for _item in _items:
+                if not isinstance(_item, dict):
+                    continue
+                canonical_item = canonicalize_payload_item(_table_name, _item)
+                record_id = get_clean_id(_table_name, canonical_item.get("id"))
+                if record_id:
+                    table_ids.add(str(record_id))
+                    table_records[str(record_id)] = canonical_item
         incoming_paper_status_names = {
             str(item.get("name") or item.get("tenTrangThai") or "").strip()
             for item in data.get("custompaperstatuses", [])
             if isinstance(item, dict) and str(item.get("name") or item.get("tenTrangThai") or "").strip()
         }
-        paper_statuses_to_seed = set()
+        existing_paper_status_names = {
+            str(row[0] or "").strip()
+            for row in cursor.execute(
+                "SELECT name FROM trang_thai_ho_so_giay WHERE organization_id = ?",
+                (org_name,),
+            ).fetchall()
+            if str(row[0] or "").strip()
+        }
+        allowed_paper_status_names = existing_paper_status_names | incoming_paper_status_names
 
 
         for payload_key, table_name, items in iter_sync_table_payloads(data):
             for item in items:
                 item = canonicalize_payload_item(table_name, item)
                 item_errors = []
+                current_record = None
                 access_decision = authorize_record_write(
                     cursor,
                     role_str,
@@ -305,40 +316,63 @@ async def process_sync_request(request, broadcast_callback=None):
                 item, pure_errors, requested_paper_statuses = validate_sync_item(
                     table_name,
                     item,
-                    incoming_paper_status_names
+                    allowed_paper_status_names
                 )
                 item_errors.extend(pure_errors)
+                if table_name == "goi_thau" and current_record:
+                    item_errors.extend(validate_package_status_transition(
+                        current_record.get("trang_thai"), item
+                    ))
+                    item_errors.extend(validate_package_locked_fields(current_record, item))
+                if table_name == "hop_dong" and current_record:
+                    item_errors.extend(validate_contract_status_transition(
+                        current_record.get("trang_thai_hop_dong"), item
+                    ))
+                if owner_type == "organization" and table_name in {
+                    "ke_hoach_lcnt", "goi_thau", "hop_dong"
+                } and c_id:
+                    target_type = {
+                        "ke_hoach_lcnt": "kehoach",
+                        "goi_thau": "goithau",
+                        "hop_dong": "hopdong",
+                    }[table_name]
+                    has_incoming_assignment = any(
+                        clean_id(assignment.get("targetId") or assignment.get("id_muc_tieu")) == c_id
+                        and str(assignment.get("type") or assignment.get("loai_doi_tuong") or "").strip() == target_type
+                        for assignment in data.get("assignments", [])
+                        if isinstance(assignment, dict)
+                    )
+                    has_stored_assignment = cursor.execute(
+                        """SELECT 1 FROM phan_cong_nhan_su
+                           WHERE organization_id = ? AND id_muc_tieu = ? AND loai_doi_tuong = ?
+                           LIMIT 1""",
+                        (org_name, c_id, target_type),
+                    ).fetchone() is not None
+                    if not has_incoming_assignment and not has_stored_assignment:
+                        item_errors.append("Bản ghi phải có một chuyên viên phụ trách chính.")
                 reference_errors = validate_owner_scoped_references(
                     cursor,
                     org_name,
                     table_name,
                     item,
                     incoming_ids_by_table,
+                    incoming_records_by_table,
                 )
                 if table_name == "phan_cong_nhan_su" and reference_errors:
                     skipped_invalid_records.add((table_name, str(c_id)))
                     orphaned_ids.append({"table": table_name, "id": c_id})
                     continue
                 item_errors.extend(reference_errors)
-                for status_name in requested_paper_statuses:
-                    cursor.execute(
-                        "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND name = ?",
-                        (org_name, status_name)
-                    )
-                    if not cursor.fetchone():
-                        paper_statuses_to_seed.add(status_name)
-
-
                 if table_name == "chu_dau_tu":
                     ma = item.get("maChuDauTu")
                     mst = item.get("maSoThue")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT id FROM chu_dau_tu WHERE organization_id = ? AND archived_at IS NULL AND ma_chu_dau_tu = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM chu_dau_tu WHERE organization_id = ? AND archived_at IS NULL AND lower(trim(ma_chu_dau_tu)) = lower(trim(?)) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã chủ đầu tư '{ma}' đã tồn tại.", "conflictingId": conflict[0]})
                     if mst and str(mst).strip():
-                        cursor.execute("SELECT id FROM chu_dau_tu WHERE organization_id = ? AND archived_at IS NULL AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM chu_dau_tu WHERE organization_id = ? AND archived_at IS NULL AND lower(trim(ma_so_thue)) = lower(trim(?)) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã số thuế '{mst}' đã tồn tại.", "conflictingId": conflict[0]})
@@ -346,14 +380,14 @@ async def process_sync_request(request, broadcast_callback=None):
                 elif table_name == "ke_hoach_lcnt":
                     ma = item.get("maKeHoach")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT 1 FROM ke_hoach_lcnt WHERE organization_id = ? AND archived_at IS NULL AND ma_ke_hoach = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM ke_hoach_lcnt WHERE organization_id = ? AND archived_at IS NULL AND lower(trim(ma_ke_hoach)) = lower(trim(?)) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Mã kế hoạch '{ma}' đã tồn tại.")
 
                 elif table_name == "goi_thau":
                     ma = item.get("maGoiThau")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT 1 FROM goi_thau WHERE organization_id = ? AND archived_at IS NULL AND ma_goi_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM goi_thau WHERE organization_id = ? AND archived_at IS NULL AND lower(trim(ma_goi_thau)) = lower(trim(?)) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Mã gói thầu '{ma}' đã tồn tại.")
 
@@ -361,12 +395,12 @@ async def process_sync_request(request, broadcast_callback=None):
                     ma = item.get("maNhaThau")
                     mst = item.get("maSoThue")
                     if ma and str(ma).strip():
-                        cursor.execute("SELECT id FROM nha_thau WHERE organization_id = ? AND archived_at IS NULL AND ma_nha_thau = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM nha_thau WHERE organization_id = ? AND archived_at IS NULL AND lower(trim(ma_nha_thau)) = lower(trim(?)) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(ma).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã nhà thầu '{ma}' đã tồn tại.", "conflictingId": conflict[0]})
                     if mst and str(mst).strip():
-                        cursor.execute("SELECT id FROM nha_thau WHERE organization_id = ? AND archived_at IS NULL AND ma_so_thue = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT id FROM nha_thau WHERE organization_id = ? AND archived_at IS NULL AND lower(trim(ma_so_thue)) = lower(trim(?)) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(mst).strip(), c_id, c_root_id))
                         conflict = cursor.fetchone()
                         if conflict:
                             item_errors.append({"message": f"Mã số thuế '{mst}' đã tồn tại.", "conflictingId": conflict[0]})
@@ -374,14 +408,14 @@ async def process_sync_request(request, broadcast_callback=None):
                 elif table_name == "chuyen_gia":
                     cccd = item.get("soCCCD")
                     if cccd and str(cccd).strip():
-                        cursor.execute("SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND archived_at IS NULL AND so_cccd = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(cccd).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND archived_at IS NULL AND trim(so_cccd) = trim(?) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(cccd).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Số CCCD chuyên gia '{cccd}' đã tồn tại.")
 
                 elif table_name == "hop_dong":
                     so_hd = item.get("soHopDong")
                     if so_hd and str(so_hd).strip():
-                        cursor.execute("SELECT 1 FROM hop_dong WHERE organization_id = ? AND archived_at IS NULL AND so_hop_dong = ? AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(so_hd).strip(), c_id, c_root_id))
+                        cursor.execute("SELECT 1 FROM hop_dong WHERE organization_id = ? AND archived_at IS NULL AND lower(trim(so_hop_dong)) = lower(trim(?)) AND id != ? AND (id_goc IS NULL OR id_goc != ?)", (org_name, str(so_hd).strip(), c_id, c_root_id))
                         if cursor.fetchone():
                             item_errors.append(f"Số hợp đồng '{so_hd}' đã tồn tại.")
 
@@ -389,7 +423,7 @@ async def process_sync_request(request, broadcast_callback=None):
                     status_name = item.get("name") or item.get("tenTrangThai")
                     if status_name and str(status_name).strip():
                         cursor.execute(
-                            "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND name = ? AND id != ?",
+                            "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND lower(trim(name)) = lower(trim(?)) AND id != ?",
                             (org_name, str(status_name).strip(), c_id)
                         )
                         if cursor.fetchone():
@@ -415,7 +449,6 @@ async def process_sync_request(request, broadcast_callback=None):
 
         if validation_errors:
             log_error(f"Validation errors during sync: {validation_errors}", "SyncAPI")
-            print("Sync Validation Errors:", validation_errors)
             conn.rollback()
             conn.close()
             has_row_conflict = any(
@@ -438,26 +471,6 @@ async def process_sync_request(request, broadcast_callback=None):
                 status_code=409 if has_row_conflict else 400,
                 headers=dict(response.headers),
             )
-
-        for status_name in paper_statuses_to_seed:
-            cursor.execute(
-                "SELECT 1 FROM trang_thai_ho_so_giay WHERE organization_id = ? AND name = ?",
-                (org_name, status_name)
-            )
-            if not cursor.fetchone():
-                cursor.execute("""
-                    INSERT INTO trang_thai_ho_so_giay
-                        (id, organization_id, owner_type, name, color, sync_version, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    generate_record_id("trang_thai_ho_so_giay"),
-                    org_name,
-                    owner_type,
-                    status_name,
-                    DEFAULT_PAPER_STATUS_COLOR,
-                    batch_sync_version,
-                    current_time
-                ))
 
         for payload_key, table_name, items in iter_sync_table_payloads(data):
             table_spec = SCHEMA_DINH_NGHIA[table_name]
@@ -487,6 +500,16 @@ async def process_sync_request(request, broadcast_callback=None):
                             continue
                         elif col == "sync_version":
                             db_row_data[col] = batch_sync_version
+                            continue
+                        elif col == "id_goc":
+                            db_row_data[col] = (
+                                get_clean_id(table_name, item.get("rootId"))
+                                or get_clean_id(
+                                    table_name,
+                                    current_record.get("id_goc") if current_record else None,
+                                )
+                                or get_clean_id(table_name, item.get("id"))
+                            )
                             continue
                         else:
 
@@ -607,8 +630,16 @@ async def process_sync_request(request, broadcast_callback=None):
 
                         cursor.execute("""
                             DELETE FROM phan_cong_nhan_su
-                            WHERE id_muc_tieu = ? AND loai_doi_tuong = ? AND id != ?
-                        """, (db_row_data.get("id_muc_tieu"), db_row_data.get("loai_doi_tuong"), db_row_data.get("id")))
+                            WHERE organization_id = ?
+                              AND id_muc_tieu = ?
+                              AND loai_doi_tuong = ?
+                              AND id != ?
+                        """, (
+                            db_row_data.get("organization_id"),
+                            db_row_data.get("id_muc_tieu"),
+                            db_row_data.get("loai_doi_tuong"),
+                            db_row_data.get("id"),
+                        ))
                     elif table_name == "ma_tran_phan_quyen":
                         cursor.execute("""
                             DELETE FROM ma_tran_phan_quyen
@@ -696,60 +727,6 @@ async def process_sync_request(request, broadcast_callback=None):
                                         "INSERT OR REPLACE INTO hop_dong_goi_thau (organization_id, owner_type, hop_dong_id, goi_thau_id) VALUES (?, ?, ?, ?)",
                                         (org_name, owner_type, c_hd_id, gt_id)
                                     )
-
-
-                    if table_name == "goi_thau":
-                        c_gt_id = get_clean_id("goi_thau", item.get('id'))
-
-
-                        if 'toChuyenGia' in item:
-                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE organization_id = ? AND goi_thau_id = ? AND loai = 'chuyen_gia'", (org_name, c_gt_id))
-                            cg_raw = item.get('toChuyenGia') or []
-                            if isinstance(cg_raw, str):
-                                try:
-                                    cg_raw = json.loads(cg_raw)
-                                except Exception:
-                                    cg_raw = []
-                            if isinstance(cg_raw, list):
-                                for cg_item in cg_raw:
-                                    if isinstance(cg_item, dict):
-                                        cg_id = cg_item.get('chuyenGiaId') or cg_item.get('id')
-                                        if cg_id:
-                                            clean_cg_id = clean_id(cg_id)
-                                            cursor.execute("SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND id = ? LIMIT 1", (org_name, clean_cg_id))
-                                            if not cursor.fetchone():
-                                                raise ValueError(f"Chuyen gia {clean_cg_id} khong thuoc owner hien tai.")
-                                            chuc_vu = cg_item.get('chucVu') or 'Tổ viên'
-                                            cong_viec = cg_item.get('congViec') or ''
-                                            cursor.execute("""
-                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (organization_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                                                VALUES (?, ?, ?, ?, 'chuyen_gia', ?, ?)
-                                            """, (org_name, owner_type, c_gt_id, clean_cg_id, chuc_vu, cong_viec))
-
-
-                        if 'toThamDinh' in item:
-                            cursor.execute("DELETE FROM goi_thau_chuyen_gia WHERE organization_id = ? AND goi_thau_id = ? AND loai = 'tham_dinh'", (org_name, c_gt_id))
-                            td_raw = item.get('toThamDinh') or []
-                            if isinstance(td_raw, str):
-                                try:
-                                    td_raw = json.loads(td_raw)
-                                except Exception:
-                                    td_raw = []
-                            if isinstance(td_raw, list):
-                                for td_item in td_raw:
-                                    if isinstance(td_item, dict):
-                                        td_id = td_item.get('chuyenGiaId') or td_item.get('id')
-                                        if td_id:
-                                            clean_td_id = clean_id(td_id)
-                                            cursor.execute("SELECT 1 FROM chuyen_gia WHERE organization_id = ? AND id = ? LIMIT 1", (org_name, clean_td_id))
-                                            if not cursor.fetchone():
-                                                raise ValueError(f"Chuyen gia {clean_td_id} khong thuoc owner hien tai.")
-                                            chuc_vu = td_item.get('chucVu') or 'Tổ viên'
-                                            cong_viec = td_item.get('congViec') or ''
-                                            cursor.execute("""
-                                                INSERT OR REPLACE INTO goi_thau_chuyen_gia (organization_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec)
-                                                VALUES (?, ?, ?, ?, 'tham_dinh', ?, ?)
-                                            """, (org_name, owner_type, c_gt_id, clean_td_id, chuc_vu, cong_viec))
                 except Exception as item_err:
                     err_str = str(item_err)
                     item_id = get_clean_id(table_name, item.get('id'))
@@ -772,190 +749,27 @@ async def process_sync_request(request, broadcast_callback=None):
                         })
 
 
-        deletions = data.get("deletions", [])
-        if isinstance(deletions, list):
-            for del_item in deletions:
-                if isinstance(del_item, dict):
-                    tbl_key = del_item.get("table")
-                    rec_id = del_item.get("id")
-                    if tbl_key in TABLE_KEYS:
-                        table_name = TABLE_KEYS[tbl_key]
-                        c_id = get_clean_id(table_name, rec_id)
-                        if c_id:
-                            image_columns = {
-                                "nha_thau": ("anh_dau",),
-                                "chuyen_gia": ("anh_chung_chi", "anh_chu_ky"),
-                            }.get(table_name, ())
-                            cursor.execute(
-                                f"SELECT * FROM {table_name} "
-                                "WHERE organization_id = ? AND id = ? LIMIT 1",
-                                (org_name, c_id),
-                            )
-                            existing_row = cursor.fetchone()
-                            if not existing_row:
-                                continue
-                            existing_record = dict(existing_row)
-                            expected_version = del_item.get("expectedVersion")
-                            current_row_version = int(existing_record.get("row_version") or 1)
-                            if expected_version != current_row_version:
-                                sync_item_errors.append({
-                                    "table": table_name,
-                                    "id": c_id,
-                                    "field": "expectedVersion",
-                                    "code": "ROW_VERSION_CONFLICT",
-                                    "message": "Bản ghi cần xóa đã được thay đổi bởi một phiên làm việc khác.",
-                                    "expectedVersion": expected_version,
-                                    "currentVersion": current_row_version,
-                                    "serverRecord": map_db_to_json(table_name, existing_record),
-                                })
-                                continue
-                            if table_name in ARCHIVABLE_TABLES and existing_record.get("archived_at"):
-                                continue
-                            for image_column in image_columns:
-                                image_value = existing_record.get(image_column)
-                                managed_path = normalize_managed_image_path(image_value)
-                                if managed_path:
-                                    image_cleanup_candidates.add(managed_path)
-                            access_decision = authorize_record_write(
-                                cursor,
-                                role_str,
-                                user_id,
-                                org_name,
-                                tbl_key,
-                                table_name,
-                                {"id": c_id},
-                            )
-                            if not access_decision.allowed:
-                                sync_item_errors.append({
-                                    "table": table_name,
-                                    "id": c_id,
-                                    "message": access_decision.message
-                                })
-                                continue
-                            impact = build_delete_impact(
-                                cursor,
-                                org_name,
-                                table_name,
-                                c_id,
-                            )
-                            if table_name in HIGH_IMPACT_DELETE_TABLES:
-                                if not is_organization_manager(
-                                    cursor,
-                                    role_str,
-                                    user_id,
-                                    org_name,
-                                ):
-                                    sync_item_errors.append({
-                                        "table": table_name,
-                                        "id": c_id,
-                                        "code": "DELETE_ELEVATED_PERMISSION_REQUIRED",
-                                        "message": "Chỉ owner/manager của tổ chức được xóa aggregate nghiệp vụ.",
-                                        "impact": impact,
-                                    })
-                                    continue
-                                if not has_recent_password_reauthentication(
-                                    cursor,
-                                    user_id,
-                                    PRIVILEGED_REAUTH_TTL_SECONDS,
-                                ):
-                                    conn.rollback()
-                                    return JSONResponse(
-                                        {
-                                            "error": PRIVILEGED_REAUTH_REQUIRED,
-                                            "code": "PRIVILEGED_REAUTH_REQUIRED",
-                                            "deleteImpact": {
-                                                "table": tbl_key,
-                                                "id": c_id,
-                                                **impact,
-                                            },
-                                        },
-                                        status_code=403,
-                                    )
-                            blocking_references = find_blocking_delete_references(
-                                cursor,
-                                org_name,
-                                table_name,
-                                c_id,
-                            )
-                            delete_action = "deleted"
-                            if (
-                                blocking_references or table_name in ALWAYS_ARCHIVE_TABLES
-                            ) and table_name in ARCHIVABLE_TABLES:
-                                delete_assignment_dependents(
-                                    cursor,
-                                    org_name,
-                                    table_name,
-                                    c_id,
-                                )
-                                archive_versioned_record(
-                                    cursor,
-                                    org_name,
-                                    table_name,
-                                    c_id,
-                                    current_time,
-                                    batch_sync_version,
-                                )
-                                delete_action = "archived"
-                            elif blocking_references:
-                                relation_summary = ", ".join(
-                                    f"{item['label']} ({item['count']})"
-                                    for item in blocking_references
-                                )
-                                sync_item_errors.append({
-                                    "table": table_name,
-                                    "id": c_id,
-                                    "code": "DELETE_REFERENCED",
-                                    "message": f"Không thể xóa vì bản ghi đang được tham chiếu bởi: {relation_summary}.",
-                                    "references": blocking_references,
-                                })
-                                continue
-                            else:
-                                delete_assignment_dependents(
-                                    cursor,
-                                    org_name,
-                                    table_name,
-                                    c_id,
-                                )
-                                try:
-                                    cursor.execute(
-                                        f"DELETE FROM {table_name} WHERE organization_id = ? AND id = ?",
-                                        (org_name, c_id),
-                                    )
-                                except sqlite3.IntegrityError:
-                                    sync_item_errors.append({
-                                        "table": table_name,
-                                        "id": c_id,
-                                        "code": "DELETE_REFERENCED",
-                                        "message": "Không thể xóa vì bản ghi đang được tham chiếu.",
-                                    })
-                                    continue
-
-                            cursor.execute(
-                                DELETED_RECORD_UPSERT_SQL,
-                                (table_name, c_id, org_name, current_time, batch_sync_version)
-                            )
-
-                            impact_result = {
-                                "table": tbl_key,
-                                "id": c_id,
-                                "action": delete_action,
-                                **impact,
-                            }
-                            delete_impacts.append(impact_result)
-                            insert_delete_audit(
-                                cursor,
-                                actor_user_id=user_id,
-                                organization_id=org_name,
-                                table_name=table_name,
-                                record_id=c_id,
-                                action=f"sync.record_{delete_action}",
-                                impact=impact_result,
-                                ip_address=get_client_ip(request),
-                            )
-
-
-                            if table_name in VERSIONED_TABLES:
-                                updated_versioned_tables.add(table_name)
+        deletion_result = apply_sync_deletions(
+            cursor,
+            data.get("deletions", []),
+            organization_id=org_name,
+            actor_role=role_str,
+            actor_user_id=user_id,
+            session_id=getattr(role_or_err, "session_id", None),
+            current_time=current_time,
+            sync_version=batch_sync_version,
+            clean_record_id=get_clean_id,
+            privileged_reauth_ttl_seconds=PRIVILEGED_REAUTH_TTL_SECONDS,
+            privileged_reauth_error_message=PRIVILEGED_REAUTH_REQUIRED,
+            ip_address=get_client_ip(request),
+        )
+        if deletion_result["privilegedError"]:
+            conn.rollback()
+            return JSONResponse(deletion_result["privilegedError"], status_code=403)
+        sync_item_errors.extend(deletion_result["errors"])
+        delete_impacts.extend(deletion_result["impacts"])
+        updated_versioned_tables.update(deletion_result["updatedVersionedTables"])
+        image_cleanup_candidates.update(deletion_result["imageCleanupCandidates"])
 
 
         for tbl in updated_versioned_tables:
@@ -974,24 +788,19 @@ async def process_sync_request(request, broadcast_callback=None):
                 status_code=409 if conflict else 400,
             )
 
-        current_sync_version = get_current_sync_version(cursor, org_name)
-        response_data = {"status": "success", "timestamp": current_time, "syncVersion": current_sync_version}
-        if updated_row_versions:
-            response_data["rowVersions"] = updated_row_versions
-        if delete_impacts:
-            response_data["deleteImpacts"] = delete_impacts
-        if data.get("includeDashboardSummary") is True:
-            response_data["dashboardSummary"] = build_dashboard_summary(
-                cursor, org_name, role_str, user_id
-            )
-        if orphaned_ids:
-            response_data["orphanedIds"] = orphaned_ids
-        if client_mutation_id:
-            cursor.execute(
-                "INSERT OR REPLACE INTO sync_mutations (organization_id, actor_user_id, client_mutation_id, response_json) VALUES (?, ?, ?, ?)",
-                (org_name, user_id, client_mutation_id, json.dumps(response_data))
-            )
-        conn.commit()
+        response_data = commit_sync_response(
+            conn,
+            cursor,
+            organization_id=org_name,
+            actor_user_id=user_id,
+            actor_role=role_str,
+            current_time=current_time,
+            client_mutation_id=client_mutation_id,
+            include_dashboard_summary=data.get("includeDashboardSummary") is True,
+            updated_row_versions=updated_row_versions,
+            delete_impacts=delete_impacts,
+            orphaned_ids=orphaned_ids,
+        )
         transaction_committed = True
 
         try:
@@ -1000,7 +809,7 @@ async def process_sync_request(request, broadcast_callback=None):
                 image_cleanup_candidates | newly_written_images,
             )
         except Exception as cleanup_error:
-            log_sync_error(f"KhÃ´ng thá»ƒ dá»n áº£nh khÃ´ng cÃ²n tham chiáº¿u: {cleanup_error}")
+            log_sync_error(f"Không thể dọn ảnh không còn tham chiếu: {cleanup_error}")
 
 
         if broadcast_callback:
@@ -1047,7 +856,7 @@ async def process_sync_request(request, broadcast_callback=None):
                     newly_written_images,
                 )
             except Exception as cleanup_error:
-                log_sync_error(f"KhÃ´ng thá»ƒ dá»n áº£nh sau khi rollback: {cleanup_error}")
+                log_sync_error(f"Không thể dọn ảnh sau khi rollback: {cleanup_error}")
             finally:
                 if cleanup_conn:
                     cleanup_conn.close()

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from backend.shared.client_ip import get_client_ip
+from backend.shared.audit_chain import insert_audit_row
 from backend.shared.paths import LOG_DIR
 
 _log_lock = threading.Lock()
@@ -146,21 +147,6 @@ def log_audit(action, actor_user_id=None, organization_id=None, target_type=None
         if metadata is not None:
             metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
 
-        sql = """
-            INSERT INTO audit_log (
-                actor_user_id, organization_id, action, target_type, target_id, ip_address, metadata_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """
-        params = (
-            actor_user_id,
-            organization_id,
-            action,
-            target_type,
-            target_id,
-            ip_address,
-            metadata_json,
-        )
-
         from backend.shared.helpers import database as _db
         last_err = None
         for attempt in range(3):
@@ -171,7 +157,16 @@ def log_audit(action, actor_user_id=None, organization_id=None, target_type=None
                 except Exception:
                     pass
                 cur = conn.cursor()
-                cur.execute(sql, params)
+                insert_audit_row(
+                    cur,
+                    actor_user_id=actor_user_id,
+                    organization_id=organization_id,
+                    action=action,
+                    target_type=target_type,
+                    target_id=target_id,
+                    ip_address=ip_address,
+                    metadata_json=metadata_json,
+                )
                 conn.commit()
                 return
             except sqlite3.OperationalError as err:

@@ -278,7 +278,7 @@ export function switchTab(tabName, action = null, updateState = true) {
   if (!this.view.areViewModulesReady(tabName)) {
     return this.view.ensureViewModules(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
       console.error("Failed to load view module:", tabName, err);
-      this.view?.showToast?.("KhÃ´ng táº£i Ä‘Æ°á»£c giao diá»‡n", "Vui lÃ²ng táº£i láº¡i trang vÃ  thá»­ láº¡i.", "error");
+      this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
     });
   }
   const workflowTabs = ["mothau", "danhgiahsdt"];

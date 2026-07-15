@@ -1,6 +1,6 @@
 ﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
-import { removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
+import { preserveRowVersion, removeAllVersions, removeLatestVersion } from "../shared/VersionedEntityService.js";
 import { persistAndSync } from "../shared/MutationService.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -118,9 +118,16 @@ export async function editHopDong(id) {
         return;
       }
       const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : Array.isArray(this.model.state.goithau) ? this.model.state.goithau : [];
-      const filteredGoithau = goithauList.filter((g) => planVersionIds.includes(g.keHoachId));
+      const selectedContractorId = ntSelect.value;
+      const isDirectAward = coQdSelect.value === "1";
+      const filteredGoithau = goithauList.filter((g) => {
+        if (!planVersionIds.includes(g.keHoachId)) return false;
+        if (isDirectAward) return true;
+        return g.trangThai === "Đã có kết quả" &&
+          (!selectedContractorId || String(g.nhaThauTrungThauId || "") === String(selectedContractorId));
+      });
       if (filteredGoithau.length === 0) {
-        gtContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding: 8px 0;">Kế hoạch được chọn không có gói thầu nào</p>';
+        gtContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding: 8px 0;">Không có gói thầu đủ điều kiện lập hợp đồng</p>';
       } else {
         gtContainer.innerHTML = filteredGoithau.map((g) => `
                     <label class="checkbox-item" style="display:flex; align-items:center; gap:8px; margin-bottom:6px; cursor:pointer; font-size:0.85rem;">
@@ -132,6 +139,16 @@ export async function editHopDong(id) {
     };
     khSelect.onchange = (e) => {
       renderPackagesForPlan(e.target.value, []);
+    };
+    const rerenderEligiblePackages = () => {
+      const checkedIds = Array.from(
+        document.querySelectorAll('input[name="hd-goithau-checkbox"]:checked')
+      ).map((checkbox) => checkbox.value);
+      renderPackagesForPlan(khSelect.value, checkedIds);
+    };
+    coQdSelect.onchange = () => {
+      toggleQdFields();
+      rerenderEligiblePackages();
     };
     const handleCdtChange = (selectedCdtId, selectVersionId = null) => {
       const versionGroup = document.getElementById("hd-chudautu-version-group");
@@ -244,6 +261,7 @@ export async function editHopDong(id) {
         return;
       }
       handleNtChange(e.target.value);
+      rerenderEligiblePackages();
     };
     const _roleLabelMap = { super_admin: "Super Admin / Quản lý / Chuyên viên", manager: "Quản lý / Chuyên viên", employee: "Chuyên viên" };
     const restoreHdEmpValue = () => {
@@ -255,7 +273,7 @@ export async function editHopDong(id) {
         } else {
           if (this.model.state.activerole === "employee") {
             const currentUserId = sessionStorage.getItem("bf_user_id");
-            empSelect.value = currentUserId ? "user-" + currentUserId : "";
+            empSelect.value = currentUserId || "";
           } else {
             empSelect.value = "";
           }
@@ -284,7 +302,7 @@ export async function editHopDong(id) {
     if (!this.model.state.employees || this.model.state.employees.length === 0) {
       apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
         this.model.state.employees = users.map((u) => ({
-          id: `user-${u.id}`,
+          id: String(u.id || ""),
           name: u.name,
           email: u.email || "",
           phone: "",
@@ -356,6 +374,7 @@ export async function editHopDong(id) {
       ngayQdInput.value = this.model.formatForDateInput(hd.ngayQdChiDinh);
       toggleQdFields();
       document.getElementById("hd-songay").value = hd.soNgayThucHien || "";
+      document.getElementById("hd-trangthai-hopdong").value = hd.trangThaiHopDong || "Đang thực hiện";
       if (statusSelect) {
         statusSelect.value = hd.trangThaiHoSo || "";
       }
@@ -382,6 +401,7 @@ export async function editHopDong(id) {
       const ngayKyInp = document.getElementById("hd-ngayky");
       if (ngayKyInp) ngayKyInp.value = "";
       document.getElementById("hd-ngaythanhly").value = "";
+      document.getElementById("hd-trangthai-hopdong").value = "Đang thực hiện";
       cdtSelect.value = "";
       cdtSelect.dispatchEvent(new Event("change"));
       handleCdtChange("");
@@ -444,9 +464,25 @@ export async function handleHopDongSubmit(e) {
   const ngayQdChiDinh = coQdChiDinh ? document.getElementById("hd-ngayqdchidinh").value : "";
   const soNgayThucHien = document.getElementById("hd-songay").value.trim();
   const trangThaiHoSo = document.getElementById("hd-trangthai").value;
+  const trangThaiHopDong = document.getElementById("hd-trangthai-hopdong").value;
+  if (ngayThanhLy && trangThaiHopDong !== "Đã thanh lý") {
+    await this.view.customAlert("Dữ liệu không hợp lệ", "Khi có ngày thanh lý, trạng thái hợp đồng phải là Đã thanh lý.", "alert-triangle", document.getElementById("hd-trangthai-hopdong"));
+    return;
+  }
+  if (!ngayThanhLy && trangThaiHopDong === "Đã thanh lý") {
+    await this.view.customAlert("Dữ liệu không hợp lệ", "Hợp đồng đã thanh lý phải có ngày thanh lý.", "alert-triangle", document.getElementById("hd-ngaythanhly"));
+    return;
+  }
   if (soHopDong) {
+    const currentContract = id ? this.model.state.hopdong.find((h) => h.id === id) : null;
+    const currentRootId = currentContract ? currentContract.rootId || currentContract.id : "";
+    const normalizedContractNumber = soHopDong.normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleUpperCase("vi-VN");
     const dupSoHD = (this.model.state.hopdong || []).some(
-      (h) => h.id !== id && h.soHopDong && h.soHopDong.trim().toLowerCase() === soHopDong.toLowerCase()
+      (h) => {
+        const sameLineage = currentRootId && (h.rootId || h.id) === currentRootId;
+        const candidate = String(h.soHopDong || "").normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleUpperCase("vi-VN");
+        return h.id !== id && !sameLineage && candidate === normalizedContractNumber;
+      }
     );
     if (dupSoHD) {
       const inputEl = document.getElementById("hd-so");
@@ -492,7 +528,8 @@ export async function handleHopDongSubmit(e) {
     ngayQdChiDinh: ngayQdChiDinh ? this.model.convertDMYToYMD(ngayQdChiDinh) : "",
     soNgayThucHien,
     goiThauIds,
-    trangThaiHoSo
+    trangThaiHoSo,
+    trangThaiHopDong
   };
   if (id) {
     const currentHd = this.model.state.hopdong.find((h) => h.id === id);
@@ -524,6 +561,7 @@ export async function handleHopDongSubmit(e) {
       data.isLatest = currentHd.isLatest !== void 0 ? currentHd.isLatest : 1;
       data.createdAt = currentHd.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
+      preserveRowVersion(data, currentHd);
       const idx = this.model.state.hopdong.findIndex((h) => h.id === id);
       this.model.state.hopdong[idx] = data;
     }
@@ -540,10 +578,13 @@ export async function handleHopDongSubmit(e) {
   }
   if (finalHdId) {
     const oldAssignments = this.model.state.assignments.filter((a) => a.targetId === finalHdId && a.type === "hopdong");
-    for (const oldA of oldAssignments) {
+    const retainedAssignment = assignedEmpId
+      ? oldAssignments.find((assignment) => assignment.empId === assignedEmpId)
+      : null;
+    for (const oldA of oldAssignments.filter((assignment) => assignment !== retainedAssignment)) {
       await this.model.deleteRecord("assignments", oldA.id);
     }
-    if (assignedEmpId) {
+    if (assignedEmpId && !retainedAssignment) {
       await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: finalHdId, type: "hopdong" });
     }
   }

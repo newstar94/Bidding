@@ -35,10 +35,11 @@ export async function renderChuyenGiaTable() {
       slicedData = data.items;
       totalItems = data.totalItems;
     } catch (e) {
+      if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated experts", e);
       if (requestId !== this._chuyenGiaRenderRequestId || !table.isConnected) return;
       clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 7, message: "Không thể tải danh sách chuyên gia. Vui lòng thử lại." });
+      renderTableError(tableBody, { colspan: 7, message: "Không thể tải danh sách chuyên gia. Vui lòng thử lại.", onRetry: () => this.renderChuyenGiaTable() });
       return;
     }
   } else {

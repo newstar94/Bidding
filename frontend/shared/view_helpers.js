@@ -13,6 +13,7 @@ export function escapeHtml(value) {
 export function safeAttr(value) {
   return escapeHtml(value);
 }
+export const escapeAttribute = safeAttr;
 export function htmlIcon(name, attrs = "") {
   const iconName = String(name || "").trim();
   if (!/^[A-Za-z0-9_-]+$/.test(iconName)) return "";

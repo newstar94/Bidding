@@ -12,12 +12,25 @@ from backend.documents.word_defaults import build_default_word_mappings
 
 def main():
     contract = build_schema_contract(build_default_word_mappings())
+    runtime_table_names = set(contract["clientTableMap"].values())
+    runtime_field_maps = {
+        table: spec.get("fieldMap", {})
+        for table, spec in contract["tables"].items()
+        if table in runtime_table_names
+    }
+    runtime_columns = {
+        column
+        for field_map in runtime_field_maps.values()
+        for column in field_map
+    }
     runtime_contract = {
         "clientTableMap": contract["clientTableMap"],
-        "commonFieldMap": contract["commonFieldMap"],
-        "fieldMapByTable": {
-            table: spec.get("fieldMap", {}) for table, spec in contract["tables"].items()
+        "commonFieldMap": {
+            column: client_field
+            for column, client_field in contract["commonFieldMap"].items()
+            if column in runtime_columns
         },
+        "fieldMapByTable": runtime_field_maps,
     }
     runtime_payload = json.dumps(runtime_contract, ensure_ascii=True, indent=2, sort_keys=True)
     runtime_output = ROOT / "frontend" / "documents" / "schemaRuntime.js"

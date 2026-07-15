@@ -5,6 +5,7 @@ import {
   createInitialVersion,
   createNextVersion,
   getNextVersion,
+  preserveRowVersion,
   rememberSelectedVersion
 } from "../shared/VersionedEntityService.js";
 
@@ -141,7 +142,7 @@ export function editChuyenGia(id) {
 export async function handleChuyenGiaSubmit(e) {
   e.preventDefault();
   const form = document.getElementById("form-chuyengia");
-  const formValues = collectFormValues(document, CHUYEN_GIA_FORM_FIELDS);
+  const formValues = collectFormValues(document, CHUYEN_GIA_FORM_FIELDS, "chuyengia");
   const cccdVal = formValues.soCCCD.trim();
   if (cccdVal !== "" && !/^\d{12}$/.test(cccdVal)) {
     const inputEl = document.getElementById("cg-socccd");
@@ -250,6 +251,7 @@ export async function handleChuyenGiaSubmit(e) {
       data.isLatest = currentCg.isLatest !== void 0 ? currentCg.isLatest : 1;
       data.createdAt = currentCg.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
+      preserveRowVersion(data, currentCg);
       const idx = this.model.state.chuyengia.findIndex((c) => c.id === id);
       this.model.state.chuyengia[idx] = data;
     }

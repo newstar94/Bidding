@@ -7,6 +7,7 @@ import uuid
 
 from backend.auth.auth_helper import hash_password
 from backend.auth.identity import normalize_email, normalize_username
+from backend.auth.session_store import revoke_user_sessions
 
 
 RESET_TOKEN_TTL_SECONDS = 30 * 60
@@ -119,16 +120,12 @@ def redeem_password_reset(database, token, new_password, now=None):
 
         user_id = row["user_id"]
         updated = conn.execute(
-            """
-            UPDATE tai_khoan
-            SET mat_khau = ?, token_phien = NULL, han_su_dung_token = NULL,
-                privileged_reauth_at = NULL
-            WHERE id = ?
-            """,
+            "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
             (hash_password(new_password), user_id),
         )
         if updated.rowcount != 1:
             raise InvalidResetToken("Reset token user no longer exists.")
+        revoke_user_sessions(conn, user_id, now=current_time)
 
         conn.execute(
             "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",

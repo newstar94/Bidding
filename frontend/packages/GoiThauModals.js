@@ -2,6 +2,7 @@ import { getAppController } from "../app/controllerRef.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
 import { getExcelPreviewFieldError } from "./excelPreviewValidation.js";
 import { isCompetitiveQuotationPackage } from "./packageAppraisal.js";
+import { escapeAttribute, escapeHtml } from "../shared/view_helpers.js";
 export function renderExcelPreview(rows, importType) {
   const formatDateToDMY = (str) => {
     if (!str) return "";
@@ -176,7 +177,7 @@ export function renderExcelPreview(rows, importType) {
     if (["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao"].includes(k)) {
       align = "right";
     }
-    headerHtml += `<th style="text-align: ${align} !important;">${label}</th>`;
+    headerHtml += `<th style="text-align: ${align} !important;">${escapeHtml(label)}</th>`;
   });
   headerHtml += '<th style="text-align: center !important;">Thông tin kiểm tra</th></tr>';
   tableHeader.innerHTML = headerHtml;
@@ -204,7 +205,7 @@ export function renderExcelPreview(rows, importType) {
     }
     r._valid = rowErrors.length === 0;
     r._comment = rowErrors.length > 0 ? rowErrors.join("; ") : "Hợp lệ";
-    const statusHtml = r._valid ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>' : `<span class="badge badge-danger" title="${r._comment}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`;
+    const statusHtml = r._valid ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>' : `<span class="badge badge-danger" title="${escapeAttribute(r._comment)}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`;
     let rowHtml = `<tr data-row-index="${rowIndex}">`;
     keys.forEach((k) => {
       let val = r[k];
@@ -237,8 +238,8 @@ export function renderExcelPreview(rows, importType) {
       }
       const errorText = fieldErrorMap[k];
       rowHtml += `<td style="text-align: ${align} !important; ${style}; padding: 4px; vertical-align: top;">
-                <input type="${inputType}" class="${inputClass} ${errorText ? "is-invalid" : ""}" data-key="${k}" value="${val !== void 0 && val !== null && val !== "" ? val : ""}" style="text-align: ${align};">
-                ${errorText ? `<div class="invalid-feedback" style="color: #ef4444; font-size: 0.7rem; margin-top: 2px; text-align: left; font-weight: 500;">${errorText}</div>` : ""}
+                <input type="${inputType}" class="${inputClass} ${errorText ? "is-invalid" : ""}" data-key="${escapeAttribute(k)}" value="${escapeAttribute(val !== void 0 && val !== null && val !== "" ? val : "")}" style="text-align: ${align};">
+                ${errorText ? `<div class="invalid-feedback" style="color: #ef4444; font-size: 0.7rem; margin-top: 2px; text-align: left; font-weight: 500;">${escapeHtml(errorText)}</div>` : ""}
             </td>`;
     });
     rowHtml += `<td style="text-align: center; vertical-align: middle;">${statusHtml}</td></tr>`;
@@ -322,7 +323,7 @@ export function renderExcelPreview(rows, importType) {
         }
         const statusTd = rowTr.querySelector("td:last-child");
         if (statusTd) {
-          statusTd.innerHTML = rData._valid ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>' : `<span class="badge badge-danger" title="${rData._comment}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`;
+          statusTd.innerHTML = rData._valid ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>' : `<span class="badge badge-danger" title="${escapeAttribute(rData._comment)}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`;
           if (window.lucide) {
             window.lucide.createIcons({ root: statusTd });
           }
@@ -406,19 +407,19 @@ export function populatePhathanhHsmtForm(gt, model) {
           const giaTriVal = item.giaTriPhanLo || 0;
           tr.innerHTML = `
                         <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-code-input" value="${item.maPhanLo || ""}" placeholder="Mã..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                            <input type="text" class="phathanh-pl-code-input" value="${escapeAttribute(item.maPhanLo || "")}" placeholder="Mã..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
                         </td>
                         <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-name-input" value="${item.tenPhanLo || ""}" placeholder="Tên..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                            <input type="text" class="phathanh-pl-name-input" value="${escapeAttribute(item.tenPhanLo || "")}" placeholder="Tên..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
                         </td>
                         <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-price-input mt-format-vnd" value="${giaTriVal ? model.formatVND(giaTriVal) : ""}" placeholder="Giá trị..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                             <input type="text" class="phathanh-pl-price-input mt-format-vnd" value="${escapeAttribute(giaTriVal ? model.formatVND(giaTriVal) : "")}" placeholder="Giá trị..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
                         </td>
                         <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-baodam-input mt-format-vnd" required value="${baoDamVal ? model.formatVND(baoDamVal) : ""}" placeholder="Bảo đảm..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                             <input type="text" class="phathanh-pl-baodam-input mt-format-vnd" required value="${escapeAttribute(baoDamVal ? model.formatVND(baoDamVal) : "")}" placeholder="Bảo đảm..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
                         </td>
                         <td style="padding: 6px 8px;">
-                            <input type="text" class="phathanh-pl-duration-input" value="${item.thoiGianThucHien || ""}" placeholder="Thời gian..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
+                             <input type="text" class="phathanh-pl-duration-input" value="${escapeAttribute(item.thoiGianThucHien || "")}" placeholder="Thời gian..." style="width: 100%; border: 1px solid var(--border-color); padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; height: 32px; background: var(--bg-card); color: var(--text-main);">
                         </td>
                     `;
           phanloBaodamTbody.appendChild(tr);

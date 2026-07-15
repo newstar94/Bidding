@@ -16,7 +16,7 @@
     "sbom": "npm run sbom:npm && npm run sbom:vendor && npm run sbom:python",
     "sbom:npm": "cyclonedx-npm --package-lock-only --output-reproducible --spec-version 1.6 --output-format JSON --output-file sbom/npm.cdx.json --validate",
     "sbom:vendor": "node scripts/generate_vendor_sbom.mjs",
-    "sbom:python": "cyclonedx-py requirements requirements/runtime.lock.txt --pyproject pyproject.toml --output-reproducible --spec-version 1.6 --output-format JSON --output-file sbom/python-runtime.cdx.json --validate",
+    "sbom:python": "python -m cyclonedx_py requirements requirements/runtime.lock.txt --pyproject pyproject.toml --output-reproducible --spec-version 1.6 --output-format JSON --output-file sbom/python-runtime.cdx.json --validate",
     "lint": "npm run lint:js && npm run lint:py",
     "lint:js": "node scripts/lint_js.mjs",
     "lint:py": "python scripts/lint_python.py",

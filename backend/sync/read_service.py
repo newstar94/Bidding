@@ -1,7 +1,6 @@
 """Full and delta synchronization read service."""
 
 import time
-from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
 
@@ -10,9 +9,12 @@ from backend.shared.access_policy import (
     can_read_record,
     can_read_table,
     filter_items_for_read,
+    has_module_permission,
     is_organization_manager,
 )
 from backend.shared.media_helper import public_image_path
+from backend.shared.date_utils import utc_now_sql
+from backend.shared.sensitive_data import redact_expert_item
 from backend.sync.mapper import (
     attach_child_rows_to_items,
     json_key_for_column,
@@ -25,7 +27,7 @@ from backend.sync.queries import (
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
 from backend.sync.repository import ARCHIVED_TABLES, get_current_sync_version
-from backend.sync.service import parse_sync_read_window
+from backend.sync.request_contract import parse_sync_read_window
 from backend.shared.logging_utils import error_response, log_and_error
 
 
@@ -54,12 +56,34 @@ async def read_sync_data(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        # Pin every table, manifest and dashboard aggregate in this response to
+        # one SQLite read snapshot. Without an explicit transaction, concurrent
+        # writes could make the cards disagree with the returned lists/cursor.
+        cursor.execute("BEGIN")
+        current_time = utc_now_sql()
 
 
         org_name = get_active_org(request, role_or_err.user_id)
         role_str = str(role_or_err)
         user_id = role_or_err.user_id
+        can_view_sensitive_expert = has_module_permission(
+            cursor, role_str, user_id, org_name, "chuyengia", "edit"
+        )
+
+        metadata_row = cursor.execute(
+            "SELECT current_version, min_available_version FROM sync_metadata WHERE organization_id = ?",
+            (org_name,),
+        ).fetchone()
+        min_available_sync_version = int(metadata_row[1] or 0) if metadata_row else 0
+        if after_version is not None and after_version < min_available_sync_version:
+            conn.close()
+            conn = None
+            return JSONResponse({
+                "error": "Con trỏ đồng bộ đã quá cũ; cần tải lại dữ liệu đầy đủ.",
+                "code": "FULL_SYNC_REQUIRED",
+                "requiresFullSync": True,
+                "minAvailableSyncVersion": min_available_sync_version,
+            }, status_code=409)
 
 
 
@@ -112,6 +136,8 @@ async def read_sync_data(request):
             item = map_db_to_json("chuyen_gia", row_dict)
             item["anhChungChi"] = public_image_path(img_path)
             item["anhChuKy"] = public_image_path(sig_path)
+            if not can_view_sensitive_expert:
+                item = redact_expert_item(item)
             chuyengia.append(item)
 
 
@@ -278,11 +304,18 @@ async def read_sync_data(request):
                 if not selected_columns:
                     continue
                 reference_where = "organization_id = ? AND is_latest = 1 AND archived_at IS NULL"
+                reference_params = (org_name,)
+                if table_name == "goi_thau":
+                    reference_where += (
+                        " AND ke_hoach_id IN ("
+                        "SELECT id FROM ke_hoach_lcnt "
+                        "WHERE organization_id = ? AND is_latest = 1 AND archived_at IS NULL)"
+                    )
+                    reference_params = (org_name, org_name)
                 if table_name in {"chu_dau_tu", "nha_thau"}:
                     # Date-based stage binding needs the lightweight identity of
                     # every version; full details remain paginated/lazy-loaded.
                     reference_where = "organization_id = ? AND archived_at IS NULL"
-                reference_params = (org_name,)
                 cursor.execute(
                     f"SELECT {', '.join(selected_columns)} FROM {table_name} WHERE {reference_where}",
                     reference_params,
@@ -307,6 +340,10 @@ async def read_sync_data(request):
                     table_name,
                     reference_items,
                 )
+                if payload_key == "chuyengia" and not can_view_sensitive_expert:
+                    reference_data[payload_key] = [
+                        redact_expert_item(item) for item in reference_data[payload_key]
+                    ]
 
         if not is_organization_manager(cursor, role_str, user_id, org_name):
             deletions = [
@@ -339,7 +376,8 @@ async def read_sync_data(request):
             "dashboardSummary": dashboard_summary,
             "partial": is_partial_response,
             "timestamp": current_time,
-            "syncVersion": current_sync_version
+            "syncVersion": current_sync_version,
+            "minAvailableSyncVersion": min_available_sync_version,
         }
         if is_partial_response:
             for payload_key in list(TABLE_KEYS):

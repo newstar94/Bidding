@@ -60,6 +60,47 @@ function displayValue(value) {
   return String(value);
 }
 
+const CONFLICT_METADATA_FIELDS = new Set([
+  "id", "syncVersion", "rowVersion", "expectedVersion", "createdAt", "updatedAt"
+]);
+
+export function collectFieldConflicts(queue = {}, responseData = {}) {
+  const conflicts = [];
+  for (const error of responseData.errors || []) {
+    const type = error.table || "unknown";
+    const id = String(error.id || "");
+    const local = queue.upserts?.[type]?.[id];
+    const server = error.serverRecord;
+    if (!local || !server || !id) continue;
+    const changedFields = new Set([...Object.keys(local), ...Object.keys(server)]);
+    for (const field of changedFields) {
+      if (CONFLICT_METADATA_FIELDS.has(field)) continue;
+      if (JSON.stringify(local[field]) === JSON.stringify(server[field])) continue;
+      conflicts.push({
+        key: `${type}:${id}:${field}`,
+        type,
+        id,
+        field,
+        localValue: local[field],
+        serverValue: server[field]
+      });
+    }
+  }
+  return conflicts;
+}
+
+export function applyFieldConflictChoices(queue = {}, conflicts = [], choices = {}) {
+  const merged = JSON.parse(JSON.stringify(queue));
+  for (const conflict of conflicts) {
+    if (choices[conflict.key] !== "server") continue;
+    const record = merged.upserts?.[conflict.type]?.[conflict.id];
+    if (!record) continue;
+    if (conflict.serverValue === undefined) delete record[conflict.field];
+    else record[conflict.field] = conflict.serverValue;
+  }
+  return merged;
+}
+
 export function buildConflictDiff(queue = {}, responseData = {}) {
   const lines = [];
   for (const error of responseData.errors || []) {
@@ -67,10 +108,10 @@ export function buildConflictDiff(queue = {}, responseData = {}) {
     const id = String(error.id || "");
     const local = queue.upserts?.[type]?.[id] || {};
     const server = error.serverRecord || {};
-    const changedFields = new Set([...Object.keys(local), ...Object.keys(server)]);
-    const differences = [...changedFields]
-      .filter((field) => !["syncVersion", "updatedAt", "createdAt"].includes(field))
-      .filter((field) => JSON.stringify(local[field]) !== JSON.stringify(server[field]));
+    const differences = collectFieldConflicts(
+      { upserts: { [type]: { [id]: local } } },
+      { errors: [{ table: type, id, serverRecord: server }] }
+    ).map((conflict) => conflict.field);
     lines.push(`[${type}/${id || "?"}] ${error.message || "Dữ liệu đã thay đổi trên máy chủ."}`);
     differences.slice(0, 8).forEach((field) => {
       lines.push(`  • ${field}: máy này=${displayValue(local[field])} | máy chủ=${displayValue(server[field])}`);

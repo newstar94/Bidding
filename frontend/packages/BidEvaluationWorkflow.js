@@ -772,7 +772,7 @@ export function renderDanhGiaHsdtPanel() {
             leadCode: maNhaThauHienThi,
             leadContractorVersionId: bid.nhaThauId || ""
           });
-          contractorDisplayHtml = `<a href="#" class="mt-jv-view-link text-success fw-bold link-hover" data-jv-key="${jvKey}" title="Xem thành viên liên danh">👥 ${tenNhaThauHienThi}</a>`;
+          contractorDisplayHtml = `<a href="#" class="mt-jv-view-link text-success fw-bold link-hover" data-jv-key="${escapeHtml(jvKey)}" title="Xem thành viên liên danh">👥 ${escapeHtml(tenNhaThauHienThi)}</a>`;
         } else {
           const contractorId = matchedNt?.id || "";
           contractorDisplayHtml = contractorId
@@ -782,13 +782,13 @@ export function renderDanhGiaHsdtPanel() {
         let cellHtml = "";
         if (gt.phanLo === "Có") {
           cellHtml += `
-                        <td>${bid.maPhanLo || "--"}</td>
-                        <td>${bid.tenPhanLo || "--"}</td>
+                        <td>${escapeHtml(bid.maPhanLo || "--")}</td>
+                        <td>${escapeHtml(bid.tenPhanLo || "--")}</td>
                     `;
         }
         cellHtml += `
-                    <td>${bid.loaiNhaThau || "Độc lập"}</td>
-                    <td>${maNhaThauHienThi}</td>
+                    <td>${escapeHtml(bid.loaiNhaThau || "Độc lập")}</td>
+                    <td>${escapeHtml(maNhaThauHienThi)}</td>
                     <td>${contractorDisplayHtml}</td>
                 `;
         if (is1G2T && this.currentDanhGiaTab === "financial") {
@@ -804,12 +804,12 @@ export function renderDanhGiaHsdtPanel() {
                             <td style="text-align:right;"><span>${valTyLeGiam}</span></td>
                             <td><span>${valGiaSauGiam || "--"}</span></td>
                             ${isTuVan ? `<td><span>${valHieuLucHsdt ? valHieuLucHsdt + " ngày" : "--"}</span></td>` : ""}
-                            <td><span>${valLamRoTaiChinh || "--"}</span></td>
+                            <td><span>${escapeHtml(valLamRoTaiChinh || "--")}</span></td>
                             ${showCombinedScore ? `
-                                <td><span>${bid.danhGiaKyThuat || "--"}</span></td>
+                                <td><span>${escapeHtml(bid.danhGiaKyThuat || "--")}</span></td>
                                 <td><span class="mt-combined-score" style="font-weight:700;">--</span></td>
                             ` : ""}
-                            <td><span style="font-weight:600;">${valTaiChinh || "--"}</span></td>
+                            <td><span style="font-weight:600;">${escapeHtml(valTaiChinh || "--")}</span></td>
                         `;
           } else {
             cellHtml += `
@@ -817,12 +817,12 @@ export function renderDanhGiaHsdtPanel() {
                             <td><input type="text" class="form-control mt-ty-le-giam-gia" value="${valTyLeGiam}" readonly placeholder="0" style="background:#f1f5f9; text-align:right; padding: 4px 6px; font-size:0.8rem;"></td>
                             <td><input type="text" class="form-control mt-gia-sau-giam-gia" value="${valGiaSauGiam}" readonly placeholder="......" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             ${isTuVan ? `<td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${valHieuLucHsdt ? valHieuLucHsdt + " ngày" : ""}" readonly placeholder="Ví dụ: 90 ngày" style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>` : ""}
-                            <td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${valLamRoTaiChinh}" placeholder="Nhập làm rõ tài chính..." style="padding: 4px 6px; font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-tai-chinh" value="${escapeHtml(valLamRoTaiChinh)}" placeholder="Nhập làm rõ tài chính..." style="padding: 4px 6px; font-size:0.8rem;"></td>
                             ${showCombinedScore ? `
-                                <td><span>${bid.danhGiaKyThuat || "--"}</span></td>
+                                <td><span>${escapeHtml(bid.danhGiaKyThuat || "--")}</span></td>
                                 <td><span class="mt-combined-score" style="font-weight:700;">--</span></td>
                             ` : ""}
-                            <td><input type="text" class="form-control mt-dg-tai-chinh" value="${valTaiChinh}" placeholder="Xếp hạng..." style="padding: 4px 6px; font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control mt-dg-tai-chinh" value="${escapeHtml(valTaiChinh)}" placeholder="Xếp hạng..." style="padding: 4px 6px; font-size:0.8rem;"></td>
                         `;
           }
         } else {
@@ -847,13 +847,13 @@ export function renderDanhGiaHsdtPanel() {
                                 <td><span>${valHieuLucHsdtDisplay}</span></td>
                                 <td><span>${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : "--"}</span></td>
                                 <td><span>${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + " ngày" : "--"}</span></td>
-                                <td><span>${bid.thoiGianThucHien || gt.thoiGianThucHien || "--"}</span></td>
+                                <td><span>${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "--")}</span></td>
                             `;
             } else {
               if (caseType === "TU_VAN") {
                 cellHtml += `
                                     <td><span>${valHieuLucHsdtDisplay}</span></td>
-                                    <td><span>${bid.thoiGianThucHien || gt.thoiGianThucHien || "--"}</span></td>
+                                    <td><span>${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "--")}</span></td>
                                 `;
               } else if (caseType === "1G2T_NO_LOT" || caseType === "1G2T_WITH_LOT") {
                 cellHtml += `
@@ -865,24 +865,24 @@ export function renderDanhGiaHsdtPanel() {
             }
             cellHtml += `
                             <td>
-                                <span class="mt-dg-hop-le" style="font-weight:600;">${valHopLe || "--"}</span>
-                                ${bid.nguyenNhanKhongDatHopLe ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${bid.nguyenNhanKhongDatHopLe}</div>` : ""}
+                                <span class="mt-dg-hop-le" style="font-weight:600;">${escapeHtml(valHopLe || "--")}</span>
+                                ${bid.nguyenNhanKhongDatHopLe ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatHopLe)}</div>` : ""}
                             </td>
-                            <td><span>${valLamRoHopLe || "--"}</span></td>
+                            <td><span>${escapeHtml(valLamRoHopLe || "--")}</span></td>
                             <td>
-                                <span class="mt-dg-nang-luc" style="font-weight:600;">${valNangLuc || "--"}</span>
-                                ${bid.nguyenNhanKhongDatNangLuc ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${bid.nguyenNhanKhongDatNangLuc}</div>` : ""}
+                                <span class="mt-dg-nang-luc" style="font-weight:600;">${escapeHtml(valNangLuc || "--")}</span>
+                                ${bid.nguyenNhanKhongDatNangLuc ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatNangLuc)}</div>` : ""}
                             </td>
-                            <td><span>${valLamRoNangLuc || "--"}</span></td>
+                            <td><span>${escapeHtml(valLamRoNangLuc || "--")}</span></td>
                             <td>
-                                <span class="mt-dg-ky-thuat" style="font-weight:600;">${valKyThuat || "--"}</span>
-                                ${bid.nguyenNhanKhongDatKyThuat ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${bid.nguyenNhanKhongDatKyThuat}</div>` : ""}
+                                <span class="mt-dg-ky-thuat" style="font-weight:600;">${escapeHtml(valKyThuat || "--")}</span>
+                                ${bid.nguyenNhanKhongDatKyThuat ? `<div style="color: #dc2626; font-size: 0.72rem; margin-top: 2px;">Lý do: ${escapeHtml(bid.nguyenNhanKhongDatKyThuat)}</div>` : ""}
                             </td>
-                            <td><span>${valLamRoKyThuat || "--"}</span></td>
-                            ${isTechnical ? "" : `<td><span>${valLamRoTaiChinh || "--"}</span></td>`}
+                            <td><span>${escapeHtml(valLamRoKyThuat || "--")}</span></td>
+                            ${isTechnical ? "" : `<td><span>${escapeHtml(valLamRoTaiChinh || "--")}</span></td>`}
                             ${showCombinedScore ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ""}
                             <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
-                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${bid.danhGiaTaiChinh || "--"}</span></td>`}
+                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
                         `;
           } else {
             const forceRowDisabled = !is1G2T && gt.quyTrinhDanhGia === "quytrinh2" && !previousAllFailed;
@@ -894,13 +894,13 @@ export function renderDanhGiaHsdtPanel() {
                                 <td><input type="text" class="form-control" value="${bid.hieuLucHsdt ? bid.hieuLucHsdt + " ngày" : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                 <td><input type="text" class="form-control" value="${bid.giaTriDamBao ? this.model.formatVND(bid.giaTriDamBao) : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                 <td><input type="text" class="form-control" value="${bid.hieuLucBaoDamNgay ? bid.hieuLucBaoDamNgay + " ngày" : ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || gt.thoiGianThucHien || ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                <td><input type="text" class="form-control" value="${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "")}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                             `;
             } else {
               if (caseType === "TU_VAN") {
                 cellHtml += `
                                     <td><input type="text" class="form-control" value="${valHieuLucHsdtInput}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
-                                    <td><input type="text" class="form-control" value="${bid.thoiGianThucHien || gt.thoiGianThucHien || ""}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
+                                    <td><input type="text" class="form-control" value="${escapeHtml(bid.thoiGianThucHien || gt.thoiGianThucHien || "")}" readonly style="background:#f1f5f9; padding: 4px 6px; font-size:0.8rem;"></td>
                                 `;
               } else if (caseType === "1G2T_NO_LOT" || caseType === "1G2T_WITH_LOT") {
                 cellHtml += `
@@ -916,26 +916,26 @@ export function renderDanhGiaHsdtPanel() {
                                     <option value="Đạt" ${valHopLe === "Đạt" || valHopLe === "" ? "selected" : ""}>Đạt</option>
                                     <option value="Không đạt" ${valHopLe === "Không đạt" ? "selected" : ""}>Không đạt</option>
                                 </select>
-                                <input type="text" class="form-control mt-reason-fail-hople" value="${bid.nguyenNhanKhongDatHopLe || ""}" placeholder="Lý do không đạt hợp lệ..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valHopLe === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
+                                <input type="text" class="form-control mt-reason-fail-hople" value="${escapeHtml(bid.nguyenNhanKhongDatHopLe || "")}" placeholder="Lý do không đạt hợp lệ..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valHopLe === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-hop-le" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${valLamRoHopLe}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ hợp lệ..."}"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-hop-le" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoHopLe)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ hợp lệ..."}"></td>
                             <td>
                                 <select class="form-control mt-dg-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} style="padding: 4px 6px; font-size:0.8rem; font-weight:600; width: 100%;">
                                     <option value="Đạt" ${valNangLuc === "Đạt" || valNangLuc === "" ? "selected" : ""}>Đạt</option>
                                     <option value="Không đạt" ${valNangLuc === "Không đạt" ? "selected" : ""}>Không đạt</option>
                                 </select>
-                                <input type="text" class="form-control mt-reason-fail-nangluc" value="${bid.nguyenNhanKhongDatNangLuc || ""}" placeholder="Lý do không đạt năng lực..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valNangLuc === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
+                                <input type="text" class="form-control mt-reason-fail-nangluc" value="${escapeHtml(bid.nguyenNhanKhongDatNangLuc || "")}" placeholder="Lý do không đạt năng lực..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: ${valNangLuc === "Không đạt" ? "block" : "none"};" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${valLamRoNangLuc}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ năng lực..."}"></td>
+                            <td><input type="text" class="form-control mt-lam-ro-nang-luc" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoNangLuc)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ năng lực..."}"></td>
                             <td>
-                                <input type="text" class="form-control mt-dg-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${valKyThuat}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" ? "Nhập điểm kỹ thuật..." : "Điểm hoặc Đạt..."}">
-                                <input type="text" class="form-control mt-reason-fail-kythuat" value="${bid.nguyenNhanKhongDatKyThuat || ""}" placeholder="Lý do không đạt kỹ thuật..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: none;" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
+                                <input type="text" class="form-control mt-dg-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" ? "Nhập điểm kỹ thuật..." : "Điểm hoặc Đạt..."}">
+                                <input type="text" class="form-control mt-reason-fail-kythuat" value="${escapeHtml(bid.nguyenNhanKhongDatKyThuat || "")}" placeholder="Lý do không đạt kỹ thuật..." style="margin-top: 4px; padding: 4px 6px; font-size: 0.75rem; width: 100%; display: none;" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""}>
                             </td>
-                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${valLamRoKyThuat}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ kỹ thuật..."}"></td>
-                            ${isTechnical ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${valLamRoTaiChinh}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ tài chính..."}"></td>`}
+                            <td><input type="text" class="form-control mt-lam-ro-ky-thuat" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoKyThuat)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ kỹ thuật..."}"></td>
+                            ${isTechnical ? "" : `<td><input type="text" class="form-control mt-lam-ro-tai-chinh" ${forceRowDisabled ? 'disabled style="background:var(--neutral-soft); cursor:not-allowed;"' : ""} value="${escapeHtml(valLamRoTaiChinh)}" placeholder="${forceRowDisabled ? "Chờ đánh giá hạng trên..." : "Nhập làm rõ tài chính..."}"></td>`}
                             ${showCombinedScore ? `<td><span class="mt-combined-score" style="font-weight:700;">--</span></td>` : ""}
                             <td class="mt-ketluan-cell" style="text-align: center; vertical-align: middle;"></td>
-                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${bid.danhGiaTaiChinh || "--"}</span></td>`}
+                            ${isTechnical ? "" : `<td><span class="mt-dg-xep-hang" style="font-weight:600;">${escapeHtml(bid.danhGiaTaiChinh || "--")}</span></td>`}
                         `;
           }
         }

@@ -1,6 +1,5 @@
 import sys
 import os
-import asyncio
 
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -32,7 +31,6 @@ import re
 import threading
 import hashlib
 import contextlib
-import secrets
 import json
 import time
 from urllib.parse import urlparse
@@ -44,13 +42,12 @@ from starlette.responses import JSONResponse, HTMLResponse, Response, FileRespon
 from starlette.requests import Request
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
 
-from backend.shared.client_ip import is_request_secure, parse_ip_networks
+from backend.shared.client_ip import parse_ip_networks
 from backend.shared.origin_policy import get_allowed_websocket_origins
 
 
@@ -105,34 +102,6 @@ def _is_public_https_origin(origin):
         and not parsed.fragment
         and not _is_local_origin(origin)
     )
-
-
-def _websocket_csp_source(origin):
-    try:
-        parsed = urlparse(origin)
-    except Exception:
-        return None
-    if not parsed.netloc:
-        return None
-    if parsed.scheme == "https":
-        return f"wss://{parsed.netloc}"
-    if parsed.scheme == "http":
-        return f"ws://{parsed.netloc}"
-    if parsed.scheme in {"ws", "wss"}:
-        return f"{parsed.scheme}://{parsed.netloc}"
-    return None
-
-
-def _unique_ordered(values):
-    seen = set()
-    result = []
-    for value in values:
-        if value and value not in seen:
-            result.append(value)
-            seen.add(value)
-    return result
-
-
 
 
 ALLOWED_WS_ORIGINS = get_allowed_websocket_origins()
@@ -367,11 +336,7 @@ from backend.shared.helpers import (
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import get_blocking_io_stats, run_blocking_io
 from backend.db.db_utils import DB_SCHEMA_VERSION
-from backend.startup import (
-    validate_startup_configuration,
-    verify_database_readiness,
-    verify_database_responsive,
-)
+from backend.startup import validate_startup_configuration, verify_database_responsive
 
 from backend.auth.otp_routes import (
     register_api,
@@ -753,277 +718,24 @@ if IS_PRODUCTION:
         raise RuntimeError("TRUSTED_PROXY_CIDRS cannot trust the entire internet in production.")
     if not APP_PUBLIC_URL or not _is_public_https_origin(APP_PUBLIC_URL):
         raise RuntimeError("APP_PUBLIC_URL must be a public HTTPS origin when APP_ENV=production.")
+    if set(cors_origins) != {APP_PUBLIC_URL}:
+        raise RuntimeError("Production CORS_ORIGINS must contain only APP_PUBLIC_URL (same-origin deployment).")
+    if set(ALLOWED_WS_ORIGINS) != {APP_PUBLIC_URL}:
+        raise RuntimeError("Production ALLOWED_WS_ORIGINS must contain only APP_PUBLIC_URL.")
 
 
-CSP_CONNECT_SOURCES = " ".join(_unique_ordered([
-    "'self'",
-    *(_websocket_csp_source(origin) for origin in ALLOWED_WS_ORIGINS),
-    "https://accounts.google.com",
-    "https://oauth2.googleapis.com",
-]))
-
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Thêm các HTTP security headers cho mọi response để chống XSS, clickjacking, sniffing."""
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
-
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://accounts.google.com https://apis.google.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
-            "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
-            f"connect-src {CSP_CONNECT_SOURCES}; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "frame-src 'self' https://accounts.google.com; "
-            "worker-src 'self'; "
-            "base-uri 'self'; "
-            "object-src 'none';"
-        )
-        path = request.url.path
-
-        if is_request_secure(request):
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-
-        if path.startswith("/api/") or path.startswith("/ws/"):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        elif request.query_params.get("v") and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
-
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        elif path.endswith(('.js', '.css')):
-
-            response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
-        return response
-
-class BodySizeLimitMiddleware:
-    """Enforce actual streamed-body limits, including chunked requests."""
-
-    BODY_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-    DOCUMENT_PATHS = {"/api/templates/upload", "/api/import-excel"}
-
-    def __init__(self, app):
-        self.app = app
-
-    @staticmethod
-    def _configured_limit(name, default):
-        try:
-            value = int(os.environ.get(name, str(default)))
-        except (TypeError, ValueError):
-            value = default
-        return min(64 * 1024 * 1024, max(64 * 1024, value))
-
-    @classmethod
-    def _limit_for_path(cls, path):
-        if path == "/api/sync":
-            return cls._configured_limit("REQUEST_MAX_SYNC_BYTES", 10 * 1024 * 1024)
-        if path in cls.DOCUMENT_PATHS:
-            return cls._configured_limit("REQUEST_MAX_DOCUMENT_BYTES", 11 * 1024 * 1024)
-        return cls._configured_limit("REQUEST_MAX_JSON_BYTES", 1024 * 1024)
-
-    @staticmethod
-    async def _reject(scope, send, code, message, status_code, fields=None):
-        response = error_response(
-            Request(scope),
-            code,
-            message,
-            status_code=status_code,
-            fields=fields,
-        )
-
-        async def empty_receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        await response(scope, empty_receive, send)
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope.get("method") not in self.BODY_METHODS:
-            await self.app(scope, receive, send)
-            return
-
-        request = Request(scope)
-        limit = self._limit_for_path(scope.get("path", ""))
-        content_encoding = (request.headers.get("content-encoding") or "identity").lower()
-        if content_encoding not in {"", "identity"}:
-            await self._reject(
-                scope,
-                send,
-                "REQUEST_CONTENT_ENCODING_UNSUPPORTED",
-                "Không hỗ trợ nội dung request đã nén.",
-                415,
-            )
-            return
-
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                declared_size = int(content_length)
-                if declared_size < 0:
-                    raise ValueError
-            except ValueError:
-                await self._reject(
-                    scope,
-                    send,
-                    "CONTENT_LENGTH_INVALID",
-                    "Content-Length không hợp lệ.",
-                    400,
-                )
-                return
-            if declared_size > limit:
-                await self._reject(
-                    scope,
-                    send,
-                    "REQUEST_BODY_TOO_LARGE",
-                    "Dữ liệu gửi lên vượt quá giới hạn cho phép.",
-                    413,
-                    fields={"maxBytes": limit},
-                )
-                return
-
-        buffered_messages = []
-        received_size = 0
-        while True:
-            message = await receive()
-            if message["type"] == "http.disconnect":
-                await self._reject(
-                    scope,
-                    send,
-                    "REQUEST_BODY_INCOMPLETE",
-                    "Kết nối bị ngắt trước khi nhận đủ dữ liệu.",
-                    400,
-                )
-                return
-            if message["type"] != "http.request":
-                buffered_messages.append(message)
-                continue
-            received_size += len(message.get("body", b""))
-            if received_size > limit:
-                await self._reject(
-                    scope,
-                    send,
-                    "REQUEST_BODY_TOO_LARGE",
-                    "Dữ liệu gửi lên vượt quá giới hạn cho phép.",
-                    413,
-                    fields={"maxBytes": limit},
-                )
-                return
-            buffered_messages.append(message)
-            if not message.get("more_body", False):
-                break
-
-        content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
-        if content_type == "application/json":
-            raw_body = b"".join(
-                message.get("body", b"")
-                for message in buffered_messages
-                if message.get("type") == "http.request"
-            )
-            try:
-                parsed_body = json.loads(raw_body.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                await self._reject(
-                    scope,
-                    send,
-                    "REQUEST_JSON_INVALID",
-                    "Nội dung JSON không hợp lệ.",
-                    400,
-                )
-                return
-            if not isinstance(parsed_body, dict):
-                await self._reject(
-                    scope,
-                    send,
-                    "REQUEST_JSON_OBJECT_REQUIRED",
-                    "Nội dung JSON phải là một object.",
-                    400,
-                )
-                return
-
-        message_index = 0
-
-        async def replay_receive():
-            nonlocal message_index
-            if message_index < len(buffered_messages):
-                message = buffered_messages[message_index]
-                message_index += 1
-                return message
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        await self.app(scope, replay_receive, send)
-
-class CSRFMiddleware(BaseHTTPMiddleware):
-    """Bảo vệ request đã đăng nhập bằng Origin/Referer và double-submit CSRF token."""
-
-    MUTATING_METHODS = {"POST", "PUT", "DELETE"}
-    EXEMPT_PATHS = {
-        "/api/auth/login",
-        "/api/auth/google-login",
-        "/api/auth/register",
-        "/api/auth/check-session",
-        "/api/auth/verify",
-        "/api/auth/resend-code",
-        "/api/auth/forgot-password",
-    }
-
-    async def dispatch(self, request, call_next):
-        csrf_cookie = request.cookies.get("csrf_token")
-        csrf_token = csrf_cookie or secrets.token_urlsafe(32)
-
-        if request.method in self.MUTATING_METHODS:
-            origin = request.headers.get("origin")
-            referer = request.headers.get("referer")
-            host = request.headers.get("host")
-            from urllib.parse import urlparse
-
-            def _same_host(value):
-                try:
-                    parsed = urlparse(value)
-                    return parsed.netloc == host
-                except Exception:
-                    return False
-
-            if origin and not _same_host(origin):
-                return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Origin không khớp)"}, status_code=403)
-            if referer and not _same_host(referer):
-                return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Referer không khớp)"}, status_code=403)
-
-            requires_token = (
-                request.url.path.startswith("/api/")
-                and request.url.path not in self.EXEMPT_PATHS
-                and bool(request.cookies.get("session_token"))
-            )
-            if requires_token:
-                header_token = request.headers.get("x-csrf-token", "")
-                if not csrf_cookie or not header_token or not secrets.compare_digest(csrf_cookie, header_token):
-                    return JSONResponse({
-                        "error": "Yêu cầu bị từ chối do thiếu hoặc sai CSRF token!",
-                        "code": "CSRF_TOKEN_INVALID",
-                    }, status_code=403)
-
-        response = await call_next(request)
-        if not csrf_cookie:
-            response.set_cookie(
-                "csrf_token",
-                csrf_token,
-                httponly=False,
-                secure=APP_SECURE_COOKIES,
-                samesite="lax",
-                path="/",
-            )
-        return response
-
+from backend.http_middleware import (
+    BodySizeLimitMiddleware,
+    CSRFMiddleware,
+    SecurityHeadersMiddleware,
+)
 
 middleware = [
     Middleware(CORSMiddleware,
                allow_origins=cors_origins,
-               allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+               allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
                allow_headers=['Content-Type', 'X-Active-Org', 'X-CSRF-Token', 'X-Request-ID'],
-               allow_credentials=False),
+               allow_credentials=True),
     Middleware(RequestIdMiddleware),
     Middleware(CSRFMiddleware),
     Middleware(SecurityHeadersMiddleware),
@@ -1039,153 +751,23 @@ def _initialize_database():
     khoi_tao_va_di_tru_he_thong()
 
 
-async def _monitor_event_loop(application):
-    try:
-        interval = float(os.environ.get("EVENT_LOOP_LAG_INTERVAL_SECONDS", "1"))
-    except (TypeError, ValueError):
-        interval = 1.0
-    try:
-        warn_threshold_ms = float(os.environ.get("EVENT_LOOP_LAG_WARN_MS", "500"))
-    except (TypeError, ValueError):
-        warn_threshold_ms = 500.0
-    interval = max(0.1, min(10.0, interval))
-    warn_threshold_ms = max(50.0, warn_threshold_ms)
-    loop = asyncio.get_running_loop()
-    last_warning = 0.0
-    while True:
-        expected = loop.time() + interval
-        await asyncio.sleep(interval)
-        now = loop.time()
-        lag_ms = max(0.0, (now - expected) * 1000)
-        application.state.event_loop_lag_ms = lag_ms
-        if lag_ms >= warn_threshold_ms and now - last_warning >= 60:
-            log_error(
-                f"Event loop lag {lag_ms:.1f}ms",
-                "event_loop_monitor",
-                level="WARN",
-            )
-            last_warning = now
-
 @contextlib.asynccontextmanager
 async def lifespan(application):
-    application.state.ready = False
-    application.state.startup_complete = False
-    application.state.event_loop_lag_ms = 0.0
-    monitor_task = None
-    websocket_broker_task = None
-    writer_lease = None
-    try:
-        validate_startup_configuration(database)
-        writer_lease = database.acquire_writer_lease()
-        from backend.documents.document_worker import (
-            cleanup_stale_document_jobs,
-            validate_document_worker_configuration,
-        )
-        validate_document_worker_configuration()
-        cleanup_stale_document_jobs()
-        if IS_PRODUCTION:
-            _build_index_response_payload()
-        _initialize_database()
-        verify_database_readiness(database, DB_SCHEMA_VERSION)
-    except Exception as db_err:
-        if writer_lease is not None:
-            writer_lease.release()
-        log_error(db_err, "startup_database_init")
-        raise
+    from backend.lifecycle import application_lifespan
 
-    application.state.startup_complete = True
-    application.state.ready = True
-    monitor_task = asyncio.create_task(_monitor_event_loop(application))
-    try:
-        from backend.sync.websocket import _latest_broker_event_id, run_websocket_event_broker
-        websocket_cursor = await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)
-        websocket_broker_task = asyncio.create_task(
-            run_websocket_event_broker(start_after_id=websocket_cursor)
-        )
-    except Exception:
-        monitor_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await monitor_task
-        application.state.ready = False
-        application.state.startup_complete = False
-        writer_lease.release()
-        raise
-
-    def _start_optional_background_services():
-        import time as _time
-        if BACKGROUND_STARTUP_DELAY_SECONDS:
-            _time.sleep(BACKGROUND_STARTUP_DELAY_SECONDS)
-
-        if ENABLE_IMAGE_CACHE_PREWARM:
-            try:
-                from backend.documents.custom_exporter import prewarm_image_cache
-                prewarm_image_cache()
-            except Exception as start_err:
-                log_error(start_err, "prewarm_image_cache")
-
-        # Partner enrichment is started on demand after a contractor is saved.
-
-    threading.Thread(
-        target=_start_optional_background_services,
-        daemon=True,
-        name="optional-background-startup",
-    ).start()
-
-
-    from backend.auth.auth_helper import _session_cache_cleanup
-    from backend.shared.helpers import _org_cache_cleanup
-    def _run_cache_cleanup():
-        import time as _time
-        _cleanup_cycle = 0
-        while True:
-            _time.sleep(300)
-            _cleanup_cycle += 1
-            try:
-                _session_cache_cleanup()
-                _org_cache_cleanup()
-            except Exception:
-                pass
-
-            if _cleanup_cycle % 6 == 0:
-                try:
-                    from backend.shared.helpers import database as _db
-                    _conn = _db.get_connection()
-
-
-                    _conn.execute(
-                        "DELETE FROM deleted_records WHERE deleted_at < datetime('now', '-90 days')"
-                    )
-                    _conn.commit()
-                    _conn.close()
-                except Exception:
-                    pass
-
-                try:
-                    _cg_dir = os.path.join(IMAGE_DIR, 'chuyen_gia')
-                    if os.path.exists(_cg_dir):
-                        for _fname in os.listdir(_cg_dir):
-                            if "_opt_" in _fname:
-                                _fpath = os.path.join(_cg_dir, _fname)
-                                if os.path.getmtime(_fpath) < _time.time() - 86400 * 30:
-                                    os.remove(_fpath)
-                except Exception:
-                    pass
-    threading.Thread(target=_run_cache_cleanup, daemon=True).start()
-    try:
+    async with application_lifespan(
+        application,
+        database=database,
+        schema_version=DB_SCHEMA_VERSION,
+        initialize_database=_initialize_database,
+        build_index_response=_build_index_response_payload,
+        is_production=IS_PRODUCTION,
+        image_dir=IMAGE_DIR,
+        background_startup_delay_seconds=BACKGROUND_STARTUP_DELAY_SECONDS,
+        enable_image_cache_prewarm=ENABLE_IMAGE_CACHE_PREWARM,
+        validate_startup=validate_startup_configuration,
+    ):
         yield
-    finally:
-        if monitor_task is not None:
-            monitor_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await monitor_task
-        if websocket_broker_task is not None:
-            websocket_broker_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await websocket_broker_task
-        application.state.ready = False
-        application.state.startup_complete = False
-        if writer_lease is not None:
-            writer_lease.release()
 
 async def org_permission_handler(request, exc):
     return error_response(

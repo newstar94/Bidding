@@ -1,4 +1,4 @@
-import { authFetchDownload } from "../../shared/view_helpers.js";
+import { authFetchDownload, escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { bindCurrencyElement } from "../../app/domUtils.js";
 import { setFieldFeedback } from "../../app/formStateUtils.js";
 import { findContractorVersionByCode, getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, selectContractorVersionForDate } from "../../partners/contractorVersionBinding.js";
@@ -243,32 +243,32 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           if (isJV) {
             const jvKey = `${gt.id}_result_bidder_${idx}`;
             setJvData(jvKey, buildAwardJointVentureViewData(view.model, b));
-            contractorHtml = `<a href="#" data-bf-action="show-jv" data-id="${jvKey}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${b.tenNhaThau || "--"}</a>`;
+            contractorHtml = `<a href="#" data-bf-action="show-jv" data-id="${safeAttr(jvKey)}" class="fw-bold text-success link-hover" title="Xem thành viên liên danh">👥 ${escapeHtml(b.tenNhaThau || "--")}</a>`;
           } else {
             contractorHtml = renderBidContractorLink(view.model, b, `${gt.id}_result_contractor_${idx}`);
           }
           if (isPhanLo) {
             return `
                             <tr>
-                                <td>${b.maPhanLo || "—"}</td>
-                                <td>${b.tenPhanLo || "—"}</td>
-                                <td>${b.maNhaThau || b.maDinhDanh || "--"}</td>
+                                <td>${escapeHtml(b.maPhanLo || "—")}</td>
+                                <td>${escapeHtml(b.tenPhanLo || "—")}</td>
+                                <td>${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}</td>
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
-                                <td>${thoiGianThucHienHtml}</td>
+                                <td>${escapeHtml(thoiGianThucHienHtml)}</td>
                                 <td style="text-align: center;">${badge}</td>
-                                <td class="text-muted">${lyDo}</td>
+                                <td class="text-muted">${escapeHtml(lyDo)}</td>
                             </tr>
                         `;
           } else {
             return `
                             <tr>
-                                <td>${b.maNhaThau || b.maDinhDanh || "--"}</td>
+                                <td>${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}</td>
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
-                                <td>${thoiGianThucHienHtml}</td>
+                                <td>${escapeHtml(thoiGianThucHienHtml)}</td>
                                 <td style="text-align: center;">${badge}</td>
-                                <td class="text-muted">${lyDo}</td>
+                                <td class="text-muted">${escapeHtml(lyDo)}</td>
                             </tr>
                         `;
           }
@@ -464,27 +464,27 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
               }
             }
             return `
-                            <tr data-approve-bid-id="${b.id}" data-is-qualified="${isQualified}" data-nt-id="${b.nhaThauId || b.id}"
-                                data-default-price="${defaultPrice}" data-default-duration-pkg="${defaultDurationPkg}" data-default-duration-ctr="${defaultDurationCtr}"
-                                data-default-reason="${defaultReason}">
+                            <tr data-approve-bid-id="${safeAttr(b.id)}" data-is-qualified="${isQualified}" data-nt-id="${safeAttr(b.nhaThauId || b.id)}"
+                                data-default-price="${safeAttr(defaultPrice)}" data-default-duration-pkg="${safeAttr(defaultDurationPkg)}" data-default-duration-ctr="${safeAttr(defaultDurationCtr)}"
+                                data-default-reason="${safeAttr(defaultReason)}">
                                 ${gt.phanLo === "Có" ? `
                                     <td>
-                                        ${b.maPhanLo || "--"}
+                                        ${escapeHtml(b.maPhanLo || "--")}
                                     </td>
                                     <td>
-                                        ${b.tenPhanLo || "--"}
+                                        ${escapeHtml(b.tenPhanLo || "--")}
                                     </td>
                                 ` : ""}
                                 ${isDirectOrSpecial ? `
                                      <td>
-                                         ${b.loaiNhaThau || "Độc lập"}
+                                         ${escapeHtml(b.loaiNhaThau || "Độc lập")}
                                      </td>
                                  ` : ""}
                                 <td>
-                                ${b.maNhaThau || b.maDinhDanh || "--"}
+                                ${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}
                                 </td>
                                 <td>
-                                    ${b.tenNhaThau || "--"}
+                                    ${escapeHtml(b.tenNhaThau || "--")}
                                     ${b.loaiNhaThau === "Liên danh" ? `
                                          <div class="row-jv-members-container" style="margin-top: 4px;">
                                               <button type="button" class="btn btn-outline btn-xs row-btn-manage-members" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-style: dashed; display: inline-flex; align-items: center; gap: 4px; color: var(--primary); border-color: var(--primary-soft);">
@@ -498,7 +498,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                     <td style="text-align: center; color: var(--primary);">${score !== void 0 && score !== null && !isNaN(score) && score > 0 ? score.toFixed(2) : "--"}</td>
                                 ` : ""}
                                 ${!isDirectOrSpecial ? `
-                                    <td style="text-align: center; font-weight: bold; color: var(--primary);">${rankDisplay}</td>
+                                    <td style="text-align: center; font-weight: bold; color: var(--primary);">${escapeHtml(rankDisplay)}</td>
                                     <td>
                                         <select class="form-control row-status-select" style="padding:4px 8px; font-size:0.8rem; font-weight:600;" ${!isQualified ? "disabled" : ""}>
                                             <option value="truot" ${!isRowWinner ? "selected" : ""}>Trượt thầu</option>
@@ -506,17 +506,17 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                         </select>
                                     </td>
                                     <td>
-                                        <input type="text" class="form-control row-ly-do-truot" value="${!isRowWinner ? displayReason : ""}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                        <input type="text" class="form-control row-ly-do-truot" value="${safeAttr(!isRowWinner ? displayReason : "")}" placeholder="Lý do trượt..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                     </td>
                                 ` : ""}
                                 <td>
-                                    <input type="text" class="form-control row-gia-trung" value="${isRowWinner ? defaultPrice : ""}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                    <input type="text" class="form-control row-gia-trung" value="${safeAttr(isRowWinner ? defaultPrice : "")}" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                 </td>
                                 <td>
-                                    <input type="text" class="form-control row-tg-goithau" value="${isRowWinner ? defaultDurationPkg : ""}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                    <input type="text" class="form-control row-tg-goithau" value="${safeAttr(isRowWinner ? defaultDurationPkg : "")}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                 </td>
                                 <td>
-                                    <input type="text" class="form-control row-tg-hopdong" value="${isRowWinner ? defaultDurationCtr : ""}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
+                                    <input type="text" class="form-control row-tg-hopdong" value="${safeAttr(isRowWinner ? defaultDurationCtr : "")}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;" ${!isRowWinner ? 'disabled style="background:#f1f5f9;"' : ""}>
                                 </td>
                             </tr>
                         `;
@@ -526,17 +526,17 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                     <div style="padding: 12px 16px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-main); line-height: 1.6; margin-bottom: 24px;">
                         <div style="font-weight: 700; color: var(--primary); border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 4px; margin-bottom: 12px;">Thông số Gói thầu</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; font-size: 0.82rem;">
-                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${tenCdt}</span></div>
-                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${tenKhStr}</span></div>
-                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${gt.linhVuc || "Hàng hóa"}</div>
-                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ"}</div>
+                            <div>• <strong style="color: var(--primary);">Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
+                            <div>• <strong style="color: var(--primary);">Tên kế hoạch:</strong> <span class="text-dark fw-bold">${escapeHtml(tenKhStr)}</span></div>
+                            <div>• <strong style="color: var(--primary);">Lĩnh vực:</strong> ${escapeHtml(gt.linhVuc || "Hàng hóa")}</div>
+                            <div>• <strong style="color: var(--primary);">Phương thức LCNT:</strong> ${escapeHtml(gt.phuongThucLuaChon || "Một giai đoạn một túi hồ sơ")}</div>
                             <div>• <strong style="color: var(--primary);">Phân lô:</strong> ${gt.phanLo === "Có" ? "Có chia phần lô" : "Không chia phần lô"}</div>
                             <div>• <strong style="color: var(--primary);">Giá gói thầu:</strong> <span class="text-dark fw-bold">${view.model.formatCurrency(gt.giaGoiThau)}</span></div>
-                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${gt.hinhThucLuaChon || "--"}</div>
-                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${gt.phuongPhapDanhGia}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${gt.trongSoKyThuat}%)` : ""}</div>` : ""}
-                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${gt.loaiHopDong || "--"}</div>
-                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${gt.thoiGianThucHien || "--"}</div>
-                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${gt.nguonVon || "--"}</div>
+                            <div>• <strong style="color: var(--primary);">Hình thức LCNT:</strong> ${escapeHtml(gt.hinhThucLuaChon || "--")}</div>
+                            ${gt.phuongPhapDanhGia ? `<div>• <strong style="color: var(--primary);">Phương pháp đánh giá:</strong> ${escapeHtml(gt.phuongPhapDanhGia)}${gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá" && gt.trongSoKyThuat ? ` (${escapeHtml(gt.trongSoKyThuat)}%)` : ""}</div>` : ""}
+                            <div>• <strong style="color: var(--primary);">Loại hợp đồng:</strong> ${escapeHtml(gt.loaiHopDong || "--")}</div>
+                            <div>• <strong style="color: var(--primary);">Thời gian thực hiện:</strong> ${escapeHtml(gt.thoiGianThucHien || "--")}</div>
+                            <div>• <strong style="color: var(--primary);">Nguồn vốn:</strong> ${escapeHtml(gt.nguonVon || "--")}</div>
                             ${!isDirectOrSpecial ? `
                             <div>• <strong style="color: var(--primary);">Thời gian đóng thầu:</strong> ${gt.thoiGianDongThau ? view.model.formatDateWithTime(gt.thoiGianDongThau) : "--"}</div>
                             <div>• <strong style="color: var(--primary);">${is1G2T2 ? "Thời gian mở E-HSĐXKT" : "Thời gian mở thầu"}:</strong> ${gt.thoiGianMoThau ? view.model.formatDateWithTime(gt.thoiGianMoThau) : "--"}</div>
@@ -573,11 +573,11 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                         </div>
                         <div style="display: flex; gap: 16px; flex-grow: 1; flex-wrap: wrap;">
                             <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
-                                <input type="text" id="award-decision-no" class="form-control" value="${gt.soQuyetDinhKetQua || ""}" placeholder="Số QĐ phê duyệt *" style="width: 100%; height: 36px; font-size: 0.85rem;">
+                                <input type="text" id="award-decision-no" class="form-control" value="${safeAttr(gt.soQuyetDinhKetQua || "")}" placeholder="Số QĐ phê duyệt *" style="width: 100%; height: 36px; font-size: 0.85rem;">
                                 <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
                             </div>
                             <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
-                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : defaultDecDate ? defaultDecDate : ""}" style="width: 100%; height: 36px; font-size: 0.85rem;" placeholder="Ngày ký QĐ * (dd/MM/yyyy)">
+                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${safeAttr(gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : defaultDecDate ? defaultDecDate : "")}" style="width: 100%; height: 36px; font-size: 0.85rem;" placeholder="Ngày ký QĐ * (dd/MM/yyyy)">
                                 <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
                             </div>
                         </div>
@@ -599,32 +599,32 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                         <div id="result-dates-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày yêu cầu báo giá <span class="text-danger">*</span></label>
-                                <input type="text" id="date-yeu-cau-bao-gia" class="form-control flatpickr-date" value="${ngayYeuCauBaoGia}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <input type="text" id="date-yeu-cau-bao-gia" class="form-control flatpickr-date" value="${safeAttr(ngayYeuCauBaoGia)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
                                 <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày yêu cầu báo giá!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày gửi báo giá <span class="text-danger">*</span></label>
-                                <input type="text" id="date-gui-bao-gia" class="form-control flatpickr-date" value="${ngayGuiBaoGia}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <input type="text" id="date-gui-bao-gia" class="form-control flatpickr-date" value="${safeAttr(ngayGuiBaoGia)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
                                 <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày gửi báo giá!</span>
                             </div>
                             <div class="form-group" id="container-date-bao-cao-danh-gia" style="margin-bottom: 0; display: ${danhGiaNangLuc === "Có" ? "block" : "none"};">
                                 <label class="compact-field-label">Ngày báo cáo đánh giá nhà thầu <span class="text-danger">*</span></label>
-                                <input type="text" id="date-bao-cao-danh-gia" class="form-control flatpickr-date" value="${ngayBaoCaoDanhGiaNhaThau}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <input type="text" id="date-bao-cao-danh-gia" class="form-control flatpickr-date" value="${safeAttr(ngayBaoCaoDanhGiaNhaThau)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
                                 <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày báo cáo đánh giá nhà thầu!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày mời thương thảo <span class="text-danger">*</span></label>
-                                <input type="text" id="date-moi-thuong-thao" class="form-control flatpickr-date" value="${ngayMoiThuongThao}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <input type="text" id="date-moi-thuong-thao" class="form-control flatpickr-date" value="${safeAttr(ngayMoiThuongThao)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
                                 <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày mời thương thảo!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày thương thảo <span class="text-danger">*</span></label>
-                                <input type="text" id="date-thuong-thao" class="form-control flatpickr-date" value="${ngayThuongThao}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <input type="text" id="date-thuong-thao" class="form-control flatpickr-date" value="${safeAttr(ngayThuongThao)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
                                 <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày thương thảo!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="compact-field-label">Ngày trình kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="date-trinh-ket-qua" class="form-control flatpickr-date" value="${ngayTrinhKetQua}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
+                                <input type="text" id="date-trinh-ket-qua" class="form-control flatpickr-date" value="${safeAttr(ngayTrinhKetQua)}" placeholder="dd/MM/yyyy" style="height: 32px; font-size: 0.8rem; width: 100%;">
                                 <span class="error-text" class="field-error field-error-xs" style="display: none;">Vui lòng nhập Ngày trình kết quả!</span>
                             </div>
                         </div>
@@ -636,23 +636,23 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                             ${gt.hinhThucLuaChon !== "Chào hàng cạnh tranh" ? `
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Số BCTĐ kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-so-bctd" class="form-control" value="${soBctdResult}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;">
+                                <input type="text" id="award-so-bctd" class="form-control" value="${safeAttr(soBctdResult)}" placeholder="Nhập số báo cáo thẩm định..." style="width: 100%;">
                                 <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng nhập Số BCTĐ kết quả!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Ngày BCTĐ kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-ngay-bctd" class="form-control flatpickr-date" value="${ngayBctdResult ? view.model.formatForDateInput(ngayBctdResult) : ""}" style="width: 100%;" placeholder="dd/MM/yyyy">
+                                <input type="text" id="award-ngay-bctd" class="form-control flatpickr-date" value="${safeAttr(ngayBctdResult ? view.model.formatForDateInput(ngayBctdResult) : "")}" style="width: 100%;" placeholder="dd/MM/yyyy">
                                 <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng chọn Ngày BCTĐ kết quả!</span>
                             </div>
                             ` : ""}
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Số QĐ phê duyệt Kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-decision-no" class="form-control" value="${gt.soQuyetDinhKetQua || ""}" placeholder="Số QĐ Kết quả..." style="width: 100%;">
+                                <input type="text" id="award-decision-no" class="form-control" value="${safeAttr(gt.soQuyetDinhKetQua || "")}" placeholder="Số QĐ Kết quả..." style="width: 100%;">
                                 <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng nhập Số QĐ phê duyệt Kết quả!</span>
                             </div>
                             <div class="form-group form-group-compact">
                                 <label class="field-label-strong">Ngày ký QĐ phê duyệt Kết quả <span class="text-danger">*</span></label>
-                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : ""}" style="width: 100%;" placeholder="dd/MM/yyyy">
+                                <input type="text" id="award-decision-date" class="form-control flatpickr-date" value="${safeAttr(gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : "")}" style="width: 100%;" placeholder="dd/MM/yyyy">
                                 <span class="error-text" class="field-error field-error-sm" style="display: none;">Vui lòng chọn Ngày ký QĐ phê duyệt Kết quả!</span>
                             </div>
                         </div>
@@ -929,7 +929,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           const rowId = bidData.id || generateRecordId("thongtinmothau");
           const hasPhanLo = gt.phanLo === "Có";
           const lotList = gt.phanLoList || [];
-          const lotOptions = (Array.isArray(lotList) ? lotList : typeof lotList === "string" ? JSON.parse(lotList || "[]") : []).map((l) => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}" ${bidData.maPhanLo === l.maPhanLo ? "selected" : ""}>${l.maPhanLo}</option>`).join("");
+          const lotOptions = (Array.isArray(lotList) ? lotList : typeof lotList === "string" ? JSON.parse(lotList || "[]") : []).map((l) => `<option value="${safeAttr(l.maPhanLo)}" data-name="${safeAttr(l.tenPhanLo)}" ${bidData.maPhanLo === l.maPhanLo ? "selected" : ""}>${escapeHtml(l.maPhanLo)}</option>`).join("");
           const ntCode = bidData.maNhaThau || bidData.maDinhDanh || "";
           const ntName = bidData.tenNhaThau || "";
           const ntType = bidData.loaiNhaThau || "Độc lập";
@@ -940,21 +940,21 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                             <td><select class="form-control cdtrug-ma-phan-lo" style="padding:4px 6px;font-size:0.8rem;">
                                 <option value="">-- Chọn --</option>${lotOptions}
                             </select></td>
-                            <td><input type="text" class="form-control cdtrug-ten-phan-lo" value="${bidData.tenPhanLo || ""}" readonly placeholder="Tên lô" style="padding:4px 6px;font-size:0.8rem;"></td>
+                            <td><input type="text" class="form-control cdtrug-ten-phan-lo" value="${safeAttr(bidData.tenPhanLo || "")}" readonly placeholder="Tên lô" style="padding:4px 6px;font-size:0.8rem;"></td>
                         ` : ""}
                         <td><select class="form-control cdtrug-loai-nha-thau" style="padding:4px 6px;font-size:0.8rem;">
                             <option value="Độc lập" ${ntType === "Độc lập" ? "selected" : ""}>Độc lập</option>
                             <option value="Liên danh" ${ntType === "Liên danh" ? "selected" : ""}>Liên danh</option>
                         </select></td>
-                        <td><input type="text" class="form-control cdtrug-ma-nha-thau" value="${ntCode}" required placeholder="Mã NT" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-gia-du-thau cdtrug-format-vnd" value="${bidData.giaDuThau ? view.model.formatVND(bidData.giaDuThau) : ""}" placeholder="Giá dự thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-ty-le-giam-gia" value="${bidData.tyLeGiamGia !== void 0 ? (bidData.tyLeGiamGia || 0).toString().replace(".", ",") : "0"}" style="padding:4px 6px;font-size:0.8rem;text-align:right;"></td>
-                        <td><input type="text" class="form-control cdtrug-gia-sau-giam-gia cdtrug-format-vnd" value="${bidData.giaSauGiamGia ? view.model.formatVND(bidData.giaSauGiamGia) : ""}" readonly placeholder="..." style="padding:4px 6px;font-size:0.8rem;background:var(--bg-input-disabled,#f1f5f9);cursor:not-allowed;"></td>
-                        <td><input type="text" class="form-control cdtrug-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-gia-tri-dam-bao cdtrug-format-vnd" value="${bidData.giaTriDamBao ? view.model.formatVND(bidData.giaTriDamBao) : ""}" placeholder="Giá trị ĐB" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-hieu-luc-bao-dam-ngay" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" style="padding:4px 6px;font-size:0.8rem;"></td>
-                        <td><input type="text" class="form-control cdtrug-thoi-gian-thuc-hien" value="${bidData.thoiGianThucHien || gt.thoiGianThucHien || ""}" placeholder="Thực hiện" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-ma-nha-thau" value="${safeAttr(ntCode)}" required placeholder="Mã NT" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-ten-nha-thau" value="${safeAttr(ntName)}" required placeholder="Tên nhà thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-du-thau cdtrug-format-vnd" value="${safeAttr(bidData.giaDuThau ? view.model.formatVND(bidData.giaDuThau) : "")}" placeholder="Giá dự thầu" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-ty-le-giam-gia" value="${safeAttr(bidData.tyLeGiamGia !== void 0 ? (bidData.tyLeGiamGia || 0).toString().replace(".", ",") : "0")}" style="padding:4px 6px;font-size:0.8rem;text-align:right;"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-sau-giam-gia cdtrug-format-vnd" value="${safeAttr(bidData.giaSauGiamGia ? view.model.formatVND(bidData.giaSauGiamGia) : "")}" readonly placeholder="..." style="padding:4px 6px;font-size:0.8rem;background:var(--bg-input-disabled,#f1f5f9);cursor:not-allowed;"></td>
+                        <td><input type="text" class="form-control cdtrug-hieu-luc-hsdt" value="${safeAttr(bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày")}" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-gia-tri-dam-bao cdtrug-format-vnd" value="${safeAttr(bidData.giaTriDamBao ? view.model.formatVND(bidData.giaTriDamBao) : "")}" placeholder="Giá trị ĐB" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-hieu-luc-bao-dam-ngay" value="${safeAttr(bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày")}" style="padding:4px 6px;font-size:0.8rem;"></td>
+                        <td><input type="text" class="form-control cdtrug-thoi-gian-thuc-hien" value="${safeAttr(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" placeholder="Thực hiện" style="padding:4px 6px;font-size:0.8rem;"></td>
                         <td style="text-align:center;">
                             <button type="button" class="action-btn btn-delete cdtrug-remove-row" title="Xóa hàng">
                                 <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
@@ -1358,7 +1358,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           let lotCells = "";
           if (gt.phanLo === "Có") {
             const lots = typeof gt.phanLoList === "string" ? JSON.parse(gt.phanLoList || "[]") : gt.phanLoList || [];
-            const optionsHtml = lots.map((l) => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}">${l.maPhanLo}</option>`).join("");
+            const optionsHtml = lots.map((l) => `<option value="${safeAttr(l.maPhanLo)}" data-name="${safeAttr(l.tenPhanLo)}">${escapeHtml(l.maPhanLo)}</option>`).join("");
             const firstLotName = lots[0] ? lots[0].tenPhanLo : "";
             lotCells = `
                             <td>
@@ -1367,7 +1367,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                 </select>
                             </td>
                             <td>
-                                <input type="text" class="form-control row-ten-phan-lo" value="${firstLotName}" readonly style="padding:4px 8px; font-size:0.8rem; background:#f1f5f9;">
+                                <input type="text" class="form-control row-ten-phan-lo" value="${safeAttr(firstLotName)}" readonly style="padding:4px 8px; font-size:0.8rem; background:#f1f5f9;">
                             </td>
                         `;
           }
@@ -1398,10 +1398,10 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                             <input type="text" class="form-control row-gia-trung" value="" placeholder="Giá trúng..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
                         </td>
                         <td>
-                            <input type="text" class="form-control row-tg-goithau" value="${gt.thoiGianThucHien || ""}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                            <input type="text" class="form-control row-tg-goithau" value="${safeAttr(gt.thoiGianThucHien || "")}" placeholder="Thời gian gói..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
                         </td>
                         <td>
-                            <input type="text" class="form-control row-tg-hopdong" value="${gt.thoiGianThucHien ? gt.thoiGianThucHien + " + Thời gian thực hiện các nghĩa vụ theo hợp đồng" : ""}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
+                            <input type="text" class="form-control row-tg-hopdong" value="${safeAttr(gt.thoiGianThucHien ? gt.thoiGianThucHien + " + Thời gian thực hiện các nghĩa vụ theo hợp đồng" : "")}" placeholder="Thời gian HĐ..." style="padding:4px 8px; font-size:0.8rem; width:100%;">
                         </td>
                         <td style="text-align: center;">
                             <button class="action-btn btn-delete row-remove-bidder" style="border:none; background:none; cursor:pointer; color:var(--danger);"><i data-lucide="trash-2" style="width:16px; height:16px;"></i></button>

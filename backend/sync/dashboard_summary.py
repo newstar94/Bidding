@@ -10,31 +10,30 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
     def can(payload_key, table_name):
         return can_read_table(cursor, role_str, user_id, organization_id, payload_key, table_name)
 
-    def scalar(sql, params=()):
-        cursor.execute(sql, params)
-        row = cursor.fetchone()
-        return row[0] if row and row[0] is not None else 0
-
     def latest_cte(table_name):
+        if table_name == "goi_thau":
+            # Package latest-ness is scoped to a plan snapshot. Only packages
+            # belonging to the latest plan snapshot contribute to the global
+            # dashboard; historical snapshots remain queryable by plan ID.
+            return """
+                SELECT gt.*
+                FROM goi_thau AS gt
+                JOIN ke_hoach_lcnt AS kh
+                  ON kh.id = gt.ke_hoach_id
+                 AND kh.organization_id = gt.organization_id
+                 AND kh.is_latest = 1
+                 AND kh.archived_at IS NULL
+                WHERE gt.organization_id = ?
+                  AND gt.is_latest = 1
+                  AND gt.archived_at IS NULL
+            """
         return f"""
-            WITH ranked AS (
-                SELECT *,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY COALESCE(NULLIF(id_goc, ''), id)
-                           ORDER BY CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC,
-                                    COALESCE(updated_at, created_at, '') DESC,
-                                    id DESC
-                       ) AS rn
-                FROM {table_name}
-                WHERE organization_id = ? AND archived_at IS NULL
-            )
-            SELECT * FROM ranked WHERE rn = 1
+            SELECT *
+            FROM {table_name}
+            WHERE organization_id = ?
+              AND is_latest = 1
+              AND archived_at IS NULL
         """
-
-    def count_latest(payload_key, table_name):
-        if not can(payload_key, table_name):
-            return 0
-        return int(scalar(f"SELECT COUNT(*) FROM ({latest_cte(table_name)}) latest_rows", (organization_id,)))
 
     counts = {
         "kehoach": 0,
@@ -43,45 +42,62 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         "nhathau": 0,
         "chuyengia": 0,
         "hopdong": 0,
+        "assignedHopdong": 0,
+        "activeAssignedHopdong": 0,
         "activeGoithau": 0,
     }
     total_contract_value = "0"
     status_counts = {}
     recent_packages = []
 
-    if can("chudautu", "chu_dau_tu"):
-        counts["chudautu"] = count_latest("chudautu", "chu_dau_tu")
-    if can("nhathau", "nha_thau"):
-        counts["nhathau"] = count_latest("nhathau", "nha_thau")
-    if can("chuyengia", "chuyen_gia"):
-        counts["chuyengia"] = count_latest("chuyengia", "chuyen_gia")
+    simple_count_specs = []
+    for payload_key, table_name in [
+        ("chudautu", "chu_dau_tu"),
+        ("nhathau", "nha_thau"),
+        ("chuyengia", "chuyen_gia"),
+    ]:
+        if can(payload_key, table_name):
+            simple_count_specs.append((payload_key, table_name))
 
-    if can("kehoach", "ke_hoach_lcnt"):
-        if manager:
-            counts["kehoach"] = count_latest("kehoach", "ke_hoach_lcnt")
-        else:
-            cursor.execute(f"""
-                SELECT COUNT(*)
-                FROM ({latest_cte("ke_hoach_lcnt")}) kh
-                WHERE EXISTS (
-                    SELECT 1 FROM phan_cong_nhan_su pc
-                    WHERE pc.organization_id = ?
-                      AND pc.id_nhan_vien = ?
-                      AND pc.loai_doi_tuong = 'kehoach'
-                      AND pc.id_muc_tieu = kh.id
-                )
-                OR EXISTS (
-                    SELECT 1 FROM goi_thau gt
-                    JOIN phan_cong_nhan_su pc
-                      ON pc.organization_id = gt.organization_id
-                     AND pc.id_muc_tieu = gt.id
-                     AND pc.loai_doi_tuong = 'goithau'
-                    WHERE gt.organization_id = ?
-                      AND gt.ke_hoach_id = kh.id
-                      AND pc.id_nhan_vien = ?
-                )
-            """, (organization_id, organization_id, user_id, organization_id, user_id))
-            counts["kehoach"] = int(cursor.fetchone()[0] or 0)
+    can_read_plans = can("kehoach", "ke_hoach_lcnt")
+    if manager and can_read_plans:
+        simple_count_specs.append(("kehoach", "ke_hoach_lcnt"))
+
+    if simple_count_specs:
+        cursor.execute(
+            "SELECT " + ", ".join(
+                f"(SELECT COUNT(*) FROM ({latest_cte(table_name)}) latest_rows)"
+                for _payload_key, table_name in simple_count_specs
+            ),
+            tuple(organization_id for _spec in simple_count_specs),
+        )
+        simple_count_row = cursor.fetchone()
+        for index, (payload_key, _table_name) in enumerate(simple_count_specs):
+            counts[payload_key] = int(simple_count_row[index] or 0)
+
+    if can_read_plans and not manager:
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM ({latest_cte("ke_hoach_lcnt")}) kh
+            WHERE EXISTS (
+                SELECT 1 FROM phan_cong_nhan_su pc
+                WHERE pc.organization_id = ?
+                  AND pc.id_nhan_vien = ?
+                  AND pc.loai_doi_tuong = 'kehoach'
+                  AND pc.id_muc_tieu = kh.id
+            )
+            OR EXISTS (
+                SELECT 1 FROM goi_thau gt
+                JOIN phan_cong_nhan_su pc
+                  ON pc.organization_id = gt.organization_id
+                 AND pc.id_muc_tieu = gt.id
+                 AND pc.loai_doi_tuong = 'goithau'
+                WHERE gt.organization_id = ?
+                  AND gt.ke_hoach_id = kh.id
+                  AND pc.id_nhan_vien = ?
+            )
+        """, (organization_id, organization_id, user_id, organization_id, user_id))
+        counts["kehoach"] = int(cursor.fetchone()[0] or 0)
 
     package_filter_sql = ""
     package_params = [organization_id]
@@ -99,13 +115,6 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
 
     if can("goithau", "goi_thau"):
         cursor.execute(f"""
-            SELECT COUNT(*)
-            FROM ({latest_cte("goi_thau")}) latest_rows
-            WHERE 1 = 1 {package_filter_sql}
-        """, tuple(package_params))
-        counts["goithau"] = int(cursor.fetchone()[0] or 0)
-
-        cursor.execute(f"""
             SELECT COALESCE(trang_thai, '') AS status_name, COUNT(*) AS total
             FROM ({latest_cte("goi_thau")}) latest_rows
             WHERE 1 = 1 {package_filter_sql}
@@ -113,9 +122,10 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         """, tuple(package_params))
         for row in cursor.fetchall():
             status_counts[str(row[0] or "")] = int(row[1] or 0)
+        counts["goithau"] = sum(status_counts.values())
         counts["activeGoithau"] = sum(
             count for status, count in status_counts.items()
-            if "mời" in status.lower() and "thầu" in status.lower()
+            if status == "Đang mời thầu"
         )
 
         cursor.execute(f"""
@@ -128,24 +138,47 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         recent_packages = [map_db_to_json("goi_thau", dict(row)) for row in cursor.fetchall()]
 
     if can("hopdong", "hop_dong"):
+        latest_contracts_sql = latest_cte("hop_dong")
         if manager:
-            cursor.execute("SELECT gia_tri FROM hop_dong WHERE organization_id = ? AND archived_at IS NULL", (organization_id,))
+            cursor.execute(
+                f"""SELECT id, gia_tri, trang_thai_hop_dong
+                    FROM ({latest_contracts_sql}) latest_rows
+                    WHERE trang_thai_hop_dong NOT IN ('Chưa hiệu lực', 'Đã hủy')""",
+                (organization_id,),
+            )
         else:
-            cursor.execute("""
-                SELECT hd.gia_tri
-                FROM hop_dong hd
-                WHERE hd.organization_id = ? AND hd.archived_at IS NULL
+            cursor.execute(f"""
+                SELECT hd.id, hd.gia_tri, hd.trang_thai_hop_dong
+                FROM ({latest_contracts_sql}) hd
+                WHERE hd.trang_thai_hop_dong NOT IN ('Chưa hiệu lực', 'Đã hủy')
                   AND EXISTS (
-                      SELECT 1 FROM phan_cong_nhan_su pc
-                      WHERE pc.organization_id = hd.organization_id
-                        AND pc.id_nhan_vien = ?
-                        AND pc.id_muc_tieu = hd.id
-                        AND pc.loai_doi_tuong = 'hopdong'
-                  )
+                    SELECT 1 FROM phan_cong_nhan_su pc
+                    WHERE pc.organization_id = hd.organization_id
+                      AND pc.id_nhan_vien = ?
+                      AND pc.id_muc_tieu = hd.id
+                      AND pc.loai_doi_tuong = 'hopdong'
+                )
             """, (organization_id, user_id))
         contract_rows = cursor.fetchall()
         counts["hopdong"] = len(contract_rows)
-        total_contract_value = str(sum(int(row[0] or 0) for row in contract_rows))
+        total_contract_value = str(sum(int(row[1] or 0) for row in contract_rows))
+
+        cursor.execute(f"""
+            SELECT COUNT(*),
+                   SUM(CASE WHEN hd.trang_thai_hop_dong = 'Đang thực hiện' THEN 1 ELSE 0 END)
+            FROM ({latest_contracts_sql}) hd
+            WHERE hd.trang_thai_hop_dong NOT IN ('Chưa hiệu lực', 'Đã hủy')
+              AND EXISTS (
+                SELECT 1 FROM phan_cong_nhan_su pc
+                WHERE pc.organization_id = hd.organization_id
+                  AND pc.id_nhan_vien = ?
+                  AND pc.id_muc_tieu = hd.id
+                  AND pc.loai_doi_tuong = 'hopdong'
+            )
+        """, (organization_id, user_id))
+        assigned_row = cursor.fetchone()
+        counts["assignedHopdong"] = int(assigned_row[0] or 0)
+        counts["activeAssignedHopdong"] = int(assigned_row[1] or 0)
 
     return {
         "counts": counts,

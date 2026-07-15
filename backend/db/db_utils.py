@@ -2,7 +2,9 @@ from .schema import SCHEMA_DINH_NGHIA
 from backend.db.migration_runner import MigrationContext, run_migrations
 from backend.db.migrations import MIGRATIONS
 from .db_helper import database
+import os
 import re
+from backend.shared.logging_utils import log_error
 
 DB_SCHEMA_VERSION = MIGRATIONS[-1].VERSION if MIGRATIONS else 0
 
@@ -81,6 +83,21 @@ def _create_baseline_indexes_and_triggers(cursor):
         _assert_safe_table(table)
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_owner_type_owner ON {table} (owner_type, organization_id)")
 
+    for table, date_column in [
+        ("ke_hoach_lcnt", "ngay_phe_duyet"),
+        ("goi_thau", "ngay_quyet_dinh"),
+        ("hop_dong", "ngay_ky"),
+    ]:
+        _assert_safe_table(table)
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table}_latest_date "
+            f"ON {table} (organization_id, is_latest, archived_at, {date_column})"
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table}_latest_month "
+            f"ON {table} (organization_id, is_latest, archived_at, substr({date_column}, 6, 2))"
+        )
+
     for table in ["chu_dau_tu", "ke_hoach_lcnt", "nha_thau", "chuyen_gia", "hop_dong"]:
         _assert_safe_table(table)
         cursor.execute(f"""
@@ -116,13 +133,13 @@ def _create_baseline_indexes_and_triggers(cursor):
         _assert_safe_table(table)
         cursor.execute(f"""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_{column}_owner_latest_unique
-            ON {table} (organization_id, {column})
-            WHERE is_latest = 1 AND {column} IS NOT NULL AND {column} != ''
+            ON {table} (organization_id, lower(trim({column})))
+            WHERE is_latest = 1 AND {column} IS NOT NULL AND trim({column}) != ''
         """)
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_ma_goi_thau_owner_plan_latest_unique
-        ON goi_thau (organization_id, COALESCE(ke_hoach_id, ''), ma_goi_thau)
-        WHERE is_latest = 1 AND ma_goi_thau IS NOT NULL AND ma_goi_thau != ''
+        ON goi_thau (organization_id, COALESCE(ke_hoach_id, ''), lower(trim(ma_goi_thau)))
+        WHERE is_latest = 1 AND ma_goi_thau IS NOT NULL AND trim(ma_goi_thau) != ''
     """)
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_ke_hoach ON goi_thau (ke_hoach_id)")
@@ -151,8 +168,12 @@ def _create_baseline_indexes_and_triggers(cursor):
         ON thong_tin_mo_thau (organization_id, goi_thau_id, nha_thau_id, ma_phan_lo)
         WHERE archived_at IS NULL"""
     )
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)")
-    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tai_khoan_token ON tai_khoan (token_phien) WHERE token_phien IS NOT NULL AND token_phien != ''")
+    cursor.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_phan_cong_owner_target
+        ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)"""
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions (user_id, revoked_at, absolute_expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions (idle_expires_at, absolute_expires_at, revoked_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_dinh_danh_ngoai_user ON dinh_danh_ngoai (user_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_user_active ON password_reset_tokens (user_id, used_at, expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at)")
@@ -175,6 +196,39 @@ def _create_baseline_indexes_and_triggers(cursor):
     _ensure_fts_indexes(cursor)
     _ensure_delta_sync_triggers(cursor, synced_tables)
     _ensure_assignment_tenant_triggers(cursor)
+    _ensure_contract_package_triggers(cursor)
+    _ensure_evaluation_actor_triggers(cursor)
+    _ensure_lineage_triggers(cursor, versioned_tables)
+
+
+def _ensure_lineage_triggers(cursor, versioned_tables):
+    """Normalize an initial logical root and prevent lineage reassignment."""
+    for table_name in versioned_tables:
+        _assert_safe_table(table_name)
+        fill_trigger = f"trg_{table_name}_lineage_fill"
+        immutable_trigger = f"trg_{table_name}_lineage_immutable"
+        cursor.execute(f"DROP TRIGGER IF EXISTS {fill_trigger}")
+        cursor.execute(f"DROP TRIGGER IF EXISTS {immutable_trigger}")
+        cursor.execute(f"""
+            CREATE TRIGGER {fill_trigger}
+            AFTER INSERT ON {table_name}
+            FOR EACH ROW
+            WHEN NEW.id_goc IS NULL OR trim(NEW.id_goc) = ''
+            BEGIN
+                UPDATE {table_name} SET id_goc = NEW.id WHERE id = NEW.id;
+            END
+        """)
+        cursor.execute(f"""
+            CREATE TRIGGER {immutable_trigger}
+            BEFORE UPDATE OF id_goc ON {table_name}
+            FOR EACH ROW
+            WHEN OLD.id_goc IS NOT NULL
+             AND trim(OLD.id_goc) != ''
+             AND NEW.id_goc != OLD.id_goc
+            BEGIN
+                SELECT RAISE(ABORT, 'LINEAGE_IMMUTABLE');
+            END
+        """)
 
 
 def _ensure_assignment_tenant_triggers(cursor):
@@ -218,6 +272,69 @@ def _ensure_assignment_tenant_triggers(cursor):
             WHEN {condition}
             BEGIN
                 SELECT RAISE(ABORT, 'ASSIGNMENT_TENANT_MISMATCH');
+            END
+        """)
+
+
+def _ensure_evaluation_actor_triggers(cursor):
+    """Keep evaluation actors inside the owning organization."""
+    for table_name in ("vong_danh_gia", "ket_qua_danh_gia_nha_thau"):
+        for operation in ("INSERT", "UPDATE"):
+            trigger_name = f"trg_{table_name}_actor_{operation.lower()}"
+            cursor.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+            cursor.execute(f"""
+                CREATE TRIGGER {trigger_name}
+                BEFORE {operation} ON {table_name}
+                FOR EACH ROW
+                WHEN NEW.nguoi_cham_id IS NOT NULL
+                 AND NOT EXISTS (
+                    SELECT 1 FROM thanh_vien_to_chuc
+                    WHERE organization_id = NEW.organization_id
+                      AND user_id = NEW.nguoi_cham_id
+                 )
+                BEGIN
+                    SELECT RAISE(ABORT, 'EVALUATION_ACTOR_TENANT_MISMATCH');
+                END
+            """)
+
+
+def _ensure_contract_package_triggers(cursor):
+    condition = """
+        NOT EXISTS (
+            SELECT 1
+            FROM hop_dong hd
+            JOIN ke_hoach_lcnt hdkh
+              ON hdkh.organization_id = hd.organization_id AND hdkh.id = hd.ke_hoach_id
+            JOIN goi_thau gt
+              ON gt.organization_id = NEW.organization_id AND gt.id = NEW.goi_thau_id
+            JOIN ke_hoach_lcnt gtkh
+              ON gtkh.organization_id = gt.organization_id AND gtkh.id = gt.ke_hoach_id
+            WHERE hd.organization_id = NEW.organization_id
+              AND hd.id = NEW.hop_dong_id
+              AND hd.archived_at IS NULL
+              AND gt.archived_at IS NULL
+              AND COALESCE(NULLIF(hdkh.id_goc, ''), hdkh.id)
+                  = COALESCE(NULLIF(gtkh.id_goc, ''), gtkh.id)
+              AND (
+                  hd.co_qd_chi_dinh = 1
+                  OR (
+                      gt.trang_thai = 'Đã có kết quả'
+                      AND gt.nha_thau_trung_thau_id IS NOT NULL
+                      AND gt.nha_thau_trung_thau_id = hd.nha_thau_id
+                  )
+              )
+        )
+    """
+    for operation in ("INSERT", "UPDATE"):
+        trigger_name = f"trg_hop_dong_goi_thau_business_{operation.lower()}"
+        cursor.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+        cursor.execute(f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE {operation} ON hop_dong_goi_thau
+            FOR EACH ROW
+            WHEN {condition}
+            BEGIN
+                SELECT RAISE(ABORT, 'CONTRACT_PACKAGE_BUSINESS_MISMATCH');
             END
         """)
 
@@ -285,7 +402,7 @@ def _ensure_fts_indexes(cursor):
                 END
             """)
         except Exception as exc:
-            print(f"FTS5 is not available for {table}; LIKE search fallback will be used: {exc}")
+            log_error(exc, f"Database.FTS.{table}", level="WARNING")
 
 
 def _ensure_delta_sync_triggers(cursor, synced_tables):
@@ -437,6 +554,7 @@ def recalculate_tong_muc_dau_tu(cursor, organization_id=None):
             SELECT gia_goi_thau
             FROM goi_thau
             WHERE ke_hoach_id = ? AND is_latest = 1 AND archived_at IS NULL
+              AND is_rebid = 0
         """, (plan_id,))
         sum_iv = sum(int(item[0] or 0) for item in cursor.fetchall())
 
@@ -488,11 +606,12 @@ def khoi_tao_va_di_tru_he_thong():
         _assert_foreign_key_integrity(cursor)
 
         conn.commit()
-        print(f"[DB] Database migrations applied successfully (version {version}).")
+        if os.environ.get("APP_DEBUG", "False").lower() == "true":
+            log_error(f"Database migrations applied successfully (version {version}).", "Database", level="INFO")
     except Exception as e:
         if conn:
             conn.rollback()
-        print("[DB] Database schema initialization/synchronization failed:", e)
+        log_error(e, "Database.Migration")
         raise
     finally:
         if conn:

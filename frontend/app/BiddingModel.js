@@ -9,6 +9,7 @@ import {
 import { generateUUID as createUUID } from "../shared/idUtils.js";
 import { serializeEvaluationMetadata } from "../packages/evaluationMetadata.js";
 import { summarizeMutationQueue } from "./syncStatus.js";
+import { serializeOutboundRecord } from "./outboundSerializer.js";
 import { BrowserDB } from "./BrowserDB.js";
 import { removeEntity, upsertEntity } from "./entityStore.js";
 import {
@@ -530,7 +531,11 @@ export class BiddingModel {
       state: this.state,
       localDeletions: this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [],
       isSyncedType: (type) => this._isSyncedStateKey(type),
-      normalizeRecord: (record, type) => this.normalizeRecordKeys(record, type)
+      normalizeRecord: (record, type) => serializeOutboundRecord(
+        record,
+        type,
+        (value, recordType) => this.normalizeRecordKeys(value, recordType)
+      )
     });
   }
   async applyCommittedRowVersions(entries = []) {
@@ -843,7 +848,7 @@ export class BiddingModel {
     return allPackages.filter((gt) => this.isAssigned(empId, gt.id, "goithau"));
   }
   getFilteredHopDong() {
-    const allContracts = this.state.hopdong || [];
+    const allContracts = this.getLatestContracts();
     if (this.hasActiveEffectiveRole("manager")) {
       return allContracts;
     }
@@ -902,6 +907,19 @@ export class BiddingModel {
       if (best) result.push(best);
     });
     return result;
+  }
+  getLatestContracts() {
+    const latestMap = {};
+    (this.state.hopdong || []).forEach((contract) => {
+      const root = contract.rootId || contract.id;
+      const current = latestMap[root];
+      if (!current ||
+        (contract.isLatest == 1 && current.isLatest != 1) ||
+        (contract.isLatest == current.isLatest && (parseInt(contract.phienBan) || 0) > (parseInt(current.phienBan) || 0))) {
+        latestMap[root] = contract;
+      }
+    });
+    return Object.values(latestMap);
   }
   getLatestPackagesForPlan(planId) {
     if (!planId) return [];

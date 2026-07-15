@@ -1,5 +1,8 @@
 """Server-side pagination for synchronized entity tables."""
 
+import base64
+import json
+
 from starlette.responses import JSONResponse
 
 from backend.shared.helpers import (
@@ -10,8 +13,9 @@ from backend.shared.helpers import (
     get_active_org,
     verify_session,
 )
-from backend.shared.access_policy import can_read_table, is_organization_manager
+from backend.shared.access_policy import can_read_table, has_module_permission, is_organization_manager
 from backend.shared.media_helper import public_image_path
+from backend.shared.sensitive_data import redact_expert_item
 from backend.sync.mapper import (
     attach_child_rows_to_items,
     db_column_for_json_key,
@@ -26,6 +30,41 @@ from backend.sync.queries import (
 )
 from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
 from backend.shared.logging_utils import error_response, log_and_error
+
+
+def _encode_keyset_cursor(table_name, column, direction, value, record_id):
+    payload = json.dumps(
+        {
+            "v": 1,
+            "table": table_name,
+            "column": column,
+            "direction": direction,
+            "value": "" if value is None else str(value),
+            "id": str(record_id),
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_keyset_cursor(raw_cursor, table_name, column, direction):
+    if not raw_cursor or len(raw_cursor) > 2048:
+        return None
+    try:
+        padding = "=" * (-len(raw_cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(raw_cursor + padding).decode("utf-8"))
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (
+        payload.get("v") != 1
+        or payload.get("table") != table_name
+        or payload.get("column") != column
+        or payload.get("direction") != direction
+        or not payload.get("id")
+    ):
+        return None
+    return str(payload.get("value") or ""), str(payload["id"])
 
 
 async def paginate_records(request):
@@ -59,6 +98,9 @@ async def paginate_records(request):
         if not can_read_table(cursor, role_str, user_id, org_name, table_key, table_name):
             conn.close()
             return JSONResponse({"items": [], "totalItems": 0})
+        can_view_sensitive_expert = table_name != "chuyen_gia" or has_module_permission(
+            cursor, role_str, user_id, org_name, "chuyengia", "edit"
+        )
 
 
         query_parts = ["organization_id = ?"]
@@ -148,8 +190,12 @@ async def paginate_records(request):
                 query_parts.append("(ma_nha_thau LIKE ? OR ten_nha_thau LIKE ? OR ten_viet_tat LIKE ? OR ma_so_thue LIKE ?)")
                 query_params.extend([search_like, search_like, search_like, search_like])
             elif table_name == "chuyen_gia":
-                query_parts.append("(ho_ten LIKE ? OR so_cccd LIKE ? OR so_chung_chi LIKE ?)")
-                query_params.extend([search_like, search_like, search_like])
+                if can_view_sensitive_expert:
+                    query_parts.append("(ho_ten LIKE ? OR so_cccd LIKE ? OR so_chung_chi LIKE ?)")
+                    query_params.extend([search_like, search_like, search_like])
+                else:
+                    query_parts.append("(ho_ten LIKE ? OR so_chung_chi LIKE ?)")
+                    query_params.extend([search_like, search_like])
             elif table_name == "hop_dong":
                 query_parts.append("(so_hop_dong LIKE ? OR ten_hop_dong LIKE ?)")
                 query_params.extend([search_like, search_like])
@@ -212,7 +258,9 @@ async def paginate_records(request):
                     f"{year_num + 1:04d}-01-01 00:00:00",
                 ])
             elif month_num and 1 <= month_num <= 12:
-                query_parts.append(f"strftime('%m', {date_column}) = ?")
+                # Month-only filtering uses an indexed deterministic expression;
+                # year/month and year-only filters above remain sargable ranges.
+                query_parts.append(f"substr({date_column}, 6, 2) = ?")
                 query_params.append(f"{month_num:02d}")
 
 
@@ -233,7 +281,7 @@ async def paginate_records(request):
 
         valid_columns = SCHEMA_DINH_NGHIA.get(table_name, {}).get("columns", {})
         if db_column and db_column in valid_columns:
-            sort_sql = f" ORDER BY {db_column} {sort_order}"
+            sort_column = db_column
         else:
             default_sorts = {
                 "ke_hoach_lcnt": "ma_ke_hoach",
@@ -245,15 +293,60 @@ async def paginate_records(request):
             }
             def_col = default_sorts.get(table_name)
             if def_col and def_col in valid_columns:
-                sort_sql = f" ORDER BY {def_col} ASC"
+                sort_column = def_col
+                sort_order = "ASC"
             else:
-                sort_sql = ""
+                sort_column = "id"
+                sort_order = "ASC"
 
+        cursor_mode = params.get("pagination", "").strip().lower() == "cursor"
+        # Keyset mode is deliberately limited to textual keys. It preserves the
+        # database's text collation and avoids changing numeric sort semantics.
+        column_declaration = str(valid_columns.get(sort_column, "TEXT")).upper()
+        cursor_mode = cursor_mode and (sort_column == "id" or "TEXT" in column_declaration)
+        item_query_parts = list(query_parts)
+        item_query_params = list(query_params)
+        decoded_cursor = None
+        raw_cursor = params.get("cursor", "").strip()
+        if cursor_mode and raw_cursor:
+            decoded_cursor = _decode_keyset_cursor(
+                raw_cursor, table_name, sort_column, sort_order
+            )
+            if decoded_cursor is None:
+                return JSONResponse({"error": "Cursor phân trang không hợp lệ"}, status_code=400)
+            cursor_value, cursor_id = decoded_cursor
+            comparator = ">" if sort_order == "ASC" else "<"
+            item_query_parts.append(
+                f"(COALESCE({sort_column}, '') {comparator} ? OR "
+                f"(COALESCE({sort_column}, '') = ? AND id {comparator} ?))"
+            )
+            item_query_params.extend([cursor_value, cursor_value, cursor_id])
 
-        offset = (page - 1) * page_size
-        items_sql = f"SELECT * FROM {table_name} WHERE {where_clause}{sort_sql} LIMIT ? OFFSET ?"
-        cursor.execute(items_sql, tuple(query_params + [page_size, offset]))
+        stable_sort_sql = f" ORDER BY COALESCE({sort_column}, '') {sort_order}"
+        if sort_column != "id":
+            stable_sort_sql += f", id {sort_order}"
+        item_where_clause = " AND ".join(item_query_parts)
+        if cursor_mode:
+            items_sql = f"SELECT * FROM {table_name} WHERE {item_where_clause}{stable_sort_sql} LIMIT ?"
+            cursor.execute(items_sql, tuple(item_query_params + [page_size + 1]))
+        else:
+            offset = (page - 1) * page_size
+            items_sql = f"SELECT * FROM {table_name} WHERE {item_where_clause}{stable_sort_sql} LIMIT ? OFFSET ?"
+            cursor.execute(items_sql, tuple(item_query_params + [page_size, offset]))
         rows = cursor.fetchall()
+        has_more = cursor_mode and len(rows) > page_size
+        if has_more:
+            rows = rows[:page_size]
+        next_cursor = None
+        if cursor_mode and has_more and rows:
+            last_row = rows[-1]
+            next_cursor = _encode_keyset_cursor(
+                table_name,
+                sort_column,
+                sort_order,
+                last_row[sort_column],
+                last_row["id"],
+            )
 
 
         relations_map = {}
@@ -309,6 +402,8 @@ async def paginate_records(request):
                 row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
 
             item = map_db_to_json(table_name, row_dict)
+            if table_name == "chuyen_gia" and not can_view_sensitive_expert:
+                item = redact_expert_item(item)
 
 
             if table_name == "goi_thau":
@@ -335,7 +430,9 @@ async def paginate_records(request):
         conn.close()
         return JSONResponse({
             "items": items,
-            "totalItems": total_items
+            "totalItems": total_items,
+            "nextCursor": next_cursor,
+            "hasMore": bool(has_more),
         })
     except OrgPermissionError as e:
         return error_response(

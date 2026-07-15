@@ -6,6 +6,7 @@ import json
 from backend.shared.helpers import database
 from backend.shared.async_io import run_blocking_io
 from backend.shared.origin_policy import is_websocket_origin_allowed
+from backend.auth.session_store import load_session_user, session_invalid_reason
 
 
 active_connections = {}
@@ -61,26 +62,9 @@ async def sync_websocket_endpoint(websocket):
             requested_org_id = msg.get("organizationId")
             token = (websocket.cookies.get("session_token") or "").strip()
 
-            conn = database.get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, vai_tro, token_phien, han_su_dung_token FROM tai_khoan WHERE token_phien = ?",
-                (token,)
-            )
-            row = cursor.fetchone()
-            conn.close()
-
-            if row:
-
-                if row['han_su_dung_token']:
-                    try:
-                        import time as _time
-                        if _time.time() > float(row['han_su_dung_token']):
-                            await websocket.close(code=4001)
-                            return
-                    except Exception:
-                        pass
-                user_id = row['id']
+            session_user = await run_blocking_io(load_session_user, database, token)
+            if session_user and not session_invalid_reason(session_user):
+                user_id = session_user['id']
                 websocket.user_id = user_id
                 conn = database.get_connection()
                 cursor = conn.cursor()
@@ -108,40 +92,15 @@ async def sync_websocket_endpoint(websocket):
             if _now - _last_auth_check >= _AUTH_CHECK_INTERVAL:
                 _last_auth_check = _now
                 try:
-                    _conn = database.get_connection()
-                    _cur = _conn.cursor()
-                    _cur.execute(
-                        """
-                        SELECT accounts.token_phien, accounts.han_su_dung_token
-                        FROM tai_khoan AS accounts
-                        INNER JOIN thanh_vien_to_chuc AS memberships
-                            ON memberships.user_id = accounts.id
-                           AND memberships.organization_id = ?
-                        INNER JOIN to_chuc AS organizations
-                            ON organizations.id = memberships.organization_id
-                           AND organizations.trang_thai = 'active'
-                        WHERE accounts.id = ?
-                          AND (
-                              organizations.scope_type = 'organization'
-                              OR NOT EXISTS (
-                                  SELECT 1
-                                  FROM thanh_vien_to_chuc business_membership
-                                  JOIN to_chuc business_org
-                                    ON business_org.id = business_membership.organization_id
-                                  WHERE business_membership.user_id = accounts.id
-                                    AND business_org.scope_type = 'organization'
-                              )
-                          )
-                        LIMIT 1
-                        """,
-                        (organization_id, user_id),
-                    )
-                    _row = _cur.fetchone()
-                    _conn.close()
-                    if not _row or _row['token_phien'] != token:
+                    _session_user = await run_blocking_io(load_session_user, database, token)
+                    if not _session_user or session_invalid_reason(_session_user, now=_now):
                         await websocket.close(code=4001)
                         return
-                    if _row['han_su_dung_token'] and _now > float(_row['han_su_dung_token']):
+                    _conn = database.get_connection()
+                    _cur = _conn.cursor()
+                    _owner = resolve_websocket_owner(_cur, user_id, organization_id)
+                    _conn.close()
+                    if not _owner:
                         await websocket.close(code=4001)
                         return
                 except Exception:

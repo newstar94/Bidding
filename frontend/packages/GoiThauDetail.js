@@ -201,7 +201,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                         <p style="font-size: 0.85rem; margin-bottom: 24px; max-width: 460px; margin-left: auto; margin-right: auto; line-height: 1.5; color: var(--text-muted);">
                             Gói thầu này hiện đang trong giai đoạn Chuẩn bị và chưa phát hành hồ sơ mời thầu. Vui lòng phát hành HSMT để bắt đầu quá trình mời thầu và nhận hồ sơ thầu.
                         </p>
-                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-arg-key="${releaseArgsKey}" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
+                        <button class="btn btn-primary" data-bf-action="call" data-fn="phatHanhHsmtGoiThau" data-arg-key="${escapeHtml(releaseArgsKey)}" style="padding: 10px 24px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; border-radius: var(--radius-md);">
                             <i data-lucide="send"></i> Phát hành HSMT & Mời thầu
                         </button>
                     </div>
@@ -430,12 +430,12 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
                                   ${qualifiedBids.map((b) => `
                                       <tr>
                                           ${gt.phanLo === "Có" ? `
-                                              <td>${b.maPhanLo || "--"}</td>
-                                              <td>${b.tenPhanLo || "--"}</td>
+                                              <td>${escapeHtml(b.maPhanLo || "--")}</td>
+                                              <td>${escapeHtml(b.tenPhanLo || "--")}</td>
                                           ` : ""}
-                                          <td>${b.maNhaThau || b.maDinhDanh || "--"}</td>
+                                          <td>${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}</td>
                                           <td>${renderBidContractorLink(this.model, b, `${gt.id}_qualified_${b.id}`)}</td>
-                                          ${hasTechScore ? `<td style="text-align: center;">${b.danhGiaKyThuat || "--"}</td>` : ""}
+                                          ${hasTechScore ? `<td style="text-align: center;">${escapeHtml(b.danhGiaKyThuat || "--")}</td>` : ""}
                                           <td style="text-align: center;">
                                               <span class="badge badge-success" style="font-size: 0.75rem; font-weight: 700; padding: 4px 8px; border-radius: 4px;">Đạt kỹ thuật</span>
                                           </td>

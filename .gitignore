@@ -49,12 +49,7 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
-# Local test suite and runner configuration (not shipped to production)
-tests/
-playwright.config.js
-pytest.ini
-
-# Test output is ignored above; test sources and runner configuration are tracked.
+# Test sources are tracked in Git but excluded by the deployment packaging step.
 
 # Node.js
 node_modules/

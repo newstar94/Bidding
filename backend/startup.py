@@ -5,7 +5,9 @@ without starting the ASGI server or touching the configured application DB.
 """
 
 import os
+import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from backend.shared.paths import PROJECT_ROOT
 
@@ -101,10 +103,38 @@ def validate_startup_configuration(database, environ=None):
     """Validate configuration that must exist before first-run migration."""
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
+    requires_bootstrap = database_requires_admin_bootstrap(database)
     if app_env in {"prod", "production"}:
         _validate_production_sqlite_layout(database, environ)
+        if str(environ.get("DATA_AT_REST_ENCRYPTION_CONFIRMED", "")).strip().lower() != "true":
+            raise StartupValidationError(
+                "DATA_AT_REST_ENCRYPTION_CONFIRMED=true is required after verifying encrypted runtime and backup volumes."
+            )
+        if str(environ.get("APP_DEBUG", "")).strip().lower() not in {"false", "0", "no"}:
+            raise StartupValidationError("APP_DEBUG=False is required in production.")
+        if str(environ.get("APP_SECURE_COOKIES", "")).strip().lower() != "true":
+            raise StartupValidationError("APP_SECURE_COOKIES=True is required in production.")
+        public_url = str(environ.get("APP_PUBLIC_URL", "")).strip()
+        parsed_public_url = urlparse(public_url)
+        if parsed_public_url.scheme != "https" or not parsed_public_url.netloc or parsed_public_url.hostname in {"localhost", "127.0.0.1", "::1"}:
+            raise StartupValidationError("APP_PUBLIC_URL must be a public HTTPS origin in production.")
+        if requires_bootstrap:
+            required_bootstrap = {
+                "ADMIN_USERNAME": str(environ.get("ADMIN_USERNAME", "")).strip(),
+                "ADMIN_NAME": str(environ.get("ADMIN_NAME", "")).strip(),
+                "ADMIN_EMAIL": str(environ.get("ADMIN_EMAIL", "")).strip(),
+                "DEFAULT_ORG_NAME": str(environ.get("DEFAULT_ORG_NAME", "")).strip(),
+            }
+            missing = [key for key, value in required_bootstrap.items() if not value]
+            if missing:
+                raise StartupValidationError(
+                    "First-run production configuration is missing: " + ", ".join(missing)
+                )
+            admin_email = required_bootstrap["ADMIN_EMAIL"]
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", admin_email) or admin_email.casefold().endswith("@localhost"):
+                raise StartupValidationError("ADMIN_EMAIL must be a valid non-local address in production.")
     admin_password = str(environ.get("ADMIN_PASSWORD", ""))
-    if database_requires_admin_bootstrap(database) and not admin_password.strip():
+    if requires_bootstrap and not admin_password.strip():
         raise StartupValidationError(
             "ADMIN_PASSWORD is required when bootstrapping a database without users."
         )

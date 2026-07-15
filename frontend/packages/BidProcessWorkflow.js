@@ -1,6 +1,6 @@
 ﻿import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { bindCurrencyElement, debounce, normalizeTaxCodeForCompare } from "../app/domUtils.js";
+import { bindCurrencyElement, debounce } from "../app/domUtils.js";
 import { setFieldFeedback } from "../app/formStateUtils.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { generateRecordId } from "../shared/idUtils.js";
@@ -20,7 +20,6 @@ import {
   getWinnerRows
 } from "./bidProcessAwardResult.js";
 import { renderOpeningSummary } from "./bidProcessRender.js";
-import { parseVietnamAddress } from "../shared/PartnerHelpers.js";
 import { getPartnerLookupInput, lookupPartnerInfo } from "../partners/partnerTaxLookup.js";
 import { getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, resolveContractorVersion } from "../partners/contractorVersionBinding.js";
 import { clearCompetitiveQuotationAppraisal } from "./packageAppraisal.js";
@@ -29,121 +28,18 @@ import {
   renderJointVentureModalFooter,
   renderJointVentureModalHeader
 } from "./detail/JointVentureModal.js";
-function normalizeContractorLookupCode(value) {
-  return normalizeTaxCodeForCompare(value);
-}
-function findContractorByCode(list, code) {
-  const normalizedCode = normalizeContractorLookupCode(code);
-  if (!normalizedCode) return null;
-  return (list || []).find(
-    (n) => normalizeContractorLookupCode(n.maNhaThau) === normalizedCode || normalizeContractorLookupCode(n.maSoThue) === normalizedCode
-  ) || null;
-}
-export function resolveOpeningLeadContractor(model, contractors, code, boundId = "") {
-  const normalizedCode = normalizeContractorLookupCode(code);
-  const bound = getExactContractorVersion(model, boundId);
-  const boundCode = normalizeContractorLookupCode(bound?.maNhaThau || bound?.maSoThue);
-  if (bound && normalizedCode && boundCode === normalizedCode) return bound;
-  return findContractorByCode(contractors, code);
-}
-export async function mapPartnerLookupToContractor(code, info = {}) {
-  const rawAddress = info.address || info.diaChiGoc || "";
-  const parsedAddress = rawAddress ? await parseVietnamAddress(rawAddress) : null;
-  return {
-    tenNhaThau: info.name || info.tenNhaThau || "",
-    maNhaThau: info.org_code || info.maNhaThau || code,
-    maSoThue: info.tax_code || info.maSoThue || "",
-    tenVietTat: info.short_name || info.tenVietTat || "",
-    nguoiDaiDien: info.representative_name || info.nguoiDaiDien || "",
-    chucVuDaiDien: info.representative_position || info.chucVuDaiDien || "",
-    soDienThoai: info.phone || info.soDienThoai || "",
-    diaChi: parsedAddress?.formattedAddress || info.diaChi || "",
-    diaChiGoc: rawAddress
-  };
-}
-async function enrichOpeningRowsWithPartnerInfo(rows, model) {
-  const latestContractors = model.getLatestNhaThau();
-  await Promise.all(Array.from(rows || []).map(async (row) => {
-    const codeInput = row.querySelector(".mt-ma-nha-thau");
-    const nameInput = row.querySelector(".mt-ten-nha-thau");
-    const code = codeInput?.value.trim() || "";
-    if (!code) return;
-    const existing = findContractorByCode(latestContractors, code);
-    if (existing) {
-      row._leadMemberLookupData = await mapPartnerLookupToContractor(code, existing);
-      const names = resolveOpeningLookupNames(
-        row.querySelector(".mt-loai-nha-thau")?.value,
-        nameInput?.value,
-        existing.tenNhaThau,
-        row._leadMemberName
-      );
-      if (nameInput) nameInput.value = names.bidName;
-      row._leadMemberName = names.leadMemberName;
-      return;
-    }
-    const lookupInput = getPartnerLookupInput(code);
-    if (!lookupInput) return;
-    try {
-      if (codeInput) codeInput.style.opacity = "0.7";
-      const info = await lookupPartnerInfo({ ...lookupInput, partnerRole: "NT" });
-      if (!info?.name) return;
-      row._leadMemberLookupData = await mapPartnerLookupToContractor(code, info);
-      if (codeInput && info.org_code) codeInput.value = info.org_code;
-      const names = resolveOpeningLookupNames(
-        row.querySelector(".mt-loai-nha-thau")?.value,
-        nameInput?.value,
-        info.name,
-        row._leadMemberName
-      );
-      if (nameInput) nameInput.value = names.bidName;
-      row._leadMemberName = names.leadMemberName;
-    } catch (error) {
-      console.error("Contractor lookup before saving bid opening failed:", error);
-    } finally {
-      if (codeInput) codeInput.style.opacity = "1";
-    }
-  }));
-}
-function resolveLeadMemberName(contractor, leadCode) {
-  if (!contractor) return "";
-  const normalizedLeadCode = normalizeContractorLookupCode(leadCode);
-  const leadMember = (contractor.thanhVienLienDanh || []).find((member) => {
-    const role = String(member.vaiTro || "").toLowerCase();
-    return role.includes("đứng") && role.includes("đầu") || normalizedLeadCode && normalizeContractorLookupCode(member.maNhaThau || member.maSoThue) === normalizedLeadCode;
-  });
-  if (leadMember?.tenNhaThau) return leadMember.tenNhaThau;
-  if (String(contractor.loaiNhaThau || "").trim().toLowerCase() === "liên danh") return "";
-  return contractor.tenNhaThau || "";
-}
-function getJointVentureSubMembers(members, leadCode) {
-  const seenCodes = new Set([normalizeContractorLookupCode(leadCode)].filter(Boolean));
-  return (members || []).filter((member) => {
-    const normalizedCode = normalizeContractorLookupCode(member?.maNhaThau || member?.maSoThue);
-    if (!normalizedCode || seenCodes.has(normalizedCode)) return false;
-    const role = String(member?.vaiTro || "").trim().toLowerCase();
-    if (role.includes("đứng") && role.includes("đầu")) return false;
-    seenCodes.add(normalizedCode);
-    return true;
-  });
-}
-function findDuplicateJvMemberCodes({ leadCode, leadInput, rows }) {
-  const seen = /* @__PURE__ */ new Map();
-  const duplicateInputs = [];
-  const remember = (code, input) => {
-    const normalized = normalizeContractorLookupCode(code);
-    if (!normalized) return;
-    if (seen.has(normalized)) {
-      if (input) duplicateInputs.push(input);
-      return;
-    }
-    seen.set(normalized, input || null);
-  };
-  remember(leadCode, leadInput);
-  rows.forEach((row) => {
-    remember(row.querySelector(".jv-input-mst")?.value, row.querySelector(".jv-input-mst"));
-  });
-  return duplicateInputs;
-}
+import {
+  enrichOpeningRowsWithPartnerInfo,
+  findContractorByCode,
+  findDuplicateJvMemberCodes,
+  getJointVentureSubMembers,
+  mapPartnerLookupToContractor,
+  normalizeContractorLookupCode,
+  resolveLeadMemberName,
+  resolveOpeningLeadContractor
+} from "./openingContractorLookup.js";
+export { mapPartnerLookupToContractor, resolveOpeningLeadContractor } from "./openingContractorLookup.js";
+
 export async function moThauGoiThau(id) {
   const gt = this.model.state.goithau.find((g) => g.id === id);
   if (!gt) return;
@@ -642,11 +538,11 @@ export function openMoThauJVManager(tr) {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-light); margin-bottom: 4px; display: block;">Mã/MST thành viên đứng đầu</label>
-                    <input type="text" id="jv-input-lead-code" class="form-control" value="${displayLeadCode}" readonly style="padding: 6px 10px; font-size: 0.85rem; width:100%; background: rgba(0,0,0,0.05); cursor: not-allowed;">
+                    <input type="text" id="jv-input-lead-code" class="form-control" value="${escapeHtml(displayLeadCode)}" readonly style="padding: 6px 10px; font-size: 0.85rem; width:100%; background: rgba(0,0,0,0.05); cursor: not-allowed;">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-light); margin-bottom: 4px; display: block;">Tên thành viên đứng đầu</label>
-                    <input type="text" id="jv-input-lead-name" class="form-control" required placeholder="Tên thành viên đứng đầu" value="${leadName}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
+                    <input type="text" id="jv-input-lead-name" class="form-control" required placeholder="Tên thành viên đứng đầu" value="${escapeHtml(leadName)}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
                 </div>
             </div>
         </div>
@@ -741,10 +637,10 @@ export function openMoThauJVManager(tr) {
     rowDiv.style.background = "var(--bg-nested, rgba(0,0,0,0.02))";
     rowDiv.innerHTML = `
             <div class="form-group" style="margin-bottom: 0;">
-                <input type="text" class="jv-input-mst" required placeholder="Mã số thuế / Mã nhà thầu" value="${member.maNhaThau || member.maSoThue || ""}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
+                <input type="text" class="jv-input-mst" required placeholder="Mã số thuế / Mã nhà thầu" value="${escapeHtml(member.maNhaThau || member.maSoThue || "")}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
             </div>
             <div class="form-group" style="margin-bottom: 0;">
-                <input type="text" class="jv-input-ten" required placeholder="Tên nhà thầu thành viên" value="${member.tenNhaThau || ""}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
+                <input type="text" class="jv-input-ten" required placeholder="Tên nhà thầu thành viên" value="${escapeHtml(member.tenNhaThau || "")}" style="padding: 6px 10px; font-size: 0.85rem; width:100%;">
             </div>
             <button type="button" class="action-btn btn-delete btn-remove-jv-row" style="padding: 6px; border:none; background:none;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
         `;
@@ -995,12 +891,19 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       tr._leadMemberName = resolveLeadMemberName(foundLeadNt, ntCode);
     }
   }
-  const typeSelectHtml = readOnly ? `<span style="font-size:0.9rem;">${ntType}</span>` : `<select class="form-control mt-loai-nha-thau" required>
+  const typeSelectHtml = readOnly ? `<span style="font-size:0.9rem;">${escapeHtml(ntType)}</span>` : `<select class="form-control mt-loai-nha-thau" required>
             <option value="Độc lập" ${ntType === "Độc lập" ? "selected" : ""}>Độc lập</option>
             <option value="Liên danh" ${ntType === "Liên danh" ? "selected" : ""}>Liên danh</option>
         </select>`;
   const lotList = gt.phanLoList || [];
-  const lotOptions = lotList.map((l) => `<option value="${l.maPhanLo}" data-name="${l.tenPhanLo}">${l.maPhanLo}</option>`).join("");
+  const lotOptions = lotList.map((l) => `<option value="${escapeHtml(l.maPhanLo)}" data-name="${escapeHtml(l.tenPhanLo)}">${escapeHtml(l.maPhanLo)}</option>`).join("");
+  const contractorCodeDisplay = escapeHtml(ntCode || bidData.maDinhDanh || "--");
+  const contractorCodeValue = escapeHtml(ntCode || bidData.maDinhDanh || "");
+  const contractorNameDisplay = escapeHtml(ntName || "--");
+  const contractorNameValue = escapeHtml(ntName);
+  const lotCodeDisplay = escapeHtml(bidData.maPhanLo || "--");
+  const lotNameDisplay = escapeHtml(bidData.tenPhanLo || "--");
+  const lotNameValue = escapeHtml(bidData.tenPhanLo || "");
   let cellHtml = "";
   const jvBtnCount = tr._thanhVienLienDanh.length;
   const jvDetailsHtml = readOnly ? ntType === "Liên danh" ? `<div style="margin-top:4px; font-size:0.78rem;"><a href="#" class="mt-jv-view-link" style="color:var(--primary); text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:4px;">👥 Liên danh ${jvBtnCount} thành viên</a></div>` : "" : `<div class="mt-jv-members-container" style="margin-top: 4px; display: ${ntType === "Liên danh" ? "block" : "none"};">
@@ -1012,34 +915,34 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   if (caseType === "TU_VAN") {
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
-            <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
+            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
+            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
-            <td>${bidData.thoiGianThucHien || gt.thoiGianThucHien || "--"}</td>
+            <td>${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "--")}</td>
         ` : `
             <td>${typeSelectHtml}</td>
-            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
+            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
-                <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
+                <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-hieu-luc-hsdxt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
-            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${bidData.thoiGianThucHien || gt.thoiGianThucHien || ""}" required placeholder="Ví dụ: 120 ngày"></td>
+            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" required placeholder="Ví dụ: 120 ngày"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G2T_NO_LOT") {
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
-            <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
+            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
+            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || "--"}</td>
             <td>${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}</td>
             <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
         ` : `
             <td>${typeSelectHtml}</td>
-            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
+            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
-                <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
+                <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || ""}" required placeholder="Số tiền ĐB"></td>
@@ -1054,11 +957,11 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       if (foundLot) defaultLotBaoDam = this.model.formatVND(foundLot.baoDamDuThau) || "";
     }
     cellHtml = readOnly ? `
-            <td>${bidData.maPhanLo || "--"}</td>
-            <td>${bidData.tenPhanLo || "--"}</td>
+            <td>${lotCodeDisplay}</td>
+            <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
-            <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
+            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
+            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam || "--"}</td>
             <td>${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}</td>
             <td>${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}</td>
@@ -1069,11 +972,11 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                     ${lotOptions}
                 </select>
             </td>
-            <td><input type="text" class="form-control mt-ten-phan-lo" value="${bidData.tenPhanLo || ""}" readonly placeholder="Tên lot"></td>
+            <td><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
             <td>${typeSelectHtml}</td>
-            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
+            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
-                <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
+                <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-dam-bao-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Số tiền ĐB"></td>
@@ -1084,20 +987,20 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
   } else if (caseType === "1G1T_NO_LOT") {
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
-            <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
+            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
+            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td style="text-align:right;">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
             <td>${this.model.formatVND(bidData.giaSauGiamGia) || "--"}</td>
             <td>${bidData.hieuLucHsdt || gt.hieuLucHsdt || 90 ? (bidData.hieuLucHsdt || gt.hieuLucHsdt || 90) + " ngày" : "--"}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || "--"}</td>
             <td style="text-align:right;">${bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120 ? (bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120) + " ngày" : "--"}</td>
-            <td>${bidData.thoiGianThucHien || gt.thoiGianThucHien || "--"}</td>
+            <td>${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "--")}</td>
         ` : `
             <td>${typeSelectHtml}</td>
-            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
+            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
-                <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
+                <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
@@ -1106,7 +1009,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiực lực"></td>
             <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || this.model.formatVND(gt.giaTriDamBaoDuThau) || ""}" required placeholder="Giá trị ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required style="text-align: right;"></td>
-            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${bidData.thoiGianThucHien || gt.thoiGianThucHien || ""}" required placeholder="Thực hiện"></td>
+            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" required placeholder="Thực hiện"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "1G1T_WITH_LOT") {
@@ -1116,18 +1019,18 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       if (foundLot) defaultLotBaoDam = this.model.formatVND(foundLot.baoDamDuThau) || "";
     }
     cellHtml = readOnly ? `
-            <td>${bidData.maPhanLo || "--"}</td>
-            <td>${bidData.tenPhanLo || "--"}</td>
+            <td>${lotCodeDisplay}</td>
+            <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
-            <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
+            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
+            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || "--"}</td>
             <td style="text-align:right;">${(bidData.tyLeGiamGia || 0).toString().replace(".", ",")}</td>
             <td>${this.model.formatVND(bidData.giaSauGiamGia) || "--"}</td>
             <td>${bidData.hieuLucHsdt || gt.hieuLucHsdt || 90 ? (bidData.hieuLucHsdt || gt.hieuLucHsdt || 90) + " ngày" : "--"}</td>
             <td>${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam || "--"}</td>
             <td style="text-align:right;">${bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120 ? (bidData.hieuLucBaoDamNgay || gt.hieuLucDamBaoDuThau || 120) + " ngày" : "--"}</td>
-            <td>${bidData.thoiGianThucHien || gt.thoiGianThucHien || "--"}</td>
+            <td>${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "--")}</td>
         ` : `
             <td>
                 <select class="form-control mt-ma-phan-lo" required>
@@ -1135,11 +1038,11 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                     ${lotOptions}
                 </select>
             </td>
-            <td><input type="text" class="form-control mt-ten-phan-lo" value="${bidData.tenPhanLo || ""}" readonly placeholder="Tên lot"></td>
+            <td><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
             <td>${typeSelectHtml}</td>
-            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
+            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
-                <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
+                <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || ""}" required placeholder="Giá dự thầu"></td>
@@ -1148,26 +1051,26 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td><input type="text" class="form-control mt-hieu-luc-hsdt" value="${bidData.hieuLucHsdt ? bidData.hieuLucHsdt + " ngày" : gt.hieuLucHsdt ? gt.hieuLucHsdt + " ngày" : "90 ngày"}" required placeholder="Hiệu lực"></td>
             <td><input type="text" class="form-control mt-gia-tri-dam-bao mt-format-vnd" value="${this.model.formatVND(bidData.giaTriDamBao) || defaultLotBaoDam}" required placeholder="Giá trị ĐB"></td>
             <td><input type="text" class="form-control mt-hieu-luc-bao-dam-ngay" value="${bidData.hieuLucBaoDamNgay ? bidData.hieuLucBaoDamNgay + " ngày" : gt.hieuLucDamBaoDuThau ? gt.hieuLucDamBaoDuThau + " ngày" : "120 ngày"}" required style="text-align: right;"></td>
-            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${bidData.thoiGianThucHien || gt.thoiGianThucHien || ""}" required placeholder="Thực hiện"></td>
+            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(bidData.thoiGianThucHien || gt.thoiGianThucHien || "")}" required placeholder="Thực hiện"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "DIRECT_SPECIAL_NO_LOT") {
     const defaultDurationPkg = bidData.thoiGianThucHien || gt.thoiGianThucHien || "";
     cellHtml = readOnly ? `
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
-            <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
+            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
+            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau || gt.giaGoiThau) || "--"}</td>
-            <td>${defaultDurationPkg}</td>
+            <td>${escapeHtml(defaultDurationPkg)}</td>
         ` : `
             <td>${typeSelectHtml}</td>
-            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
+            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
-                <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
+                <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau || gt.giaGoiThau) || ""}" required placeholder="Giá dự thầu"></td>
-            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${defaultDurationPkg}" required placeholder="Thời gian gói"></td>
+            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(defaultDurationPkg)}" required placeholder="Thời gian gói"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   } else if (caseType === "DIRECT_SPECIAL_WITH_LOT") {
@@ -1178,13 +1081,13 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
       if (foundLot) defaultLotPrice = this.model.formatVND(foundLot.giaTriPhanLo) || "";
     }
     cellHtml = readOnly ? `
-            <td>${bidData.maPhanLo || "--"}</td>
-            <td>${bidData.tenPhanLo || "--"}</td>
+            <td>${lotCodeDisplay}</td>
+            <td>${lotNameDisplay}</td>
             <td>${typeSelectHtml}</td>
-            <td><span class="mt-ma-nha-thau">${ntCode || bidData.maDinhDanh || "--"}</span></td>
-            <td><span class="mt-ten-nha-thau">${ntName || "--"}</span>${jvDetailsHtml}</td>
+            <td><span class="mt-ma-nha-thau">${contractorCodeDisplay}</span></td>
+            <td><span class="mt-ten-nha-thau">${contractorNameDisplay}</span>${jvDetailsHtml}</td>
             <td>${this.model.formatVND(bidData.giaDuThau) || defaultLotPrice || "--"}</td>
-            <td>${defaultDurationPkg}</td>
+            <td>${escapeHtml(defaultDurationPkg)}</td>
         ` : `
             <td>
                 <select class="form-control mt-ma-phan-lo" required>
@@ -1192,15 +1095,15 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
                     ${lotOptions}
                 </select>
             </td>
-            <td><input type="text" class="form-control mt-ten-phan-lo" value="${bidData.tenPhanLo || ""}" readonly placeholder="Tên lot"></td>
+            <td><input type="text" class="form-control mt-ten-phan-lo" value="${lotNameValue}" readonly placeholder="Tên lot"></td>
             <td>${typeSelectHtml}</td>
-            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${ntCode || bidData.maDinhDanh || ""}" required placeholder="Mã nhà thầu"></td>
+            <td><input type="text" class="form-control mt-ma-nha-thau mt-ma-dinh-danh" value="${contractorCodeValue}" required placeholder="Mã nhà thầu"></td>
             <td>
-                <input type="text" class="form-control mt-ten-nha-thau" value="${ntName}" required placeholder="Tên nhà thầu">
+                <input type="text" class="form-control mt-ten-nha-thau" value="${contractorNameValue}" required placeholder="Tên nhà thầu">
                 ${jvDetailsHtml}
             </td>
             <td><input type="text" class="form-control mt-gia-du-thau mt-format-vnd" value="${this.model.formatVND(bidData.giaDuThau) || defaultLotPrice}" required placeholder="Giá dự thầu"></td>
-            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${defaultDurationPkg}" required placeholder="Thời gian gói"></td>
+            <td><input type="text" class="form-control mt-thoi-gian-thuc-hien" value="${escapeHtml(defaultDurationPkg)}" required placeholder="Thời gian gói"></td>
             <td style="text-align: center;"><button class="action-btn btn-delete mt-remove-row"><i data-lucide="trash-2"></i></button></td>
         `;
   }

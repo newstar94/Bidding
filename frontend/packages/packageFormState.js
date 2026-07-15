@@ -37,3 +37,15 @@ export function setPackageSubTableActionsVisible(visible) {
     button.style.display = display;
   });
 }
+
+export function unifyTableInputsHeight(container) {
+  const parent = container || document;
+  const elements = parent.querySelectorAll(".data-table .form-control, #mothau-table .form-control, #danhgiahsdt-table .form-control");
+  elements.forEach((element) => {
+    element.style.setProperty("height", "38px", "important");
+    element.style.setProperty("box-sizing", "border-box", "important");
+    element.style.setProperty("padding", "6px 12px", "important");
+    element.style.setProperty("font-size", "0.85rem", "important");
+    element.style.setProperty("border-radius", "var(--radius-md)", "important");
+  });
+}

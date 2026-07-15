@@ -1,7 +1,7 @@
 ﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
 import { persistAndSync } from "../shared/MutationService.js";
-import { createInitialVersion, createNextVersion, getNextVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import { createInitialVersion, createNextVersion, getNextVersion, preserveRowVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { clearFormValidation } from "../shared/FormBinder.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getCurrentDateYmd } from "../shared/formatters.js";
@@ -112,6 +112,7 @@ export async function handleChuDauTuSubmit(e) {
       data.isLatest = currentCdt.isLatest !== void 0 ? currentCdt.isLatest : 1;
       data.createdAt = currentCdt.createdAt || this.model.getCurrentDateTimeString();
       data.updatedAt = this.model.getCurrentDateTimeString();
+      preserveRowVersion(data, currentCdt);
       const idx = this.model.state.chudautu.findIndex((c) => c.id === id);
       this.model.state.chudautu[idx] = data;
     }

@@ -1,112 +1,13 @@
 ﻿import { validateExtensionRows } from "./packageValidation.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
 import { resetPackageFormEditableState, setPackageSubTableActionsVisible } from "./packageFormState.js";
 import { clearCompetitiveQuotationAppraisal, isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import { persistAndSync } from "../shared/MutationService.js";
-import { createInitialVersion, createNextVersion, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
+import { createInitialVersion, createNextVersion, preparePackageSnapshot, rememberSelectedVersion } from "../shared/VersionedEntityService.js";
 import { apiFetch } from "../shared/apiClient.js";
-export function openPackageWizardStep() {
-  if (!this.packageWizard.active) return;
-  if (!document.getElementById("modal-goithau")) {
-    this.ensureLazyModal?.("modal-goithau").then(() => this.openPackageWizardStep());
-    return;
-  }
-  this.editGoiThau(null);
-  const titleEl = document.getElementById("modal-goithau-title");
-  if (titleEl) {
-    titleEl.innerHTML = `Thêm Gói thầu <span style="font-size: 0.85rem; color: var(--primary); font-weight: normal; margin-left: 8px;">(Gói thầu số ${this.packageWizard.currentCount} trên tổng số ${this.packageWizard.totalCount})</span>`;
-  }
-  const planSelect = document.getElementById("gt-kehoachid");
-  if (planSelect) {
-    planSelect.value = this.packageWizard.planId;
-    planSelect.disabled = true;
-    planSelect.dispatchEvent(new Event("change"));
-  }
-}
-export async function deleteGoiThau(id) {
-  const deleteContext = getPackageDeleteContext(this.model.state.goithau, id);
-  if (!deleteContext) return;
-  let deleteConfirmed = false;
-  let deleteChoice = null;
-  if (deleteContext.versionCount >= 2) {
-    deleteChoice = await this.view.customVersionDeleteChoice(
-      "Xác nhận xóa",
-      `Gói thầu "${deleteContext.targetPackage.tenGoiThau}" có ${deleteContext.versionCount} phiên bản. Vui lòng chọn cách thức xóa:`,
-      "Xóa phiên bản gần nhất",
-      "Xóa toàn bộ"
-    );
-    if (deleteChoice === null) return;
-  } else {
-    const confirmed = await this.view.customConfirm(
-      "Xác nhận xóa",
-      "Bạn có chắc muốn xóa gói thầu này? Mọi phiên bản lịch sử liên quan sẽ bị xóa bỏ.",
-      "trash-2"
-    );
-    if (!confirmed) return;
-    deleteConfirmed = true;
-  }
-  if (deleteChoice === 1) {
-    deleteLatestPackageVersion(this.model, deleteContext);
-    deleteContext.planIds.forEach((pId) => {
-      if (pId) {
-        this.recalculatePlanTotal(pId);
-      }
-    });
-    const breakdownPlanId = document.getElementById("breakdown-plan-id")?.value;
-    const modalBreakdown = document.getElementById("modal-plan-breakdown");
-    if (modalBreakdown && modalBreakdown.classList.contains("active") && breakdownPlanId) {
-      this.renderBreakdownPackagesList(breakdownPlanId);
-      this.updateBreakdownTotal(breakdownPlanId);
-    }
-    try {
-      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
-        afterPersist: () => {
-          this.view.renderGoiThauTable();
-          this.view.renderKeHoachTable();
-        }
-      });
-      if (!syncResult?.ok) {
-        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang được giữ trong hàng chờ đồng bộ. Vui lòng kiểm tra kết nối và đồng bộ lại dữ liệu.", "alert-triangle");
-        return;
-      }
-    } catch (e) {
-      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Thao tác xóa vẫn được giữ trong hàng chờ đồng bộ.", "x-circle");
-      return;
-    }
-    await this.view.customAlert("Thành công", "Đã xóa phiên bản gói thầu gần nhất!", "check-circle");
-  } else if (deleteChoice === 2 || deleteConfirmed) {
-    deleteAllPackageVersions(this.model, deleteContext);
-    deleteContext.planIds.forEach((pId) => {
-      if (pId) {
-        this.recalculatePlanTotal(pId);
-      }
-    });
-    const breakdownPlanId = document.getElementById("breakdown-plan-id")?.value;
-    const modalBreakdown = document.getElementById("modal-plan-breakdown");
-    if (modalBreakdown && modalBreakdown.classList.contains("active") && breakdownPlanId) {
-      this.renderBreakdownPackagesList(breakdownPlanId);
-      this.updateBreakdownTotal(breakdownPlanId);
-    }
-    try {
-      const syncResult = await persistAndSync(this, ["goithau", "thongtinmothau", "kehoach"], {
-        afterPersist: () => {
-          this.view.renderGoiThauTable();
-          this.view.renderKeHoachTable();
-        }
-      });
-      if (!syncResult?.ok) {
-        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang được giữ trong hàng chờ đồng bộ. Vui lòng kiểm tra kết nối và đồng bộ lại dữ liệu.", "alert-triangle");
-        return;
-      }
-    } catch (e) {
-      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Thao tác xóa vẫn được giữ trong hàng chờ đồng bộ.", "x-circle");
-      return;
-    }
-    await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của gói thầu!", "check-circle");
-  }
-}
+export { deleteGoiThau, openPackageWizardStep } from "./packageLifecycleWorkflow.js";
+
 export async function editGoiThau(id, isReadOnly = false) {
   if (!document.getElementById("modal-goithau")) {
     await this.ensureLazyModal?.("modal-goithau");
@@ -141,7 +42,7 @@ export async function editGoiThau(id, isReadOnly = false) {
       } else {
         if (this.model.state.activerole === "employee") {
           const currentUserId = sessionStorage.getItem("bf_user_id");
-          empSelect.value = currentUserId ? "user-" + currentUserId : "";
+          empSelect.value = currentUserId || "";
         } else {
           empSelect.value = "";
         }
@@ -170,7 +71,7 @@ export async function editGoiThau(id, isReadOnly = false) {
   if (!this.model.state.employees || this.model.state.employees.length === 0) {
     apiFetch("/api/auth/users").then((r) => r.json()).then((users) => {
       this.model.state.employees = users.map((u) => ({
-        id: `user-${u.id}`,
+        id: String(u.id || ""),
         name: u.name,
         email: u.email || "",
         phone: "",
@@ -990,38 +891,14 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
       const newGtId = generateRecordId("goithau");
       finalGtId = newGtId;
       const timestamp = this.model.getCurrentDateTimeString();
-      const newPackageVersion = createNextVersion(this.model.state.goithau, oldGt, {
+      const newPackageVersion = createNextVersion(this.model.state.goithau, oldGt, preparePackageSnapshot(oldGt, {
         maGoiThau: inputCode,
         ...gtData
-      }, { id: newGtId, timestamp });
+      }), { id: newGtId, timestamp });
       newPackageVersion.createdAt = oldGt.createdAt || timestamp;
       clearCompetitiveQuotationAppraisal(newPackageVersion);
       this.model.state.goithau.push(newPackageVersion);
       rememberSelectedVersion(this.model.state, "selectedPackageVersion", newPackageVersion);
-      if (Array.isArray(this.model.state.hopdong)) {
-        this.model.state.hopdong = this.model.state.hopdong.map((h) => {
-          if (h.goiThauIds && h.goiThauIds.includes(id)) {
-            const updatedGoiThauIds = [...h.goiThauIds];
-            if (!updatedGoiThauIds.includes(newGtId)) {
-              updatedGoiThauIds.push(newGtId);
-            }
-            return {
-              ...h,
-              goiThauIds: updatedGoiThauIds
-            };
-          }
-          return h;
-        });
-      }
-      if (Array.isArray(this.model.state.thongtinmothau)) {
-        const oldBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(id));
-        const newBids = oldBids.map((b) => ({
-          ...b,
-          id: generateRecordId("assignments"),
-          goiThauId: newGtId
-        }));
-        this.model.state.thongtinmothau = [...this.model.state.thongtinmothau, ...newBids];
-      }
       const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
       if (assignedEmpId) {
         await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: newGtId, type: "goithau" });
@@ -1033,10 +910,13 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
       oldGt.updatedAt = this.model.getCurrentDateTimeString();
       const assignedEmpId = document.getElementById("gt-nhanvienphutrach").value;
       const oldAssignments = this.model.state.assignments.filter((a) => a.targetId === id && a.type === "goithau");
-      for (const oldA of oldAssignments) {
+      const retainedAssignment = assignedEmpId
+        ? oldAssignments.find((assignment) => assignment.empId === assignedEmpId)
+        : null;
+      for (const oldA of oldAssignments.filter((assignment) => assignment !== retainedAssignment)) {
         await this.model.deleteRecord("assignments", oldA.id);
       }
-      if (assignedEmpId) {
+      if (assignedEmpId && !retainedAssignment) {
         await this.model.addRecord("assignments", { id: generateRecordId("assignments"), empId: assignedEmpId, targetId: id, type: "goithau" });
       }
     }
@@ -1106,161 +986,7 @@ Bạn có chắc chắn muốn tiếp tục lưu không?`,
     await this.view.customAlert("Thành công", "Đã lưu thông tin gói thầu thành công!", "check-circle");
   }
 }
-export async function restoreCanceledPackage(id) {
-  const gt = this.model.state.goithau.find((g) => g.id === id);
-  if (!gt) return;
-  let previousState = "Đang chấm thầu";
-  if (gt.danhGiaHsdtMetadata) {
-    try {
-      const parsed = JSON.parse(gt.danhGiaHsdtMetadata);
-      if (parsed.cancelDetails && parsed.cancelDetails.trangThaiTruocHuy) {
-        previousState = parsed.cancelDetails.trangThaiTruocHuy;
-      }
-    } catch (e) {
-    }
-  }
-  const confirmed = await this.view.customConfirm(
-    "Khôi phục hủy thầu",
-    `Bạn có chắc chắn muốn khôi phục gói thầu "${gt.tenGoiThau}"? Trạng thái sẽ được chuyển về "${previousState}".`,
-    "rotate-ccw"
-  );
-  if (!confirmed) return;
-  gt.trangThai = previousState;
-  const syncResult = await persistAndSync(this, "goithau", {
-    afterPersist: () => this.view.renderGoiThauTable()
-  });
-  if (!syncResult?.ok) return;
-  await this.view.customAlert("Thành công", "Đã khôi phục trạng thái gói thầu thành công.", "check-circle");
-}
-export async function checkAndInheritCanceledPackage(planId) {
-  if (!planId) return;
-  const canceledPackages = this.model.state.goithau.filter(
-    (g) => String(g.keHoachId) === String(planId) && g.trangThai === "Hủy thầu" && g.isLatest === 1
-  );
-  if (canceledPackages.length === 0) return;
-  let selectedCanceled = null;
-  if (canceledPackages.length === 1) {
-    const confirmed = await this.view.customConfirm(
-      "Phát hiện gói thầu hủy",
-      `Kế hoạch này chứa gói thầu đã bị hủy: "${canceledPackages[0].tenGoiThau}". Bạn có muốn lấy thông tin từ gói thầu này để đấu thầu lại không?`,
-      "help-circle"
-    );
-    if (confirmed) {
-      selectedCanceled = canceledPackages[0];
-    }
-  } else {
-    const options = canceledPackages.map((g) => ({
-      value: g.id,
-      label: `${this.model.getPackageBaseCode(g.maGoiThau) || ""} - ${g.tenGoiThau}`
-    }));
-    const selectedId = await this.view.customSelectConfirm(
-      "Đấu thầu lại",
-      "Kế hoạch này có nhiều gói thầu đã bị hủy. Bạn có muốn đấu thầu lại bằng cách kế thừa thông tin từ một trong các gói thầu sau không?",
-      options
-    );
-    if (selectedId) {
-      selectedCanceled = canceledPackages.find((g) => g.id === selectedId);
-    }
-  }
-  if (selectedCanceled) {
-    const form = document.getElementById("form-goithau");
-    if (form) {
-      form.setAttribute("data-rebid-from", selectedCanceled.id);
-    }
-    document.getElementById("gt-ten").value = selectedCanceled.tenGoiThau || "";
-    document.getElementById("gt-gia").value = this.model.formatVND(selectedCanceled.giaGoiThau);
-    document.getElementById("gt-thoigian").value = selectedCanceled.thoiGianThucHien || "";
-    document.getElementById("gt-hinhthuc").value = selectedCanceled.hinhThucLuaChon || "";
-    document.getElementById("gt-phuongthuc").value = selectedCanceled.phuongThucLuaChon || "";
-    document.getElementById("gt-linhvuc").value = selectedCanceled.linhVuc || "";
-    const isThuocVal = selectedCanceled.isThuoc === 1 || selectedCanceled.isThuoc === "1" ? "1" : "0";
-    const radioToCheck = document.querySelector(`input[name="gt-goithauthuoc"][value="${isThuocVal}"]`);
-    if (radioToCheck) radioToCheck.checked = true;
-    document.getElementById("gt-tuychonmuathem").value = selectedCanceled.tuyChonMuaThem || "Không";
-    document.getElementById("gt-nguonvon").value = selectedCanceled.nguonVon || "Ngân sách nhà nước";
-    document.getElementById("gt-loaihopdong").value = selectedCanceled.loaiHopDong || "Trọn gói";
-    document.getElementById("gt-thoigiantochuc").value = selectedCanceled.thoiGianToChuc || "";
-    document.getElementById("gt-thoigianbatdautochuc").value = selectedCanceled.thoiGianBatDauToChuc || "";
-    document.getElementById("gt-quatmang").value = selectedCanceled.quaMang || "Qua mạng";
-    document.getElementById("gt-trongnuocquocte").value = selectedCanceled.trongNuocQuocTe || "Trong nước";
-    document.getElementById("gt-phanlo").value = selectedCanceled.phanLo || "Không";
-    if (typeof this._loadPhanLoRows === "function") {
-      this._loadPhanLoRows(selectedCanceled.phanLoList || []);
-    }
-    if (typeof this._loadTuyChonMuaThemRows === "function") {
-      this._loadTuyChonMuaThemRows(selectedCanceled.tuyChonMuaThemList || []);
-    }
-    const savedToChuyenGia = selectedCanceled.toChuyenGia || [];
-    document.querySelectorAll("#to-chuyengia-tbody tr").forEach((row) => {
-      const cb = row.querySelector('input[name="tochuyengia-select"]');
-      if (cb) {
-        cb.checked = false;
-        cb.dispatchEvent(new Event("change"));
-      }
-    });
-    savedToChuyenGia.forEach((item) => {
-      const row = document.querySelector(`#to-chuyengia-tbody tr[data-expert-id="${item.chuyenGiaId}"]`);
-      if (row) {
-        const cb = row.querySelector('input[name="tochuyengia-select"]');
-        if (cb) {
-          cb.checked = true;
-          cb.dispatchEvent(new Event("change"));
-        }
-        const roleSelect = row.querySelector('select[name="tochuyengia-chucvu"]');
-        const jobInput = row.querySelector('input[name="tochuyengia-congviec"]');
-        if (roleSelect) roleSelect.value = item.chucVu || "Tổ viên";
-        if (jobInput) jobInput.value = item.congViec || "";
-      }
-    });
-    const savedToThamDinh = selectedCanceled.toThamDinh || [];
-    document.querySelectorAll("#to-thamdinh-tbody tr").forEach((row) => {
-      const cb = row.querySelector('input[name="tothamdinh-select"]');
-      if (cb) {
-        cb.checked = false;
-        cb.dispatchEvent(new Event("change"));
-      }
-    });
-    savedToThamDinh.forEach((item) => {
-      const row = document.querySelector(`#to-thamdinh-tbody tr[data-expert-id="${item.chuyenGiaId}"]`);
-      if (row) {
-        const cb = row.querySelector('input[name="tothamdinh-select"]');
-        if (cb) {
-          cb.checked = true;
-          cb.dispatchEvent(new Event("change"));
-        }
-        const roleSelect = row.querySelector('select[name="tothamdinh-chucvu"]');
-        const jobInput = row.querySelector('input[name="tothamdinh-congviec"]');
-        if (roleSelect) roleSelect.value = item.chucVu || "Tổ viên";
-        if (jobInput) jobInput.value = item.congViec || "";
-      }
-    });
-    this.enforceSingleLeader("to-chuyengia-tbody", "tochuyengia-chucvu");
-    this.enforceSingleLeader("to-thamdinh-tbody", "tothamdinh-chucvu");
-    if (this.updatePhuongPhapDanhGiaOptions) {
-      this.updatePhuongPhapDanhGiaOptions();
-    }
-    document.getElementById("gt-phuongphapdanhgia").value = selectedCanceled.phuongPhapDanhGia || "";
-    if (this.updateTrongSoKyThuatVisibility) {
-      this.updateTrongSoKyThuatVisibility();
-    }
-    document.getElementById("gt-trongsokythuat").value = selectedCanceled.trongSoKyThuat !== void 0 && selectedCanceled.trongSoKyThuat !== null ? selectedCanceled.trongSoKyThuat : "";
-    if (this.handleLinhVucChange) this.handleLinhVucChange();
-    if (this.handleHinhThucChange) this.handleHinhThucChange();
-    if (this.handleQuaMangChange) this.handleQuaMangChange();
-    if (this.handlePhanLoChange) this.handlePhanLoChange();
-    if (this.handleTuyChonMuaThemChange) this.handleTuyChonMuaThemChange();
-    this.updatePackageFieldsVisibility(false);
-  }
-}
-export function unifyTableInputsHeight(container) {
-  const parent = container || document;
-  const elements = parent.querySelectorAll(".data-table .form-control, #mothau-table .form-control, #danhgiahsdt-table .form-control");
-  elements.forEach((el) => {
-    el.style.setProperty("height", "38px", "important");
-    el.style.setProperty("box-sizing", "border-box", "important");
-    el.style.setProperty("padding", "6px 12px", "important");
-    el.style.setProperty("font-size", "0.85rem", "important");
-    el.style.setProperty("border-radius", "var(--radius-md)", "important");
-  });
-}
+export { checkAndInheritCanceledPackage, restoreCanceledPackage } from "./packageRebidWorkflow.js";
+
+export { unifyTableInputsHeight } from "./packageFormState.js";
 import { generateRecordId } from "../shared/idUtils.js";

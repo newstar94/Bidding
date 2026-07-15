@@ -4,6 +4,7 @@ import glob
 import re
 
 from backend.shared.paths import IMAGE_DIR
+from backend.shared.logging_utils import log_error
 
 
 _load_image_cache: dict = {}
@@ -173,7 +174,7 @@ def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> 
 
         return f"images/{subfolder}/{filename}"
     except Exception as e:
-        print(f"Error saving base64 image: {e}")
+        log_error(e, "Media.SaveImage")
         return base64_str
 
 def load_base64_image(db_value: str) -> str:
@@ -213,5 +214,5 @@ def load_base64_image(db_value: str) -> str:
             _load_image_cache[cache_key] = b64
             return b64
     except Exception as e:
-        print(f"Error loading image path {db_value}: {e}")
+        log_error(e, "Media.LoadImage")
     return db_value

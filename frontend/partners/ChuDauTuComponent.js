@@ -24,9 +24,10 @@ export async function renderChuDauTuTable() {
       slicedData = data.items;
       totalItems = data.totalItems;
     } catch (e) {
+      if (e?.name === "AbortError") return;
       console.error("Failed to fetch paginated investors", e);
       clearVirtualTable(tableBody);
-      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách chủ đầu tư. Vui lòng thử lại." });
+      renderTableError(tableBody, { colspan: 8, message: "Không thể tải danh sách chủ đầu tư. Vui lòng thử lại.", onRetry: () => this.renderChuDauTuTable() });
       return;
     }
   } else {
@@ -124,7 +125,7 @@ export function renderChuDauTuVersionDetails(versionId) {
   }
   const selectOptionsHtml = allRelated.map((v) => {
     const ver = String(parseInt(v.phienBan || 0)).padStart(2, "0");
-    return `<option value="${v.id}" ${v.id === versionId ? "selected" : ""}>${ver}</option>`;
+    return `<option value="${safeAttr(v.id)}" ${v.id === versionId ? "selected" : ""}>${escapeHtml(ver)}</option>`;
   }).join("");
   const versionSelectHtml = `
         <select id="fullpage-cdt-version-select" class="page-version-select" style="min-width: 100px; max-width: 320px; width: auto;" ${allRelated.length < 2 ? "disabled" : ""}>
@@ -138,66 +139,66 @@ export function renderChuDauTuVersionDetails(versionId) {
             <div class="detail-header-block" style="padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;">
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${cdt.maChuDauTu || "--"}</span>
+                        <span class="detail-code partner-identity-code" style="margin: 0; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;">${escapeHtml(cdt.maChuDauTu || "--")}</span>
                         <span class="version-separator" style="color: var(--text-muted, #64748b); font-weight: 600;">-</span>
                         ${versionSelectHtml}
                     </div>
                 </div>
-                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${cdt.tenChuDauTu || "Chủ đầu tư chưa có tên"}</h4>
+                <h4 class="detail-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-main);">${escapeHtml(cdt.tenChuDauTu || "Chủ đầu tư chưa có tên")}</h4>
             </div>
 
             <div class="detail-grid">
                 <div class="detail-item">
                     <div class="detail-label">Ngày áp dụng</div>
-                    <div class="detail-value fw-bold">${cdt.ngayApDung ? this.model.formatDate(cdt.ngayApDung) : "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(cdt.ngayApDung ? this.model.formatDate(cdt.ngayApDung) : "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Mã số thuế</div>
-                    <div class="detail-value fw-bold">${cdt.maSoThue || "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(cdt.maSoThue || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tên viết tắt</div>
-                    <div class="detail-value fw-bold">${cdt.tenVietTat || "--"}</div>
+                    <div class="detail-value fw-bold">${escapeHtml(cdt.tenVietTat || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Đại diện CĐT</div>
-                    <div class="detail-value">${cdt.daiDienCdt ? cdt.danhXung + " " + cdt.daiDienCdt : "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.daiDienCdt ? `${cdt.danhXung || ""} ${cdt.daiDienCdt}`.trim() : "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Chức vụ người đại diện</div>
-                    <div class="detail-value">${cdt.chucVuDaiDien || "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.chucVuDaiDien || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Chức vụ người đứng đầu</div>
-                    <div class="detail-value">${cdt.chucVuNguoiDungDau || "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.chucVuNguoiDungDau || "--")}</div>
                 </div>
                 <div class="detail-item" style="grid-column: span 2;">
                     <div class="detail-label">Địa chỉ</div>
-                    <div class="detail-value">${addressStr || "--"}</div>
+                    <div class="detail-value">${escapeHtml(addressStr || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Số điện thoại</div>
-                    <div class="detail-value">${cdt.soDienThoai || "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.soDienThoai || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Email liên hệ</div>
-                    <div class="detail-value">${cdt.email || "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.email || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Số tài khoản</div>
-                    <div class="detail-value fw-bold text-blue">${cdt.soTaiKhoan || "--"}</div>
+                    <div class="detail-value fw-bold text-blue">${escapeHtml(cdt.soTaiKhoan || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Nơi mở tài khoản</div>
-                    <div class="detail-value">${cdt.noiMoTaiKhoan || "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.noiMoTaiKhoan || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Mã QHNS</div>
-                    <div class="detail-value">${cdt.maQHNS || "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.maQHNS || "--")}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Cơ quan chủ quản</div>
-                    <div class="detail-value">${cdt.coQuanChuQuan || "--"}</div>
+                    <div class="detail-value">${escapeHtml(cdt.coQuanChuQuan || "--")}</div>
                 </div>
             </div>
         </div>
