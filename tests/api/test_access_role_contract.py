@@ -2,7 +2,6 @@ import sqlite3
 
 from backend.auth.auth_service import (
     build_user_access_payload,
-    provision_user_organization,
 )
 from backend.auth.roles import effective_access_roles, normalize_platform_role
 from backend.db.schema import SCHEMA_DINH_NGHIA
@@ -85,30 +84,17 @@ def test_legacy_business_account_role_normalizes_to_user():
     assert effective_access_roles("manager", "employee") == ["employee"]
 
 
-def test_provisioning_always_creates_an_owner(monkeypatch):
+def test_account_without_membership_has_no_organization():
     connection = _access_connection()
     cursor = connection.cursor()
-    monkeypatch.setattr(
-        "backend.auth.auth_service.stable_org_id",
-        lambda _value: "org-new",
-    )
-    organization_id = provision_user_organization(cursor, "user-new", "New User")
-
-    membership = cursor.execute(
-        "SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc WHERE user_id = 'user-new'"
-    ).fetchone()
-    assert organization_id == "org-new"
-    assert membership[0] == "owner"
-    workspace = cursor.execute(
-        "SELECT scope_type, personal_owner_user_id FROM to_chuc WHERE id = 'org-new'"
-    ).fetchone()
-    assert tuple(workspace) == ("personal", "user-new")
     access_payload = build_user_access_payload(cursor, "user-new", "user")
-    assert access_payload["active_org_id"] == "org-new"
-    assert access_payload["organizations"][0]["scope_type"] == "personal"
+    assert access_payload["active_org_id"] is None
+    assert access_payload["organizations"] == []
+    assert access_payload["membership_role"] is None
+    assert access_payload["effective_roles"] == ["employee"]
 
 
-def test_business_membership_supersedes_personal_workspace():
+def test_personal_workspace_is_never_exposed_as_an_organization():
     connection = _access_connection()
     cursor = connection.cursor()
     cursor.execute(

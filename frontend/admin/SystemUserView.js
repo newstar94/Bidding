@@ -25,6 +25,8 @@ export function updateActiveUserProfileDisplay() {
     p.textContent = `Chế độ: ${user.title}`;
     const orgPill = document.getElementById("header-active-org-pill");
     const orgPillName = document.getElementById("header-active-org-name");
+    const orgPillContainer = document.getElementById("workspace-pill-container");
+    if (orgPillContainer) orgPillContainer.hidden = !activeOrg;
     if (orgPill && orgPillName) {
       if (activeOrg) {
         orgPillName.textContent = orgs.find((organization) => organization.id === activeOrg)?.name || activeOrg;

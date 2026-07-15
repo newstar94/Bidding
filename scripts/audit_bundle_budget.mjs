@@ -10,9 +10,8 @@ const entryKey = "frontend/app/app.js";
 const limits = {
   initialRawBytes: 400 * 1024,
   initialGzipBytes: 110 * 1024,
-  // Secure production chunks include identifier obfuscation and controlled
-  // dead-code injection. Keep the lazy ceiling explicit instead of allowing
-  // unbounded growth; transfer size remains visible in the audit output.
+  // Secure production chunks include identifier obfuscation. Keep the lazy
+  // ceiling explicit; transfer size remains visible in the audit output.
   largestLazyRawBytes: 320 * 1024
 };
 

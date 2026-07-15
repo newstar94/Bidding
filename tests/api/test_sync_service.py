@@ -4,8 +4,6 @@ import pytest
 
 from backend.app import app  # noqa: F401 - initializes backend import paths
 from backend.auth.auth_helper import SessionRole
-from backend.auth.auth_service import provision_user_organization
-from backend.auth import session_utils
 from backend.db import db_utils
 from backend.db.db_helper import SQLiteDatabase
 import backend.sync.service as sync_service
@@ -172,61 +170,3 @@ async def test_custom_paper_status_round_trip_reload_and_contract_use(monkeypatc
     ).fetchone()[0]
     connection.close()
     assert contract_status == "Đã nhận hồ sơ"
-
-
-@pytest.mark.anyio
-async def test_personal_workspace_owns_create_and_update_when_user_has_no_business_org(monkeypatch, tmp_path):
-    database = SQLiteDatabase(tmp_path / "personal-workspace-sync.db")
-    monkeypatch.setattr(db_utils, "database", database)
-    monkeypatch.setenv("ADMIN_PASSWORD", "Test-only-password-123!")
-    db_utils.khoi_tao_va_di_tru_he_thong()
-
-    connection = database.get_connection()
-    connection.execute(
-        """INSERT INTO tai_khoan (
-               id, ten_dang_nhap, username_norm, mat_khau, email, email_norm, vai_tro
-           ) VALUES ('personal-user', 'personal_user', 'personal_user', 'test-hash',
-                     'personal@example.com', 'personal@example.com', 'user')"""
-    )
-    cursor = connection.cursor()
-    personal_workspace_id = provision_user_organization(cursor, "personal-user", "Người dùng cá nhân")
-    connection.commit()
-    connection.close()
-
-    role = SessionRole("user", "personal-user")
-    monkeypatch.setattr(sync_service, "database", database)
-    monkeypatch.setattr(sync_service, "verify_session", lambda _request: (True, role))
-    monkeypatch.setattr(session_utils, "database", database)
-    session_utils._org_cache.clear()
-    monkeypatch.setattr(sync_service, "get_active_org", session_utils.get_active_org)
-
-    create_response = await sync_service.process_sync_request(
-        _DataRequest({
-            "custompaperstatuses": [{
-                "id": "personal-status",
-                "name": "Bản nháp cá nhân",
-                "color": "#2563eb",
-            }]
-        })
-    )
-    assert create_response.status_code == 200
-
-    update_response = await sync_service.process_sync_request(
-        _DataRequest({
-            "custompaperstatuses": [{
-                "id": "personal-status",
-                "name": "Đã cập nhật cá nhân",
-                "color": "#16a34a",
-                "expectedVersion": 1,
-            }]
-        })
-    )
-    assert update_response.status_code == 200
-
-    connection = database.get_connection()
-    row = connection.execute(
-        """SELECT organization_id, name FROM trang_thai_ho_so_giay
-           WHERE id = 'personal-status'"""
-    ).fetchone()
-    connection.close()
-    assert tuple(row) == (personal_workspace_id, "Đã cập nhật cá nhân")

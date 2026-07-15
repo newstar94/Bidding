@@ -52,6 +52,9 @@ export function setupSyncUx() {
   const button = document.getElementById("btn-force-sync");
   button?.addEventListener("click", () => {
     if (this._syncConflict) void this.resolveSyncConflict();
+    else if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
+      showSyncErrorDetails(this, this.model.syncErrors);
+    }
     else if ((this.model?.getPendingMutationSummary?.().pendingCount || 0) > 0) void this.autoSync();
     else void this.forceSyncData(false, false);
   });
@@ -248,6 +251,32 @@ function renderChangedState(controller, changedKeys, { isBackground = false } = 
   }
   return Promise.all(renderPromises);
 }
+export function buildSyncErrorDetailLines(errors, limit = 20) {
+  if (!Array.isArray(errors)) return [];
+  return errors.slice(0, limit).map((error, index) => {
+    const record = [error?.table, error?.id].filter(Boolean).join("/");
+    const field = error?.path || error?.field || "";
+    const location = field || record || "Không xác định được vị trí";
+    const recordSuffix = record && field && !field.startsWith(record) ? ` · Bản ghi: ${record}` : "";
+    const reason = error?.message || "Giá trị không đáp ứng quy tắc kiểm tra dữ liệu.";
+    const code = error?.code ? `\n   Mã lỗi: ${error.code}` : "";
+    return `${index + 1}. Vị trí: ${location}${recordSuffix}\n   Nguyên nhân: ${reason}${code}`;
+  });
+}
+
+function showSyncErrorDetails(controller, errors) {
+  if (!controller?.view || typeof controller.view.customAlert !== "function") return;
+  const detailLines = buildSyncErrorDetailLines(errors);
+  const more = errors.length > detailLines.length
+    ? `\n\n... và ${errors.length - detailLines.length} lỗi khác.`
+    : "";
+  controller.view.customAlert(
+    `Chi tiết ${errors.length} lỗi đồng bộ`,
+    detailLines.join("\n\n") + more,
+    "alert-triangle"
+  );
+}
+
 function showSyncErrorReport(controller, errors) {
   if (!controller || !Array.isArray(errors) || errors.length === 0) return;
   if (controller.model) {
@@ -260,19 +289,7 @@ function showSyncErrorReport(controller, errors) {
       "error",
       {
         actionLabel: "Xem lỗi",
-        onAction: () => {
-          if (controller.view && typeof controller.view.customAlert === "function") {
-            const detailLines = errors.slice(0, 20).map((err, index) => {
-              const table = err.table || "unknown";
-              const id = err.id || "";
-              const message = err.message || String(err);
-              return `${index + 1}. [${table}${id ? `/${id}` : ""}] ${message}`;
-            });
-            const more = errors.length > 20 ? `
-... và ${errors.length - 20} lỗi khác.` : "";
-            controller.view.customAlert("Lỗi đồng bộ dữ liệu", detailLines.join("\n") + more, "alert-triangle");
-          }
-        }
+        onAction: () => showSyncErrorDetails(controller, errors)
       }
     );
   }
@@ -315,6 +332,12 @@ export function detailRecordExists(model, tableKey, lookup) {
     if (item.referenceOnly === false) return true;
     return hasMeaningfulValue(item.organizationId) || (completenessFields[tableKey] || []).some((field) => hasMeaningfulValue(item[field]));
   });
+}
+
+export function getSyncValidationErrors(data) {
+  if (Array.isArray(data?.errors)) return data.errors;
+  if (Array.isArray(data?.fields?.errors)) return data.fields.errors;
+  return [];
 }
 export async function fetchRecordByLookup(tableKey, lookup) {
   if (!tableKey || !lookup) return null;
@@ -388,6 +411,7 @@ export function autoSync() {
   }).then(async ({ ok, status, data }) => {
     if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true, status, data };
     if (!ok || data.status === "error") {
+      const validationErrors = getSyncValidationErrors(data);
       if (status === 409 || data.status === "conflict") {
         this._syncConflict = { status, data, createdAt: Date.now() };
         this.updateSyncState({ phase: "conflict" });
@@ -408,8 +432,8 @@ export function autoSync() {
         }
         return { ok: false, status, data, conflict: true };
       }
-      if (Array.isArray(data.errors) && data.errors.length > 0) {
-        const rejectedRecords = typeof this.model?.discardRejectedMutations === "function" ? this.model.discardRejectedMutations(data.errors) : [];
+      if (validationErrors.length > 0) {
+        const rejectedRecords = typeof this.model?.discardRejectedMutations === "function" ? this.model.discardRejectedMutations(validationErrors) : [];
         const changedKeys = new Set();
         for (const rejected of rejectedRecords) {
           let serverRecord = null;
@@ -435,7 +459,7 @@ export function autoSync() {
           logic: [],
           duplicate: []
         };
-        data.errors.forEach((err) => {
+        validationErrors.forEach((err) => {
           const msg = err.message || "";
           if (msg.includes("không được để trống")) {
             categorized.missing.push(msg);
@@ -470,16 +494,22 @@ export function autoSync() {
           categorized.duplicate.forEach((m) => msgLines.push("  • " + m));
         }
         const fullMsg = msgLines.join("\n");
-        console.error("[Sync Error]\n" + fullMsg, data.errors);
-        showSyncErrorReport(this, data.errors);
+        console.error("[Sync Error]\n" + fullMsg, {
+          requestId: data.requestId || null,
+          errors: validationErrors
+        });
+        showSyncErrorReport(this, validationErrors);
       } else {
         console.error("[Sync Error]", data.error || data.message || "Đồng bộ thất bại");
         if (this.view && typeof this.view.showToast === "function") {
           this.view.showToast("Lỗi đồng bộ", data.error || data.message || "Đồng bộ thất bại", "error");
         }
       }
-      this.updateSyncState({ phase: "error", message: data.error || data.message || "Lỗi đồng bộ" });
-      return { ok: false, status, data, validation: Array.isArray(data.errors) && data.errors.length > 0 };
+      const syncMessage = validationErrors.length > 0
+        ? `${validationErrors.length} lỗi dữ liệu · Nhấn để xem`
+        : data.error || data.message || "Lỗi đồng bộ";
+      this.updateSyncState({ phase: "error", message: syncMessage });
+      return { ok: false, status, data, validation: validationErrors.length > 0 };
     }
     if (data.timestamp) {
       currentWorkspaceStorage(this).setItem("bf_last_sync_timestamp", data.timestamp);
@@ -487,6 +517,7 @@ export function autoSync() {
     if (data.syncVersion !== void 0 && data.syncVersion !== null) {
       currentWorkspaceStorage(this).setItem("bf_last_sync_version", data.syncVersion.toString());
     }
+    if (this.model) this.model.syncErrors = [];
     if (this.model && typeof this.model.clearSyncedMutationQueue === "function") {
       this.model.clearSyncedMutationQueue(snapshot);
     } else {

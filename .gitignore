@@ -74,3 +74,4 @@ release/
 *.pid.lock
 *.local
 .idea/
+.codex

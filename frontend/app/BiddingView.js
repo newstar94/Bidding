@@ -594,6 +594,8 @@ export class BiddingView {
       const okBtn = document.getElementById("btn-dialog-ok");
       const cancelBtn = document.getElementById("btn-dialog-cancel");
       const closeBtn = document.getElementById("btn-dialog-close");
+      const buttonContainer = document.getElementById("dialog-buttons");
+      buttonContainer?.classList.remove("dialog-buttons-single");
       titleEl.textContent = title;
       messageEl.textContent = message;
       setRuntimeStyle(cancelBtn, "display", "block");
@@ -652,6 +654,7 @@ export class BiddingView {
       const iconEl = document.getElementById("dialog-icon");
       const buttonContainer = document.getElementById("dialog-buttons");
       const closeBtn = document.getElementById("btn-dialog-close");
+      buttonContainer?.classList.remove("dialog-buttons-single");
       titleEl.textContent = title;
       messageEl.textContent = message;
       if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
@@ -737,6 +740,8 @@ export class BiddingView {
       const okBtn = document.getElementById("btn-dialog-ok");
       const cancelBtn = document.getElementById("btn-dialog-cancel");
       const closeBtn = document.getElementById("btn-dialog-close");
+      const buttonContainer = document.getElementById("dialog-buttons");
+      buttonContainer?.classList.remove("dialog-buttons-single");
       titleEl.textContent = title;
       iconEl.setAttribute("data-lucide", "help-circle");
       setRuntimeStyle(iconContainer, "background", "rgba(59, 130, 246, 0.1)");
@@ -917,6 +922,8 @@ export class BiddingView {
       const okBtn = document.getElementById("btn-dialog-ok");
       const cancelBtn = document.getElementById("btn-dialog-cancel");
       const closeBtn = document.getElementById("btn-dialog-close");
+      const buttonContainer = document.getElementById("dialog-buttons");
+      buttonContainer?.classList.add("dialog-buttons-single");
       titleEl.textContent = title;
       const plainMessage = String(message || "").replace(/<br\s*\/?>/gi, "\n");
       if (plainMessage && plainMessage.includes("\n")) {
@@ -1034,6 +1041,8 @@ export class BiddingView {
       const okBtn = document.getElementById("btn-dialog-ok");
       const cancelBtn = document.getElementById("btn-dialog-cancel");
       const closeBtn = document.getElementById("btn-dialog-close");
+      const buttonContainer = document.getElementById("dialog-buttons");
+      buttonContainer?.classList.remove("dialog-buttons-single");
       titleEl.textContent = title;
       messageEl.textContent = message;
       setRuntimeStyle(cancelBtn, "display", "block");

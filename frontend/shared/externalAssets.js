@@ -1,3 +1,5 @@
+import { trustedScriptURL } from "./trustedTypes.js";
+
 const SCRIPT_LOADERS = /* @__PURE__ */ new Map();
 const STYLE_LOADERS = /* @__PURE__ */ new Map();
 export function loadScriptOnce(src, globalName) {
@@ -15,7 +17,7 @@ export function loadScriptOnce(src, globalName) {
       return;
     }
     const script = document.createElement("script");
-    script.src = src;
+    script.src = trustedScriptURL(src);
     script.async = true;
     script.onload = () => resolve(globalName ? window[globalName] : true);
     script.onerror = () => reject(new Error(`Không thể tải thư viện: ${src}`));

@@ -62,3 +62,8 @@ export function trustedHTML(value) {
   const source = assertSafeHTML(value);
   return trustedHtmlPolicy ? trustedHtmlPolicy.createHTML(source) : migrateStyleAttributes(source);
 }
+
+export function trustedScriptURL(value) {
+  const source = assertSafeScriptURL(value);
+  return trustedHtmlPolicy ? trustedHtmlPolicy.createScriptURL(source) : source;
+}

@@ -112,6 +112,10 @@ a:hover {
   flex-shrink: 0;
 }
 
+:where([hidden]) {
+  display: none !important;
+}
+
 .sync-status-pill {
   display: inline-flex;
   align-items: center;

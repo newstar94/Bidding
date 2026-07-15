@@ -1,4 +1,4 @@
-import "../shared/trustedTypes.js";
+import { trustedScriptURL } from "../shared/trustedTypes.js";
 import { APP_DEBUG } from "./appConfig.js";
 import { bootstrapWorkspace } from "./workspaceBootstrap.js";
 import { bootstrapAuthShell } from "../auth/AuthShell.js";
@@ -65,7 +65,7 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
     return;
   }
   const script = document.createElement("script");
-  script.src = "/vendor/lucide/lucide.min.js?v=1.21.0.1";
+  script.src = trustedScriptURL("/vendor/lucide/lucide.min.js?v=1.21.0.1");
   script.async = true;
   script.dataset.bfLucide = "true";
   const handleRuntimeError = (event) => {

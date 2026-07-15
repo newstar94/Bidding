@@ -55,14 +55,11 @@
         image.src = user.avatar;
         image.alt = "Avatar";
         avatar.replaceChildren(image);
-        avatar.style.background = "none";
+        avatar.classList.add("has-image");
       } else {
+        avatar.classList.remove("has-image");
         avatar.textContent = name.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-        avatar.style.background = activeRole === "super_admin"
-          ? "linear-gradient(135deg, #a855f7 0%, #4f46e5 100%)"
-          : activeRole === "manager"
-            ? "linear-gradient(135deg, #3b82f6 0%, #10b981 100%)"
-            : "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)";
+        avatar.dataset.bfRole = activeRole;
       }
     }
 
@@ -80,19 +77,20 @@
     }
     const orgPill = document.getElementById("header-active-org-pill");
     const orgName = document.getElementById("header-active-org-name");
+    const orgPillContainer = document.getElementById("workspace-pill-container");
+    if (orgPillContainer) orgPillContainer.hidden = !selectedOrganization;
     if (orgPill && orgName && selectedOrganization) {
       orgName.textContent = selectedOrganization.name;
-      orgPill.style.display = "flex";
     }
 
     document.querySelectorAll(".role-menu-superadmin").forEach((item) => {
-      item.style.display = activeRole === "super_admin" ? "block" : "none";
+      item.hidden = activeRole !== "super_admin";
     });
     document.querySelectorAll(".role-menu-manager").forEach((item) => {
-      item.style.display = activeRole === "manager" ? "block" : "none";
+      item.hidden = activeRole !== "manager";
     });
     document.querySelectorAll(".role-menu-client").forEach((item) => {
-      item.style.display = activeRole === "super_admin" ? "none" : "block";
+      item.hidden = activeRole === "super_admin";
     });
   };
 

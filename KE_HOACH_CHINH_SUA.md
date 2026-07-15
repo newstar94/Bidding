@@ -360,7 +360,7 @@ Một hạng mục chỉ được coi là hoàn thành khi:
 - [ ] HTTPS, secure cookie, CORS, WebSocket origin và proxy trust đã cấu hình.
 - [ ] Volume database/media/backup đã mã hóa.
 - [x] Backup/restore đã diễn tập tự động trên WAL database: metadata SHA-256, schema, integrity/FK và dữ liệu sau restore đều được đối chiếu.
-- [x] Cổng `npm run check` đạt trên secure build và extracted production artifact: lint/audit/build/budget, 191 unit, 249 API và runtime smoke đều đạt; Playwright E2E đạt 10/10 với CSP enforce.
+- [x] Cổng `npm run check` đạt trên secure build và extracted production artifact: lint/audit/build/budget, 192 unit, 249 API và runtime smoke đều đạt; Playwright E2E đạt 10/10 với CSP enforce.
 - [x] Production allowlist/manifest cấm `.env`, database, log, temp, test/source frontend; secret scan source và kiểm tra artifact đều đạt.
 - [ ] Monitoring cho readiness, lỗi, độ trễ, disk, WAL và backup đã hoạt động.
 - [x] Có runbook xử lý mất kết nối, database lock, restore và thu hồi session.

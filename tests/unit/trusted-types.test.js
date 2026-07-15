@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertSafeHTML, assertSafeScriptURL, trustedHTML } from "../../frontend/shared/trustedTypes.js";
+import { assertSafeHTML, assertSafeScriptURL, trustedHTML, trustedScriptURL } from "../../frontend/shared/trustedTypes.js";
 
 test("Trusted HTML accepts escaped application markup", () => {
   assert.equal(trustedHTML('<span class="badge">Đã lưu</span>'), '<span class="badge">Đã lưu</span>');
@@ -20,4 +20,5 @@ test("Trusted Types only permits pinned application and Google script URLs", () 
   assert.equal(assertSafeScriptURL("/vendor/lucide/lucide.min.js?v=1"), "/vendor/lucide/lucide.min.js?v=1");
   assert.equal(assertSafeScriptURL("https://accounts.google.com/gsi/client"), "https://accounts.google.com/gsi/client");
   assert.throws(() => assertSafeScriptURL("https://evil.example/app.js"), /Unapproved script URL/);
+  assert.equal(trustedScriptURL("https://accounts.google.com/gsi/client"), "https://accounts.google.com/gsi/client");
 });

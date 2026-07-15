@@ -67,7 +67,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const enableObfuscation = mode === 'secure' || env.ENABLE_JS_OBFUSCATION === 'true';
   const enableDebugProtection = env.ENABLE_JS_DEBUG_PROTECTION === 'true';
-  const enableDeadCodeInjection = enableObfuscation && env.ENABLE_JS_DEAD_CODE_INJECTION !== 'false';
+  // Dead-code injection increases transfer/parse cost and is not a security
+  // boundary. Keep it opt-in for special distributions, never the default.
+  const enableDeadCodeInjection = enableObfuscation && env.ENABLE_JS_DEAD_CODE_INJECTION === 'true';
   const isProductionBuild = mode === 'production' || mode === 'secure';
 
   return {

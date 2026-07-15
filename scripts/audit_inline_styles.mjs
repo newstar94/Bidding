@@ -6,8 +6,12 @@ const counts = { attributes: 0, propertyWrites: 0, cssTextWrites: 0 };
 
 function walk(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (["vendor", "dist"].includes(entry.name)) continue;
     const fullPath = path.join(directory, entry.name);
+    const normalized = fullPath.replaceAll("\\", "/");
+    if (entry.name === "dist"
+      || normalized.startsWith("views/vendor/flatpickr/")
+      || normalized.startsWith("views/vendor/xlsx/")
+      || normalized === "views/vendor/lucide/lucide.min.js") continue;
     if (entry.isDirectory()) walk(fullPath);
     else if (/\.(?:js|html)$/.test(entry.name)) {
       const source = fs.readFileSync(fullPath, "utf8");

@@ -110,3 +110,11 @@ def test_registration_conflicts_are_409_and_login_keeps_password_spaces():
             json={"username": username.upper(), "password": password, "remember": False},
         )
         assert correct.status_code == 200
+        session = client.post("/api/auth/check-session", json={"remember": False})
+        assert session.status_code == 200
+        user = session.json()["user"]
+        assert user["platform_role"] == "user"
+        assert user["membership_role"] is None
+        assert user["effective_roles"] == ["employee"]
+        assert user["organizations"] == []
+        assert user["active_org_id"] is None

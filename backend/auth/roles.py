@@ -30,4 +30,6 @@ def effective_access_roles(platform_role, membership_role=None):
         "manager": ["manager", "employee"],
         "employee": ["employee"],
     }
-    return hierarchy.get(membership_role, [])
+    # A normal platform account is always an employee. Organization
+    # membership can elevate that account only inside the selected workspace.
+    return hierarchy.get(membership_role, ["employee"])

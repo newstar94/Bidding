@@ -114,6 +114,16 @@ async def process_sync_request(request, broadcast_callback=None):
             )
         shape_errors = validate_sync_payload_shape(data)
         if shape_errors:
+            log_sync_error(
+                "Payload shape invalid: "
+                + json.dumps(
+                    [
+                        {"field": error.get("field"), "code": error.get("code")}
+                        for error in shape_errors
+                    ],
+                    ensure_ascii=False,
+                )
+            )
             return error_response(
                 request,
                 "SYNC_VALIDATION_FAILED",

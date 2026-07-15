@@ -21,7 +21,6 @@ from backend.auth.auth_service import (
     get_rate_limit_decision,
     rate_limit_response,
     generate_otp,
-    provision_user_organization,
 )
 from backend.db.id_utils import generate_record_id
 from backend.auth.username_validator import validate_username
@@ -116,7 +115,6 @@ async def register_api(request):
             "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (user_uuid, username, username, hash_password(password), name, role, email, email, 0, code, expiry)
         )
-        provision_user_organization(cursor, user_uuid, name)
         conn.commit()
 
         tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"

@@ -77,3 +77,6 @@ def test_google_first_login_set_username_and_session_ready_with_csrf(monkeypatch
         assert session_payload["valid"] is True
         assert session_payload["user"]["needs_username"] is False
         assert session_payload["user"]["username"] == username
+        assert session_payload["user"]["membership_role"] is None
+        assert session_payload["user"]["effective_roles"] == ["employee"]
+        assert session_payload["user"]["organizations"] == []

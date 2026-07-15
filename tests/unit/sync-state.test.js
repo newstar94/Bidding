@@ -4,8 +4,10 @@ import test from 'node:test';
 import { applySyncPayload } from '../../frontend/app/syncMergeUtils.js';
 import {
     applyDashboardSummaryAfterMutation,
+    buildSyncErrorDetailLines,
     collectCommittedMutationKeys,
     detailRecordExists,
+    getSyncValidationErrors,
     mutationAffectsDashboard,
     setupWebSocketConnection,
     shouldReconnectWebSocket
@@ -36,6 +38,29 @@ function createModel() {
         persistData() {}
     };
 }
+
+test('sync validation errors support the canonical nested error contract', () => {
+    const nested = [{ path: 'goithau[0].giaGoiThau', code: 'INVALID_MONEY' }];
+    assert.equal(getSyncValidationErrors({ fields: { errors: nested } }), nested);
+    assert.deepEqual(getSyncValidationErrors({ fields: {} }), []);
+});
+
+test('sync validation errors retain the legacy flat response compatibility', () => {
+    const legacy = [{ table: 'goithau', id: 'gt-1', message: 'invalid' }];
+    assert.equal(getSyncValidationErrors({ errors: legacy }), legacy);
+});
+
+test('sync error details identify the field, record, reason and validation code', () => {
+    assert.deepEqual(buildSyncErrorDetailLines([{
+        table: 'goithau',
+        id: 'gt-1',
+        field: 'giaGoiThau',
+        message: 'Giá gói thầu không hợp lệ.',
+        code: 'INVALID_MONEY'
+    }]), [
+        '1. Vị trí: giaGoiThau · Bản ghi: goithau/gt-1\n   Nguyên nhân: Giá gói thầu không hợp lệ.\n   Mã lỗi: INVALID_MONEY'
+    ]);
+});
 
 test('sync snapshot installs the backend package field policy', () => {
     const model = createModel();

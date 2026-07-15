@@ -59,3 +59,20 @@ test("organization names with commas remain one ID-backed DTO", () => {
   assert.equal(organizationDisplayName(user), "Công ty A, Miền Nam, B");
   assert.equal(Object.hasOwn(user, "organization_name"), false);
 });
+
+test("a user without an organization remains employee-only", () => {
+  const storage = memoryStorage({ bf_active_org: "stale-org" });
+  const user = {};
+  const selected = applyAccessContext(user, {
+    platform_role: "user",
+    membership_role: null,
+    effective_roles: ["employee"],
+    organizations: []
+  }, storage);
+
+  assert.equal(selected, null);
+  assert.equal(user.membershipRole, null);
+  assert.equal(user.dbRole, "employee");
+  assert.deepEqual(user.dbRoles, ["employee"]);
+  assert.equal(storage.getItem("bf_active_org"), null);
+});

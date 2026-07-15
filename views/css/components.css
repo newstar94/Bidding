@@ -514,6 +514,18 @@
   background-color: var(--warning-soft);
   color: var(--warning);
 }
+.profile-avatar.has-image {
+  background: none;
+}
+.profile-avatar[data-bf-role="super_admin"] {
+  background: linear-gradient(135deg, #a855f7 0%, #4f46e5 100%);
+}
+.profile-avatar[data-bf-role="manager"] {
+  background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%);
+}
+.profile-avatar[data-bf-role="employee"] {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+}
 .badge-opened {
   background-color: var(--warning-soft);
   color: var(--warning);
@@ -759,6 +771,20 @@
   overflow-y: scroll;
   flex: 1;
   scroll-behavior: smooth;
+}
+#dialog-buttons > .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 38px;
+}
+
+#dialog-buttons.dialog-buttons-single {
+  justify-content: center;
+}
+
+#dialog-buttons.dialog-buttons-single > #btn-dialog-ok {
+  flex: 0 1 196px;
+  width: min(100%, 196px);
 }
 
 .modal-footer {

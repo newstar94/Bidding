@@ -9,6 +9,10 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('anonymous user sees the login screen', async ({ page }) => {
+  const trustedTypesErrors = [];
+  page.on('pageerror', error => {
+    if (/TrustedScriptURL|requires.*Trusted/i.test(error.message)) trustedTypesErrors.push(error.message);
+  });
   const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   expect(response?.ok()).toBeTruthy();
@@ -19,6 +23,7 @@ test('anonymous user sees the login screen', async ({ page }) => {
   await expect(page.locator('#login-password')).toBeVisible();
   await expect(page.locator('#google-signin-btn-container')).toHaveAttribute('data-state', 'error');
   await expect(page.locator('#google-signin-status')).toContainText('Không thể tải đăng nhập Google');
+  expect(trustedTypesErrors).toEqual([]);
 });
 
 test('login form supports basic input interactions', async ({ page }) => {
@@ -61,12 +66,17 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
 });
 
 test('sync state and dialogs expose keyboard and screen-reader behavior', async ({ page, credentials }) => {
+  const cspViolations = [];
+  page.on('console', message => {
+    if (/Content Security Policy|style-src-attr|inline style/i.test(message.text())) cspViolations.push(message.text());
+  });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();
   await expect(page.locator('#auth-overlay')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
+  expect(cspViolations).toEqual([]);
 
   const syncState = page.locator('#btn-force-sync');
   await expect(syncState).toHaveAttribute('aria-live', /polite|assertive/);
@@ -90,6 +100,34 @@ test('sync state and dialogs expose keyboard and screen-reader behavior', async 
   await page.keyboard.press('Escape');
   await expect(modal).not.toHaveClass(/active/);
   await expect(trigger).toBeFocused();
+
+  await page.evaluate(async () => {
+    const { ensureFlatpickrLoaded } = await import('../../frontend/shared/externalAssets.js');
+    await ensureFlatpickrLoaded();
+    const input = document.createElement('input');
+    input.id = 'csp-flatpickr-probe';
+    document.body.appendChild(input);
+    window.flatpickr(input, {}).open();
+  });
+  await expect(page.locator('.flatpickr-calendar.open')).toBeVisible();
+  expect(cspViolations).toEqual([]);
+  await page.evaluate(() => {
+    const input = document.getElementById('csp-flatpickr-probe');
+    input?._flatpickr?.destroy();
+    input?.remove();
+  });
+
+  await page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    void getAppController().view.customConfirm('Xác nhận đăng xuất', 'Bạn có chắc chắn muốn đăng xuất?', 'log-out');
+  });
+  const customDialog = page.locator('#modal-custom-dialog');
+  await expect(customDialog).toHaveClass(/active/);
+  const cancelBox = await customDialog.locator('#btn-dialog-cancel').boundingBox();
+  const confirmBox = await customDialog.locator('#btn-dialog-ok').boundingBox();
+  expect(Math.abs((cancelBox?.width || 0) - (confirmBox?.width || 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((cancelBox?.height || 0) - (confirmBox?.height || 0))).toBeLessThanOrEqual(1);
+  await customDialog.locator('#btn-dialog-cancel').click();
 });
 
 test('Word template F5 never reveals the dashboard after the loader', async ({ page, credentials }) => {

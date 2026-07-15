@@ -100,8 +100,10 @@ def collect_runtime_files() -> list[tuple[Path, Path]]:
             "Secure frontend marker is missing. Run `npm run build:secure` before packaging."
         )
     secure_build = json.loads(secure_build_path.read_text(encoding="utf-8"))
-    if not secure_build.get("deadCodeInjection"):
-        raise RuntimeError("Production packaging requires dead-code injection to be enabled.")
+    if int(secure_build.get("version", 0)) < 2 or not isinstance(
+        secure_build.get("deadCodeInjection"), bool
+    ):
+        raise RuntimeError("Secure frontend marker is invalid or unsupported.")
     return [selected[key] for key in sorted(selected)]
 
 

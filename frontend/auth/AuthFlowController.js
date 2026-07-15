@@ -1,4 +1,5 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
+import { trustedScriptURL } from "../shared/trustedTypes.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
 import { setActiveOrganizationId } from "../app/workspaceState.js";
@@ -667,7 +668,7 @@ export function setupAuth() {
       showGoogleSignInState("Không thể tải đăng nhập Google. Vui lòng kiểm tra kết nối mạng.", "error");
     }, { once: true });
     if (!existingScript) {
-      script.src = "https://accounts.google.com/gsi/client";
+      script.src = trustedScriptURL("https://accounts.google.com/gsi/client");
       script.async = true;
       script.defer = true;
       script.dataset.bfGoogleIdentity = "true";

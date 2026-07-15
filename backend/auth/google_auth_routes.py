@@ -23,7 +23,6 @@ from backend.auth.auth_service import (
     rate_limit_response,
     record_rate_limit_failure,
     build_user_access_payload,
-    provision_user_organization,
     _SECURE_COOKIES,
     SESSION_EXPIRY_HOURS,
     SESSION_INACTIVITY_TIMEOUT_HOURS,
@@ -263,8 +262,6 @@ async def google_login_api(request):
             )
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
-            provision_user_organization(cursor, new_id, name)
-
             pending_audits.append((
                 "auth.google_auto_register",
                 {

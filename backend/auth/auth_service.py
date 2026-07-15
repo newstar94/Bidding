@@ -5,7 +5,6 @@ import hashlib
 import sqlite3
 from dataclasses import dataclass
 from starlette.responses import JSONResponse
-from backend.db.id_utils import stable_org_id
 from backend.auth.roles import (
     effective_access_roles,
     normalize_organization_role,
@@ -152,19 +151,8 @@ def get_user_organizations(cursor, user_id):
         LEFT JOIN organization_subscriptions AS sub ON sub.organization_id = tc.id
         LEFT JOIN goi_dich_vu AS pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
-          AND (
-              tc.scope_type = 'organization'
-              OR NOT EXISTS (
-                  SELECT 1
-                  FROM thanh_vien_to_chuc business_membership
-                  JOIN to_chuc business_org
-                    ON business_org.id = business_membership.organization_id
-                  WHERE business_membership.user_id = tvtc.user_id
-                    AND business_org.scope_type = 'organization'
-              )
-          )
-        ORDER BY CASE tc.scope_type WHEN 'organization' THEN 0 ELSE 1 END,
-                 CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
+          AND tc.scope_type = 'organization'
+        ORDER BY CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
                     WHEN 'owner' THEN 0
                     WHEN 'manager' THEN 1
                     WHEN 'employee' THEN 2
@@ -245,45 +233,3 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
         "package_start_date": subscription.get("start_date") if subscription else None,
         "package_end_date": subscription.get("end_date") if subscription else None,
     }
-
-
-def provision_user_organization(cursor, user_id, display_name):
-    """Create the private workspace owned by a user in the same transaction."""
-
-    cursor.execute(
-        "SELECT 1 FROM thanh_vien_to_chuc WHERE user_id = ? LIMIT 1",
-        (user_id,),
-    )
-    if cursor.fetchone():
-        return None
-    org_id = stable_org_id(f"user:{user_id}")
-    label = str(display_name or "Người dùng").strip() or "Người dùng"
-    org_name = f"Không gian cá nhân của {label} ({str(user_id)[-8:]})"
-    cursor.execute(
-        """INSERT INTO to_chuc (
-               id, ten_to_chuc, scope_type, personal_owner_user_id, trang_thai
-           ) VALUES (?, ?, 'personal', ?, 'active')""",
-        (org_id, org_name, user_id),
-    )
-    cursor.execute(
-        """
-        INSERT INTO thanh_vien_to_chuc
-            (user_id, organization_id, vai_tro_trong_to_chuc)
-        VALUES (?, ?, 'owner')
-        """,
-        (user_id, org_id),
-    )
-    now = int(time.time())
-    cursor.execute(
-        """
-        INSERT INTO organization_subscriptions (
-            organization_id, package_id, status, starts_at, expires_at, member_quota
-        ) VALUES (?, 'silver', 'active', ?, ?, 5)
-        """,
-        (org_id, now, now + 365 * 24 * 60 * 60),
-    )
-    cursor.execute(
-        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 1)",
-        (org_id,),
-    )
-    return org_id
