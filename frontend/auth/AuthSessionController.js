@@ -2,7 +2,30 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { applyAccessContext } from "./accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
-import { isAuthSessionActive } from "./authRuntimeState.js";
+import { claimSessionTermination, isAuthSessionActive } from "./authRuntimeState.js";
+
+export function getSessionTerminationNotice(reason, timeoutHours = 10) {
+  if (reason === "logged_in_elsewhere" || reason === "session_revoked") {
+    return {
+      title: "Tài khoản đăng nhập ở thiết bị khác",
+      message: "Tài khoản của bạn vừa được đăng nhập tại một thiết bị hoặc trình duyệt khác. Phiên làm việc hiện tại đã bị đóng."
+    };
+  }
+  if (reason === "session_idle_expired") {
+    return {
+      title: "Phiên đăng nhập hết hạn",
+      message: `Bạn đã không hoạt động trong ứng dụng hơn ${timeoutHours} giờ. Vui lòng đăng nhập lại.`
+    };
+  }
+  if (reason === "token_expired") {
+    return {
+      title: "Phiên đăng nhập hết hạn",
+      message: "Thời hạn phiên đăng nhập đã kết thúc. Vui lòng đăng nhập lại."
+    };
+  }
+  return null;
+}
+
 export function setupActivityTracker() {
   if (this._activityTrackerBound) return;
   this._activityTrackerBound = true;
@@ -30,24 +53,15 @@ export function checkInactivity() {
     const inactivityLimit = timeoutHours * 60 * 60 * 1e3;
     const idleTime = Date.now() - parseInt(lastActivity, 10);
     if (idleTime > inactivityLimit) {
+      if (!claimSessionTermination()) return true;
       if (this._sessionInterval) clearInterval(this._sessionInterval);
       this.disconnectWebSocket?.(false);
       void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
         console.error("Failed to clear inactive workspace data:", error);
       });
       this.model.clearSessionData();
-      const showSessionExpired = async () => {
-        if (this.view && typeof this.view.customAlert === "function") {
-          await this.view.customAlert("Phiên làm việc hết hạn", "Bạn đã không hoạt động trong ứng dụng hơn " + timeoutHours + " giờ. Vui lòng đăng nhập lại để đảm bảo bảo mật thông tin.", "clock");
-        } else {
-          const banner = document.createElement("div");
-          setRuntimeStyle(banner, "cssText", "position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:14px 24px;font-weight:700;font-size:0.9rem;text-align:center;");
-          banner.textContent = "⏳ Phiên làm việc hết hạn — Vui lòng đăng nhập lại để đảm bảo bảo mật.";
-          document.body.prepend(banner);
-          setTimeout(() => banner.remove(), 5e3);
-        }
-      };
-      showSessionExpired();
+      const notice = getSessionTerminationNotice("session_idle_expired", timeoutHours);
+      this.view?.showToast?.(notice.title, notice.message, "warning");
       const overlay = document.getElementById("auth-overlay");
       if (overlay) {
         setRuntimeStyle(overlay, "display", "flex");
@@ -68,12 +82,14 @@ export function checkInactivity() {
 }
 export function startBackgroundSessionChecker() {
   if (this._sessionInterval) clearInterval(this._sessionInterval);
+  this._sessionExpiryHandled = false;
   const checkSession = () => {
+    if (this._sessionCheckInFlight) return this._sessionCheckInFlight;
     if (this.checkInactivity()) {
       clearInterval(this._sessionInterval);
       return;
     }
-    apiFetch("/api/auth/check-session", {
+    const sessionCheck = apiFetch("/api/auth/check-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ remember: localStorage.getItem("bf_remember_me") === "true" })
@@ -82,6 +98,9 @@ export function startBackgroundSessionChecker() {
       throw new Error("Invalid session");
     }).then(async (data) => {
       if (!data || !data.valid) {
+        if (this._sessionExpiryHandled) return;
+        if (!claimSessionTermination()) return;
+        this._sessionExpiryHandled = true;
         clearInterval(this._sessionInterval);
         this.disconnectWebSocket?.(false);
         void Promise.resolve(this.model.purgeWorkspaceData?.() || this.model.deactivateWorkspace?.()).catch((error) => {
@@ -101,12 +120,10 @@ export function startBackgroundSessionChecker() {
           document.getElementById("login-username").value = "";
           document.getElementById("login-password").value = "";
         }
-        if (data && data.reason === "logged_in_elsewhere") {
-          this.view.showToast("Tài khoản đăng nhập ở thiết bị khác", "Tài khoản của bạn vừa được đăng nhập tại một thiết bị hoặc trình duyệt khác. Phiên làm việc hiện tại đã bị đóng.", "warning");
-        } else {
-          this.view.showToast("Phiên đăng nhập hết hạn", "Phiên đăng nhập của bạn đã hết hiệu lực hoặc không hợp lệ. Vui lòng đăng nhập lại.", "warning");
-        }
+        const notice = getSessionTerminationNotice(data?.reason);
+        if (notice) this.view?.showToast?.(notice.title, notice.message, "warning");
       } else {
+        this._sessionExpiryHandled = false;
         if (data.user) {
           const activeuser = this.model.state.activeuser || {};
           this.model.state.activeuser = activeuser;
@@ -176,6 +193,10 @@ export function startBackgroundSessionChecker() {
     }).catch((err) => {
       console.error("Automatic session check failed:", err);
     });
+    this._sessionCheckInFlight = sessionCheck.finally(() => {
+      this._sessionCheckInFlight = null;
+    });
+    return this._sessionCheckInFlight;
   };
   this._checkSessionNow = checkSession;
   if (!this._sessionVisibilityBound) {

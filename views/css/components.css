@@ -531,7 +531,7 @@
 #header-profile-avatar.has-initials {
   display: flex !important;
   color: #fff !important;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%) !important;
+  background: linear-gradient(135deg, var(--primary, #2563eb) 0%, var(--accent, #7c3aed) 100%) !important;
 }
 
 #header-profile-avatar.has-image {
@@ -545,7 +545,7 @@
 #profile-avatar-fallback:not([hidden]) {
   display: flex !important;
   color: #fff !important;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%) !important;
+  background: linear-gradient(135deg, var(--primary, #2563eb) 0%, var(--accent, #7c3aed) 100%) !important;
 }
 
 .sidebar[data-active-role="super_admin"] .role-menu-superadmin,

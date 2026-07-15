@@ -6,6 +6,7 @@ import { setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { validateUsernameClient } from "./usernameClientPolicy.js";
 import {
+  beginExplicitLogout,
   hideInitLoader,
   isAuthTransitionActive,
   isStaleAuthResult,
@@ -13,6 +14,11 @@ import {
   setAuthSessionActive
 } from "./authRuntimeState.js";
 import { hideAuthOverlay, reloadWithInitLoader, showGoogleSignInState } from "./AuthUi.js";
+
+export function createRegistrationPayload({ username, password, name, email }) {
+  return { username, password, name, email };
+}
+
 export function setupAuth() {
   const overlay = document.getElementById("auth-overlay");
   if (!overlay) return;
@@ -273,6 +279,7 @@ export function setupAuth() {
         : "";
       const confirmed = await this.view.customConfirm("Xác nhận đăng xuất", `Bạn có chắc chắn muốn đăng xuất tài khoản này không?${warning}`, "log-out");
       if (confirmed) {
+        beginExplicitLogout();
         try {
           if (typeof this.autoSync === "function") {
             await this.autoSync();
@@ -413,7 +420,6 @@ export function setupAuth() {
     const email = document.getElementById("register-email").value.trim();
     const password = document.getElementById("register-password").value;
     const confirmPassword = document.getElementById("register-confirm-password").value;
-    const role = "employee";
     const errorDiv = document.getElementById("register-error");
     const successDiv = document.getElementById("register-success");
     setRuntimeStyle(errorDiv, "display", "none");
@@ -439,7 +445,12 @@ export function setupAuth() {
       const res = await apiFetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, name: fullname, email, role })
+        body: JSON.stringify(createRegistrationPayload({
+          username,
+          password,
+          name: fullname,
+          email
+        }))
       });
       const data = await res.json();
       if (!res.ok) {

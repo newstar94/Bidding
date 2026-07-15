@@ -138,3 +138,25 @@ def test_expired_subscription_blocks_direct_protected_workspace_access(monkeypat
 
     with pytest.raises(session_utils.OrgPermissionError, match="hết hạn"):
         session_utils.get_active_org(request, "owner")
+
+
+def test_personal_workspace_does_not_require_a_subscription(monkeypatch, tmp_path):
+    database = _subscription_database(tmp_path / "personal-without-package.db")
+    connection = database.get_connection()
+    connection.execute(
+        """INSERT INTO to_chuc (
+               id, ten_to_chuc, scope_type, personal_owner_user_id, trang_thai
+           ) VALUES ('personal-member-1', 'Không gian cá nhân', 'personal', 'member-1', 'active')"""
+    )
+    connection.execute(
+        """INSERT INTO thanh_vien_to_chuc (
+               user_id, organization_id, vai_tro_trong_to_chuc
+           ) VALUES ('member-1', 'personal-member-1', 'employee')"""
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(session_utils, "database", database)
+    session_utils._org_cache.clear()
+    request = _Request({}, {"X-Active-Org": "personal-member-1"})
+
+    assert session_utils.get_active_org(request, "member-1") == "personal-member-1"

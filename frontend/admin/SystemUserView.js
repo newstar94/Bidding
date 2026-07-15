@@ -2,7 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
-import { normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
+import { businessOrganizations, normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 
@@ -45,10 +45,13 @@ export function updateActiveUserProfileDisplay() {
     const orgPill = document.getElementById("header-active-org-pill");
     const orgPillName = document.getElementById("header-active-org-name");
     const orgPillContainer = document.getElementById("workspace-pill-container");
-    if (orgPillContainer) orgPillContainer.hidden = !activeOrg;
+    const activeBusinessOrganization = businessOrganizations(user).find(
+      (organization) => organization.status === "active" && organization.id === activeOrg
+    );
+    if (orgPillContainer) orgPillContainer.hidden = !activeBusinessOrganization;
     if (orgPill && orgPillName) {
-      if (activeOrg) {
-        orgPillName.textContent = orgs.find((organization) => organization.id === activeOrg)?.name || activeOrg;
+      if (activeBusinessOrganization) {
+        orgPillName.textContent = activeBusinessOrganization.name;
         setRuntimeStyle(orgPill, "display", "flex");
         setRuntimeStyle(orgPill, "cursor", "default");
       } else {

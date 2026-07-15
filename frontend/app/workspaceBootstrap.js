@@ -9,7 +9,7 @@ import * as IntegrationBridges from "./IntegrationWorkflowBridges.js";
 import { installPrototypeModules } from "./moduleRegistry.js";
 import { installAdminModule } from "./adminModuleLoader.js";
 import { apiFetch } from "../shared/apiClient.js";
-import { hideInitLoader } from "../auth/authRuntimeState.js";
+import { beginExplicitLogout, hideInitLoader } from "../auth/authRuntimeState.js";
 import { setActiveOrganizationId } from "./workspaceState.js";
 
 export function sessionHasActiveWorkspace(initialSession) {
@@ -34,6 +34,7 @@ async function bootstrapUnassignedAccount(initialSession) {
     hideInitLoader();
     return;
   }
+  hideInitLoader();
   viewport.replaceChildren();
   const panel = document.createElement("section");
   panel.className = "unassigned-workspace-panel";
@@ -48,13 +49,13 @@ async function bootstrapUnassignedAccount(initialSession) {
 
   const title = document.createElement("h1");
   title.id = "unassigned-workspace-title";
-  title.textContent = "Tài khoản chưa thuộc tổ chức";
+  title.textContent = "Không thể khởi tạo không gian làm việc";
   const description = document.createElement("p");
   const accountName = String(initialSession?.user?.name || initialSession?.user?.username || "Tài khoản").trim();
-  description.textContent = `${accountName} đã đăng ký thành công. Quản lý cần thêm tài khoản này vào tổ chức trước khi sử dụng dữ liệu nghiệp vụ.`;
+  description.textContent = `${accountName} có thể sử dụng hệ thống bằng không gian dữ liệu cá nhân mà không cần thuộc tổ chức hoặc đăng ký gói tài khoản.`;
   const note = document.createElement("p");
   note.className = "unassigned-workspace-note";
-  note.textContent = "Sau khi quản lý hoàn tất, bấm “Kiểm tra lại” để vào không gian làm việc.";
+  note.textContent = "Hệ thống chưa nhận được không gian dữ liệu từ máy chủ. Hãy kiểm tra lại để hoàn tất khởi tạo tự động.";
 
   const actions = document.createElement("div");
   actions.className = "unassigned-workspace-actions";
@@ -84,7 +85,7 @@ async function bootstrapUnassignedAccount(initialSession) {
         window.location.reload();
         return;
       }
-      note.textContent = "Tài khoản vẫn chưa được thêm vào tổ chức. Vui lòng liên hệ quản lý.";
+      note.textContent = "Máy chủ chưa trả về không gian dữ liệu cá nhân. Vui lòng thử lại; tài khoản không cần gói dịch vụ để hoạt động.";
     } catch (_error) {
       note.textContent = "Không thể kiểm tra lúc này. Vui lòng kiểm tra kết nối và thử lại.";
     } finally {
@@ -94,13 +95,13 @@ async function bootstrapUnassignedAccount(initialSession) {
   });
   logoutButton.addEventListener("click", async () => {
     logoutButton.disabled = true;
+    beginExplicitLogout();
     try {
       await apiFetch("/api/auth/logout", { method: "POST" });
     } finally {
       window.location.reload();
     }
   });
-  hideInitLoader();
   window.lucide?.createIcons?.({ root: panel });
 }
 

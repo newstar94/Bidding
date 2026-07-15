@@ -1,6 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
-import { normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
+import { businessOrganizations, normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
@@ -73,6 +73,17 @@ export async function changeUserRole(userId, newRole) {
 function idempotencyKey(prefix) {
   const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}:${random}`;
+}
+
+function organizationEmployeeProfile(user, organizationId = getActiveOrganizationId()) {
+  const membership = normalizeOrganizations(user).find(
+    (organization) => organization.id === organizationId
+  );
+  const isBusinessMembership = membership?.scope_type === "organization";
+  return {
+    name: isBusinessMembership ? membership.employee_name : String(user?.name || "").trim(),
+    phone: isBusinessMembership ? membership.employee_phone : ""
+  };
 }
 
 async function updateOrganizationSubscription(organizationId, action, extra = {}) {
@@ -218,6 +229,8 @@ export function setupRBACEvents() {
         return;
       }
       let foundUser = null;
+      const employeeName = document.getElementById("emp-name").value.trim();
+      const employeePhone = document.getElementById("emp-phone").value.trim();
       const emailInput = document.getElementById("emp-email").value.trim().toLowerCase();
       try {
         const res = await apiFetch(`/api/auth/users?email=${encodeURIComponent(emailInput)}`);
@@ -260,7 +273,11 @@ export function setupRBACEvents() {
         const resAdd = await apiFetch("/api/auth/users/add-to-org", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: foundUser.id })
+          body: JSON.stringify({
+            user_id: foundUser.id,
+            employee_name: employeeName,
+            phone: employeePhone
+          })
         });
         if (!resAdd.ok) {
           const errData = await resAdd.json();
@@ -658,12 +675,13 @@ export async function reloadEmployeesFromDatabase() {
     if (usersRes.ok) {
       const users = await usersRes.json();
       this.model.state.employees = users.map((u) => {
+        const employeeProfile = organizationEmployeeProfile(u);
         return {
           id: u.id,
           username: u.username,
-          name: u.name,
+          name: employeeProfile.name,
           email: u.email || "",
-          phone: "",
+          phone: employeeProfile.phone,
           role: u.role,
           organizations: normalizeOrganizations(u)
         };
@@ -802,7 +820,7 @@ export function renderWorkspaceSwitcher() {
   const orgSwitchSection = document.getElementById("org-switch-section");
   const orgSwitchList = document.getElementById("org-switch-list");
   const currentUser = this.model.state.activeuser;
-  const orgs = normalizeOrganizations(currentUser || {}).filter((organization) => organization.status === "active");
+  const orgs = businessOrganizations(currentUser || {}).filter((organization) => organization.status === "active");
   if (!currentUser || orgs.length === 0) {
     if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "none");
     return;

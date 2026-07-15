@@ -92,6 +92,7 @@ async def list_users_api(request):
                 SELECT tvtc.user_id, tc.id, tc.ten_to_chuc, tc.scope_type,
                        tc.trang_thai AS organization_status,
                        tvtc.vai_tro_trong_to_chuc,
+                       tvtc.ten_nhan_su, tvtc.so_dien_thoai,
                        sub.package_id, sub.status AS subscription_status,
                        sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
                        pkg.trang_thai AS package_status,
@@ -133,6 +134,8 @@ async def list_users_api(request):
                     "scope_type": row['scope_type'],
                     "status": effective_status,
                     "role": row['vai_tro_trong_to_chuc'],
+                    "employee_name": row['ten_nhan_su'],
+                    "employee_phone": row['so_dien_thoai'],
                     "subscription": {
                         "package_id": row['package_id'],
                         "status": subscription_status,
@@ -279,4 +282,3 @@ async def delete_user_api(request):
     finally:
         if conn:
             conn.close()
-

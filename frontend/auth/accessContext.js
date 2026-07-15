@@ -10,6 +10,8 @@ export function normalizeOrganizations(payload = {}) {
       scope_type: String(organization?.scope_type || "organization").trim().toLowerCase(),
       role: String(organization?.role || "employee").trim().toLowerCase(),
       status: String(organization?.status || "active").trim().toLowerCase(),
+      employee_name: String(organization?.employee_name || "").trim(),
+      employee_phone: String(organization?.employee_phone || "").trim(),
       subscription: organization?.subscription && typeof organization.subscription === "object"
         ? { ...organization.subscription }
         : null
@@ -18,8 +20,14 @@ export function normalizeOrganizations(payload = {}) {
   return [];
 }
 
+export function businessOrganizations(payload = {}) {
+  return normalizeOrganizations(payload).filter(
+    (organization) => organization.scope_type === "organization"
+  );
+}
+
 export function organizationDisplayName(payload = {}) {
-  return normalizeOrganizations(payload).map((organization) => organization.name).join(", ");
+  return businessOrganizations(payload).map((organization) => organization.name).join(", ");
 }
 
 export function selectActiveOrganization(payload = {}, storage = null) {

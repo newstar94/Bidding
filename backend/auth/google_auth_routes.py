@@ -306,6 +306,7 @@ async def google_login_api(request):
             user["id"],
             user["vai_tro"],
             active_org_hint,
+            user.get("ho_ten"),
         )
         conn.commit()
 

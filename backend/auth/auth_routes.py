@@ -159,6 +159,7 @@ async def login_api(request):
             user['id'],
             user['vai_tro'],
             _active_org_hint(request),
+            user.get('ho_ten'),
         )
         conn.commit()
         log_audit(
@@ -218,12 +219,15 @@ def _get_access_for_session(user, request):
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
-        return build_user_access_payload(
+        access = build_user_access_payload(
             cursor,
             user['id'],
             user['vai_tro'],
             _active_org_hint(request),
+            user.get('ho_ten'),
         )
+        conn.commit()
+        return access
     finally:
         conn.close()
 

@@ -114,9 +114,12 @@ def test_registration_conflicts_are_409_and_login_keeps_password_spaces():
         assert session.status_code == 200
         user = session.json()["user"]
         assert user["platform_role"] == "user"
-        assert user["membership_role"] is None
+        assert user["membership_role"] == "employee"
         assert user["effective_roles"] == ["employee"]
-        assert user["organizations"] == []
-        assert user["active_org_id"] is None
+        assert len(user["organizations"]) == 1
+        assert user["organizations"][0]["scope_type"] == "personal"
+        assert user["organizations"][0]["status"] == "active"
+        assert user["organizations"][0]["subscription"] is None
+        assert user["active_org_id"] == user["organizations"][0]["id"]
         assert user["package_id"] is None
         assert user["subscription"] is None

@@ -76,3 +76,23 @@ test("a user without an organization remains employee-only", () => {
   assert.deepEqual(user.dbRoles, ["employee"]);
   assert.equal(storage.getItem("bf_active_org"), null);
 });
+
+test("personal workspace is usable but is not displayed as an organization", () => {
+  const storage = memoryStorage();
+  const user = {};
+  const selected = applyAccessContext(user, {
+    platform_role: "user",
+    active_org_id: "personal-user-1",
+    organizations: [{
+      id: "personal-user-1",
+      name: "Không gian cá nhân",
+      scope_type: "personal",
+      role: "employee",
+      status: "active"
+    }]
+  }, storage);
+
+  assert.equal(selected.id, "personal-user-1");
+  assert.equal(user.activeOrganizationId, "personal-user-1");
+  assert.equal(organizationDisplayName(user), "");
+});

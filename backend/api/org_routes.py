@@ -300,11 +300,15 @@ async def add_user_to_org_api(request):
         data = await request.json()
         invalid = validate_or_response(request, data, {
             "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "employee_name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
+            "phone": {"type": "string", "max_length": 32},
         })
         if invalid:
             return invalid
         user_id = str(data.get('user_id') or '').strip()
-        if not user_id:
+        employee_name = re.sub(r"\s+", " ", str(data.get('employee_name') or '').strip())
+        phone = str(data.get('phone') or '').strip()
+        if not user_id or not employee_name:
             return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
 
         org_id = get_active_org(request, role_or_err.user_id)
@@ -330,8 +334,14 @@ async def add_user_to_org_api(request):
 
         cursor.execute("SELECT user_id FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?", (user_id, org_id))
         if cursor.fetchone():
+            cursor.execute(
+                """UPDATE thanh_vien_to_chuc
+                   SET ten_nhan_su = ?, so_dien_thoai = ?, updated_at = datetime('now')
+                   WHERE user_id = ? AND organization_id = ?""",
+                (employee_name, phone or None, user_id, org_id),
+            )
             conn.commit()
-            return JSONResponse({"success": True, "message": "Nhân sự đã thuộc tổ chức này!"})
+            return JSONResponse({"success": True, "message": "Thông tin nhân sự đã được cập nhật!"})
 
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
         u_row = cursor.fetchone()
@@ -385,8 +395,10 @@ async def add_user_to_org_api(request):
             )
 
         cursor.execute(
-            "INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, ?)",
-            (user_id, org_id, 'employee')
+            """INSERT INTO thanh_vien_to_chuc (
+                   user_id, organization_id, vai_tro_trong_to_chuc, ten_nhan_su, so_dien_thoai
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (user_id, org_id, 'employee', employee_name, phone or None)
         )
 
         conn.commit()

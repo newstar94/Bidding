@@ -104,24 +104,26 @@ def get_active_org(request, user_id):
         with _org_cache_lock:
             _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
         raise exc
-    subscription_status = str(selected_row['subscription_status'] or '').strip().lower()
-    expires_at = selected_row['expires_at']
-    package_status = str(selected_row['package_status'] or '').strip().lower()
-    if subscription_status != 'active':
-        exc = OrgPermissionError("Gói dịch vụ của tổ chức không hoạt động!")
-        with _org_cache_lock:
-            _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
-        raise exc
-    if expires_at is not None and int(expires_at) <= int(now):
-        exc = OrgPermissionError("Gói dịch vụ của tổ chức đã hết hạn!")
-        with _org_cache_lock:
-            _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
-        raise exc
-    if package_status != 'active':
-        exc = OrgPermissionError("Gói dịch vụ đang bị tạm khóa!")
-        with _org_cache_lock:
-            _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
-        raise exc
+    scope_type = str(selected_row['scope_type'] or 'organization').strip().lower()
+    if scope_type != 'personal':
+        subscription_status = str(selected_row['subscription_status'] or '').strip().lower()
+        expires_at = selected_row['expires_at']
+        package_status = str(selected_row['package_status'] or '').strip().lower()
+        if subscription_status != 'active':
+            exc = OrgPermissionError("Gói dịch vụ của tổ chức không hoạt động!")
+            with _org_cache_lock:
+                _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+            raise exc
+        if expires_at is not None and int(expires_at) <= int(now):
+            exc = OrgPermissionError("Gói dịch vụ của tổ chức đã hết hạn!")
+            with _org_cache_lock:
+                _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+            raise exc
+        if package_status != 'active':
+            exc = OrgPermissionError("Gói dịch vụ đang bị tạm khóa!")
+            with _org_cache_lock:
+                _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
+            raise exc
     membership_role = str(selected_row['vai_tro_trong_to_chuc'] or '').strip().lower()
     if membership_role not in {'manager', 'employee'}:
         raise OrgPermissionError("Vai trò thành viên tổ chức không hợp lệ!")

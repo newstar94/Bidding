@@ -722,6 +722,8 @@ SCHEMA_DINH_NGHIA = {
             "user_id": "TEXT NOT NULL",
             "organization_id": "TEXT NOT NULL",
             "vai_tro_trong_to_chuc": "TEXT NOT NULL DEFAULT 'employee' CHECK(vai_tro_trong_to_chuc IN ('manager', 'employee'))",
+            "ten_nhan_su": "TEXT",
+            "so_dien_thoai": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
         },

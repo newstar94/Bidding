@@ -17,6 +17,17 @@ import {
   showGoogleAuthPending,
   showGoogleSignInState
 } from "./AuthUi.js";
+
+export function createGoogleIdentityOptions(clientId, callback) {
+  return {
+    client_id: clientId,
+    callback,
+    ux_mode: "popup",
+    context: "signin",
+    use_fedcm_for_button: false
+  };
+}
+
 export function setupGoogleSignIn() {
   if (isGoogleIdentityInitialized()) return;
   const clientId = document.querySelector('meta[name="google-client-id"]')?.content?.trim();
@@ -119,8 +130,8 @@ export function setupGoogleSignIn() {
           this.model.state.activeuser.username = result.username;
         }
         sessionStorage.setItem("bf_username", result.username);
+        await onSuccess();
         setRuntimeStyle(modalOverlay, "display", "none");
-        onSuccess();
       } catch (err) {
         if (errorDiv) {
           errorDiv.textContent = err instanceof ApiError
@@ -186,7 +197,10 @@ export function setupGoogleSignIn() {
       sessionStorage.setItem("bf_user_id", data.id);
       localStorage.removeItem("bf_remember_me");
       hideAuthOverlay();
-      selectActiveOrganization(data);
+      const { selected: activeWorkspace } = selectActiveOrganization(data);
+      if (!activeWorkspace) {
+        this._workspaceDeferredUntilReload = true;
+      }
       const effectiveRoles = data.effective_roles || [];
       if (effectiveRoles.some((role) => ["manager", "super_admin"].includes(role))) {
         await installAdminModule(this.constructor);
@@ -225,7 +239,7 @@ export function setupGoogleSignIn() {
               await this._finishGoogleLogin(activeRole);
             } catch (initErr) {
               console.error("Failed to init model after username set:", initErr);
-              alert("Đã xảy ra lỗi khi khởi tạo dữ liệu. Vui lòng tải lại trang.");
+              reloadWithInitLoader();
             }
           },
           data.suggested_username || "",
@@ -259,12 +273,9 @@ export function setupGoogleSignIn() {
   try {
     container.replaceChildren();
     markGoogleIdentityInitialized();
-    google.accounts.id.initialize({
-      client_id: clientId,
-      callback: handleGoogleResponse.bind(this),
-      ux_mode: "popup",
-      context: "signin"
-    });
+    google.accounts.id.initialize(
+      createGoogleIdentityOptions(clientId, handleGoogleResponse.bind(this))
+    );
     google.accounts.id.renderButton(container, {
       theme: "outline",
       size: "large",

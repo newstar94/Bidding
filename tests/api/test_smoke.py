@@ -15,7 +15,7 @@ def test_homepage_serves_compiled_html():
     assert 'href="/css/initial-route.css?v=1.0"' in response.text
     assert "<style" not in response.text
     assert 'id="initial-route-loading-state"' in response.text
-    assert 'src="/vendor/initial-route.js?v=1.0.3"' in response.text
+    assert 'src="/vendor/initial-route.js?v=1.0.4"' in response.text
     assert 'role="progressbar"' in response.text
     assert '__BF_SESSION_BOOTSTRAP__' not in response.text
     assert 'id="bf-session-bootstrap"' in response.text
@@ -23,6 +23,9 @@ def test_homepage_serves_compiled_html():
     assert "session-bootstrap" in response.headers["server-timing"]
     assert response.headers["vary"] == "Cookie"
     assert response.headers["x-content-type-options"] == "nosniff"
+    permissions_policy = response.headers["permissions-policy"]
+    assert "identity-credentials-get=(self)" in permissions_policy
+    assert "identity-credentials-get=*" not in permissions_policy
     csp = response.headers["content-security-policy"]
     assert "style-src 'self' https://fonts.googleapis.com" in csp
     assert "style-src-elem 'self'" in csp

@@ -9,6 +9,10 @@ import { executeAppCommand } from "./commandBus.js";
 import { getAppController } from "./controllerRef.js";
 import { renderPackageStatusBadge } from "../shared/statusBadges.js";
 
+export function toastDeduplicationKey(title, message, type) {
+  return JSON.stringify([String(type || "info"), String(title || ""), String(message || "")]);
+}
+
 const VIEW_MODULE_LOADERS = Object.freeze({
   dashboard: () => import("./DashboardView.js"),
   plan: () => import("./PlanView.js"),
@@ -843,8 +847,14 @@ export class BiddingView {
       container.id = "toast-container";
       document.body.appendChild(container);
     }
+    const toastKey = toastDeduplicationKey(title, message, type);
+    const duplicateToast = Array.from(container.querySelectorAll(".bf-toast:not(.toast-hiding)")).find(
+      (item) => item.dataset.toastKey === toastKey
+    );
+    if (duplicateToast) return duplicateToast;
     const toast = document.createElement("div");
     toast.className = `bf-toast toast-${type}`;
+    toast.dataset.toastKey = toastKey;
     toast.setAttribute("role", type === "error" || type === "warning" ? "alert" : "status");
     toast.setAttribute("aria-live", type === "error" || type === "warning" ? "assertive" : "polite");
     const iconSvg = {
@@ -903,6 +913,7 @@ export class BiddingView {
       closeBtn.addEventListener("click", dismissToast);
     }
     autoDismissTimer = setTimeout(dismissToast, duration);
+    return toast;
   }
   customAlert(title, message, iconName = "info", focusTarget = null) {
     const isSuccess = title === "Thành công" || title && title.toLowerCase().includes("thành công") || title === "Chúc mừng" || title === "Hoàn thành" || iconName === "check-circle";

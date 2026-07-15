@@ -86,19 +86,30 @@ def test_legacy_business_account_role_normalizes_to_user():
     assert effective_access_roles("manager", "employee") == ["employee"]
 
 
-def test_account_without_membership_has_no_organization():
+def test_account_without_business_membership_gets_package_free_personal_workspace(monkeypatch):
     connection = _access_connection()
     cursor = connection.cursor()
+    monkeypatch.setattr("backend.auth.auth_service.stable_org_id", lambda _value: "personal-new")
     access_payload = build_user_access_payload(cursor, "user-new", "user")
-    assert access_payload["active_org_id"] is None
-    assert access_payload["organizations"] == []
-    assert access_payload["membership_role"] is None
+    assert access_payload["active_org_id"] == "personal-new"
+    assert access_payload["organizations"] == [{
+        "id": "personal-new",
+        "name": "Không gian cá nhân",
+        "scope_type": "personal",
+        "role": "employee",
+        "status": "active",
+        "subscription": None,
+    }]
+    assert access_payload["membership_role"] == "employee"
     assert access_payload["effective_roles"] == ["employee"]
     assert access_payload["package_id"] is None
     assert access_payload["subscription"] is None
+    assert cursor.execute(
+        "SELECT current_version FROM sync_metadata WHERE organization_id = 'personal-new'"
+    ).fetchone()[0] == 1
 
 
-def test_personal_workspace_is_created_only_when_a_package_is_activated(monkeypatch):
+def test_optional_package_activation_reuses_personal_workspace(monkeypatch):
     connection = _access_connection()
     cursor = connection.cursor()
     monkeypatch.setattr("backend.auth.auth_service.stable_org_id", lambda _value: "personal-new")

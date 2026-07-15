@@ -188,3 +188,20 @@ def test_json_middleware_and_login_schema_return_stable_400_errors():
         body = unknown.json()
         assert body["code"] == "REQUEST_VALIDATION_FAILED"
         assert body["fields"]["errors"][0]["code"] == "UNKNOWN_FIELD"
+
+        role_override = client.post(
+            "/api/auth/register",
+            json={
+                "username": "role_override_user",
+                "password": "valid-password-2026",
+                "name": "Role Override",
+                "email": "role-override@example.com",
+                "role": "manager",
+            },
+        )
+        assert role_override.status_code == 400
+        role_errors = role_override.json()["fields"]["errors"]
+        assert any(
+            error["field"] == "role" and error["code"] == "UNKNOWN_FIELD"
+            for error in role_errors
+        )

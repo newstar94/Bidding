@@ -77,8 +77,13 @@ def test_google_first_login_set_username_and_session_ready_with_csrf(monkeypatch
         assert session_payload["valid"] is True
         assert session_payload["user"]["needs_username"] is False
         assert session_payload["user"]["username"] == username
-        assert session_payload["user"]["membership_role"] is None
+        assert session_payload["user"]["membership_role"] == "employee"
         assert session_payload["user"]["effective_roles"] == ["employee"]
-        assert session_payload["user"]["organizations"] == []
+        organizations = session_payload["user"]["organizations"]
+        assert len(organizations) == 1
+        assert organizations[0]["scope_type"] == "personal"
+        assert organizations[0]["status"] == "active"
+        assert organizations[0]["subscription"] is None
+        assert session_payload["user"]["active_org_id"] == organizations[0]["id"]
         assert session_payload["user"]["package_id"] is None
         assert session_payload["user"]["subscription"] is None

@@ -1502,8 +1502,8 @@ table th {
   background:
     linear-gradient(
       135deg,
-      var(--primary) 0%,
-      var(--accent) 100%);
+      var(--primary, #2563eb) 0%,
+      var(--accent, #7c3aed) 100%);
   overflow: hidden;
 }
 .header-profile-trigger .profile-avatar img {
