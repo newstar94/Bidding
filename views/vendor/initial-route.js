@@ -13,7 +13,7 @@
     const allowed = new Set(effectiveRoles);
     let switchableRoles;
     if (allowed.has("super_admin")) switchableRoles = ["super_admin", "manager", "employee"];
-    else if (allowed.has("owner") || allowed.has("manager")) switchableRoles = ["manager", "employee"];
+    else if (allowed.has("manager")) switchableRoles = ["manager", "employee"];
     else if (allowed.has("employee")) switchableRoles = ["employee"];
     else switchableRoles = ["employee"];
     return requested && switchableRoles.includes(requested) ? requested : switchableRoles[0];
@@ -50,16 +50,24 @@
     if (profileName) profileName.textContent = name;
     if (profileRole) profileRole.textContent = `Chế độ: ${roleLabels[activeRole] || roleLabels.employee}`;
     if (avatar) {
+      avatar.dataset.bfRole = activeRole;
       if (user.avatar) {
         const image = document.createElement("img");
         image.src = user.avatar;
         image.alt = "Avatar";
+        image.addEventListener("error", () => {
+          avatar.replaceChildren();
+          avatar.classList.remove("has-image");
+          avatar.classList.add("has-initials");
+          avatar.textContent = name.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "U";
+        }, { once: true });
         avatar.replaceChildren(image);
         avatar.classList.add("has-image");
+        avatar.classList.remove("has-initials");
       } else {
         avatar.classList.remove("has-image");
+        avatar.classList.add("has-initials");
         avatar.textContent = name.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-        avatar.dataset.bfRole = activeRole;
       }
     }
 

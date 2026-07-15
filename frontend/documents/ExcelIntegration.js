@@ -11,6 +11,7 @@ import {
   parseOpeningImport
 } from "./excelImportAdapters.js";
 import { isBasicExcelImportType, saveBasicExcelImport, saveBusinessExcelImport } from "./excelSaveAdapters.js";
+import { renderExcelPreview } from "../packages/GoiThauModals.js";
 const IMPORT_STATE_KEY = {
   plan: "kehoach",
   kehoach: "kehoach",
@@ -21,6 +22,25 @@ const IMPORT_STATE_KEY = {
   chuyengia: "chuyengia",
   hopdong: "hopdong"
 };
+
+const BASIC_IMPORT_VIEW = {
+  plan: { tab: "kehoach", render: "renderKeHoachTable" },
+  kehoach: { tab: "kehoach", render: "renderKeHoachTable" },
+  package: { tab: "goithau", render: "renderGoiThauTable" },
+  goithau: { tab: "goithau", render: "renderGoiThauTable" },
+  chudautu: { tab: "chudautu", render: "renderChuDauTuTable" },
+  nhathau: { tab: "nhathau", render: "renderNhaThauTable" },
+  chuyengia: { tab: "chuyengia", render: "renderChuyenGiaTable" },
+  hopdong: { tab: "hopdong", render: "renderHopDongTable" }
+};
+
+export async function renderBasicImportResult(controller, type) {
+  const config = BASIC_IMPORT_VIEW[type];
+  if (!config || !controller?.view) return;
+  await controller.view.ensureViewModules?.(config.tab);
+  const render = controller.view[config.render];
+  if (typeof render === "function") await render.call(controller.view);
+}
 export function setupExcelImportEvents() {
   document.querySelectorAll(".btn-download-excel-template-direct").forEach((btn) => {
     if (btn._hasExcelListener) return;
@@ -131,7 +151,7 @@ async function renderClientExcelImport(controller, file, parser) {
     const parsedRows = await parser(controller, rows);
     if (!parsedRows) return;
     controller._excelImportData = parsedRows;
-    controller.view.renderExcelPreview(controller._excelImportData, controller._excelImportType);
+    renderExcelPreview(controller._excelImportData, controller._excelImportType);
     showExcelImportSaveButton();
   } catch (err) {
     console.error(err);
@@ -337,7 +357,7 @@ export async function handleExcelUpload(file) {
           _operation: operation
         };
       });
-      this.view.renderExcelPreview(this._excelImportData, this._excelImportType);
+      renderExcelPreview(this._excelImportData, this._excelImportType);
       const saveBtn = document.getElementById("btn-save-excel-import");
       if (saveBtn) {
         saveBtn.disabled = false;
@@ -347,7 +367,12 @@ export async function handleExcelUpload(file) {
       await this.view.customAlert("Thất bại", data.error || "Không thể đọc tệp tin Excel này.", "alert-triangle");
     }
   } catch (err) {
-    await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+    console.error("Excel import failed", err);
+    await this.view.customAlert(
+      "Lỗi nhập Excel",
+      "Không thể xử lý tệp Excel: " + err.message,
+      "alert-triangle"
+    );
   }
 }
 export async function saveExcelImport() {
@@ -375,6 +400,7 @@ export async function saveExcelImport() {
     if (stateKey && this.model.currentPage) {
       this.model.currentPage[stateKey] = 1;
     }
+    await renderBasicImportResult(this, type);
   } else {
     const businessImportCount = await saveBusinessExcelImport(this, type, validRows);
     if (businessImportCount !== null) {
@@ -382,15 +408,19 @@ export async function saveExcelImport() {
     }
   }
   const syncResult = await this.autoSync();
-  if (!syncResult?.ok) return;
   const updatedCount = validRows.filter((row) => row._operation === "update").length;
   const createdCount = count - updatedCount;
   this.view.closeModal("modal-excel-preview");
-  await this.view.customAlert(
-    "Nhập khẩu thành công",
-    `Đã xử lý ${count} dòng: thêm mới ${createdCount}, cập nhật ${updatedCount}, bỏ qua ${invalidCount}.`,
-    "check-circle"
-  );
+  const summary = `Đã xử lý ${count} dòng: thêm mới ${createdCount}, cập nhật ${updatedCount}, bỏ qua ${invalidCount}.`;
+  if (syncResult?.ok) {
+    this.view.showToast("Nhập dữ liệu thành công", summary, "success");
+  } else if (syncResult?.error && !syncResult?.status && !syncResult?.validation && !syncResult?.conflict) {
+    this.view.showToast(
+      "Đã lưu trên thiết bị",
+      `${summary} Dữ liệu đang chờ kết nối để đồng bộ với máy chủ.`,
+      "warning"
+    );
+  }
 }
 export function exportPhatHanhPhanLoExcel(gt) {
   const rows = [];

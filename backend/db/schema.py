@@ -721,7 +721,7 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "user_id": "TEXT NOT NULL",
             "organization_id": "TEXT NOT NULL",
-            "vai_tro_trong_to_chuc": "TEXT NOT NULL DEFAULT 'employee' CHECK(vai_tro_trong_to_chuc IN ('owner', 'manager', 'employee'))",
+            "vai_tro_trong_to_chuc": "TEXT NOT NULL DEFAULT 'employee' CHECK(vai_tro_trong_to_chuc IN ('manager', 'employee'))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
         },

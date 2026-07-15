@@ -64,6 +64,16 @@ function clonePayloadValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizeSystemVersion(field, value) {
+  if (field !== "phienBan") return value;
+  if (Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const numericVersion = Number(value);
+    if (Number.isSafeInteger(numericVersion)) return numericVersion;
+  }
+  return value;
+}
+
 export function allowedOutboundFields(type) {
   const tableName = resolveSchemaTable(type);
   const schemaFields = Object.values(FIELD_MAP_BY_TABLE[tableName] || {})
@@ -106,7 +116,7 @@ export function serializeOutboundRecord(record, type, normalizeRecord = (value) 
   const allowedFields = allowedOutboundFields(type);
   allowedFields.forEach((field) => {
     if (!Object.prototype.hasOwnProperty.call(normalized, field)) return;
-    const value = clonePayloadValue(normalized[field]);
+    const value = normalizeSystemVersion(field, clonePayloadValue(normalized[field]));
     if (value !== void 0) serialized[field] = value;
   });
 

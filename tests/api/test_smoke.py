@@ -26,7 +26,7 @@ def test_homepage_serves_compiled_html():
     csp = response.headers["content-security-policy"]
     assert "style-src 'self' https://fonts.googleapis.com" in csp
     assert "style-src-elem 'self'" in csp
-    assert "style-src-attr 'none'" in csp
+    assert "style-src-attr 'unsafe-hashes' 'sha256-4PX7giCQMi8wBuhXIfPmyuw/Y9KfbeLY2K+XpOH6msQ='" in csp
     assert "style-src 'self' 'unsafe-inline'" not in csp
     assert "style-src-attr 'unsafe-inline'" not in csp
     assert "require-trusted-types-for 'script'" in csp

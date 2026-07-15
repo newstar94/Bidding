@@ -1917,3 +1917,88 @@ table th {
     margin-top: auto !important;
     padding-top: 8px;
 }
+.workspace-unassigned .sidebar,
+.workspace-unassigned .app-header {
+  display: none;
+}
+
+.workspace-unassigned .main-content {
+  margin-left: 0;
+  width: 100%;
+}
+
+.workspace-unassigned .content-viewport {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  place-items: center;
+}
+
+.unassigned-workspace-panel {
+  width: min(100%, 560px);
+  padding: 40px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.unassigned-workspace-icon {
+  display: inline-flex;
+  width: 72px;
+  height: 72px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.unassigned-workspace-icon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.unassigned-workspace-panel h1 {
+  margin-bottom: 12px;
+  font-size: 1.5rem;
+}
+
+.unassigned-workspace-panel > p {
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+.unassigned-workspace-note {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--neutral-soft);
+}
+
+.unassigned-workspace-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.unassigned-workspace-actions .btn {
+  min-width: 150px;
+}
+
+@media (max-width: 560px) {
+  .unassigned-workspace-panel {
+    padding: 28px 20px;
+  }
+
+  .unassigned-workspace-actions {
+    flex-direction: column;
+  }
+
+  .unassigned-workspace-actions .btn {
+    width: 100%;
+  }
+}

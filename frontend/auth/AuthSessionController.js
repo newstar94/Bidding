@@ -124,8 +124,14 @@ export function startBackgroundSessionChecker() {
             this.model.state.activerole = nextActiveRole;
             hasChanges = true;
           }
-          if (activeuser.name !== data.user.name) {
-            activeuser.name = data.user.name;
+          const nextName = data.user.name || data.user.username || activeuser.name || "Người dùng";
+          if (activeuser.name !== nextName) {
+            activeuser.name = nextName;
+            hasChanges = true;
+          }
+          const nextUsername = data.user.username || activeuser.username || sessionStorage.getItem("bf_username") || "";
+          if (activeuser.username !== nextUsername) {
+            activeuser.username = nextUsername;
             hasChanges = true;
           }
           if (activeuser.avatar !== (data.user.avatar || "")) {

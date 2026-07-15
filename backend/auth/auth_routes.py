@@ -690,10 +690,10 @@ async def update_user_role_api(request):
             )
             actor_row = cursor.fetchone()
             actor_role = str(actor_row[0] or "").strip().lower() if actor_row else ""
-            if not actor_platform_admin and actor_role not in {"owner", "manager"}:
+            if not actor_platform_admin and actor_role != "manager":
                 conn.rollback()
                 return JSONResponse({"error": "Không có quyền quản lý thành viên tổ chức."}, status_code=403)
-            if new_role not in {"owner", "manager", "employee"}:
+            if new_role not in {"manager", "employee"}:
                 conn.rollback()
                 return JSONResponse({"error": "Vai trò thành viên không hợp lệ."}, status_code=400)
 
@@ -710,21 +710,21 @@ async def update_user_role_api(request):
                 conn.rollback()
                 return JSONResponse({"error": "Không thể tự thay đổi vai trò tổ chức."}, status_code=409)
 
-            hierarchy = {"employee": 0, "manager": 1, "owner": 2}
+            hierarchy = {"employee": 0, "manager": 1}
             if not actor_platform_admin:
                 actor_rank = hierarchy[actor_role]
                 if hierarchy[target_role] >= actor_rank or hierarchy[new_role] >= actor_rank:
                     conn.rollback()
                     return JSONResponse({"error": "Không thể sửa hoặc gán vai trò ngang/cao hơn mình."}, status_code=403)
 
-            if target_role == "owner" and new_role != "owner":
+            if target_role == "manager" and new_role != "manager":
                 cursor.execute(
-                    "SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ? AND lower(trim(vai_tro_trong_to_chuc)) = 'owner'",
+                    "SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ? AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'",
                     (org_id,),
                 )
                 if int(cursor.fetchone()[0]) <= 1:
                     conn.rollback()
-                    return JSONResponse({"error": "Không thể hạ quyền chủ sở hữu cuối cùng."}, status_code=409)
+                    return JSONResponse({"error": "Không thể hạ quyền Quản lý cuối cùng."}, status_code=409)
 
             cursor.execute(
                 "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now') WHERE user_id = ? AND organization_id = ?",

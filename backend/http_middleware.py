@@ -48,7 +48,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "script-src 'self' https://accounts.google.com https://apis.google.com; "
             "style-src 'self' https://fonts.googleapis.com https://accounts.google.com; "
             "style-src-elem 'self' https://fonts.googleapis.com https://accounts.google.com; "
-            "style-src-attr 'none'; "
+            # Google Identity Services sets one stable inline style on its own
+            # iframe. Permit only that exact declaration; first-party inline
+            # styles and every other attribute remain blocked.
+            "style-src-attr 'unsafe-hashes' 'sha256-4PX7giCQMi8wBuhXIfPmyuw/Y9KfbeLY2K+XpOH6msQ='; "
             "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
             f"connect-src {_connect_sources()}; "
             "font-src 'self' https://fonts.gstatic.com; "

@@ -5,7 +5,7 @@ from backend.shared.text_utils import clean_id
 
 
 PLATFORM_ADMIN_ROLES = {"super_admin"}
-ORGANIZATION_MANAGER_ROLES = {"owner", "manager"}
+ORGANIZATION_MANAGER_ROLES = {"manager"}
 WRITE_PROTECTED_KEYS = {
     "assignments",
     "custompaperstatuses",

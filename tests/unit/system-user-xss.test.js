@@ -1,8 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { renderSystemUsersTable } from "../../frontend/admin/SystemUserView.js";
+import { getUserDisplayName, getUserInitials, renderSystemUsersTable } from "../../frontend/admin/SystemUserView.js";
 import { clearCommandArgsForTests } from "../../frontend/shared/commandArgs.js";
+
+test("header avatar initials use the name and fall back to username", () => {
+  assert.equal(getUserInitials("Nguyễn Văn An"), "NA");
+  assert.equal(getUserInitials("", "administrator"), "AD");
+  assert.equal(getUserInitials("", ""), "U");
+});
+
+test("header display name falls back without leaving the profile blank", () => {
+  assert.equal(getUserDisplayName({ name: "Nguyễn Văn An", username: "an.nguyen" }), "Nguyễn Văn An");
+  assert.equal(getUserDisplayName({ name: "", username: "an.nguyen" }), "an.nguyen");
+  assert.equal(getUserDisplayName({ name: "", username: "" }, "stored-user"), "stored-user");
+  assert.equal(getUserDisplayName({}), "Người dùng");
+});
 
 test("system user table renders untrusted fields only as escaped text", () => {
   clearCommandArgsForTests();

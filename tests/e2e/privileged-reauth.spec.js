@@ -13,10 +13,10 @@ test("sensitive admin mutation prompts for password and retries once", async ({ 
         name: "E2E Admin",
         platform_role: "super_admin",
         role: "super_admin",
-        effective_roles: ["super_admin", "owner", "manager", "employee"],
+        effective_roles: ["super_admin", "manager", "employee"],
         active_org_id: "org-e2e",
         organizations: [
-          { id: "org-e2e", name: "E2E Organization", role: "owner", status: "active" }
+          { id: "org-e2e", name: "E2E Organization", role: "manager", status: "active" }
         ]
       }
     };

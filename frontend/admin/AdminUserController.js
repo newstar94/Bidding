@@ -380,7 +380,24 @@ export function setupRBACEvents() {
       const packageId = document.getElementById("detail-su-package").value;
       const organizationId = formSu.dataset.organizationId || "";
       if (!organizationId) {
-        await this.view.customAlert("Không thể lưu", "Tài khoản chưa thuộc tổ chức nào.", "alert-triangle");
+        if (!packageId || packageId === "none") {
+          await this.view.customAlert("Chưa chọn gói", "Hãy chọn gói dịch vụ để kích hoạt không gian làm việc cá nhân.", "alert-triangle");
+          return;
+        }
+        try {
+          const response = await apiFetch("/api/auth/users/activate-personal-package", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId, package_id: packageId })
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Không thể kích hoạt gói cá nhân.");
+          this.view.closeModal("modal-detail-system-user");
+          await this.view.customAlert("Thành công", "Đã kích hoạt gói và không gian làm việc cá nhân.", "check-circle");
+          this.loadSystemUsers();
+        } catch (err) {
+          await this.view.customAlert("Không thể kích hoạt", err.message, "alert-triangle");
+        }
         return;
       }
       try {
@@ -490,10 +507,10 @@ export function setupRBACEvents() {
           this.tempProfileAvatarBase64 = compressedBase64;
           if (profileAvatarPreview) {
             profileAvatarPreview.src = compressedBase64;
-            setRuntimeStyle(profileAvatarPreview, "display", "block");
+            profileAvatarPreview.hidden = false;
           }
           if (profileAvatarFallback) {
-            setRuntimeStyle(profileAvatarFallback, "display", "none");
+            profileAvatarFallback.hidden = true;
           }
         };
         img.onerror = () => {

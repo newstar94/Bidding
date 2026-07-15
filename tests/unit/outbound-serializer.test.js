@@ -38,6 +38,22 @@ test("new records do not receive an expected version", () => {
   assert.equal(Object.hasOwn(serialized, "expectedVersion"), false);
 });
 
+test("system-generated display versions are sent as database integers", () => {
+  const initial = serializeOutboundRecord({
+    id: "cdt-00",
+    phienBan: "00",
+    tenChuDauTu: "Chủ đầu tư"
+  }, "chudautu");
+  const next = serializeOutboundRecord({
+    id: "nt-01",
+    phienBan: "01",
+    tenNhaThau: "Nhà thầu"
+  }, "nhathau");
+
+  assert.equal(initial.phienBan, 0);
+  assert.equal(next.phienBan, 1);
+});
+
 test("plan and package mappings expose the canonical business fields", () => {
   assert.equal(allowedOutboundFields("kehoach").has("maDuan"), true);
   assert.equal(allowedOutboundFields("kehoach").has("thoiGianDuAn"), true);

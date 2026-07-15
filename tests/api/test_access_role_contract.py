@@ -1,6 +1,7 @@
 import sqlite3
 
 from backend.auth.auth_service import (
+    activate_personal_subscription,
     build_user_access_payload,
 )
 from backend.auth.roles import effective_access_roles, normalize_platform_role
@@ -30,6 +31,7 @@ def _access_connection():
         );
         CREATE TABLE goi_dich_vu (
             id TEXT PRIMARY KEY,
+            han_muc_nhan_su INTEGER NOT NULL DEFAULT 5,
             trang_thai TEXT NOT NULL
         );
         CREATE TABLE organization_subscriptions (
@@ -41,7 +43,7 @@ def _access_connection():
             member_quota INTEGER NOT NULL,
             revision INTEGER NOT NULL DEFAULT 1
         );
-        INSERT INTO goi_dich_vu VALUES ('silver', 'active');
+        INSERT INTO goi_dich_vu VALUES ('silver', 5, 'active');
         INSERT INTO to_chuc (id, ten_to_chuc, trang_thai) VALUES ('org-a', 'Công ty A, Miền Nam', 'active');
         INSERT INTO to_chuc (id, ten_to_chuc, trang_thai) VALUES ('org-b', 'Organization B', 'active');
         INSERT INTO organization_subscriptions VALUES ('org-a', 'silver', 'active', 1, 4102444800, 5, 1);
@@ -92,6 +94,32 @@ def test_account_without_membership_has_no_organization():
     assert access_payload["organizations"] == []
     assert access_payload["membership_role"] is None
     assert access_payload["effective_roles"] == ["employee"]
+    assert access_payload["package_id"] is None
+    assert access_payload["subscription"] is None
+
+
+def test_personal_workspace_is_created_only_when_a_package_is_activated(monkeypatch):
+    connection = _access_connection()
+    cursor = connection.cursor()
+    monkeypatch.setattr("backend.auth.auth_service.stable_org_id", lambda _value: "personal-new")
+    organization_id = activate_personal_subscription(
+        cursor, "user-new", "New User", "silver", duration_days=30
+    )
+    membership = cursor.execute(
+        "SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc WHERE user_id = 'user-new'"
+    ).fetchone()
+    subscription = cursor.execute(
+        "SELECT package_id, status FROM organization_subscriptions WHERE organization_id = ?",
+        (organization_id,),
+    ).fetchone()
+    access_payload = build_user_access_payload(cursor, "user-new", "user", organization_id)
+
+    assert organization_id == "personal-new"
+    assert membership[0] == "employee"
+    assert tuple(subscription) == ("silver", "active")
+    assert access_payload["active_org_id"] == "personal-new"
+    assert access_payload["membership_role"] == "employee"
+    assert access_payload["effective_roles"] == ["employee"]
 
 
 def test_personal_workspace_is_never_exposed_as_an_organization():
@@ -104,7 +132,7 @@ def test_personal_workspace_is_never_exposed_as_an_organization():
         "INSERT INTO organization_subscriptions VALUES ('personal-1', 'silver', 'active', 1, 4102444800, 5, 1)"
     )
     cursor.execute(
-        "INSERT INTO thanh_vien_to_chuc VALUES ('user-1', 'personal-1', 'owner')"
+        "INSERT INTO thanh_vien_to_chuc VALUES ('user-1', 'personal-1', 'employee')"
     )
 
     payload = build_user_access_payload(cursor, "user-1", "user")

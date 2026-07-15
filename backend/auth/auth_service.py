@@ -5,6 +5,7 @@ import hashlib
 import sqlite3
 from dataclasses import dataclass
 from starlette.responses import JSONResponse
+from backend.db.id_utils import stable_org_id
 from backend.auth.roles import (
     effective_access_roles,
     normalize_organization_role,
@@ -151,12 +152,22 @@ def get_user_organizations(cursor, user_id):
         LEFT JOIN organization_subscriptions AS sub ON sub.organization_id = tc.id
         LEFT JOIN goi_dich_vu AS pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
-          AND tc.scope_type = 'organization'
-        ORDER BY CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
-                    WHEN 'owner' THEN 0
-                    WHEN 'manager' THEN 1
-                    WHEN 'employee' THEN 2
-                    ELSE 3
+          AND (
+              tc.scope_type = 'organization'
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM thanh_vien_to_chuc business_membership
+                  JOIN to_chuc business_org
+                    ON business_org.id = business_membership.organization_id
+                  WHERE business_membership.user_id = tvtc.user_id
+                    AND business_org.scope_type = 'organization'
+              )
+          )
+        ORDER BY CASE tc.scope_type WHEN 'organization' THEN 0 ELSE 1 END,
+                 CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
+                    WHEN 'manager' THEN 0
+                    WHEN 'employee' THEN 1
+                    ELSE 2
                  END,
                  lower(tc.ten_to_chuc), tc.id
         """,
@@ -233,3 +244,56 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
         "package_start_date": subscription.get("start_date") if subscription else None,
         "package_end_date": subscription.get("end_date") if subscription else None,
     }
+
+
+def activate_personal_subscription(cursor, user_id, display_name, package_id, duration_days=365):
+    """Create or activate an isolated personal tenant only after a package is granted."""
+    package = cursor.execute(
+        "SELECT han_muc_nhan_su FROM goi_dich_vu WHERE id = ? AND trang_thai = 'active'",
+        (package_id,),
+    ).fetchone()
+    if not package:
+        raise ValueError("PACKAGE_INACTIVE")
+    business_membership = cursor.execute(
+        """SELECT 1 FROM thanh_vien_to_chuc membership
+           JOIN to_chuc organization ON organization.id = membership.organization_id
+           WHERE membership.user_id = ? AND organization.scope_type = 'organization'
+           LIMIT 1""",
+        (user_id,),
+    ).fetchone()
+    if business_membership:
+        raise ValueError("USER_ALREADY_HAS_BUSINESS_ORGANIZATION")
+    org_id = stable_org_id(f"personal:{user_id}")
+    label = str(display_name or "Người dùng").strip() or "Người dùng"
+    cursor.execute(
+        """INSERT OR IGNORE INTO to_chuc (
+               id, ten_to_chuc, scope_type, personal_owner_user_id, trang_thai
+           ) VALUES (?, ?, 'personal', ?, 'active')""",
+        (org_id, f"Không gian cá nhân của {label}", user_id),
+    )
+    cursor.execute("UPDATE to_chuc SET trang_thai = 'active' WHERE id = ?", (org_id,))
+    cursor.execute(
+        """INSERT OR IGNORE INTO thanh_vien_to_chuc
+               (user_id, organization_id, vai_tro_trong_to_chuc)
+           VALUES (?, ?, 'employee')""",
+        (user_id, org_id),
+    )
+    now = int(time.time())
+    expires_at = now + int(duration_days) * 24 * 60 * 60
+    cursor.execute(
+        """INSERT INTO organization_subscriptions (
+               organization_id, package_id, status, starts_at, expires_at, member_quota
+           ) VALUES (?, ?, 'active', ?, ?, ?)
+           ON CONFLICT(organization_id) DO UPDATE SET
+               package_id = excluded.package_id,
+               status = 'active',
+               expires_at = excluded.expires_at,
+               member_quota = excluded.member_quota,
+               revision = organization_subscriptions.revision + 1""",
+        (org_id, package_id, now, expires_at, int(package[0])),
+    )
+    cursor.execute(
+        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 1)",
+        (org_id,),
+    )
+    return org_id

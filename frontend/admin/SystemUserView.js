@@ -5,13 +5,32 @@ import { registerCommandArgs } from "../shared/commandArgs.js";
 import { normalizeOrganizations, organizationDisplayName } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+
+export function getUserInitials(name, username = "") {
+  const source = String(name || username || "U").trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  return (parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : parts[0]?.slice(0, 2) || "U").toUpperCase();
+}
+
+export function getUserDisplayName(user = {}, storedUsername = "") {
+  return String(
+    user?.name
+    || user?.username
+    || storedUsername
+    || user?.email
+    || "Người dùng"
+  ).trim() || "Người dùng";
+}
+
 export function updateActiveUserProfileDisplay() {
   const avatar = document.getElementById("header-profile-avatar");
   const h4 = document.getElementById("header-profile-name");
   const p = document.getElementById("header-profile-role");
   if (avatar && h4 && p) {
     const user = this.model.state.activeuser || { name: "Khách", title: "Khách", id: "" };
-    h4.textContent = user.name;
+    const storedUsername = sessionStorage.getItem("bf_username") || localStorage.getItem("bf_username") || "";
+    const displayName = getUserDisplayName(user, storedUsername);
+    h4.textContent = displayName;
     const orgs = normalizeOrganizations(user).filter((organization) => organization.status === "active");
     let activeOrg = getActiveOrganizationId();
     if (!activeOrg || !orgs.some((organization) => organization.id === activeOrg)) {
@@ -40,23 +59,28 @@ export function updateActiveUserProfileDisplay() {
     if (typeof appController?.renderWorkspaceSwitcher === "function") {
       appController.renderWorkspaceSwitcher();
     }
+    const activeRole = this.model.state.activerole || "employee";
+    const sidebar = document.getElementById("sidebar");
+    if (sidebar) sidebar.dataset.activeRole = activeRole;
+    avatar.dataset.bfRole = activeRole;
+    const renderAvatarFallback = () => {
+      avatar.replaceChildren();
+      avatar.textContent = getUserInitials(displayName, user.username || storedUsername);
+      avatar.classList.remove("has-image");
+      avatar.classList.add("has-initials");
+    };
     const avatarSrc = safeImageSrc(user.avatar);
     if (avatarSrc) {
       avatar.replaceChildren();
       const image = document.createElement("img");
       image.src = avatarSrc;
       image.alt = "Avatar";
+      image.addEventListener("error", renderAvatarFallback, { once: true });
       avatar.appendChild(image);
-      setRuntimeStyle(avatar, "background", "none");
+      avatar.classList.add("has-image");
+      avatar.classList.remove("has-initials");
     } else {
-      avatar.textContent = user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
-      if (this.model.state.activerole === "super_admin") {
-        setRuntimeStyle(avatar, "background", "linear-gradient(135deg, #a855f7 0%, #4f46e5 100%)");
-      } else if (this.model.state.activerole === "manager") {
-        setRuntimeStyle(avatar, "background", "linear-gradient(135deg, #3b82f6 0%, #10b981 100%)");
-      } else {
-        setRuntimeStyle(avatar, "background", "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)");
-      }
+      renderAvatarFallback();
     }
     const saSwitchSection = document.getElementById("sa-role-switch-section");
     if (saSwitchSection) {
@@ -93,15 +117,9 @@ export function updateActiveUserProfileDisplay() {
   const saItems = document.querySelectorAll(".role-menu-superadmin");
   const managerItems = document.querySelectorAll(".role-menu-manager");
   const clientItems = document.querySelectorAll(".role-menu-client");
-  saItems.forEach((item) => {
-    setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "block" : "none");
-  });
-  managerItems.forEach((item) => {
-    setRuntimeStyle(item, "display", this.model.state.activerole === "manager" ? "block" : "none");
-  });
-  clientItems.forEach((item) => {
-    setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "none" : "block");
-  });
+  saItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "block" : "none"));
+  managerItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "manager" ? "block" : "none"));
+  clientItems.forEach((item) => setRuntimeStyle(item, "display", this.model.state.activerole === "super_admin" ? "none" : "block"));
   this.applySecurityLockOverlay();
   this.populateNhanVienPhuTrachDropdowns();
 }
@@ -193,7 +211,7 @@ export function renderSuperAdminPanel() {
             status: organization.status === "active" ? "Hoạt động" : "Đã khóa"
           };
         }
-        if (["owner", "manager"].includes(organization.role) || !orgMap[organization.id].contact) {
+        if (organization.role === "manager" || !orgMap[organization.id].contact) {
           orgMap[organization.id].contact = u.name;
         }
       });
@@ -407,21 +425,27 @@ export function renderProfileTab(user) {
   const avatarPreview = document.getElementById("profile-avatar-preview");
   const avatarFallback = document.getElementById("profile-avatar-fallback");
   const avatarSrc = safeImageSrc(user.avatar);
+  const showAvatarFallback = () => {
+    if (avatarPreview) {
+      avatarPreview.hidden = true;
+      avatarPreview.removeAttribute("src");
+    }
+    if (avatarFallback) {
+      const storedUsername = sessionStorage.getItem("bf_username") || "";
+      const displayName = getUserDisplayName(user, storedUsername);
+      avatarFallback.textContent = getUserInitials(displayName, user.username || storedUsername);
+      avatarFallback.hidden = false;
+    }
+  };
   if (avatarSrc) {
     if (avatarPreview) {
       avatarPreview.src = avatarSrc;
-      setRuntimeStyle(avatarPreview, "display", "block");
+      avatarPreview.hidden = false;
+      avatarPreview.onerror = showAvatarFallback;
     }
-    if (avatarFallback) setRuntimeStyle(avatarFallback, "display", "none");
+    if (avatarFallback) avatarFallback.hidden = true;
   } else {
-    if (avatarPreview) {
-      avatarPreview.src = "";
-      setRuntimeStyle(avatarPreview, "display", "none");
-    }
-    if (avatarFallback) {
-      avatarFallback.textContent = (user.name || "AD").split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
-      setRuntimeStyle(avatarFallback, "display", "flex");
-    }
+    showAvatarFallback();
   }
 }
 export function renderSystemUsersTable(usersList, currentUsername) {

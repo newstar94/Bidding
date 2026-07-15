@@ -123,7 +123,7 @@ def get_active_org(request, user_id):
             _org_cache[cache_key] = (exc, now + ORG_CACHE_TTL)
         raise exc
     membership_role = str(selected_row['vai_tro_trong_to_chuc'] or '').strip().lower()
-    if membership_role not in {'owner', 'manager', 'employee'}:
+    if membership_role not in {'manager', 'employee'}:
         raise OrgPermissionError("Vai trò thành viên tổ chức không hợp lệ!")
     context = OrganizationContext(
         active_org_id=str(selected_row['id']),

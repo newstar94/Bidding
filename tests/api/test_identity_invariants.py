@@ -118,3 +118,5 @@ def test_registration_conflicts_are_409_and_login_keeps_password_spaces():
         assert user["effective_roles"] == ["employee"]
         assert user["organizations"] == []
         assert user["active_org_id"] is None
+        assert user["package_id"] is None
+        assert user["subscription"] is None

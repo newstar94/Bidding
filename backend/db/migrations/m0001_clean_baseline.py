@@ -76,7 +76,7 @@ def apply(cursor, context):
         (organization_id, organization_name),
     )
     cursor.execute(
-        "INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, 'owner')",
+        "INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES (?, ?, 'manager')",
         (admin_id, organization_id),
     )
     now = int(time.time())

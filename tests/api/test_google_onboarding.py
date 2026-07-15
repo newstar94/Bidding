@@ -80,3 +80,5 @@ def test_google_first_login_set_username_and_session_ready_with_csrf(monkeypatch
         assert session_payload["user"]["membership_role"] is None
         assert session_payload["user"]["effective_roles"] == ["employee"]
         assert session_payload["user"]["organizations"] == []
+        assert session_payload["user"]["package_id"] is None
+        assert session_payload["user"]["subscription"] is None

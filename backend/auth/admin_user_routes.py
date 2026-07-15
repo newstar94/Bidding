@@ -61,7 +61,7 @@ async def list_users_api(request):
             )
             membership = cursor.fetchone()
             membership_role = str(membership[0] or "").strip().lower() if membership else ""
-            if membership_role not in {'owner', 'manager'}:
+            if membership_role != 'manager':
                 cursor.execute(f"""
                     SELECT tk.id, tk.ten_dang_nhap AS username, tk.ho_ten AS name,
                            tvtc.vai_tro_trong_to_chuc AS role,
@@ -193,20 +193,20 @@ async def delete_user_api(request):
               ON organization.id = membership.organization_id
             WHERE membership.user_id = ?
               AND organization.scope_type = 'organization'
-              AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'owner'
+              AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'manager'
               AND NOT EXISTS (
                   SELECT 1
                   FROM thanh_vien_to_chuc AS other_owner
                   WHERE other_owner.organization_id = membership.organization_id
                     AND other_owner.user_id != membership.user_id
-                    AND lower(trim(other_owner.vai_tro_trong_to_chuc)) = 'owner'
+                    AND lower(trim(other_owner.vai_tro_trong_to_chuc)) = 'manager'
               )
             LIMIT 1
             """,
             (user_id,),
         )
         if cursor.fetchone():
-            return JSONResponse({"error": "Không thể xóa chủ sở hữu cuối cùng của tổ chức."}, status_code=409)
+            return JSONResponse({"error": "Không thể xóa Quản lý cuối cùng của tổ chức."}, status_code=409)
         personal_workspace_count = int(cursor.execute(
             "SELECT COUNT(*) FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
             (user_id,),
@@ -279,5 +279,4 @@ async def delete_user_api(request):
     finally:
         if conn:
             conn.close()
-
 

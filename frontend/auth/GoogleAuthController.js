@@ -213,7 +213,8 @@ export function setupGoogleSignIn() {
                 ...this.model.state.activeuser || {}
               };
               applyAccessContext(this.model.state.activeuser, data);
-              this.model.switchActiveRole(activeRole, data.name, data.id);
+              this.model.switchActiveRole(activeRole, data.name || data.username, data.id);
+              this.model.state.activeuser.username = data.username || sessionStorage.getItem("bf_username") || "";
               this.model.state.activeuser.avatar = data.avatar || "";
               this.model.state.activeuser.email = data.email || "";
               this.model.state.activeuser.package_id = data.package_id || "none";
@@ -241,7 +242,8 @@ export function setupGoogleSignIn() {
         ...this.model.state.activeuser || {}
       };
       applyAccessContext(this.model.state.activeuser, data);
-      this.model.switchActiveRole(activeRole, data.name, data.id);
+      this.model.switchActiveRole(activeRole, data.name || data.username, data.id);
+      this.model.state.activeuser.username = data.username || sessionStorage.getItem("bf_username") || "";
       this.model.state.activeuser.avatar = data.avatar || "";
       this.model.state.activeuser.email = data.email || "";
       this.model.state.activeuser.package_id = data.package_id || "none";

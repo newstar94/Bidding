@@ -699,7 +699,7 @@ export class BiddingModel {
     const title = BiddingModel.getRoleTitle(allowedRole);
     this.state.activeuser = {
       ...this.state.activeuser || {},
-      name: userName,
+      name: userName || this.state.activeuser?.name || this.state.activeuser?.username || "Người dùng",
       title,
       id: userId
     };

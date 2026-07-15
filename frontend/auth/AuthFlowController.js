@@ -88,7 +88,8 @@ export function setupAuth() {
     applyAccessContext(this.model.state.activeuser, user);
     const requestedRole = this.model.state.activeuser.dbRole ? this.model.state.activerole : null;
     this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole(this.model.state.activeuser, requestedRole);
-    this.model.state.activeuser.name = user.name;
+    this.model.state.activeuser.name = user.name || user.username || "Người dùng";
+    this.model.state.activeuser.username = user.username || sessionStorage.getItem("bf_username") || "";
     this.model.state.activeuser.avatar = user.avatar || "";
     this.model.state.activeuser.email = user.email || "";
     this.model.state.activeuser.package_id = user.package_id || "none";
@@ -371,7 +372,8 @@ export function setupAuth() {
         ...this.model.state.activeuser || {}
       };
       applyAccessContext(this.model.state.activeuser, data);
-      this.model.switchActiveRole(activeRole, data.name, data.id);
+      this.model.switchActiveRole(activeRole, data.name || data.username, data.id);
+      this.model.state.activeuser.username = data.username || sessionStorage.getItem("bf_username") || "";
       this.model.state.activeuser.avatar = data.avatar || "";
       this.model.state.activeuser.email = data.email || "";
       this.model.state.activeuser.package_id = data.package_id || "none";

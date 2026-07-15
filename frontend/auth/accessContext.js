@@ -42,12 +42,11 @@ export function applyAccessContext(target, payload = {}, storage = null) {
   target.membershipRole = selected?.role || payload.membership_role || null;
   target.dbRole = payload.role || (target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "employee");
   const membershipHierarchy = {
-    owner: ["owner", "manager", "employee"],
     manager: ["manager", "employee"],
     employee: ["employee"]
   };
   target.dbRoles = target.platformRole === "super_admin"
-    ? ["super_admin", "owner", "manager", "employee"]
+    ? ["super_admin", "manager", "employee"]
     : [...membershipHierarchy[target.membershipRole] || ["employee"]];
   target.dbRole = target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "employee";
   target.organizations = organizations;

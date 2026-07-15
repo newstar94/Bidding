@@ -107,7 +107,7 @@ def _role_database(path):
         INSERT INTO tai_khoan VALUES ('target', 'user');
         INSERT INTO to_chuc VALUES ('org-a', 'organization');
         INSERT INTO to_chuc VALUES ('org-b', 'organization');
-        INSERT INTO thanh_vien_to_chuc VALUES ('actor', 'org-a', 'owner', NULL);
+        INSERT INTO thanh_vien_to_chuc VALUES ('actor', 'org-a', 'manager', NULL);
         INSERT INTO thanh_vien_to_chuc VALUES ('actor', 'org-b', 'employee', NULL);
         INSERT INTO thanh_vien_to_chuc VALUES ('target', 'org-a', 'employee', NULL);
         INSERT INTO thanh_vien_to_chuc VALUES ('target', 'org-b', 'employee', NULL);
@@ -237,7 +237,7 @@ async def test_global_manager_cannot_promote_member_in_other_org(monkeypatch, tm
 
 
 @pytest.mark.anyio
-async def test_owner_can_promote_lower_member_in_own_org(monkeypatch, tmp_path):
+async def test_manager_cannot_promote_another_member_to_manager(monkeypatch, tmp_path):
     database = _role_database(tmp_path / "owner.db")
     monkeypatch.setattr(auth_routes, "database", database)
     monkeypatch.setattr(
@@ -253,13 +253,7 @@ async def test_owner_can_promote_lower_member_in_own_org(monkeypatch, tmp_path):
         _RoleRequest({"user_id": "target", "role": "manager"})
     )
 
-    assert response.status_code == 200
-    connection = database.get_connection()
-    role = connection.execute(
-        "SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc WHERE user_id = 'target' AND organization_id = 'org-a'"
-    ).fetchone()[0]
-    connection.close()
-    assert role == "manager"
+    assert response.status_code == 403
 
 
 def test_active_organization_context_comes_from_server_membership(monkeypatch, tmp_path):

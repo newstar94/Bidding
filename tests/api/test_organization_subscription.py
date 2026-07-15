@@ -53,7 +53,7 @@ def _subscription_database(path, quota=2, expires_at=None):
         )
     connection.execute("INSERT INTO to_chuc (id, ten_to_chuc) VALUES ('org-a', 'Organization A')")
     connection.execute(
-        "INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES ('owner', 'org-a', 'owner')"
+        "INSERT INTO thanh_vien_to_chuc (user_id, organization_id, vai_tro_trong_to_chuc) VALUES ('owner', 'org-a', 'manager')"
     )
     now = int(time.time())
     connection.execute(
