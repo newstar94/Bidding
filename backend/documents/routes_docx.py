@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import sqlite3
 from io import BytesIO
 from urllib.parse import quote
 from starlette.responses import StreamingResponse, JSONResponse
@@ -31,7 +32,7 @@ from backend.documents.docx_bid_context_service import (
     enrich_context_with_lot_summaries,
 )
 from backend.documents.docx_formula_service import _format_formula_date, apply_computed_mappings
-from backend.documents.docx_mapping_service import apply_custom_mappings
+from backend.documents.docx_mapping_service import apply_custom_mappings, lowercase_partner_identity_codes
 from backend.documents.word_defaults import ensure_default_word_mappings
 import uuid
 
@@ -254,6 +255,7 @@ async def export_plan_api(request):
 
         apply_custom_mappings(unified_context, mappings_rows)
         apply_computed_mappings(unified_context, mappings_rows)
+        lowercase_partner_identity_codes(unified_context, mappings_rows)
         custom_vars_list = [row[0].lower() for row in mappings_rows]
 
         active_tpl = custom_exporter.get_active_template(user_id)
@@ -317,6 +319,7 @@ async def export_report_api(request):
 
         apply_custom_mappings(unified_context, mappings_rows)
         apply_computed_mappings(unified_context, mappings_rows)
+        lowercase_partner_identity_codes(unified_context, mappings_rows)
         custom_vars_list = [row[0].lower() for row in mappings_rows]
 
         active_tpl = custom_exporter.get_active_template(user_id)
@@ -449,6 +452,7 @@ async def upload_template_api(request):
         return _docx_error(request, e, "upload_template_api")
 
 async def list_word_mappings_api(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -458,7 +462,6 @@ async def list_word_mappings_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
-            conn.close()
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
         ensure_default_word_mappings(cursor, org_name)
@@ -466,8 +469,6 @@ async def list_word_mappings_api(request):
 
         cursor.execute("SELECT id, ten_bien, source_table, source_column, mo_ta FROM cau_hinh_bien_word WHERE organization_id = ?", (org_name,))
         rows = cursor.fetchall()
-        conn.close()
-
         mappings = []
         for row in rows:
             r = dict(row)
@@ -483,8 +484,17 @@ async def list_word_mappings_api(request):
         return _docx_error(request, e, "list_word_mappings_api")
     except Exception as e:
         return _docx_error(request, e, "list_word_mappings_api")
+    finally:
+        if conn:
+            try:
+                if conn.in_transaction:
+                    conn.rollback()
+                conn.close()
+            except sqlite3.Error:
+                pass
 
 async def save_word_mapping_api(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -533,7 +543,6 @@ async def save_word_mapping_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
-            conn.close()
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
 
@@ -587,14 +596,22 @@ async def save_word_mapping_api(request):
                 """, (mapping_id, ten_bien, source_table, source_column, mo_ta, org_name))
 
         conn.commit()
-        conn.close()
         return JSONResponse({"success": True, "id": mapping_id})
     except OrgPermissionError as e:
         return _docx_error(request, e, "save_word_mapping_api")
     except Exception as e:
         return _docx_error(request, e, "save_word_mapping_api")
+    finally:
+        if conn:
+            try:
+                if conn.in_transaction:
+                    conn.rollback()
+                conn.close()
+            except sqlite3.Error:
+                pass
 
 async def delete_word_mapping_api(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -609,13 +626,19 @@ async def delete_word_mapping_api(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
-            conn.close()
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?", (mapping_id, org_name))
         conn.commit()
-        conn.close()
         return JSONResponse({"success": True})
     except OrgPermissionError as e:
         return _docx_error(request, e, "delete_word_mapping_api")
     except Exception as e:
         return _docx_error(request, e, "delete_word_mapping_api")
+    finally:
+        if conn:
+            try:
+                if conn.in_transaction:
+                    conn.rollback()
+                conn.close()
+            except sqlite3.Error:
+                pass

@@ -133,7 +133,7 @@ async def sync_websocket_endpoint(websocket):
                 await websocket.send_text('{"type":"ping"}')
                 _waiting_pong = True
 
-    except (WebSocketDisconnect, RuntimeError):
+    except (WebSocketDisconnect, RuntimeError, asyncio.TimeoutError):
         pass
     finally:
         if organization_id and organization_id in active_connections:

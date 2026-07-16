@@ -6,6 +6,7 @@ import { renderTableEmpty, renderTableError, renderTableLoading } from "../share
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
 import { executeAppCommand } from "../app/commandBus.js";
+import { formatPartnerIdentityCode } from "../app/domUtils.js";
 export async function renderKeHoachTable() {
   const tableBody = document.getElementById("kehoach-table").querySelector("tbody");
   const searchVal = document.getElementById("search-kehoach").value.toLowerCase();
@@ -392,7 +393,7 @@ export async function renderPlanVersionDetails(versionId) {
                             <strong class="bf-s-a91dac6c9e">${escapeHtml(cdt.tenChuDauTu)}</strong><br>
                             <small class="text-muted">Mã số thuế: ${escapeHtml(cdt.maSoThue || "--")} | Địa chỉ: ${escapeHtml((cdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}</small>
                         </div>
-                        <span class="associated-badge">${escapeHtml(cdt.maChuDauTu || "--")}</span>
+                        <span class="associated-badge partner-identity-code">${escapeHtml(formatPartnerIdentityCode(cdt.maChuDauTu, "--"))}</span>
                     </div>
                 ` : '<div class="text-muted"><small>Không tìm thấy thông tin chủ đầu tư.</small></div>'}
             </div>

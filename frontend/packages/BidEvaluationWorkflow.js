@@ -1,6 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { setJvData } from "./jvDataStore.js";
-import { bindCurrencyElement } from "../app/domUtils.js";
+import { bindCurrencyElement, formatPartnerIdentityCode } from "../app/domUtils.js";
 import { setVisible } from "../app/formStateUtils.js";
 import { validateRequiredEvaluationReportFields } from "./bidEvaluationValidation.js";
 import { addEvaluationLetterRow, renderEvaluationSummary } from "./bidEvaluationRender.js";
@@ -789,7 +789,7 @@ export function renderDanhGiaHsdtPanel() {
         }
         cellHtml += `
                     <td>${escapeHtml(bid.loaiNhaThau || "Độc lập")}</td>
-                    <td>${escapeHtml(maNhaThauHienThi)}</td>
+                    <td>${escapeHtml(formatPartnerIdentityCode(maNhaThauHienThi, "--"))}</td>
                     <td>${contractorDisplayHtml}</td>
                 `;
         if (is1G2T && this.currentDanhGiaTab === "financial") {

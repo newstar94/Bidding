@@ -1,6 +1,6 @@
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { authFetchDownload, escapeHtml, safeAttr } from "../../shared/view_helpers.js";
-import { bindCurrencyElement } from "../../app/domUtils.js";
+import { bindCurrencyElement, formatPartnerIdentityCode } from "../../app/domUtils.js";
 import { setFieldFeedback } from "../../app/formStateUtils.js";
 import { findContractorVersionByCode, getExactContractorVersion, resolveBidContractorName, resolveBidJointVentureMembers, selectContractorVersionForDate } from "../../partners/contractorVersionBinding.js";
 import { setJvData } from "../jvDataStore.js";
@@ -152,7 +152,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                     <a href="#" data-bf-action="show-contractor" data-id="${currentWinnerBid.nhaThauId}" class="link-hover bf-s-b0e08465c2">${resolveBidContractorName(view.model, currentWinnerBid)}</a>
                                 </h5>
                                 <div class="bf-s-dfd82ca088">
-                                    MST: <strong>${winnerMst || "Chưa có"}</strong>
+                                    MST: <strong>${escapeHtml(formatPartnerIdentityCode(winnerMst, "Chưa có"))}</strong>
                                 </div>
                             `;
             }
@@ -254,7 +254,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                             <tr>
                                 <td>${escapeHtml(b.maPhanLo || "—")}</td>
                                 <td>${escapeHtml(b.tenPhanLo || "—")}</td>
-                                <td>${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}</td>
+                                <td>${escapeHtml(formatPartnerIdentityCode(b.maNhaThau || b.maDinhDanh, "--"))}</td>
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${escapeHtml(thoiGianThucHienHtml)}</td>
@@ -265,7 +265,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           } else {
             return `
                             <tr>
-                                <td>${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}</td>
+                                <td>${escapeHtml(formatPartnerIdentityCode(b.maNhaThau || b.maDinhDanh, "--"))}</td>
                                 <td>${contractorHtml}</td>
                                 <td class="fw-bold text-success">${giaTrungHtml}</td>
                                 <td>${escapeHtml(thoiGianThucHienHtml)}</td>
@@ -483,7 +483,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                      </td>
                                  ` : ""}
                                 <td>
-                                ${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}
+                                ${escapeHtml(formatPartnerIdentityCode(b.maNhaThau || b.maDinhDanh, "--"))}
                                 </td>
                                 <td>
                                     ${escapeHtml(b.tenNhaThau || "--")}

@@ -6,6 +6,7 @@ import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSel
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
+import { formatPartnerIdentityCode } from "../app/domUtils.js";
 export async function renderChuDauTuTable() {
   const tableBody = document.getElementById("chudautu-table").querySelector("tbody");
   const searchVal = document.getElementById("search-chudautu").value.toLowerCase();
@@ -65,7 +66,7 @@ export async function renderChuDauTuTable() {
             <tr>
                 <td>
                     <div class="bf-s-8c8dc52ed7">
-                        <a href="#" data-bf-action="show-investor" data-id="${safeAttr(displayedCdt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Chủ đầu tư"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(displayedCdt.maChuDauTu || "")}</span></a>
+                        <a href="#" data-bf-action="show-investor" data-id="${safeAttr(displayedCdt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Chủ đầu tư"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(formatPartnerIdentityCode(displayedCdt.maChuDauTu))}</span></a>
                         <span class="bf-s-db1d8f859f">-</span>
                         ${dropdownHtml}
                     </div>
@@ -140,7 +141,7 @@ export function renderChuDauTuVersionDetails(versionId) {
             <div class="detail-header-block bf-s-08b722fa44">
                 <div class="bf-s-a36b98e9db">
                     <div class="bf-s-bbf072f32c">
-                        <span class="detail-code partner-identity-code bf-s-018b1c91c7">${escapeHtml(cdt.maChuDauTu || "--")}</span>
+                        <span class="detail-code partner-identity-code bf-s-018b1c91c7">${escapeHtml(formatPartnerIdentityCode(cdt.maChuDauTu, "--"))}</span>
                         <span class="version-separator bf-s-ada7b4c5a3">-</span>
                         ${versionSelectHtml}
                     </div>

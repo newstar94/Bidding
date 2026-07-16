@@ -10,6 +10,7 @@ import { renderPreparationActionPanel } from "./detail/PreparationPanel.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { renderPreparationDetailsPanel } from "./detail/PreparationDetailsPanel.js";
 import { renderAwardResultDetailsPanel } from "./detail/AwardResultDetailsPanel.js";
+import { formatPartnerIdentityCode } from "../app/domUtils.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { hasHolidays, setHolidays } from "../shared/runtimeState.js";
 import { renderOpeningPanel } from "./detail/OpeningPanel.js";
@@ -453,7 +454,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                                               <td>${escapeHtml(b.maPhanLo || "--")}</td>
                                               <td>${escapeHtml(b.tenPhanLo || "--")}</td>
                                           ` : ""}
-                                          <td>${escapeHtml(b.maNhaThau || b.maDinhDanh || "--")}</td>
+                                          <td>${escapeHtml(formatPartnerIdentityCode(b.maNhaThau || b.maDinhDanh, "--"))}</td>
                                           <td>${renderBidContractorLink(this.model, b, `${gt.id}_qualified_${b.id}`)}</td>
                                           ${hasTechScore ? `<td class="bf-s-63dbf5319a">${escapeHtml(b.danhGiaKyThuat || "--")}</td>` : ""}
                                           <td class="bf-s-63dbf5319a">

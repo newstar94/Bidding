@@ -267,8 +267,28 @@ def test_lookup_api_accepts_org_code_without_tax_code(monkeypatch):
         )
 
     assert response.status_code == 200
+    assert response.json()["found"] is True
     assert response.json()["tax_code"] == ""
     assert calls == [("", "vnz000050923", "CDT")]
+
+
+def test_lookup_api_returns_successful_empty_result_when_partner_is_not_found(monkeypatch):
+    monkeypatch.setattr(
+        "backend.partners.partner_lookup_service.lookup_partner_info",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/lookup-tax-code?orgCode=vn3000166995&role=CDT"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "found": False,
+        "code": "PARTNER_NOT_FOUND",
+        "message": "Không tìm thấy thông tin doanh nghiệp.",
+    }
 
 
 def test_lookup_falls_back_to_vietqr_after_muasamcong(monkeypatch):

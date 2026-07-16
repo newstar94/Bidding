@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+    formatPartnerIdentityCode,
     isVietnamTaxCode,
     normalizeOrganizationName,
     normalizePersonName,
     normalizeProcurementOrgCode,
     normalizeVietnamTaxCode
 } from '../../frontend/app/domUtils.js';
-import { findStoredPartnerLookupData, getPartnerLookupInput } from '../../frontend/partners/partnerTaxLookup.js';
+import { findStoredPartnerLookupData, getPartnerLookupInput, lookupPartnerInfo } from '../../frontend/partners/partnerTaxLookup.js';
 import {
     composeInternalAddress,
     parseStoredInternalAddress,
@@ -24,10 +25,32 @@ test('normalizes procurement organization codes without deriving tax codes', () 
     assert.equal(normalizeVietnamTaxCode('vn0312345678'), 'vn0312345678');
 });
 
+test('formats investor and contractor identity codes in lowercase for display', () => {
+    assert.equal(formatPartnerIdentityCode(' VN3000166995 '), 'vn3000166995');
+    assert.equal(formatPartnerIdentityCode('VNP0109965278'), 'vnp0109965278');
+    assert.equal(formatPartnerIdentityCode('', '--'), '--');
+});
+
 test('keeps organization-code and tax-code lookup inputs independent', () => {
     assert.deepEqual(getPartnerLookupInput('vn0109965278'), { orgCode: 'vn0109965278', taxCode: '' });
     assert.deepEqual(getPartnerLookupInput('0109965278'), { orgCode: '', taxCode: '0109965278' });
     assert.equal(getPartnerLookupInput('NT-ECO'), null);
+});
+
+test('treats a successful empty partner lookup as a normal miss', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+        found: false,
+        code: 'PARTNER_NOT_FOUND'
+    }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+    });
+    try {
+        assert.equal(await lookupPartnerInfo({ orgCode: 'vn3000166995', partnerRole: 'CDT' }), null);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });
 
 test('uses a stored contractor before external lookup sources', () => {

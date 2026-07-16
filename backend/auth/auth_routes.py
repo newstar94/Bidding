@@ -27,7 +27,11 @@ from backend.shared.helpers import (
     OrgPermissionError
 )
 from backend.auth.auth_helper import _session_cache_get, _session_cache_set
-from backend.auth.auth_helper import PRIVILEGED_REAUTH_TTL_SECONDS, verify_super_admin_controls
+from backend.auth.auth_helper import (
+    PRIVILEGED_REAUTH_TTL_SECONDS,
+    SESSION_ACTIVITY_TOUCH_SECONDS,
+    verify_super_admin_controls,
+)
 from backend.auth.session_store import (
     create_session,
     load_session_user,
@@ -208,10 +212,14 @@ def _validate_token_expiry(session_token, user):
 
 
 def _extend_session_if_needed(user):
+    now = int(time.time())
+    if now - int(user.get("last_seen_at") or 0) < SESSION_ACTIVITY_TOUCH_SECONDS:
+        return False
     return touch_session(
         database,
         user,
         idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
+        now=now,
     )
 
 

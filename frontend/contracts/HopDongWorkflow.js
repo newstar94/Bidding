@@ -6,6 +6,7 @@ import { persistAndSync } from "../shared/MutationService.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { organizationEmployeeProfile } from "../auth/accessContext.js";
+import { formatPartnerIdentityCode } from "../app/domUtils.js";
 export async function deleteHopDong(id) {
   const targetHd = this.model.state.hopdong.find((h) => h.id === id);
   if (!targetHd) return;
@@ -180,7 +181,7 @@ export async function editHopDong(id) {
           if (selectedVerCdt && confirmContainer && confirmInfo) {
             setRuntimeStyle(confirmContainer, "display", "block");
             confirmInfo.innerHTML = `
-                            <strong>Mã:</strong> ${escapeHtml(selectedVerCdt.maChuDauTu || "--")}<br>
+                            <strong>Mã:</strong> ${escapeHtml(formatPartnerIdentityCode(selectedVerCdt.maChuDauTu, "--"))}<br>
                             <strong>Tên:</strong> ${escapeHtml(selectedVerCdt.tenChuDauTu || "--")}<br>
                             <strong>MST:</strong> ${escapeHtml(selectedVerCdt.maSoThue || "--")}<br>
                             <strong>Người ký:</strong> ${escapeHtml(selectedVerCdt.danhXung || "Ông")} ${escapeHtml(selectedVerCdt.daiDienCdt || "--")} (${escapeHtml(selectedVerCdt.chucVuDaiDien || "--")})<br>
@@ -231,7 +232,7 @@ export async function editHopDong(id) {
             setRuntimeStyle(confirmContainer, "display", "block");
             const isJV = selectedVerNt.loaiNhaThau === "Liên danh";
             let detailsHtml = `
-                            <strong>Mã:</strong> ${escapeHtml(selectedVerNt.maNhaThau || "--")}<br>
+                            <strong>Mã:</strong> ${escapeHtml(formatPartnerIdentityCode(selectedVerNt.maNhaThau, "--"))}<br>
                             <strong>Tên:</strong> ${escapeHtml(selectedVerNt.tenNhaThau || "--")}<br>
                             <strong>MST:</strong> ${escapeHtml(selectedVerNt.maSoThue || "--")}<br>
                             <strong>Người đại diện:</strong> ${escapeHtml(selectedVerNt.danhXung || "Ông")} ${escapeHtml(selectedVerNt.nguoiDaiDien || "--")}<br>

@@ -1,4 +1,4 @@
-import { bindCurrencyElement } from "../../app/domUtils.js";
+import { bindCurrencyElement, formatPartnerIdentityCode } from "../../app/domUtils.js";
 import { renderBidContractorLink } from "./BidderTable.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 
@@ -17,7 +17,7 @@ export function renderFinancialOpeningTable({
     const discount = String(bid.tyLeGiamGia || 0).replace(".", ",");
     const finalPrice = model.formatVND(bid.giaSauGiamGia) || "";
     const validity = bid.hieuLucHsdt || "";
-    const identity = escapeHtml(bid.maNhaThau || bid.maDinhDanh || "--");
+    const identity = escapeHtml(formatPartnerIdentityCode(bid.maNhaThau || bid.maDinhDanh, "--"));
     const contractor = renderBidContractorLink(model, bid, `${pkg.id}_financial_${isReadOnly ? "readonly" : "edit"}_${bid.id}`);
     const lotCells = hasLots ? `<td>${escapeHtml(bid.maPhanLo || "--")}</td><td>${escapeHtml(bid.tenPhanLo || "--")}</td>` : "";
     const scoreCell = hasTechnicalScore ? `<td class="text-center">${escapeHtml(bid.danhGiaKyThuat || "--")}</td>` : "";

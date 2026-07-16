@@ -297,6 +297,7 @@
   overflow: hidden;
 }
 .app-header {
+  position: relative;
   height: var(--header-height);
   background-color: var(--bg-sidebar);
   border-bottom: 1px solid var(--border-color);
@@ -305,7 +306,7 @@
   justify-content: space-between;
   padding: 0 32px;
   flex-shrink: 0;
-  z-index: 5;
+  z-index: 50;
   transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 .header-left {

@@ -132,3 +132,23 @@ def test_idle_activity_moves_only_idle_expiry_not_absolute_expiry(tmp_path):
     assert refreshed["absolute_expires_at"] == 500
     assert session_invalid_reason(refreshed, now=499) is None
     assert session_invalid_reason(refreshed, now=500) == "token_expired"
+
+
+def test_session_touch_skips_quickly_when_another_writer_holds_sqlite(tmp_path):
+    database = _database(tmp_path / "locked-touch.db")
+    _create(database, "token-locked", now=100, absolute=500)
+    user = load_session_user(database, "token-locked")
+    writer = database.get_connection()
+    writer.execute("BEGIN IMMEDIATE")
+
+    started_at = time.perf_counter()
+    try:
+        touched = touch_session(database, user, idle_timeout_seconds=300, now=250)
+    finally:
+        writer.rollback()
+        writer.close()
+
+    assert touched is False
+    assert time.perf_counter() - started_at < 1
+    refreshed = load_session_user(database, "token-locked")
+    assert refreshed["last_seen_at"] == 100

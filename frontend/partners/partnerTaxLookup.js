@@ -15,7 +15,7 @@ export async function lookupPartnerInfo({ orgCode = "", taxCode = "", partnerRol
   if (isVietnamTaxCode(normalizedTaxCode)) query.set("code", normalizedTaxCode);
   try {
     const data = await getJson(`/api/lookup-tax-code?${query}`, { signal });
-    return data?.name ? data : null;
+    return data?.found !== false && data?.name ? data : null;
   } catch (error) {
     if (error?.name === "AbortError") throw error;
     return null;

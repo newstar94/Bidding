@@ -159,6 +159,33 @@ test('Word template F5 never reveals the dashboard after the loader', async ({ p
   await expect(page.locator('#tab-bieumau')).toBeVisible();
   await expect(page.locator('#tab-dashboard')).not.toHaveClass(/active/);
   await expect(page.locator('#page-title')).toHaveText('Quản lý Biểu mẫu & Từ điển');
+
+  await page.locator('.header-profile-trigger').click();
+  await expect(page.locator('#profile-dropdown-menu')).toHaveClass(/active/);
+  const profileLayering = await page.evaluate(() => {
+    const appHeader = document.querySelector('.app-header');
+    const dropdown = document.getElementById('profile-dropdown-menu');
+    const stickyHeader = document.querySelector('#dictionary-table thead th');
+    const headerZ = Number.parseInt(getComputedStyle(appHeader).zIndex, 10);
+    const stickyZ = Number.parseInt(getComputedStyle(stickyHeader).zIndex, 10);
+    const dropdownRect = dropdown.getBoundingClientRect();
+    const stickyRect = stickyHeader.getBoundingClientRect();
+    const overlapLeft = Math.max(dropdownRect.left, stickyRect.left);
+    const overlapRight = Math.min(dropdownRect.right, stickyRect.right);
+    const overlapTop = Math.max(dropdownRect.top, stickyRect.top);
+    const overlapBottom = Math.min(dropdownRect.bottom, stickyRect.bottom);
+    let dropdownWinsAtOverlap = true;
+    if (overlapLeft < overlapRight && overlapTop < overlapBottom) {
+      const topElement = document.elementFromPoint(
+        (overlapLeft + overlapRight) / 2,
+        (overlapTop + overlapBottom) / 2
+      );
+      dropdownWinsAtOverlap = dropdown.contains(topElement);
+    }
+    return { headerZ, stickyZ, dropdownWinsAtOverlap };
+  });
+  expect(profileLayering.headerZ).toBeGreaterThan(profileLayering.stickyZ);
+  expect(profileLayering.dropdownWinsAtOverlap).toBe(true);
 });
 
 test('super admin can switch active roles from the profile dropdown', async ({ page, credentials }) => {

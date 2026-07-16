@@ -7,6 +7,7 @@ import { renderVersionSelector, resolveVersionedRow } from "../shared/VersionSel
 import { renderTableEmpty, renderTableError, renderTableLoading } from "../shared/EntityTable.js";
 import { renderEntityActions, standardEditDeleteActions } from "../shared/EntityActions.js";
 import { executeAppCommand } from "../app/commandBus.js";
+import { formatPartnerIdentityCode } from "../app/domUtils.js";
 export async function renderNhaThauTable() {
   const tableBody = document.getElementById("nhathau-table").querySelector("tbody");
   const searchVal = document.getElementById("search-nhathau").value.toLowerCase();
@@ -74,7 +75,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div class="bf-s-8c8dc52ed7">
-                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Nhà thầu"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(displayedNt.maNhaThau || "")}</span></a>
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Nhà thầu"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(formatPartnerIdentityCode(displayedNt.maNhaThau))}</span></a>
                                 <span class="bf-s-db1d8f859f">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -104,7 +105,7 @@ export async function renderNhaThauTable() {
                     <tr>
                         <td>
                             <div class="bf-s-8c8dc52ed7">
-                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Nhà thầu"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(displayedNt.maNhaThau || "")}</span></a>
+                                <a href="#" data-bf-action="show-contractor" data-id="${esc(displayedNt.id)}" class="text-blue fw-bold link-hover bf-s-e09f922d0d" title="Xem chi tiết Nhà thầu"><span class="detail-code partner-identity-code bf-s-dc5de304c3">${esc(formatPartnerIdentityCode(displayedNt.maNhaThau))}</span></a>
                                 <span class="bf-s-db1d8f859f">-</span>
                                 ${dropdownHtml}
                             </div>
@@ -201,7 +202,7 @@ export function renderNhaThauVersionDetails(versionId) {
       const memberContractor = resolveContractorVersion(this.model, m);
       const memberId = escapeHtml(memberContractor?.id || "");
       const memberName = escapeHtml(memberContractor?.tenNhaThau || m.tenNhaThau || "--");
-      const memberCode = escapeHtml(memberContractor?.maNhaThau || memberContractor?.maSoThue || m.maNhaThau || m.maSoThue || "--");
+      const memberCode = escapeHtml(formatPartnerIdentityCode(memberContractor?.maNhaThau || memberContractor?.maSoThue || m.maNhaThau || m.maSoThue, "--"));
       const nameHtml = memberId ? `<a href="#" data-bf-action="show-contractor" data-id="${memberId}" class="text-blue link-hover">${memberName}</a>` : memberName;
       const codeHtml = memberId ? `<a href="#" data-bf-action="show-contractor" data-id="${memberId}" class="text-blue link-hover">${memberCode}</a>` : memberCode;
       return `
@@ -280,7 +281,7 @@ export function renderNhaThauVersionDetails(versionId) {
             <div class="detail-header-block bf-s-08b722fa44">
                 <div class="bf-s-a36b98e9db">
                     <div class="bf-s-bbf072f32c">
-                        <span class="detail-code partner-identity-code bf-s-018b1c91c7">${escapeHtml(nt.maNhaThau || "--")}</span>
+                        <span class="detail-code partner-identity-code bf-s-018b1c91c7">${escapeHtml(formatPartnerIdentityCode(nt.maNhaThau, "--"))}</span>
                         <span class="version-separator bf-s-ada7b4c5a3">-</span>
                         ${versionSelectHtml}
                     </div>

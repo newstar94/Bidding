@@ -1,7 +1,7 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml } from "../shared/view_helpers.js";
-import { bindCurrencyElement, debounce } from "../app/domUtils.js";
+import { bindCurrencyElement, debounce, formatPartnerIdentityCode } from "../app/domUtils.js";
 import { setFieldFeedback } from "../app/formStateUtils.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { generateRecordId } from "../shared/idUtils.js";
@@ -532,7 +532,7 @@ export function openMoThauJVManager(tr) {
   const leadName = tr._leadMemberCode === currentLeadCode
     ? tr._leadMemberName || resolveLeadMemberName(foundLeadNt, leadCode)
     : resolveLeadMemberName(foundLeadNt, leadCode);
-  const displayLeadCode = leadCode || "Chưa nhập";
+  const displayLeadCode = formatPartnerIdentityCode(leadCode, "Chưa nhập");
   body.innerHTML = `
         <div class="bf-s-8df25cd500">
             <div class="bf-s-7f07b6bbca">Thành viên đứng đầu liên danh</div>
@@ -807,7 +807,7 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   const visibleMembers = getJointVentureSubMembers(members || [], leadCode);
   const resolvedLeadName = matchedContractor?.tenNhaThau || resolveLeadMemberName(matchedContractor, leadCode) || leadName;
   const displayLeadName = escapeHtml(resolvedLeadName || "Chưa cập nhật");
-  const displayLeadCode = escapeHtml(matchedContractor?.maNhaThau || matchedContractor?.maSoThue || leadCode || "Chưa cập nhật");
+  const displayLeadCode = escapeHtml(formatPartnerIdentityCode(matchedContractor?.maNhaThau || matchedContractor?.maSoThue || leadCode, "Chưa cập nhật"));
   const leadNtId = matchedContractor?.id || null;
   const leadIdAttr = escapeHtml(leadNtId || "");
   const leadCodeHtml = leadNtId ? `<a href="#" data-bf-action="show-contractor-close-jv" data-id="${leadIdAttr}" class="text-blue fw-bold link-hover bf-s-b39a6b99e1">${displayLeadCode}</a>` : displayLeadCode;
@@ -818,7 +818,7 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   } else {
     membersHtml = visibleMembers.map((m, idx) => {
       const memberContractor = resolveContractorVersion(appController?.model, m);
-      const memberCode = escapeHtml(memberContractor?.maNhaThau || memberContractor?.maSoThue || m.maNhaThau || m.maSoThue || "--");
+      const memberCode = escapeHtml(formatPartnerIdentityCode(memberContractor?.maNhaThau || memberContractor?.maSoThue || m.maNhaThau || m.maSoThue, "--"));
       const memberName = escapeHtml(memberContractor?.tenNhaThau || m.tenNhaThau || "--");
       const memberNtId = memberContractor?.id || null;
       const memberIdAttr = escapeHtml(memberNtId || "");

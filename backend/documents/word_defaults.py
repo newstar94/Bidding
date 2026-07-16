@@ -452,6 +452,15 @@ def ensure_default_word_mappings(cursor, organization_id):
         return 0
 
     cursor.execute(
+        "SELECT scope_type FROM to_chuc WHERE id = ?",
+        (organization_id,),
+    )
+    organization_row = cursor.fetchone()
+    if not organization_row:
+        return 0
+    owner_type = "personal" if str(organization_row[0] or "").strip().lower() == "personal" else "organization"
+
+    cursor.execute(
         "SELECT mappings_version FROM word_default_seeds WHERE organization_id = ?",
         (organization_id,),
     )
@@ -494,11 +503,12 @@ def ensure_default_word_mappings(cursor, organization_id):
                 """
                 INSERT OR IGNORE INTO cau_hinh_bien_word (
                     id, organization_id, owner_type, ten_bien, source_table, source_column, mo_ta
-                ) VALUES (?, ?, 'organization', ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _stable_word_mapping_id(organization_id, mapping["ten_bien"]),
                     organization_id,
+                    owner_type,
                     mapping["ten_bien"],
                     mapping["source_table"],
                     mapping["source_column"],

@@ -176,14 +176,12 @@ async def lookup_tax_code_api(request):
             timeout_seconds=30,
         )
         if info:
-            return JSONResponse(info)
-        else:
-            return error_response(
-                request,
-                "PARTNER_NOT_FOUND",
-                "Không tìm thấy thông tin doanh nghiệp.",
-                status_code=404,
-            )
+            return JSONResponse({**info, "found": True})
+        return JSONResponse({
+            "found": False,
+            "code": "PARTNER_NOT_FOUND",
+            "message": "Không tìm thấy thông tin doanh nghiệp.",
+        })
     except Exception as e:
         return log_and_error(
             request,

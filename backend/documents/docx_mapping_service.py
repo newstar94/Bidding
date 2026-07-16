@@ -4,6 +4,38 @@ from backend.shared.helpers import VietnameseFloat
 
 
 CONTEXT_SOURCE_TABLE = "__context__"
+PARTNER_IDENTITY_COLUMNS = {"ma_chu_dau_tu", "ma_nha_thau"}
+PARTNER_IDENTITY_KEYS = {
+    "ma_chu_dau_tu",
+    "ma_nha_thau",
+    "machudautu",
+    "manhathau",
+    "ma_cdt",
+    "ma_nt",
+}
+
+
+def lowercase_partner_identity_codes(context, mappings_rows=()):
+    """Use lowercase partner codes in Word output without changing stored data."""
+    identity_keys = set(PARTNER_IDENTITY_KEYS)
+    for ten_bien, _src_table, src_column in mappings_rows:
+        if str(src_column or "").strip().lower() in PARTNER_IDENTITY_COLUMNS:
+            identity_keys.add(str(ten_bien or "").strip().lower())
+
+    def visit(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized_key = str(key or "").strip().lower()
+                if normalized_key in identity_keys and child is not None:
+                    value[key] = str(child).strip().lower()
+                else:
+                    visit(child)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+
+    visit(context)
+    return context
 
 def apply_custom_mappings(context, mappings_rows):
     table_to_context = {
@@ -238,4 +270,3 @@ def apply_custom_mappings(context, mappings_rows):
                         context[ten_bien] = context.get('investor_name', '--')
                     elif src_column == 'dia_chi':
                         context[ten_bien] = context.get('investor_address', '--')
-

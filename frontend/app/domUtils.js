@@ -83,6 +83,10 @@ export function normalizeProcurementOrgCode(value) {
   const normalized = String(value || "").trim().toLowerCase().replace(/[\s._-]+/g, "");
   return /^(?:vnp|vnz|vn)\d{9,14}$/.test(normalized) ? normalized : "";
 }
+export function formatPartnerIdentityCode(value, fallback = "") {
+  const code = String(value ?? "").trim();
+  return code ? code.toLocaleLowerCase("vi-VN") : fallback;
+}
 export function normalizeTaxCodeForCompare(value) {
   return normalizeTaxCodeForLookup(value).replace(/[^0-9a-z]/gi, "").toLowerCase();
 }

@@ -1,6 +1,7 @@
 """Persistent, revocable multi-device authentication sessions."""
 
 import hashlib
+import sqlite3
 import time
 import uuid
 
@@ -78,6 +79,9 @@ def touch_session(database, user, *, idle_timeout_seconds, now=None):
     idle_expiry = min(absolute, current + max(60, int(idle_timeout_seconds)))
     conn = database.get_connection()
     try:
+        # Session activity is an opportunistic write. It must never inherit the
+        # general 15-second SQLite wait and stall every request on the event loop.
+        conn.execute("PRAGMA busy_timeout = 100")
         conn.execute(
             """
             UPDATE auth_sessions
@@ -87,6 +91,11 @@ def touch_session(database, user, *, idle_timeout_seconds, now=None):
             (current, idle_expiry, user["session_id"]),
         )
         conn.commit()
+    except sqlite3.OperationalError as exc:
+        if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+            raise
+        conn.rollback()
+        return False
     finally:
         conn.close()
     user.update({
@@ -94,7 +103,7 @@ def touch_session(database, user, *, idle_timeout_seconds, now=None):
         "idle_expires_at": idle_expiry,
         "absolute_expires_at": absolute,
     })
-    return False
+    return True
 
 
 def revoke_session(cursor, token, now=None):
