@@ -1,6 +1,9 @@
 """Dashboard projections derived from synchronized records."""
 
+import calendar
 from datetime import date, datetime, timedelta
+import re
+import unicodedata
 
 from backend.shared.access_policy import can_read_table, is_organization_manager
 from backend.sync.mapper import map_db_to_json
@@ -13,11 +16,22 @@ from backend.documents.docx_formula_service import (
 
 
 EVALUATION_REPORT_DELAY_DAYS = 7
+CONTRACT_EXPIRY_WARNING_DAYS = 10
 PLAN_STATUS_LABELS = ("Chưa triển khai", "Đang thực hiện", "Hoàn thành")
 ALERT_COUNT_KEYS = (
     "closingToday", "closingSoon", "overdueOpening", "delayedEvaluation",
-    "planPublishingWarning", "planPublishingOverdue",
+    "contractExpired", "contractExpiring", "planPublishingWarning", "planPublishingOverdue",
 )
+ALERT_PRIORITY = {
+    "overdueOpening": 0,
+    "contractExpired": 1,
+    "planPublishingOverdue": 2,
+    "closingToday": 3,
+    "delayedEvaluation": 4,
+    "contractExpiring": 5,
+    "planPublishingWarning": 6,
+    "closingSoon": 7,
+}
 
 
 def _parse_iso_date(value):
@@ -42,6 +56,51 @@ def _business_days_elapsed(start_date, end_date, holidays_data=None):
 
 def _add_business_days(start_date, days, holidays_data=None):
     return _add_working_days(start_date, days, holidays_data or _load_holidays())
+
+
+def _normalize_search_text(value):
+    text = unicodedata.normalize("NFD", str(value or ""))
+    return "".join(char for char in text if unicodedata.category(char) != "Mn").lower().replace("đ", "d")
+
+
+def _contract_expiry_date(signed_date, raw_duration):
+    normalized = _normalize_search_text(raw_duration)
+    match = re.search(r"\d+(?:[.,]\d+)?", normalized)
+    if not signed_date or not match:
+        return None
+    amount = int(float(match.group(0).replace(",", ".")))
+    if amount <= 0:
+        return None
+    if "thang" in normalized:
+        month_index = signed_date.month - 1 + amount
+        year = signed_date.year + month_index // 12
+        month = month_index % 12 + 1
+        day = min(signed_date.day, calendar.monthrange(year, month)[1])
+        return date(year, month, day)
+    if "nam" in normalized:
+        year = signed_date.year + amount
+        day = min(signed_date.day, calendar.monthrange(year, signed_date.month)[1])
+        return date(year, signed_date.month, day)
+    days = amount * 7 if "tuan" in normalized else amount
+    return signed_date + timedelta(days=days)
+
+
+def _contract_has_invoice(paper_status):
+    normalized = _normalize_search_text(paper_status)
+    return any(label in normalized for label in ("da xuat hoa don", "hoa don da xuat", "da lap hoa don"))
+
+
+def _select_alert_items(items, limit=8):
+    ordered = sorted(items, key=lambda item: (ALERT_PRIORITY.get(item.get("alertKey"), 99), str(item.get("deadline") or "")))
+    selected = []
+    for target_type in ("contract", "plan", "package"):
+        item = next((candidate for candidate in ordered if candidate.get("targetType") == target_type), None)
+        if item is not None:
+            selected.append(item)
+    for item in ordered:
+        if len(selected) < limit and item not in selected:
+            selected.append(item)
+    return sorted(selected, key=lambda item: (ALERT_PRIORITY.get(item.get("alertKey"), 99), str(item.get("deadline") or "")))
 
 
 def build_dashboard_summary(cursor, organization_id, role_str, user_id):
@@ -374,6 +433,54 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         counts["hopdong"] = len(contract_rows)
         total_contract_value = str(sum(int(row[1] or 0) for row in contract_rows))
 
+        contract_alert_filter_sql = ""
+        contract_alert_params = [organization_id]
+        if not manager:
+            contract_alert_filter_sql = """
+                AND EXISTS (
+                    SELECT 1 FROM phan_cong_nhan_su pc
+                    WHERE pc.organization_id = hd.organization_id
+                      AND pc.id_nhan_vien = ?
+                      AND pc.id_muc_tieu = hd.id
+                      AND pc.loai_doi_tuong = 'hopdong'
+                )
+            """
+            contract_alert_params.append(user_id)
+        cursor.execute(f"""
+            SELECT hd.id, hd.so_hop_dong, hd.ten_hop_dong, hd.ngay_ky,
+                   hd.thoi_gian_thuc_hien, hd.trang_thai_hop_dong,
+                   hd.ngay_thanh_ly, hd.trang_thai_ho_so
+            FROM ({latest_contracts_sql}) hd
+            WHERE hd.trang_thai_hop_dong IN ('ACTIVE', 'SUSPENDED', 'COMPLETED')
+              {contract_alert_filter_sql}
+        """, tuple(contract_alert_params))
+        today = datetime.now().date()
+        warning_limit = today + timedelta(days=CONTRACT_EXPIRY_WARNING_DAYS)
+        for row in cursor.fetchall():
+            deadline = _contract_expiry_date(_parse_iso_date(row[3]), row[4])
+            if not deadline or deadline > warning_limit:
+                continue
+            missing_invoice = not _contract_has_invoice(row[7])
+            missing_liquidation = not str(row[6] or "").strip()
+            if not missing_invoice and not missing_liquidation:
+                continue
+            alert_key = "contractExpired" if deadline < today else "contractExpiring"
+            missing_steps = []
+            if missing_invoice:
+                missing_steps.append("Chưa xuất hóa đơn")
+            if missing_liquidation:
+                missing_steps.append("Chưa thanh lý")
+            alert_counts[alert_key] += 1
+            alert_items.append({
+                "targetType": "contract",
+                "id": str(row[0] or ""),
+                "soHopDong": str(row[1] or ""),
+                "tenHopDong": str(row[2] or ""),
+                "deadline": deadline.isoformat(),
+                "alertKey": alert_key,
+                "alertDetail": " · ".join(missing_steps),
+            })
+
         cursor.execute(f"""
             SELECT COUNT(*),
                    SUM(CASE WHEN hd.trang_thai_hop_dong = 'ACTIVE' THEN 1 ELSE 0 END)
@@ -391,16 +498,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         counts["assignedHopdong"] = int(assigned_row[0] or 0)
         counts["activeAssignedHopdong"] = int(assigned_row[1] or 0)
 
-    alert_priority = {
-        "overdueOpening": 0,
-        "planPublishingOverdue": 1,
-        "closingToday": 2,
-        "delayedEvaluation": 3,
-        "planPublishingWarning": 4,
-        "closingSoon": 5,
-    }
-    alert_items.sort(key=lambda item: (alert_priority.get(item.get("alertKey"), 99), str(item.get("deadline") or "")))
-    alert_items = alert_items[:8]
+    alert_items = _select_alert_items(alert_items)
 
     return {
         "counts": counts,

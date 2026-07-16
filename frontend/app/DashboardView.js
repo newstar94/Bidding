@@ -22,15 +22,18 @@ const CONTRACT_STATUS_CODES = {
   LIQUIDATED: "Đã thanh lý",
   CANCELLED: "Đã hủy"
 };
+const CONTRACT_EXPIRY_WARNING_DAYS = 10;
 const ALERT_META = {
   closingToday: { label: "Đóng thầu hôm nay", detail: "Chưa chuyển sang đã mở thầu", icon: "calendar-clock", tone: "blue" },
   closingSoon: { label: "Sắp đóng thầu", detail: "Trong 7 ngày tới", icon: "clock-3", tone: "amber" },
   overdueOpening: { label: "Quá hạn mở thầu", detail: "Đã qua ngày đóng thầu", icon: "circle-alert", tone: "red" },
   delayedEvaluation: { label: "Chậm báo cáo đánh giá", detail: "Quá 7 ngày sau mở thầu", icon: "file-warning", tone: "violet" },
+  contractExpired: { label: "Hợp đồng đã hết hạn", detail: "Chưa hoàn tất nghĩa vụ hợp đồng", icon: "file-warning", tone: "red" },
+  contractExpiring: { label: "Hợp đồng sắp hết hạn", detail: `Trong ${CONTRACT_EXPIRY_WARNING_DAYS} ngày tới`, icon: "file-clock", tone: "amber" },
   planPublishingWarning: { label: "Cần đăng tải kế hoạch", detail: "Đã qua 3 ngày làm việc", icon: "megaphone", tone: "amber" },
   planPublishingOverdue: { label: "Quá hạn đăng kế hoạch", detail: "Đã quá 5 ngày làm việc", icon: "circle-alert", tone: "red" }
 };
-const ALERT_PRIORITY = ["overdueOpening", "planPublishingOverdue", "closingToday", "delayedEvaluation", "planPublishingWarning", "closingSoon"];
+const ALERT_PRIORITY = ["overdueOpening", "contractExpired", "planPublishingOverdue", "closingToday", "delayedEvaluation", "contractExpiring", "planPublishingWarning", "closingSoon"];
 
 function setText(id, value) {
   const element = document.getElementById(id);
@@ -192,6 +195,95 @@ export function derivePlanPublishingAlerts(plans = [], now = new Date(), holiday
   return { counts, items };
 }
 
+function normalizedDashboardSearchText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+}
+
+function addContractDuration(startDate, rawDuration) {
+  const normalized = normalizedDashboardSearchText(rawDuration);
+  const amountMatch = normalized.match(/\d+(?:[.,]\d+)?/);
+  const amount = Math.trunc(Number(String(amountMatch?.[0] || "").replace(",", ".")));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const result = new Date(startDate);
+  if (normalized.includes("thang")) {
+    const originalDay = result.getDate();
+    result.setDate(1);
+    result.setMonth(result.getMonth() + amount);
+    const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+    result.setDate(Math.min(originalDay, lastDay));
+  } else if (normalized.includes("nam")) {
+    const originalMonth = result.getMonth();
+    result.setFullYear(result.getFullYear() + amount);
+    if (result.getMonth() !== originalMonth) result.setDate(0);
+  } else {
+    const days = normalized.includes("tuan") ? amount * 7 : amount;
+    result.setDate(result.getDate() + days);
+  }
+  return result;
+}
+
+function contractHasInvoice(contract) {
+  if ([true, 1, "1", "true", "yes"].includes(contract.daXuatHoaDon)) return true;
+  if (String(contract.soHoaDon || contract.ngayXuatHoaDon || "").trim()) return true;
+  const paperStatus = normalizedDashboardSearchText(contract.trangThaiHoSo);
+  return ["da xuat hoa don", "hoa don da xuat", "da lap hoa don"].some((label) => paperStatus.includes(label));
+}
+
+export function deriveContractExpiryAlerts(contracts = [], now = new Date(), warningDays = CONTRACT_EXPIRY_WARNING_DAYS) {
+  const counts = { contractExpired: 0, contractExpiring: 0 };
+  const items = [];
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const warningLimit = new Date(today);
+  warningLimit.setDate(warningLimit.getDate() + warningDays);
+  contracts.forEach((contract) => {
+    const status = CONTRACT_STATUS_CODES[contract.trangThaiHopDong] || contract.trangThaiHopDong || "Đang thực hiện";
+    if (["Chưa hiệu lực", "Đã thanh lý", "Đã hủy"].includes(status)) return;
+    const signedAt = parseDashboardDate(contract.ngayKy);
+    const signedDate = signedAt ? new Date(signedAt.getFullYear(), signedAt.getMonth(), signedAt.getDate()) : null;
+    const deadline = signedDate ? addContractDuration(signedDate, contract.soNgayThucHien || contract.thoiGianThucHien) : null;
+    if (!deadline || deadline > warningLimit) return;
+    const alertKey = deadline < today ? "contractExpired" : "contractExpiring";
+    const missingInvoice = !contractHasInvoice(contract);
+    const missingLiquidation = status !== "Đã thanh lý" && !String(contract.ngayThanhLy || "").trim();
+    if (!missingInvoice && !missingLiquidation) return;
+    const missingSteps = [missingInvoice ? "Chưa xuất hóa đơn" : "", missingLiquidation ? "Chưa thanh lý" : ""].filter(Boolean);
+    counts[alertKey]++;
+    items.push({
+      ...contract,
+      targetType: "contract",
+      alertKey,
+      deadline: deadline.toISOString(),
+      alertDetail: missingSteps.join(" · ")
+    });
+  });
+  return { counts, items };
+}
+
+function dashboardAlertRank(item) {
+  const index = ALERT_PRIORITY.indexOf(item?.alertKey);
+  return index < 0 ? ALERT_PRIORITY.length : index;
+}
+
+export function selectDashboardActionItems(items = [], limit = 8) {
+  const sorted = [...items].sort((a, b) => dashboardAlertRank(a) - dashboardAlertRank(b)
+    || String(a.deadline || "").localeCompare(String(b.deadline || "")));
+  const selected = [];
+  ["contract", "plan", "package"].forEach((targetType) => {
+    const item = sorted.find((candidate) => candidate.targetType === targetType);
+    if (item) selected.push(item);
+  });
+  sorted.forEach((item) => {
+    if (selected.length < limit && !selected.includes(item)) selected.push(item);
+  });
+  return selected.sort((a, b) => dashboardAlertRank(a) - dashboardAlertRank(b)
+    || String(a.deadline || "").localeCompare(String(b.deadline || "")));
+}
+
 function compactCurrency(value) {
   const numericValue = Number(value || 0);
   if (!Number.isFinite(numericValue)) return "0 ₫";
@@ -228,9 +320,8 @@ function buildLocalDashboardData(view) {
   );
   const packageAlerts = deriveDashboardAlerts(packages);
   const planAlerts = derivePlanPublishingAlerts(plans);
-  const alertItems = [...packageAlerts.items, ...planAlerts.items]
-    .sort((a, b) => ALERT_PRIORITY.indexOf(a.alertKey) - ALERT_PRIORITY.indexOf(b.alertKey))
-    .slice(0, 8);
+  const contractAlerts = deriveContractExpiryAlerts(contracts);
+  const alertItems = selectDashboardActionItems([...packageAlerts.items, ...planAlerts.items, ...contractAlerts.items]);
   return {
     counts: {
       kehoach: plans.length,
@@ -249,7 +340,7 @@ function buildLocalDashboardData(view) {
     totalContractValue: model.sumVND(contracts.map((contract) => contract.giaTri || 0)),
     recentPackages: [...packages].reverse().slice(0, 4),
     alerts: {
-      counts: { ...packageAlerts.counts, ...planAlerts.counts },
+      counts: { ...packageAlerts.counts, ...planAlerts.counts, ...contractAlerts.counts },
       items: alertItems
     }
   };
@@ -342,16 +433,18 @@ function renderDashboardAlerts(alerts) {
   }
   tbody.innerHTML = items.map((item) => {
     const meta = ALERT_META[item.alertKey] || ALERT_META.closingSoon;
-    const isPlan = item.targetType === "plan";
-    const action = isPlan ? "show-plan" : "show-package";
-    const code = isPlan ? item.maKeHoach : item.maGoiThau;
-    const name = isPlan ? item.tenKeHoach : item.tenGoiThau;
+    const targetType = item.targetType === "plan" ? "plan" : item.targetType === "contract" ? "contract" : "package";
+    const targetMeta = {
+      plan: { action: "show-plan", label: "Kế hoạch", code: item.maKeHoach, name: item.tenKeHoach || "Kế hoạch LCNT" },
+      contract: { action: "show-contract", label: "Hợp đồng", code: item.soHopDong, name: item.tenHopDong || "Hợp đồng" },
+      package: { action: "show-package", label: "Gói thầu", code: item.maGoiThau, name: item.tenGoiThau || "Gói thầu" }
+    }[targetType];
     return `
       <tr>
-        <td><a href="#" data-bf-action="${action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell"><span class="detail-code">${escapeHtml(code || "Chưa có mã")}</span><small>${escapeHtml(name || (isPlan ? "Kế hoạch LCNT" : "Gói thầu"))}</small></a></td>
-        <td><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(meta.detail)}</small></td>
+        <td><a href="#" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell"><span class="dashboard-object-type type-${targetType}">${escapeHtml(targetMeta.label)}</span><span class="detail-code">${escapeHtml(targetMeta.code || "Chưa có mã")}</span><small>${escapeHtml(targetMeta.name)}</small></a></td>
+        <td><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(item.alertDetail || meta.detail)}</small></td>
         <td><span class="dashboard-deadline deadline-${meta.tone}">${escapeHtml(formatDashboardDate(item.deadline))}</span></td>
-        <td><button type="button" class="btn btn-outline btn-sm" data-bf-action="${action}" data-id="${safeAttr(item.id)}">Xử lý</button></td>
+        <td><button type="button" class="btn btn-outline btn-sm" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" aria-label="Xử lý ${safeAttr(targetMeta.label)} ${safeAttr(targetMeta.code || targetMeta.name)}">Xử lý</button></td>
       </tr>
     `;
   }).join("");

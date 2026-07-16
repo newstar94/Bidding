@@ -15,11 +15,13 @@ import {
 } from '../../frontend/app/BiddingControllerSync.js';
 import { cachePaginatedRecords } from '../../frontend/shared/tableDataUtils.js';
 import {
+    deriveContractExpiryAlerts,
     deriveDashboardAlerts,
     derivePlanPublishingAlerts,
     derivePlanStatusCounts,
     normalizeContractStatusCounts,
     normalizeDashboardStatusCounts,
+    selectDashboardActionItems,
     summarizeSuperAdminOrganizations
 } from '../../frontend/app/DashboardView.js';
 import { formatDateOnly } from '../../frontend/shared/view_helpers.js';
@@ -608,6 +610,34 @@ test('plan publishing alerts start on workday 3 and become overdue after workday
     assert.deepEqual(holidayWindow.counts, { planPublishingWarning: 0, planPublishingOverdue: 0 });
 });
 
+test('contract alerts include upcoming and overdue contracts that still need invoice or liquidation', () => {
+    const result = deriveContractExpiryAlerts([
+        { id: 'hd-soon', soHopDong: '01/HĐ', ngayKy: '2026-04-27', soNgayThucHien: '90 ngày', trangThaiHopDong: 'Đang thực hiện' },
+        { id: 'hd-invoiced', soHopDong: '02/HĐ', ngayKy: '2026-04-26', soNgayThucHien: '3 tháng', trangThaiHopDong: 'Đã hoàn thành', trangThaiHoSo: 'Đã xuất hóa đơn' },
+        { id: 'hd-expired', soHopDong: '03/HĐ', ngayKy: '2026-05-01', soNgayThucHien: '30 ngày', trangThaiHopDong: 'ACTIVE' },
+        { id: 'hd-far', soHopDong: '04/HĐ', ngayKy: '2026-07-01', soNgayThucHien: '1 năm', trangThaiHopDong: 'Đang thực hiện' },
+        { id: 'hd-liquidated', soHopDong: '05/HĐ', ngayKy: '2026-04-01', soNgayThucHien: '90 ngày', trangThaiHopDong: 'Đã thanh lý', ngayThanhLy: '2026-06-30' }
+    ], new Date(2026, 6, 16, 10));
+
+    assert.deepEqual(result.counts, { contractExpired: 1, contractExpiring: 2 });
+    assert.equal(result.items.find(item => item.id === 'hd-soon').alertDetail, 'Chưa xuất hóa đơn · Chưa thanh lý');
+    assert.equal(result.items.find(item => item.id === 'hd-invoiced').alertDetail, 'Chưa thanh lý');
+    assert.equal(result.items.some(item => item.id === 'hd-liquidated'), false);
+});
+
+test('dashboard action selection preserves contract, plan and package tasks within the limit', () => {
+    const selected = selectDashboardActionItems([
+        ...Array.from({ length: 8 }, (_, index) => ({ id: `pkg-${index}`, targetType: 'package', alertKey: 'overdueOpening', deadline: `2026-07-${String(index + 1).padStart(2, '0')}` })),
+        { id: 'contract', targetType: 'contract', alertKey: 'contractExpiring', deadline: '2026-07-20' },
+        { id: 'plan', targetType: 'plan', alertKey: 'planPublishingWarning', deadline: '2026-07-21' }
+    ], 8);
+
+    assert.equal(selected.length, 8);
+    assert.equal(selected.some(item => item.targetType === 'contract'), true);
+    assert.equal(selected.some(item => item.targetType === 'plan'), true);
+    assert.equal(selected.some(item => item.targetType === 'package'), true);
+});
+
 test('package alerts distinguish today, upcoming, overdue opening and delayed evaluation', () => {
     const now = new Date(2026, 6, 16, 10);
     const result = deriveDashboardAlerts([
@@ -623,6 +653,8 @@ test('package alerts distinguish today, upcoming, overdue opening and delayed ev
         closingSoon: 1,
         overdueOpening: 1,
         delayedEvaluation: 1,
+        contractExpired: 0,
+        contractExpiring: 0,
         planPublishingWarning: 0,
         planPublishingOverdue: 0
     });

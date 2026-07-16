@@ -633,6 +633,23 @@
   gap: 3px;
   color: var(--text-main);
 }
+.dashboard-card-note {
+  color: var(--text-light);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+.dashboard-object-type {
+  width: max-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 0.57rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.dashboard-object-type.type-package { color: #3157e8; background: rgba(49, 87, 232, 0.09); }
+.dashboard-object-type.type-plan { color: #9a5a05; background: rgba(201, 107, 9, 0.1); }
+.dashboard-object-type.type-contract { color: #0b7a57; background: rgba(15, 123, 85, 0.1); }
 .dashboard-package-cell .detail-code {
   width: max-content;
   margin: 0;

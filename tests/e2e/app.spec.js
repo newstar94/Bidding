@@ -26,10 +26,22 @@ test('home page presents the BiddingFlow landing experience', async ({ page }) =
   await expect(dashboardPreview.locator('.landing-preview-work-grid > article')).toHaveCount(2);
   await expect(dashboardPreview.locator('.landing-preview-overview-grid > article')).toHaveCount(3);
   await expect(dashboardPreview.locator('.landing-preview-resource-strip > span')).toHaveCount(4);
+  await expect(dashboardPreview).toContainText('17/7/2026');
+  await expect(dashboardPreview).toContainText('An Phú');
+  await expect(dashboardPreview).toContainText('Minh Anh');
+  await expect(dashboardPreview).not.toContainText('Administrator');
   await expect(dashboardPreview).toContainText('Cảnh báo cần chú ý');
   await expect(dashboardPreview).toContainText('Cần xử lý hôm nay');
   await expect(dashboardPreview).not.toContainText('Chào buổi sáng');
   await expect(page.locator('#landing-pricing-grid .landing-price-card')).toHaveCount(3);
+  await expect(page.locator('[data-package-id="silver"]')).toContainText('Khởi đầu');
+  await expect(page.locator('[data-package-id="gold"]')).toContainText('Tăng trưởng');
+  await expect(page.locator('[data-package-id="diamond"]')).toContainText('Doanh nghiệp');
+  await expect(page.locator('.landing-price-emblem')).toHaveCount(3);
+  await expect(page.locator('.landing-price-popular')).toContainText('ĐƯỢC CHỌN NHIỀU');
+  await expect(page.locator('.landing-price-title > span')).toHaveCount(0);
+  await expect(page.locator('.landing-price-quota small')).toHaveCount(3);
+  await expect(page.locator('[data-package-quota]')).toHaveCount(3);
   await expect(page.locator('#landing-page')).not.toContainText('Super Admin');
   await expect(page.locator('.app-container')).toBeHidden();
   await expect(page.locator('[data-landing-app-link]').first()).toHaveAttribute('href', '/dang-nhap');
@@ -48,6 +60,17 @@ test('login form supports basic input interactions', async ({ page }) => {
 
   await page.locator('.toggle-password[data-target="login-password"]').click();
   await expect(page.locator('#login-password')).toHaveAttribute('type', 'text');
+});
+
+test('dashboard priority table supports packages, contracts and plans', async ({ page, credentials }) => {
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
+  await page.locator('#login-username').fill(credentials.username);
+  await page.locator('#login-password').fill(credentials.password);
+  await page.locator('#form-auth-login button[type="submit"]').click();
+  await expect(page.locator('#auth-overlay')).toBeHidden({ timeout: 30_000 });
+  await expect(page.locator('#dashboard-priority-title')).toContainText('Cần xử lý hôm nay');
+  await expect(page.locator('.dashboard-action-table thead')).toContainText('Đối tượng');
+  await expect(page.locator('.dashboard-card-note')).toContainText('Tối đa 8 việc ưu tiên');
 });
 
 test('authenticated reload keeps lazy workflows and Excel actions ready', async ({ page, credentials }) => {

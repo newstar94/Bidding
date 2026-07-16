@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import date, timedelta
 
 import pytest
 
@@ -129,19 +130,26 @@ def test_dashboard_includes_completed_contracts_but_excludes_cancelled_and_not_e
     cursor.execute("""CREATE TABLE hop_dong (
         id TEXT, organization_id TEXT, id_goc TEXT, phien_ban INTEGER,
         updated_at TEXT, created_at TEXT, archived_at TEXT, is_latest INTEGER,
-        gia_tri INTEGER, trang_thai_hop_dong TEXT
+        gia_tri INTEGER, trang_thai_hop_dong TEXT, so_hop_dong TEXT,
+        ten_hop_dong TEXT, ngay_ky TEXT, thoi_gian_thuc_hien TEXT,
+        ngay_thanh_ly TEXT, trang_thai_ho_so TEXT
     )""")
     cursor.execute("""CREATE TABLE phan_cong_nhan_su (
         organization_id TEXT, id_nhan_vien TEXT, id_muc_tieu TEXT, loai_doi_tuong TEXT
     )""")
+    signed_at = (date.today() - timedelta(days=80)).isoformat()
     cursor.executemany(
-        "INSERT INTO hop_dong VALUES (?, 'org-1', ?, 0, '', '', NULL, 1, ?, ?)",
+        """INSERT INTO hop_dong (
+            id, organization_id, id_goc, phien_ban, updated_at, created_at,
+            archived_at, is_latest, gia_tri, trang_thai_hop_dong, so_hop_dong,
+            ten_hop_dong, ngay_ky, thoi_gian_thuc_hien, ngay_thanh_ly, trang_thai_ho_so
+        ) VALUES (?, 'org-1', ?, 0, '', '', NULL, 1, ?, ?, ?, ?, ?, ?, '', '')""",
         [
-            ("hd-active", "hd-active", 100, "ACTIVE"),
-            ("hd-complete", "hd-complete", 200, "COMPLETED"),
-            ("hd-liquidated", "hd-liquidated", 300, "LIQUIDATED"),
-            ("hd-cancelled", "hd-cancelled", 400, "CANCELLED"),
-            ("hd-future", "hd-future", 500, "NOT_EFFECTIVE"),
+            ("hd-active", "hd-active", 100, "ACTIVE", "01/HĐ", "Hợp đồng sắp hết hạn", signed_at, "90 ngày"),
+            ("hd-complete", "hd-complete", 200, "COMPLETED", "02/HĐ", "Hợp đồng hoàn thành", "", ""),
+            ("hd-liquidated", "hd-liquidated", 300, "LIQUIDATED", "03/HĐ", "Hợp đồng thanh lý", "", ""),
+            ("hd-cancelled", "hd-cancelled", 400, "CANCELLED", "04/HĐ", "Hợp đồng hủy", "", ""),
+            ("hd-future", "hd-future", 500, "NOT_EFFECTIVE", "05/HĐ", "Hợp đồng chưa hiệu lực", "", ""),
         ],
     )
     cursor.executemany(
@@ -172,6 +180,9 @@ def test_dashboard_includes_completed_contracts_but_excludes_cancelled_and_not_e
     }
     assert result["contractValueByStatus"]["Đang thực hiện"] == "100"
     assert result["contractValueByStatus"]["Đã hủy"] == "400"
+    assert result["alertCounts"]["contractExpiring"] == 1
+    assert result["alertItems"][0]["targetType"] == "contract"
+    assert result["alertItems"][0]["alertDetail"] == "Chưa xuất hóa đơn · Chưa thanh lý"
 
 
 def test_dashboard_business_day_counter_excludes_weekends():
@@ -186,3 +197,12 @@ def test_dashboard_business_day_counter_excludes_weekends():
     holiday_approval = dashboard_summary._parse_iso_date("2026-04-24")
     holiday_end = dashboard_summary._parse_iso_date("2026-04-30")
     assert dashboard_summary._business_days_elapsed(holiday_approval, holiday_end, holiday_window) == 2
+
+
+def test_dashboard_contract_duration_supports_days_months_and_years():
+    signed_at = date(2026, 1, 31)
+
+    assert dashboard_summary._contract_expiry_date(signed_at, "90 ngày") == date(2026, 5, 1)
+    assert dashboard_summary._contract_expiry_date(signed_at, "1 tháng") == date(2026, 2, 28)
+    assert dashboard_summary._contract_expiry_date(date(2024, 2, 29), "1 năm") == date(2025, 2, 28)
+    assert dashboard_summary._contract_has_invoice("Đã xuất hóa đơn") is True
