@@ -638,6 +638,17 @@ test('dashboard action selection preserves contract, plan and package tasks with
     assert.equal(selected.some(item => item.targetType === 'package'), true);
 });
 
+test('dashboard action selection shows every task when no presentation limit is supplied', () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({
+        id: `task-${index}`,
+        targetType: 'package',
+        alertKey: 'closingSoon',
+        deadline: `2026-08-${String(index + 1).padStart(2, '0')}`
+    }));
+
+    assert.equal(selectDashboardActionItems(items).length, 12);
+});
+
 test('package alerts distinguish today, upcoming, overdue opening and delayed evaluation', () => {
     const now = new Date(2026, 6, 16, 10);
     const result = deriveDashboardAlerts([

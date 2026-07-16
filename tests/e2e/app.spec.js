@@ -70,7 +70,7 @@ test('dashboard priority table supports packages, contracts and plans', async ({
   await expect(page.locator('#auth-overlay')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#dashboard-priority-title')).toContainText('Cần xử lý hôm nay');
   await expect(page.locator('.dashboard-action-table thead')).toContainText('Đối tượng');
-  await expect(page.locator('.dashboard-card-note')).toContainText('Tối đa 8 việc ưu tiên');
+  await expect(page.locator('.dashboard-card-note')).toContainText('Cuộn để xem toàn bộ');
 });
 
 test('authenticated reload keeps lazy workflows and Excel actions ready', async ({ page, credentials }) => {

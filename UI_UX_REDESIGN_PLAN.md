@@ -78,3 +78,6 @@ Thiết kế lại lớp giao diện theo hướng **Operational Editorial** v�
 - 2026-07-17: Tăng khả năng đọc badge “Được chọn nhiều” của Gói Vàng: nền xanh đậm, chữ trắng 11px và icon vàng sáng.
 - 2026-07-17: Đồng bộ badge “Được chọn nhiều” với nhận diện Gói Vàng bằng nền vàng nâu đậm, chữ trắng kem và icon vàng sáng.
 - 2026-07-17: Đồng bộ emblem Gói Vàng sang vàng kem/vàng nâu và căn tâm dọc nhãn gói, badge, emblem trên cùng một hàng.
+- 2026-07-17: Tăng phân tách bề mặt dashboard: card trắng, border rõ, header bảng đậm hơn và shadow theo thứ bậc; hai bảng công việc được nhấn mạnh hơn KPI/alert.
+- 2026-07-17: Căn đồng nhất header hai bảng dashboard; bỏ giới hạn trình bày 8 công việc, hiển thị toàn bộ trong vùng cuộn dọc với table header sticky.
+- 2026-07-17: Chia đều chiều rộng hai card công việc dashboard theo tỷ lệ 1:1; giữ bố cục một cột dưới 1180px.

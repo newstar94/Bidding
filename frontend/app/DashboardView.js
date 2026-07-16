@@ -130,7 +130,7 @@ export function deriveDashboardAlerts(packages = [], now = new Date(), delayDays
     items.push({ ...pkg, alertKey, deadline: alertKey === "delayedEvaluation" ? pkg.thoiGianMoThau : pkg.thoiGianDongThau });
   });
   items.sort((a, b) => ALERT_PRIORITY.indexOf(a.alertKey) - ALERT_PRIORITY.indexOf(b.alertKey));
-  return { counts, items: items.slice(0, 8) };
+  return { counts, items };
 }
 
 function dashboardIsoDate(date) {
@@ -269,7 +269,7 @@ function dashboardAlertRank(item) {
   return index < 0 ? ALERT_PRIORITY.length : index;
 }
 
-export function selectDashboardActionItems(items = [], limit = 8) {
+export function selectDashboardActionItems(items = [], limit = Number.POSITIVE_INFINITY) {
   const sorted = [...items].sort((a, b) => dashboardAlertRank(a) - dashboardAlertRank(b)
     || String(a.deadline || "").localeCompare(String(b.deadline || "")));
   const selected = [];
