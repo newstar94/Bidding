@@ -1,69 +1,3 @@
-.dashboard-welcome {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
-  padding: 4px 2px;
-}
-.dashboard-welcome-copy {
-  min-width: 0;
-}
-.dashboard-eyebrow {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--primary);
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-}
-.dashboard-welcome h2 {
-  color: var(--text-main);
-  font-size: clamp(1.45rem, 2.4vw, 2rem);
-  line-height: 1.2;
-  letter-spacing: -0.035em;
-}
-.dashboard-welcome p {
-  margin-top: 7px;
-  color: var(--text-muted);
-  font-size: 0.84rem;
-}
-.dashboard-workspace-chip {
-  display: flex;
-  min-width: 190px;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
-}
-.dashboard-workspace-chip > span {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border-radius: 10px;
-  color: var(--primary);
-  background: var(--primary-soft);
-}
-.dashboard-workspace-chip svg {
-  width: 19px;
-  height: 19px;
-}
-.dashboard-workspace-chip > div {
-  display: grid;
-  gap: 2px;
-}
-.dashboard-workspace-chip small {
-  color: var(--text-light);
-  font-size: 0.65rem;
-}
-.dashboard-workspace-chip strong {
-  color: var(--text-main);
-  font-size: 0.78rem;
-}
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -328,16 +262,6 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
-@media (max-width: 680px) {
-  .dashboard-welcome {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .dashboard-workspace-chip {
-    width: 100%;
-  }
-}
-
 /* Operations dashboard */
 .dashboard-operations {
   --dashboard-blue: #3157e8;
@@ -346,12 +270,6 @@
   --dashboard-amber: #c96b09;
   --dashboard-red: #d73b45;
   padding-bottom: 28px;
-}
-.dashboard-operations .dashboard-welcome {
-  margin-bottom: 20px;
-}
-.dashboard-operations .dashboard-welcome p {
-  font-size: 0.9rem;
 }
 .dashboard-section-heading {
   display: flex;
@@ -385,12 +303,13 @@
   text-transform: uppercase;
 }
 .dashboard-section-heading-alerts {
-  margin-top: 24px;
+  margin-top: 0;
 }
 .dashboard-metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.05fr) minmax(360px, 1.25fr);
   gap: 14px;
+  margin-bottom: 18px;
 }
 .dashboard-metric-card {
   min-width: 0;
@@ -445,9 +364,7 @@
   height: 20px;
 }
 .metric-blue .dashboard-metric-icon { color: var(--dashboard-blue); background: rgba(49, 87, 232, 0.1); }
-.metric-violet .dashboard-metric-icon { color: var(--dashboard-violet); background: rgba(120, 86, 216, 0.1); }
 .metric-green .dashboard-metric-icon { color: var(--dashboard-green); background: rgba(22, 138, 103, 0.1); }
-.metric-amber .dashboard-metric-icon { color: var(--dashboard-amber); background: rgba(201, 107, 9, 0.1); }
 .dashboard-metric-breakdown {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -478,8 +395,52 @@
   font-size: 0.69rem;
   font-variant-numeric: tabular-nums;
 }
-.dashboard-value-breakdown .dashboard-metric-row {
-  grid-column: span 2;
+.dashboard-contract-total {
+  margin-left: auto;
+  text-align: right;
+}
+.dashboard-metric-head .dashboard-contract-total .dashboard-money-value {
+  max-width: 150px;
+  color: var(--dashboard-green);
+  font-size: clamp(0.9rem, 1.1vw, 1.1rem);
+}
+.dashboard-contract-breakdown {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dashboard-contract-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+}
+.dashboard-contract-status,
+.dashboard-contract-values {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+.dashboard-contract-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-contract-values {
+  flex: 0 0 auto;
+}
+.dashboard-contract-values strong {
+  color: var(--text-main);
+  font-size: 0.69rem;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-contract-values em {
+  color: var(--dashboard-green);
+  font-size: 0.65rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
 }
 .dashboard-plan-alert {
   display: flex;
@@ -593,15 +554,43 @@
   height: 17px;
   color: var(--text-light);
 }
-.dashboard-work-grid,
-.dashboard-insight-grid {
+.dashboard-work-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr);
   gap: 18px;
   margin-bottom: 18px;
 }
-.dashboard-insight-grid {
-  grid-template-columns: minmax(340px, 0.9fr) minmax(0, 1.5fr);
+.dashboard-status-card {
+  min-width: 0;
+  overflow: hidden;
+}
+.dashboard-status-card .card-body {
+  display: flex;
+  align-items: center;
+}
+.dashboard-status-card .status-summary-wrapper {
+  width: 100%;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 16px;
+}
+.dashboard-status-card .status-donut-chart {
+  width: 118px;
+  height: 118px;
+  flex: 0 0 118px;
+}
+.dashboard-status-card .donut-inner {
+  width: 84px;
+  height: 84px;
+}
+.dashboard-status-card .status-legend-list {
+  min-width: 0;
+  max-width: none;
+  gap: 6px;
+}
+.dashboard-status-card .legend-item {
+  gap: 8px;
+  font-size: 0.66rem;
 }
 .dashboard-operations .dashboard-card {
   border-radius: 16px;
@@ -626,50 +615,6 @@
   background: var(--primary-soft);
   font-size: 0.65rem;
   font-weight: 800;
-}
-.dashboard-progress-card .card-header p {
-  margin-top: 3px;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-}
-.dashboard-progress-list {
-  display: grid;
-  gap: 16px;
-}
-.dashboard-progress-item {
-  display: grid;
-  gap: 7px;
-}
-.dashboard-progress-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-}
-.dashboard-progress-label > span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.dashboard-progress-label strong {
-  color: var(--text-main);
-  font-size: 0.68rem;
-  font-variant-numeric: tabular-nums;
-}
-.dashboard-progress-track {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--neutral-soft);
-}
-.dashboard-progress-fill {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  transition: width 240ms ease-out;
 }
 .dashboard-table-body {
   padding: 0 !important;
@@ -785,13 +730,19 @@
   white-space: nowrap;
 }
 @media (max-width: 1280px) {
-  .dashboard-metric-grid,
   .dashboard-alert-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .dashboard-work-grid,
-  .dashboard-insight-grid {
+}
+@media (max-width: 1180px) {
+  .dashboard-work-grid {
     grid-template-columns: 1fr;
+  }
+  .dashboard-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-status-card {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 760px) {
@@ -808,17 +759,25 @@
   .dashboard-partner-strip {
     grid-template-columns: 1fr;
   }
+  .dashboard-status-card {
+    grid-column: auto;
+  }
   .dashboard-metric-breakdown {
     grid-template-columns: 1fr 1fr;
+  }
+  .dashboard-contract-breakdown {
+    grid-template-columns: 1fr;
   }
   .dashboard-operations .dashboard-card .card-header {
     align-items: flex-start;
     gap: 10px;
   }
+  .dashboard-status-card .status-summary-wrapper {
+    flex-wrap: wrap;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-alert-card,
-  .dashboard-progress-fill {
+  .dashboard-alert-card {
     transition: none;
   }
 }

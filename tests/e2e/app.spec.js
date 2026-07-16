@@ -51,7 +51,8 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
-  await expect(page.locator('#dashboard-greeting')).toContainText('Administrator');
+  await expect(page.locator('#dashboard-greeting')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Cảnh báo cần chú ý' })).toBeVisible();
   await page.evaluate(async () => {
     const { getAppController } = await import('../../frontend/app/controllerRef.js');
     const appController = getAppController();

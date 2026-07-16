@@ -287,23 +287,20 @@ function renderMetricBreakdown(containerId, counts, formatter = (value) => Strin
   `).join("");
 }
 
-function renderPackageProgress(statusCounts) {
-  const container = document.getElementById("package-progress-list");
+function renderContractSummary(counts, values) {
+  const container = document.getElementById("contract-summary-breakdown");
   if (!container) return;
-  const total = Object.values(statusCounts).reduce((sum, count) => sum + Number(count || 0), 0);
-  container.innerHTML = PACKAGE_STATUS_ORDER.map((status, index) => {
-    const count = Number(statusCounts[status] || 0);
-    const percent = total ? Math.round(count / total * 100) : 0;
+  const statuses = [...new Set([...Object.keys(counts || {}), ...Object.keys(values || {})])];
+  container.innerHTML = statuses.map((status, index) => {
+    const count = Number(counts?.[status] || 0);
+    const formattedValue = compactCurrency(values?.[status] || 0);
     return `
-      <div class="dashboard-progress-item">
-        <div class="dashboard-progress-label"><span><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span><strong>${count}/${total} · ${percent}%</strong></div>
-        <div class="dashboard-progress-track" role="progressbar" aria-label="${safeAttr(status)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
-          <span class="dashboard-progress-fill status-tone-${index % 6}" data-progress="${percent}"></span>
-        </div>
+      <div class="dashboard-contract-row" aria-label="${safeAttr(`${status}: ${count} hợp đồng, ${formattedValue}`)}">
+        <span class="dashboard-contract-status"><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span>
+        <span class="dashboard-contract-values"><strong>${count} HĐ</strong><em>${escapeHtml(formattedValue)}</em></span>
       </div>
     `;
   }).join("");
-  container.querySelectorAll("[data-progress]").forEach((bar) => setRuntimeStyle(bar, "width", `${bar.dataset.progress}%`));
 }
 
 function renderPackageDonut(statusCounts) {
@@ -380,7 +377,6 @@ function renderRecentPackages(view, packages) {
 function renderDashboardSnapshot(view, data) {
   const counts = data.counts || {};
   setText("stat-count-kehoach", counts.kehoach || 0);
-  setText("stat-count-goithau", counts.goithau || 0);
   setText("stat-count-hopdong", counts.contractTotal || 0);
   setText("stat-total-budget", view.model.formatCurrency(data.totalContractValue || 0));
   setText("stat-count-chudautu", counts.chudautu || 0);
@@ -393,34 +389,17 @@ function renderDashboardSnapshot(view, data) {
     setText("dashboard-evaluation-rule", `Báo cáo đánh giá được cảnh báo khi quá ${data.evaluationDelayDays} ngày sau mở thầu.`);
   }
   renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts);
-  renderMetricBreakdown("package-status-breakdown", data.packageStatusCounts);
-  renderMetricBreakdown("contract-status-breakdown", data.contractStatusCounts);
-  renderMetricBreakdown("contract-value-breakdown", data.contractValues, compactCurrency);
+  renderContractSummary(data.contractStatusCounts, data.contractValues);
   renderDashboardAlerts(data.alerts);
-  renderPackageProgress(data.packageStatusCounts);
   renderPackageDonut(data.packageStatusCounts);
   renderRecentPackages(view, data.recentPackages);
 }
 
 export function renderDashboard() {
-  renderDashboardGreeting(this.model.state.activeuser, this.model.state.activerole);
   const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
   const data = serverSummary?.counts ? buildServerDashboardData(serverSummary) : buildLocalDashboardData(this);
   renderDashboardSnapshot(this, data);
   this.createIconsScoped(document.getElementById("tab-dashboard"));
-}
-
-export function renderDashboardGreeting(activeUser = {}, activeRole = "employee") {
-  const greeting = document.getElementById("dashboard-greeting");
-  const role = document.getElementById("dashboard-active-role");
-  const hour = new Date().getHours();
-  const salutation = hour < 11 ? "Chào buổi sáng" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
-  const name = String(activeUser?.name || activeUser?.username || "bạn").trim();
-  if (greeting) greeting.textContent = `${salutation}, ${name}`;
-  if (role) {
-    const roleLabels = { manager: "Quản lý", employee: "Chuyên viên" };
-    role.textContent = roleLabels[activeRole] || roleLabels.employee;
-  }
 }
 export function renderSuperAdminDashboard() {
   apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
