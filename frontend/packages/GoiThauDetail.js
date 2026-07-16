@@ -28,8 +28,27 @@ import { renderBidContractorLink } from "./detail/BidderTable.js";
 import { renderWorkflowActions } from "./detail/WorkflowActions.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
 export { checkBidQualified };
-export function showPackageDetails(id, isSwitchingVersion = false) {
+export async function showPackageDetails(id, isSwitchingVersion = false) {
   const appController = getAppController();
+  if (
+    appController?.ensureWorkflowModules
+    && (
+      typeof appController.renderMoThauPanel !== "function"
+      || typeof appController.renderDanhGiaHsdtPanel !== "function"
+    )
+  ) {
+    try {
+      await appController.ensureWorkflowModules();
+    } catch (error) {
+      console.error("Failed to load package workflow modules:", error);
+      appController.view?.showToast?.(
+        "Không tải được nghiệp vụ gói thầu",
+        "Vui lòng tải lại trang và thử lại.",
+        "error"
+      );
+      return;
+    }
+  }
   if (!hasHolidays()) {
     apiFetch("/api/holidays").then((r) => r.json()).then((data) => {
       setHolidays(data);
@@ -287,7 +306,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
           lucide.createIcons();
         } else {
           renderOpeningPanel(contentWrapper, gt, { isDirectOrSpecial });
-          appController?.renderMoThauPanel();
+          appController?.renderMoThauPanel?.();
         }
       }
       break;
@@ -295,14 +314,14 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
       renderTechnicalEvaluationPanel(contentWrapper, gt, { inviteComparisonLabel, comparisonLabel });
       if (appController) {
         appController.currentDanhGiaTab = "technical";
-        appController.renderDanhGiaHsdtPanel();
+        appController.renderDanhGiaHsdtPanel?.();
       }
       break;
     case "eval_fin":
       renderFinancialEvaluationPanel(contentWrapper, gt, { inviteComparisonLabel, comparisonLabel });
       if (appController) {
         appController.currentDanhGiaTab = "financial";
-        appController.renderDanhGiaHsdtPanel();
+        appController.renderDanhGiaHsdtPanel?.();
       }
       break;
     case "qualified": {

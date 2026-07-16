@@ -50,6 +50,8 @@ Không có.
 
 ### Ổn định kỹ thuật
 
+- Tuyến **Chi tiết gói thầu** chờ tải mô-đun Mở thầu/Đánh giá trước khi dựng nội dung; kiểm thử E2E xác nhận `renderMoThauPanel` và `renderDanhGiaHsdtPanel` luôn sẵn sàng sau tải lại.
+- Modal đặt tên đăng nhập Google đặt lại trạng thái nút khi tái sử dụng sau đăng xuất, đồng thời chặn gửi trùng bằng nút hoặc phím Enter; kiểm thử đơn vị hồi quy đã đạt.
 - Tải lại nhiều route với tài nguyên trả `304 Not Modified`.
 - Hai thẻ cùng workspace không còn kích hoạt vòng lặp gọi `/api/get-all-data` qua lại; quan sát 4 giây sau ổn định không phát sinh request đồng bộ mới.
 - Banner ngoại tuyến được ẩn đúng khi API/WebSocket kết nối thành công; không còn thông báo mất kết nối giả trong giao diện.
@@ -61,7 +63,7 @@ Không có.
 
 | Bộ kiểm thử | Kết quả |
 |---|---:|
-| Frontend unit tests | 220/220 đạt |
+| Frontend unit tests | 221/221 đạt |
 | API tests | 258/258 đạt |
 | E2E Chromium | 10/10 đạt |
 | Lint JavaScript/Python | Đạt |
@@ -70,6 +72,7 @@ Không có.
 ## Phạm vi chưa xác nhận bằng hệ thống bên ngoài
 
 - Đăng nhập Google với tài khoản Google thực tế.
+- Đăng ký tuần tự hai tài khoản Google thực tế trong cùng một phiên trình duyệt sau khi đăng xuất; lỗi nút bị giữ ở trạng thái **Đang khởi tạo thiết lập...** đã được sửa và có unit test, nhưng cần xác nhận lại một lần với hai tài khoản Google thật.
 - Email OTP có đến hộp thư thật; luồng cục bộ đã được kiểm tra bằng mã OTP sinh trong môi trường thử nghiệm.
 - Độ ổn định của dịch vụ tra cứu mã số thuế bên ngoài khi nhà cung cấp timeout hoặc trả 404.
 - Toàn bộ biến thể tệp Excel thực tế ngoài các luồng và bộ kiểm thử hiện có.

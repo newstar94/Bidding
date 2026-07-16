@@ -28,6 +28,14 @@ export function createGoogleIdentityOptions(clientId, callback) {
   };
 }
 
+export function resetSetUsernameButton(submitBtn) {
+  if (!submitBtn) return null;
+  const btnSpan = submitBtn.querySelector("span");
+  submitBtn.disabled = false;
+  if (btnSpan) btnSpan.textContent = "Xác nhận tên đăng nhập";
+  return btnSpan;
+}
+
 export function setupGoogleSignIn() {
   if (isGoogleIdentityInitialized()) return;
   const clientId = document.querySelector('meta[name="google-client-id"]')?.content?.trim();
@@ -70,6 +78,9 @@ export function setupGoogleSignIn() {
     const errorDiv = document.getElementById("set-username-error");
     const submitBtn = document.getElementById("btn-set-username-submit");
     if (!modalOverlay || !input || !submitBtn) return;
+    const btnSpan = resetSetUsernameButton(submitBtn);
+    setRuntimeStyle(submitBtn, "opacity", "1");
+    let isSubmitting = false;
     const descEl = modalOverlay.querySelector("[data-username-modal-desc]");
     if (descEl) {
       if (accountLinked) {
@@ -110,6 +121,7 @@ export function setupGoogleSignIn() {
       }
     };
     const _doSubmit = async () => {
+      if (isSubmitting) return;
       const username = input.value.trim();
       const usernameCheck = validateUsernameClient(username);
       if (!usernameCheck.ok) {
@@ -119,9 +131,9 @@ export function setupGoogleSignIn() {
         }
         return;
       }
+      isSubmitting = true;
       submitBtn.disabled = true;
       setRuntimeStyle(submitBtn, "opacity", "0.7");
-      const btnSpan = submitBtn.querySelector("span");
       if (btnSpan) btnSpan.textContent = "Đang lưu...";
       if (errorDiv) setRuntimeStyle(errorDiv, "display", "none");
       try {
@@ -133,6 +145,7 @@ export function setupGoogleSignIn() {
         await onSuccess();
         setRuntimeStyle(modalOverlay, "display", "none");
       } catch (err) {
+        isSubmitting = false;
         if (errorDiv) {
           errorDiv.textContent = err instanceof ApiError
             ? err.message
@@ -146,7 +159,10 @@ export function setupGoogleSignIn() {
     };
     submitBtn.onclick = _doSubmit;
     input.onkeydown = (e) => {
-      if (e.key === "Enter") _doSubmit();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        _doSubmit();
+      }
     };
   };
   const handleGoogleResponse = async (response) => {

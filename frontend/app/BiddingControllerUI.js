@@ -282,7 +282,7 @@ export function switchTab(tabName, action = null, updateState = true) {
       this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
     });
   }
-  const workflowTabs = ["mothau", "danhgiahsdt"];
+  const workflowTabs = ["mothau", "danhgiahsdt", "goithau-detail"];
   if (!this._workflowModulesReady && (action === "taomoi" || workflowTabs.includes(tabName))) {
     return this.ensureWorkflowModules().then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
       console.error("Failed to load workflow module:", tabName, err);

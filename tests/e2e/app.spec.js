@@ -61,6 +61,20 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
   await expect.poll(() => page.locator('.btn-download-excel-template-direct[data-type="goithau"]')
     .evaluate(button => button._hasExcelListener === true)).toBe(true);
 
+  const packageWorkflowMethods = await page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    const appController = getAppController();
+    await appController.switchTab('goithau-detail', null, false);
+    return {
+      opening: typeof appController.renderMoThauPanel,
+      evaluation: typeof appController.renderDanhGiaHsdtPanel
+    };
+  });
+  expect(packageWorkflowMethods).toEqual({
+    opening: 'function',
+    evaluation: 'function'
+  });
+
   await page.locator('#btn-add-goithau').click();
   await expect(page.locator('#modal-goithau')).toHaveClass(/active/, { timeout: 15_000 });
 });
