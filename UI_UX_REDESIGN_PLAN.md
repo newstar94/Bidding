@@ -75,3 +75,6 @@ Thiết kế lại lớp giao diện theo hướng **Operational Editorial** v�
 - 2026-07-17: Tăng độ nhận diện sidebar active state: nền xanh primary với chữ/icon trắng; riêng Super Admin dùng nền tím đồng bộ màu vai trò khi được chọn.
 - 2026-07-17: Đổi thanh chỉ báo active từ trắng sang aqua sáng để không hòa vào nền sidebar và vẫn nổi trên cả nền xanh lẫn tím.
 - 2026-07-17: Bỏ thanh chỉ báo active theo phản hồi; nền đặc và chữ/icon trắng đã đủ thể hiện trạng thái được chọn.
+- 2026-07-17: Tăng khả năng đọc badge “Được chọn nhiều” của Gói Vàng: nền xanh đậm, chữ trắng 11px và icon vàng sáng.
+- 2026-07-17: Đồng bộ badge “Được chọn nhiều” với nhận diện Gói Vàng bằng nền vàng nâu đậm, chữ trắng kem và icon vàng sáng.
+- 2026-07-17: Đồng bộ emblem Gói Vàng sang vàng kem/vàng nâu và căn tâm dọc nhãn gói, badge, emblem trên cùng một hàng.

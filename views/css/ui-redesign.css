@@ -743,7 +743,45 @@ button:disabled {
 }
 
 .landing-price-popular {
-  background: var(--brand);
+  top: 37px;
+  min-height: 32px;
+  padding: 7px 13px;
+  border-color: color-mix(in srgb, var(--tier-accent-strong) 74%, #fff);
+  color: #fffdf5;
+  background: var(--tier-accent-strong);
+  font-size: 0.68rem;
+  letter-spacing: 0.065em;
+  box-shadow: 0 7px 18px var(--tier-shadow);
+}
+
+.landing-price-popular svg {
+  width: 14px;
+  height: 14px;
+  color: #ffe17a;
+  fill: #ffe17a;
+  stroke: #ffe17a;
+}
+
+.landing-price-card[data-package-id="gold"] .landing-price-emblem {
+  border-color: color-mix(in srgb, var(--tier-accent) 46%, #fff);
+  color: var(--tier-accent-strong);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.82), transparent 58%),
+    var(--tier-soft);
+  box-shadow:
+    0 8px 20px var(--tier-shadow),
+    0 1px 0 rgba(255, 255, 255, 0.92) inset;
+}
+
+.landing-price-card[data-package-id="gold"] .landing-price-emblem svg {
+  color: var(--tier-accent-strong);
+  stroke: var(--tier-accent-strong);
+}
+
+@media (max-width: 680px) {
+  .landing-price-popular {
+    top: 35px;
+  }
 }
 
 .landing-final-cta {
