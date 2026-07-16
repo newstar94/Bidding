@@ -1445,6 +1445,20 @@ html[data-bf-shell="workspace"] .landing-page {
   background: #f7f9fd;
 }
 
+.landing-process .landing-section-heading {
+  max-width: 900px;
+}
+
+.landing-process .landing-section-heading h2 {
+  max-width: 740px;
+  margin-inline: auto;
+}
+
+.landing-process .landing-section-heading p {
+  max-width: 780px;
+  text-wrap: pretty;
+}
+
 .landing-process-list {
   position: relative;
   display: grid;
