@@ -190,6 +190,83 @@ test('sync state and dialogs expose keyboard and screen-reader behavior', async 
   await customDialog.locator('#btn-dialog-cancel').click();
 });
 
+test('pending sync status opens a manageable retry list', async ({ page, credentials }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.locator('#login-username').fill(credentials.username);
+  await page.locator('#login-password').fill(credentials.password);
+  await page.locator('#form-auth-login button[type="submit"]').click();
+  await expect(page.locator('#auth-overlay')).toBeHidden({ timeout: 30_000 });
+  await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
+
+  await page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    const controller = getAppController();
+    const queue = controller.model._emptyMutationQueue();
+    queue.upserts.chuyengia = {
+      'cg-pending-remove': {
+        id: 'cg-pending-remove',
+        hoTen: 'Chuyên gia chờ xóa',
+        soChungChi: 'C01.99.99999'
+      }
+    };
+    controller.model._touchMutationQueue(queue);
+    controller.model._saveMutationQueue(queue);
+    window.__originalForceSyncData = controller.forceSyncData;
+    controller.forceSyncData = async () => {
+      window.__pendingForceRefreshCalled = true;
+      return { ok: true };
+    };
+    controller.updateSyncState({ phase: 'idle', pendingCount: 1 });
+  });
+
+  await page.locator('#btn-force-sync').click();
+  const modal = page.locator('#modal-pending-sync');
+  await expect(modal).toHaveClass(/active/);
+  await expect(modal.locator('.modal-card')).toHaveAttribute('role', 'dialog');
+  await expect(modal).toContainText('Chuyên gia chờ xóa');
+  await expect(modal).toContainText('Thêm/Cập nhật');
+
+  await modal.locator('.pending-sync-remove').click();
+  await expect(page.locator('#modal-custom-dialog')).toHaveClass(/active/);
+  await page.locator('#modal-custom-dialog #btn-dialog-ok').click();
+  await expect(modal).toContainText('Không còn bản ghi chờ đồng bộ');
+  await expect.poll(() => page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    return getAppController().model.getPendingMutationSummary().pendingCount;
+  })).toBe(0);
+  expect(await page.evaluate(() => window.__pendingForceRefreshCalled)).toBe(true);
+
+  await page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    const controller = getAppController();
+    controller.forceSyncData = window.__originalForceSyncData;
+    const queue = controller.model._emptyMutationQueue();
+    queue.upserts.chuyengia = {
+      'cg-pending-continue': { id: 'cg-pending-continue', hoTen: 'Chuyên gia chờ tiếp tục' }
+    };
+    controller.model._touchMutationQueue(queue);
+    controller.model._saveMutationQueue(queue);
+    window.__originalContinuePendingSync = controller.continuePendingSync;
+    controller.continuePendingSync = async () => {
+      window.__pendingContinueCalled = true;
+      controller.model.discardAllPendingMutations();
+      return { ok: true };
+    };
+    controller.openPendingSyncDialog();
+  });
+  await expect(modal).toContainText('Chuyên gia chờ tiếp tục');
+  await modal.locator('#btn-continue-pending-sync').click();
+  await expect(modal).not.toHaveClass(/active/);
+  expect(await page.evaluate(() => window.__pendingContinueCalled)).toBe(true);
+
+  await page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    getAppController().continuePendingSync = window.__originalContinuePendingSync;
+    delete window.__originalContinuePendingSync;
+    delete window.__originalForceSyncData;
+  });
+});
+
 test('Word template F5 never reveals the dashboard after the loader', async ({ page, credentials }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);

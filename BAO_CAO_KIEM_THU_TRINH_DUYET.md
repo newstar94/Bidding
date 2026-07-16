@@ -76,14 +76,16 @@
 - Preview nhập Excel dùng chung cho Kế hoạch, Gói thầu, Chủ đầu tư, Nhà thầu, Chuyên gia và Hợp đồng không còn hiển thị các cột kỹ thuật bắt đầu bằng `_` (gồm `_operation`); nút **X** và **Hủy bỏ** đóng được modal.
 - Sau khi nhập Excel, bảng dữ liệu được làm mới sau khi đồng bộ máy chủ; khi ngoại tuyến, bảng dùng ảnh chụp dữ liệu cục bộ để bản ghi vừa nhập hiển thị ngay.
 - Phím **ESC** đóng được mọi loại modal kể cả khi focus ở ngoài modal; với modal xếp chồng, mỗi lần nhấn chỉ đóng lớp trên cùng và vẫn đi qua đúng xử lý Hủy/Đóng của modal.
+- Sau khi bấm nút rồi nhấn **ESC**, trình duyệt không còn để lại viền focus đen mặc định; thao tác bằng chuột không hiện viền thừa, còn điều hướng bằng bàn phím dùng focus ring màu thương hiệu có độ tương phản phù hợp.
+- Hàng chờ chỉ giữ dữ liệu hợp lệ chưa gửi được do mất mạng hoặc xung đột; bản ghi bị máy chủ từ chối do vi phạm quy tắc được loại khỏi cả mutation queue và tombstone xóa. Bấm trạng thái đồng bộ mở danh sách chờ, cho phép xóa từng thay đổi hoặc tiếp tục đồng bộ; F5 vẫn gửi lại dữ liệu hợp lệ theo luồng khởi động.
 
 ## Kết quả kiểm thử tự động
 
 | Bộ kiểm thử | Kết quả |
 |---|---:|
-| Frontend unit tests | 230/230 đạt |
+| Frontend unit tests | 238/238 đạt |
 | API tests | 262/262 đạt |
-| E2E Chromium | 11/11 đạt |
+| E2E Chromium | 12/12 đạt |
 | Lint JavaScript/Python | Đạt |
 | Build secure và kiểm tra gói production | Đạt |
 

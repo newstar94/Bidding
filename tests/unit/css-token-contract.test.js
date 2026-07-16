@@ -13,3 +13,12 @@ test("avatar gradients have a declared accent token and resilient fallbacks", as
   assert.match(components, /var\(--accent,\s*#[0-9a-f]{6}\)/i);
   assert.match(views, /var\(--accent,\s*#[0-9a-f]{6}\)/i);
 });
+
+test("keyboard focus uses the branded ring instead of the browser black outline", async () => {
+  const base = await readFile(new URL("../../views/css/base.css", import.meta.url), "utf8");
+
+  assert.match(base, /:focus\s*\{/);
+  assert.match(base, /outline:\s*2px solid var\(--primary\)/);
+  assert.match(base, /outline-offset:\s*2px/);
+  assert.match(base, /:focus:not\(:focus-visible\)\s*\{\s*outline:\s*none/);
+});

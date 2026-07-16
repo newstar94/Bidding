@@ -126,14 +126,20 @@ export async function removePendingSyncItem(item = {}) {
     });
   }
 
+  if (removed.operation === "upsert" && Array.isArray(this.model?.state?.[removed.type])) {
+    this.model.state[removed.type] = this.model.state[removed.type].filter(
+      (record) => String(record?.id || "") !== removed.id
+    );
+    await this.model.db?.deleteRecord?.(removed.type, removed.id);
+  }
+
   if (globalThis.navigator?.onLine !== false) {
-    await this.forceSyncData(true, true);
+    const refreshed = await this.forceSyncData(true, true);
+    if (!refreshed?.ok && removed.operation === "upsert") {
+      await renderChangedState(this, new Set([removed.type]), { isBackground: true });
+    }
   } else {
-    if (removed.operation === "upsert" && Array.isArray(this.model?.state?.[removed.type])) {
-      this.model.state[removed.type] = this.model.state[removed.type].filter(
-        (record) => String(record?.id || "") !== removed.id
-      );
-      await this.model.db?.deleteRecord?.(removed.type, removed.id);
+    if (removed.operation === "upsert") {
       await renderChangedState(this, new Set([removed.type]), { isBackground: true });
     }
     this.updateSyncState({
