@@ -727,10 +727,12 @@ if IS_PRODUCTION:
 from backend.http_middleware import (
     BodySizeLimitMiddleware,
     CSRFMiddleware,
+    ResponseIntegrityMiddleware,
     SecurityHeadersMiddleware,
 )
 
 middleware = [
+    Middleware(ResponseIntegrityMiddleware),
     Middleware(CORSMiddleware,
                allow_origins=cors_origins,
                allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

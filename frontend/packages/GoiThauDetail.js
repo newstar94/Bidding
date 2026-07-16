@@ -21,7 +21,7 @@ import { savePackageCancellation } from "./packageCancellation.js";
 import { savePackageInvitationInfo } from "./packageInvitation.js";
 import { savePackageFinancialOpening, validateFinancialOpeningTime } from "./packageFinancialOpening.js";
 import { saveQualifiedApproval } from "./packageEvaluationProgress.js";
-import { resolvePackageDetailState } from "./detail/PackageDetailState.js";
+import { resolvePackageDetailState, selectPackageDetailTab } from "./detail/PackageDetailState.js";
 import { renderPackageTabHeaders } from "./detail/PackageDetailCoordinator.js";
 import { renderPackageSummary } from "./detail/PackageSummary.js";
 import { renderBidContractorLink } from "./detail/BidderTable.js";
@@ -162,7 +162,7 @@ export function showPackageDetails(id, isSwitchingVersion = false) {
   renderPackageTabHeaders(tabHeadersEl, tabs, this._currentWorkflowTab, (tabId) => {
     this._inPlaceEditMode = false;
     this._biddingInfoEditMode = false;
-    this._currentWorkflowTab = tabId;
+    selectPackageDetailTab(this, tabId, id);
     this.showPackageDetails(id);
   });
   const contentWrapper = document.getElementById("detail-workflow-content-wrapper");

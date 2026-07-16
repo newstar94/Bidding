@@ -125,6 +125,14 @@ export async function editKeHoach(id) {
   loaiHinhSelect.onchange = toggleProjectFields;
   const pheDuyetSelect = document.getElementById("kh-pheduyet");
   const pheDuyetFields = document.getElementById("kh-pheduyet-kehoach-fields");
+  const setRequiredLabel = (label, text) => {
+    if (!label) return;
+    label.textContent = `${text} `;
+    const marker = document.createElement("span");
+    marker.className = "required";
+    marker.textContent = "*";
+    label.append(marker);
+  };
   const togglePheDuyetFields = () => {
     const container = document.getElementById("kh-ngaytrinhkehoach-container");
     const label = document.getElementById("lbl-ngaytrinhkehoach");
@@ -133,20 +141,20 @@ export async function editKeHoach(id) {
     if (pheDuyetSelect.value === "Kế hoạch") {
       setRuntimeStyle(pheDuyetFields, "display", "block");
       if (container) setRuntimeStyle(container, "display", "block");
-      if (label) label.textContent = "Ngày trình kế hoạch";
-      if (labelPheDuyet) labelPheDuyet.textContent = "Ngày phê duyệt kế hoạch";
-      if (labelQuyetDinh) labelQuyetDinh.textContent = "Số QĐ phê duyệt kế hoạch";
+      setRequiredLabel(label, "Ngày trình kế hoạch");
+      setRequiredLabel(labelPheDuyet, "Ngày phê duyệt kế hoạch");
+      setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt kế hoạch");
     } else if (pheDuyetSelect.value === "Dự toán và kế hoạch") {
       setRuntimeStyle(pheDuyetFields, "display", "none");
       if (container) setRuntimeStyle(container, "display", "block");
-      if (label) label.textContent = "Ngày trình dự toán và kế hoạch";
-      if (labelPheDuyet) labelPheDuyet.textContent = "Ngày phê duyệt dự toán và kế hoạch";
-      if (labelQuyetDinh) labelQuyetDinh.textContent = "Số QĐ phê duyệt dự toán và kế hoạch";
+      setRequiredLabel(label, "Ngày trình dự toán và kế hoạch");
+      setRequiredLabel(labelPheDuyet, "Ngày phê duyệt dự toán và kế hoạch");
+      setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt dự toán và kế hoạch");
     } else {
       setRuntimeStyle(pheDuyetFields, "display", "none");
       if (container) setRuntimeStyle(container, "display", "none");
-      if (labelPheDuyet) labelPheDuyet.textContent = "Ngày phê duyệt";
-      if (labelQuyetDinh) labelQuyetDinh.textContent = "Số QĐ phê duyệt";
+      setRequiredLabel(labelPheDuyet, "Ngày phê duyệt");
+      setRequiredLabel(labelQuyetDinh, "Số QĐ phê duyệt");
     }
   };
   pheDuyetSelect.onchange = togglePheDuyetFields;

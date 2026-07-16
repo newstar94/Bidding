@@ -151,7 +151,7 @@ export class BiddingController {
       return Promise.resolve(this._lazyPartialHtmlCache.get(key));
     }
     if (!this._lazyPartialPreloadPromises.has(key)) {
-      const request = apiFetch(url).then((response) => {
+      const request = apiFetch(url, { cache: "no-store" }).then((response) => {
         if (!response.ok) {
           throw new Error(`Failed to preload ${url}: HTTP ${response.status}`);
         }
@@ -727,6 +727,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const banner = document.createElement("div");
     banner.id = "offline-indicator-banner";
     banner.className = "offline-banner";
+    banner.hidden = true;
     banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
     document.body.appendChild(banner);
     if (window.lucide) {
@@ -735,11 +736,13 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const updateOnlineStatus = () => {
       if (navigator.onLine) {
         banner.classList.remove("visible");
+        banner.hidden = true;
       } else {
         banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
         if (window.lucide) {
           window.lucide.createIcons({ root: banner });
         }
+        banner.hidden = false;
         banner.classList.add("visible");
       }
     };
@@ -1175,8 +1178,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         case "close-modal":
           if (target.dataset.modalId) {
             event.preventDefault();
-            const modal = document.getElementById(target.dataset.modalId);
-            if (modal) modal.classList.remove("active");
+            return call("closeModal", target.dataset.modalId);
           }
           return;
         case "show-package":

@@ -14,7 +14,13 @@ from backend.shared.helpers import (
     get_active_org,
     verify_session,
 )
-from backend.shared.access_policy import can_read_table, has_module_permission, is_organization_manager
+from backend.shared.access_policy import (
+    OWNERSHIP_SCOPED_TABLES,
+    authorize_record_write,
+    can_read_table,
+    has_module_permission,
+    is_organization_manager,
+)
 from backend.shared.media_helper import public_image_path
 from backend.shared.sensitive_data import redact_expert_item
 from backend.sync.mapper import (
@@ -404,6 +410,16 @@ async def paginate_records(request):
                 row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
 
             item = map_db_to_json(table_name, row_dict)
+            if table_name in OWNERSHIP_SCOPED_TABLES:
+                item["canEdit"] = authorize_record_write(
+                    cursor,
+                    role_str,
+                    user_id,
+                    org_name,
+                    table_key,
+                    table_name,
+                    item,
+                ).allowed
             if table_name == "chuyen_gia" and not can_view_sensitive_expert:
                 item = redact_expert_item(item)
 

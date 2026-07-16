@@ -31,6 +31,12 @@ function workspaceIsCurrent(controller, snapshot) {
   return !!snapshot.organizationId && controller.model?.isWorkspaceCurrent?.(snapshot.token) !== false;
 }
 
+function hideOfflineBanner() {
+  const banner = globalThis.document?.getElementById("offline-indicator-banner");
+  banner?.classList.remove("visible");
+  if (banner) banner.hidden = true;
+}
+
 export function updateSyncState(patch = {}) {
   const storedTimestamp = Number(currentWorkspaceStorage(this)?.getItem("bf_last_fetch_time") || 0) || null;
   const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
@@ -142,8 +148,20 @@ const DASHBOARD_SUMMARY_KEYS = new Set([
   "kehoach", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong", "assignments"
 ]);
 const NON_RETRYABLE_WEBSOCKET_CLOSE_CODES = new Set([1000, 4001, 4003, 4401, 4403]);
+const PASSIVE_WORKSPACE_STORAGE_KEYS = new Set([
+  "bf_last_sync_version",
+  "bf_last_sync_timestamp",
+  "bf_last_fetch_time",
+  "bf_conflict_server_sync_version"
+]);
 export function shouldReconnectWebSocket(closeCode) {
   return !NON_RETRYABLE_WEBSOCKET_CLOSE_CODES.has(Number(closeCode));
+}
+export function shouldScheduleBackgroundSyncForStorageEvent(event, scope) {
+  if (!scope || !isWorkspaceStorageEvent(event, scope)) return false;
+  const prefix = `bf_workspace:${scope.key}:`;
+  const baseKey = String(event.key).slice(prefix.length);
+  return !PASSIVE_WORKSPACE_STORAGE_KEYS.has(baseKey);
 }
 export function mutationAffectsDashboard(payload = {}) {
   return [...collectCommittedMutationKeys(payload)].some((key) => DASHBOARD_SUMMARY_KEYS.has(key));
@@ -210,7 +228,9 @@ export function setupAutoSyncBackground() {
         } catch {
         }
       }
-      if (scope && isWorkspaceStorageEvent(event, scope)) this.scheduleBackgroundSync(250);
+      if (shouldScheduleBackgroundSyncForStorageEvent(event, scope)) {
+        this.scheduleBackgroundSync(250);
+      }
     };
     window.addEventListener("storage", this._workspaceStorageListener);
   }
@@ -574,7 +594,8 @@ export function autoSync() {
       );
     }
     this._syncConflict = null;
-    this.updateSyncState({ phase: "idle", pendingCount: this.model?.getPendingMutationSummary?.().pendingCount || 0, lastSyncedAt: Date.now() });
+    hideOfflineBanner();
+    this.updateSyncState({ phase: "idle", online: true, pendingCount: this.model?.getPendingMutationSummary?.().pendingCount || 0, lastSyncedAt: Date.now() });
     return { ok: true, status, data };
   }).catch((err) => {
     console.error("Error auto sync:", err);
@@ -710,7 +731,8 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       if (routeOnly && typeof this.scheduleBackgroundSync === "function") {
         this.scheduleBackgroundSync(900);
       }
-      this.updateSyncState({ phase: "idle", lastSyncedAt: Date.now() });
+      hideOfflineBanner();
+      this.updateSyncState({ phase: "idle", online: true, lastSyncedAt: Date.now() });
       return { ok: true, data: dbData };
     }
   } catch (err) {
@@ -720,6 +742,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     if (syncStatusText) syncStatusText.textContent = "Lỗi đồng bộ";
     const banner = document.getElementById("offline-indicator-banner");
     if (banner) {
+      banner.hidden = false;
       banner.innerHTML = `<i data-lucide="alert-triangle"></i> Lỗi đồng bộ. Máy chủ không phản hồi.`;
       if (window.lucide) {
         window.lucide.createIcons({ root: banner });
@@ -728,7 +751,9 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       setTimeout(() => {
         if (navigator.onLine) {
           banner.classList.remove("visible");
+          banner.hidden = true;
         } else {
+          banner.hidden = false;
           banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
           if (window.lucide) {
             window.lucide.createIcons({ root: banner });
@@ -767,6 +792,8 @@ export function setupWebSocketConnection() {
   ws.onopen = () => {
     if (debug) console.log("WebSocket connection established. Sending auth...");
     this._wsRetryDelay = 5e3;
+    hideOfflineBanner();
+    this.updateSyncState?.({ online: true });
     ws.send(JSON.stringify({
       action: "auth",
       organizationId: workspace.organizationId

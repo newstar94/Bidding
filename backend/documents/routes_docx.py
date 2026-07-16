@@ -13,7 +13,7 @@ from backend.shared.helpers import (
     OrgPermissionError
 )
 from backend.db.id_utils import generate_record_id
-from backend.shared.access_policy import can_read_record, is_organization_manager
+from backend.shared.access_policy import can_manage_word_config, can_read_record
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import validate_or_response
 from backend.shared.async_io import run_blocking_io
@@ -457,7 +457,7 @@ async def list_word_mappings_api(request):
         org_name = get_active_org(request, user_id)
         conn = database.get_connection()
         cursor = conn.cursor()
-        if not is_organization_manager(cursor, str(role_or_err), user_id, org_name):
+        if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
             conn.close()
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
@@ -532,7 +532,7 @@ async def save_word_mapping_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        if not is_organization_manager(cursor, str(role_or_err), user_id, org_name):
+        if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
             conn.close()
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
 
@@ -608,7 +608,7 @@ async def delete_word_mapping_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        if not is_organization_manager(cursor, str(role_or_err), user_id, org_name):
+        if not can_manage_word_config(cursor, str(role_or_err), user_id, org_name):
             conn.close()
             return JSONResponse({"error": "Ban khong co quyen quan ly cau hinh Word."}, status_code=403)
         cursor.execute("DELETE FROM cau_hinh_bien_word WHERE id = ? AND organization_id = ?", (mapping_id, org_name))

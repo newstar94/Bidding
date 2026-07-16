@@ -61,7 +61,7 @@ export async function renderNhaThauTable() {
         id: displayedNt.id,
         editCommand: "edit-contractor",
         deleteCommand: "delete-contractor"
-      }), { visible: displayedNt.id === n.id });
+      }), { visible: displayedNt.id === n.id && displayedNt.canEdit !== false });
       const isJV = displayedNt.loaiNhaThau === "Liên danh";
       if (isJV) {
         const members = displayedNt.thanhVienLienDanh || [];
@@ -148,7 +148,7 @@ export function renderNhaThauVersionDetails(versionId) {
   const isLatest = allRelated[0] && allRelated[0].id === versionId;
   const editBtn = document.getElementById("btn-edit-nhathau-fullpage");
   if (editBtn) {
-    if (isLatest) {
+    if (isLatest && nt.canEdit !== false) {
       setRuntimeStyle(editBtn, "display", "flex");
       editBtn.onclick = () => {
         executeAppCommand("editNhaThau", versionId);

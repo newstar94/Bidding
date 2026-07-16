@@ -20,6 +20,15 @@ _partner_worker_started = False
 _partner_worker_lock = threading.Lock()
 _partner_work_event = threading.Event()
 
+PLACEHOLDER_CONTRACTOR_NAMES = {
+    "Nhà thầu (Chưa cập nhật thông tin)",
+    "Nhà thầu (Mã số thuế không hợp lệ)",
+}
+
+
+def _is_placeholder_contractor_name(value):
+    return not str(value or "").strip() or str(value).strip() in PLACEHOLDER_CONTRACTOR_NAMES
+
 
 def _worker_debug(message):
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
@@ -290,8 +299,8 @@ def run_partner_lookup_worker():
                 FROM nha_thau
                 WHERE (
                     ten_nha_thau IS NULL OR ten_nha_thau = ''
-                    OR ten_nha_thau LIKE 'Nhà thầu%'
                     OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)'
+                    OR ten_nha_thau = 'Nhà thầu (Mã số thuế không hợp lệ)'
                     OR dia_chi IS NULL OR dia_chi = ''
                     OR lower(ma_so_thue) LIKE 'vn%'
                 )
@@ -330,7 +339,7 @@ def run_partner_lookup_worker():
                 org_code = normalize_procurement_org_code(ma_nha_thau)
 
                 if not tax_code and not org_code:
-                    if ten_nha_thau is None or ten_nha_thau == '' or ten_nha_thau.startswith('Nhà thầu'):
+                    if _is_placeholder_contractor_name(ten_nha_thau):
                         cursor.execute("""
                             UPDATE nha_thau
                             SET ten_nha_thau = 'Nhà thầu (Mã số thuế không hợp lệ)'
@@ -388,7 +397,9 @@ def run_partner_lookup_worker():
                             sync_version = ?,
                             updated_at = datetime('now')
                         WHERE nha_thau_id = ?
-                          AND (ten_nha_thau IS NULL OR ten_nha_thau = '' OR ten_nha_thau LIKE 'Nhà thầu%' OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)')
+                          AND (ten_nha_thau IS NULL OR ten_nha_thau = ''
+                               OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)'
+                               OR ten_nha_thau = 'Nhà thầu (Mã số thuế không hợp lệ)')
                     """, (new_name, new_sync_ver, c_id))
 
                     conn.commit()
@@ -407,7 +418,7 @@ def run_partner_lookup_worker():
                 else:
                     _worker_debug(f"[Partner Worker] No info found for org={org_code or '-'}, tax={tax_code or '-' }.")
 
-                    if ten_nha_thau is None or ten_nha_thau == '' or ten_nha_thau.startswith('Nhà thầu'):
+                    if _is_placeholder_contractor_name(ten_nha_thau):
                         cursor.execute("""
                             UPDATE nha_thau
                             SET ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)'

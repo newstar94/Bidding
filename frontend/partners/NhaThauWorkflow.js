@@ -239,8 +239,8 @@ export async function handleNhaThauSubmit(e) {
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
   await persistAndSync(this, "nhathau", {
-    afterPersist: () => {
-      this.view.closeModal("modal-nhathau");
+    afterPersist: async () => {
+      await this.closeModal("modal-nhathau");
       this.view.renderNhaThauTable();
     }
   });

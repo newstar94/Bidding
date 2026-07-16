@@ -188,54 +188,28 @@ export function renderDashboard() {
 }
 export function renderSuperAdminDashboard() {
   apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
-    const allOrgs = [];
-    users.forEach((u) => {
-      normalizeOrganizations(u).forEach((organization) => allOrgs.push(organization.id));
-    });
-    const orgCount = new Set(allOrgs).size;
+    const summary = summarizeSuperAdminOrganizations(users, this.model.state.systempackages);
     const saStatOrgs = document.getElementById("sad-stat-orgs");
-    if (saStatOrgs) saStatOrgs.textContent = `${orgCount} Đơn vị`;
+    if (saStatOrgs) saStatOrgs.textContent = `${summary.organizations.length} Đơn vị`;
     const saStatUsers = document.getElementById("sad-stat-users");
     if (saStatUsers) saStatUsers.textContent = `${users.length} Người dùng`;
-    const activeOrgs = [];
-    users.forEach((u) => {
-      if (u.package_id && u.package_id !== "none") {
-        normalizeOrganizations(u).filter((organization) => organization.status === "active").forEach((organization) => {
-          activeOrgs.push(organization.id);
-        });
-      }
-    });
-    const activeOrgsCount = new Set(activeOrgs).size;
     const saStatActiveOrgs = document.getElementById("sad-stat-active-orgs");
-    if (saStatActiveOrgs) saStatActiveOrgs.textContent = `Đang hoạt động: ${activeOrgsCount}`;
+    if (saStatActiveOrgs) saStatActiveOrgs.textContent = `Đang hoạt động: ${summary.activeCount}`;
+    const revenueElement = document.getElementById("sad-stat-revenue");
+    if (revenueElement) revenueElement.textContent = this.model.formatCurrency(summary.revenue);
+    const packageRate = document.getElementById("sad-stat-packages");
+    if (packageRate) packageRate.textContent = `${summary.activationRate}%`;
+    ["silver", "gold", "diamond"].forEach((packageId) => {
+      const count = summary.packageCounts[packageId] || 0;
+      const percent = summary.activeCount > 0 ? Math.round(count / summary.activeCount * 100) : 0;
+      const label = document.getElementById(`sad-pkg-${packageId}-percent`);
+      if (label) label.textContent = `${percent}% (${count} Đơn vị)`;
+      const fill = document.getElementById(`sad-pkg-${packageId}-fill`);
+      if (fill) setRuntimeStyle(fill, "width", `${percent}%`);
+    });
     const orgListContainer = document.getElementById("sa-org-list-tbody");
     if (orgListContainer) {
-      const orgMap = {};
-      users.forEach((u) => {
-        const orgs = normalizeOrganizations(u);
-        orgs.forEach((organization) => {
-          if (!orgMap[organization.id]) {
-            orgMap[organization.id] = {
-              name: organization.name,
-              manager: "",
-              email: "",
-              package_id: "none",
-              start: "",
-              end: "",
-              userCount: 0
-            };
-          }
-          orgMap[organization.id].userCount++;
-          if (["owner", "manager"].includes(organization.role) || !orgMap[organization.id].manager) {
-            orgMap[organization.id].manager = u.name;
-            orgMap[organization.id].email = u.email;
-            orgMap[organization.id].package_id = u.package_id || "none";
-            orgMap[organization.id].start = u.package_start_date ? this.model.formatDate(u.package_start_date) : "";
-            orgMap[organization.id].end = u.package_end_date ? this.model.formatDate(u.package_end_date) : "";
-          }
-        });
-      });
-      const list = Object.values(orgMap);
+      const list = summary.organizations;
       if (list.length === 0) {
         orgListContainer.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Chưa có tổ chức nào đăng ký thầu</td></tr>`;
       } else {
@@ -262,4 +236,57 @@ export function renderSuperAdminDashboard() {
     }
     this.createIconsScoped(document.getElementById("tab-superadmin-dashboard"));
   });
+}
+
+export function summarizeSuperAdminOrganizations(users = [], systemPackages = []) {
+  const organizationMap = new Map();
+  (users || []).forEach((user) => {
+    normalizeOrganizations(user)
+      .filter((organization) => organization.scope_type === "organization")
+      .forEach((organization) => {
+        const subscription = organization.subscription || {};
+        const existing = organizationMap.get(organization.id) || {
+          id: organization.id,
+          name: organization.name,
+          manager: "",
+          email: "",
+          package_id: subscription.package_id || "none",
+          start: subscription.start_date || "",
+          end: subscription.end_date || "",
+          status: organization.status,
+          userIds: new Set()
+        };
+        existing.userIds.add(String(user.id || user.username || user.email || ""));
+        if (["owner", "manager"].includes(organization.role) || !existing.manager) {
+          existing.manager = organization.employee_name || user.name || user.username || "";
+          existing.email = user.email || "";
+        }
+        organizationMap.set(organization.id, existing);
+      });
+  });
+  const organizations = [...organizationMap.values()].map((organization) => ({
+    ...organization,
+    userCount: organization.userIds.size
+  }));
+  const activeOrganizations = organizations.filter((organization) => organization.status === "active");
+  const prices = new Map((systemPackages || []).map((pkg) => [String(pkg.id), Number(pkg.price || 0)]));
+  const packageCounts = { silver: 0, gold: 0, diamond: 0 };
+  activeOrganizations.forEach((organization) => {
+    if (Object.hasOwn(packageCounts, organization.package_id)) {
+      packageCounts[organization.package_id] += 1;
+    }
+  });
+  const subscribedCount = Object.values(packageCounts).reduce((total, count) => total + count, 0);
+  return {
+    organizations,
+    activeCount: activeOrganizations.length,
+    activationRate: activeOrganizations.length > 0
+      ? Math.round(subscribedCount / activeOrganizations.length * 100)
+      : 0,
+    packageCounts,
+    revenue: activeOrganizations.reduce(
+      (total, organization) => total + (prices.get(String(organization.package_id)) || 0),
+      0
+    )
+  };
 }

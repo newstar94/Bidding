@@ -10,11 +10,44 @@ import {
     getSyncValidationErrors,
     mutationAffectsDashboard,
     setupWebSocketConnection,
+    shouldScheduleBackgroundSyncForStorageEvent,
     shouldReconnectWebSocket
 } from '../../frontend/app/BiddingControllerSync.js';
 import { cachePaginatedRecords } from '../../frontend/shared/tableDataUtils.js';
-import { normalizeDashboardStatusCounts } from '../../frontend/app/DashboardView.js';
+import { normalizeDashboardStatusCounts, summarizeSuperAdminOrganizations } from '../../frontend/app/DashboardView.js';
 import { formatDateOnly } from '../../frontend/shared/view_helpers.js';
+
+test('cross-tab sync ignores cursor bookkeeping but reacts to pending mutations', () => {
+  const scope = { key: 'user-1:org-1' };
+  const key = (base) => `bf_workspace:${scope.key}:${base}`;
+
+  assert.equal(shouldScheduleBackgroundSyncForStorageEvent({ key: key('bf_last_sync_version') }, scope), false);
+  assert.equal(shouldScheduleBackgroundSyncForStorageEvent({ key: key('bf_last_fetch_time') }, scope), false);
+  assert.equal(shouldScheduleBackgroundSyncForStorageEvent({ key: key('bf_mutation_queue') }, scope), true);
+  assert.equal(shouldScheduleBackgroundSyncForStorageEvent({ key: 'bf_workspace:other:bf_mutation_queue' }, scope), false);
+});
+
+test('super admin KPIs aggregate business organizations from subscription data once', () => {
+  const membership = {
+    id: 'org-1',
+    name: 'HTD',
+    scope_type: 'organization',
+    status: 'active',
+    subscription: { package_id: 'diamond' }
+  };
+  const summary = summarizeSuperAdminOrganizations([
+    { id: 'manager', name: 'Manager', organizations: [{ ...membership, role: 'manager' }] },
+    { id: 'employee', name: 'Employee', organizations: [{ ...membership, role: 'employee' }] },
+    { id: 'personal', organizations: [{ id: 'personal-1', name: 'Private', scope_type: 'personal', status: 'active' }] }
+  ], [{ id: 'diamond', price: 75_000_000 }]);
+
+  assert.equal(summary.organizations.length, 1);
+  assert.equal(summary.organizations[0].userCount, 2);
+  assert.equal(summary.activeCount, 1);
+  assert.equal(summary.activationRate, 100);
+  assert.equal(summary.packageCounts.diamond, 1);
+  assert.equal(summary.revenue, 75_000_000);
+});
 import {
     convertDMYHMSToYMDHMS,
     formatCurrency,
@@ -447,6 +480,30 @@ test('reference data never overwrites a complete partner cached in IndexedDB', a
     assert.equal(model.state.chudautu[0].daiDienCdt, 'Nguyễn Văn A');
     assert.equal(model.state.chudautu[0].referenceOnly, false);
     assert.equal(persisted.diaChi, 'Hà Nội');
+});
+
+test('package reference data refreshes authoritative workflow status without dropping full fields', async () => {
+    const model = createModel();
+    model.state.goithau = [{
+        id: 'gt-1',
+        tenGoiThau: 'Gói thầu đầy đủ',
+        trangThai: 'Đang chấm thầu',
+        nguonVon: 'Ngân sách nhà nước',
+        referenceOnly: false
+    }];
+
+    const result = applySyncPayload(model, {
+        useServerSidePagination: true,
+        paginatedKeys: ['goithau'],
+        referenceData: {
+            goithau: [{ id: 'gt-1', tenGoiThau: 'Gói thầu đầy đủ', trangThai: 'Đã có kết quả' }]
+        }
+    }, { useVersionDelta: false, since: '0' });
+
+    await result.persistencePromise;
+    assert.equal(model.state.goithau[0].trangThai, 'Đã có kết quả');
+    assert.equal(model.state.goithau[0].nguonVon, 'Ngân sách nhà nước');
+    assert.equal(model.state.goithau[0].referenceOnly, true);
 });
 
 test('paginated expert records are normalized and merged into the model cache', () => {

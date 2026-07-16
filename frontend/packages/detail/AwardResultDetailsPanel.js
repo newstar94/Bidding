@@ -14,6 +14,7 @@ import { executeAppCommand } from "../../app/commandBus.js";
 import { getHolidays, getLotWinnersStore } from "../../shared/runtimeState.js";
 import { generateRecordId, generateUUID } from "../../shared/idUtils.js";
 import { appendExportSnapshotVersion } from "../../shared/exportSnapshot.js";
+import { calculateRankings } from "../../shared/BiddingCalculations.js";
 
 function isLeadJointVentureMember(member) {
   return String(member?.vaiTro || "").trim().toLocaleLowerCase("vi-VN") === "đứng đầu liên danh";
@@ -392,7 +393,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
         const ngayThuongThao = metadata.result.ngayThuongThao ? view.model.formatForDateInput(metadata.result.ngayThuongThao) : defaultTt ? view.model.formatForDateInput(defaultTt) : "";
         const ngayTrinhKetQua = metadata.result.ngayTrinhKetQua ? view.model.formatForDateInput(metadata.result.ngayTrinhKetQua) : defaultTkq ? view.model.formatForDateInput(defaultTkq) : "";
         const defaultDecDate = gt.ngayQuyetDinhKetQua ? view.model.formatForDateInput(gt.ngayQuyetDinhKetQua) : defaultPdkq ? view.model.formatForDateInput(defaultPdkq) : "";
-        const { rankings, scores } = appController.calculateRankings(gt, allBids);
+        const { rankings, scores } = calculateRankings(gt, allBids);
         const isCombinedMethod = gt.phuongPhapDanhGia === "Kết hợp giữa kỹ thuật và giá";
         const getIsQualified = (bidItem) => {
           return checkBidQualified(bidItem);

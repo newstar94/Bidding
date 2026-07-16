@@ -428,6 +428,13 @@ export function setupProfileDropdownEvents() {
     const trigger = event.target.closest?.(".header-profile-trigger");
     const dropdown = document.getElementById("profile-dropdown-menu");
     if (!dropdown) return;
+    const profileButton = event.target.closest?.("#btn-dropdown-profile");
+    if (profileButton) {
+      event.preventDefault();
+      dropdown.classList.remove("active");
+      this.switchTab("profile");
+      return;
+    }
     if (trigger) {
       event.stopPropagation();
       dropdown.classList.toggle("active");

@@ -14,6 +14,7 @@ const SERVER_MANAGED_FIELDS = new Set([
 
 const LOCAL_ONLY_FIELDS = new Set([
   "allVersions",
+  "canEdit",
   "referenceOnly",
   "expectedVersion",
   "_valid",

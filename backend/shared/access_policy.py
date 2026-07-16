@@ -32,6 +32,11 @@ ASSIGNED_TABLE_TYPES = {
     "hop_dong": "hopdong",
 }
 
+OWNERSHIP_SCOPED_TABLES = {
+    "chu_dau_tu",
+    "nha_thau",
+}
+
 
 @dataclass(frozen=True)
 class AccessDecision:
@@ -78,6 +83,20 @@ def is_business_organization(cursor, organization_id):
     return bool(row and str(row[0] or "").strip().lower() == "organization")
 
 
+def is_personal_workspace_owner(cursor, user_id, organization_id):
+    if not user_id or not organization_id:
+        return False
+    cursor.execute(
+        """
+        SELECT 1 FROM to_chuc
+        WHERE id = ? AND scope_type = 'personal' AND personal_owner_user_id = ?
+        LIMIT 1
+        """,
+        (organization_id, user_id),
+    )
+    return cursor.fetchone() is not None
+
+
 def is_organization_manager(cursor, role_str, user_id, organization_id):
     if is_manager_role(role_str):
         return True
@@ -109,12 +128,27 @@ def _permission_for(cursor, organization_id, user_id, module_name):
 def has_module_permission(cursor, role_str, user_id, organization_id, module_name, action="view"):
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return True
+    if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return True
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return False
     permission = _permission_for(cursor, organization_id, user_id, module_name)
     if action == "edit":
         return permission == "edit"
     return permission in {"view", "edit"}
+
+
+def can_manage_word_config(cursor, role_str, user_id, organization_id):
+    """Allow personal owners, managers, or employees with related edit rights."""
+
+    if is_organization_manager(cursor, role_str, user_id, organization_id):
+        return True
+    if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return True
+    return any(
+        has_module_permission(cursor, role_str, user_id, organization_id, module_name, "edit")
+        for module_name in ("kehoach", "goithau", "chudautu", "nhathau", "hopdong")
+    )
 
 
 def _assigned(cursor, organization_id, user_id, target_id, target_type):
@@ -141,6 +175,58 @@ def _table_record_exists(cursor, organization_id, table_name, record_id):
         (organization_id, record_id),
     )
     return cursor.fetchone() is not None
+
+
+def _existing_lineage_root(cursor, organization_id, table_name, item_or_id):
+    """Return the stored logical root touched by a write, or None for create."""
+
+    if isinstance(item_or_id, dict):
+        record_id = clean_id(item_or_id.get("id"))
+        requested_root = clean_id(item_or_id.get("rootId") or item_or_id.get("id_goc"))
+    else:
+        record_id = clean_id(item_or_id)
+        requested_root = None
+    for candidate in (record_id, requested_root):
+        if not candidate:
+            continue
+        row = cursor.execute(
+            f"""SELECT COALESCE(NULLIF(id_goc, ''), id)
+                FROM {table_name}
+                WHERE organization_id = ? AND (id = ? OR id_goc = ?)
+                LIMIT 1""",
+            (organization_id, candidate, candidate),
+        ).fetchone()
+        if row:
+            return clean_id(row[0])
+    return None
+
+
+def _record_owned_by(cursor, organization_id, user_id, table_name, lineage_root):
+    if not lineage_root:
+        return False
+    row = cursor.execute(
+        """SELECT 1 FROM record_edit_ownership
+           WHERE organization_id = ? AND table_name = ?
+             AND record_id = ? AND user_id = ?
+           LIMIT 1""",
+        (organization_id, table_name, lineage_root, user_id),
+    ).fetchone()
+    return row is not None
+
+
+def _assigned_for_lineage(cursor, organization_id, user_id, table_name, lineage_root):
+    if not lineage_root:
+        return False
+    rows = cursor.execute(
+        f"""SELECT id FROM {table_name}
+            WHERE organization_id = ?
+              AND COALESCE(NULLIF(id_goc, ''), id) = ?""",
+        (organization_id, lineage_root),
+    ).fetchall()
+    return any(
+        _assigned_for_table(cursor, organization_id, user_id, table_name, row[0])
+        for row in rows
+    )
 
 
 def _opening_parent_id(cursor, organization_id, item_or_id):
@@ -231,26 +317,37 @@ def authorize_record_write(cursor, role_str, user_id, organization_id, payload_k
         return key_decision
     if organization_manager:
         return AccessDecision(True)
+    if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return AccessDecision(True)
 
     module_name = TABLE_TO_MODULE.get(table_name)
     if not has_module_permission(cursor, role_str, user_id, organization_id, module_name, "edit"):
         return AccessDecision(False, f"Không có quyền sửa phân hệ {module_name or table_name}.")
 
-    record_id = clean_id(item.get("id")) if isinstance(item, dict) else clean_id(item)
     if table_name == "thong_tin_mo_thau":
         if not _assigned_for_table(cursor, organization_id, user_id, table_name, item):
             return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
+    elif table_name in OWNERSHIP_SCOPED_TABLES:
+        lineage_root = _existing_lineage_root(cursor, organization_id, table_name, item)
+        if lineage_root and not _record_owned_by(
+            cursor, organization_id, user_id, table_name, lineage_root
+        ):
+            return AccessDecision(False, "Chuyên viên chỉ được sửa dữ liệu do mình tạo.")
     elif table_name in ASSIGNED_TABLE_TYPES:
-        is_existing = bool(record_id) and _table_record_exists(cursor, organization_id, table_name, record_id)
-        if is_existing and not _assigned_for_table(cursor, organization_id, user_id, table_name, item):
+        lineage_root = _existing_lineage_root(cursor, organization_id, table_name, item)
+        if lineage_root and not _assigned_for_lineage(
+            cursor, organization_id, user_id, table_name, lineage_root
+        ):
             return AccessDecision(False, "Không có quyền sửa bản ghi chưa được phân công.")
-
+        return AccessDecision(True)
     return AccessDecision(True)
 
 
 def can_read_table(cursor, role_str, user_id, organization_id, payload_key, table_name):
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return True
+    if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return payload_key not in WRITE_PROTECTED_KEYS
     if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
         return False
     if payload_key in {"assignments", "permissionmatrix"}:

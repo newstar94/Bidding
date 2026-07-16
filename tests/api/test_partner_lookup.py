@@ -4,11 +4,18 @@ from backend.partners import address_parser
 from backend.partners.address_parser import compose_internal_address
 from backend.partners.partner_lookup_service import (
     _build_muasamcong_partner_info,
+    _is_placeholder_contractor_name,
     fetch_muasamcong_info,
     lookup_partner_info,
     normalize_procurement_org_code,
     request_partner_enrichment,
 )
+
+
+def test_partner_worker_does_not_treat_a_valid_name_prefix_as_placeholder():
+    assert _is_placeholder_contractor_name("Nhà thầu Nghiệp vụ QA") is False
+    assert _is_placeholder_contractor_name("Nhà thầu (Chưa cập nhật thông tin)") is True
+    assert _is_placeholder_contractor_name("Nhà thầu (Mã số thuế không hợp lệ)") is True
 
 
 def test_normalizes_supported_procurement_organization_codes():

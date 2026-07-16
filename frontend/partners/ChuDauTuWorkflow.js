@@ -125,8 +125,8 @@ export async function handleChuDauTuSubmit(e) {
   // Persisting also queues the record for server sync, so it must finish
   // before autoSync builds its payload.
   await persistAndSync(this, "chudautu", {
-    afterPersist: () => {
-      this.view.closeModal("modal-chudautu");
+    afterPersist: async () => {
+      await this.closeModal("modal-chudautu");
       this.view.renderChuDauTuTable();
     }
   });

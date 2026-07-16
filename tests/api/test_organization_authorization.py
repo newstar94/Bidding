@@ -10,6 +10,7 @@ from backend.auth.auth_helper import SessionRole
 from backend.db.db_helper import SQLiteDatabase
 from backend.shared.access_policy import (
     authorize_record_write,
+    can_manage_word_config,
     can_read_table,
     is_organization_manager,
 )
@@ -29,10 +30,50 @@ def _policy_connection():
         CREATE TABLE ma_tran_phan_quyen (
             organization_id TEXT NOT NULL,
             emp_id TEXT NOT NULL,
-            chudautu TEXT
+            kehoach TEXT,
+            goithau TEXT,
+            chudautu TEXT,
+            nhathau TEXT,
+            hopdong TEXT
+        );
+        CREATE TABLE to_chuc (
+            id TEXT PRIMARY KEY,
+            scope_type TEXT NOT NULL,
+            personal_owner_user_id TEXT
+        );
+        CREATE TABLE chu_dau_tu (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            id_goc TEXT
+        );
+        CREATE TABLE ke_hoach_lcnt (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            id_goc TEXT
+        );
+        CREATE TABLE goi_thau (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            id_goc TEXT,
+            ke_hoach_id TEXT
+        );
+        CREATE TABLE phan_cong_nhan_su (
+            organization_id TEXT NOT NULL,
+            id_nhan_vien TEXT NOT NULL,
+            id_muc_tieu TEXT NOT NULL,
+            loai_doi_tuong TEXT NOT NULL
+        );
+        CREATE TABLE record_edit_ownership (
+            organization_id TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            user_id TEXT NOT NULL
         );
         INSERT INTO thanh_vien_to_chuc VALUES ('user-1', 'org-a', 'manager');
         INSERT INTO thanh_vien_to_chuc VALUES ('user-1', 'org-b', 'employee');
+        INSERT INTO to_chuc VALUES ('org-a', 'organization', NULL);
+        INSERT INTO to_chuc VALUES ('org-b', 'organization', NULL);
+        INSERT INTO to_chuc VALUES ('personal-1', 'personal', 'user-1');
         """
     )
     return connection
@@ -84,6 +125,135 @@ def test_platform_super_admin_remains_platform_scoped():
         "chudautu",
         "chu_dau_tu",
     ) is True
+
+
+def test_personal_workspace_owner_can_create_and_read_business_data():
+    connection = _policy_connection()
+    cursor = connection.cursor()
+
+    decision = authorize_record_write(
+        cursor,
+        "employee",
+        "user-1",
+        "personal-1",
+        "chudautu",
+        "chu_dau_tu",
+        {"id": "cdt-personal-1"},
+    )
+
+    assert decision.allowed is True
+    assert can_read_table(
+        cursor,
+        "employee",
+        "user-1",
+        "personal-1",
+        "chudautu",
+        "chu_dau_tu",
+    ) is True
+    assert can_read_table(
+        cursor,
+        "employee",
+        "other-user",
+        "personal-1",
+        "chudautu",
+        "chu_dau_tu",
+    ) is False
+
+
+def test_employee_with_related_edit_permission_can_manage_word_config():
+    connection = _policy_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO ma_tran_phan_quyen VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("org-b", "user-1", "view", "edit", "view", "view", "view"),
+    )
+
+    assert can_manage_word_config(cursor, "employee", "user-1", "org-b") is True
+    cursor.execute("UPDATE ma_tran_phan_quyen SET goithau = 'view' WHERE organization_id = 'org-b'")
+    assert can_manage_word_config(cursor, "employee", "user-1", "org-b") is False
+    assert can_manage_word_config(cursor, "employee", "user-1", "personal-1") is True
+
+
+def test_employee_cannot_version_an_unowned_partner_record():
+    connection = _policy_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO ma_tran_phan_quyen VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("org-b", "user-1", "view", "view", "edit", "view", "view"),
+    )
+    cursor.execute("INSERT INTO chu_dau_tu VALUES ('cdt-manager', 'org-b', 'cdt-manager')")
+
+    decision = authorize_record_write(
+        cursor,
+        "employee",
+        "user-1",
+        "org-b",
+        "chudautu",
+        "chu_dau_tu",
+        {"id": "cdt-version-1", "rootId": "cdt-manager"},
+    )
+
+    assert decision.allowed is False
+
+
+def test_employee_can_version_a_partner_record_they_created():
+    connection = _policy_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO ma_tran_phan_quyen VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("org-b", "user-1", "view", "view", "edit", "view", "view"),
+    )
+    cursor.execute("INSERT INTO chu_dau_tu VALUES ('cdt-owned', 'org-b', 'cdt-owned')")
+    cursor.execute(
+        "INSERT INTO record_edit_ownership VALUES ('org-b', 'chu_dau_tu', 'cdt-owned', 'user-1')"
+    )
+
+    decision = authorize_record_write(
+        cursor,
+        "employee",
+        "user-1",
+        "org-b",
+        "chudautu",
+        "chu_dau_tu",
+        {"id": "cdt-version-1", "rootId": "cdt-owned"},
+    )
+
+    assert decision.allowed is True
+
+
+def test_employee_cannot_bypass_assignment_with_a_new_plan_version_id():
+    connection = _policy_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO ma_tran_phan_quyen VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("org-b", "user-1", "edit", "view", "view", "view", "view"),
+    )
+    cursor.execute("INSERT INTO ke_hoach_lcnt VALUES ('plan-manager', 'org-b', 'plan-manager')")
+
+    denied = authorize_record_write(
+        cursor,
+        "employee",
+        "user-1",
+        "org-b",
+        "kehoach",
+        "ke_hoach_lcnt",
+        {"id": "plan-version-1", "rootId": "plan-manager"},
+    )
+    cursor.execute(
+        "INSERT INTO phan_cong_nhan_su VALUES ('org-b', 'user-1', 'plan-manager', 'kehoach')"
+    )
+    allowed = authorize_record_write(
+        cursor,
+        "employee",
+        "user-1",
+        "org-b",
+        "kehoach",
+        "ke_hoach_lcnt",
+        {"id": "plan-version-1", "rootId": "plan-manager"},
+    )
+
+    assert denied.allowed is False
+    assert allowed.allowed is True
 
 
 def _role_database(path):

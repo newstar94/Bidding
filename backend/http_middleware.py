@@ -5,9 +5,9 @@ import os
 import secrets
 from urllib.parse import urlparse
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from backend.shared.client_ip import is_request_secure
 from backend.shared.logging_utils import error_response
@@ -35,45 +35,114 @@ def _connect_sources():
     return " ".join(dict.fromkeys(value for value in values if value))
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), "
-            "interest-cohort=(), identity-credentials-get=(self)"
-        )
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://accounts.google.com https://apis.google.com; "
-            "style-src 'self' https://fonts.googleapis.com https://accounts.google.com; "
-            "style-src-elem 'self' https://fonts.googleapis.com https://accounts.google.com; "
-            # Google Identity Services sets one stable inline style on its own
-            # iframe. Permit only that exact declaration; first-party inline
-            # styles and every other attribute remain blocked.
-            "style-src-attr 'unsafe-hashes' 'sha256-4PX7giCQMi8wBuhXIfPmyuw/Y9KfbeLY2K+XpOH6msQ='; "
-            "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
-            f"connect-src {_connect_sources()}; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "frame-src 'self' https://accounts.google.com; "
-            "worker-src 'self'; base-uri 'self'; object-src 'none'; "
-            "require-trusted-types-for 'script'; trusted-types default goog#html;"
-        )
-        if "Content-Security-Policy-Report-Only" in response.headers:
-            del response.headers["Content-Security-Policy-Report-Only"]
-        path = request.url.path
-        if is_request_secure(request):
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        if path.startswith(("/api/", "/ws/")):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        elif request.query_params.get("v") and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        elif path.endswith(('.js', '.css')):
-            response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
-        return response
+class ResponseIntegrityMiddleware:
+    """Keep the final ASGI response framing valid at the HTTP-server boundary."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        suppress_body = str(scope.get("method") or "").upper() == "HEAD"
+        body_finished = False
+
+        async def send_with_valid_framing(message):
+            nonlocal suppress_body, body_finished
+            if message["type"] == "http.response.start":
+                status_code = int(message.get("status") or 0)
+                suppress_body = suppress_body or status_code in {204, 304}
+                headers = MutableHeaders(scope=message)
+                if not suppress_body and "Content-Length" in headers:
+                    # Uvicorn will select chunked framing.  This avoids a stale
+                    # length after any inner middleware or conditional response
+                    # adapter changes the body.
+                    del headers["Content-Length"]
+                await send(message)
+                return
+            if message["type"] == "http.response.body" and suppress_body:
+                if body_finished:
+                    return
+                body_finished = True
+                await send({**message, "body": b"", "more_body": False})
+                return
+            await send(message)
+
+        await self.app(scope, receive, send_with_valid_framing)
+
+
+class SecurityHeadersMiddleware:
+    """Pure ASGI middleware that preserves bodyless 204/304 responses."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
+        suppress_body = request.method.upper() == "HEAD"
+        body_finished = False
+
+        async def send_with_security_headers(message):
+            nonlocal suppress_body, body_finished
+            if message["type"] == "http.response.body" and suppress_body:
+                if body_finished:
+                    return
+                body_finished = True
+                await send({**message, "body": b"", "more_body": False})
+                return
+            if message["type"] != "http.response.start":
+                await send(message)
+                return
+
+            status_code = int(message.get("status") or 0)
+            suppress_body = suppress_body or status_code in {204, 304}
+            headers = MutableHeaders(scope=message)
+            if status_code == 204 and "Content-Length" in headers:
+                del headers["Content-Length"]
+            headers["X-Content-Type-Options"] = "nosniff"
+            headers["X-Frame-Options"] = "SAMEORIGIN"
+            headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            headers["Permissions-Policy"] = (
+                "camera=(), microphone=(), geolocation=(), payment=(), usb=(), "
+                "interest-cohort=(), identity-credentials-get=(self)"
+            )
+            headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+            headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' https://accounts.google.com https://apis.google.com; "
+                "style-src 'self' https://fonts.googleapis.com https://accounts.google.com; "
+                "style-src-elem 'self' https://fonts.googleapis.com https://accounts.google.com; "
+                # Google Identity Services sets one stable inline style on its own
+                # iframe. Permit only that exact declaration; first-party inline
+                # styles and every other attribute remain blocked.
+                "style-src-attr 'unsafe-hashes' 'sha256-4PX7giCQMi8wBuhXIfPmyuw/Y9KfbeLY2K+XpOH6msQ='; "
+                "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
+                f"connect-src {_connect_sources()}; "
+                "font-src 'self' https://fonts.gstatic.com; "
+                "frame-src 'self' https://accounts.google.com; "
+                "worker-src 'self'; base-uri 'self'; object-src 'none'; "
+                "require-trusted-types-for 'script'; trusted-types default goog#html;"
+            )
+            if "Content-Security-Policy-Report-Only" in headers:
+                del headers["Content-Security-Policy-Report-Only"]
+            path = request.url.path
+            if is_request_secure(request):
+                headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            if path.startswith(("/api/", "/ws/")):
+                headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            elif request.query_params.get("v") and path.endswith(('.js', '.css', '.png', '.woff2', '.woff', '.ttf')):
+                headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            elif path.endswith(('.js', '.css')):
+                headers["Cache-Control"] = "public, max-age=0, must-revalidate"
+            await send(message)
+
+        await self.app(scope, receive, send_with_security_headers)
 
 
 class BodySizeLimitMiddleware:
@@ -169,7 +238,7 @@ class BodySizeLimitMiddleware:
         await self.app(scope, replay_receive, send)
 
 
-class CSRFMiddleware(BaseHTTPMiddleware):
+class CSRFMiddleware:
     MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
     EXEMPT_PATHS = {
         "/api/auth/login", "/api/auth/google-login", "/api/auth/register",
@@ -177,7 +246,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         "/api/auth/forgot-password",
     }
 
-    async def dispatch(self, request, call_next):
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
         csrf_cookie = request.cookies.get("csrf_token")
         csrf_token = csrf_cookie or secrets.token_urlsafe(32)
         if request.method in self.MUTATING_METHODS:
@@ -192,9 +269,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             if origin and not same_host(origin):
-                return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Origin không khớp)"}, status_code=403)
+                response = JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Origin không khớp)"}, status_code=403)
+                await response(scope, receive, send)
+                return
             if referer and not same_host(referer):
-                return JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Referer không khớp)"}, status_code=403)
+                response = JSONResponse({"error": "Yêu cầu bị từ chối do vi phạm CSRF! (Referer không khớp)"}, status_code=403)
+                await response(scope, receive, send)
+                return
             requires_token = (
                 request.url.path.startswith("/api/")
                 and request.url.path not in self.EXEMPT_PATHS
@@ -203,12 +284,23 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if requires_token:
                 header_token = request.headers.get("x-csrf-token", "")
                 if not csrf_cookie or not header_token or not secrets.compare_digest(csrf_cookie, header_token):
-                    return JSONResponse({"error": "Yêu cầu bị từ chối do thiếu hoặc sai CSRF token!", "code": "CSRF_TOKEN_INVALID"}, status_code=403)
-        response = await call_next(request)
+                    response = JSONResponse({"error": "Yêu cầu bị từ chối do thiếu hoặc sai CSRF token!", "code": "CSRF_TOKEN_INVALID"}, status_code=403)
+                    await response(scope, receive, send)
+                    return
+
+        cookie_header = None
         if not csrf_cookie:
-            response.set_cookie(
+            cookie_response = Response()
+            cookie_response.set_cookie(
                 "csrf_token", csrf_token, httponly=False,
                 secure=os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true",
                 samesite="lax", path="/",
             )
-        return response
+            cookie_header = cookie_response.headers.get("set-cookie")
+
+        async def send_with_csrf_cookie(message):
+            if message["type"] == "http.response.start" and cookie_header:
+                MutableHeaders(scope=message).append("set-cookie", cookie_header)
+            await send(message)
+
+        await self.app(scope, receive, send_with_csrf_cookie)

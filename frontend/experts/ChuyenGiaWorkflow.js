@@ -265,9 +265,11 @@ export async function handleChuyenGiaSubmit(e) {
     this.model.state.chuyengia.push(data);
   }
   rememberSelectedVersion(this.model.state, "selectedChuyenGiaVersion", data);
-  this.view.closeModal("modal-chuyengia");
   await persistAndSync(this, "chuyengia", {
-    afterPersist: () => this.view.renderChuyenGiaTable()
+    afterPersist: async () => {
+      await this.closeModal("modal-chuyengia");
+      this.view.renderChuyenGiaTable();
+    }
   });
 }
 import { generateRecordId } from "../shared/idUtils.js";

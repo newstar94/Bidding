@@ -47,13 +47,14 @@ def test_clean_baseline_is_transactional_versioned_and_idempotent(monkeypatch, t
         }
         assert set(SCHEMA_DINH_NGHIA) <= tables
         assert connection.execute("PRAGMA user_version").fetchone()[0] == db_utils.DB_SCHEMA_VERSION
-        migration = connection.execute(
-            "SELECT version, name, checksum, applied_at FROM schema_migrations"
-        ).fetchone()
-        assert migration[0] == 1
-        assert migration[1] == "0001_clean_baseline"
-        assert len(migration[2]) == 64
-        assert migration[3]
+        migrations = connection.execute(
+            "SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert [row[0] for row in migrations] == list(range(1, db_utils.DB_SCHEMA_VERSION + 1))
+        assert migrations[0][1] == "0001_clean_baseline"
+        assert migrations[-1][1] == "0002_record_edit_ownership"
+        assert all(len(row[2]) == 64 and row[3] for row in migrations)
+        assert "record_edit_ownership" in tables
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("SELECT count(*) FROM tai_khoan").fetchone()[0] == 1
         assert connection.execute("SELECT count(*) FROM goi_dich_vu").fetchone()[0] == 3
@@ -63,7 +64,7 @@ def test_clean_baseline_is_transactional_versioned_and_idempotent(monkeypatch, t
     db_utils.khoi_tao_va_di_tru_he_thong()
     connection = database.get_connection()
     try:
-        assert connection.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 1
+        assert connection.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == db_utils.DB_SCHEMA_VERSION
         assert connection.execute("SELECT count(*) FROM tai_khoan").fetchone()[0] == 1
     finally:
         connection.close()

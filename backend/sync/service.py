@@ -21,7 +21,7 @@ from backend.shared.helpers import (
     save_base64_image,
     verify_session,
 )
-from backend.shared.access_policy import authorize_record_write
+from backend.shared.access_policy import OWNERSHIP_SCOPED_TABLES, authorize_record_write
 from backend.shared.client_ip import get_client_ip
 from backend.shared.logging_utils import error_response, get_request_id
 from backend.auth.auth_helper import (
@@ -724,6 +724,14 @@ async def process_sync_request(request, broadcast_callback=None):
                         cursor.execute(
                             f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})",
                             tuple(db_row_data.values()),
+                        )
+                    if table_name in OWNERSHIP_SCOPED_TABLES:
+                        lineage_root = clean_id(item.get("rootId") or item.get("id_goc")) or db_row_data["id"]
+                        cursor.execute(
+                            """INSERT OR IGNORE INTO record_edit_ownership (
+                                   organization_id, table_name, record_id, user_id
+                               ) VALUES (?, ?, ?, ?)""",
+                            (org_name, table_name, lineage_root, user_id),
                         )
                     updated_row_versions.append({
                         "table": payload_key,

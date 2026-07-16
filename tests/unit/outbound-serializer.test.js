@@ -16,6 +16,7 @@ test("outbound serializer keeps schema and child fields but removes UI and serve
     rebidFromPackageId: "gt-source",
     phanLoList: [{ id: "lot-1", tenPhanLo: "Lô 1" }],
     allVersions: [{ id: "old" }],
+    canEdit: false,
     referenceOnly: true,
     organizationId: "org-1",
     rowVersion: 4,
@@ -30,6 +31,7 @@ test("outbound serializer keeps schema and child fields but removes UI and serve
   assert.equal(Object.hasOwn(serialized, "rowVersion"), false);
   assert.equal(Object.hasOwn(serialized, "organizationId"), false);
   assert.equal(Object.hasOwn(serialized, "allVersions"), false);
+  assert.equal(Object.hasOwn(serialized, "canEdit"), false);
   assert.equal(Object.hasOwn(serialized, "referenceOnly"), false);
 });
 

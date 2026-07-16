@@ -60,7 +60,7 @@ export async function renderChuDauTuTable() {
         id: displayedCdt.id,
         editCommand: "edit-investor",
         deleteCommand: "delete-investor"
-      }), { visible: displayedCdt.id === c.id });
+      }), { visible: displayedCdt.id === c.id && displayedCdt.canEdit !== false });
       return `
             <tr>
                 <td>
@@ -115,7 +115,7 @@ export function renderChuDauTuVersionDetails(versionId) {
   const isLatest = allRelated[0] && allRelated[0].id === versionId;
   const editBtn = document.getElementById("btn-edit-chudautu-fullpage");
   if (editBtn) {
-    if (isLatest) {
+    if (isLatest && cdt.canEdit !== false) {
       setRuntimeStyle(editBtn, "display", "flex");
       editBtn.onclick = () => {
         executeAppCommand("editChuDauTu", versionId);

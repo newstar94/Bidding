@@ -157,13 +157,6 @@ export async function showSystemUserDetail(userId) {
 export function setupRBACEvents() {
   this.renderWorkspaceSwitcher();
   const profileDropdown = document.getElementById("profile-dropdown-menu");
-  const btnDropdownProfile = document.getElementById("btn-dropdown-profile");
-  if (btnDropdownProfile) {
-    bindAdminEvent(btnDropdownProfile, "click", "open-profile-tab", () => {
-      if (profileDropdown) profileDropdown.classList.remove("active");
-      this.switchTab("profile");
-    });
-  }
   bindAdminEvent(document, "click", "switch-active-role", (e) => {
       const btn = e.target.closest?.(".dropdown-role-btn");
       if (!btn) return;

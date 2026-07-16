@@ -22,7 +22,7 @@ const hasMeaningfulValue = (value) => {
   if (value && typeof value === "object") return Object.keys(value).length > 0;
   return value !== void 0 && value !== null && value !== "";
 };
-export function mergeReferenceRecords(model, key, incoming) {
+export function mergeReferenceRecords(model, key, incoming, { preserveLocalIds = new Set() } = {}) {
   if (!Array.isArray(model.state[key])) {
     model.state[key] = [];
   }
@@ -38,8 +38,12 @@ export function mergeReferenceRecords(model, key, incoming) {
     const hasFullRecordFields = existing.referenceOnly === false || Object.entries(existing).some(
       ([field, value]) => !referenceKeys.has(field) && hasMeaningfulValue(value)
     );
+    const isAuthoritativePackageReference = key === "goithau" && !preserveLocalIds.has(String(referenceItem.id));
+    const authoritativeReference = isAuthoritativePackageReference
+      ? Object.fromEntries(Object.entries(referenceItem).filter(([field]) => field !== "referenceOnly"))
+      : {};
     model.state[key][idx] = hasFullRecordFields
-      ? { ...referenceItem, ...existing, referenceOnly: false }
+      ? { ...referenceItem, ...existing, ...authoritativeReference, referenceOnly: isAuthoritativePackageReference }
       : { ...existing, ...referenceItem, referenceOnly: true };
   });
 }
@@ -89,10 +93,12 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   } else {
     applyIncoming();
   }
+  const mutationQueue = typeof model.getMutationQueue === "function" ? model.getMutationQueue() : null;
   const applyReferenceData = () => Object.entries(dbData.referenceData || {}).forEach(([key, records]) => {
     if (!Array.isArray(records) || records.length === 0) return;
     const incoming = normalizeIncomingRecords(model, key, records);
-    mergeReferenceRecords(model, key, incoming);
+    const pendingIds = new Set(Object.keys(mutationQueue?.upserts?.[key] || {}).map((id) => String(id)));
+    mergeReferenceRecords(model, key, incoming, { preserveLocalIds: pendingIds });
     changedKeys.add(key);
     const recordsToPersist = incoming.map((item) => {
       const stored = model.state[key].find((record) => String(record.id) === String(item.id));
@@ -105,7 +111,6 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   } else {
     applyReferenceData();
   }
-  const mutationQueue = typeof model.getMutationQueue === "function" ? model.getMutationQueue() : null;
   Object.entries(dbData.recordManifest || {}).forEach(([key, serverRecordIds]) => {
     if (!Array.isArray(serverRecordIds) || !Array.isArray(model.state[key])) return;
     const serverIds = new Set(serverRecordIds.map((id) => String(id)));

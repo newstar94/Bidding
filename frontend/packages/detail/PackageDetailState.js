@@ -6,3 +6,8 @@ export function resolvePackageDetailState({ tabs, currentTab, currentPackageId, 
     activeTab: tabExists && samePackage ? currentTab : (tabs?.[0]?.id || "preparation")
   };
 }
+
+export function selectPackageDetailTab(target, tabId, packageId) {
+  target._currentWorkflowTab = tabId;
+  target._currentWorkflowPackageId = packageId;
+}

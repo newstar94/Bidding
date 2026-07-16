@@ -7,7 +7,8 @@ import re
 import threading
 import uuid
 from datetime import datetime, timezone
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import MutableHeaders
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from backend.shared.client_ip import get_client_ip
 from backend.shared.audit_chain import insert_audit_row
@@ -199,30 +200,61 @@ def log_audit(action, actor_user_id=None, organization_id=None, target_type=None
 
 
 
-class ErrorLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
+class ErrorLoggingMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
+        response_started = False
+
+        async def send_with_error_status(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                status_code = int(message.get("status") or 0)
+                if status_code >= 500:
+                    log_error(
+                        f"Phản hồi lỗi server {status_code}",
+                        f"HTTP {request.method} {request.url.path}",
+                        request_id=get_request_id(request),
+                    )
+            await send(message)
+
         try:
-            response = await call_next(request)
-            if response.status_code >= 500:
-                log_error(
-                    f"Phản hồi lỗi server {response.status_code}",
-                    f"HTTP {request.method} {request.url.path}",
-                    request_id=get_request_id(request),
-                )
-            return response
+            await self.app(scope, receive, send_with_error_status)
         except Exception as e:
-            return log_and_error(
+            if response_started:
+                raise
+            response = log_and_error(
                 request,
                 e,
                 f"HTTP {request.method} {request.url.path}",
                 "INTERNAL_SERVER_ERROR",
                 "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.",
             )
+            await response(scope, receive, send)
 
 
-class RequestIdMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
+class RequestIdMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
         request_id = get_request_id(request)
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+
+        async def send_with_request_id(message):
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["X-Request-ID"] = request_id
+            await send(message)
+
+        await self.app(scope, receive, send_with_request_id)
