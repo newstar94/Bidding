@@ -44,6 +44,7 @@
 - Danh sách và trang chi tiết không hiển thị **Sửa/Xóa** đối với Chủ đầu tư/Nhà thầu không thuộc quyền Chuyên viên.
 - Chuyên viên tự tạo Nhà thầu, sửa thành phiên bản mới và xóa các phiên bản; quyền sở hữu được giữ đúng sau tải lại.
 - CRUD Chủ đầu tư, Nhà thầu, Chuyên gia và Biểu mẫu Word.
+- Ở chế độ Chuyên viên, nút **Thêm Chuyên gia** hiển thị và mở đúng biểu mẫu tạo mới.
 - Quản lý nhân sự, ma trận quyền và danh mục Trạng thái Hồ sơ giấy.
 - Điều hướng đóng/hủy modal trở về đúng URL danh sách.
 
@@ -72,14 +73,17 @@
 - Tên Nhà thầu hợp lệ bắt đầu bằng `Nhà thầu ...` không còn bị tác vụ nền coi là tên giữ chỗ chỉ vì tiền tố.
 - Mã Chủ đầu tư/Nhà thầu hiển thị và xuất Word bằng chữ thường; dữ liệu gốc không bị thay đổi.
 - Tra cứu mã định danh không có kết quả trả `200` với `found=false` thay vì `404`; lỗi máy chủ/kết nối thật vẫn giữ mã lỗi.
+- Preview nhập Excel dùng chung cho Kế hoạch, Gói thầu, Chủ đầu tư, Nhà thầu, Chuyên gia và Hợp đồng không còn hiển thị các cột kỹ thuật bắt đầu bằng `_` (gồm `_operation`); nút **X** và **Hủy bỏ** đóng được modal.
+- Sau khi nhập Excel, bảng dữ liệu được làm mới sau khi đồng bộ máy chủ; khi ngoại tuyến, bảng dùng ảnh chụp dữ liệu cục bộ để bản ghi vừa nhập hiển thị ngay.
+- Phím **ESC** đóng được mọi loại modal kể cả khi focus ở ngoài modal; với modal xếp chồng, mỗi lần nhấn chỉ đóng lớp trên cùng và vẫn đi qua đúng xử lý Hủy/Đóng của modal.
 
 ## Kết quả kiểm thử tự động
 
 | Bộ kiểm thử | Kết quả |
 |---|---:|
-| Frontend unit tests | 223/223 đạt |
+| Frontend unit tests | 230/230 đạt |
 | API tests | 262/262 đạt |
-| E2E Chromium | 10/10 đạt |
+| E2E Chromium | 11/11 đạt |
 | Lint JavaScript/Python | Đạt |
 | Build secure và kiểm tra gói production | Đạt |
 

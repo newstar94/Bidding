@@ -1178,7 +1178,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         case "close-modal":
           if (target.dataset.modalId) {
             event.preventDefault();
-            return call("closeModal", target.dataset.modalId);
+            return this.closeModal(target.dataset.modalId, { restoreRoute: false });
           }
           return;
         case "show-package":

@@ -1,4 +1,3 @@
-import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatDateOnly, safeImageSrc } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
@@ -15,10 +14,6 @@ export async function renderChuyenGiaTable() {
   const requestId = (this._chuyenGiaRenderRequestId || 0) + 1;
   this._chuyenGiaRenderRequestId = requestId;
   const isEmployee = this.model.state.activerole === "employee";
-  const btnAdd = document.getElementById("btn-add-chuyengia");
-  if (btnAdd) {
-    setRuntimeStyle(btnAdd, "display", isEmployee ? "none" : "flex");
-  }
   let slicedData = [];
   let totalItems = 0;
   const currentPage = this.model.currentPage.chuyengia || 1;

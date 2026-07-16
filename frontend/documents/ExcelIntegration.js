@@ -34,12 +34,19 @@ const BASIC_IMPORT_VIEW = {
   hopdong: { tab: "hopdong", render: "renderHopDongTable" }
 };
 
-export async function renderBasicImportResult(controller, type) {
+export async function renderBasicImportResult(controller, type, { useLocalSnapshot = false } = {}) {
   const config = BASIC_IMPORT_VIEW[type];
   if (!config || !controller?.view) return;
   await controller.view.ensureViewModules?.(config.tab);
   const render = controller.view[config.render];
-  if (typeof render === "function") await render.call(controller.view);
+  if (typeof render !== "function") return;
+  const restoreServerPagination = Boolean(useLocalSnapshot && controller.model?.useServerSidePagination);
+  if (restoreServerPagination) controller.model.useServerSidePagination = false;
+  try {
+    await render.call(controller.view);
+  } finally {
+    if (restoreServerPagination) controller.model.useServerSidePagination = true;
+  }
 }
 export function setupExcelImportEvents() {
   document.querySelectorAll(".btn-download-excel-template-direct").forEach((btn) => {
@@ -394,13 +401,13 @@ export async function saveExcelImport() {
     if (!proceed) return;
   }
   const basicImportCount = await saveBasicExcelImport(this, type, validRows);
+  const isBasicImport = basicImportCount !== null;
   if (basicImportCount !== null) {
     count = basicImportCount;
     const stateKey = IMPORT_STATE_KEY[type];
     if (stateKey && this.model.currentPage) {
       this.model.currentPage[stateKey] = 1;
     }
-    await renderBasicImportResult(this, type);
   } else {
     const businessImportCount = await saveBusinessExcelImport(this, type, validRows);
     if (businessImportCount !== null) {
@@ -408,9 +415,12 @@ export async function saveExcelImport() {
     }
   }
   const syncResult = await this.autoSync();
+  if (isBasicImport) {
+    await renderBasicImportResult(this, type, { useLocalSnapshot: !syncResult?.ok });
+  }
   const updatedCount = validRows.filter((row) => row._operation === "update").length;
   const createdCount = count - updatedCount;
-  this.view.closeModal("modal-excel-preview");
+  await this.closeModal("modal-excel-preview", { restoreRoute: false });
   const summary = `Đã xử lý ${count} dòng: thêm mới ${createdCount}, cập nhật ${updatedCount}, bỏ qua ${invalidCount}.`;
   if (syncResult?.ok) {
     this.view.showToast("Nhập dữ liệu thành công", summary, "success");

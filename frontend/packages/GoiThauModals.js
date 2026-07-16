@@ -4,6 +4,12 @@ import { bindCurrencyElement } from "../app/domUtils.js";
 import { getExcelPreviewFieldError } from "./excelPreviewValidation.js";
 import { isCompetitiveQuotationPackage } from "./packageAppraisal.js";
 import { escapeAttribute, escapeHtml } from "../shared/view_helpers.js";
+
+export function getExcelPreviewKeys(row = {}) {
+  const source = row?.data || row || {};
+  return Object.keys(source).filter((key) => !key.startsWith("_"));
+}
+
 export function renderExcelPreview(rows, importType) {
   const formatDateToDMY = (str) => {
     if (!str) return "";
@@ -170,7 +176,7 @@ export function renderExcelPreview(rows, importType) {
     lyDoTruot: "Lý do trượt thầu"
   };
   const firstRow = rows[0].data || rows[0];
-  const keys = Object.keys(firstRow).filter((k) => k !== "_valid" && k !== "_comment");
+  const keys = getExcelPreviewKeys(firstRow);
   let headerHtml = "<tr>";
   keys.forEach((k) => {
     const label = labelMap[k] || k;

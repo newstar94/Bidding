@@ -391,30 +391,84 @@ export class BiddingModel {
   }
   discardRejectedMutations(errors) {
     const queue = this.getMutationQueue();
+    let localDeletions = this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [];
     const rejectedByRecord = /* @__PURE__ */ new Map();
     (errors || []).forEach((error) => {
       const type = STATE_KEY_BY_SERVER_TABLE[error?.table] || error?.table;
       const id = String(error?.id || "");
       if (!type || !id) return;
+      let operation = "";
       if (queue.upserts?.[type]?.[id]) {
         delete queue.upserts[type][id];
         if (Object.keys(queue.upserts[type]).length === 0) delete queue.upserts[type];
+        operation = "upsert";
       }
+      const deleteCount = queue.deletes.length;
+      queue.deletes = queue.deletes.filter(
+        (item) => !(item.table === type && String(item.id) === id)
+      );
+      const localDeleteCount = localDeletions.length;
+      localDeletions = localDeletions.filter(
+        (item) => !(item.table === type && String(item.id) === id)
+      );
+      if (!operation && (queue.deletes.length < deleteCount || localDeletions.length < localDeleteCount)) {
+        operation = "delete";
+      }
+      if (!operation) return;
       const key = `${type}:${id}`;
       const existing = rejectedByRecord.get(key);
       rejectedByRecord.set(key, {
         type,
         id,
+        operation: existing?.operation || operation,
         conflictingId: String(error?.conflictingId || existing?.conflictingId || "")
       });
     });
     const rejected = Array.from(rejectedByRecord.values());
     if (rejected.length > 0) {
+      if (localDeletions.length > 0) {
+        this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
+      } else {
+        this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
+      }
       queue.clientMutationId = createUUID();
       this._touchMutationQueue(queue);
       this._saveMutationQueue(queue);
     }
     return rejected;
+  }
+  removePendingMutation(type, recordId, operation = "") {
+    const id = String(recordId || "");
+    if (!type || !id) return null;
+    const queue = this.getMutationQueue();
+    let removedOperation = "";
+    if ((!operation || operation === "upsert") && queue.upserts?.[type]?.[id]) {
+      delete queue.upserts[type][id];
+      if (Object.keys(queue.upserts[type]).length === 0) delete queue.upserts[type];
+      removedOperation = "upsert";
+    }
+    if (!removedOperation && (!operation || operation === "delete")) {
+      const before = queue.deletes.length;
+      queue.deletes = queue.deletes.filter(
+        (item) => !(item.table === type && String(item.id) === id)
+      );
+      if (queue.deletes.length < before) removedOperation = "delete";
+    }
+    if (!removedOperation) return null;
+
+    let localDeletions = this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [];
+    localDeletions = localDeletions.filter(
+      (item) => !(item.table === type && String(item.id) === id)
+    );
+    if (localDeletions.length > 0) {
+      this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
+    } else {
+      this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
+    }
+    queue.clientMutationId = createUUID();
+    this._touchMutationQueue(queue);
+    this._saveMutationQueue(queue);
+    return { type, id, operation: removedOperation };
   }
   rebasePendingMutationQueue(syncVersion) {
     if (syncVersion === void 0 || syncVersion === null || syncVersion === "") return;

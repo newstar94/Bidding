@@ -547,6 +547,12 @@ export function renderTabData(tabName, action = null) {
 }
 export async function closeModal(modalId, options = {}) {
   const restoreRoute = options?.restoreRoute !== false;
+  if (modalId === "modal-excel-preview") {
+    this._excelImportData = [];
+    this._excelImportType = null;
+    const input = document.getElementById("excel-file-input-temp");
+    if (input) input.value = "";
+  }
   if (modalId === "modal-goithau" && this.packageWizard.active) {
     const confirmed = await this.view.customConfirm(
       "Xác nhận hủy",

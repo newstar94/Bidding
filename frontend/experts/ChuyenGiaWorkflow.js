@@ -64,8 +64,8 @@ export async function deleteChuyenGia(id) {
   }
 }
 export function editChuyenGia(id) {
-  if (this.model.state.activerole === "employee") {
-    this.view.customAlert("Từ chối truy cập", "Tài khoản Chuyên viên không được phép thêm hoặc chỉnh sửa thông tin Chuyên gia!", "lock");
+  if (id && this.model.state.activerole === "employee") {
+    this.view.customAlert("Từ chối truy cập", "Tài khoản Chuyên viên không được phép chỉnh sửa thông tin Chuyên gia!", "lock");
     return;
   }
   if (!document.getElementById("modal-chuyengia")) {

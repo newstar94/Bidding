@@ -166,3 +166,63 @@ test("committed row versions clear the sent mutation without creating a retry lo
   assert.equal(model.state.goithau[0].rowVersion, 2);
   assert.equal(model.workspaceStorage.getItem("bf_mutation_queue"), null);
 });
+
+test("rule-violating upserts and deletions are removed from every retry store", () => {
+  const model = new BiddingModel();
+  model.workspaceStorage = new ScopedWorkspaceStorage(
+    createWorkspaceScope("user-validation", "org-a"),
+    memoryStorage()
+  );
+  model.workspaceStorage.writeJson("bf_mutation_queue", {
+    baseSyncVersion: "4",
+    clientMutationId: "validation-batch",
+    revision: 1,
+    dirtyTables: {},
+    upserts: { goithau: { "gt-invalid": { id: "gt-invalid" } } },
+    deletes: [{ table: "nhathau", id: "nt-invalid", expectedVersion: 2 }]
+  });
+  model.workspaceStorage.writeJson("bf_local_deletions", [
+    { table: "nhathau", id: "nt-invalid", expectedVersion: 2 }
+  ]);
+
+  const rejected = model.discardRejectedMutations([
+    { table: "goithau", id: "gt-invalid", code: "INVALID_FIELD" },
+    { table: "nha_thau", id: "nt-invalid", code: "DELETE_NOT_ALLOWED" }
+  ]);
+
+  assert.deepEqual(rejected.map(item => item.operation).sort(), ["delete", "upsert"]);
+  assert.equal(model.workspaceStorage.getItem("bf_mutation_queue"), null);
+  assert.equal(model.workspaceStorage.getItem("bf_local_deletions"), null);
+  assert.equal(model.getPendingMutationSummary().pendingCount, 0);
+});
+
+test("a user can remove one pending record without discarding valid siblings", () => {
+  const model = new BiddingModel();
+  model.workspaceStorage = new ScopedWorkspaceStorage(
+    createWorkspaceScope("user-pending", "org-a"),
+    memoryStorage()
+  );
+  model.workspaceStorage.writeJson("bf_mutation_queue", {
+    baseSyncVersion: "7",
+    clientMutationId: "pending-batch",
+    revision: 1,
+    dirtyTables: {},
+    upserts: {
+      chuyengia: {
+        "cg-remove": { id: "cg-remove", hoTen: "Bỏ khỏi hàng chờ" },
+        "cg-keep": { id: "cg-keep", hoTen: "Tiếp tục đồng bộ" }
+      }
+    },
+    deletes: []
+  });
+
+  assert.deepEqual(model.removePendingMutation("chuyengia", "cg-remove", "upsert"), {
+    type: "chuyengia",
+    id: "cg-remove",
+    operation: "upsert"
+  });
+  const queue = model.getMutationQueue();
+  assert.equal(queue.upserts.chuyengia["cg-remove"], undefined);
+  assert.equal(queue.upserts.chuyengia["cg-keep"].hoTen, "Tiếp tục đồng bộ");
+  assert.equal(model.getPendingMutationSummary().pendingCount, 1);
+});

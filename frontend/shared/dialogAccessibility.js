@@ -7,6 +7,33 @@ const FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   "[tabindex]:not([tabindex='-1'])"
 ].join(",");
+const DIALOG_CLOSE_SELECTOR = [
+  "[data-close]",
+  "[data-bf-action='close-modal']",
+  ".modal-close",
+  "#btn-dialog-cancel"
+].join(",");
+
+function dialogZIndex(modal, ownerDocument) {
+  const view = ownerDocument?.defaultView || globalThis.window;
+  const computed = view?.getComputedStyle?.(modal)?.zIndex;
+  const value = Number.parseInt(computed || modal?.style?.zIndex || "0", 10);
+  return Number.isFinite(value) ? value : 0;
+}
+
+export function getTopmostActiveDialog(root = globalThis.document) {
+  const dialogs = [...(root?.querySelectorAll?.(".modal-overlay.active") || [])];
+  let topmost = null;
+  let topmostZIndex = Number.NEGATIVE_INFINITY;
+  dialogs.forEach((dialog) => {
+    const zIndex = dialogZIndex(dialog, root);
+    if (zIndex >= topmostZIndex) {
+      topmost = dialog;
+      topmostZIndex = zIndex;
+    }
+  });
+  return topmost;
+}
 
 export function getFocusableElements(modal) {
   return [...(modal?.querySelectorAll?.(FOCUSABLE_SELECTOR) || [])]
@@ -16,7 +43,10 @@ export function getFocusableElements(modal) {
 export function handleDialogKeydown(event, modal) {
   if (!modal?.classList?.contains("active")) return false;
   if (event.key === "Escape") {
-    const close = modal.querySelector?.("[data-close], .modal-close, #btn-dialog-cancel");
+    if (event.defaultPrevented || event.repeat || event.isComposing) return false;
+    const topmost = getTopmostActiveDialog(modal.ownerDocument);
+    if (topmost && topmost !== modal) return false;
+    const close = modal.querySelector?.(DIALOG_CLOSE_SELECTOR);
     close?.click?.();
     event.preventDefault?.();
     return true;
@@ -42,6 +72,15 @@ export function handleDialogKeydown(event, modal) {
     return true;
   }
   return false;
+}
+
+export function handleGlobalDialogEscape(event, root = globalThis.document) {
+  if (event?.key !== "Escape" || event.defaultPrevented || event.repeat || event.isComposing) {
+    return false;
+  }
+  const modal = getTopmostActiveDialog(root);
+  if (!modal) return false;
+  return handleDialogKeydown(event, modal);
 }
 
 export function activateDialogAccessibility(modal, trigger = null) {
@@ -89,6 +128,7 @@ export function deactivateDialogAccessibility(modal) {
 
 export function installDialogAccessibility(root = globalThis.document) {
   if (!root?.querySelectorAll || !globalThis.MutationObserver) return null;
+  root.addEventListener?.("keydown", (event) => handleGlobalDialogEscape(event, root));
   const syncModal = (modal) => {
     if (modal.classList.contains("active")) activateDialogAccessibility(modal);
     else deactivateDialogAccessibility(modal);

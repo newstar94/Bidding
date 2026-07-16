@@ -79,6 +79,42 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
   await expect(page.locator('#modal-goithau')).toHaveClass(/active/, { timeout: 15_000 });
 });
 
+test('Excel preview hides metadata and exposes working close controls', async ({ page, credentials }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.locator('#login-username').fill(credentials.username);
+  await page.locator('#login-password').fill(credentials.password);
+  await page.locator('#form-auth-login button[type="submit"]').click();
+  await expect(page.locator('#auth-overlay')).toBeHidden({ timeout: 30_000 });
+  await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
+
+  const openPreview = () => page.evaluate(async () => {
+    const { renderExcelPreview } = await import('../../frontend/packages/GoiThauModals.js');
+    renderExcelPreview([{
+      hoTen: 'Nguyễn Văn A',
+      soChungChi: 'C01.01.00001',
+      _valid: true,
+      _comment: 'Hợp lệ',
+      _operation: 'create'
+    }], 'chuyengia');
+  });
+
+  await openPreview();
+  const modal = page.locator('#modal-excel-preview');
+  await expect(modal).toHaveClass(/active/);
+  await expect(modal.locator('thead')).not.toContainText('_operation');
+  await expect(modal.locator('.modal-card')).toHaveAttribute('role', 'dialog');
+  await expect(modal.locator('.modal-close')).toHaveAttribute('data-bf-action', 'close-modal');
+  await expect(modal.locator('.modal-close')).toHaveAttribute('data-modal-id', 'modal-excel-preview');
+  await modal.locator('.modal-close').click();
+  await expect(modal).not.toHaveClass(/active/);
+
+  await page.waitForTimeout(500);
+  await openPreview();
+  await expect(modal).toHaveClass(/active/);
+  await modal.locator('#btn-cancel-excel-import').click();
+  await expect(modal).not.toHaveClass(/active/);
+});
+
 test('sync state and dialogs expose keyboard and screen-reader behavior', async ({ page, credentials }) => {
   const cspViolations = [];
   page.on('console', message => {
@@ -110,6 +146,16 @@ test('sync state and dialogs expose keyboard and screen-reader behavior', async 
   await expect(modal.locator('.modal-card')).toHaveAttribute('role', 'dialog');
   await expect(modal.locator('.modal-card')).toHaveAttribute('aria-modal', 'true');
   await expect.poll(() => page.evaluate(() => document.querySelector('#modal-goithau')?.contains(document.activeElement))).toBe(true);
+
+  await page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    void getAppController().view.customConfirm('Xác nhận', 'Modal xếp chồng phải đóng trước.', 'help-circle');
+  });
+  const stackedDialog = page.locator('#modal-custom-dialog');
+  await expect(stackedDialog).toHaveClass(/active/);
+  await page.keyboard.press('Escape');
+  await expect(stackedDialog).not.toHaveClass(/active/);
+  await expect(modal).toHaveClass(/active/);
 
   await page.keyboard.press('Escape');
   await expect(modal).not.toHaveClass(/active/);
@@ -212,5 +258,17 @@ test('super admin can switch active roles from the profile dropdown', async ({ p
 
   await selectRole('manager');
   await selectRole('employee');
+  await page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    const controller = getAppController();
+    await controller.ensureLazyTab('chuyengia');
+    controller.switchTab('chuyengia');
+    controller.setupActionListeners();
+  });
+  await expect(page.locator('#btn-add-chuyengia')).toBeVisible();
+  await page.locator('#btn-add-chuyengia').click();
+  await expect(page.locator('#modal-chuyengia')).toHaveClass(/active/);
+  await page.locator('#modal-chuyengia [data-close="modal-chuyengia"]').first().click();
+  await expect(page.locator('#modal-chuyengia')).not.toHaveClass(/active/);
   await selectRole('super_admin');
 });

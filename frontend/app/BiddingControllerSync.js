@@ -15,6 +15,8 @@ import {
   renderSyncStatus
 } from "./syncStatus.js";
 import { commitSyncCursor, readSyncCursor } from "./syncCursor.js";
+import { openPendingSyncDialog as renderPendingSyncDialog } from "./PendingSyncDialog.js";
+import { CLIENT_TABLE_MAP } from "../documents/schemaRuntime.js";
 
 function currentWorkspaceStorage(controller) {
   return controller.model?.workspaceStorage || getWorkspaceStorage();
@@ -57,11 +59,11 @@ export function setupSyncUx() {
   this._syncUxInstalled = true;
   const button = document.getElementById("btn-force-sync");
   button?.addEventListener("click", () => {
-    if (this._syncConflict) void this.resolveSyncConflict();
-    else if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
+    if ((this.model?.getPendingMutationSummary?.().pendingCount || 0) > 0) {
+      this.openPendingSyncDialog();
+    } else if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
       showSyncErrorDetails(this, this.model.syncErrors);
-    }
-    else if ((this.model?.getPendingMutationSummary?.().pendingCount || 0) > 0) void this.autoSync();
+    } else if (this._syncConflict) void this.resolveSyncConflict();
     else void this.forceSyncData(false, false);
   });
   this.model.onMutationQueueChanged = ({ pendingCount }) => this.updateSyncState({ pendingCount });
@@ -84,6 +86,63 @@ export function setupSyncUx() {
     event.returnValue = "";
   });
   this.updateSyncState();
+}
+
+export function openPendingSyncDialog() {
+  return renderPendingSyncDialog(this);
+}
+
+export async function continuePendingSync() {
+  const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
+  if (pendingCount === 0) {
+    this.updateSyncState({ phase: "idle", pendingCount: 0 });
+    return { ok: true, skipped: true };
+  }
+  if (globalThis.navigator?.onLine === false) {
+    this.updateSyncState({ phase: "offline", online: false, pendingCount });
+    this.view?.showToast?.(
+      "Chưa có kết nối mạng",
+      "Dữ liệu hợp lệ vẫn được giữ trong hàng chờ và sẽ đồng bộ lại khi có mạng.",
+      "warning"
+    );
+    return { ok: false, offline: true };
+  }
+  if (this._syncConflict) return this.resolveSyncConflict();
+  return this.autoSync();
+}
+
+export async function removePendingSyncItem(item = {}) {
+  const removed = this.model?.removePendingMutation?.(item.type, item.id, item.operation);
+  if (!removed) return { ok: false, skipped: true };
+
+  const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
+  if (pendingCount === 0) this._syncConflict = null;
+  if (Array.isArray(this._syncConflict?.data?.errors)) {
+    const serverTable = CLIENT_TABLE_MAP[item.type] || item.type;
+    this._syncConflict.data.errors = this._syncConflict.data.errors.filter((error) => {
+      const sameRecord = String(error?.id || "") === String(item.id);
+      const sameTable = error?.table === item.type || error?.table === serverTable;
+      return !(sameRecord && sameTable);
+    });
+  }
+
+  if (globalThis.navigator?.onLine !== false) {
+    await this.forceSyncData(true, true);
+  } else {
+    if (removed.operation === "upsert" && Array.isArray(this.model?.state?.[removed.type])) {
+      this.model.state[removed.type] = this.model.state[removed.type].filter(
+        (record) => String(record?.id || "") !== removed.id
+      );
+      await this.model.db?.deleteRecord?.(removed.type, removed.id);
+      await renderChangedState(this, new Set([removed.type]), { isBackground: true });
+    }
+    this.updateSyncState({
+      phase: pendingCount > 0 ? (this._syncConflict ? "conflict" : "offline") : "idle",
+      online: false,
+      pendingCount
+    });
+  }
+  return { ok: true, removed };
 }
 
 export async function resolveSyncConflict() {
@@ -297,7 +356,7 @@ function showSyncErrorDetails(controller, errors) {
   );
 }
 
-function showSyncErrorReport(controller, errors) {
+function showSyncErrorReport(controller, errors, rejectedCount = 0) {
   if (!controller || !Array.isArray(errors) || errors.length === 0) return;
   if (controller.model) {
     controller.model.syncErrors = errors;
@@ -305,7 +364,9 @@ function showSyncErrorReport(controller, errors) {
   if (controller.view && typeof controller.view.showToast === "function") {
     controller.view.showToast(
       "Lỗi đồng bộ",
-      `${errors.length} bản ghi chưa hợp lệ. Bấm để xem chi tiết trong hộp thoại.`,
+      rejectedCount > 0
+        ? `${rejectedCount} bản ghi vi phạm quy tắc đã bị loại khỏi hàng chờ. Bấm để xem chi tiết.`
+        : `${errors.length} bản ghi chưa hợp lệ. Bấm để xem chi tiết trong hộp thoại.`,
       "error",
       {
         actionLabel: "Xem lỗi",
@@ -432,6 +493,7 @@ export function autoSync() {
     if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true, status, data };
     if (!ok || data.status === "error") {
       const validationErrors = getSyncValidationErrors(data);
+      let rejectedRecords = [];
       if (status === 409 || data.status === "conflict") {
         this._syncConflict = { status, data, createdAt: Date.now() };
         this.updateSyncState({ phase: "conflict" });
@@ -453,7 +515,7 @@ export function autoSync() {
         return { ok: false, status, data, conflict: true };
       }
       if (validationErrors.length > 0) {
-        const rejectedRecords = typeof this.model?.discardRejectedMutations === "function" ? this.model.discardRejectedMutations(validationErrors) : [];
+        rejectedRecords = typeof this.model?.discardRejectedMutations === "function" ? this.model.discardRejectedMutations(validationErrors) : [];
         const changedKeys = new Set();
         for (const rejected of rejectedRecords) {
           let serverRecord = null;
@@ -518,7 +580,7 @@ export function autoSync() {
           requestId: data.requestId || null,
           errors: validationErrors
         });
-        showSyncErrorReport(this, validationErrors);
+        showSyncErrorReport(this, validationErrors, rejectedRecords.length);
       } else {
         console.error("[Sync Error]", data.error || data.message || "Đồng bộ thất bại");
         if (this.view && typeof this.view.showToast === "function") {
@@ -529,6 +591,15 @@ export function autoSync() {
         ? `${validationErrors.length} lỗi dữ liệu · Nhấn để xem`
         : data.error || data.message || "Lỗi đồng bộ";
       this.updateSyncState({ phase: "error", message: syncMessage });
+      const remainingPending = this.model?.getPendingMutationSummary?.().pendingCount || 0;
+      if (
+        validationErrors.length > 0
+        && rejectedRecords.length > 0
+        && remainingPending > 0
+        && globalThis.navigator?.onLine !== false
+      ) {
+        return this.autoSync();
+      }
       return { ok: false, status, data, validation: validationErrors.length > 0 };
     }
     if (data.timestamp) {

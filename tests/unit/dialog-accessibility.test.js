@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   activateDialogAccessibility,
   deactivateDialogAccessibility,
-  handleDialogKeydown
+  getTopmostActiveDialog,
+  handleDialogKeydown,
+  handleGlobalDialogEscape
 } from "../../frontend/shared/dialogAccessibility.js";
 
 function keyEvent(key, shiftKey = false) {
@@ -43,6 +45,64 @@ test("dialog Escape invokes its close control", () => {
   assert.equal(handleDialogKeydown(event, modal), true);
   assert.equal(close.clicked, true);
   assert.equal(event.prevented, true);
+});
+
+test("global Escape closes the active dialog even when focus is outside it", () => {
+  const close = { click() { this.clicked = true; } };
+  const modal = {
+    classList: { contains: () => true },
+    querySelector: () => close,
+    style: { zIndex: "100" }
+  };
+  const root = {
+    querySelectorAll: () => [modal],
+    defaultView: { getComputedStyle: () => ({ zIndex: "100" }) }
+  };
+  modal.ownerDocument = root;
+  const event = keyEvent("Escape");
+
+  assert.equal(handleGlobalDialogEscape(event, root), true);
+  assert.equal(close.clicked, true);
+  assert.equal(event.prevented, true);
+});
+
+test("Escape closes only the topmost stacked dialog", () => {
+  const lowerClose = { click() { this.clicked = true; } };
+  const upperClose = { click() { this.clicked = true; } };
+  const lower = {
+    classList: { contains: () => true },
+    querySelector: () => lowerClose,
+    style: { zIndex: "100" }
+  };
+  const upper = {
+    classList: { contains: () => true },
+    querySelector: () => upperClose,
+    style: { zIndex: "9999" }
+  };
+  const root = {
+    querySelectorAll: () => [lower, upper],
+    defaultView: { getComputedStyle: (modal) => ({ zIndex: modal.style.zIndex }) }
+  };
+  lower.ownerDocument = root;
+  upper.ownerDocument = root;
+  const event = keyEvent("Escape");
+
+  assert.equal(getTopmostActiveDialog(root), upper);
+  assert.equal(handleDialogKeydown(event, lower), false);
+  assert.equal(handleGlobalDialogEscape(event, root), true);
+  assert.equal(lowerClose.clicked, undefined);
+  assert.equal(upperClose.clicked, true);
+});
+
+test("held Escape does not cascade through stacked dialogs", () => {
+  const event = { ...keyEvent("Escape"), repeat: true };
+  const modal = {
+    classList: { contains: () => true },
+    querySelector: () => ({ click() { throw new Error("must not close"); } })
+  };
+  assert.equal(handleDialogKeydown(event, modal), false);
+  assert.equal(handleGlobalDialogEscape(event, { querySelectorAll: () => [] }), false);
+  assert.equal(event.prevented, false);
 });
 
 test("dialog restores focus to a rerendered trigger with the same id", async () => {
