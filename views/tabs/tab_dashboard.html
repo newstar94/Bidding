@@ -127,10 +127,34 @@
     </div>
 
     <section class="dashboard-partner-strip" aria-label="Đối tác và nguồn lực">
-        <div><i data-lucide="building-2"></i><span>Chủ đầu tư</span><strong id="stat-count-chudautu">0</strong></div>
-        <div><i data-lucide="shield-check"></i><span>Nhà thầu</span><strong id="stat-count-nhathau">0</strong></div>
-        <div><i data-lucide="users"></i><span>Chuyên gia</span><strong id="stat-count-chuyengia">0</strong></div>
-        <div><i data-lucide="briefcase-business"></i><span>Hợp đồng phụ trách</span><strong id="stat-savings-value">0</strong><small id="stat-savings-percent">0 đang thực hiện</small></div>
+        <button type="button" class="dashboard-partner-link" data-bf-action="switch-tab" data-tab="chudautu" aria-label="Xem danh sách chủ đầu tư">
+            <span class="dashboard-partner-icon" aria-hidden="true"><i data-lucide="building-2"></i></span>
+            <span class="dashboard-partner-label">Chủ đầu tư</span>
+            <strong id="stat-count-chudautu">0</strong>
+            <small>Xem danh sách</small>
+            <i class="dashboard-partner-arrow" data-lucide="chevron-right" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="dashboard-partner-link" data-bf-action="switch-tab" data-tab="nhathau" aria-label="Xem danh sách nhà thầu">
+            <span class="dashboard-partner-icon" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+            <span class="dashboard-partner-label">Nhà thầu</span>
+            <strong id="stat-count-nhathau">0</strong>
+            <small>Xem danh sách</small>
+            <i class="dashboard-partner-arrow" data-lucide="chevron-right" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="dashboard-partner-link" data-bf-action="switch-tab" data-tab="chuyengia" aria-label="Xem danh sách chuyên gia">
+            <span class="dashboard-partner-icon" aria-hidden="true"><i data-lucide="users"></i></span>
+            <span class="dashboard-partner-label">Chuyên gia</span>
+            <strong id="stat-count-chuyengia">0</strong>
+            <small>Xem danh sách</small>
+            <i class="dashboard-partner-arrow" data-lucide="chevron-right" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="dashboard-partner-link" data-bf-action="switch-tab" data-tab="hopdong" aria-label="Xem danh sách hợp đồng phụ trách">
+            <span class="dashboard-partner-icon" aria-hidden="true"><i data-lucide="briefcase-business"></i></span>
+            <span class="dashboard-partner-label">Hợp đồng phụ trách</span>
+            <strong id="stat-savings-value">0</strong>
+            <small id="stat-savings-percent">0 đang thực hiện</small>
+            <i class="dashboard-partner-arrow" data-lucide="chevron-right" aria-hidden="true"></i>
+        </button>
         <span class="dashboard-visually-hidden" id="stat-active-goithau">0 gói đang mời thầu</span>
     </section>
 </section>

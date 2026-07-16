@@ -21,6 +21,14 @@ test('home page presents the BiddingFlow landing experience', async ({ page }) =
   await expect(page.locator('#landing-hero-title')).toContainText('Quản lý đấu thầu liền mạch');
   await expect(page.locator('.landing-product-window')).toBeVisible();
   await expect(page.locator('.landing-window-address')).toContainText('Dữ liệu minh họa');
+  const dashboardPreview = page.locator('.landing-app-preview');
+  await expect(dashboardPreview.locator('.landing-preview-alert-grid article')).toHaveCount(4);
+  await expect(dashboardPreview.locator('.landing-preview-work-grid > article')).toHaveCount(2);
+  await expect(dashboardPreview.locator('.landing-preview-overview-grid > article')).toHaveCount(3);
+  await expect(dashboardPreview.locator('.landing-preview-resource-strip > span')).toHaveCount(4);
+  await expect(dashboardPreview).toContainText('Cảnh báo cần chú ý');
+  await expect(dashboardPreview).toContainText('Cần xử lý hôm nay');
+  await expect(dashboardPreview).not.toContainText('Chào buổi sáng');
   await expect(page.locator('#landing-pricing-grid .landing-price-card')).toHaveCount(3);
   await expect(page.locator('#landing-page')).not.toContainText('Super Admin');
   await expect(page.locator('.app-container')).toBeHidden();
@@ -52,6 +60,17 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#dashboard-greeting')).toHaveCount(0);
+  const partnerLinks = page.locator('.dashboard-partner-link');
+  await expect(partnerLinks).toHaveCount(4);
+  await expect(partnerLinks.nth(0)).toHaveAttribute('data-tab', 'chudautu');
+  await expect(partnerLinks.nth(1)).toHaveAttribute('data-tab', 'nhathau');
+  await expect(partnerLinks.nth(2)).toHaveAttribute('data-tab', 'chuyengia');
+  await expect(partnerLinks.nth(3)).toHaveAttribute('data-tab', 'hopdong');
+  await partnerLinks.nth(0).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#tab-chudautu')).toBeVisible();
+  await page.locator('#btn-tab-dashboard').click();
+  await expect(page.locator('#tab-dashboard')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Cảnh báo cần chú ý' })).toBeVisible();
   await page.evaluate(async () => {
     const { getAppController } = await import('../../frontend/app/controllerRef.js');
@@ -286,6 +305,19 @@ test('Word template F5 never reveals the dashboard after the loader', async ({ p
   await expect(page.locator('#tab-bieumau')).toBeVisible();
   await expect(page.locator('#tab-dashboard')).not.toHaveClass(/active/);
   await expect(page.locator('#page-title')).toHaveText('Quản lý Biểu mẫu & Từ điển');
+
+  const listVariableSpacing = await page.locator('#wml-ten-bien').evaluate((input) => {
+    const prefix = input.previousElementSibling;
+    const inputRect = input.getBoundingClientRect();
+    const prefixRect = prefix.getBoundingClientRect();
+    const inputStyle = getComputedStyle(input);
+    return {
+      gap: inputRect.left + Number.parseFloat(inputStyle.paddingLeft) - prefixRect.right,
+      paddingLeft: Number.parseFloat(inputStyle.paddingLeft)
+    };
+  });
+  expect(listVariableSpacing.paddingLeft).toBeGreaterThanOrEqual(42);
+  expect(listVariableSpacing.gap).toBeGreaterThanOrEqual(8);
 
   await page.locator('.header-profile-trigger').click();
   await expect(page.locator('#profile-dropdown-menu')).toHaveClass(/active/);

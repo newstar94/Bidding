@@ -55,66 +55,93 @@
                     </ul>
                 </div>
 
-                <div class="landing-product-stage" data-landing-reveal aria-label="Mô phỏng giao diện tổng quan BiddingFlow">
+                <div class="landing-product-stage" data-landing-reveal role="img" aria-label="Minh họa dashboard BiddingFlow với cảnh báo thời hạn, công việc cần xử lý và thống kê nghiệp vụ">
                     <div class="landing-stage-glow" aria-hidden="true"></div>
-                    <div class="landing-product-window">
+                    <div class="landing-product-window" aria-hidden="true">
                         <div class="landing-window-bar" aria-hidden="true">
                             <span></span><span></span><span></span>
                             <div class="landing-window-address">app.biddingflow.vn/tong-quan · Dữ liệu minh họa</div>
                         </div>
                         <div class="landing-app-preview">
-                            <aside class="landing-preview-sidebar" aria-hidden="true">
-                                <div class="landing-preview-logo"><i data-lucide="layers-3"></i></div>
-                                <span class="is-active"><i data-lucide="layout-dashboard"></i></span>
-                                <span><i data-lucide="file-text"></i></span>
-                                <span><i data-lucide="briefcase-business"></i></span>
-                                <span><i data-lucide="file-check-2"></i></span>
-                                <span><i data-lucide="users"></i></span>
+                            <aside class="landing-preview-sidebar">
+                                <div class="landing-preview-brand">
+                                    <span class="landing-preview-logo"><i data-lucide="layers-3"></i></span>
+                                    <strong>BiddingFlow</strong>
+                                </div>
+                                <nav class="landing-preview-nav">
+                                    <span class="is-active"><i data-lucide="layout-dashboard"></i><b>Tổng quan</b></span>
+                                    <small>Nghiệp vụ chính</small>
+                                    <span><i data-lucide="file-spreadsheet"></i><b>Kế hoạch LCNT</b></span>
+                                    <span><i data-lucide="package"></i><b>Gói thầu</b></span>
+                                    <span><i data-lucide="file-check-2"></i><b>Hợp đồng</b></span>
+                                    <small>Đối tác &amp; nhân sự</small>
+                                    <span><i data-lucide="building-2"></i><b>Chủ đầu tư</b></span>
+                                    <span><i data-lucide="shield-check"></i><b>Nhà thầu</b></span>
+                                    <span><i data-lucide="users"></i><b>Chuyên gia</b></span>
+                                </nav>
                             </aside>
+                            <header class="landing-preview-app-header">
+                                <strong>Tổng quan hệ thống</strong>
+                                <div>
+                                    <span><i data-lucide="calendar-days"></i> Thứ Năm, 16/7/2026</span>
+                                    <span><i data-lucide="building-2"></i> HTD</span>
+                                    <span class="landing-preview-profile"><b>AD</b> Administrator</span>
+                                </div>
+                            </header>
                             <div class="landing-preview-main">
-                                <div class="landing-preview-heading">
-                                    <div><small>TỔNG QUAN KHÔNG GIAN LÀM VIỆC</small><strong>Chào buổi sáng, Người dùng</strong></div>
-                                    <span class="landing-preview-user"><b>ND</b> Quản lý</span>
+                                <div class="landing-preview-section-heading">
+                                    <div><small>Theo dõi thời hạn</small><strong>Cảnh báo cần chú ý</strong></div>
+                                    <p>Báo cáo đánh giá được cảnh báo khi quá 7 ngày sau mở thầu.</p>
                                 </div>
-                                <div class="landing-preview-stats">
-                                    <article><span><i data-lucide="file-stack"></i></span><small>Kế hoạch LCNT</small><strong>24</strong><em>Chủ động</em></article>
-                                    <article><span><i data-lucide="package-check"></i></span><small>Tổng số gói thầu</small><strong>68</strong><em>12 đang mời thầu</em></article>
-                                    <article><span><i data-lucide="badge-dollar-sign"></i></span><small>Giá trị hợp đồng</small><strong>31 tỷ</strong><em>Giá trị thực tế</em></article>
-                                    <article><span><i data-lucide="file-signature"></i></span><small>Hợp đồng phụ trách</small><strong>7</strong><em>4 đang thực hiện</em></article>
+                                <div class="landing-preview-alert-grid">
+                                    <article class="is-blue"><span><i data-lucide="calendar-clock"></i></span><div><small>Đóng thầu hôm nay</small><strong>3</strong><em>Chưa chuyển sang đã mở thầu</em></div><i data-lucide="chevron-right"></i></article>
+                                    <article class="is-amber"><span><i data-lucide="clock-3"></i></span><div><small>Sắp đóng thầu</small><strong>8</strong><em>Trong 7 ngày tới</em></div><i data-lucide="chevron-right"></i></article>
+                                    <article class="is-red"><span><i data-lucide="circle-alert"></i></span><div><small>Quá hạn mở thầu</small><strong>2</strong><em>Đã qua ngày đóng thầu</em></div><i data-lucide="chevron-right"></i></article>
+                                    <article class="is-violet"><span><i data-lucide="file-warning"></i></span><div><small>Chậm báo cáo đánh giá</small><strong>4</strong><em>Đã mở thầu, chưa có báo cáo</em></div><i data-lucide="chevron-right"></i></article>
                                 </div>
-                                <div class="landing-preview-content">
-                                    <article class="landing-preview-workflow">
-                                        <div class="landing-preview-card-title"><strong>Cơ cấu trạng thái gói thầu</strong><span>68 gói</span></div>
+                                <div class="landing-preview-work-grid">
+                                    <article class="landing-preview-table-card">
+                                        <div class="landing-preview-card-title"><strong>Cần xử lý hôm nay</strong><span>4 việc</span></div>
+                                        <div class="landing-preview-table-head"><span>Gói thầu</span><span>Nội dung cần xử lý</span><span>Hạn/mốc</span></div>
+                                        <div class="landing-preview-table-row"><span><b>MT-2026-018</b><small>Mua sắm thiết bị y tế</small></span><span>Đóng thầu</span><em class="is-blue">Hôm nay 14:00</em></div>
+                                        <div class="landing-preview-table-row"><span><b>GT-2026-021</b><small>Thi công nâng cấp</small></span><span>Mở thầu</span><em class="is-amber">Mai 09:00</em></div>
+                                    </article>
+                                    <article class="landing-preview-table-card landing-preview-recent-card">
+                                        <div class="landing-preview-card-title"><strong>Gói thầu mới cập nhật</strong><span>Xem tất cả</span></div>
+                                        <div class="landing-preview-table-head"><span>Mã gói thầu</span><span>Giá gói thầu</span><span>Trạng thái</span></div>
+                                        <div class="landing-preview-table-row"><span><b>CT-2026-028</b><small>Xây lắp nhà làm việc</small></span><span>4,8 tỷ</span><em class="is-violet">Đang đánh giá</em></div>
+                                        <div class="landing-preview-table-row"><span><b>MS-2026-027</b><small>Mua sắm máy chủ</small></span><span>2,1 tỷ</span><em class="is-blue">Chuẩn bị HSMT</em></div>
+                                    </article>
+                                </div>
+                                <div class="landing-preview-section-heading landing-preview-overview-heading">
+                                    <div><small>Tổng quan dữ liệu</small><strong>Quy mô và trạng thái nghiệp vụ</strong></div>
+                                </div>
+                                <div class="landing-preview-overview-grid">
+                                    <article class="landing-preview-metric-card">
+                                        <div class="landing-preview-metric-head"><span><i data-lucide="file-spreadsheet"></i></span><div><small>Kế hoạch LCNT</small><strong>24</strong></div></div>
+                                        <ul><li><i></i>Chưa triển khai <b>4</b></li><li><i></i>Đang thực hiện <b>16</b></li><li><i></i>Hoàn thành <b>4</b></li></ul>
+                                        <p><i data-lucide="megaphone"></i> 2 cần đăng tải · 1 quá hạn</p>
+                                    </article>
+                                    <article class="landing-preview-metric-card is-contract">
+                                        <div class="landing-preview-metric-head"><span><i data-lucide="file-check-2"></i></span><div><small>Hợp đồng</small><strong>31</strong></div><div><small>Tổng giá trị</small><strong>31 tỷ</strong></div></div>
+                                        <ul><li><i></i>Đang thực hiện <b>18</b></li><li><i></i>Đã hoàn thành <b>9</b></li><li><i></i>Đã thanh lý <b>4</b></li></ul>
+                                    </article>
+                                    <article class="landing-preview-status-card">
+                                        <div class="landing-preview-card-title"><strong>Cơ cấu trạng thái gói thầu</strong><i data-lucide="pie-chart"></i></div>
                                         <div class="landing-preview-status-summary">
-                                            <div class="landing-preview-donut"><span><b>68</b><small>GÓI THẦU</small></span></div>
-                                            <ul>
-                                                <li><i class="is-blue"></i><span>Đang mời thầu</span><b>12</b></li>
-                                                <li><i class="is-violet"></i><span>Đang chấm thầu</span><b>8</b></li>
-                                                <li><i class="is-teal"></i><span>Đã có kết quả</span><b>31</b></li>
-                                            </ul>
+                                            <div class="landing-preview-donut"><span><b>68</b><small>Gói thầu</small></span></div>
+                                            <ul><li><i class="is-blue"></i><span>Đang mời thầu</span><b>12</b></li><li><i class="is-amber"></i><span>Đã mở thầu</span><b>13</b></li><li><i class="is-violet"></i><span>Đang chấm thầu</span><b>8</b></li><li><i class="is-teal"></i><span>Đã có kết quả</span><b>31</b></li></ul>
                                         </div>
                                     </article>
-                                    <article class="landing-preview-activity">
-                                        <div class="landing-preview-card-title"><strong>Đối tác &amp; hợp đồng</strong><span>Dữ liệu hiện tại</span></div>
-                                        <div class="landing-preview-partners">
-                                            <span><i data-lucide="building-2"></i><b>16</b><small>Chủ đầu tư</small></span>
-                                            <span><i data-lucide="shield-check"></i><b>42</b><small>Nhà thầu</small></span>
-                                            <span><i data-lucide="users"></i><b>9</b><small>Chuyên gia</small></span>
-                                            <span><i data-lucide="file-check-2"></i><b>31</b><small>Hợp đồng</small></span>
-                                        </div>
-                                    </article>
+                                </div>
+                                <div class="landing-preview-resource-strip">
+                                    <span><i data-lucide="building-2"></i><small>Chủ đầu tư</small><b>16</b></span>
+                                    <span><i data-lucide="shield-check"></i><small>Nhà thầu</small><b>42</b></span>
+                                    <span><i data-lucide="users"></i><small>Chuyên gia</small><b>9</b></span>
+                                    <span><i data-lucide="briefcase-business"></i><small>Hợp đồng phụ trách</small><b>7</b></span>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="landing-floating-card landing-floating-card-top" aria-hidden="true">
-                        <span><i data-lucide="refresh-cw"></i></span>
-                        <div><small>Đồng bộ dữ liệu</small><strong>Đã cập nhật</strong></div>
-                        <i data-lucide="check-circle-2"></i>
-                    </div>
-                    <div class="landing-floating-card landing-floating-card-bottom" aria-hidden="true">
-                        <span><i data-lucide="file-output"></i></span>
-                        <div><small>Biểu mẫu Word</small><strong>Sẵn sàng xuất</strong></div>
                     </div>
                 </div>
             </div>
