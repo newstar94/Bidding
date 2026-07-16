@@ -1,11 +1,10 @@
 import { trustedScriptURL } from "../shared/trustedTypes.js";
 import { APP_DEBUG } from "./appConfig.js";
-import { bootstrapWorkspace } from "./workspaceBootstrap.js";
-import { bootstrapAuthShell } from "../auth/AuthShell.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { installDialogAccessibility } from "../shared/dialogAccessibility.js";
 import { retryPendingWorkspacePurges } from "./workspaceState.js";
 import { installSemanticAccessibility } from "../shared/semanticAccessibility.js";
+import { bootstrapLandingPage, isLandingPath } from "../landing/LandingPage.js";
 const startupMark = (name) => {
   try {
     performance.mark(`bf:${name}`);
@@ -88,7 +87,6 @@ const loadLucideIcons = () => new Promise((resolve, reject) => {
 });
 const bootstrapApplication = async () => {
   startupMark("dom-content-loaded");
-  await retryPendingWorkspacePurges();
   installDialogAccessibility(document);
   installSemanticAccessibility(document);
   if ("serviceWorker" in navigator && APP_DEBUG === false) {
@@ -103,12 +101,29 @@ const bootstrapApplication = async () => {
     console.warn("Lucide icons could not be loaded:", err);
     return false;
   });
+
+  if (isLandingPath()) {
+    bootstrapLandingPage(readSessionBootstrap());
+    requestAnimationFrame(() => {
+      lucideReady.then((loaded) => {
+        if (loaded) window.lucide.createIcons();
+      });
+    });
+    return;
+  }
+
+  await retryPendingWorkspacePurges();
   const initialSession = await checkInitialSession();
   if (initialSession?.valid) {
+    if (window.location.pathname === "/dang-nhap") {
+      window.history.replaceState({}, "", "/tong-quan");
+    }
     startupMark("workspace-import-start");
+    const { bootstrapWorkspace } = await import("./workspaceBootstrap.js");
     startupMark("workspace-import-end");
     await bootstrapWorkspace(initialSession);
   } else {
+    const { bootstrapAuthShell } = await import("../auth/AuthShell.js");
     await bootstrapAuthShell(initialSession);
   }
   requestAnimationFrame(() => {

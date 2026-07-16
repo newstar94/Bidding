@@ -66,7 +66,7 @@ test("sensitive admin mutation prompts for password and retries once", async ({ 
     });
   });
 
-  await page.goto("/");
+  await page.goto("/tong-quan");
   await expect(page.locator("#header-profile-name")).toContainText("E2E Admin");
   await page.evaluate(async () => {
     const { apiFetch } = await import("/frontend/shared/apiClient.js");

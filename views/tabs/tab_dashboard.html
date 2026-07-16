@@ -1,127 +1,173 @@
+<section class="tab-pane active dashboard-operations" id="tab-dashboard">
+    <header class="dashboard-welcome">
+        <div class="dashboard-welcome-copy">
+            <span class="dashboard-eyebrow">ĐIỀU HÀNH TRONG NGÀY</span>
+            <h2 id="dashboard-greeting">Chào bạn</h2>
+            <p>Đây là những số liệu và công việc cần ưu tiên trong không gian của bạn.</p>
+        </div>
+        <div class="dashboard-workspace-chip" aria-label="Vai trò đang sử dụng">
+            <span><i data-lucide="layout-dashboard"></i></span>
+            <div><small>Chế độ hiện tại</small><strong id="dashboard-active-role">Chuyên viên</strong></div>
+        </div>
+    </header>
 
-<section class="tab-pane active" id="tab-dashboard">
-
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon bg-blue-soft text-blue">
-                <i data-lucide="file-spreadsheet"></i>
-            </div>
-            <div class="stat-data">
-                <span class="stat-label">Kế hoạch LCNT</span>
-                <h3 class="stat-value" id="stat-count-kehoach">0</h3>
-                <span class="stat-trend text-green"><i data-lucide="trending-up"></i> Chủ động</span>
-            </div>
+    <div class="dashboard-section-heading">
+        <div>
+            <span class="dashboard-section-kicker">Tổng quan dữ liệu</span>
+            <h3>Quy mô và trạng thái nghiệp vụ</h3>
         </div>
-        <div class="stat-card">
-            <div class="stat-icon bg-emerald-soft text-emerald">
-                <i data-lucide="package"></i>
-            </div>
-            <div class="stat-data">
-                <span class="stat-label">Tổng số Gói thầu</span>
-                <h3 class="stat-value" id="stat-count-goithau">0</h3>
-                <span class="stat-trend text-blue" id="stat-active-goithau">0 đang mời thầu</span>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon bg-purple-soft text-purple">
-                <i data-lucide="file-check-2"></i>
-            </div>
-            <div class="stat-data">
-                <span class="stat-label">Tổng giá trị Hợp đồng</span>
-                <h3 class="stat-value text-lg" id="stat-total-budget">0 ₫</h3>
-                <span class="stat-trend text-purple"><i data-lucide="bar-chart-2"></i> Giá trị thực tế
-                    ký kết</span>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon bg-amber-soft text-amber">
-                <i data-lucide="sparkles"></i>
-            </div>
-            <div class="stat-data">
-                <span class="stat-label">Hợp đồng phụ trách</span>
-                <h3 class="stat-value" id="stat-savings-value">0 Hợp đồng</h3>
-                <span class="stat-trend text-amber" id="stat-savings-percent">Được phân công</span>
-            </div>
-        </div>
+        <p>Trạng thái kế hoạch được suy ra từ tiến độ các gói thầu thuộc kế hoạch.</p>
     </div>
 
+    <div class="dashboard-metric-grid">
+        <article class="dashboard-metric-card metric-blue">
+            <div class="dashboard-metric-head">
+                <span class="dashboard-metric-icon"><i data-lucide="file-spreadsheet"></i></span>
+                <div><span>Kế hoạch LCNT</span><strong id="stat-count-kehoach">0</strong></div>
+            </div>
+            <div class="dashboard-metric-breakdown" id="plan-status-breakdown" aria-label="Số kế hoạch theo trạng thái"></div>
+            <div class="dashboard-plan-alert" id="plan-publishing-alert">
+                <i data-lucide="megaphone"></i>
+                <span><strong id="alert-plan-publishing-warning">0</strong> cần đăng tải · <strong id="alert-plan-publishing-overdue">0</strong> quá hạn</span>
+            </div>
+        </article>
+        <article class="dashboard-metric-card metric-violet">
+            <div class="dashboard-metric-head">
+                <span class="dashboard-metric-icon"><i data-lucide="package"></i></span>
+                <div><span>Gói thầu</span><strong id="stat-count-goithau">0</strong></div>
+            </div>
+            <div class="dashboard-metric-breakdown" id="package-status-breakdown" aria-label="Số gói thầu theo trạng thái"></div>
+        </article>
+        <article class="dashboard-metric-card metric-green">
+            <div class="dashboard-metric-head">
+                <span class="dashboard-metric-icon"><i data-lucide="file-check-2"></i></span>
+                <div><span>Hợp đồng</span><strong id="stat-count-hopdong">0</strong></div>
+            </div>
+            <div class="dashboard-metric-breakdown" id="contract-status-breakdown" aria-label="Số hợp đồng theo trạng thái"></div>
+        </article>
+        <article class="dashboard-metric-card metric-amber">
+            <div class="dashboard-metric-head">
+                <span class="dashboard-metric-icon"><i data-lucide="badge-dollar-sign"></i></span>
+                <div><span>Tổng giá trị hợp đồng</span><strong class="dashboard-money-value" id="stat-total-budget">0 ₫</strong></div>
+            </div>
+            <div class="dashboard-metric-breakdown dashboard-value-breakdown" id="contract-value-breakdown" aria-label="Giá trị hợp đồng theo trạng thái"></div>
+        </article>
+    </div>
 
-    <div class="dashboard-grid">
+    <div class="dashboard-section-heading dashboard-section-heading-alerts">
+        <div>
+            <span class="dashboard-section-kicker">Theo dõi thời hạn</span>
+            <h3>Cảnh báo cần chú ý</h3>
+        </div>
+        <p id="dashboard-evaluation-rule">Báo cáo đánh giá được cảnh báo khi quá 7 ngày sau mở thầu.</p>
+    </div>
 
-        <div class="dashboard-card card-primary">
+    <div class="dashboard-alert-grid">
+        <button type="button" class="dashboard-alert-card alert-blue" data-bf-action="switch-tab" data-tab="goithau">
+            <span class="dashboard-alert-icon"><i data-lucide="calendar-clock"></i></span>
+            <span class="dashboard-alert-copy"><small>Đóng thầu hôm nay</small><strong id="alert-closing-today">0</strong><em>Chưa chuyển sang đã mở thầu</em></span>
+            <i data-lucide="chevron-right" class="dashboard-alert-arrow"></i>
+        </button>
+        <button type="button" class="dashboard-alert-card alert-amber" data-bf-action="switch-tab" data-tab="goithau">
+            <span class="dashboard-alert-icon"><i data-lucide="clock-3"></i></span>
+            <span class="dashboard-alert-copy"><small>Sắp đóng thầu</small><strong id="alert-closing-soon">0</strong><em>Trong 7 ngày tới</em></span>
+            <i data-lucide="chevron-right" class="dashboard-alert-arrow"></i>
+        </button>
+        <button type="button" class="dashboard-alert-card alert-red" data-bf-action="switch-tab" data-tab="goithau">
+            <span class="dashboard-alert-icon"><i data-lucide="circle-alert"></i></span>
+            <span class="dashboard-alert-copy"><small>Quá hạn mở thầu</small><strong id="alert-overdue-opening">0</strong><em>Đã qua ngày đóng thầu</em></span>
+            <i data-lucide="chevron-right" class="dashboard-alert-arrow"></i>
+        </button>
+        <button type="button" class="dashboard-alert-card alert-violet" data-bf-action="switch-tab" data-tab="goithau">
+            <span class="dashboard-alert-icon"><i data-lucide="file-warning"></i></span>
+            <span class="dashboard-alert-copy"><small>Chậm báo cáo đánh giá</small><strong id="alert-delayed-evaluation">0</strong><em>Đã mở thầu nhưng chưa có báo cáo</em></span>
+            <i data-lucide="chevron-right" class="dashboard-alert-arrow"></i>
+        </button>
+    </div>
+
+    <div class="dashboard-work-grid">
+        <section class="dashboard-card dashboard-priority-card" aria-labelledby="dashboard-priority-title">
             <div class="card-header">
-                <h3 class="card-title">Cơ cấu Trạng thái Gói thầu</h3>
+                <div class="dashboard-card-title-group">
+                    <h3 class="card-title" id="dashboard-priority-title">Cần xử lý hôm nay</h3>
+                    <span class="dashboard-count-badge" id="dashboard-action-count">0 việc</span>
+                </div>
+                <button class="btn btn-outline btn-sm" type="button" data-bf-action="switch-tab" data-tab="goithau">Xem tất cả</button>
+            </div>
+            <div class="card-body overflow-x dashboard-table-body">
+                <table class="data-table dashboard-action-table">
+                    <thead>
+                        <tr>
+                            <th>Gói thầu</th>
+                            <th>Nội dung cần xử lý</th>
+                            <th>Hạn/mốc</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-action-items"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="dashboard-card dashboard-progress-card" aria-labelledby="dashboard-progress-title">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title" id="dashboard-progress-title">Tiến độ gói thầu</h3>
+                    <p>Phân bố theo các bước nghiệp vụ hiện tại</p>
+                </div>
+                <i data-lucide="chart-no-axes-column-increasing" class="text-muted"></i>
+            </div>
+            <div class="card-body">
+                <div class="dashboard-progress-list" id="package-progress-list"></div>
+            </div>
+        </section>
+    </div>
+
+    <div class="dashboard-insight-grid">
+        <section class="dashboard-card card-primary" aria-labelledby="dashboard-status-title">
+            <div class="card-header">
+                <h3 class="card-title" id="dashboard-status-title">Cơ cấu trạng thái gói thầu</h3>
                 <i data-lucide="pie-chart" class="text-muted"></i>
             </div>
             <div class="card-body">
                 <div class="status-summary-wrapper">
-                    <div class="status-donut-chart">
+                    <div class="status-donut-chart" role="img" aria-label="Biểu đồ cơ cấu trạng thái gói thầu">
                         <div class="donut-inner">
                             <span class="donut-total" id="donut-total-count">0</span>
                             <span class="donut-label">Gói thầu</span>
                         </div>
                     </div>
-                    <div class="status-legend-list" id="status-legend-list">
-
-                    </div>
+                    <div class="status-legend-list" id="status-legend-list"></div>
                 </div>
             </div>
-        </div>
+        </section>
 
-
-        <div class="dashboard-card">
+        <section class="dashboard-card recent-activity" aria-labelledby="dashboard-recent-title">
             <div class="card-header">
-                <h3 class="card-title">Đối tác & Hợp đồng</h3>
-                <i data-lucide="network" class="text-muted"></i>
+                <h3 class="card-title" id="dashboard-recent-title">Gói thầu mới cập nhật</h3>
+                <button class="btn btn-outline btn-sm" id="btn-view-all-packages" type="button">Xem tất cả</button>
             </div>
-            <div class="card-body">
-                <div class="partners-summary-grid bf-s-38d452dca7">
-                    <div class="partner-box bf-s-ecfbb78629" data-bf-action="switch-tab" data-tab="chudautu">
-                        <i data-lucide="building-2" class="text-blue"></i>
-                        <h4 id="stat-count-chudautu">0</h4>
-                        <p>Chủ đầu tư</p>
-                    </div>
-                    <div class="partner-box bf-s-ecfbb78629" data-bf-action="switch-tab" data-tab="nhathau">
-                        <i data-lucide="shield-check" class="text-emerald"></i>
-                        <h4 id="stat-count-nhathau">0</h4>
-                        <p>Nhà thầu</p>
-                    </div>
-                    <div class="partner-box bf-s-ecfbb78629" data-bf-action="switch-tab" data-tab="chuyengia">
-                        <i data-lucide="users" class="text-purple"></i>
-                        <h4 id="stat-count-chuyengia">0</h4>
-                        <p>Chuyên gia</p>
-                    </div>
-                    <div class="partner-box bf-s-ecfbb78629" data-bf-action="switch-tab" data-tab="hopdong">
-                        <i data-lucide="file-check-2" class="text-amber"></i>
-                        <h4 id="stat-count-hopdong">0</h4>
-                        <p>Hợp đồng</p>
-                    </div>
-                </div>
+            <div class="card-body overflow-x dashboard-table-body">
+                <table class="data-table" id="recent-packages-table">
+                    <thead>
+                        <tr>
+                            <th>Mã gói thầu</th>
+                            <th>Tên gói thầu</th>
+                            <th>Giá gói thầu</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
-        </div>
+        </section>
     </div>
 
-
-    <div class="dashboard-card recent-activity">
-        <div class="card-header">
-            <h3 class="card-title">Gói thầu mới cập nhật</h3>
-            <button class="btn btn-outline btn-sm" id="btn-view-all-packages">Xem tất cả</button>
-        </div>
-        <div class="card-body overflow-x">
-            <table class="data-table" id="recent-packages-table">
-                <thead>
-                    <tr>
-                        <th>Mã Gói thầu</th>
-                        <th>Tên Gói thầu</th>
-                        <th>Giá Gói thầu</th>
-                        <th>Hình thức</th>
-                        <th>Trạng thái</th>
-                    </tr>
-                </thead>
-                <tbody>
-
-                </tbody>
-            </table>
-        </div>
-    </div>
+    <section class="dashboard-partner-strip" aria-label="Đối tác và nguồn lực">
+        <div><i data-lucide="building-2"></i><span>Chủ đầu tư</span><strong id="stat-count-chudautu">0</strong></div>
+        <div><i data-lucide="shield-check"></i><span>Nhà thầu</span><strong id="stat-count-nhathau">0</strong></div>
+        <div><i data-lucide="users"></i><span>Chuyên gia</span><strong id="stat-count-chuyengia">0</strong></div>
+        <div><i data-lucide="briefcase-business"></i><span>Hợp đồng phụ trách</span><strong id="stat-savings-value">0</strong><small id="stat-savings-percent">0 đang thực hiện</small></div>
+        <span class="dashboard-visually-hidden" id="stat-active-goithau">0 gói đang mời thầu</span>
+    </section>
 </section>

@@ -2,6 +2,7 @@ import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
 import { normalizeOrganizations } from "../auth/accessContext.js";
 import { apiFetch } from "../shared/apiClient.js";
+import { getHolidays } from "../shared/runtimeState.js";
 const PACKAGE_STATUS_COLORS = {
   "Chuẩn bị": "var(--text-light)",
   "Đang mời thầu": "var(--primary)",
@@ -10,181 +11,416 @@ const PACKAGE_STATUS_COLORS = {
   "Đã có kết quả": "var(--success)",
   "Hủy thầu": "var(--danger)"
 };
+const PACKAGE_STATUS_ORDER = Object.keys(PACKAGE_STATUS_COLORS);
+const PLAN_STATUS_ORDER = ["Chưa triển khai", "Đang thực hiện", "Hoàn thành"];
+const CONTRACT_STATUS_ORDER = ["Chưa hiệu lực", "Đang thực hiện", "Tạm dừng", "Đã hoàn thành", "Đã thanh lý", "Đã hủy"];
+const CONTRACT_STATUS_CODES = {
+  NOT_EFFECTIVE: "Chưa hiệu lực",
+  ACTIVE: "Đang thực hiện",
+  SUSPENDED: "Tạm dừng",
+  COMPLETED: "Đã hoàn thành",
+  LIQUIDATED: "Đã thanh lý",
+  CANCELLED: "Đã hủy"
+};
+const ALERT_META = {
+  closingToday: { label: "Đóng thầu hôm nay", detail: "Chưa chuyển sang đã mở thầu", icon: "calendar-clock", tone: "blue" },
+  closingSoon: { label: "Sắp đóng thầu", detail: "Trong 7 ngày tới", icon: "clock-3", tone: "amber" },
+  overdueOpening: { label: "Quá hạn mở thầu", detail: "Đã qua ngày đóng thầu", icon: "circle-alert", tone: "red" },
+  delayedEvaluation: { label: "Chậm báo cáo đánh giá", detail: "Quá 7 ngày sau mở thầu", icon: "file-warning", tone: "violet" },
+  planPublishingWarning: { label: "Cần đăng tải kế hoạch", detail: "Đã qua 3 ngày làm việc", icon: "megaphone", tone: "amber" },
+  planPublishingOverdue: { label: "Quá hạn đăng kế hoạch", detail: "Đã quá 5 ngày làm việc", icon: "circle-alert", tone: "red" }
+};
+const ALERT_PRIORITY = ["overdueOpening", "planPublishingOverdue", "closingToday", "delayedEvaluation", "planPublishingWarning", "closingSoon"];
+
+function setText(id, value) {
+  const element = document.getElementById(id);
+  if (element) element.textContent = String(value ?? "");
+}
+
+function normalizeOrderedCounts(incoming, order) {
+  const counts = Object.fromEntries(order.map((status) => [status, 0]));
+  Object.entries(incoming || {}).forEach(([status, count]) => {
+    if (Object.hasOwn(counts, status)) counts[status] = Number(count || 0);
+  });
+  return counts;
+}
+
 export function normalizeDashboardStatusCounts(incoming = {}) {
-  const counts = Object.fromEntries(
-    Object.keys(PACKAGE_STATUS_COLORS).map((status) => [status, 0])
-  );
+  const counts = normalizeOrderedCounts({}, PACKAGE_STATUS_ORDER);
   Object.entries(incoming || {}).forEach(([rawStatus, rawCount]) => {
     const status = rawStatus === "Huỷ thầu" ? "Hủy thầu" : rawStatus;
     counts[status] = Number(rawCount || 0);
   });
   return counts;
 }
-export function renderDashboard() {
-  const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
-  if (serverSummary && serverSummary.counts) {
-    const counts = serverSummary.counts || {};
-    const statusCounts2 = normalizeDashboardStatusCounts(serverSummary.statusCounts);
-    const recentPackages = Array.isArray(serverSummary.recentPackages) ? serverSummary.recentPackages : [];
-    document.getElementById("stat-count-kehoach").textContent = counts.kehoach || 0;
-    document.getElementById("stat-count-goithau").textContent = counts.goithau || 0;
-    document.getElementById("stat-count-chudautu").textContent = counts.chudautu || 0;
-    document.getElementById("stat-count-nhathau").textContent = counts.nhathau || 0;
-    document.getElementById("stat-count-chuyengia").textContent = counts.chuyengia || 0;
-    const statCountHopDong2 = document.getElementById("stat-count-hopdong");
-    if (statCountHopDong2) statCountHopDong2.textContent = counts.hopdong || 0;
-    document.getElementById("stat-active-goithau").textContent = `${counts.activeGoithau || 0} gói đang mời thầu`;
-    document.getElementById("stat-total-budget").textContent = this.model.formatCurrency(serverSummary.totalContractValue || 0);
-    document.getElementById("stat-savings-value").textContent = `${counts.assignedHopdong || 0} Hợp đồng`;
-    document.getElementById("stat-savings-percent").textContent = `${counts.activeAssignedHopdong || 0} đang thực hiện`;
-    document.getElementById("donut-total-count").textContent = counts.goithau || 0;
-    const total2 = counts.goithau || 1;
-    const fallbackPalette = Object.values(PACKAGE_STATUS_COLORS);
-    let accum2 = 0;
-    const gradientParts2 = [];
-    let legendHTML2 = "";
-    Object.entries(statusCounts2).forEach(([status, count], index) => {
-      const pct = Number(count || 0) / total2 * 100;
-      const color = PACKAGE_STATUS_COLORS[status] || fallbackPalette[index % fallbackPalette.length];
-      if (count > 0) {
-        gradientParts2.push(`${color} ${accum2}% ${accum2 + pct}%`);
-        accum2 += pct;
-      }
-      legendHTML2 += `
-                <div class="legend-item">
-                    <div class="legend-info">
-                        <span class="legend-dot" style="background-color: ${color}"></span>
-                    <span>${escapeHtml(status)}</span>
-                    </div>
-                    <span class="legend-val">${count} (${pct.toFixed(0)}%)</span>
-                </div>
-            `;
-    });
-    const donutElement2 = document.querySelector(".status-donut-chart");
-    if (donutElement2) {
-      setRuntimeStyle(donutElement2, "background", gradientParts2.length > 0 ? `conic-gradient(${gradientParts2.join(", ")})` : "var(--neutral-soft)");
-    }
-    document.getElementById("status-legend-list").innerHTML = legendHTML2;
-    const recentTableBody2 = document.getElementById("recent-packages-table").querySelector("tbody");
-    if (recentPackages.length === 0) {
-      recentTableBody2.innerHTML = renderEmptyRow(5, "Chưa có gói thầu nào", "inbox");
+
+export function normalizeContractStatusCounts(incoming = {}) {
+  const normalized = normalizeOrderedCounts({}, CONTRACT_STATUS_ORDER);
+  Object.entries(incoming || {}).forEach(([rawStatus, rawCount]) => {
+    const status = CONTRACT_STATUS_CODES[rawStatus] || rawStatus;
+    if (Object.hasOwn(normalized, status)) normalized[status] = Number(rawCount || 0);
+  });
+  return normalized;
+}
+
+export function derivePlanStatusCounts(plans = [], packages = []) {
+  const result = normalizeOrderedCounts({}, PLAN_STATUS_ORDER);
+  const packagesByPlan = new Map();
+  packages.forEach((pkg) => {
+    const planId = String(pkg.keHoachId || pkg.ke_hoach_id || "");
+    if (!packagesByPlan.has(planId)) packagesByPlan.set(planId, []);
+    packagesByPlan.get(planId).push(pkg);
+  });
+  plans.forEach((plan) => {
+    const planPackages = packagesByPlan.get(String(plan.id || "")) || [];
+    const statuses = planPackages.map((pkg) => pkg.trangThai || "Chuẩn bị");
+    if (!statuses.length || statuses.every((status) => status === "Chuẩn bị")) {
+      result["Chưa triển khai"]++;
+    } else if (statuses.some((status) => !["Đã có kết quả", "Hủy thầu", "Huỷ thầu"].includes(status))) {
+      result["Đang thực hiện"]++;
     } else {
-      recentTableBody2.innerHTML = recentPackages.map((gt) => `
-                <tr>
-                    <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu"><span class="detail-code">${escapeHtml(gt.maGoiThau || "")}</span></a></td>
-                    <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="view-package-link">${escapeHtml(gt.tenGoiThau || "")}</a></td>
-                    <td>${this.model.formatCurrency(gt.giaGoiThau)}</td>
-                    <td>${escapeHtml(gt.hinhThucLuaChon || "")}</td>
-                    <td>${this.getStatusBadge(gt.trangThai)}</td>
-                </tr>
-            `).join("");
+      result["Hoàn thành"]++;
     }
-    this.createIconsScoped(document.getElementById("tab-dashboard"));
+  });
+  return result;
+}
+
+function parseDashboardDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const dmy = text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  const parsed = dmy
+    ? new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]), Number(dmy[4] || 0), Number(dmy[5] || 0))
+    : new Date(text.includes("T") ? text : text.replace(" ", "T"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function packageHasEvaluationReport(pkg) {
+  const metadata = pkg.danhGiaHsdtMetadata || pkg.danh_gia_hsdt_metadata || {};
+  return Object.values(metadata || {}).some((round) => round && (
+    round.soBaoCao || round.ngayBaoCao || round.saved || round.trangThai === "completed" || round.trangThai === "approved"
+  ));
+}
+
+export function deriveDashboardAlerts(packages = [], now = new Date(), delayDays = 7) {
+  const counts = Object.fromEntries(Object.keys(ALERT_META).map((key) => [key, 0]));
+  const items = [];
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const soonLimit = new Date(now); soonLimit.setDate(soonLimit.getDate() + 7);
+  const evaluationLimit = new Date(now); evaluationLimit.setDate(evaluationLimit.getDate() - delayDays);
+  packages.forEach((pkg) => {
+    const status = pkg.trangThai || "Chuẩn bị";
+    const closing = parseDashboardDate(pkg.thoiGianDongThau);
+    const opening = parseDashboardDate(pkg.thoiGianMoThau || pkg.thoiGianDongThau);
+    let alertKey = "";
+    if (status === "Đang mời thầu" && closing) {
+      if (closing >= today && closing < tomorrow) alertKey = "closingToday";
+      else if (closing < today) alertKey = "overdueOpening";
+      else if (closing <= soonLimit) alertKey = "closingSoon";
+    }
+    if (["Đã mở thầu", "Đang chấm thầu"].includes(status) && opening && opening <= evaluationLimit && !packageHasEvaluationReport(pkg)) {
+      alertKey = "delayedEvaluation";
+    }
+    if (!alertKey) return;
+    counts[alertKey]++;
+    items.push({ ...pkg, alertKey, deadline: alertKey === "delayedEvaluation" ? pkg.thoiGianMoThau : pkg.thoiGianDongThau });
+  });
+  items.sort((a, b) => ALERT_PRIORITY.indexOf(a.alertKey) - ALERT_PRIORITY.indexOf(b.alertKey));
+  return { counts, items: items.slice(0, 8) };
+}
+
+function dashboardIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isDashboardWorkingDay(date, holidaysData) {
+  const iso = dashboardIsoDate(date);
+  const yearConfig = holidaysData?.[String(date.getFullYear())] || {};
+  if ((yearConfig.working_weekends || []).includes(iso)) return true;
+  if (date.getDay() === 0 || date.getDay() === 6) return false;
+  return !(yearConfig.holidays || []).includes(iso);
+}
+
+function businessDaysElapsed(startDate, endDate, holidaysData) {
+  if (!startDate || !endDate || endDate <= startDate) return 0;
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 1);
+  const limit = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  let total = 0;
+  while (current <= limit) {
+    if (isDashboardWorkingDay(current, holidaysData)) total++;
+    current.setDate(current.getDate() + 1);
+  }
+  return total;
+}
+
+function addBusinessDays(startDate, days, holidaysData) {
+  const current = new Date(startDate);
+  let added = 0;
+  while (added < days) {
+    current.setDate(current.getDate() + 1);
+    if (isDashboardWorkingDay(current, holidaysData)) added++;
+  }
+  return current;
+}
+
+export function derivePlanPublishingAlerts(plans = [], now = new Date(), holidaysData = getHolidays()) {
+  const counts = { planPublishingWarning: 0, planPublishingOverdue: 0 };
+  const items = [];
+  plans.forEach((plan) => {
+    if (String(plan.thoiGianDangMa || plan.thoiGianDangTai || "").trim()) return;
+    const approval = parseDashboardDate(plan.ngayPheDuyet);
+    if (!approval) return;
+    const elapsed = businessDaysElapsed(approval, now, holidaysData);
+    if (elapsed < 3) return;
+    const alertKey = elapsed > 5 ? "planPublishingOverdue" : "planPublishingWarning";
+    counts[alertKey]++;
+    items.push({
+      targetType: "plan",
+      id: plan.id,
+      maKeHoach: plan.maKeHoach || plan.maKehoach || "",
+      tenKeHoach: plan.tenKeHoach || "Kế hoạch LCNT",
+      ngayPheDuyet: plan.ngayPheDuyet,
+      deadline: addBusinessDays(approval, 5, holidaysData).toISOString(),
+      workdaysElapsed: elapsed,
+      alertKey
+    });
+  });
+  return { counts, items };
+}
+
+function compactCurrency(value) {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) return "0 ₫";
+  return new Intl.NumberFormat("vi-VN", { notation: "compact", maximumFractionDigits: 1 }).format(numericValue) + " ₫";
+}
+
+function formatDashboardDate(value) {
+  const date = parseDashboardDate(value);
+  if (!date) return "Chưa xác định";
+  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function buildLocalDashboardData(view) {
+  const model = view.model;
+  const packages = model.getFilteredGoiThau();
+  const plans = model.getFilteredKeHoach();
+  const contracts = model.getFilteredHopDong();
+  const packageStatusCounts = normalizeDashboardStatusCounts();
+  const contractStatusCounts = normalizeContractStatusCounts();
+  const contractValues = Object.fromEntries(CONTRACT_STATUS_ORDER.map((status) => [status, 0]));
+  packages.forEach((pkg) => {
+    const status = pkg.trangThai === "Huỷ thầu" ? "Hủy thầu" : pkg.trangThai;
+    if (Object.hasOwn(packageStatusCounts, status)) packageStatusCounts[status]++;
+  });
+  contracts.forEach((contract) => {
+    const status = CONTRACT_STATUS_CODES[contract.trangThaiHopDong] || contract.trangThaiHopDong || "Đang thực hiện";
+    if (Object.hasOwn(contractStatusCounts, status)) {
+      contractStatusCounts[status]++;
+      contractValues[status] = model.sumVND([contractValues[status], contract.giaTri || 0]);
+    }
+  });
+  const assignedContracts = model.getLatestContracts().filter(
+    (contract) => model.isAssigned(model.state.activeuser?.id, contract.id, "hopdong")
+  );
+  const packageAlerts = deriveDashboardAlerts(packages);
+  const planAlerts = derivePlanPublishingAlerts(plans);
+  const alertItems = [...packageAlerts.items, ...planAlerts.items]
+    .sort((a, b) => ALERT_PRIORITY.indexOf(a.alertKey) - ALERT_PRIORITY.indexOf(b.alertKey))
+    .slice(0, 8);
+  return {
+    counts: {
+      kehoach: plans.length,
+      goithau: packages.length,
+      contractTotal: contracts.length,
+      chudautu: model.getLatestChuDauTu().length,
+      nhathau: model.getLatestNhaThau().length,
+      chuyengia: model.state.chuyengia.length,
+      assignedHopdong: assignedContracts.length,
+      activeAssignedHopdong: assignedContracts.filter((contract) => (contract.trangThaiHopDong || "Đang thực hiện") === "Đang thực hiện").length
+    },
+    planStatusCounts: derivePlanStatusCounts(plans, packages),
+    packageStatusCounts,
+    contractStatusCounts,
+    contractValues,
+    totalContractValue: model.sumVND(contracts.map((contract) => contract.giaTri || 0)),
+    recentPackages: [...packages].reverse().slice(0, 4),
+    alerts: {
+      counts: { ...packageAlerts.counts, ...planAlerts.counts },
+      items: alertItems
+    }
+  };
+}
+
+function buildServerDashboardData(summary) {
+  const counts = summary.counts || {};
+  return {
+    counts: {
+      ...counts,
+      contractTotal: Number(summary.contractTotalCount ?? counts.hopdong ?? 0)
+    },
+    planStatusCounts: normalizeOrderedCounts(summary.planStatusCounts, PLAN_STATUS_ORDER),
+    packageStatusCounts: normalizeDashboardStatusCounts(summary.statusCounts),
+    contractStatusCounts: normalizeContractStatusCounts(summary.contractStatusCounts),
+    contractValues: normalizeOrderedCounts(summary.contractValueByStatus, CONTRACT_STATUS_ORDER),
+    totalContractValue: summary.totalContractValueAll ?? summary.totalContractValue ?? 0,
+    recentPackages: Array.isArray(summary.recentPackages) ? summary.recentPackages : [],
+    alerts: {
+      counts: { ...Object.fromEntries(Object.keys(ALERT_META).map((key) => [key, 0])), ...(summary.alertCounts || {}) },
+      items: Array.isArray(summary.alertItems) ? summary.alertItems : []
+    },
+    evaluationDelayDays: Number(summary.evaluationDelayDays || 7)
+  };
+}
+
+function renderMetricBreakdown(containerId, counts, formatter = (value) => String(value)) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = Object.entries(counts || {}).map(([status, value], index) => `
+    <div class="dashboard-metric-row">
+      <span><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span>
+      <strong>${escapeHtml(formatter(value))}</strong>
+    </div>
+  `).join("");
+}
+
+function renderPackageProgress(statusCounts) {
+  const container = document.getElementById("package-progress-list");
+  if (!container) return;
+  const total = Object.values(statusCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  container.innerHTML = PACKAGE_STATUS_ORDER.map((status, index) => {
+    const count = Number(statusCounts[status] || 0);
+    const percent = total ? Math.round(count / total * 100) : 0;
+    return `
+      <div class="dashboard-progress-item">
+        <div class="dashboard-progress-label"><span><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span><strong>${count}/${total} · ${percent}%</strong></div>
+        <div class="dashboard-progress-track" role="progressbar" aria-label="${safeAttr(status)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
+          <span class="dashboard-progress-fill status-tone-${index % 6}" data-progress="${percent}"></span>
+        </div>
+      </div>
+    `;
+  }).join("");
+  container.querySelectorAll("[data-progress]").forEach((bar) => setRuntimeStyle(bar, "width", `${bar.dataset.progress}%`));
+}
+
+function renderPackageDonut(statusCounts) {
+  const total = Object.values(statusCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  setText("donut-total-count", total);
+  let accumulated = 0;
+  const gradientParts = [];
+  const legend = document.getElementById("status-legend-list");
+  if (legend) {
+    legend.innerHTML = PACKAGE_STATUS_ORDER.map((status, index) => {
+      const count = Number(statusCounts[status] || 0);
+      const percent = total ? count / total * 100 : 0;
+      if (count > 0) {
+        gradientParts.push(`${PACKAGE_STATUS_COLORS[status]} ${accumulated}% ${accumulated + percent}%`);
+        accumulated += percent;
+      }
+      return `<div class="legend-item"><div class="legend-info"><span class="legend-dot status-tone-${index % 6}"></span><span>${escapeHtml(status)}</span></div><span class="legend-val">${count} (${percent.toFixed(0)}%)</span></div>`;
+    }).join("");
+  }
+  const donut = document.querySelector("#tab-dashboard .status-donut-chart");
+  if (donut) setRuntimeStyle(donut, "background", gradientParts.length ? `conic-gradient(${gradientParts.join(", ")})` : "var(--neutral-soft)");
+}
+
+function renderDashboardAlerts(alerts) {
+  const counts = alerts?.counts || {};
+  setText("alert-closing-today", counts.closingToday || 0);
+  setText("alert-closing-soon", counts.closingSoon || 0);
+  setText("alert-overdue-opening", counts.overdueOpening || 0);
+  setText("alert-delayed-evaluation", counts.delayedEvaluation || 0);
+  setText("alert-plan-publishing-warning", counts.planPublishingWarning || 0);
+  setText("alert-plan-publishing-overdue", counts.planPublishingOverdue || 0);
+  const items = alerts?.items || [];
+  setText("dashboard-action-count", `${items.length} việc`);
+  const tbody = document.getElementById("dashboard-action-items");
+  if (!tbody) return;
+  if (!items.length) {
+    tbody.innerHTML = renderEmptyRow(4, "Không có công việc khẩn cấp", "circle-check-big");
     return;
   }
-  const listSignature = (items, fields) => (items || []).map((item) => fields.map((field) => item[field] ?? "").join(":")).join("|");
-  const dashboardSignature = [
-    this.model.workspaceStorage?.getItem("bf_last_sync_version") || "",
-    listSignature(this.model.state.goithau, ["id", "updatedAt", "syncVersion", "trangThai", "giaGoiThau"]),
-    listSignature(this.model.state.hopdong, ["id", "rootId", "phienBan", "isLatest", "updatedAt", "syncVersion", "giaTri", "trangThaiHopDong"]),
-    listSignature(this.model.state.assignments, ["id", "empId", "targetId", "type", "syncVersion"])
-  ].join("|");
-  let latestPackages;
-  let filteredContracts;
-  let assignedContracts;
-  let activeAssignedContracts;
-  let totalContractValue;
-  let activePackages;
-  let statusCounts;
-  const cachedAggregate = this._dashboardAggregateCache;
-  if (cachedAggregate && cachedAggregate.signature === dashboardSignature) {
-    ({ latestPackages, filteredContracts, assignedContracts, activeAssignedContracts, totalContractValue, activePackages, statusCounts } = cachedAggregate);
-  } else {
-    latestPackages = this.model.getFilteredGoiThau();
-    filteredContracts = this.model.getFilteredHopDong().filter(
-      (contract) => !["Chưa hiệu lực", "Đã hủy"].includes(contract.trangThaiHopDong || "Đang thực hiện")
-    );
-    assignedContracts = this.model.getLatestContracts().filter(
-      (contract) => this.model.isAssigned(this.model.state.activeuser?.id, contract.id, "hopdong")
-    );
-    activeAssignedContracts = assignedContracts.filter(
-      (contract) => (contract.trangThaiHopDong || "Đang thực hiện") === "Đang thực hiện"
-    );
-    totalContractValue = this.model.sumVND(filteredContracts.map((hd) => hd.giaTri || 0));
-    activePackages = 0;
-    latestPackages.forEach((gt) => {
-      if (gt.trangThai === "Đang mời thầu") {
-        activePackages++;
-      }
-    });
-    statusCounts = normalizeDashboardStatusCounts();
-    latestPackages.forEach((gt) => {
-      if (statusCounts[gt.trangThai] !== void 0) {
-        statusCounts[gt.trangThai]++;
-      }
-    });
-    this._dashboardAggregateCache = { signature: dashboardSignature, latestPackages, filteredContracts, assignedContracts, activeAssignedContracts, totalContractValue, activePackages, statusCounts };
+  tbody.innerHTML = items.map((item) => {
+    const meta = ALERT_META[item.alertKey] || ALERT_META.closingSoon;
+    const isPlan = item.targetType === "plan";
+    const action = isPlan ? "show-plan" : "show-package";
+    const code = isPlan ? item.maKeHoach : item.maGoiThau;
+    const name = isPlan ? item.tenKeHoach : item.tenGoiThau;
+    return `
+      <tr>
+        <td><a href="#" data-bf-action="${action}" data-id="${safeAttr(item.id)}" class="dashboard-package-cell"><span class="detail-code">${escapeHtml(code || "Chưa có mã")}</span><small>${escapeHtml(name || (isPlan ? "Kế hoạch LCNT" : "Gói thầu"))}</small></a></td>
+        <td><span class="dashboard-action-label action-${meta.tone}"><i data-lucide="${meta.icon}"></i>${escapeHtml(meta.label)}</span><small class="dashboard-action-detail">${escapeHtml(meta.detail)}</small></td>
+        <td><span class="dashboard-deadline deadline-${meta.tone}">${escapeHtml(formatDashboardDate(item.deadline))}</span></td>
+        <td><button type="button" class="btn btn-outline btn-sm" data-bf-action="${action}" data-id="${safeAttr(item.id)}">Xử lý</button></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderRecentPackages(view, packages) {
+  const tbody = document.querySelector("#recent-packages-table tbody");
+  if (!tbody) return;
+  if (!packages.length) {
+    tbody.innerHTML = renderEmptyRow(4, "Chưa có gói thầu nào", "inbox");
+    return;
   }
-  document.getElementById("stat-count-kehoach").textContent = this.model.getFilteredKeHoach().length;
-  document.getElementById("stat-count-goithau").textContent = latestPackages.length;
-  document.getElementById("stat-count-chudautu").textContent = this.model.getLatestChuDauTu().length;
-  document.getElementById("stat-count-nhathau").textContent = this.model.getLatestNhaThau().length;
-  document.getElementById("stat-count-chuyengia").textContent = this.model.state.chuyengia.length;
-  const statCountHopDong = document.getElementById("stat-count-hopdong");
-  if (statCountHopDong) {
-    statCountHopDong.textContent = filteredContracts.length;
+  tbody.innerHTML = packages.map((pkg) => `
+    <tr>
+      <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="text-blue fw-bold link-hover"><span class="detail-code">${escapeHtml(pkg.maGoiThau || "")}</span></a></td>
+      <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="view-package-link">${escapeHtml(pkg.tenGoiThau || "")}</a></td>
+      <td>${view.model.formatCurrency(pkg.giaGoiThau || 0)}</td>
+      <td>${view.getStatusBadge(pkg.trangThai)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderDashboardSnapshot(view, data) {
+  const counts = data.counts || {};
+  setText("stat-count-kehoach", counts.kehoach || 0);
+  setText("stat-count-goithau", counts.goithau || 0);
+  setText("stat-count-hopdong", counts.contractTotal || 0);
+  setText("stat-total-budget", view.model.formatCurrency(data.totalContractValue || 0));
+  setText("stat-count-chudautu", counts.chudautu || 0);
+  setText("stat-count-nhathau", counts.nhathau || 0);
+  setText("stat-count-chuyengia", counts.chuyengia || 0);
+  setText("stat-savings-value", counts.assignedHopdong || 0);
+  setText("stat-savings-percent", `${counts.activeAssignedHopdong || 0} đang thực hiện`);
+  setText("stat-active-goithau", `${data.packageStatusCounts["Đang mời thầu"] || 0} gói đang mời thầu`);
+  if (data.evaluationDelayDays) {
+    setText("dashboard-evaluation-rule", `Báo cáo đánh giá được cảnh báo khi quá ${data.evaluationDelayDays} ngày sau mở thầu.`);
   }
-  document.getElementById("stat-active-goithau").textContent = `${activePackages} gói đang mời thầu`;
-  document.getElementById("stat-total-budget").textContent = this.model.formatCurrency(totalContractValue);
-  document.getElementById("stat-savings-value").textContent = `${assignedContracts.length} Hợp đồng`;
-  document.getElementById("stat-savings-percent").textContent = `${activeAssignedContracts.length} đang thực hiện`;
-  const total = latestPackages.length || 1;
-  document.getElementById("donut-total-count").textContent = latestPackages.length;
-  let accum = 0;
-  const gradientParts = [];
-  let legendHTML = "";
-  Object.keys(statusCounts).forEach((status) => {
-    const count = statusCounts[status];
-    const pct = count / total * 100;
-    if (count > 0) {
-      gradientParts.push(`${PACKAGE_STATUS_COLORS[status]} ${accum}% ${accum + pct}%`);
-      accum += pct;
-    }
-    legendHTML += `
-            <div class="legend-item">
-                <div class="legend-info">
-                    <span class="legend-dot" style="background-color: ${PACKAGE_STATUS_COLORS[status]}"></span>
-                    <span>${status}</span>
-                </div>
-                <span class="legend-val">${count} (${pct.toFixed(0)}%)</span>
-            </div>
-        `;
-  });
-  const donutElement = document.querySelector(".status-donut-chart");
-  if (donutElement) {
-    if (gradientParts.length > 0) {
-      setRuntimeStyle(donutElement, "background", `conic-gradient(${gradientParts.join(", ")})`);
-    } else {
-      setRuntimeStyle(donutElement, "background", "var(--neutral-soft)");
-    }
-  }
-  document.getElementById("status-legend-list").innerHTML = legendHTML;
-  const recentTableBody = document.getElementById("recent-packages-table").querySelector("tbody");
-  const recentList = [...latestPackages].reverse().slice(0, 4);
-  if (recentList.length === 0) {
-    recentTableBody.innerHTML = renderEmptyRow(5, "Chưa có gói thầu nào", "inbox");
-  } else {
-    recentTableBody.innerHTML = recentList.map((gt) => `
-            <tr>
-                <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="text-blue fw-bold link-hover" title="Xem chi tiết Gói thầu"><span class="detail-code">${escapeHtml(gt.maGoiThau)}</span></a></td>
-                <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(gt.id)}" class="view-package-link">${escapeHtml(gt.tenGoiThau)}</a></td>
-                <td>${this.model.formatCurrency(gt.giaGoiThau)}</td>
-                <td>${escapeHtml(gt.hinhThucLuaChon)}</td>
-                <td>${this.getStatusBadge(gt.trangThai)}</td>
-            </tr>
-        `).join("");
-  }
+  renderMetricBreakdown("plan-status-breakdown", data.planStatusCounts);
+  renderMetricBreakdown("package-status-breakdown", data.packageStatusCounts);
+  renderMetricBreakdown("contract-status-breakdown", data.contractStatusCounts);
+  renderMetricBreakdown("contract-value-breakdown", data.contractValues, compactCurrency);
+  renderDashboardAlerts(data.alerts);
+  renderPackageProgress(data.packageStatusCounts);
+  renderPackageDonut(data.packageStatusCounts);
+  renderRecentPackages(view, data.recentPackages);
+}
+
+export function renderDashboard() {
+  renderDashboardGreeting(this.model.state.activeuser, this.model.state.activerole);
+  const serverSummary = this.model.useServerSidePagination ? this.model.dashboardSummary : null;
+  const data = serverSummary?.counts ? buildServerDashboardData(serverSummary) : buildLocalDashboardData(this);
+  renderDashboardSnapshot(this, data);
   this.createIconsScoped(document.getElementById("tab-dashboard"));
+}
+
+export function renderDashboardGreeting(activeUser = {}, activeRole = "employee") {
+  const greeting = document.getElementById("dashboard-greeting");
+  const role = document.getElementById("dashboard-active-role");
+  const hour = new Date().getHours();
+  const salutation = hour < 11 ? "Chào buổi sáng" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
+  const name = String(activeUser?.name || activeUser?.username || "bạn").trim();
+  if (greeting) greeting.textContent = `${salutation}, ${name}`;
+  if (role) {
+    const roleLabels = { manager: "Quản lý", employee: "Chuyên viên" };
+    role.textContent = roleLabels[activeRole] || roleLabels.employee;
+  }
 }
 export function renderSuperAdminDashboard() {
   apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {

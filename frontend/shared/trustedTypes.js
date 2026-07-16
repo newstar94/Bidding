@@ -45,7 +45,12 @@ export function assertSafeScriptURL(value) {
 // The application already enforces escaping at every dynamic interpolation via
 // static checks. A single default policy makes every remaining framework/vendor
 // HTML sink auditable and allows CSP Trusted Types enforcement today.
-export const trustedHtmlPolicy = trustedTypesApi?.createPolicy?.("default", {
+const TRUSTED_POLICY_CACHE_KEY = "__BF_TRUSTED_HTML_POLICY__";
+
+// The default policy also protects legacy framework sinks that cannot yet pass
+// TrustedHTML explicitly. Cache it on the window because an embedded app shell
+// can evaluate the secure production entry more than once in the same document.
+const createTrustedHtmlPolicy = () => trustedTypesApi?.createPolicy?.("default", {
   createHTML(value) {
     if (typeof value !== "string") throw new TypeError("Trusted HTML input must be a string");
     return migrateStyleAttributes(assertSafeHTML(value));
@@ -57,6 +62,16 @@ export const trustedHtmlPolicy = trustedTypesApi?.createPolicy?.("default", {
     throw new TypeError("Dynamic script text is not permitted");
   }
 }) || null;
+
+export const trustedHtmlPolicy = globalThis[TRUSTED_POLICY_CACHE_KEY] || createTrustedHtmlPolicy();
+if (trustedHtmlPolicy && !globalThis[TRUSTED_POLICY_CACHE_KEY]) {
+  Object.defineProperty(globalThis, TRUSTED_POLICY_CACHE_KEY, {
+    configurable: false,
+    enumerable: false,
+    value: trustedHtmlPolicy,
+    writable: false
+  });
+}
 
 export function trustedHTML(value) {
   const source = assertSafeHTML(value);

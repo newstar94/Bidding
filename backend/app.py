@@ -310,7 +310,8 @@ async def index(request):
     if if_none_match and if_none_match == response_etag:
         return HTMLResponse(content="", status_code=304, headers={"ETag": response_etag, "Vary": "Cookie", "Cache-Control": "private, no-cache"})
     html_content = html_content.replace("__BF_SESSION_BOOTSTRAP__", safe_bootstrap)
-    html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", _workspace_preload_tag(session_bootstrap))
+    workspace_preload = "" if request.url.path == "/" else _workspace_preload_tag(session_bootstrap)
+    html_content = html_content.replace("__BF_WORKSPACE_PRELOAD__", workspace_preload)
     bootstrap_ms = (time.perf_counter() - bootstrap_started) * 1000
     return HTMLResponse(
         content=html_content,
@@ -362,6 +363,7 @@ from backend.auth.auth_routes import (
     update_user_role_api,
     update_user_metadata_api,
     list_system_packages_api,
+    list_public_packages_api,
     update_system_package_api,
     set_username_api
 )
@@ -577,6 +579,7 @@ routes = [
     Route("/health/live", health_live_api, methods=["GET"]),
     Route("/health/ready", health_ready_api, methods=["GET"]),
     Route("/", index, methods=["GET"]),
+    Route("/dang-nhap", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),
     Route("/images/{file_path:path}", protected_image_api, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),
@@ -601,6 +604,7 @@ routes = [
     Route("/api/export-phanlo-excel", export_phanlo_excel_api, methods=["POST"]),
     Route("/api/export-tuychonmuathem-excel", export_tuychonmuathem_excel_api, methods=["POST"]),
     Route("/api/system-packages", list_system_packages_api, methods=["GET"]),
+    Route("/api/public/packages", list_public_packages_api, methods=["GET"]),
     Route("/api/system-packages/update", update_system_package_api, methods=["POST"]),
 
 

@@ -107,6 +107,7 @@ export function validateUsernameClient(username) {
     }
   }
   const RESERVED = /* @__PURE__ */ new Set([
+    "dang-nhap",
     "tong-quan",
     "ke-hoach",
     "goi-thau",

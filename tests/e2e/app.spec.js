@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://fonts.gstatic.com/**', route => route.abort());
 });
 
-test('anonymous user sees the login screen', async ({ page }) => {
+test('home page presents the BiddingFlow landing experience', async ({ page }) => {
   const trustedTypesErrors = [];
   page.on('pageerror', error => {
     if (/TrustedScriptURL|requires.*Trusted/i.test(error.message)) trustedTypesErrors.push(error.message);
@@ -17,17 +17,19 @@ test('anonymous user sees the login screen', async ({ page }) => {
 
   expect(response?.ok()).toBeTruthy();
   await expect(page).toHaveTitle(/BiddingFlow/);
-  await expect(page.locator('#auth-overlay')).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('#form-auth-login')).toBeVisible();
-  await expect(page.locator('#login-username')).toBeVisible();
-  await expect(page.locator('#login-password')).toBeVisible();
-  await expect(page.locator('#google-signin-btn-container')).toHaveAttribute('data-state', 'error');
-  await expect(page.locator('#google-signin-status')).toContainText('Không thể tải đăng nhập Google');
+  await expect(page.locator('#landing-page')).toBeVisible();
+  await expect(page.locator('#landing-hero-title')).toContainText('Quản lý đấu thầu liền mạch');
+  await expect(page.locator('.landing-product-window')).toBeVisible();
+  await expect(page.locator('.landing-window-address')).toContainText('Dữ liệu minh họa');
+  await expect(page.locator('#landing-pricing-grid .landing-price-card')).toHaveCount(3);
+  await expect(page.locator('#landing-page')).not.toContainText('Super Admin');
+  await expect(page.locator('.app-container')).toBeHidden();
+  await expect(page.locator('[data-landing-app-link]').first()).toHaveAttribute('href', '/dang-nhap');
   expect(trustedTypesErrors).toEqual([]);
 });
 
 test('login form supports basic input interactions', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#auth-overlay')).toBeVisible({ timeout: 20_000 });
 
   await page.locator('#login-username').fill('automation_user');
@@ -41,7 +43,7 @@ test('login form supports basic input interactions', async ({ page }) => {
 });
 
 test('authenticated reload keeps lazy workflows and Excel actions ready', async ({ page, credentials }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();
@@ -49,6 +51,7 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
+  await expect(page.locator('#dashboard-greeting')).toContainText('Administrator');
   await page.evaluate(async () => {
     const { getAppController } = await import('../../frontend/app/controllerRef.js');
     const appController = getAppController();
@@ -80,7 +83,7 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
 });
 
 test('Excel preview hides metadata and exposes working close controls', async ({ page, credentials }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();
@@ -120,7 +123,7 @@ test('sync state and dialogs expose keyboard and screen-reader behavior', async 
   page.on('console', message => {
     if (/Content Security Policy|style-src-attr|inline style/i.test(message.text())) cspViolations.push(message.text());
   });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();
@@ -191,7 +194,7 @@ test('sync state and dialogs expose keyboard and screen-reader behavior', async 
 });
 
 test('pending sync status opens a manageable retry list', async ({ page, credentials }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();
@@ -268,7 +271,7 @@ test('pending sync status opens a manageable retry list', async ({ page, credent
 });
 
 test('Word template F5 never reveals the dashboard after the loader', async ({ page, credentials }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();
@@ -312,7 +315,7 @@ test('Word template F5 never reveals the dashboard after the loader', async ({ p
 });
 
 test('super admin can switch active roles from the profile dropdown', async ({ page, credentials }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();

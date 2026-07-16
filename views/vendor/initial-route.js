@@ -1,4 +1,5 @@
 (() => {
+  if (window.location.pathname === "/") return;
   const readJson = (value, fallback = null) => {
     try {
       return value ? JSON.parse(value) : fallback;

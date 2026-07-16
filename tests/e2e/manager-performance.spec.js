@@ -20,7 +20,7 @@ test('measures manager navigation and F5 performance on every page', async ({ pa
   await page.route('https://fonts.googleapis.com/**', route => route.abort());
   await page.route('https://fonts.gstatic.com/**', route => route.abort());
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/dang-nhap', { waitUntil: 'domcontentloaded' });
   await page.locator('#login-username').fill(credentials.username);
   await page.locator('#login-password').fill(credentials.password);
   await page.locator('#form-auth-login button[type="submit"]').click();

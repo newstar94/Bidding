@@ -15,7 +15,7 @@ def test_homepage_serves_compiled_html():
     assert 'href="/css/initial-route.css?v=1.0"' in response.text
     assert "<style" not in response.text
     assert 'id="initial-route-loading-state"' in response.text
-    assert 'src="/vendor/initial-route.js?v=1.0.4"' in response.text
+    assert 'src="/vendor/initial-route.js?v=1.0.5"' in response.text
     assert 'role="progressbar"' in response.text
     assert '__BF_SESSION_BOOTSTRAP__' not in response.text
     assert 'id="bf-session-bootstrap"' in response.text
@@ -34,6 +34,7 @@ def test_homepage_serves_compiled_html():
     assert "style-src-attr 'unsafe-inline'" not in csp
     assert "require-trusted-types-for 'script'" in csp
     assert "trusted-types default goog#html" in csp
+    assert "'allow-duplicates'" in csp
     assert "content-security-policy-report-only" not in response.headers
 
 

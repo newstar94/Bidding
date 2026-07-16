@@ -1,8 +1,47 @@
 """Dashboard projections derived from synchronized records."""
 
+from datetime import date, datetime, timedelta
+
 from backend.shared.access_policy import can_read_table, is_organization_manager
 from backend.sync.mapper import map_db_to_json
 from backend.shared.domain_enums import enum_label
+from backend.documents.docx_formula_service import (
+    _add_working_days,
+    _diff_working_days,
+    _load_holidays,
+)
+
+
+EVALUATION_REPORT_DELAY_DAYS = 7
+PLAN_STATUS_LABELS = ("Chưa triển khai", "Đang thực hiện", "Hoàn thành")
+ALERT_COUNT_KEYS = (
+    "closingToday", "closingSoon", "overdueOpening", "delayedEvaluation",
+    "planPublishingWarning", "planPublishingOverdue",
+)
+
+
+def _parse_iso_date(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        try:
+            return datetime.strptime(text[:10], "%d/%m/%Y").date()
+        except ValueError:
+            return None
+
+
+def _business_days_elapsed(start_date, end_date, holidays_data=None):
+    """Count configured working days strictly after start_date through end_date."""
+    if not start_date or not end_date or end_date <= start_date:
+        return 0
+    return _diff_working_days(start_date, end_date, holidays_data or _load_holidays())
+
+
+def _add_business_days(start_date, days, holidays_data=None):
+    return _add_working_days(start_date, days, holidays_data or _load_holidays())
 
 
 def build_dashboard_summary(cursor, organization_id, role_str, user_id):
@@ -48,7 +87,14 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         "activeGoithau": 0,
     }
     total_contract_value = "0"
+    total_contract_value_all = "0"
+    contract_total_count = 0
     status_counts = {}
+    plan_status_counts = {label: 0 for label in PLAN_STATUS_LABELS}
+    contract_status_counts = {}
+    contract_value_by_status = {}
+    alert_counts = {key: 0 for key in ALERT_COUNT_KEYS}
+    alert_items = []
     recent_packages = []
 
     simple_count_specs = []
@@ -100,6 +146,88 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         """, (organization_id, organization_id, user_id, organization_id, user_id))
         counts["kehoach"] = int(cursor.fetchone()[0] or 0)
 
+    if can_read_plans:
+        plan_visibility_sql = ""
+        package_access_sql = ""
+        plan_status_params = [organization_id, organization_id]
+        if not manager:
+            package_access_sql = """
+                AND EXISTS (
+                    SELECT 1 FROM phan_cong_nhan_su pc_pkg
+                    WHERE pc_pkg.organization_id = gt.organization_id
+                      AND pc_pkg.id_nhan_vien = ?
+                      AND pc_pkg.id_muc_tieu = gt.id
+                      AND pc_pkg.loai_doi_tuong = 'goithau'
+                )
+            """
+            plan_status_params.append(user_id)
+            plan_visibility_sql = """
+                AND (
+                    EXISTS (
+                        SELECT 1 FROM phan_cong_nhan_su pc_plan
+                        WHERE pc_plan.organization_id = ?
+                          AND pc_plan.id_nhan_vien = ?
+                          AND pc_plan.loai_doi_tuong = 'kehoach'
+                          AND pc_plan.id_muc_tieu = kh.id
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM goi_thau gt_assigned
+                        JOIN phan_cong_nhan_su pc_assigned
+                          ON pc_assigned.organization_id = gt_assigned.organization_id
+                         AND pc_assigned.id_muc_tieu = gt_assigned.id
+                         AND pc_assigned.loai_doi_tuong = 'goithau'
+                        WHERE gt_assigned.organization_id = ?
+                          AND gt_assigned.ke_hoach_id = kh.id
+                          AND pc_assigned.id_nhan_vien = ?
+                    )
+                )
+            """
+            plan_status_params.extend((organization_id, user_id, organization_id, user_id))
+
+        cursor.execute(f"""
+            SELECT kh.id, kh.ma_ke_hoach, kh.ten_ke_hoach,
+                   kh.ngay_phe_duyet, kh.thoi_gian_dang_tai,
+                   COUNT(gt.id) AS package_count,
+                   SUM(CASE WHEN gt.id IS NOT NULL AND gt.trang_thai != 'PREPARING' THEN 1 ELSE 0 END) AS started_count,
+                   SUM(CASE WHEN gt.id IS NOT NULL AND gt.trang_thai NOT IN ('AWARDED', 'CANCELLED') THEN 1 ELSE 0 END) AS unfinished_count
+            FROM ({latest_cte("ke_hoach_lcnt")}) kh
+            LEFT JOIN ({latest_cte("goi_thau")}) gt
+              ON gt.ke_hoach_id = kh.id
+             AND gt.organization_id = kh.organization_id
+             {package_access_sql}
+            WHERE 1 = 1 {plan_visibility_sql}
+            GROUP BY kh.id
+        """, tuple(plan_status_params))
+        for row in cursor.fetchall():
+            package_count = int(row[5] or 0)
+            started_count = int(row[6] or 0)
+            unfinished_count = int(row[7] or 0)
+            if package_count == 0 or started_count == 0:
+                plan_status_counts["Chưa triển khai"] += 1
+            elif unfinished_count > 0:
+                plan_status_counts["Đang thực hiện"] += 1
+            else:
+                plan_status_counts["Hoàn thành"] += 1
+
+            approval_date = _parse_iso_date(row[3])
+            published_at = str(row[4] or "").strip()
+            business_days = _business_days_elapsed(approval_date, datetime.now().date())
+            if published_at or not approval_date or business_days < 3:
+                continue
+            alert_key = "planPublishingOverdue" if business_days > 5 else "planPublishingWarning"
+            alert_counts[alert_key] += 1
+            alert_items.append({
+                "targetType": "plan",
+                "id": str(row[0] or ""),
+                "maKeHoach": str(row[1] or ""),
+                "tenKeHoach": str(row[2] or ""),
+                "ngayPheDuyet": approval_date.isoformat(),
+                "deadline": _add_business_days(approval_date, 5).isoformat(),
+                "workdaysElapsed": business_days,
+                "alertKey": alert_key,
+            })
+        counts["kehoach"] = sum(plan_status_counts.values())
+
     package_filter_sql = ""
     package_params = [organization_id]
     if not manager:
@@ -138,21 +266,91 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         """, tuple(package_params))
         recent_packages = [map_db_to_json("goi_thau", dict(row)) for row in cursor.fetchall()]
 
+        visible_packages_sql = f"""
+            SELECT latest_rows.*
+            FROM ({latest_cte("goi_thau")}) latest_rows
+            WHERE 1 = 1 {package_filter_sql}
+        """
+        delayed_evaluation_condition = f"""
+            vp.trang_thai IN ('OPENED', 'EVALUATING')
+            AND datetime(COALESCE(NULLIF(vp.thoi_gian_mo_thau, ''), NULLIF(vp.thoi_gian_dong_thau, '')))
+                <= datetime('now', 'localtime', '-{EVALUATION_REPORT_DELAY_DAYS} days')
+            AND NOT EXISTS (
+                SELECT 1 FROM vong_danh_gia vd
+                WHERE vd.organization_id = vp.organization_id
+                  AND vd.goi_thau_id = vp.id
+                  AND (COALESCE(trim(vd.so_bao_cao), '') != '' OR COALESCE(trim(vd.ngay_bao_cao), '') != '')
+            )
+        """
+        alert_conditions = {
+            "closingToday": "vp.trang_thai = 'INVITED' AND date(vp.thoi_gian_dong_thau) = date('now', 'localtime')",
+            "closingSoon": "vp.trang_thai = 'INVITED' AND datetime(vp.thoi_gian_dong_thau) > datetime('now', 'localtime') AND datetime(vp.thoi_gian_dong_thau) <= datetime('now', 'localtime', '+7 days') AND date(vp.thoi_gian_dong_thau) > date('now', 'localtime')",
+            "overdueOpening": "vp.trang_thai = 'INVITED' AND date(vp.thoi_gian_dong_thau) < date('now', 'localtime')",
+            "delayedEvaluation": delayed_evaluation_condition,
+        }
+        union_parts = [
+            f"SELECT '{key}' AS alert_key, COUNT(*) AS total FROM visible_packages vp WHERE {condition}"
+            for key, condition in alert_conditions.items()
+        ]
+        cursor.execute(
+            f"WITH visible_packages AS ({visible_packages_sql}) " + " UNION ALL ".join(union_parts),
+            tuple(package_params),
+        )
+        for row in cursor.fetchall():
+            alert_counts[str(row[0])] = int(row[1] or 0)
+
+        cursor.execute(f"""
+            WITH visible_packages AS ({visible_packages_sql}),
+            alert_packages AS (
+                SELECT vp.*,
+                       CASE
+                           WHEN {alert_conditions["overdueOpening"]} THEN 'overdueOpening'
+                           WHEN {alert_conditions["closingToday"]} THEN 'closingToday'
+                           WHEN {alert_conditions["delayedEvaluation"]} THEN 'delayedEvaluation'
+                           WHEN {alert_conditions["closingSoon"]} THEN 'closingSoon'
+                           ELSE ''
+                       END AS alert_key
+                FROM visible_packages vp
+            )
+            SELECT *
+            FROM alert_packages
+            WHERE alert_key != ''
+            ORDER BY CASE alert_key
+                        WHEN 'overdueOpening' THEN 1
+                        WHEN 'closingToday' THEN 2
+                        WHEN 'delayedEvaluation' THEN 3
+                        ELSE 4
+                     END,
+                     COALESCE(thoi_gian_dong_thau, thoi_gian_mo_thau, updated_at, created_at, '') ASC
+            LIMIT 8
+        """, tuple(package_params))
+        for row in cursor.fetchall():
+            raw_item = dict(row)
+            alert_key = str(raw_item.pop("alert_key", ""))
+            item = map_db_to_json("goi_thau", raw_item)
+            item["targetType"] = "package"
+            item["alertKey"] = alert_key
+            item["deadline"] = (
+                item.get("thoiGianMoThau")
+                if alert_key == "delayedEvaluation"
+                else item.get("thoiGianDongThau")
+            ) or ""
+            alert_items.append(item)
+
     if can("hopdong", "hop_dong"):
         latest_contracts_sql = latest_cte("hop_dong")
         if manager:
             cursor.execute(
                 f"""SELECT id, gia_tri, trang_thai_hop_dong
                     FROM ({latest_contracts_sql}) latest_rows
-                    WHERE trang_thai_hop_dong NOT IN ('NOT_EFFECTIVE', 'CANCELLED')""",
+                    """,
                 (organization_id,),
             )
         else:
             cursor.execute(f"""
                 SELECT hd.id, hd.gia_tri, hd.trang_thai_hop_dong
                 FROM ({latest_contracts_sql}) hd
-                WHERE hd.trang_thai_hop_dong NOT IN ('NOT_EFFECTIVE', 'CANCELLED')
-                  AND EXISTS (
+                WHERE EXISTS (
                     SELECT 1 FROM phan_cong_nhan_su pc
                     WHERE pc.organization_id = hd.organization_id
                       AND pc.id_nhan_vien = ?
@@ -160,7 +358,19 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
                       AND pc.loai_doi_tuong = 'hopdong'
                 )
             """, (organization_id, user_id))
-        contract_rows = cursor.fetchall()
+        all_contract_rows = cursor.fetchall()
+        contract_total_count = len(all_contract_rows)
+        total_contract_value_all = str(sum(int(row[1] or 0) for row in all_contract_rows))
+        for row in all_contract_rows:
+            status = str(enum_label("hop_dong", "trang_thai_hop_dong", row[2]) or "")
+            contract_status_counts[status] = contract_status_counts.get(status, 0) + 1
+            contract_value_by_status[status] = str(
+                int(contract_value_by_status.get(status, "0")) + int(row[1] or 0)
+            )
+        contract_rows = [
+            row for row in all_contract_rows
+            if str(row[2] or "") not in {"NOT_EFFECTIVE", "CANCELLED"}
+        ]
         counts["hopdong"] = len(contract_rows)
         total_contract_value = str(sum(int(row[1] or 0) for row in contract_rows))
 
@@ -181,9 +391,28 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         counts["assignedHopdong"] = int(assigned_row[0] or 0)
         counts["activeAssignedHopdong"] = int(assigned_row[1] or 0)
 
+    alert_priority = {
+        "overdueOpening": 0,
+        "planPublishingOverdue": 1,
+        "closingToday": 2,
+        "delayedEvaluation": 3,
+        "planPublishingWarning": 4,
+        "closingSoon": 5,
+    }
+    alert_items.sort(key=lambda item: (alert_priority.get(item.get("alertKey"), 99), str(item.get("deadline") or "")))
+    alert_items = alert_items[:8]
+
     return {
         "counts": counts,
         "statusCounts": status_counts,
+        "planStatusCounts": plan_status_counts,
+        "contractStatusCounts": contract_status_counts,
+        "contractValueByStatus": contract_value_by_status,
+        "contractTotalCount": contract_total_count,
         "recentPackages": recent_packages,
         "totalContractValue": total_contract_value,
+        "totalContractValueAll": total_contract_value_all,
+        "alertCounts": alert_counts,
+        "alertItems": alert_items,
+        "evaluationDelayDays": EVALUATION_REPORT_DELAY_DAYS,
     }

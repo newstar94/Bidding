@@ -14,7 +14,14 @@ import {
     shouldReconnectWebSocket
 } from '../../frontend/app/BiddingControllerSync.js';
 import { cachePaginatedRecords } from '../../frontend/shared/tableDataUtils.js';
-import { normalizeDashboardStatusCounts, summarizeSuperAdminOrganizations } from '../../frontend/app/DashboardView.js';
+import {
+    deriveDashboardAlerts,
+    derivePlanPublishingAlerts,
+    derivePlanStatusCounts,
+    normalizeContractStatusCounts,
+    normalizeDashboardStatusCounts,
+    summarizeSuperAdminOrganizations
+} from '../../frontend/app/DashboardView.js';
 import { formatDateOnly } from '../../frontend/shared/view_helpers.js';
 
 test('cross-tab sync ignores cursor bookkeeping but reacts to pending mutations', () => {
@@ -561,6 +568,72 @@ test('dashboard keeps all package statuses visible when the summary is empty', (
     const populatedCounts = normalizeDashboardStatusCounts({ 'Đang mời thầu': 2, 'Huỷ thầu': 1 });
     assert.equal(populatedCounts['Đang mời thầu'], 2);
     assert.equal(populatedCounts['Hủy thầu'], 1);
+});
+
+test('dashboard derives plan progress from the statuses of its packages', () => {
+    const counts = derivePlanStatusCounts(
+        [{ id: 'kh-1' }, { id: 'kh-2' }, { id: 'kh-3' }, { id: 'kh-4' }],
+        [
+            { keHoachId: 'kh-2', trangThai: 'Chuẩn bị' },
+            { keHoachId: 'kh-3', trangThai: 'Đang mời thầu' },
+            { keHoachId: 'kh-4', trangThai: 'Đã có kết quả' },
+            { keHoachId: 'kh-4', trangThai: 'Hủy thầu' }
+        ]
+    );
+
+    assert.deepEqual(counts, { 'Chưa triển khai': 2, 'Đang thực hiện': 1, 'Hoàn thành': 1 });
+});
+
+test('plan publishing alerts start on workday 3 and become overdue after workday 5', () => {
+    const plans = [
+        { id: 'kh-warning', ngayPheDuyet: '2026-07-13', thoiGianDangMa: '' },
+        { id: 'kh-published', ngayPheDuyet: '2026-07-13', thoiGianDangMa: '2026-07-15 09:00' }
+    ];
+    const warning = derivePlanPublishingAlerts(plans, new Date(2026, 6, 16, 12));
+    assert.deepEqual(warning.counts, { planPublishingWarning: 1, planPublishingOverdue: 0 });
+    assert.equal(warning.items[0].workdaysElapsed, 3);
+
+    const overdue = derivePlanPublishingAlerts(plans, new Date(2026, 6, 21, 12));
+    assert.deepEqual(overdue.counts, { planPublishingWarning: 0, planPublishingOverdue: 1 });
+    assert.equal(overdue.items[0].workdaysElapsed, 6);
+
+    const holidays = {
+        '2026': { holidays: ['2026-04-27', '2026-04-30'], working_weekends: [] }
+    };
+    const holidayWindow = derivePlanPublishingAlerts(
+        [{ id: 'kh-holiday', ngayPheDuyet: '2026-04-24', thoiGianDangMa: '' }],
+        new Date(2026, 3, 30, 12),
+        holidays
+    );
+    assert.deepEqual(holidayWindow.counts, { planPublishingWarning: 0, planPublishingOverdue: 0 });
+});
+
+test('package alerts distinguish today, upcoming, overdue opening and delayed evaluation', () => {
+    const now = new Date(2026, 6, 16, 10);
+    const result = deriveDashboardAlerts([
+        { id: 'today', trangThai: 'Đang mời thầu', thoiGianDongThau: '2026-07-16 14:00' },
+        { id: 'soon', trangThai: 'Đang mời thầu', thoiGianDongThau: '2026-07-20 09:00' },
+        { id: 'overdue', trangThai: 'Đang mời thầu', thoiGianDongThau: '2026-07-15 09:00' },
+        { id: 'evaluation', trangThai: 'Đã mở thầu', thoiGianMoThau: '2026-07-01 09:00' },
+        { id: 'reported', trangThai: 'Đang chấm thầu', thoiGianMoThau: '2026-07-01 09:00', danhGiaHsdtMetadata: { technical: { soBaoCao: '01/BC' } } }
+    ], now);
+
+    assert.deepEqual(result.counts, {
+        closingToday: 1,
+        closingSoon: 1,
+        overdueOpening: 1,
+        delayedEvaluation: 1,
+        planPublishingWarning: 0,
+        planPublishingOverdue: 0
+    });
+    assert.equal(result.items.length, 4);
+});
+
+test('contract status normalization keeps every business state visible', () => {
+    const counts = normalizeContractStatusCounts({ ACTIVE: 2, 'Đã thanh lý': 1 });
+    assert.equal(counts['Đang thực hiện'], 2);
+    assert.equal(counts['Đã thanh lý'], 1);
+    assert.equal(Object.keys(counts).length, 6);
 });
 
 test('each package keeps the exact contractor version bound by id', () => {

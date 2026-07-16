@@ -161,3 +161,28 @@ def test_dashboard_includes_completed_contracts_but_excludes_cancelled_and_not_e
     assert result["counts"]["assignedHopdong"] == 3
     assert result["counts"]["activeAssignedHopdong"] == 1
     assert result["totalContractValue"] == "600"
+    assert result["contractTotalCount"] == 5
+    assert result["totalContractValueAll"] == "1500"
+    assert result["contractStatusCounts"] == {
+        "Đang thực hiện": 1,
+        "Đã hoàn thành": 1,
+        "Đã thanh lý": 1,
+        "Đã hủy": 1,
+        "Chưa hiệu lực": 1,
+    }
+    assert result["contractValueByStatus"]["Đang thực hiện"] == "100"
+    assert result["contractValueByStatus"]["Đã hủy"] == "400"
+
+
+def test_dashboard_business_day_counter_excludes_weekends():
+    approval = dashboard_summary._parse_iso_date("2026-07-13")
+
+    assert dashboard_summary._business_days_elapsed(approval, dashboard_summary._parse_iso_date("2026-07-16")) == 3
+    assert dashboard_summary._business_days_elapsed(approval, dashboard_summary._parse_iso_date("2026-07-20")) == 5
+    assert dashboard_summary._business_days_elapsed(approval, dashboard_summary._parse_iso_date("2026-07-21")) == 6
+    assert dashboard_summary._add_business_days(approval, 5).isoformat() == "2026-07-20"
+
+    holiday_window = {"2026": {"holidays": ["2026-04-27", "2026-04-30"], "working_weekends": []}}
+    holiday_approval = dashboard_summary._parse_iso_date("2026-04-24")
+    holiday_end = dashboard_summary._parse_iso_date("2026-04-30")
+    assert dashboard_summary._business_days_elapsed(holiday_approval, holiday_end, holiday_window) == 2

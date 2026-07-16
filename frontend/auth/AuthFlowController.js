@@ -314,11 +314,7 @@ export function setupAuth() {
         setAuthSessionActive(false);
         setAuthFlowInProgress(false);
         if (this._sessionInterval) clearInterval(this._sessionInterval);
-        setRuntimeStyle(overlay, "display", "flex");
-        setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
-        switchForm(formLogin);
-        document.getElementById("login-username").value = "";
-        document.getElementById("login-password").value = "";
+        window.location.assign("/");
       }
     };
   }

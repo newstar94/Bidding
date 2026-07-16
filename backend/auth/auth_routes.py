@@ -869,6 +869,43 @@ async def list_system_packages_api(request):
         log_error(e, "list_system_packages_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi tải danh sách gói dịch vụ."}, status_code=500)
 
+async def list_public_packages_api(request):
+    """Expose active commercial package metadata for the public landing page."""
+    conn = None
+    try:
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, ten_goi AS name, gia_ca AS price,
+                   han_muc_nhan_su AS quota, mo_ta AS description
+            FROM goi_dich_vu
+            WHERE trang_thai = 'active'
+            ORDER BY CASE id
+                WHEN 'silver' THEN 1
+                WHEN 'gold' THEN 2
+                WHEN 'diamond' THEN 3
+                ELSE 4
+            END, gia_ca ASC
+        """)
+        packages = []
+        for row in cursor.fetchall():
+            package = dict(row)
+            package["price"] = money_json_value(package["price"])
+            packages.append(package)
+        return JSONResponse(
+            {"packages": packages},
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+    except Exception as exc:
+        log_error(exc, "list_public_packages_api")
+        return JSONResponse(
+            {"error": "Không thể tải bảng giá dịch vụ."},
+            status_code=500,
+        )
+    finally:
+        if conn is not None:
+            conn.close()
+
 async def update_system_package_api(request):
     try:
         is_valid, role_or_err = verify_session(request, required_role='super_admin')

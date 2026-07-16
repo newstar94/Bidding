@@ -127,7 +127,7 @@ class SecurityHeadersMiddleware:
                 "font-src 'self' https://fonts.gstatic.com; "
                 "frame-src 'self' https://accounts.google.com; "
                 "worker-src 'self'; base-uri 'self'; object-src 'none'; "
-                "require-trusted-types-for 'script'; trusted-types default goog#html;"
+                "require-trusted-types-for 'script'; trusted-types default goog#html 'allow-duplicates';"
             )
             if "Content-Security-Policy-Report-Only" in headers:
                 del headers["Content-Security-Policy-Report-Only"]
