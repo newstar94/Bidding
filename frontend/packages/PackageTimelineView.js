@@ -21,8 +21,52 @@ const STATUS_LABELS = Object.freeze({
   NOT_APPLICABLE: "Không áp dụng"
 });
 
+const TIMELINE_SELECTION_KEY = "bf_timeline_selection";
+
+export function readTimelineSelection(model) {
+  try {
+    const stored = model?.workspaceSessionStorage?.readJson(TIMELINE_SELECTION_KEY, null);
+    const planId = String(stored?.planId || "").trim();
+    const packageId = String(stored?.packageId || "").trim();
+    return planId && packageId ? { planId, packageId } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveTimelineSelection(model, selection) {
+  const planId = String(selection?.planId || "").trim();
+  const packageId = String(selection?.packageId || "").trim();
+  if (!planId || !packageId) {
+    clearTimelineSelection(model);
+    return false;
+  }
+  const storage = model?.workspaceSessionStorage;
+  if (typeof storage?.writeJson !== "function") return false;
+  try {
+    storage.writeJson(TIMELINE_SELECTION_KEY, { planId, packageId });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearTimelineSelection(model) {
+  try {
+    model?.workspaceSessionStorage?.removeItem(TIMELINE_SELECTION_KEY);
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
 function timelineState(view) {
+  const workspaceToken = view.model?.getWorkspaceToken?.() || view.model?.workspaceScope?.key || "";
+  if (view._packageTimelineState?.workspaceToken !== workspaceToken) {
+    clearTimeout(view._packageTimelineState?.packageSearchTimer);
+    view._packageTimelineState = null;
+  }
   view._packageTimelineState ||= {
+    workspaceToken,
     package: null,
     plan: null,
     rows: [],
@@ -30,9 +74,38 @@ function timelineState(view) {
     packageQuery: "",
     filters: { status: "" },
     dirty: false,
-    loading: false
+    loading: false,
+    restoreAttempted: false,
+    restoringSelection: false,
+    selectionRequestVersion: 0,
+    optionsRequestVersion: 0
   };
   return view._packageTimelineState;
+}
+
+export function resetTimelineSession(view) {
+  const state = view?._packageTimelineState;
+  if (state) {
+    clearTimeout(state.packageSearchTimer);
+    state.package = null;
+    state.plan = null;
+    state.rows = [];
+    state.packageOptions = [];
+    state.packageQuery = "";
+    state.filters = { status: "" };
+    state.dirty = false;
+    state.loading = false;
+    state.restoreAttempted = true;
+    state.restoringSelection = false;
+    state.selectionRequestVersion = Number(state.selectionRequestVersion || 0) + 1;
+    state.optionsRequestVersion = Number(state.optionsRequestVersion || 0) + 1;
+  }
+  clearTimelineSelection(view?.model);
+  return state || null;
+}
+
+function isCurrentTimelineRequest(view, state, key, version) {
+  return view?._packageTimelineState === state && state?.[key] === version;
 }
 
 function element(id) {
@@ -69,6 +142,20 @@ function makeTimelineSelectSearchable(select, placeholder) {
     input.setAttribute("aria-label", placeholder);
   }
   return input;
+}
+
+function syncTimelineSelectValue(select, value) {
+  if (!select) return;
+  select.value = String(value || "");
+  const wrapper = select.parentNode?.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
+  const input = wrapper?.querySelector(".custom-select-search");
+  const selectedOption = select.options[select.selectedIndex];
+  if (input) input.value = selectedOption?.value ? selectedOption.text : "";
+  const options = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`)
+    || wrapper?.querySelector(".custom-select-options");
+  options?.querySelectorAll("li").forEach((item) => {
+    item.classList.toggle("selected", item.dataset.value === select.value);
+  });
 }
 
 function cachePackage(view, rawRecord) {
@@ -154,6 +241,8 @@ function renderPackageOptions(view, records, search = "") {
 
 async function loadPackageOptions(view, search = timelineState(view).packageQuery) {
   const state = timelineState(view);
+  const requestVersion = Number(state.optionsRequestVersion || 0) + 1;
+  state.optionsRequestVersion = requestVersion;
   const planId = element("timeline-plan-select")?.value || "";
   if (!planId) {
     state.packageQuery = "";
@@ -170,15 +259,19 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
       search,
       ...(planId ? { keHoachId: planId } : {})
     });
+    if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
     renderPackageOptions(view, result.items, search);
     updateLiveStatus(`Đã tìm thấy ${result.totalItems} gói thầu.`);
   } catch (error) {
+    if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
     if (error?.name !== "AbortError") {
       updateLiveStatus("Không thể tải danh sách gói thầu.");
       view.showToast("Timeline", error?.message || "Không thể tải danh sách gói thầu.", "error");
     }
   } finally {
-    state.loading = false;
+    if (isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) {
+      state.loading = false;
+    }
   }
 }
 
@@ -289,6 +382,8 @@ function setActionAvailability(state) {
 
 async function selectPackage(view, packageId) {
   const state = timelineState(view);
+  const requestVersion = Number(state.selectionRequestVersion || 0) + 1;
+  state.selectionRequestVersion = requestVersion;
   if (!packageId) {
     state.package = null;
     state.plan = null;
@@ -296,6 +391,7 @@ async function selectPackage(view, packageId) {
     setHidden("timeline-empty", false);
     setHidden("timeline-table-wrap", true);
     setActionAvailability(state);
+    clearTimelineSelection(view.model);
     return;
   }
   setHidden("timeline-empty", true);
@@ -303,11 +399,17 @@ async function selectPackage(view, packageId) {
   setHidden("timeline-error", true);
   try {
     const pkg = await fetchPackage(view, packageId);
+    if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
     if (!pkg) throw new Error("Không tìm thấy gói thầu đã chọn.");
     state.package = pkg;
     state.plan = await fetchPlan(view, pkg.keHoachId) || findPlan(view, pkg);
+    if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
     state.rows = mergeTimelineRows(pkg, state.plan, findContracts(view, pkg));
     state.dirty = false;
+    saveTimelineSelection(view.model, {
+      planId: pkg.keHoachId || state.plan?.id,
+      packageId: pkg.id
+    });
     renderVersionOptions(pkg);
     setHidden("timeline-table-wrap", false);
     renderTimelineTable(view);
@@ -315,6 +417,10 @@ async function selectPackage(view, packageId) {
     const applicableCount = state.rows.filter((row) => row.isApplicable !== false).length;
     updateLiveStatus("Đã tải " + applicableCount + " mốc áp dụng của gói " + (pkg.maGoiThau || "") + ".");
   } catch (error) {
+    if (!isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) return;
+    if ([403, 404].includes(Number(error?.status)) || /Không tìm thấy/.test(String(error?.message || ""))) {
+      clearTimelineSelection(view.model);
+    }
     const errorBox = element("timeline-error");
     if (errorBox) {
       errorBox.textContent = error?.message || "Không thể tải timeline.";
@@ -322,7 +428,34 @@ async function selectPackage(view, packageId) {
     }
     setHidden("timeline-table-wrap", true);
   } finally {
-    setHidden("timeline-loading", true);
+    if (isCurrentTimelineRequest(view, state, "selectionRequestVersion", requestVersion)) {
+      setHidden("timeline-loading", true);
+    }
+  }
+}
+
+async function restoreTimelineSelection(view, selection) {
+  const state = timelineState(view);
+  state.restoringSelection = true;
+  try {
+    const planSelect = element("timeline-plan-select");
+    syncTimelineSelectValue(planSelect, selection.planId);
+    await selectPackage(view, selection.packageId);
+    if (!state.package) return;
+
+    renderPlanOptions(view);
+    const actualPlanId = String(state.package.keHoachId || state.plan?.id || selection.planId);
+    syncTimelineSelectValue(planSelect, actualPlanId);
+    await loadPackageOptions(view, "");
+
+    const selectedId = String(state.package.id);
+    if (!state.packageOptions.some((pkg) => String(pkg.id) === selectedId)) {
+      renderPackageOptions(view, [state.package, ...state.packageOptions], "");
+    }
+    const packageSelect = element("timeline-package-select");
+    syncTimelineSelectValue(packageSelect, selectedId);
+  } finally {
+    state.restoringSelection = false;
   }
 }
 
@@ -471,12 +604,49 @@ function bindTimelineEvents(view, pane) {
   element("timeline-copy-previous")?.addEventListener("click", () => copyPreviousTimeline(view));
 }
 
+export function resetPackageTimeline() {
+  const state = resetTimelineSession(this);
+  const planSelect = element("timeline-plan-select");
+  if (planSelect) {
+    planSelect.value = "";
+    renderPlanOptions(this);
+    syncTimelineSelectValue(planSelect, "");
+  }
+  const packageSelect = element("timeline-package-select");
+  if (packageSelect) {
+    packageSelect.innerHTML = `<option value="">Chọn kế hoạch trước</option>`;
+    packageSelect.disabled = true;
+    makeTimelineSelectSearchable(packageSelect, "Chọn kế hoạch trước");
+    syncTimelineSelectValue(packageSelect, "");
+  }
+  renderVersionOptions(null);
+  const statusFilter = element("timeline-status-filter");
+  if (statusFilter) statusFilter.value = "";
+  const tbody = element("timeline-table-body");
+  tbody?.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
+  if (tbody) tbody.innerHTML = "";
+  setHidden("timeline-empty", false);
+  setHidden("timeline-loading", true);
+  setHidden("timeline-error", true);
+  setHidden("timeline-table-wrap", true);
+  setActionAvailability(state || { package: null });
+  updateLiveStatus("");
+}
+
 export function renderPackageTimeline() {
   const pane = element("tab-goithau-timeline");
   if (!pane) return;
   const state = timelineState(this);
   bindTimelineEvents(this, pane);
   renderPlanOptions(this);
+  if (!state.package && !state.restoreAttempted) {
+    state.restoreAttempted = true;
+    const selection = readTimelineSelection(this.model);
+    if (selection) {
+      restoreTimelineSelection(this, selection);
+      return;
+    }
+  }
   if (state.package && !state.dirty) {
     const refreshed = (this.model.state.goithau || []).find((pkg) => String(pkg.id) === String(state.package.id));
     if (refreshed) {
@@ -488,7 +658,7 @@ export function renderPackageTimeline() {
   setActionAvailability(state);
   if (state.package) {
     renderTimelineTable(this);
-  } else if (!state.loading && !state.packageOptions.length) {
+  } else if (!state.loading && !state.restoringSelection && !state.packageOptions.length) {
     loadPackageOptions(this);
   }
 }

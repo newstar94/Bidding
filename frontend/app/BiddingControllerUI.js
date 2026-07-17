@@ -295,6 +295,7 @@ export function switchTab(tabName, action = null, updateState = true) {
       this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
     });
   }
+  resetTimelineOnNavigation(this, tabName);
   this.model.state.activetab = tabName;
   this.model.state.activeaction = action;
   if (updateState) {
@@ -420,6 +421,15 @@ export function switchTab(tabName, action = null, updateState = true) {
       setRuntimeStyle(document.body, "overflow", "");
     }
   }
+}
+
+export function resetTimelineOnNavigation(controller, nextTab) {
+  const currentTab = controller?.model?.state?.activetab;
+  if (currentTab === "goithau-timeline" && nextTab !== currentTab) {
+    controller.view?.resetPackageTimeline?.();
+    return true;
+  }
+  return false;
 }
 
 export function setupProfileDropdownEvents() {

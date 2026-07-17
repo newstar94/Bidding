@@ -2819,6 +2819,10 @@ table th {
   letter-spacing: 0.02em;
 }
 
+.timeline-table .timeline-group-row th[colspan] {
+  text-align: left !important;
+}
+
 .timeline-item-row > th,
 .timeline-item-row > td {
   padding: 7px 8px;
