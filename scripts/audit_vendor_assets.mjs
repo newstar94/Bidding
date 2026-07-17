@@ -42,6 +42,7 @@ for (const asset of manifest.assets || []) {
 
 const ignoredFirstPartyFiles = new Set([
   "initial-route.js",
+  "route-shell.js",
   "lucide/lucide-shim.js",
   "vendor-manifest.json",
 ]);
