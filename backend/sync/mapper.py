@@ -377,6 +377,51 @@ def _save_package_children(cursor, parent_id, item, organization_id, owner_type,
     if _has_child_key(item, "giaHanList"):
         _save_extensions(cursor, parent_id, item.get("giaHanList"), organization_id, owner_type, sync_version, updated_at)
     _save_clarifications(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
+    _save_timeline_items(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at)
+
+
+def _save_timeline_items(cursor, parent_id, item, organization_id, owner_type, sync_version, updated_at):
+    if not _has_child_key(item, "timelineItems"):
+        return
+    cursor.execute(
+        "DELETE FROM goi_thau_moc_tien_do WHERE organization_id = ? AND goi_thau_id = ?",
+        (organization_id, parent_id),
+    )
+    rows = []
+    for index, row in enumerate(_parse_child_list(item.get("timelineItems"))):
+        rows.append((
+            _child_row_id(parent_id, "timeline", index, _first_value(row, "id")),
+            organization_id,
+            owner_type,
+            parent_id,
+            str(_first_value(row, "maNhom", "ma_nhom", default="") or "").strip(),
+            str(_first_value(row, "tenNhom", "ten_nhom", default="") or "").strip(),
+            str(_first_value(row, "maMoc", "ma_moc", default="") or "").strip(),
+            str(_first_value(row, "congViec", "cong_viec", default="") or "").strip(),
+            str(_first_value(row, "donViBanHanh", "don_vi_ban_hanh", default="") or "").strip(),
+            str(_first_value(row, "soVanBan", "so_van_ban", default="") or "").strip(),
+            _first_value(row, "ngayDuKien", "ngay_du_kien") or None,
+            _first_value(row, "ngayThucTe", "ngay_thuc_te") or None,
+            str(_first_value(row, "ghiChu", "ghi_chu", default="") or "").strip(),
+            str(_first_value(row, "sourceKey", "source_key", default="") or "").strip(),
+            str(_first_value(row, "sourceMode", "source_mode", default="MANUAL") or "MANUAL").upper(),
+            1 if _first_value(row, "isOptional", "is_optional", default=False) in (True, 1, "1") else 0,
+            str(_first_value(row, "trangThai", "trang_thai", default="PENDING") or "PENDING").upper(),
+            int(_first_value(row, "sortOrder", "sort_order", default=index) or 0),
+            int(_first_value(row, "templateVersion", "template_version", default=1) or 1),
+            sync_version,
+            updated_at,
+        ))
+    if rows:
+        cursor.executemany(
+            """INSERT INTO goi_thau_moc_tien_do (
+                   id, organization_id, owner_type, goi_thau_id, ma_nhom, ten_nhom,
+                   ma_moc, cong_viec, don_vi_ban_hanh, so_van_ban, ngay_du_kien,
+                   ngay_thuc_te, ghi_chu, source_key, source_mode, is_optional,
+                   trang_thai, sort_order, template_version, sync_version, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
 
 
 def _save_package_expert_relations(cursor, parent_id, item, organization_id, owner_type):
@@ -741,6 +786,13 @@ def _select_children(cursor, table, parent_col, parent_ids, organization_id=None
     return [dict(row) for row in cursor.fetchall()]
 
 
+def _table_exists(cursor, table_name):
+    return cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone() is not None
+
+
 def _attach_plan_children(cursor, by_id, parent_ids, organization_id, naming):
     defaults = (
         {camel: [] for camel in PLAN_CHILD_LISTS}
@@ -763,8 +815,8 @@ def _attach_plan_children(cursor, by_id, parent_ids, organization_id, naming):
 
 def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming):
     defaults = {
-        "camel": ["phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList"],
-        "snake": ["phan_lo_list", "awarded_phan_lo_list", "tuy_chon_mua_them_list", "gia_han_list", "yeu_cau_lam_ro_list", "tra_loi_lam_ro_list"],
+        "camel": ["phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList", "yeuCauLamRoList", "traLoiLamRoList", "timelineItems"],
+        "snake": ["phan_lo_list", "awarded_phan_lo_list", "tuy_chon_mua_them_list", "gia_han_list", "yeu_cau_lam_ro_list", "tra_loi_lam_ro_list", "timeline_items"],
     }[naming]
     for item in by_id.values():
         item.update({key: [] for key in defaults})
@@ -795,6 +847,13 @@ def _attach_package_children(cursor, by_id, parent_ids, organization_id, naming)
             item["yeuCauLamRoList" if naming == "camel" else "yeu_cau_lam_ro_list"].append(_format_clarification_child(row, naming, True))
         elif row.get("loai") == "tra_loi":
             item["traLoiLamRoList" if naming == "camel" else "tra_loi_lam_ro_list"].append(_format_clarification_child(row, naming, False))
+    if _table_exists(cursor, "goi_thau_moc_tien_do"):
+        for row in _select_children(cursor, "goi_thau_moc_tien_do", "goi_thau_id", parent_ids, organization_id):
+            item = by_id.get(row.get("goi_thau_id"))
+            if item:
+                item["timelineItems" if naming == "camel" else "timeline_items"].append(
+                    _format_timeline_child(row, naming)
+                )
     _attach_evaluation_rounds(cursor, by_id, parent_ids, organization_id, naming)
 
 
@@ -1048,6 +1107,38 @@ def _format_clarification_child(row, naming, is_request):
         ("thoiGianYeuCau" if is_request else "thoiGianTraLoi"): row.get("thoi_gian") or "",
         ("noiDungYeuCau" if is_request else "noiDungTraLoi"): row.get("noi_dung") or "",
     }
+
+
+def _format_timeline_child(row, naming):
+    fields = [
+        ("id", "id"),
+        ("ma_nhom", "maNhom"),
+        ("ten_nhom", "tenNhom"),
+        ("ma_moc", "maMoc"),
+        ("cong_viec", "congViec"),
+        ("don_vi_ban_hanh", "donViBanHanh"),
+        ("so_van_ban", "soVanBan"),
+        ("ngay_du_kien", "ngayDuKien"),
+        ("ngay_thuc_te", "ngayThucTe"),
+        ("ghi_chu", "ghiChu"),
+        ("source_key", "sourceKey"),
+        ("source_mode", "sourceMode"),
+        ("is_optional", "isOptional"),
+        ("trang_thai", "trangThai"),
+        ("sort_order", "sortOrder"),
+        ("template_version", "templateVersion"),
+    ]
+    shaped = {}
+    for snake_key, camel_key in fields:
+        key = snake_key if naming == "snake" else camel_key
+        value = row.get(snake_key)
+        if snake_key == "is_optional":
+            shaped[key] = bool(value)
+        elif snake_key in {"sort_order", "template_version"}:
+            shaped[key] = int(value or 0)
+        else:
+            shaped[key] = value or ""
+    return shaped
 
 
 def _format_member_child(row, naming):

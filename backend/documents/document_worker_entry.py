@@ -141,6 +141,18 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
             raise ValueError("Tệp Word kết quả vượt quá giới hạn kích thước.")
         return result
 
+    if operation == "render_timeline_docx":
+        from backend.documents.timeline_document_service import render_timeline_document
+
+        stream = render_timeline_document(
+            payload["template_path"],
+            payload["context"],
+        )
+        result = stream.getvalue()
+        if len(result) > MAX_OUTPUT_BYTES:
+            raise ValueError("Tệp Word kết quả vượt quá giới hạn kích thước.")
+        return result
+
     if operation == "export_excel":
         from backend.documents import excel_service
 

@@ -34,6 +34,7 @@ RUNTIME_FILES = (
     "requirements/runtime.lock.txt",
     "data/templates/words/mau_bao_cao_dau_thau.docx",
     "data/templates/words/mau_hop_dong_lcnt.docx",
+    "data/templates/words/mau_timeline_goi_thau.docx",
     "scripts/backup_database.py",
     "scripts/check_database.py",
     "scripts/restore_database.py",

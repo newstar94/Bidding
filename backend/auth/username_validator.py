@@ -79,7 +79,7 @@ def _is_sensitive(username: str) -> bool:
 
 _RESERVED_ROUTES = frozenset([
 
-    "dang-nhap", "tong-quan", "ke-hoach", "goi-thau", "mothau", "danh-gia-hsdt",
+    "dang-nhap", "tong-quan", "ke-hoach", "goi-thau", "timeline-goi-thau", "mothau", "danh-gia-hsdt",
     "chu-dau-tu", "nha-thau", "chuyen-gia", "hop-dong", "bieu-mau",
     "tong-quan-admin", "quan-ly-tai-khoan", "nhan-su", "trang-thai-ho-so",
     "trang-ca-nhan", "goi-thau-chi-tiet", "ke-hoach-chi-tiet",

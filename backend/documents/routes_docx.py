@@ -34,9 +34,14 @@ from backend.documents.docx_bid_context_service import (
 from backend.documents.docx_formula_service import _format_formula_date, apply_computed_mappings
 from backend.documents.docx_mapping_service import apply_custom_mappings, lowercase_partner_identity_codes
 from backend.documents.word_defaults import ensure_default_word_mappings
+from backend.documents.timeline_context_service import build_timeline_context
 import uuid
 
-SYSTEM_TEMPLATES = {'mau_bao_cao_dau_thau.docx', 'mau_hop_dong_lcnt.docx'}
+SYSTEM_TEMPLATES = {
+    'mau_bao_cao_dau_thau.docx',
+    'mau_hop_dong_lcnt.docx',
+    'mau_timeline_goi_thau.docx',
+}
 MAX_TEMPLATE_UPLOAD_BYTES = 10 * 1024 * 1024
 COMPUTED_SOURCE_TABLE = '__computed__'
 
@@ -364,6 +369,52 @@ async def export_report_api(request):
         return _docx_error(request, e, "export_report_api")
     except Exception as e:
         return _docx_error(request, e, "export_report_api")
+
+
+async def export_timeline_api(request):
+    package_id = clean_id(request.path_params.get('package_id'))
+    try:
+        is_valid, role_or_err = verify_session(request)
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        user_id = role_or_err.user_id
+        org_name = get_active_org(request, user_id)
+        snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
+        if snapshot_error is not None:
+            return snapshot_error
+        if not _can_export_record(role_or_err, org_name, "goithau", "goi_thau", package_id):
+            return JSONResponse({"error": "Bạn không có quyền xuất timeline gói thầu này."}, status_code=403)
+
+        context = await run_blocking_io(
+            build_timeline_context,
+            package_id,
+            user_id,
+            org_name,
+            timeout_seconds=10,
+        )
+        template_path, _template_name = _resolve_template_path(
+            user_id,
+            'mau_timeline_goi_thau.docx',
+        )
+        docx_bytes = await run_document_job_async(
+            "render_timeline_docx",
+            {"template_path": template_path, "context": context},
+        )
+        snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
+        if snapshot_error is not None:
+            return snapshot_error
+
+        package_code = context.get("goi_thau", {}).get("ma_goi_thau") or "LCNT"
+        filename = f"Timeline_goi_thau_{package_code}.docx"
+        return StreamingResponse(
+            BytesIO(docx_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": _content_disposition(filename)},
+        )
+    except (OrgPermissionError, DocumentWorkerInputError, DocumentWorkerError, ValueError) as e:
+        return _docx_error(request, e, "export_timeline_api")
+    except Exception as e:
+        return _docx_error(request, e, "export_timeline_api")
 
 async def list_templates_api(request):
     try:

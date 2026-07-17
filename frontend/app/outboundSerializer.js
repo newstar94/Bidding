@@ -32,7 +32,8 @@ const CHILD_FIELDS_BY_TABLE = {
     "yeuCauLamRoList",
     "traLoiLamRoList",
     "toChuyenGia",
-    "toThamDinh"
+    "toThamDinh",
+    "timelineItems"
   ],
   nha_thau: ["thanhVienLienDanh"],
   thong_tin_mo_thau: ["thanhVienLienDanh"],

@@ -38,6 +38,7 @@ export class BiddingController {
       "dashboard": "tong-quan",
       "kehoach": "ke-hoach",
       "goithau": "goi-thau",
+      "goithau-timeline": "timeline-goi-thau",
       "mothau": "mothau",
       "danhgiahsdt": "danh-gia-hsdt",
       "hopdong": "hop-dong",
@@ -61,6 +62,7 @@ export class BiddingController {
       "chinhsua": "chinh-sua"
     };
     this.lazyTabPartials = {
+      "goithau-timeline": "/tabs/tab_goithau_timeline.html",
       "kehoach-detail": "/tabs/tab_kehoach_detail.html",
       "goithau-detail": "/tabs/tab_goithau_detail.html",
       mothau: "/tabs/tab_mothau.html",
@@ -526,6 +528,7 @@ export class BiddingController {
       [this.routeMap.kehoach]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
       [this.routeMap["kehoach-detail"]]: ["KEHOACH", "GOITHAU", "CHUDAUTU"],
       [this.routeMap.goithau]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "NHATHAU", "THONGTINMOTHAU", "ASSIGNMENTS"],
+      [this.routeMap["goithau-timeline"]]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "HOPDONG", "THONGTINMOTHAU", "ASSIGNMENTS"],
       [this.routeMap["goithau-detail"]]: ["GOITHAU", "KEHOACH", "CHUDAUTU", "NHATHAU", "HOPDONG", "THONGTINMOTHAU"],
       [this.routeMap.mothau]: ["GOITHAU", "KEHOACH", "NHATHAU", "THONGTINMOTHAU"],
       [this.routeMap.danhgiahsdt]: ["GOITHAU", "KEHOACH", "NHATHAU", "THONGTINMOTHAU"],

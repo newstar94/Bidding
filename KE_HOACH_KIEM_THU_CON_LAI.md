@@ -37,6 +37,19 @@
 | Quan sát hệ thống | Log rotation, dung lượng đĩa, cảnh báo lỗi, request ID | Có thể truy vết lỗi mà không ghi mật khẩu, OTP, cookie hoặc dữ liệu nhạy cảm |
 | Bảo mật triển khai | HTTPS, cookie production, CSP, CSRF, giới hạn tốc độ, quyền thư mục dữ liệu | Cấu hình production bật đầy đủ và vượt qua kiểm tra bảo mật trước phát hành |
 
+## Timeline gói thầu và xuất Word
+
+| Mức | Trường hợp cần kiểm tra | Tiêu chí đạt |
+|---|---|---|
+| P0 | Nâng database version 2 lên 3 trên bản sao production; khởi động lại lần hai; `PRAGMA foreign_key_check`; thử khôi phục backup | Không đổi checksum migration 1/2, không mất dữ liệu, bảng/index timeline chỉ tạo một lần |
+| P0 | Manager, chuyên viên được phân công, chuyên viên không được phân công và quyền `none/view/edit` | Menu, dữ liệu, nút lưu và endpoint xuất Word tuân thủ đúng quyền `goithau`; không đọc chéo tổ chức |
+| P0 | Hai người cùng sửa timeline; mất mạng khi lưu; reconnect; payload thiếu `timelineItems`; payload `timelineItems: []` | Có xung đột `409` khi cần, không nhân đôi hoặc mất timeline ngoài ý muốn |
+| P0 | Xuất Word không có snapshot, snapshot cũ và dữ liệu đổi trong lúc render | Lần lượt trả `428`, `409`, `409`; không trả tệp từ snapshot không nhất quán |
+| P1 | Khởi tạo đủ 5 nhóm/48 mốc, Unicode, ngày dự kiến/thực tế, Auto/Manual, khôi phục nguồn, mốc không áp dụng và quá hạn | Thứ tự ổn định; `OVERDUE` chỉ được suy ra; dữ liệu thủ công không bị nguồn tự động ghi đè |
+| P1 | Tìm gói khi bật server-side pagination; đổi kế hoạch, phiên bản; sao chép phiên bản trước | Chỉ tải gói cần thiết; timeline tách theo `goi_thau.id`; các mốc E-HSMT/kết quả được đặt lại khi sao chép |
+| P1 | Word với chuỗi dài, ghi chú dài, bảng nhiều trang và ngày dự kiến | DOCX mở được, header bảng lặp, không cắt hàng, ngày `dd/MM/yyyy`, ngày dự kiến màu đỏ và có chú thích |
+| P2 | Desktop, tablet, điện thoại, zoom 200%, bàn phím và screen reader | Không mất nút lưu/xuất, bảng cuộn ngang, focus rõ và trạng thái không phụ thuộc riêng vào màu |
+
 ## Quy trình ghi nhận
 
 1. Mỗi trường hợp phải ghi vai trò, tổ chức/workspace, dữ liệu đầu vào và thời điểm kiểm tra.

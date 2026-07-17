@@ -1,0 +1,494 @@
+import { getAppController } from "../app/controllerRef.js";
+import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
+import { getJson } from "../shared/apiClient.js";
+import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
+import { authFetchDownload } from "../shared/workflow_helpers.js";
+import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
+import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
+import {
+  applyTimelineApplicability,
+  applyAutomaticTimelineSources,
+  copyTimelineForNewVersion,
+  mergeTimelineRows,
+  timelineDisplayCode,
+  timelineIsOverdue
+} from "./packageTimelineRows.js";
+
+const STATUS_LABELS = Object.freeze({
+  PENDING: "Chưa thực hiện",
+  IN_PROGRESS: "Đang thực hiện",
+  DONE: "Đã hoàn thành",
+  NOT_APPLICABLE: "Không áp dụng"
+});
+
+function timelineState(view) {
+  view._packageTimelineState ||= {
+    package: null,
+    plan: null,
+    rows: [],
+    packageOptions: [],
+    packageQuery: "",
+    filters: { status: "" },
+    dirty: false,
+    loading: false
+  };
+  return view._packageTimelineState;
+}
+
+function element(id) {
+  return document.getElementById(id);
+}
+
+function setHidden(id, hidden) {
+  const target = element(id);
+  if (target) target.hidden = hidden;
+}
+
+function updateLiveStatus(message) {
+  const target = element("timeline-live-status");
+  if (target) target.textContent = message || "";
+}
+
+function findPlan(view, packageRecord) {
+  return (view.model.state.kehoach || []).find((plan) => String(plan.id) === String(packageRecord?.keHoachId)) || {};
+}
+
+function findContracts(view, packageRecord) {
+  return (view.model.state.hopdong || []).filter((contract) => (
+    Array.isArray(contract.goiThauIds)
+    && contract.goiThauIds.some((id) => String(id) === String(packageRecord?.id))
+  ));
+}
+
+function makeTimelineSelectSearchable(select, placeholder) {
+  if (!select) return null;
+  makeSearchableSelect(select, placeholder);
+  const input = select.parentNode?.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"] .custom-select-search`);
+  if (input) {
+    input.placeholder = placeholder;
+    input.setAttribute("aria-label", placeholder);
+  }
+  return input;
+}
+
+function cachePackage(view, rawRecord) {
+  const normalized = typeof view.model.normalizeRecordKeys === "function"
+    ? view.model.normalizeRecordKeys(rawRecord, "goithau")
+    : rawRecord;
+  const record = { ...normalized, referenceOnly: false };
+  const packages = view.model.state.goithau || (view.model.state.goithau = []);
+  const index = packages.findIndex((item) => String(item.id) === String(record.id));
+  if (index >= 0) packages[index] = record;
+  else packages.push(record);
+  return record;
+}
+
+function cachePlan(view, rawRecord) {
+  const normalized = typeof view.model.normalizeRecordKeys === "function"
+    ? view.model.normalizeRecordKeys(rawRecord, "kehoach")
+    : rawRecord;
+  const record = { ...normalized, referenceOnly: false };
+  const plans = view.model.state.kehoach || (view.model.state.kehoach = []);
+  const index = plans.findIndex((item) => String(item.id) === String(record.id));
+  if (index >= 0) plans[index] = record;
+  else plans.push(record);
+  return record;
+}
+
+async function fetchPackage(view, id) {
+  const local = (view.model.state.goithau || []).find((item) => String(item.id) === String(id));
+  if (local?.timelineItems && local.referenceOnly !== true && local.hinhThucLuaChon !== undefined) return local;
+  const data = await getJson(`/api/record?table=goithau&lookup=${encodeURIComponent(id)}`);
+  return data?.item ? cachePackage(view, data.item) : null;
+}
+
+async function fetchPlan(view, id) {
+  if (!id) return null;
+  const local = (view.model.state.kehoach || []).find((item) => String(item.id) === String(id));
+  if (local?.referenceOnly !== true && local?.pheDuyet) return local;
+  const data = await getJson(`/api/record?table=kehoach&lookup=${encodeURIComponent(id)}`);
+  return data?.item ? cachePlan(view, data.item) : local || null;
+}
+
+function renderPlanOptions(view) {
+  const select = element("timeline-plan-select");
+  if (!select) return;
+  const plans = (view.model.state.kehoach || [])
+    .filter((plan) => plan.isLatest !== false && !plan.archivedAt)
+    .sort((left, right) => String(left.maKeHoach || "").localeCompare(String(right.maKeHoach || ""), "vi"));
+  const current = select.value;
+  select.innerHTML = `<option value="">Chọn kế hoạch</option>${plans.map((plan) => (
+    `<option value="${safeAttr(plan.id)}" data-search="${safeAttr(`${plan.maKeHoach || ""} ${plan.tenKeHoach || plan.tenDuAnDuToan || ""}`)}">${escapeHtml(plan.maKeHoach || "--")} — ${escapeHtml(plan.tenKeHoach || plan.tenDuAnDuToan || "")}</option>`
+  )).join("")}`;
+  select.value = plans.some((plan) => String(plan.id) === current) ? current : "";
+  makeTimelineSelectSearchable(select, "Tìm kế hoạch theo mã hoặc tên");
+}
+
+function renderPackageOptions(view, records, search = "") {
+  const state = timelineState(view);
+  state.packageOptions = records;
+  const select = element("timeline-package-select");
+  if (!select) return;
+  const hasPlan = Boolean(element("timeline-plan-select")?.value);
+  const selectedId = state.package?.id || select.value;
+  select.disabled = !hasPlan;
+  select.innerHTML = `<option value="">${hasPlan ? "Chọn gói thầu" : "Chọn kế hoạch trước"}</option>${records.map((pkg) => (
+    `<option value="${safeAttr(pkg.id)}" data-search="${safeAttr(`${pkg.maGoiThau || ""} ${pkg.tenGoiThau || ""}`)}">${escapeHtml(pkg.maGoiThau || "--")} — ${escapeHtml(pkg.tenGoiThau || "")}</option>`
+  )).join("")}`;
+  select.value = records.some((pkg) => String(pkg.id) === String(selectedId)) ? selectedId : "";
+  const searchPlaceholder = hasPlan ? "Tìm gói thầu theo mã hoặc tên" : "Chọn kế hoạch trước";
+  const searchInput = makeTimelineSelectSearchable(select, searchPlaceholder);
+  if (searchInput) {
+    const selectedOption = select.options[select.selectedIndex];
+    searchInput.value = search || (selectedOption?.value ? selectedOption.text : "");
+    if (searchInput.dataset.timelineRemoteSearchBound !== "true") {
+      searchInput.dataset.timelineRemoteSearchBound = "true";
+      searchInput.addEventListener("input", () => {
+        state.packageQuery = searchInput.value.trim();
+        clearTimeout(state.packageSearchTimer);
+        state.packageSearchTimer = setTimeout(() => loadPackageOptions(view, state.packageQuery), 250);
+      });
+    }
+  }
+}
+
+async function loadPackageOptions(view, search = timelineState(view).packageQuery) {
+  const state = timelineState(view);
+  const planId = element("timeline-plan-select")?.value || "";
+  if (!planId) {
+    state.packageQuery = "";
+    renderPackageOptions(view, [], "");
+    updateLiveStatus("Chọn kế hoạch LCNT để tải danh sách gói thầu.");
+    return;
+  }
+  state.loading = true;
+  updateLiveStatus("Đang tìm gói thầu...");
+  try {
+    const result = await loadPaginatedRecords(view.model, "goithau", {
+      page: 1,
+      pageSize: 200,
+      search,
+      ...(planId ? { keHoachId: planId } : {})
+    });
+    renderPackageOptions(view, result.items, search);
+    updateLiveStatus(`Đã tìm thấy ${result.totalItems} gói thầu.`);
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      updateLiveStatus("Không thể tải danh sách gói thầu.");
+      view.showToast("Timeline", error?.message || "Không thể tải danh sách gói thầu.", "error");
+    }
+  } finally {
+    state.loading = false;
+  }
+}
+
+function renderVersionOptions(pkg) {
+  const select = element("timeline-version-select");
+  if (!select) return;
+  const versions = Array.isArray(pkg?.allVersions) && pkg.allVersions.length
+    ? [...pkg.allVersions]
+    : pkg ? [{ id: pkg.id, phienBan: pkg.phienBan || "00" }] : [];
+  versions.sort((left, right) => Number(right.phienBan || 0) - Number(left.phienBan || 0));
+  select.innerHTML = versions.map((version) => (
+    `<option value="${safeAttr(version.id)}">Phiên bản ${escapeHtml(version.phienBan || "00")}</option>`
+  )).join("") || `<option value="">--</option>`;
+  select.value = pkg?.id || "";
+  select.disabled = versions.length <= 1;
+}
+
+function statusOptions(current) {
+  return Object.entries(STATUS_LABELS).map(([value, label]) => (
+    `<option value="${value}"${value === current ? " selected" : ""}>${label}</option>`
+  )).join("");
+}
+
+function filteredRows(state) {
+  return state.rows.filter((row) => {
+    if (row.isApplicable === false) return false;
+    if (state.filters.status && row.trangThai !== state.filters.status) return false;
+    return true;
+  });
+}
+
+export function timelineDateBinding(row) {
+  const field = row.ngayThucTe || row.trangThai === "DONE" ? "ngayThucTe" : "ngayDuKien";
+  return {
+    field,
+    value: row.ngayThucTe || row.ngayDuKien || "",
+    label: field === "ngayThucTe" ? "Thời gian thực tế" : "Thời gian dự kiến"
+  };
+}
+
+export function formatTimelineDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+}
+
+export function normalizeTimelineDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const displayMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!displayMatch && !isoMatch) return null;
+  const day = Number(displayMatch?.[1] || isoMatch[3]);
+  const month = Number(displayMatch?.[2] || isoMatch[2]);
+  const year = Number(displayMatch?.[3] || isoMatch[1]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function renderTimelineTable(view) {
+  const state = timelineState(view);
+  const tbody = element("timeline-table-body");
+  if (!tbody || !state.package) return;
+  const editable = state.package.canEdit !== false;
+  const disabled = editable ? "" : " disabled";
+  let activeGroup = "";
+  const html = [];
+  filteredRows(state).forEach((row) => {
+    if (row.maNhom !== activeGroup) {
+      activeGroup = row.maNhom;
+      html.push(`<tr class="timeline-group-row"><th scope="rowgroup">${escapeHtml(row.maNhom)}</th><th colspan="6">${escapeHtml(row.tenNhom)}</th></tr>`);
+    }
+    const overdue = timelineIsOverdue(row);
+    const sourceLabel = row.sourceMode === "AUTO" ? "Tự động" : "Thủ công";
+    const dateBinding = timelineDateBinding(row);
+    const displayCode = timelineDisplayCode(row, state.rows);
+    html.push(`
+      <tr class="timeline-item-row${overdue ? " is-overdue" : ""}" data-code="${safeAttr(row.maMoc)}">
+        <th scope="row" title="Mã mốc nghiệp vụ ${safeAttr(row.maMoc)}">${escapeHtml(displayCode)}</th>
+        <td><span class="timeline-work-title">${escapeHtml(row.congViec)}</span>${row.isOptional ? `<span class="timeline-optional">Nếu có</span>` : ""}</td>
+        <td><input type="text" data-timeline-field="donViBanHanh" value="${safeAttr(row.donViBanHanh)}" maxlength="300" aria-label="Đơn vị ban hành mốc ${safeAttr(row.maMoc)}"${disabled}></td>
+        <td><input type="text" data-timeline-field="soVanBan" value="${safeAttr(row.soVanBan)}" maxlength="300" aria-label="Số văn bản mốc ${safeAttr(row.maMoc)}"${disabled}></td>
+        <td><input type="text" class="flatpickr-date" data-timeline-field="${dateBinding.field}" value="${safeAttr(formatTimelineDate(dateBinding.value))}" placeholder="dd/MM/yyyy" aria-label="${dateBinding.label} mốc ${safeAttr(row.maMoc)}"${disabled}></td>
+        <td><select data-timeline-field="trangThai" aria-label="Trạng thái mốc ${safeAttr(row.maMoc)}"${disabled}>${statusOptions(row.trangThai)}</select>${overdue ? `<span class="timeline-overdue-label"><i data-lucide="alert-triangle"></i> Quá hạn</span>` : ""}</td>
+        <td><button type="button" class="timeline-source-badge ${row.sourceMode === "AUTO" ? "is-auto" : "is-manual"}" data-source-action="toggle" aria-label="Chuyển nguồn mốc ${safeAttr(row.maMoc)}"${disabled}>${sourceLabel}</button>${row.sourceKey && row.sourceMode === "MANUAL" ? `<button type="button" class="timeline-restore-source" data-source-action="restore" title="Khôi phục dữ liệu hệ thống" aria-label="Khôi phục dữ liệu hệ thống mốc ${safeAttr(row.maMoc)}"${disabled}><i data-lucide="rotate-ccw"></i></button>` : ""}</td>
+      </tr>`);
+  });
+  if (!html.length) html.push(`<tr><td colspan="7" class="timeline-no-results">Không có mốc phù hợp với bộ lọc.</td></tr>`);
+  tbody.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
+  tbody.innerHTML = html.join("");
+  view.initFlatpickr(tbody);
+  view.createIconsScoped(element("timeline-table-wrap"));
+}
+
+function setActionAvailability(state) {
+  const hasPackage = Boolean(state.package);
+  const canEdit = hasPackage && state.package.canEdit !== false;
+  ["timeline-save", "timeline-refresh-auto"].forEach((id) => {
+    const button = element(id);
+    if (button) button.disabled = !canEdit;
+  });
+  const exportButton = element("timeline-export-word");
+  if (exportButton) exportButton.disabled = !hasPackage;
+  const versions = state.package?.allVersions || [];
+  const copyButton = element("timeline-copy-previous");
+  if (copyButton) copyButton.disabled = !canEdit || versions.length < 2;
+}
+
+async function selectPackage(view, packageId) {
+  const state = timelineState(view);
+  if (!packageId) {
+    state.package = null;
+    state.plan = null;
+    state.rows = [];
+    setHidden("timeline-empty", false);
+    setHidden("timeline-table-wrap", true);
+    setActionAvailability(state);
+    return;
+  }
+  setHidden("timeline-empty", true);
+  setHidden("timeline-loading", false);
+  setHidden("timeline-error", true);
+  try {
+    const pkg = await fetchPackage(view, packageId);
+    if (!pkg) throw new Error("Không tìm thấy gói thầu đã chọn.");
+    state.package = pkg;
+    state.plan = await fetchPlan(view, pkg.keHoachId) || findPlan(view, pkg);
+    state.rows = mergeTimelineRows(pkg, state.plan, findContracts(view, pkg));
+    state.dirty = false;
+    renderVersionOptions(pkg);
+    setHidden("timeline-table-wrap", false);
+    renderTimelineTable(view);
+    setActionAvailability(state);
+    const applicableCount = state.rows.filter((row) => row.isApplicable !== false).length;
+    updateLiveStatus("Đã tải " + applicableCount + " mốc áp dụng của gói " + (pkg.maGoiThau || "") + ".");
+  } catch (error) {
+    const errorBox = element("timeline-error");
+    if (errorBox) {
+      errorBox.textContent = error?.message || "Không thể tải timeline.";
+      errorBox.hidden = false;
+    }
+    setHidden("timeline-table-wrap", true);
+  } finally {
+    setHidden("timeline-loading", true);
+  }
+}
+
+function updateRowFromControl(view, control) {
+  const state = timelineState(view);
+  const rowElement = control.closest("tr[data-code]");
+  const row = state.rows.find((item) => item.maMoc === rowElement?.dataset.code);
+  const field = control.dataset.timelineField;
+  if (!row || !field) return;
+  const nextValue = ["ngayDuKien", "ngayThucTe"].includes(field)
+    ? normalizeTimelineDate(control.value)
+    : control.value;
+  if (nextValue === null) {
+    view.showToast("Thời gian không hợp lệ", "Vui lòng nhập ngày theo định dạng dd/MM/yyyy.", "error");
+    renderTimelineTable(view);
+    return;
+  }
+  row[field] = nextValue;
+  if (["donViBanHanh", "soVanBan", "ngayThucTe"].includes(field) && row.sourceKey) row.sourceMode = "MANUAL";
+  state.dirty = true;
+  renderTimelineTable(view);
+  updateLiveStatus("Có thay đổi chưa lưu.");
+}
+
+async function saveTimeline(view) {
+  const state = timelineState(view);
+  if (!state.package || state.package.canEdit === false) return;
+  const button = element("timeline-save");
+  if (button) button.disabled = true;
+  try {
+    state.package.timelineItems = state.rows.map((row) => {
+      const persistedRow = { ...row };
+      delete persistedRow.isApplicable;
+      return persistedRow;
+    });
+    view.model.commitLocalMutation("goithau", { records: [state.package] });
+    await view.model.persistData("goithau");
+    const controller = getAppController();
+    if (typeof controller?.forceSyncData === "function") await controller.forceSyncData(false, false, true);
+    state.dirty = false;
+    const applicableCount = state.rows.filter((row) => row.isApplicable !== false).length;
+    view.showToast("Đã lưu timeline", `Đã lưu ${applicableCount} mốc áp dụng của gói thầu.`, "success");
+    updateLiveStatus("Timeline đã được lưu và đồng bộ.");
+  } catch (error) {
+    view.showToast("Không thể lưu timeline", error?.message || "Vui lòng thử lại.", "error");
+  } finally {
+    setActionAvailability(state);
+  }
+}
+
+async function exportTimeline(view) {
+  const state = timelineState(view);
+  if (!state.package) return;
+  const button = element("timeline-export-word");
+  if (button) button.disabled = true;
+  try {
+    if (state.dirty) await saveTimeline(view);
+    const controller = getAppController();
+    const snapshotVersion = await controller.prepareExportSnapshot();
+    const url = appendExportSnapshotVersion(`/api/export-timeline/${encodeURIComponent(state.package.id)}`, snapshotVersion);
+    const code = String(state.package.maGoiThau || "LCNT").replace(/[^A-Za-z0-9_-]+/g, "_");
+    await authFetchDownload(url, `Timeline_goi_thau_${code}.docx`);
+    view.showToast("Xuất Word thành công", "Checklist timeline đã được tải xuống.", "success");
+  } catch (error) {
+    view.showToast("Không thể xuất Word", error?.message || "Vui lòng thử lại.", "error");
+  } finally {
+    setActionAvailability(state);
+  }
+}
+
+async function copyPreviousTimeline(view) {
+  const state = timelineState(view);
+  const pkg = state.package;
+  const versions = [...(pkg?.allVersions || [])].sort((a, b) => Number(b.phienBan || 0) - Number(a.phienBan || 0));
+  const currentIndex = versions.findIndex((version) => String(version.id) === String(pkg?.id));
+  const previous = currentIndex >= 0 ? versions[currentIndex + 1] : null;
+  if (!previous) {
+    view.showToast("Timeline", "Không tìm thấy phiên bản trước.", "info");
+    return;
+  }
+  const confirmed = await view.customConfirm(
+    "Sao chép timeline",
+    "Các mốc E-HSMT, mở thầu, đánh giá, kết quả và hợp đồng sẽ được đặt lại cho phiên bản hiện tại.",
+    "copy"
+  );
+  if (!confirmed) return;
+  const previousPackage = await fetchPackage(view, previous.id);
+  state.rows = copyTimelineForNewVersion(mergeTimelineRows(
+    previousPackage,
+    findPlan(view, previousPackage),
+    findContracts(view, previousPackage)
+  ));
+  state.rows = applyAutomaticTimelineSources(state.rows, pkg, state.plan);
+  state.rows = applyTimelineApplicability(state.rows, pkg, state.plan);
+  state.dirty = true;
+  renderTimelineTable(view);
+  updateLiveStatus("Đã sao chép từ phiên bản trước; hãy lưu thay đổi.");
+}
+
+function bindTimelineEvents(view, pane) {
+  if (pane.dataset.eventsBound === "true") return;
+  pane.dataset.eventsBound = "true";
+  element("timeline-plan-select")?.addEventListener("change", async () => {
+    const state = timelineState(view);
+    state.packageQuery = "";
+    const packageSelect = element("timeline-package-select");
+    if (packageSelect) packageSelect.value = "";
+    await selectPackage(view, "");
+    renderPackageOptions(view, [], "");
+    await loadPackageOptions(view, "");
+  });
+  element("timeline-package-select")?.addEventListener("change", (event) => {
+    timelineState(view).packageQuery = "";
+    selectPackage(view, event.target.value);
+  });
+  element("timeline-version-select")?.addEventListener("change", (event) => selectPackage(view, event.target.value));
+  element("timeline-status-filter")?.addEventListener("change", (event) => {
+    timelineState(view).filters.status = event.target.value;
+    renderTimelineTable(view);
+  });
+  element("timeline-table-body")?.addEventListener("change", (event) => {
+    const control = event.target.closest("[data-timeline-field]");
+    if (control) updateRowFromControl(view, control);
+  });
+  element("timeline-table-body")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-source-action]");
+    if (!button) return;
+    const state = timelineState(view);
+    const code = button.closest("tr[data-code]")?.dataset.code;
+    const row = state.rows.find((item) => item.maMoc === code);
+    if (!row) return;
+    row.sourceMode = button.dataset.sourceAction === "restore" || row.sourceMode === "MANUAL" ? "AUTO" : "MANUAL";
+    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan);
+    state.dirty = true;
+    renderTimelineTable(view);
+  });
+  element("timeline-refresh-auto")?.addEventListener("click", () => {
+    const state = timelineState(view);
+    state.rows = applyAutomaticTimelineSources(state.rows, state.package, state.plan);
+    state.dirty = true;
+    renderTimelineTable(view);
+    updateLiveStatus("Đã làm mới các mốc tự động; hãy lưu thay đổi.");
+  });
+  element("timeline-save")?.addEventListener("click", () => saveTimeline(view));
+  element("timeline-export-word")?.addEventListener("click", () => exportTimeline(view));
+  element("timeline-copy-previous")?.addEventListener("click", () => copyPreviousTimeline(view));
+}
+
+export function renderPackageTimeline() {
+  const pane = element("tab-goithau-timeline");
+  if (!pane) return;
+  const state = timelineState(this);
+  bindTimelineEvents(this, pane);
+  renderPlanOptions(this);
+  if (state.package && !state.dirty) {
+    const refreshed = (this.model.state.goithau || []).find((pkg) => String(pkg.id) === String(state.package.id));
+    if (refreshed) {
+      state.package = refreshed;
+      state.plan = findPlan(this, refreshed);
+      state.rows = mergeTimelineRows(refreshed, state.plan, findContracts(this, refreshed));
+    }
+  }
+  setActionAvailability(state);
+  if (state.package) {
+    renderTimelineTable(this);
+  } else if (!state.loading && !state.packageOptions.length) {
+    loadPackageOptions(this);
+  }
+}

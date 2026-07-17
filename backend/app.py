@@ -379,6 +379,7 @@ from backend.sync.api import (
 from backend.documents.export_routes import (
     export_plan_api,
     export_report_api,
+    export_timeline_api,
     list_templates_api,
     set_active_template_api,
     upload_template_api,
@@ -588,6 +589,7 @@ routes = [
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
     WebSocketRoute("/ws/sync", sync_websocket_endpoint),
     Route("/api/export-report/{package_id}", export_report_api, methods=["GET"]),
+    Route("/api/export-timeline/{package_id}", export_timeline_api, methods=["GET"]),
     Route("/api/export-plan/{plan_id}", export_plan_api, methods=["GET"]),
     Route("/api/templates", list_templates_api, methods=["GET"]),
     Route("/api/templates/active", set_active_template_api, methods=["POST"]),
@@ -642,6 +644,7 @@ routes = [
     Route("/ke-hoach/{action}", index, methods=["GET"]),
     Route("/goi-thau", index, methods=["GET"]),
     Route("/goi-thau/{action}", index, methods=["GET"]),
+    Route("/timeline-goi-thau", index, methods=["GET"]),
     Route("/mothau", index, methods=["GET"]),
     Route("/mothau/{action}", index, methods=["GET"]),
     Route("/danh-gia-hsdt", index, methods=["GET"]),

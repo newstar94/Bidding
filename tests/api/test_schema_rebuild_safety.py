@@ -52,9 +52,10 @@ def test_clean_baseline_is_transactional_versioned_and_idempotent(monkeypatch, t
         ).fetchall()
         assert [row[0] for row in migrations] == list(range(1, db_utils.DB_SCHEMA_VERSION + 1))
         assert migrations[0][1] == "0001_clean_baseline"
-        assert migrations[-1][1] == "0002_record_edit_ownership"
+        assert migrations[-1][1] == "0003_package_timeline"
         assert all(len(row[2]) == 64 and row[3] for row in migrations)
         assert "record_edit_ownership" in tables
+        assert "goi_thau_moc_tien_do" in tables
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("SELECT count(*) FROM tai_khoan").fetchone()[0] == 1
         assert connection.execute("SELECT count(*) FROM goi_dich_vu").fetchone()[0] == 3

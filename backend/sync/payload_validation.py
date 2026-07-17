@@ -84,6 +84,7 @@ SYNC_CHILD_FIELDS = {
     "goi_thau": {
         "phanLoList", "awardedPhanLoList", "tuyChonMuaThemList", "giaHanList",
         "yeuCauLamRoList", "traLoiLamRoList", "toChuyenGia", "toThamDinh",
+        "timelineItems",
     },
     "nha_thau": {"thanhVienLienDanh"},
     "thong_tin_mo_thau": {"thanhVienLienDanh"},
@@ -111,6 +112,97 @@ CHILD_MONEY_FIELDS = {
     "giaTriUocTinh", "gia_tri_uoc_tinh",
 }
 CHILD_NUMBER_FIELDS = {"soLuong", "so_luong", "tyLe", "ty_le"}
+TIMELINE_TEXT_LIMITS = {
+    "id": 160,
+    "maNhom": 3,
+    "tenNhom": 160,
+    "maMoc": 10,
+    "congViec": 300,
+    "donViBanHanh": 300,
+    "soVanBan": 300,
+    "ngayDuKien": 10,
+    "ngayThucTe": 10,
+    "ghiChu": 2000,
+    "sourceKey": 160,
+    "sourceMode": 10,
+    "trangThai": 24,
+}
+TIMELINE_REQUIRED_FIELDS = {"maNhom", "tenNhom", "maMoc", "congViec"}
+TIMELINE_ALLOWED_FIELDS = set(TIMELINE_TEXT_LIMITS) | {
+    "isOptional", "sortOrder", "templateVersion",
+}
+TIMELINE_STATUSES = {"PENDING", "IN_PROGRESS", "DONE", "NOT_APPLICABLE"}
+
+
+def _validate_timeline_items(items, item_path, errors):
+    seen_codes = set()
+    for child_index, child in enumerate(items):
+        child_path = f"{item_path}.timelineItems[{child_index}]"
+        if not isinstance(child, dict):
+            errors.append(_field_error(child_path, "TYPE_OBJECT_REQUIRED", "Mốc timeline phải là object."))
+            continue
+        unknown = sorted(set(child) - TIMELINE_ALLOWED_FIELDS)
+        for field_name in unknown:
+            errors.append(_field_error(
+                f"{child_path}.{field_name}",
+                "UNKNOWN_FIELD",
+                "Trường timeline không được hỗ trợ.",
+            ))
+        for field_name in TIMELINE_REQUIRED_FIELDS:
+            if _is_blank(child.get(field_name)):
+                errors.append(_field_error(
+                    f"{child_path}.{field_name}",
+                    "REQUIRED",
+                    "Trường timeline không được để trống.",
+                ))
+        for field_name, limit in TIMELINE_TEXT_LIMITS.items():
+            value = child.get(field_name)
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                errors.append(_field_error(
+                    f"{child_path}.{field_name}", "INVALID_STRING", "Giá trị phải là chuỗi."
+                ))
+            elif len(value) > limit:
+                errors.append(_field_error(
+                    f"{child_path}.{field_name}", "STRING_TOO_LONG", "Chuỗi vượt quá giới hạn cho phép."
+                ))
+        group_code = child.get("maNhom")
+        if isinstance(group_code, str) and group_code not in {"I", "II", "III", "IV", "V"}:
+            errors.append(_field_error(f"{child_path}.maNhom", "INVALID_TIMELINE_GROUP", "Mã nhóm timeline không hợp lệ."))
+        milestone_code = child.get("maMoc")
+        if isinstance(milestone_code, str):
+            if not re.fullmatch(r"[1-5]\.(?:[1-9]|1[0-3])", milestone_code):
+                errors.append(_field_error(f"{child_path}.maMoc", "INVALID_TIMELINE_CODE", "Mã mốc timeline không hợp lệ."))
+            elif milestone_code in seen_codes:
+                errors.append(_field_error(f"{child_path}.maMoc", "DUPLICATE_TIMELINE_CODE", "Mã mốc timeline bị trùng."))
+            else:
+                seen_codes.add(milestone_code)
+        for field_name in ("ngayDuKien", "ngayThucTe"):
+            value = child.get(field_name)
+            if value in (None, ""):
+                continue
+            try:
+                parsed = datetime.strptime(value, "%Y-%m-%d")
+                valid_date = parsed.strftime("%Y-%m-%d") == value
+            except (TypeError, ValueError):
+                valid_date = False
+            if not valid_date:
+                errors.append(_field_error(f"{child_path}.{field_name}", "INVALID_DATE", "Ngày timeline phải theo định dạng YYYY-MM-DD."))
+        source_mode = child.get("sourceMode", "MANUAL")
+        if source_mode not in {"AUTO", "MANUAL"}:
+            errors.append(_field_error(f"{child_path}.sourceMode", "INVALID_SOURCE_MODE", "Nguồn timeline không hợp lệ."))
+        status = child.get("trangThai", "PENDING")
+        if status not in TIMELINE_STATUSES:
+            errors.append(_field_error(f"{child_path}.trangThai", "INVALID_TIMELINE_STATUS", "Trạng thái timeline không hợp lệ."))
+        if "isOptional" in child and not isinstance(child.get("isOptional"), bool):
+            errors.append(_field_error(f"{child_path}.isOptional", "INVALID_BOOLEAN", "isOptional phải là boolean."))
+        sort_order = child.get("sortOrder", child_index)
+        if isinstance(sort_order, bool) or not isinstance(sort_order, int) or not 0 <= sort_order <= 499:
+            errors.append(_field_error(f"{child_path}.sortOrder", "INVALID_SORT_ORDER", "Thứ tự timeline phải từ 0 đến 499."))
+        template_version = child.get("templateVersion", 1)
+        if isinstance(template_version, bool) or not isinstance(template_version, int) or template_version < 1:
+            errors.append(_field_error(f"{child_path}.templateVersion", "INVALID_TEMPLATE_VERSION", "Phiên bản checklist không hợp lệ."))
 
 
 def _is_blank(value):
@@ -366,6 +458,8 @@ def validate_sync_payload_shape(payload):
                     elif key == "goiThauIds":
                         if any(not isinstance(child, str) or not child.strip() for child in child_value):
                             errors.append(_field_error(f"{item_path}.{key}", "INVALID_ID_LIST", "Danh sách ID gói thầu không hợp lệ."))
+                    elif key == "timelineItems":
+                        _validate_timeline_items(child_value, item_path, errors)
                     else:
                         for child_index, child in enumerate(child_value):
                             child_path = f"{item_path}.{key}[{child_index}]"

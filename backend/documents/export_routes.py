@@ -8,7 +8,7 @@ from backend.shared.logging_utils import error_response
 
 
 _HEAVY_DOCUMENT_OPERATIONS = {
-    "export_plan_api", "export_report_api", "export_excel_template_api",
+    "export_plan_api", "export_report_api", "export_timeline_api", "export_excel_template_api",
     "export_mothau_template_api", "export_danhgiahsdt_template_api",
     "export_ketquaqd_template_api", "export_phanlo_excel_api",
     "export_tuychonmuathem_excel_api", "export_opening_fin_template_api",
@@ -46,6 +46,10 @@ async def export_plan_api(request):
 
 async def export_report_api(request):
     return await _dispatch("routes_docx", "export_report_api", request)
+
+
+async def export_timeline_api(request):
+    return await _dispatch("routes_docx", "export_timeline_api", request)
 
 
 async def list_templates_api(request):

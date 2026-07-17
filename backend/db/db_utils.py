@@ -62,6 +62,31 @@ def _assert_schema_contract(cursor):
             raise RuntimeError(f"Schema drift: table definition changed for {table_name}.")
 
 
+def _assert_post_baseline_schema(cursor):
+    """Validate objects introduced after the immutable baseline migration."""
+    timeline_columns = [
+        "id", "organization_id", "owner_type", "goi_thau_id", "ma_nhom",
+        "ten_nhom", "ma_moc", "cong_viec", "don_vi_ban_hanh", "so_van_ban",
+        "ngay_du_kien", "ngay_thuc_te", "ghi_chu", "source_key", "source_mode",
+        "is_optional", "trang_thai", "sort_order", "template_version",
+        "sync_version", "created_at", "updated_at",
+    ]
+    actual_columns = [
+        row[1] for row in cursor.execute("PRAGMA table_info(goi_thau_moc_tien_do)").fetchall()
+    ]
+    if actual_columns != timeline_columns:
+        raise RuntimeError("Schema drift: package timeline table is missing or incompatible.")
+    required_indexes = {
+        "idx_goi_thau_moc_tien_do_package",
+        "idx_goi_thau_moc_tien_do_status",
+    }
+    actual_indexes = {
+        row[1] for row in cursor.execute("PRAGMA index_list(goi_thau_moc_tien_do)").fetchall()
+    }
+    if not required_indexes <= actual_indexes:
+        raise RuntimeError("Schema drift: package timeline indexes are missing.")
+
+
 def _create_baseline_indexes_and_triggers(cursor):
     """Create indexes, invariant triggers and FTS exactly once in migration 0001."""
     versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
@@ -610,6 +635,7 @@ def khoi_tao_va_di_tru_he_thong():
         if version != DB_SCHEMA_VERSION:
             raise RuntimeError(f"Migration runner stopped at unexpected version {version}.")
         _assert_schema_contract(cursor)
+        _assert_post_baseline_schema(cursor)
         _assert_foreign_key_integrity(cursor)
 
         conn.commit()

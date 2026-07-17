@@ -16,7 +16,8 @@ export function toastDeduplicationKey(title, message, type) {
 const VIEW_MODULE_LOADERS = Object.freeze({
   dashboard: () => import("./DashboardView.js"),
   plan: () => import("./PlanView.js"),
-  partner: () => import("../partners/PartnerView.js")
+  partner: () => import("../partners/PartnerView.js"),
+  timeline: () => import("../packages/PackageTimelineView.js")
 });
 
 const VIEW_MODULES_BY_TAB = Object.freeze({
@@ -25,6 +26,7 @@ const VIEW_MODULES_BY_TAB = Object.freeze({
   kehoach: ["plan"],
   "kehoach-detail": ["plan"],
   goithau: ["plan"],
+  "goithau-timeline": ["timeline"],
   "goithau-detail": ["plan"],
   mothau: ["plan"],
   danhgiahsdt: ["plan"],
@@ -154,6 +156,7 @@ export class BiddingView {
   enhanceTableHeaders(tableOrId, tableKey) {
     let table = typeof tableOrId === "string" ? document.getElementById(tableOrId) : tableOrId;
     if (!table) return;
+    if (table.dataset.noSort === "true") return;
     const svgUnsorted = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevrons-up-down bf-s-bd877e16c3"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>`;
     const svgAsc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up bf-s-bd877e16c3"><path d="m18 15-6-6-6 6"/></svg>`;
     const svgDesc = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down bf-s-bd877e16c3"><path d="m6 9 6 6 6-6"/></svg>`;

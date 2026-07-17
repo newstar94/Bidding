@@ -1,0 +1,77 @@
+<section class="tab-pane timeline-page" id="tab-goithau-timeline" aria-labelledby="timeline-page-heading">
+    <div class="timeline-hero">
+        <div>
+            <span class="timeline-kicker">Tiến độ hồ sơ</span>
+            <h2 id="timeline-page-heading">Timeline gói thầu</h2>
+        </div>
+        <div class="timeline-hero-icon" aria-hidden="true"><i data-lucide="calendar-clock"></i></div>
+    </div>
+
+    <div class="timeline-toolbar" aria-label="Bộ chọn timeline">
+        <div class="timeline-field">
+            <label for="timeline-plan-select">Kế hoạch LCNT <span class="required">*</span></label>
+            <select id="timeline-plan-select"><option value="">Chọn kế hoạch</option></select>
+        </div>
+        <div class="timeline-field timeline-field-package">
+            <label for="timeline-package-select">Gói thầu</label>
+            <select id="timeline-package-select" disabled><option value="">Chọn kế hoạch trước</option></select>
+        </div>
+        <div class="timeline-field">
+            <label for="timeline-version-select">Phiên bản</label>
+            <select id="timeline-version-select" disabled><option value="">--</option></select>
+        </div>
+    </div>
+
+    <div class="timeline-actionbar">
+        <div class="timeline-filters" aria-label="Lọc mốc timeline">
+            <label class="timeline-filter-label" for="timeline-status-filter">Trạng thái</label>
+            <select id="timeline-status-filter">
+                <option value="">Tất cả</option>
+                <option value="PENDING">Chưa thực hiện</option>
+                <option value="IN_PROGRESS">Đang thực hiện</option>
+                <option value="DONE">Đã hoàn thành</option>
+                <option value="NOT_APPLICABLE">Không áp dụng</option>
+            </select>
+        </div>
+        <div class="timeline-actions">
+            <button class="btn btn-outline" id="timeline-copy-previous" type="button" disabled>
+                <i data-lucide="copy"></i> Sao chép bản trước
+            </button>
+            <button class="btn btn-outline" id="timeline-refresh-auto" type="button" disabled>
+                <i data-lucide="refresh-cw"></i> Đồng bộ dữ liệu gói thầu
+            </button>
+            <button class="btn btn-outline" id="timeline-export-word" type="button" disabled>
+                <i data-lucide="file-down"></i> Xuất Word
+            </button>
+            <button class="btn btn-primary" id="timeline-save" type="button" disabled>
+                <i data-lucide="save"></i> Lưu thay đổi
+            </button>
+        </div>
+    </div>
+
+    <div class="timeline-content" id="timeline-content">
+        <div class="timeline-empty" id="timeline-empty">
+            <i data-lucide="list-checks" aria-hidden="true"></i>
+            <h3>Chọn một gói thầu để bắt đầu</h3>
+            <p>Checklist sẽ được khởi tạo từ dữ liệu nghiệp vụ và có thể bổ sung thủ công.</p>
+        </div>
+        <div class="timeline-loading" id="timeline-loading" role="status" aria-live="polite" hidden>
+            <span class="initial-loading-spinner" aria-hidden="true"></span> Đang tải timeline...
+        </div>
+        <div class="timeline-error" id="timeline-error" role="alert" hidden></div>
+        <div class="timeline-table-wrap" id="timeline-table-wrap" hidden>
+            <table class="data-table timeline-table" id="timeline-table" data-no-sort="true">
+                <thead>
+                    <tr>
+                        <th scope="col">STT</th><th scope="col">Công việc</th>
+                        <th scope="col">Đơn vị ban hành</th><th scope="col">Số văn bản</th>
+                        <th scope="col">Thời gian</th>
+                        <th scope="col">Trạng thái</th><th scope="col">Nguồn</th>
+                    </tr>
+                </thead>
+                <tbody id="timeline-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+    <p class="timeline-live-status" id="timeline-live-status" role="status" aria-live="polite"></p>
+</section>

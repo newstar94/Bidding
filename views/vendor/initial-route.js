@@ -109,6 +109,7 @@
     "tong-quan": ["dashboard", "Tổng quan hệ thống", "tổng quan"],
     "ke-hoach": ["kehoach", "Kế hoạch lựa chọn nhà thầu", "kế hoạch lựa chọn nhà thầu"],
     "goi-thau": ["goithau", "Danh sách Gói thầu", "danh sách gói thầu"],
+    "timeline-goi-thau": ["goithau-timeline", "Timeline gói thầu", "timeline gói thầu"],
     mothau: ["goithau", "Nhập thông tin Mở thầu (E-HSDT / E-HSĐXKT)", "thông tin mở thầu"],
     "danh-gia-hsdt": ["goithau", "Đánh giá Hồ sơ dự thầu (E-HSDT)", "đánh giá hồ sơ dự thầu"],
     "hop-dong": ["hopdong", "Danh sách Hợp đồng", "danh sách hợp đồng"],

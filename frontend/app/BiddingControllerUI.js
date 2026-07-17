@@ -370,6 +370,7 @@ export function switchTab(tabName, action = null, updateState = true) {
     dashboard: "Tổng quan hệ thống",
     kehoach: "Kế hoạch lựa chọn nhà thầu",
     goithau: "Danh sách Gói thầu",
+    "goithau-timeline": "Timeline gói thầu",
     chudautu: "Danh mục Chủ đầu tư",
     nhathau: "Danh mục Nhà thầu",
     chuyengia: "Tổ Chuyên gia Đấu thầu",
@@ -455,6 +456,9 @@ export function renderTabData(tabName, action = null) {
       break;
     case "goithau":
       this.view.renderGoiThauTable();
+      break;
+    case "goithau-timeline":
+      this.view.renderPackageTimeline();
       break;
     case "chudautu":
       this.view.renderChuDauTuTable();
@@ -596,8 +600,10 @@ export async function closeModal(modalId, options = {}) {
       this.switchTab(destTab, destAction, true);
     }
   } else if (modalId === "modal-chudautu") {
+    const planModal = document.getElementById("modal-kehoach");
     const contractModal = document.getElementById("modal-hopdong");
-    if (!contractModal || !contractModal.classList.contains("active")) {
+    const isParentModalActive = [planModal, contractModal].some((modal) => modal?.classList.contains("active"));
+    if (!isParentModalActive) {
       this.switchTab("chudautu", null, true);
     }
   } else if (modalId === "modal-nhathau") {
