@@ -11,6 +11,10 @@ from docx.shared import Inches
 from datetime import datetime, timezone
 
 from backend.documents.archive_validation import validate_ooxml_archive
+from backend.documents.docx_column_loop import (
+    COLUMN_LITERAL_CONTEXT,
+    expand_column_loops,
+)
 from backend.documents.template_security import (
     create_template_environment,
     validate_template_statements,
@@ -585,6 +589,7 @@ def translate_docx_template(template_path, context):
 
     mtime = os.path.getmtime(template_path)
 
+    context.update(COLUMN_LITERAL_CONTEXT)
     enrich_context_with_lowercase_keys(context)
     valid_vars = set(context.keys())
     for val in context.values():
@@ -607,6 +612,10 @@ def translate_docx_template(template_path, context):
         template_bytes = template_file.read()
     validate_ooxml_archive(template_bytes, "docx")
 
+    expanded_template_bytes = expand_column_loops(template_bytes, context)
+    has_column_loops = expanded_template_bytes is not template_bytes
+    template_bytes = expanded_template_bytes
+
     temp_bytes = BytesIO()
     translated_xml_parts = []
     with zipfile.ZipFile(BytesIO(template_bytes), 'r') as yin:
@@ -625,7 +634,13 @@ def translate_docx_template(template_path, context):
 
     translated_data = temp_bytes.getvalue()
 
-    _TRANSLATED_DOCXTPL_CACHE[template_path] = (mtime, valid_vars_hash, DocxTemplate(BytesIO(translated_data)), translated_data)
+    if not has_column_loops:
+        _TRANSLATED_DOCXTPL_CACHE[template_path] = (
+            mtime,
+            valid_vars_hash,
+            DocxTemplate(BytesIO(translated_data)),
+            translated_data,
+        )
 
     return DocxTemplate(BytesIO(translated_data))
 
