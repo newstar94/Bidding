@@ -8,7 +8,8 @@ import {
   readTimelineSelection,
   resetTimelineSession,
   saveTimelineSelection,
-  timelineDateBinding
+  timelineDateBinding,
+  timelinePlanProgressStatus
 } from "../../frontend/packages/PackageTimelineView.js";
 import { resetTimelineOnNavigation } from "../../frontend/app/BiddingControllerUI.js";
 
@@ -43,6 +44,7 @@ test("timeline uses searchable plan and package dropdowns without a duplicate se
   assert.match(source, /readTimelineSelection\(this\.model\)/);
   assert.match(source, /restoreTimelineSelection\(this, selection\)/);
   assert.match(source, /workspaceToken/);
+  assert.match(source, /timelinePlanProgressStatus\(plan\.id, packages\) !== "Hoàn thành"/);
   assert.match(source, /if \(!planId\) \{[^}]*renderPackageOptions\(view, \[\], ""\)/s);
   assert.match(source, /state\.plan = await fetchPlan\(view, pkg\.keHoachId\) \|\| findPlan\(view, pkg\)/);
   assert.match(markup, /id="timeline-table" data-no-sort="true"/);
@@ -157,4 +159,19 @@ test("navigation resets timeline only when moving to another menu", () => {
   assert.equal(resetCount, 1);
   assert.equal(resetTimelineOnNavigation(controller, "goithau-timeline"), false);
   assert.equal(resetCount, 1);
+});
+
+test("timeline displays only plans that are not completed", () => {
+  const packages = [
+    { id: "package-preparing", keHoachId: "plan-preparing", trangThai: "Chuẩn bị", isLatest: true },
+    { id: "package-active", keHoachId: "plan-active", trangThai: "Đang mời thầu", isLatest: true },
+    { id: "package-awarded", keHoachId: "plan-completed", trangThai: "Đã có kết quả", isLatest: true },
+    { id: "package-cancelled", keHoachId: "plan-completed", trangThai: "Hủy thầu", isLatest: true },
+    { id: "package-old", keHoachId: "plan-completed", trangThai: "Chuẩn bị", isLatest: false }
+  ];
+
+  assert.equal(timelinePlanProgressStatus("plan-empty", packages), "Chưa triển khai");
+  assert.equal(timelinePlanProgressStatus("plan-preparing", packages), "Chưa triển khai");
+  assert.equal(timelinePlanProgressStatus("plan-active", packages), "Đang thực hiện");
+  assert.equal(timelinePlanProgressStatus("plan-completed", packages), "Hoàn thành");
 });

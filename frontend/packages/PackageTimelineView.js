@@ -22,6 +22,8 @@ const STATUS_LABELS = Object.freeze({
 });
 
 const TIMELINE_SELECTION_KEY = "bf_timeline_selection";
+const TERMINAL_PACKAGE_STATUSES = new Set(["Đã có kết quả", "Hủy thầu", "Huỷ thầu", "AWARDED", "CANCELLED"]);
+const PREPARING_PACKAGE_STATUSES = new Set(["Chuẩn bị", "PREPARING"]);
 
 export function readTimelineSelection(model) {
   try {
@@ -126,6 +128,33 @@ function findPlan(view, packageRecord) {
   return (view.model.state.kehoach || []).find((plan) => String(plan.id) === String(packageRecord?.keHoachId)) || {};
 }
 
+export function timelinePlanProgressStatus(planId, packages = []) {
+  const planPackages = packages.filter((pkg) => (
+    String(pkg.keHoachId || pkg.ke_hoach_id || "") === String(planId || "")
+    && pkg.isLatest !== false
+    && pkg.isLatest !== 0
+    && !pkg.archivedAt
+  ));
+  const statuses = planPackages.map((pkg) => String(pkg.trangThai || pkg.trang_thai || "Chuẩn bị").trim());
+  if (!statuses.length || statuses.every((status) => PREPARING_PACKAGE_STATUSES.has(status))) {
+    return "Chưa triển khai";
+  }
+  return statuses.some((status) => !TERMINAL_PACKAGE_STATUSES.has(status))
+    ? "Đang thực hiện"
+    : "Hoàn thành";
+}
+
+function selectableTimelinePlans(view) {
+  const packages = view.model.state.goithau || [];
+  return (view.model.state.kehoach || [])
+    .filter((plan) => plan.isLatest !== false && plan.isLatest !== 0 && !plan.archivedAt)
+    .filter((plan) => timelinePlanProgressStatus(plan.id, packages) !== "Hoàn thành");
+}
+
+function isTimelinePlanSelectable(view, planId) {
+  return selectableTimelinePlans(view).some((plan) => String(plan.id) === String(planId));
+}
+
 function findContracts(view, packageRecord) {
   return (view.model.state.hopdong || []).filter((contract) => (
     Array.isArray(contract.goiThauIds)
@@ -200,8 +229,7 @@ async function fetchPlan(view, id) {
 function renderPlanOptions(view) {
   const select = element("timeline-plan-select");
   if (!select) return;
-  const plans = (view.model.state.kehoach || [])
-    .filter((plan) => plan.isLatest !== false && !plan.archivedAt)
+  const plans = selectableTimelinePlans(view)
     .sort((left, right) => String(left.maKeHoach || "").localeCompare(String(right.maKeHoach || ""), "vi"));
   const current = select.value;
   select.innerHTML = `<option value="">Chọn kế hoạch</option>${plans.map((plan) => (
@@ -438,6 +466,10 @@ async function restoreTimelineSelection(view, selection) {
   const state = timelineState(view);
   state.restoringSelection = true;
   try {
+    if (!isTimelinePlanSelectable(view, selection.planId)) {
+      clearTimelineSelection(view.model);
+      return;
+    }
     const planSelect = element("timeline-plan-select");
     syncTimelineSelectValue(planSelect, selection.planId);
     await selectPackage(view, selection.packageId);
@@ -639,6 +671,11 @@ export function renderPackageTimeline() {
   const state = timelineState(this);
   bindTimelineEvents(this, pane);
   renderPlanOptions(this);
+  const selectedPlanId = state.package?.keHoachId || state.plan?.id;
+  if (state.package && !isTimelinePlanSelectable(this, selectedPlanId)) {
+    resetPackageTimeline.call(this);
+    return;
+  }
   if (!state.package && !state.restoreAttempted) {
     state.restoreAttempted = true;
     const selection = readTimelineSelection(this.model);
