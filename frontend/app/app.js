@@ -5,6 +5,8 @@ import { installDialogAccessibility } from "../shared/dialogAccessibility.js";
 import { retryPendingWorkspacePurges } from "./workspaceState.js";
 import { installSemanticAccessibility } from "../shared/semanticAccessibility.js";
 import { bootstrapLandingPage, isLandingPath } from "../landing/LandingPage.js";
+import { installReleaseDiagnostics } from "../shared/releaseDiagnostics.js";
+installReleaseDiagnostics();
 const startupMark = (name) => {
   try {
     performance.mark(`bf:${name}`);

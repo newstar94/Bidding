@@ -73,6 +73,10 @@ a:hover {
   height: 100vh;
   width: 100vw;
   position: relative;
+  /* Keep high-z-index widgets inside the application shell from escaping
+     above body-level dialogs and authentication overlays. */
+  z-index: 0;
+  isolation: isolate;
 }
 ::-webkit-scrollbar {
   width: 6px;

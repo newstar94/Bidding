@@ -297,6 +297,10 @@ export function handlePathRouting(pathname, updateState = true, isInit = false) 
   }
   return this.switchTab(tabName, action, updateState);
 }
+export function shouldAutoOpenCreateModal(state, tabName) {
+  return state?.activetab === tabName && state?.activeaction === "taomoi";
+}
+
 export function switchTab(tabName, action = null, updateState = true) {
   const guardedRoute = guardTabAccess(this, tabName, action, updateState);
   tabName = guardedRoute.tabName;
@@ -419,6 +423,7 @@ export function switchTab(tabName, action = null, updateState = true) {
   this.renderTabData(tabName, action);
   if (action === "taomoi") {
     setTimeout(() => {
+      if (!shouldAutoOpenCreateModal(this.model?.state, tabName)) return;
       if (tabName === "kehoach") {
         const modal = document.getElementById("modal-kehoach");
         if (!modal || !modal.classList.contains("active")) this.editKeHoach(null);

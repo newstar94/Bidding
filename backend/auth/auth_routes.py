@@ -549,20 +549,9 @@ def _session_response(user, request):
     return response
 
 
-async def check_session_api(request):
-    started_at = time.perf_counter()
+def _check_session_sync(request, data, started_at):
     try:
-        try:
-            data = await request.json()
-        except Exception:
-            data = {}
-        invalid = validate_or_response(request, data, {
-            "remember": {"type": "boolean"},
-        })
-        if invalid:
-            return invalid
         session_token = (request.cookies.get('session_token') or '').strip()
-        remember = data.get('remember', False)
 
         if not session_token:
             return JSONResponse({"valid": False, "reason": "missing_auth"})
@@ -580,6 +569,29 @@ async def check_session_api(request):
     except Exception as e:
         log_error(e, "check_session_api")
         return JSONResponse({"valid": False, "error": "Lỗi kiểm tra phiên làm việc."}, status_code=500)
+
+
+async def check_session_api(request):
+    started_at = time.perf_counter()
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    invalid = validate_or_response(request, data, {
+        "remember": {"type": "boolean"},
+    })
+    if invalid:
+        return invalid
+    try:
+        return await run_database_read(
+            _check_session_sync,
+            request,
+            data,
+            started_at,
+            timeout_seconds=10.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=False)
 
 
 async def update_profile_api(request):
@@ -1528,38 +1540,9 @@ async def update_user_role_api(request):
             conn.close()
 
 
-async def update_user_metadata_api(request):
+def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request, required_role='super_admin')
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-
-        data, json_error = await read_json_object(request)
-        if json_error:
-            return json_error
-        invalid = validate_or_response(request, data, {
-            "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-            "field": {"type": "string", "required": True, "enum": {"name", "email"}},
-            "value": {"required": True},
-        })
-        if invalid:
-            return invalid
-        user_id = data.get('user_id')
-        field = data.get('field')
-        value = data.get('value')
-
-        if not user_id or not field:
-            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-        if field == "email":
-            return JSONResponse(
-                {
-                    "error": "Email chỉ được thay đổi sau khi chủ tài khoản xác thực mật khẩu và OTP gửi đến email mới.",
-                    "code": "EMAIL_CHANGE_VERIFICATION_REQUIRED",
-                },
-                status_code=403,
-            )
-
         field_map = {
             'name': 'ho_ten',
         }
@@ -1576,7 +1559,7 @@ async def update_user_metadata_api(request):
 
         log_audit(
             "admin.user_metadata_updated",
-            actor_user_id=role_or_err.user_id,
+            actor_user_id=actor_user_id,
             target_type="tai_khoan",
             target_id=user_id,
             request=request,
@@ -1605,7 +1588,55 @@ async def update_user_metadata_api(request):
         log_error(e, "update_user_metadata_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật thông tin."}, status_code=500)
 
-async def list_system_packages_api(request):
+
+async def update_user_metadata_api(request):
+    try:
+        is_valid, role_or_err = await run_database_read(
+            verify_session,
+            request,
+            required_role='super_admin',
+            timeout_seconds=5.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=False)
+    if not is_valid:
+        return JSONResponse({"error": role_or_err}, status_code=403)
+    data, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+    invalid = validate_or_response(request, data, {
+        "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+        "field": {"type": "string", "required": True, "enum": {"name", "email"}},
+        "value": {"required": True},
+    })
+    if invalid:
+        return invalid
+    user_id = data.get('user_id')
+    field = data.get('field')
+    value = data.get('value')
+    if not user_id or not field:
+        return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
+    if field == "email":
+        return JSONResponse(
+            {
+                "error": "Email chỉ được thay đổi sau khi chủ tài khoản xác thực mật khẩu và OTP gửi đến email mới.",
+                "code": "EMAIL_CHANGE_VERIFICATION_REQUIRED",
+            },
+            status_code=403,
+        )
+    try:
+        return await run_database_write(
+            _update_user_metadata_sync,
+            request,
+            role_or_err.user_id,
+            user_id,
+            field,
+            value,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=True)
+
+def _list_system_packages_sync(request):
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -1626,7 +1657,7 @@ async def list_system_packages_api(request):
         log_error(e, "list_system_packages_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi tải danh sách gói dịch vụ."}, status_code=500)
 
-async def list_public_packages_api(request):
+def _list_public_packages_sync(request):
     """Expose active commercial package metadata for the public landing page."""
     conn = None
     try:
@@ -1663,36 +1694,31 @@ async def list_public_packages_api(request):
         if conn is not None:
             conn.close()
 
-async def update_system_package_api(request):
+
+async def list_system_packages_api(request):
+    try:
+        return await run_database_read(
+            _list_system_packages_sync,
+            request,
+            timeout_seconds=10.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=False)
+
+
+async def list_public_packages_api(request):
+    try:
+        return await run_database_read(
+            _list_public_packages_sync,
+            request,
+            timeout_seconds=10.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=False)
+
+def _update_system_package_sync(request, actor_user_id, pkg_id, name, price, quota, description, status):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request, required_role='super_admin')
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-
-        data, json_error = await read_json_object(request)
-        if json_error:
-            return json_error
-        invalid = validate_or_response(request, data, {
-            "id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-            "name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
-            "price": {"type": "money", "required": True},
-            "quota": {"type": "integer", "required": True, "min": 1, "max": 1_000_000},
-            "description": {"type": "string", "max_length": 5_000},
-            "status": {"type": "string", "enum": {"active", "inactive"}},
-        })
-        if invalid:
-            return invalid
-        pkg_id = data.get('id')
-        name = data.get('name')
-        price = parse_vnd_amount(data.get('price'))
-        quota = int(data.get('quota', 0))
-        description = data.get('description', '')
-        status = str(data.get('status') or 'active').strip().lower()
-
-        if not pkg_id or not name or price is None or status not in {'active', 'inactive'}:
-            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-
         conn = database.get_connection()
         conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
@@ -1703,7 +1729,7 @@ async def update_system_package_api(request):
         """, (name, price, quota, description, status, pkg_id))
         log_audit(
             "admin.system_package_updated",
-            actor_user_id=role_or_err.user_id,
+            actor_user_id=actor_user_id,
             target_type="goi_dich_vu",
             target_id=pkg_id,
             request=request,
@@ -1725,32 +1751,61 @@ async def update_system_package_api(request):
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật gói dịch vụ."}, status_code=500)
 
 
+async def update_system_package_api(request):
+    try:
+        is_valid, role_or_err = await run_database_read(
+            verify_session,
+            request,
+            required_role='super_admin',
+            timeout_seconds=5.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=False)
+    if not is_valid:
+        return JSONResponse({"error": role_or_err}, status_code=403)
+    data, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+    invalid = validate_or_response(request, data, {
+        "id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+        "name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
+        "price": {"type": "money", "required": True},
+        "quota": {"type": "integer", "required": True, "min": 1, "max": 1_000_000},
+        "description": {"type": "string", "max_length": 5_000},
+        "status": {"type": "string", "enum": {"active", "inactive"}},
+    })
+    if invalid:
+        return invalid
+    pkg_id = data.get('id')
+    name = data.get('name')
+    price = parse_vnd_amount(data.get('price'))
+    quota = int(data.get('quota', 0))
+    description = data.get('description', '')
+    status = str(data.get('status') or 'active').strip().lower()
+    if not pkg_id or not name or price is None or status not in {'active', 'inactive'}:
+        return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
+    try:
+        return await run_database_write(
+            _update_system_package_sync,
+            request,
+            role_or_err.user_id,
+            pkg_id,
+            name,
+            price,
+            quota,
+            description,
+            status,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=True)
+
+
 import re as _re
 from backend.auth.username_validator import validate_username
 
-async def set_username_api(request):
-
+def _set_username_sync(request, role_or_err, new_username):
     conn = None
     try:
-        is_valid, role_or_err = verify_session(request)
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-
-        data, json_error = await read_json_object(request)
-        if json_error:
-            return json_error
-        invalid = validate_or_response(request, data, {
-            "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
-        })
-        if invalid:
-            return invalid
-        new_username = normalize_username(data.get("username"))
-
-
-        valid, reason = validate_username(new_username)
-        if not valid:
-            return JSONResponse({"error": reason}, status_code=400)
-
         conn = database.get_connection()
         conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
@@ -1783,17 +1838,18 @@ async def set_username_api(request):
             "UPDATE tai_khoan SET ten_dang_nhap = ?, username_norm = ?, username_da_dat = 1, updated_at = datetime('now') WHERE id = ?",
             (new_username, new_username, role_or_err.user_id)
         )
-        _session_cache_invalidate_by_user_id(role_or_err.user_id)
-        conn.commit()
-
         log_audit(
             "auth.set_username",
             actor_user_id=role_or_err.user_id,
             target_type="tai_khoan",
             target_id=role_or_err.user_id,
             request=request,
-            metadata={"updated_fields": ["username"]}
+            metadata={"updated_fields": ["username"]},
+            cursor=cursor,
+            required=True,
         )
+        conn.commit()
+        _session_cache_invalidate_by_user_id(role_or_err.user_id)
 
         return JSONResponse({"success": True, "username": new_username})
 
@@ -1816,3 +1872,37 @@ async def set_username_api(request):
                 conn.close()
             except sqlite3.Error:
                 pass
+
+
+async def set_username_api(request):
+    try:
+        is_valid, role_or_err = await run_database_read(
+            verify_session,
+            request,
+            timeout_seconds=5.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=False)
+    if not is_valid:
+        return JSONResponse({"error": role_or_err}, status_code=403)
+    data, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+    invalid = validate_or_response(request, data, {
+        "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
+    })
+    if invalid:
+        return invalid
+    new_username = normalize_username(data.get("username"))
+    valid, reason = validate_username(new_username)
+    if not valid:
+        return JSONResponse({"error": reason}, status_code=400)
+    try:
+        return await run_database_write(
+            _set_username_sync,
+            request,
+            role_or_err,
+            new_username,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=True)

@@ -34,10 +34,11 @@
     "test:unit": "node --test tests/unit/*.test.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:install-browsers": "playwright install"
-    ,"benchmark:database": "python scripts/benchmark_database.py --output docs/BENCHMARK_RESULTS.json"
+    "test:install-browsers": "playwright install",
+    "benchmark:database": "python scripts/benchmark_database.py --output docs/BENCHMARK_RESULTS.json"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
     "@cyclonedx/cyclonedx-npm": "6.0.0",
     "@playwright/test": "1.61.1",
     "esbuild": "0.28.1",

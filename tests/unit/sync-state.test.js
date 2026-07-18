@@ -11,6 +11,7 @@ import {
     mutationAffectsDashboard,
     setupWebSocketConnection,
     shouldScheduleBackgroundSyncForStorageEvent,
+    shouldRefreshRouteAfterBackgroundSync,
     shouldReconnectWebSocket
 } from '../../frontend/app/BiddingControllerSync.js';
 import { cachePaginatedRecords } from '../../frontend/shared/tableDataUtils.js';
@@ -34,6 +35,19 @@ test('cross-tab sync ignores cursor bookkeeping but reacts to pending mutations'
   assert.equal(shouldScheduleBackgroundSyncForStorageEvent({ key: key('bf_last_fetch_time') }, scope), false);
   assert.equal(shouldScheduleBackgroundSyncForStorageEvent({ key: key('bf_mutation_queue') }, scope), true);
   assert.equal(shouldScheduleBackgroundSyncForStorageEvent({ key: 'bf_workspace:other:bf_mutation_queue' }, scope), false);
+});
+
+test('background sync never refreshes the route while a business modal is active', () => {
+  const rootWithActiveModal = {
+    querySelector(selector) {
+      assert.equal(selector, '.modal-overlay.active:not(#modal-custom-dialog)');
+      return { id: 'modal-excel-preview' };
+    }
+  };
+  const rootWithoutActiveModal = { querySelector: () => null };
+
+  assert.equal(shouldRefreshRouteAfterBackgroundSync(rootWithActiveModal), false);
+  assert.equal(shouldRefreshRouteAfterBackgroundSync(rootWithoutActiveModal), true);
 });
 
 test('super admin KPIs aggregate business organizations from subscription data once', () => {

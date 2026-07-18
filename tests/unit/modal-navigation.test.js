@@ -1,7 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { closeModal } from "../../frontend/app/BiddingControllerUI.js";
+import {
+  closeModal,
+  shouldAutoOpenCreateModal
+} from "../../frontend/app/BiddingControllerUI.js";
+
+test("stale create-modal timers cannot reopen a modal after navigation", () => {
+  assert.equal(
+    shouldAutoOpenCreateModal({ activetab: "chuyengia", activeaction: "taomoi" }, "chuyengia"),
+    true
+  );
+  assert.equal(
+    shouldAutoOpenCreateModal({ activetab: "chuyengia", activeaction: null }, "chuyengia"),
+    false
+  );
+  assert.equal(
+    shouldAutoOpenCreateModal({ activetab: "dashboard", activeaction: null }, "chuyengia"),
+    false
+  );
+});
 
 test("closing a plan breakdown for navigation does not restore the previous route", async () => {
   const previousDocument = globalThis.document;

@@ -311,6 +311,10 @@ export function setupAutoSyncBackground() {
   }
   this.setupWebSocketConnection();
 }
+export function shouldRefreshRouteAfterBackgroundSync(root = globalThis.document) {
+  return !root?.querySelector?.(".modal-overlay.active:not(#modal-custom-dialog)");
+}
+
 function renderChangedState(controller, changedKeys, { isBackground = false } = {}) {
   if (!changedKeys || changedKeys.size === 0 || !controller.view) return Promise.resolve();
   const renderPromises = [];
@@ -332,7 +336,9 @@ function renderChangedState(controller, changedKeys, { isBackground = false } = 
   renderIfChanged(["hopdong", "goithau", "nhathau", "chudautu"], controller.view.renderHopDongTable, "tab-hopdong");
   if (isBackground && typeof controller.handlePathRouting === "function") {
     requestAnimationFrame(() => {
-      controller.handlePathRouting(window.location.pathname, false, true);
+      if (shouldRefreshRouteAfterBackgroundSync(document)) {
+        controller.handlePathRouting(window.location.pathname, false, true);
+      }
     });
   }
   return Promise.all(renderPromises);

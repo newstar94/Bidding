@@ -386,7 +386,7 @@ function renderContractSummary(counts, values) {
     const count = Number(counts?.[status] || 0);
     const formattedValue = compactCurrency(values?.[status] || 0);
     return `
-      <div class="dashboard-contract-row" aria-label="${safeAttr(`${status}: ${count} hợp đồng, ${formattedValue}`)}">
+      <div class="dashboard-contract-row" role="group" aria-label="${safeAttr(`${status}: ${count} hợp đồng, ${formattedValue}`)}">
         <span class="dashboard-contract-status"><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span>
         <span class="dashboard-contract-values"><strong>${count} HĐ</strong><em>${escapeHtml(formattedValue)}</em></span>
       </div>

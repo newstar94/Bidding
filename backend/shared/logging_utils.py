@@ -145,6 +145,10 @@ def _safe_identifier(value):
     return text if _request_id_pattern.fullmatch(text) else None
 
 
+def _release_id():
+    return _safe_identifier(os.environ.get("APP_RELEASE_ID", "")) or "development"
+
+
 def log_structured_event(
     event,
     *,
@@ -163,6 +167,7 @@ def log_structured_event(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "severity": str(level or "INFO").upper()[:16],
         "event": event_name,
+        "releaseId": _release_id(),
     }
     safe_request_id = _safe_identifier(request_id)
     safe_user_id = _safe_identifier(actor_user_id)

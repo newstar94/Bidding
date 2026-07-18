@@ -1140,7 +1140,7 @@ html[data-bf-shell="workspace"] .landing-page {
 }
 
 .landing-proof-grid small {
-  color: #718096;
+  color: var(--landing-muted);
   font-size: 10px;
 }
 

@@ -221,6 +221,7 @@ def test_structured_runtime_log_has_context_and_redacts_pii(monkeypatch, tmp_pat
     monkeypatch.setattr(logging_utils, "LOG_DIR", tmp_path)
     monkeypatch.delenv("BIDDING_LOG_DIR", raising=False)
     monkeypatch.setenv("LOG_INCLUDE_EXCEPTION_DETAILS", "true")
+    monkeypatch.setenv("APP_RELEASE_ID", "release-test-123")
     logging_utils.log_error(
         RuntimeError(
             "email=person@example.com password=top-secret cccd=012345678901 account=1234567890"
@@ -238,6 +239,7 @@ def test_structured_runtime_log_has_context_and_redacts_pii(monkeypatch, tmp_pat
     assert payload["requestId"] == "request-1"
     assert payload["userId"] == "user-1"
     assert payload["organizationId"] == "org-1"
+    assert payload["releaseId"] == "release-test-123"
     assert "person@example.com" not in raw_line
     assert "top-secret" not in raw_line
     assert "012345678901" not in raw_line

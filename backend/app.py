@@ -338,6 +338,7 @@ from backend.shared.async_io import get_blocking_io_stats, run_blocking_io
 from backend.shared.database_io import get_database_io_stats, run_database_read
 from backend.shared.cpu_io import get_cpu_io_stats
 from backend.observability.metrics import ObservabilityMiddleware, metrics_api
+from backend.observability.client_errors import client_error_api
 from backend.shared.access_policy import (
     can_export_document_capability,
     has_module_permission,
@@ -640,6 +641,7 @@ routes = [
     Route("/health/live", health_live_api, methods=["GET"]),
     Route("/health/ready", health_ready_api, methods=["GET"]),
     Route("/metrics", metrics_api, methods=["GET"]),
+    Route("/api/client-errors", client_error_api, methods=["POST"]),
     Route("/", index, methods=["GET"]),
     Route("/dang-nhap", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),

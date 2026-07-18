@@ -142,6 +142,7 @@ def test_production_accepts_explicit_separated_runtime_layout(tmp_path):
     writer.close()
     environment = {
         "APP_ENV": "production",
+        "APP_RELEASE_ID": "release-test-20260718",
         "APP_DEBUG": "False",
         "APP_SECURE_COOKIES": "True",
         "APP_PUBLIC_URL": "https://bidding.example.com",
@@ -168,6 +169,10 @@ def test_production_accepts_explicit_separated_runtime_layout(tmp_path):
     validate_startup_configuration(database, environment)
     assert inspect_database(database.db_path)["integrity"] == "ok"
 
+    invalid_release = dict(environment, APP_RELEASE_ID="development")
+    with pytest.raises(StartupValidationError, match="APP_RELEASE_ID"):
+        validate_startup_configuration(database, invalid_release)
+
 
 def test_production_requires_encrypted_volume_confirmation(tmp_path):
     database = SQLiteDatabase(tmp_path / "database" / "bidding.db")
@@ -177,6 +182,7 @@ def test_production_requires_encrypted_volume_confirmation(tmp_path):
     writer.close()
     environment = {
         "APP_ENV": "production",
+        "APP_RELEASE_ID": "release-test-20260718",
         "BIDDING_DB_PATH": database.db_path,
         "BIDDING_SQLITE_SINGLE_WRITER": "true",
         "AUDIT_CHECKPOINT_DIR": str((tmp_path / "audit-checkpoints").resolve()),
@@ -197,6 +203,7 @@ def test_production_rejects_stale_secret_rotation_attestation(tmp_path):
     database = SQLiteDatabase(tmp_path / "database" / "bidding.db")
     environment = {
         "APP_ENV": "production", "BIDDING_DB_PATH": database.db_path,
+        "APP_RELEASE_ID": "release-test-20260718",
         "BIDDING_SQLITE_SINGLE_WRITER": "true", "DATA_AT_REST_ENCRYPTION_CONFIRMED": "true",
         "AUDIT_CHECKPOINT_DIR": str((tmp_path / "audit-checkpoints").resolve()),
         "AUDIT_CHECKPOINT_HMAC_KEY": "a" * 32,
@@ -217,6 +224,7 @@ def test_first_run_production_configuration_does_not_require_existing_database(t
     database = SQLiteDatabase(tmp_path / "database" / "new-bidding.db")
     environment = {
         "APP_ENV": "production",
+        "APP_RELEASE_ID": "release-test-20260718",
         "APP_DEBUG": "False",
         "APP_SECURE_COOKIES": "True",
         "APP_PUBLIC_URL": "https://bidding.example.com",

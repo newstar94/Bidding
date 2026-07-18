@@ -160,7 +160,7 @@ def run_e2e_stage() -> None:
             }
         )
         _run(
-            _npm_check("Isolated Chromium end-to-end tests", "test:e2e"),
+            _npm_check("Isolated cross-browser end-to-end tests", "test:e2e"),
             environment,
         )
 

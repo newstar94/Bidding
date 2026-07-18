@@ -2,9 +2,10 @@ import { defineConfig, loadEnv } from 'vite';
 import path from 'path';
 import JavaScriptObfuscator from 'javascript-obfuscator';
 
-function obfuscatorPlugin({ debugProtection = false, deadCodeInjection = false } = {}) {
+function obfuscatorPlugin({ debugProtection = false, deadCodeInjection = false, releaseId = 'development' } = {}) {
   const obfuscationFingerprint = JSON.stringify({
-    version: 2,
+    version: 3,
+    releaseId,
     debugProtection,
     deadCodeInjection,
     deadCodeInjectionThreshold: deadCodeInjection ? 0.02 : 0,
@@ -65,6 +66,9 @@ function obfuscatorPlugin({ debugProtection = false, deadCodeInjection = false }
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const releaseId = String(env.APP_RELEASE_ID || process.env.GITHUB_SHA || 'development')
+    .trim()
+    .slice(0, 128) || 'development';
   const enableObfuscation = mode === 'secure' || env.ENABLE_JS_OBFUSCATION === 'true';
   const enableDebugProtection = env.ENABLE_JS_DEBUG_PROTECTION === 'true';
   // Dead-code injection increases transfer/parse cost and is not a security
@@ -77,8 +81,12 @@ export default defineConfig(({ mode }) => {
     base: '/dist/',
     plugins: enableObfuscation ? [obfuscatorPlugin({
       debugProtection: enableDebugProtection,
-      deadCodeInjection: enableDeadCodeInjection
+      deadCodeInjection: enableDeadCodeInjection,
+      releaseId
     })] : [],
+    define: {
+      __BIDDINGFLOW_RELEASE_ID__: JSON.stringify(releaseId)
+    },
     esbuild: isProductionBuild ? {
       drop: ['debugger'],
       pure: ['console.log', 'console.debug', 'console.table']

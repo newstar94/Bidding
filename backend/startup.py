@@ -144,6 +144,14 @@ def validate_startup_configuration(database, environ=None):
             raise StartupValidationError("APP_DEBUG=False is required in production.")
         if str(environ.get("APP_SECURE_COOKIES", "")).strip().lower() != "true":
             raise StartupValidationError("APP_SECURE_COOKIES=True is required in production.")
+        release_id = str(environ.get("APP_RELEASE_ID", "")).strip()
+        if (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{6,127}", release_id)
+            or release_id.casefold() in {"development", "replace-with-release-id"}
+        ):
+            raise StartupValidationError(
+                "APP_RELEASE_ID must identify the immutable production release."
+            )
         public_url = str(environ.get("APP_PUBLIC_URL", "")).strip()
         parsed_public_url = urlparse(public_url)
         if parsed_public_url.scheme != "https" or not parsed_public_url.netloc or parsed_public_url.hostname in {"localhost", "127.0.0.1", "::1"}:

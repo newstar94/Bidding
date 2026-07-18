@@ -243,10 +243,10 @@ Theo [kế hoạch kiểm thử còn lại](../KE_HOACH_KIEM_THU_CON_LAI.md#L8):
 - [x] Đặt accessible name cho mọi icon-only button trong các template/luồng đã audit, kèm runtime fallback và audit chống tái phát.
 - [x] Dùng `aria-live`, `aria-invalid` và `aria-describedby` cho lỗi form.
 - [x] Tăng touch target quan trọng lên tối thiểu khoảng 44×44 px.
-- [ ] Sửa các cặp màu/chữ nhỏ chưa đạt WCAG AA.
+- [x] Sửa các cặp màu/chữ nhỏ bị axe phát hiện trên landing/auth/dashboard; automated WCAG A/AA hiện đạt trên landing, auth và toàn bộ 10 tab quản lý.
 - [ ] Kiểm tra keyboard-only, screen reader, zoom 200% và mobile tables.
-- [ ] Tích hợp axe/Playwright thay cho audit token tĩnh hiện tại. Xem [accessibility audit](../scripts/audit_accessibility.mjs#L17).
-- [ ] Chạy E2E trên Chromium, Firefox, WebKit và viewport mobile. Hiện mới có Desktop Chrome trong [Playwright config](../playwright.config.js#L20).
+- [x] Tích hợp `@axe-core/playwright` chạy WCAG A/AA trên DOM thật; vẫn giữ audit token tĩnh như lớp kiểm tra nhanh bổ sung. Xem [accessibility E2E](../tests/e2e/accessibility.spec.js).
+- [x] Chạy bộ Chromium đầy đủ và core smoke trên Desktop Chromium, Firefox, WebKit cùng Pixel 7 mobile; CI cài đủ ba browser engine. Xem [Playwright config](../playwright.config.js).
 
 ### P2-02 — Chia nhỏ frontend và CSS
 
@@ -259,9 +259,9 @@ Theo [kế hoạch kiểm thử còn lại](../KE_HOACH_KIEM_THU_CON_LAI.md#L8):
 ### P2-03 — Production debugging
 
 - [ ] Dùng private source map gửi riêng lên error tracking, không public ra web.
-- [ ] Cân nhắc bỏ dead-code injection vì không phải security boundary và làm tăng chi phí parse/debug.
-- [ ] Gắn release ID/build hash vào frontend error và backend log.
-- [ ] Thêm client error reporting đã redact PII.
+- [x] Đã đánh giá và tắt dead-code injection mặc định cho production vì không phải security boundary và làm tăng chi phí parse/debug; vẫn giữ opt-in cho bản phân phối đặc biệt có chủ đích.
+- [x] Gắn release ID/build hash vào frontend diagnostic, secure-build marker và mọi backend structured log; production fail-fast nếu `APP_RELEASE_ID` thiếu hoặc còn là placeholder.
+- [x] Thêm client error reporting xác thực session, CSRF, rate limit hai lớp và allowlist sáu trường; không gửi message/stack thô, email, CCCD, tài khoản ngân hàng hay URL query. Backend ghi `client.error` vào structured log kèm release ID.
 
 ## 5. Chính sách SQLite và lộ trình PostgreSQL
 
@@ -460,7 +460,7 @@ Giai đoạn này bắt đầu sau P0, server stability và capacity evidence. �
 - [ ] Backup toàn trạng thái đã tự động chạy và có cảnh báo.
 - [ ] Full restore sang môi trường tách biệt đã thành công.
 - [ ] Migration được chạy trên bản sao dữ liệu và có rollback plan.
-- [ ] CI chạy lint, unit, API, E2E, audit dependency/secret và package smoke.
+- [ ] CI chạy lint, unit, API, E2E, audit dependency/secret và package smoke. Local `release_preflight.py all` đã đạt trên mã hiện tại; vẫn phải push và nhận một `Production CI` run thành công của đúng commit trước khi đánh dấu gate này.
 - [ ] Dashboard vận hành hiển thị latency, error rate, queue, WAL/disk và backup age.
 
 ## 8. Kết quả kiểm chứng
@@ -477,12 +477,14 @@ Giai đoạn này bắt đầu sau P0, server stability và capacity evidence. �
 ### Tiến độ triển khai ngày 18/07/2026
 
 - Kịch bản cài mới: đạt. Test khởi động từ đường dẫn DB chưa tồn tại, chạy migration `0 → 7`, tạo schema/admin/workspace ban đầu và chạy migration lần hai idempotent; validation production không tự tạo DB trước startup.
-- Quality preflight: đạt; lint JavaScript/Python, bytecode compile, 280/280 frontend unit test, module/source-size/dead-code/accessibility/inline-style audit đều đạt.
+- Quality preflight: đạt; lint JavaScript/Python, bytecode compile, 285/285 frontend unit test, module/source-size/dead-code/accessibility/inline-style audit đều đạt.
 - Migration + backup/restore smoke: 23/23 đạt trên temp ngoài OneDrive.
-- Toàn bộ API regression suite: 404/404 đạt trên temp ngoài OneDrive; không còn ba test bị chặn bởi production path guard.
-- Chromium E2E: 13/13 đạt, gồm workspace isolation, privileged reauthentication, Word/Excel, accessibility và startup/navigation performance probes.
-- Package: secure build và extracted-runtime smoke đạt; archive có 240 runtime file. Bundle authenticated workspace nằm trong budget đã commit.
+- Toàn bộ API regression suite: 414/414 đạt trên temp ngoài OneDrive; không còn ba test bị chặn bởi production path guard.
+- Cross-browser E2E: 18/18 đạt; gồm 15 bài Chromium đầy đủ và core smoke trên Firefox, WebKit, Pixel 7 mobile, cùng workspace isolation, privileged reauthentication, Word/Excel, axe WCAG A/AA và startup/navigation performance probes.
+- Package: secure build và extracted-runtime smoke đạt; archive có 241 runtime file. Bundle authenticated workspace nằm trong budget đã commit.
 - Supply chain: `npm audit`, `pip-audit`, vendor integrity/RetireJS, secret scan và SBOM npm/Python/vendor đều đạt gate.
+- Full release preflight: `python scripts/release_preflight.py all --artifact release/biddingflow-release.zip` trả mã `0` trong 133,3 giây trên mã hiện tại; archive có 241 runtime file và cross-browser E2E đạt 18/18 trong cùng lượt.
+- Test runtime isolation: pytest và từng Playwright worker đặt DB, log, backup, upload, Word template, document temp và restore state trong runtime tạm; không còn kế thừa audit checkpoint từ `.env`/`D:/BiddingRuntime`. Race modal Excel, route refresh nền, timer mở modal cũ và thời điểm controller khởi tạo đều có regression test; accessibility E2E gây race đã đạt thêm 10/10 lượt lặp.
 - Kiểm thử mục tiêu cuối cho observability, document-worker admission, endpoint sync-version read-only và release evidence: 49/49 đạt; regression xác thực/rate-limit: 52/52 đạt.
 - Các gate **chưa thể đánh dấu hoàn thành chỉ bằng local test**: load/soak thật với 100 session trên staging, Google/OTP thật, reverse-proxy thật, off-host WORM checkpoint/backup, restore drill sang máy khác, Alertmanager/Grafana production, branch protection/environment reviewers và PostgreSQL PG-1…PG-5.
 - Security High còn giữ release gate đóng: document worker chưa được đặt trong principal/container + network/filesystem sandbox ở cấp OS; một số route auth/admin cũ ngoài login/rate-limit chính vẫn cần tiếp tục chuyển toàn bộ SQLite/audit standalone sang bounded DB lane hoặc transaction bắt buộc.

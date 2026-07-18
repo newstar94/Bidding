@@ -543,7 +543,7 @@
 }
 .dashboard-alert-copy em {
   overflow: hidden;
-  color: var(--text-light);
+  color: var(--text-muted);
   font-size: 0.63rem;
   font-style: normal;
   text-overflow: ellipsis;

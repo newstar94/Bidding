@@ -8,6 +8,13 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://fonts.gstatic.com/**', route => route.abort());
 });
 
+const waitForAppController = async page => {
+  await expect.poll(() => page.evaluate(async () => {
+    const { getAppController } = await import('../../frontend/app/controllerRef.js');
+    return typeof getAppController()?.ensureLazyTab === 'function';
+  }), { timeout: 30_000 }).toBe(true);
+};
+
 test('home page presents the BiddingFlow landing experience', async ({ page }) => {
   const trustedTypesErrors = [];
   page.on('pageerror', error => {
@@ -82,6 +89,7 @@ test('authenticated reload keeps lazy workflows and Excel actions ready', async 
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
+  await waitForAppController(page);
   await expect(page.locator('#dashboard-greeting')).toHaveCount(0);
   const partnerLinks = page.locator('.dashboard-partner-link');
   await expect(partnerLinks).toHaveCount(4);
@@ -151,12 +159,26 @@ test('Excel preview hides metadata and exposes working close controls', async ({
   await expect(modal.locator('.modal-card')).toHaveAttribute('role', 'dialog');
   await expect(modal.locator('.modal-close')).toHaveAttribute('data-bf-action', 'close-modal');
   await expect(modal.locator('.modal-close')).toHaveAttribute('data-modal-id', 'modal-excel-preview');
+  await expect.poll(() => modal.locator('.modal-close').evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    return document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2
+    ) === button;
+  })).toBe(true);
   await modal.locator('.modal-close').click();
   await expect(modal).not.toHaveClass(/active/);
 
   await page.waitForTimeout(500);
   await openPreview();
   await expect(modal).toHaveClass(/active/);
+  await expect.poll(() => modal.locator('#btn-cancel-excel-import').evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    return document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2
+    ) === button;
+  })).toBe(true);
   await modal.locator('#btn-cancel-excel-import').click();
   await expect(modal).not.toHaveClass(/active/);
 });
@@ -172,6 +194,7 @@ test('sync state and dialogs expose keyboard and screen-reader behavior', async 
   await page.locator('#form-auth-login button[type="submit"]').click();
   await expect(page.locator('#auth-overlay')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
+  await waitForAppController(page);
   expect(cspViolations).toEqual([]);
 
   const syncState = page.locator('#btn-force-sync');
@@ -243,6 +266,7 @@ test('pending sync status opens a manageable retry list', async ({ page, credent
   await page.locator('#form-auth-login button[type="submit"]').click();
   await expect(page.locator('#auth-overlay')).toBeHidden({ timeout: 30_000 });
   await expect(page.locator('#system-init-loader')).toBeHidden({ timeout: 30_000 });
+  await waitForAppController(page);
 
   await page.evaluate(async () => {
     const { getAppController } = await import('../../frontend/app/controllerRef.js');

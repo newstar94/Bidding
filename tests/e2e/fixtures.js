@@ -70,10 +70,20 @@ export const test = base.extend({
       ADMIN_EMAIL: `e2e-worker-${workerInfo.workerIndex}@localhost`,
       DEFAULT_ORG_NAME: `E2E Organization ${workerInfo.workerIndex}`,
       BIDDING_DB_PATH: databasePath,
+      BIDDING_DATA_DIR: path.join(runtimeRoot, 'data'),
+      BIDDING_BACKUP_DIR: path.join(runtimeRoot, 'backups'),
       BIDDING_LOG_DIR: path.join(runtimeRoot, 'logs'),
-      BIDDING_UPLOAD_DIR: path.join(runtimeRoot, 'uploads'),
-      BIDDING_WORD_TEMPLATE_DIR: path.join(runtimeRoot, 'word-templates'),
+      BIDDING_TEMPLATE_DATA_DIR: path.join(runtimeRoot, 'templates'),
+      BIDDING_UPLOAD_DIR: path.join(runtimeRoot, 'templates', 'images'),
+      BIDDING_WORD_TEMPLATE_DIR: path.join(runtimeRoot, 'templates', 'words'),
+      BIDDING_RESTORE_DRILL_STATE_FILE: path.join(runtimeRoot, 'restore-drill.json'),
       DOCUMENT_WORKER_TEMP_DIR: path.join(runtimeRoot, 'document-temp'),
+      // Each worker owns a different disposable database.  Inheriting a
+      // developer/production checkpoint would make one database validate
+      // against another database's audit-chain head.
+      AUDIT_CHECKPOINT_DIR: '',
+      AUDIT_CHECKPOINT_HMAC_KEY: '',
+      AUDIT_CHECKPOINT_OFFHOST_CONFIRMED: 'false',
       GOOGLE_CLIENT_ID: '',
       PYTHONDONTWRITEBYTECODE: '1',
     };
