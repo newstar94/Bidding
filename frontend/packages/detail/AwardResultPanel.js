@@ -8,6 +8,7 @@ export function renderAwardedResultPanel(container, {
   appraisalNumber = "",
   appraisalDate = "",
   isEditable = false,
+  wordExportEnabled = false,
   formatCurrency,
   formatDate
 } = {}) {
@@ -20,7 +21,9 @@ export function renderAwardedResultPanel(container, {
           <i data-lucide="check-circle" class="text-success award-result-icon"></i>
           <div><h4 class="award-result-title">Gói thầu đã hoàn thành LCNT</h4><p class="text-muted award-result-description">Đã phê duyệt kết quả lựa chọn nhà thầu chính thức.</p></div>
         </div>
-        <button class="btn btn-primary action-strong" id="btn-export-docx-report"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
+        <button class="btn btn-primary action-strong" id="btn-export-docx-report"
+          ${wordExportEnabled ? "" : "disabled"}
+          title="${wordExportEnabled ? "Xuất báo cáo kết quả ra Word" : "Cần gói trả phí đang hoạt động để xuất Word"}"><i data-lucide="file-text"></i> Xuất Báo cáo Kết quả (Word)</button>
       </div>
       <div class="award-result-grid">
         <div><span class="text-muted award-result-label">Nhà thầu trúng thầu</span>${winnerHtml}</div>

@@ -16,7 +16,10 @@ export function normalizeOrganizations(payload = {}) {
         employee_phone: String(organization?.employee_phone || "").trim(),
         subscription: organization?.subscription && typeof organization.subscription === "object"
           ? { ...organization.subscription }
-          : null
+          : null,
+        entitlements: organization?.entitlements && typeof organization.entitlements === "object"
+          ? { ...organization.entitlements }
+          : { word_export: false }
       };
     }).filter((organization) => organization.id && organization.name);
   }
@@ -80,5 +83,15 @@ export function applyAccessContext(target, payload = {}, storage = null) {
   target.dbRole = target.platformRole === "super_admin" ? "super_admin" : target.membershipRole || "employee";
   target.organizations = organizations;
   target.activeOrganizationId = selected?.id || null;
+  target.entitlements = { ...(selected?.entitlements || payload.entitlements || {}) };
+  target.wordExportEnabled = Boolean(target.entitlements.word_export);
+  const wordNavigation = globalThis.document?.getElementById?.("btn-tab-bieumau");
+  if (wordNavigation) {
+    wordNavigation.disabled = !target.wordExportEnabled;
+    wordNavigation.setAttribute("aria-disabled", target.wordExportEnabled ? "false" : "true");
+    wordNavigation.title = target.wordExportEnabled
+      ? "Quản lý biểu mẫu Word"
+      : "Cần gói trả phí đang hoạt động để dùng biểu mẫu Word";
+  }
   return selected;
 }

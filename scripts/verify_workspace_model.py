@@ -5,6 +5,8 @@ import pathlib
 import sqlite3
 import sys
 import tempfile
+import time
+from types import SimpleNamespace
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -30,6 +32,9 @@ def main():
         from backend.db.db_utils import DB_SCHEMA_VERSION, khoi_tao_va_di_tru_he_thong
         from backend.startup import verify_database_readiness
         from backend.sync.ownership import get_owner_type
+        from backend.shared.subscription_policy import can_use_word_export
+        from backend.shared.access_policy import resolve_document_export_capabilities
+        from backend.auth.session_utils import get_active_org
 
         khoi_tao_va_di_tru_he_thong()
         connection = database.get_connection()
@@ -85,6 +90,15 @@ def main():
         assert personal_access["active_org_id"] == personal_scope
         assert [scope["scope_type"] for scope in personal_access["organizations"]] == ["personal"]
         assert personal_access["organizations"][0]["name"] == "Cá nhân"
+        assert personal_access["subscription"] is None
+        assert personal_access["entitlements"]["word_export"] is False
+        assert cursor.execute(
+            "SELECT count(*) FROM account_subscriptions WHERE user_id = ?", (user_id,)
+        ).fetchone()[0] == 0
+        assert can_use_word_export(cursor, "user", user_id, personal_scope) is False
+        assert resolve_document_export_capabilities(
+            cursor, "user", user_id, personal_scope
+        ).as_dict() == {"financial": False, "identity": False, "signature": False}
         assert cursor.execute(
             "SELECT count(*) FROM to_chuc WHERE id = ?", (personal_scope,)
         ).fetchone()[0] == 0
@@ -110,10 +124,50 @@ def main():
         ]
         assert mixed_access["organizations"][1]["name"] == "Cá nhân"
         assert mixed_access["active_org_id"] == organization_id
+        assert mixed_access["entitlements"]["word_export"] is True
+        assert can_use_word_export(cursor, "user", user_id, organization_id) is True
+        assert resolve_document_export_capabilities(
+            cursor, "user", user_id, organization_id
+        ).as_dict() == {"financial": False, "identity": False, "signature": False}
         selected_personal = build_user_access_payload(
             cursor, user_id, "user", active_org_hint=personal_scope
         )
         assert selected_personal["active_org_id"] == personal_scope
+        assert selected_personal["entitlements"]["word_export"] is False
+
+        now = int(time.time())
+        cursor.execute(
+            """INSERT INTO account_subscriptions (
+                   user_id, package_id, status, starts_at, expires_at
+               ) VALUES (?, 'silver', 'active', ?, ?)""",
+            (user_id, now, now + 365 * 86400),
+        )
+        paid_personal = build_user_access_payload(
+            cursor, user_id, "user", active_org_hint=personal_scope
+        )
+        assert paid_personal["entitlements"]["word_export"] is True
+        assert can_use_word_export(cursor, "user", user_id, personal_scope) is True
+        assert resolve_document_export_capabilities(
+            cursor, "user", user_id, personal_scope
+        ).as_dict() == {"financial": True, "identity": True, "signature": True}
+
+        cursor.execute(
+            "DELETE FROM organization_subscriptions WHERE organization_id = ?",
+            (organization_id,),
+        )
+        free_organization = build_user_access_payload(
+            cursor, user_id, "user", active_org_hint=organization_id
+        )
+        assert free_organization["active_org_id"] == organization_id
+        assert free_organization["organizations"][0]["status"] == "active"
+        assert free_organization["entitlements"]["word_export"] is False
+        assert can_use_word_export(cursor, "user", user_id, organization_id) is False
+        connection.commit()
+        request = SimpleNamespace(
+            headers={"X-Active-Org": organization_id},
+            state=SimpleNamespace(),
+        )
+        assert get_active_org(request, user_id) == organization_id
 
         cursor.execute(
             """

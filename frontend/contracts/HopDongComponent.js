@@ -87,12 +87,14 @@ export async function renderHopDongTable() {
       }).filter(Boolean).join(" ");
       const statusBadge = renderNeutralStatusBadge(displayedHd.trangThaiHoSo);
       const contractStatusBadge = `<span class="badge badge-info">${escapeHtml(displayedHd.trangThaiHopDong || "Đang thực hiện")}</span>`;
+      const wordExportEnabled = Boolean(this.model.state.activeuser?.wordExportEnabled);
       const contractActions = displayedHd.goiThauIds?.length ? [{
         id: displayedHd.goiThauIds[0],
         command: "export-contract",
         className: "btn-export",
-        title: "Xuất hợp đồng",
+        title: wordExportEnabled ? "Xuất hợp đồng" : "Cần gói trả phí đang hoạt động để xuất Word",
         icon: "file-text",
+        disabled: !wordExportEnabled,
         style: "color: var(--emerald);",
         attributes: { "contract-no": displayedHd.soHopDong }
       }] : [];

@@ -248,7 +248,7 @@ export async function handleNhaThauSubmit(e) {
   if (contractModal && contractModal.classList.contains("active")) {
     const ntSelect = document.getElementById("hd-nhathauid");
     if (ntSelect) {
-      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
+      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
       ntSelect.value = data.id;
       ntSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }

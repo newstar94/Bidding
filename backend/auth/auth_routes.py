@@ -1389,7 +1389,11 @@ async def privileged_reauth_api(request):
         if conn:
             conn.close()
 
-from backend.auth.admin_user_routes import delete_user_api, list_users_api
+from backend.auth.admin_user_routes import (
+    delete_user_api,
+    list_users_api,
+    update_user_access_settings_api,
+)
 
 async def update_user_role_api(request):
     """Update a platform role or a role in the active organization.

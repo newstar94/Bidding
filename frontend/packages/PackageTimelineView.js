@@ -82,6 +82,9 @@ function timelineState(view) {
     selectionRequestVersion: 0,
     optionsRequestVersion: 0
   };
+  view._packageTimelineState.wordExportEnabled = Boolean(
+    view.model?.state?.activeuser?.wordExportEnabled
+  );
   return view._packageTimelineState;
 }
 
@@ -402,7 +405,12 @@ function setActionAvailability(state) {
     if (button) button.disabled = !canEdit;
   });
   const exportButton = element("timeline-export-word");
-  if (exportButton) exportButton.disabled = !hasPackage;
+  if (exportButton) {
+    exportButton.disabled = !hasPackage || !state.wordExportEnabled;
+    exportButton.title = state.wordExportEnabled
+      ? "Xuất timeline ra tệp Word"
+      : "Cần gói trả phí đang hoạt động để xuất Word";
+  }
   const versions = state.package?.allVersions || [];
   const copyButton = element("timeline-copy-previous");
   if (copyButton) copyButton.disabled = !canEdit || versions.length < 2;
@@ -541,6 +549,10 @@ async function saveTimeline(view) {
 async function exportTimeline(view) {
   const state = timelineState(view);
   if (!state.package) return;
+  if (!state.wordExportEnabled) {
+    view.showToast("Chức năng cần gói trả phí", "Phạm vi đang làm việc chưa có quyền xuất Word.", "warning");
+    return;
+  }
   const button = element("timeline-export-word");
   if (button) button.disabled = true;
   try {

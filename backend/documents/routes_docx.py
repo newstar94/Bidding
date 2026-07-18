@@ -196,6 +196,45 @@ def _can_export_record(role_or_err, org_name, payload_key, table_name, record_id
     finally:
         conn.close()
 
+
+def _word_export_subscription_response(role_or_err, organization_id):
+    conn = database.get_connection()
+    try:
+        enabled = can_use_word_export(
+            conn.cursor(), str(role_or_err), role_or_err.user_id, organization_id
+        )
+    finally:
+        conn.close()
+    if enabled:
+        return None
+    return JSONResponse(
+        {
+            "error": "Phạm vi đang làm việc chưa có gói trả phí hoạt động để xuất Word.",
+            "code": "WORD_EXPORT_SUBSCRIPTION_REQUIRED",
+        },
+        status_code=403,
+    )
+
+
+def _word_config_access_response(request, role_or_err):
+    organization_id = get_active_org(request, role_or_err.user_id)
+    conn = database.get_connection()
+    try:
+        allowed = can_manage_word_config(
+            conn.cursor(), str(role_or_err), role_or_err.user_id, organization_id
+        )
+    finally:
+        conn.close()
+    if allowed:
+        return None
+    return JSONResponse(
+        {
+            "error": "Bạn chưa có quyền hoặc gói trả phí để quản lý biểu mẫu Word.",
+            "code": "WORD_CONFIG_ACCESS_REQUIRED",
+        },
+        status_code=403,
+    )
+
 def _safe_filename(value, fallback='download.docx'):
     name = os.path.basename(str(value or fallback)).strip()
     name = re.sub(r'[^A-Za-z0-9_.-]+', '_', name)
@@ -359,6 +398,9 @@ async def export_plan_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        entitlement_error = _word_export_subscription_response(role_or_err, org_name)
+        if entitlement_error is not None:
+            return entitlement_error
         snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
         if snapshot_error is not None:
             return snapshot_error
@@ -440,6 +482,9 @@ async def export_report_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        entitlement_error = _word_export_subscription_response(role_or_err, org_name)
+        if entitlement_error is not None:
+            return entitlement_error
         if type_param not in REPORT_DOCUMENT_TYPES:
             return JSONResponse(
                 {
@@ -537,6 +582,9 @@ async def export_timeline_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        entitlement_error = _word_export_subscription_response(role_or_err, org_name)
+        if entitlement_error is not None:
+            return entitlement_error
         snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
         if snapshot_error is not None:
             return snapshot_error
@@ -600,6 +648,9 @@ async def list_templates_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
+        access_error = _word_config_access_response(request, role_or_err)
+        if access_error is not None:
+            return access_error
 
         templates = await run_blocking_io(
             custom_exporter.list_templates,
@@ -616,6 +667,9 @@ async def set_active_template_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
+        access_error = _word_config_access_response(request, role_or_err)
+        if access_error is not None:
+            return access_error
 
         data, json_error = await read_json_object(request)
         if json_error is not None:
@@ -656,6 +710,9 @@ async def upload_template_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
+        access_error = _word_config_access_response(request, role_or_err)
+        if access_error is not None:
+            return access_error
 
         form = await request.form()
         file_obj = form.get('file')

@@ -13,6 +13,23 @@ export function toastDeduplicationKey(title, message, type) {
   return JSON.stringify([String(type || "info"), String(title || ""), String(message || "")]);
 }
 
+const DANGER_DIALOG_ICONS = new Set(["x-circle", "trash-2", "user-x", "log-out", "shield-alert", "lock"]);
+const WARNING_DIALOG_ICONS = new Set(["alert-triangle", "alert-circle"]);
+const SUCCESS_DIALOG_ICONS = new Set(["check", "check-circle"]);
+
+function applyDialogTone(modal, iconName) {
+  if (!modal) return "primary";
+  const tone = DANGER_DIALOG_ICONS.has(iconName)
+    ? "danger"
+    : WARNING_DIALOG_ICONS.has(iconName)
+      ? "warning"
+      : SUCCESS_DIALOG_ICONS.has(iconName)
+        ? "success"
+        : "primary";
+  modal.dataset.dialogTone = tone;
+  return tone;
+}
+
 const VIEW_MODULE_LOADERS = Object.freeze({
   dashboard: () => import("./DashboardView.js"),
   plan: () => import("./PlanView.js"),
@@ -621,6 +638,7 @@ export class BiddingView {
       setRuntimeStyle(cancelBtn, "display", "block");
       if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       iconEl.setAttribute("data-lucide", iconName);
+      applyDialogTone(modal, iconName);
       if (iconName === "trash-2" || iconName === "user-x" || iconName === "log-out") {
         setRuntimeStyle(iconContainer, "background", "var(--danger-soft)");
         setRuntimeStyle(iconContainer, "color", "var(--danger)");
@@ -679,6 +697,7 @@ export class BiddingView {
       messageEl.textContent = message;
       if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
       iconEl.setAttribute("data-lucide", "trash-2");
+      applyDialogTone(modal, "trash-2");
       setRuntimeStyle(iconContainer, "background", "var(--danger-soft)");
       setRuntimeStyle(iconContainer, "color", "var(--danger)");
       const originalButtonsHtml = buttonContainer.innerHTML;
@@ -700,15 +719,15 @@ export class BiddingView {
       cancelChoiceBtn.textContent = "Huy";
       const opt1ChoiceBtn = document.createElement("button");
       opt1ChoiceBtn.type = "button";
-      opt1ChoiceBtn.className = "btn btn-primary";
+      opt1ChoiceBtn.className = "btn btn-warning";
       opt1ChoiceBtn.id = "btn-dialog-opt1";
-      setRuntimeStyle(opt1ChoiceBtn, "cssText", "flex: 1.6; background: var(--warning); border-color: var(--warning); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;");
+      setRuntimeStyle(opt1ChoiceBtn, "cssText", "flex: 1.6; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; min-height: 44px;");
       opt1ChoiceBtn.textContent = option1Text;
       const opt2ChoiceBtn = document.createElement("button");
       opt2ChoiceBtn.type = "button";
-      opt2ChoiceBtn.className = "btn btn-primary";
+      opt2ChoiceBtn.className = "btn btn-danger";
       opt2ChoiceBtn.id = "btn-dialog-opt2";
-      setRuntimeStyle(opt2ChoiceBtn, "cssText", "flex: 1.6; background: var(--danger); border-color: var(--danger); padding: 8px 10px; font-size: 0.8rem; color: #fff; font-weight: 600; white-space: nowrap; height: 38px;");
+      setRuntimeStyle(opt2ChoiceBtn, "cssText", "flex: 1.6; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; min-height: 44px;");
       opt2ChoiceBtn.textContent = option2Text;
       buttonContainer.append(cancelChoiceBtn, opt1ChoiceBtn, opt2ChoiceBtn);
       lucide.createIcons();
@@ -764,6 +783,7 @@ export class BiddingView {
       buttonContainer?.classList.remove("dialog-buttons-single");
       titleEl.textContent = title;
       iconEl.setAttribute("data-lucide", "help-circle");
+      applyDialogTone(modal, "help-circle");
       setRuntimeStyle(iconContainer, "background", "rgba(59, 130, 246, 0.1)");
       setRuntimeStyle(iconContainer, "color", "var(--primary)");
       okBtn.className = "btn btn-primary";
@@ -1007,6 +1027,7 @@ export class BiddingView {
         input.addEventListener("change", clearInvalid);
       });
       iconEl.setAttribute("data-lucide", iconName);
+      applyDialogTone(modal, iconName);
       if (iconName === "check-circle") {
         setRuntimeStyle(iconContainer, "background", "rgba(16, 185, 129, 0.1)");
         setRuntimeStyle(iconContainer, "color", "var(--success)");
@@ -1107,6 +1128,7 @@ export class BiddingView {
         setTimeout(() => inputEl.focus(), 100);
       }
       iconEl.setAttribute("data-lucide", "calendar");
+      applyDialogTone(modal, "calendar");
       setRuntimeStyle(iconContainer, "background", "rgba(59, 130, 246, 0.1)");
       setRuntimeStyle(iconContainer, "color", "var(--primary)");
       okBtn.className = "btn btn-primary";
@@ -1242,6 +1264,7 @@ export class BiddingView {
         setRuntimeStyle(iconContainer, "background", "var(--warning-soft)");
         setRuntimeStyle(iconContainer, "color", "var(--warning)");
         iconEl.setAttribute("data-lucide", "alert-circle");
+        applyDialogTone(modal, "alert-circle");
         if (window.lucide) window.lucide.createIcons({ root: iconContainer });
       }
       buttonsContainer.innerHTML = `

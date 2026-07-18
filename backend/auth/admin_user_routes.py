@@ -158,21 +158,20 @@ def _list_users_sync(request):
                 )
                 if subscription_status and expires_at is not None and expires_at <= int(time.time()):
                     subscription_status = 'expired'
-                effective_status = 'active'
-                if row['organization_status'] != 'active':
-                    effective_status = 'suspended'
-                elif subscription_status == 'suspended':
-                    effective_status = 'suspended'
-                elif subscription_status != 'active':
-                    effective_status = subscription_status or 'missing'
-                elif row['package_status'] != 'active':
-                    effective_status = 'package_inactive'
+                workspace_status = (
+                    'active' if row['organization_status'] == 'active' else 'suspended'
+                )
+                word_export_enabled = bool(
+                    workspace_status == 'active'
+                    and subscription_status == 'active'
+                    and row['package_status'] == 'active'
+                )
                 starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
                 orgs_by_user[row['user_id']].append({
                     "id": row['id'],
                     "name": row['ten_to_chuc'],
                     "scope_type": "organization",
-                    "status": effective_status,
+                    "status": workspace_status,
                     "role": row['vai_tro_trong_to_chuc'],
                     "employee_name": row['ten_nhan_su'],
                     "employee_phone": row['so_dien_thoai'],
@@ -188,7 +187,7 @@ def _list_users_sync(request):
                         "revision": int(row['revision'] or 0),
                     } if has_subscription else None,
                     "entitlements": {
-                        "word_export": effective_status == "active",
+                        "word_export": word_export_enabled,
                         "source": "organization_subscription",
                     },
                     "permissions": {
@@ -238,6 +237,329 @@ async def list_users_api(request):
         return _database_lane_unavailable_response(request)
     except BlockingIOTimeoutError:
         return _database_lane_unavailable_response(request, timed_out=True)
+
+
+def _update_user_access_settings_sync(request, actor_user_id, data):
+    conn = None
+    try:
+        user_id = str(data.get("user_id") or "").strip()
+        platform_role = str(data.get("platform_role") or "").strip().lower()
+        account_package_id = str(data.get("account_package_id") or "none").strip().lower()
+        organization_id = str(data.get("organization_id") or "").strip()
+        organization_role = str(data.get("organization_role") or "").strip().lower()
+        organization_package_id = str(data.get("organization_package_id") or "none").strip().lower()
+        permissions = data.get("permissions")
+        document_capabilities = data.get("document_capabilities")
+
+        if not user_id or platform_role not in {"super_admin", "user"}:
+            return JSONResponse(
+                {"error": "Thiếu tài khoản hoặc vai trò hệ thống không hợp lệ."},
+                status_code=400,
+            )
+        if permissions is not None and not isinstance(permissions, dict):
+            return JSONResponse({"error": "Cấu hình phân quyền không hợp lệ."}, status_code=400)
+        if document_capabilities is not None and not isinstance(document_capabilities, dict):
+            return JSONResponse({"error": "Cấu hình quyền xuất Word không hợp lệ."}, status_code=400)
+
+        normalized_permissions = {}
+        if permissions is not None:
+            for module in _USER_PERMISSION_MODULES:
+                value = str(permissions.get(module) or "").strip().lower()
+                if value not in {"", "view", "edit"}:
+                    return JSONResponse(
+                        {"error": f"Quyền phân hệ {module} không hợp lệ."},
+                        status_code=400,
+                    )
+                normalized_permissions[module] = value
+        normalized_capabilities = {}
+        if document_capabilities is not None:
+            for field in _DOCUMENT_CAPABILITY_FIELDS:
+                value = document_capabilities.get(field)
+                if not isinstance(value, bool):
+                    return JSONResponse(
+                        {"error": f"Quyền tài liệu {field} phải là đúng hoặc sai."},
+                        status_code=400,
+                    )
+                normalized_capabilities[field] = 1 if value else 0
+
+        conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.cursor()
+        target = cursor.execute(
+            "SELECT vai_tro FROM tai_khoan WHERE id = ? LIMIT 1", (user_id,)
+        ).fetchone()
+        if not target:
+            conn.rollback()
+            return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
+
+        current_platform_role = str(target[0] or "user").strip().lower()
+        if user_id == str(actor_user_id) and platform_role != current_platform_role:
+            conn.rollback()
+            return JSONResponse(
+                {"error": "Không thể tự thay đổi vai trò hệ thống của chính mình."},
+                status_code=409,
+            )
+        if current_platform_role == "super_admin" and platform_role != "super_admin":
+            admin_count = int(cursor.execute(
+                "SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'"
+            ).fetchone()[0])
+            if admin_count <= 1:
+                conn.rollback()
+                return JSONResponse(
+                    {"error": "Không thể hạ quyền Super Admin cuối cùng."},
+                    status_code=409,
+                )
+        cursor.execute(
+            "UPDATE tai_khoan SET vai_tro = ?, updated_at = datetime('now') WHERE id = ?",
+            (platform_role, user_id),
+        )
+
+        now = int(time.time())
+        if account_package_id in {"", "none"}:
+            cursor.execute("DELETE FROM account_subscriptions WHERE user_id = ?", (user_id,))
+        else:
+            account_package = cursor.execute(
+                "SELECT 1 FROM goi_dich_vu WHERE id = ? AND trang_thai = 'active'",
+                (account_package_id,),
+            ).fetchone()
+            if not account_package:
+                conn.rollback()
+                return JSONResponse({"error": "Gói cá nhân không hợp lệ hoặc đã khóa."}, status_code=400)
+            current_account = cursor.execute(
+                "SELECT starts_at, expires_at FROM account_subscriptions WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            starts_at = int(current_account[0]) if current_account else now
+            expires_at = int(current_account[1]) if current_account and current_account[1] else now + 365 * 86400
+            if expires_at <= now:
+                starts_at, expires_at = now, now + 365 * 86400
+            cursor.execute(
+                """INSERT INTO account_subscriptions (
+                       user_id, package_id, status, starts_at, expires_at
+                   ) VALUES (?, ?, 'active', ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       package_id = excluded.package_id,
+                       status = 'active',
+                       starts_at = excluded.starts_at,
+                       expires_at = excluded.expires_at,
+                       revision = account_subscriptions.revision + 1,
+                       updated_at = datetime('now')""",
+                (user_id, account_package_id, starts_at, expires_at),
+            )
+
+        affected_org_members = []
+        sync_version = None
+        if organization_id:
+            membership = cursor.execute(
+                """SELECT lower(trim(vai_tro_trong_to_chuc))
+                   FROM thanh_vien_to_chuc
+                   WHERE user_id = ? AND organization_id = ?
+                     AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
+                (user_id, organization_id),
+            ).fetchone()
+            if not membership:
+                conn.rollback()
+                return JSONResponse(
+                    {"error": "Người dùng không thuộc tổ chức đã chọn."},
+                    status_code=404,
+                )
+            if organization_role not in {"manager", "employee"}:
+                conn.rollback()
+                return JSONResponse({"error": "Vai trò trong tổ chức không hợp lệ."}, status_code=400)
+            current_org_role = str(membership[0] or "employee").strip().lower()
+            if current_org_role == "manager" and organization_role != "manager":
+                manager_count = int(cursor.execute(
+                    """SELECT count(*) FROM thanh_vien_to_chuc
+                       WHERE organization_id = ?
+                         AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'
+                         AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
+                    (organization_id,),
+                ).fetchone()[0])
+                if manager_count <= 1:
+                    conn.rollback()
+                    return JSONResponse(
+                        {"error": "Không thể hạ quyền Quản lý cuối cùng của tổ chức."},
+                        status_code=409,
+                    )
+            cursor.execute(
+                """UPDATE thanh_vien_to_chuc
+                   SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now')
+                   WHERE user_id = ? AND organization_id = ?""",
+                (organization_role, user_id, organization_id),
+            )
+
+            if organization_package_id in {"", "none"}:
+                cursor.execute(
+                    "DELETE FROM organization_subscriptions WHERE organization_id = ?",
+                    (organization_id,),
+                )
+            else:
+                org_package = cursor.execute(
+                    """SELECT han_muc_nhan_su FROM goi_dich_vu
+                       WHERE id = ? AND trang_thai = 'active'""",
+                    (organization_package_id,),
+                ).fetchone()
+                if not org_package:
+                    conn.rollback()
+                    return JSONResponse({"error": "Gói tổ chức không hợp lệ hoặc đã khóa."}, status_code=400)
+                current_org_subscription = cursor.execute(
+                    """SELECT starts_at, expires_at FROM organization_subscriptions
+                       WHERE organization_id = ?""",
+                    (organization_id,),
+                ).fetchone()
+                org_starts_at = int(current_org_subscription[0]) if current_org_subscription else now
+                org_expires_at = (
+                    int(current_org_subscription[1])
+                    if current_org_subscription and current_org_subscription[1]
+                    else now + 365 * 86400
+                )
+                if org_expires_at <= now:
+                    org_starts_at, org_expires_at = now, now + 365 * 86400
+                cursor.execute(
+                    """INSERT INTO organization_subscriptions (
+                           organization_id, package_id, status, starts_at,
+                           expires_at, member_quota
+                       ) VALUES (?, ?, 'active', ?, ?, ?)
+                       ON CONFLICT(organization_id) DO UPDATE SET
+                           package_id = excluded.package_id,
+                           status = 'active',
+                           starts_at = excluded.starts_at,
+                           expires_at = excluded.expires_at,
+                           member_quota = excluded.member_quota,
+                           revision = organization_subscriptions.revision + 1,
+                           updated_at = datetime('now')""",
+                    (
+                        organization_id, organization_package_id, org_starts_at,
+                        org_expires_at, int(org_package[0]),
+                    ),
+                )
+
+            if normalized_permissions:
+                sync_version = next_sync_version(cursor, organization_id)
+                permission_id = cursor.execute(
+                    """SELECT id FROM ma_tran_phan_quyen
+                       WHERE organization_id = ? AND emp_id = ?""",
+                    (organization_id, user_id),
+                ).fetchone()
+                permission_id = permission_id[0] if permission_id else generate_record_id("ma_tran_phan_quyen")
+                cursor.execute(
+                    """INSERT INTO ma_tran_phan_quyen (
+                           id, organization_id, owner_type, emp_id,
+                           kehoach, goithau, chudautu, nhathau,
+                           chuyengia, hopdong, thongtinmothau, sync_version
+                       ) VALUES (?, ?, 'organization', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(organization_id, emp_id) DO UPDATE SET
+                           kehoach = excluded.kehoach,
+                           goithau = excluded.goithau,
+                           chudautu = excluded.chudautu,
+                           nhathau = excluded.nhathau,
+                           chuyengia = excluded.chuyengia,
+                           hopdong = excluded.hopdong,
+                           thongtinmothau = excluded.thongtinmothau,
+                           sync_version = excluded.sync_version,
+                           updated_at = datetime('now')""",
+                    (
+                        permission_id, organization_id, user_id,
+                        *(normalized_permissions[module] for module in _USER_PERMISSION_MODULES),
+                        sync_version,
+                    ),
+                )
+
+            if normalized_capabilities:
+                cursor.execute(
+                    """INSERT INTO document_export_capabilities (
+                           organization_id, user_id, financial, identity, signature
+                       ) VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(organization_id, user_id) DO UPDATE SET
+                           financial = excluded.financial,
+                           identity = excluded.identity,
+                           signature = excluded.signature,
+                           updated_at = datetime('now')""",
+                    (
+                        organization_id,
+                        user_id,
+                        *(normalized_capabilities[field] for field in _DOCUMENT_CAPABILITY_FIELDS),
+                    ),
+                )
+            affected_org_members = [
+                row[0] for row in cursor.execute(
+                    "SELECT user_id FROM thanh_vien_to_chuc WHERE organization_id = ?",
+                    (organization_id,),
+                ).fetchall()
+            ]
+
+        log_audit(
+            "admin.user_access_settings_updated",
+            actor_user_id=actor_user_id,
+            organization_id=organization_id or None,
+            target_type="tai_khoan",
+            target_id=user_id,
+            request=request,
+            metadata={
+                "platform_role": platform_role,
+                "account_package_id": account_package_id,
+                "organization_id": organization_id or None,
+                "organization_role": organization_role or None,
+                "organization_package_id": organization_package_id if organization_id else None,
+                "permission_modules": list(normalized_permissions),
+                "document_capabilities": {
+                    field: bool(value) for field, value in normalized_capabilities.items()
+                },
+            },
+            cursor=cursor,
+            required=True,
+        )
+        conn.commit()
+
+        invalidated_users = set(affected_org_members)
+        invalidated_users.add(user_id)
+        for affected_user_id in invalidated_users:
+            _session_cache_invalidate_by_user_id(affected_user_id)
+            _org_cache_invalidate_by_user_id(affected_user_id)
+        disconnect_user_websockets(user_id)
+        if organization_id:
+            broadcast_websocket_event(
+                organization_id,
+                {"event": "user_access_settings_changed"},
+            )
+        return JSONResponse({"success": True, "message": "Đã lưu thiết lập quyền và gói dịch vụ."})
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        log_error(exc, "update_user_access_settings_api")
+        return JSONResponse(
+            {"error": "Không thể cập nhật thiết lập quyền của người dùng."},
+            status_code=500,
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
+async def update_user_access_settings_api(request):
+    try:
+        is_valid, role_or_err = await run_database_read(
+            verify_session,
+            request,
+            required_role="super_admin",
+            timeout_seconds=5.0,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request)
+    if not is_valid:
+        return JSONResponse({"error": role_or_err}, status_code=403)
+    data, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+    try:
+        return await run_database_write(
+            _update_user_access_settings_sync,
+            request,
+            role_or_err.user_id,
+            data,
+        )
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
+        return _database_lane_unavailable_response(request, write=True)
 
 
 def _delete_user_sync(request):

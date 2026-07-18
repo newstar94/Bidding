@@ -20,7 +20,7 @@ export async function editGoiThau(id, isReadOnly = false) {
   resetPackageFormEditableState(form);
   setPackageSubTableActionsVisible(true);
   const khSelect = document.getElementById("gt-kehoachid");
-  khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${escapeHtml(k.id)}" data-search="${escapeHtml(`${k.maKeHoach || ""} ${k.tenKeHoach || ""}`)}">${escapeHtml(k.tenKeHoach)}${escapeHtml(this.model.getPendingLabel("kehoach", k.id))}</option>`).join("");
+  khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${escapeHtml(k.id)}" data-search="${escapeHtml(`${k.maKeHoach || ""} ${k.tenKeHoach || ""}`)}">${escapeHtml(k.tenKeHoach)}</option>`).join("");
   khSelect.disabled = false;
   this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch LCNT...");
   const ntSelect = document.getElementById("gt-nhathautrungthauid");

@@ -211,15 +211,12 @@ def get_user_organizations(cursor, user_id):
             subscription_status = 'expired'
         organization_status = str(row['organization_status'] or '').strip().lower()
         package_status = str(row['package_status'] or '').strip().lower()
-        effective_status = 'active'
-        if organization_status != 'active':
-            effective_status = 'suspended'
-        elif subscription_status == 'suspended':
-            effective_status = 'suspended'
-        elif subscription_status != 'active':
-            effective_status = subscription_status or 'missing'
-        elif package_status != 'active':
-            effective_status = 'package_inactive'
+        workspace_status = 'active' if organization_status == 'active' else 'suspended'
+        word_export_enabled = bool(
+            workspace_status == 'active'
+            and subscription_status == 'active'
+            and package_status == 'active'
+        )
         starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
         subscription = {
             "package_id": row['package_id'],
@@ -238,10 +235,10 @@ def get_user_organizations(cursor, user_id):
                 "name": str(row['ten_to_chuc']),
                 "scope_type": "organization",
                 "role": membership_role,
-                "status": effective_status,
+                "status": workspace_status,
                 "subscription": subscription,
                 "entitlements": {
-                    "word_export": effective_status == "active",
+                    "word_export": word_export_enabled,
                     "source": "organization_subscription",
                 },
             }

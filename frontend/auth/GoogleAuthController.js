@@ -76,7 +76,7 @@ export function setupGoogleSignIn() {
       setAuthFlowInProgress(false);
     }
   };
-  this._showSetUsernameModal = (activeRole, onSuccess, suggestedUsername = "", accountLinked = false) => {
+  this._showSetUsernameModal = (activeRole, onSuccess, suggestedUsername = "", accountLinked = false, temporaryPasswordSent = false) => {
     const modalOverlay = document.getElementById("modal-set-username-overlay");
     const input = document.getElementById("input-set-username");
     const errorDiv = document.getElementById("set-username-error");
@@ -90,7 +90,9 @@ export function setupGoogleSignIn() {
       if (accountLinked) {
         descEl.innerHTML = 'Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
       } else {
-        descEl.innerHTML = 'Tài khoản Google của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Hệ thống không gửi mật khẩu tạm qua email. Bạn có thể tiếp tục đăng nhập bằng Google; nếu muốn tạo mật khẩu riêng, hãy dùng “Quên mật khẩu” sau khi hoàn tất.</span>';
+        descEl.innerHTML = temporaryPasswordSent
+          ? 'Tài khoản Google mới đã được tạo. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Mật khẩu tạm đã được gửi tới email Google của bạn. Hãy đổi mật khẩu sau lần đăng nhập đầu tiên.</span>'
+          : 'Tài khoản Google của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.';
       }
     }
     setRuntimeStyle(modalOverlay, "display", "flex");
@@ -267,7 +269,8 @@ export function setupGoogleSignIn() {
             }
           },
           data.suggested_username || "",
-          data.account_linked || false
+          data.account_linked || false,
+          data.temporary_password_sent || false
         );
         return;
       }

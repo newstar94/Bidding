@@ -6,6 +6,8 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import sqlite3
+import html
+import secrets
 from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
@@ -38,6 +40,7 @@ from backend.auth.identity import (
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import create_session
+from backend.auth.email_utils import gui_email
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOTimeoutError,
@@ -123,6 +126,8 @@ async def google_login_api(request):
     conn = None
     bg_tasks = None
     pending_audits = []
+    temporary_password = None
+    created_new_account = False
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
@@ -261,16 +266,16 @@ async def google_login_api(request):
 
 
         if not user:
-            import secrets as _secrets
             from backend.shared.helpers import hash_password as _hash_password
 
-            # Google-only accounts receive an unrecoverable random local secret.
-            # A local password can later be established through the verified-email
-            # reset flow; credentials are never sent by email.
+            # A newly created Google account also receives a one-time bootstrap
+            # password so the owner can use the regular login flow after choosing
+            # a username. Only the hash is stored; the clear value is emailed once.
+            temporary_password = secrets.token_urlsafe(12)
             try:
                 random_password_hash = await run_cpu_bound(
                     _hash_password,
-                    _secrets.token_urlsafe(48),
+                    temporary_password,
                     timeout_seconds=15,
                 )
             except (BlockingIOBusyError, BlockingIOTimeoutError):
@@ -301,6 +306,7 @@ async def google_login_api(request):
             )
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
+            created_new_account = True
             pending_audits.append((
                 "auth.google_auto_register",
                 {
@@ -349,6 +355,39 @@ async def google_login_api(request):
         )
         conn.commit()
 
+        if created_new_account and temporary_password:
+            safe_name = html.escape(str(user.get("ho_ten") or "bạn"))
+            safe_email = html.escape(email)
+            safe_password = html.escape(temporary_password)
+            subject = "[BiddingFlow] Mật khẩu tạm cho tài khoản Google"
+            email_body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
+                    <h2 style="color: #4057d6; text-align: center;">Tài khoản BiddingFlow đã được tạo</h2>
+                    <p>Xin chào <strong>{safe_name}</strong>,</p>
+                    <p>Bạn vừa tạo tài khoản BiddingFlow bằng Google với email <strong>{safe_email}</strong>.</p>
+                    <p>Mật khẩu tạm của bạn:</p>
+                    <div style="margin: 20px 0; padding: 16px; border-radius: 8px; background: #f1f5f9; text-align: center;">
+                        <code style="font-size: 20px; font-weight: 700; letter-spacing: 1px; color: #0f172a;">{safe_password}</code>
+                    </div>
+                    <p>Sau khi đặt tên đăng nhập trong ứng dụng, bạn có thể dùng tên đăng nhập và mật khẩu này để đăng nhập. Hãy đổi mật khẩu ngay sau lần đăng nhập đầu tiên.</p>
+                    <p style="font-size: 14px; color: #64748b;">Nếu bạn không thực hiện thao tác này, hãy đổi mật khẩu và liên hệ quản trị viên.</p>
+                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
+                </div>
+            </body>
+            </html>
+            """
+            bg_tasks = BackgroundTasks()
+            bg_tasks.add_task(
+                gui_email,
+                email,
+                subject,
+                email_body,
+                True,
+            )
+
         for audit_action, audit_kwargs in pending_audits:
             bg_tasks = _add_background_audit(bg_tasks, audit_action, **audit_kwargs)
 
@@ -382,6 +421,8 @@ async def google_login_api(request):
             "needs_username": needs_username,
             "suggested_username": suggested_username,
             "account_linked": account_linked,
+            "is_new_account": created_new_account,
+            "temporary_password_sent": created_new_account,
         }, background=bg_tasks)
         cookie_max_age = SESSION_EXPIRY_HOURS * 3600
         response.set_cookie(

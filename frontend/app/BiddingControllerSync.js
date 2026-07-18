@@ -8,15 +8,8 @@ import {
   WORKSPACE_PURGE_EVENT_KEY
 } from "./workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
-import {
-  applyFieldConflictChoices,
-  buildConflictDiff,
-  collectFieldConflicts,
-  renderSyncStatus
-} from "./syncStatus.js";
+import { renderSyncStatus } from "./syncStatus.js";
 import { commitSyncCursor, readSyncCursor } from "./syncCursor.js";
-import { openPendingSyncDialog as renderPendingSyncDialog } from "./PendingSyncDialog.js";
-import { CLIENT_TABLE_MAP } from "../documents/schemaRuntime.js";
 
 function currentWorkspaceStorage(controller) {
   return controller.model?.workspaceStorage || getWorkspaceStorage();
@@ -41,11 +34,9 @@ function hideOfflineBanner() {
 
 export function updateSyncState(patch = {}) {
   const storedTimestamp = Number(currentWorkspaceStorage(this)?.getItem("bf_last_fetch_time") || 0) || null;
-  const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
   this._syncUxState = {
     phase: "idle",
     online: globalThis.navigator?.onLine !== false,
-    pendingCount,
     lastSyncedAt: storedTimestamp,
     ...this._syncUxState,
     ...patch
@@ -59,14 +50,19 @@ export function setupSyncUx() {
   this._syncUxInstalled = true;
   const button = document.getElementById("btn-force-sync");
   button?.addEventListener("click", () => {
-    if ((this.model?.getPendingMutationSummary?.().pendingCount || 0) > 0) {
-      this.openPendingSyncDialog();
-    } else if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
+    if (Array.isArray(this.model?.syncErrors) && this.model.syncErrors.length > 0) {
       showSyncErrorDetails(this, this.model.syncErrors);
-    } else if (this._syncConflict) void this.resolveSyncConflict();
-    else void this.forceSyncData(false, false);
+    } else {
+      void this.forceSyncData(false, false);
+    }
   });
-  this.model.onMutationQueueChanged = ({ pendingCount }) => this.updateSyncState({ pendingCount });
+  this.model.onMutationBatchChanged = ({ pendingCount }) => {
+    if (!pendingCount || this._syncImmediateTimer) return;
+    this._syncImmediateTimer = setTimeout(() => {
+      this._syncImmediateTimer = null;
+      void this.autoSync();
+    }, 80);
+  };
   const updateOnline = () => this.updateSyncState({ online: navigator.onLine });
   window.addEventListener("online", updateOnline);
   window.addEventListener("offline", updateOnline);
@@ -79,123 +75,12 @@ export function setupSyncUx() {
     if (modal) delete modal.dataset.bfUnsaved;
   }, true);
   window.addEventListener("beforeunload", (event) => {
-    const hasPending = (this.model?.getPendingMutationSummary?.().pendingCount || 0) > 0;
     const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
-    if (!hasPending && !hasUnsavedForm) return;
+    if (!hasUnsavedForm) return;
     event.preventDefault();
     event.returnValue = "";
   });
   this.updateSyncState();
-}
-
-export function openPendingSyncDialog() {
-  return renderPendingSyncDialog(this);
-}
-
-export async function continuePendingSync() {
-  const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
-  if (pendingCount === 0) {
-    this.updateSyncState({ phase: "idle", pendingCount: 0 });
-    return { ok: true, skipped: true };
-  }
-  if (globalThis.navigator?.onLine === false) {
-    this.updateSyncState({ phase: "offline", online: false, pendingCount });
-    this.view?.showToast?.(
-      "Chưa có kết nối mạng",
-      "Dữ liệu hợp lệ vẫn được giữ trong hàng chờ và sẽ đồng bộ lại khi có mạng.",
-      "warning"
-    );
-    return { ok: false, offline: true };
-  }
-  if (this._syncConflict) return this.resolveSyncConflict();
-  return this.autoSync();
-}
-
-export async function removePendingSyncItem(item = {}) {
-  const removed = this.model?.removePendingMutation?.(item.type, item.id, item.operation);
-  if (!removed) return { ok: false, skipped: true };
-
-  const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
-  if (pendingCount === 0) this._syncConflict = null;
-  if (Array.isArray(this._syncConflict?.data?.errors)) {
-    const serverTable = CLIENT_TABLE_MAP[item.type] || item.type;
-    this._syncConflict.data.errors = this._syncConflict.data.errors.filter((error) => {
-      const sameRecord = String(error?.id || "") === String(item.id);
-      const sameTable = error?.table === item.type || error?.table === serverTable;
-      return !(sameRecord && sameTable);
-    });
-  }
-
-  if (removed.operation === "upsert" && Array.isArray(this.model?.state?.[removed.type])) {
-    this.model.state[removed.type] = this.model.state[removed.type].filter(
-      (record) => String(record?.id || "") !== removed.id
-    );
-    await this.model.db?.deleteRecord?.(removed.type, removed.id);
-  }
-
-  if (globalThis.navigator?.onLine !== false) {
-    const refreshed = await this.forceSyncData(true, true);
-    if (!refreshed?.ok && removed.operation === "upsert") {
-      await renderChangedState(this, new Set([removed.type]), { isBackground: true });
-    }
-  } else {
-    if (removed.operation === "upsert") {
-      await renderChangedState(this, new Set([removed.type]), { isBackground: true });
-    }
-    this.updateSyncState({
-      phase: pendingCount > 0 ? (this._syncConflict ? "conflict" : "offline") : "idle",
-      online: false,
-      pendingCount
-    });
-  }
-  return { ok: true, removed };
-}
-
-export async function resolveSyncConflict() {
-  const conflict = this._syncConflict;
-  if (!conflict) return { ok: true, skipped: true };
-  const queue = this.model.getMutationQueue();
-  const fieldConflicts = collectFieldConflicts(queue, conflict.data);
-  let retryQueue = queue;
-  if (fieldConflicts.length > 0) {
-    const choices = {};
-    for (const item of fieldConflicts) {
-      const choice = await this.view.customSelectConfirm(
-        `Xung đột ${item.type}/${item.id} · ${item.field}`,
-        `Máy này: ${JSON.stringify(item.localValue ?? null)}\nMáy chủ: ${JSON.stringify(item.serverValue ?? null)}`,
-        [
-          { value: "local", label: "Giữ giá trị trên máy này" },
-          { value: "server", label: "Dùng giá trị từ máy chủ" }
-        ]
-      );
-      if (!choice) return { ok: false, cancelled: true };
-      choices[item.key] = choice;
-    }
-    retryQueue = applyFieldConflictChoices(queue, fieldConflicts, choices);
-  } else {
-    const detail = buildConflictDiff(queue, conflict.data).join("\n");
-    const choice = await this.view.customSelectConfirm(
-      "Giải quyết xung đột đồng bộ",
-      detail,
-      [
-        { value: "local", label: "Giữ thay đổi trên máy này và thử lại" },
-        { value: "server", label: "Bỏ thay đổi chờ và dùng dữ liệu máy chủ" }
-      ]
-    );
-    if (!choice) return { ok: false, cancelled: true };
-    if (choice === "server") {
-      this.model.discardAllPendingMutations();
-      this._syncConflict = null;
-      return this.forceSyncData(false, true);
-    }
-  }
-  this.updateSyncState({ phase: "syncing" });
-  const refreshed = await this.forceSyncData(true, true);
-  if (!refreshed?.ok) return refreshed;
-  const syncVersion = currentWorkspaceStorage(this).getItem("bf_last_sync_version");
-  await this.model.reapplyPendingMutationQueue(retryQueue, syncVersion);
-  this._syncConflict = null;
-  return this.autoSync();
 }
 export function collectCommittedMutationKeys(payload = {}) {
   const mutationKeys = Object.keys(payload).filter((key) => ![
@@ -378,7 +263,7 @@ function showSyncErrorReport(controller, errors, rejectedCount = 0) {
     controller.view.showToast(
       "Lỗi đồng bộ",
       rejectedCount > 0
-        ? `${rejectedCount} bản ghi vi phạm quy tắc đã bị loại khỏi hàng chờ. Bấm để xem chi tiết.`
+        ? `${rejectedCount} bản ghi vi phạm quy tắc không được máy chủ chấp nhận. Bấm để xem chi tiết.`
         : `${errors.length} bản ghi chưa hợp lệ. Bấm để xem chi tiết trong hộp thoại.`,
       "error",
       {
@@ -480,11 +365,19 @@ export function ensureDetailRecordLoaded(tabName, action) {
   return promise;
 }
 export function autoSync() {
+  if (this._autoSyncPromise) {
+    this._autoSyncQueued = true;
+    return this._autoSyncPromise.then((result) => {
+      if (!this._autoSyncQueued) return result;
+      this._autoSyncQueued = false;
+      return this.autoSync();
+    });
+  }
   const workspace = captureWorkspace(this);
   if (!workspace.organizationId) return Promise.resolve({ ok: false, error: new Error("No active workspace") });
   const mutationBatch = this.model && typeof this.model.buildMutationSyncPayload === "function" ? this.model.buildMutationSyncPayload() : null;
   if (!mutationBatch) {
-    this.updateSyncState({ phase: "idle", pendingCount: 0 });
+    this.updateSyncState({ phase: "idle" });
     return Promise.resolve({ ok: true, skipped: true });
   }
   const { payload, snapshot } = mutationBatch;
@@ -493,7 +386,7 @@ export function autoSync() {
   if (shouldRefreshDashboardSummary) {
     payload.includeDashboardSummary = true;
   }
-  return apiFetch("/api/sync", {
+  const request = apiFetch("/api/sync", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -508,7 +401,8 @@ export function autoSync() {
       const validationErrors = getSyncValidationErrors(data);
       let rejectedRecords = [];
       if (status === 409 || data.status === "conflict") {
-        this._syncConflict = { status, data, createdAt: Date.now() };
+        this.model?.discardMutationBatch?.();
+        this._syncConflict = null;
         this.updateSyncState({ phase: "conflict" });
         console.warn("[Sync Conflict]", data.message || data.error || "Server data changed before local sync.");
         if (data.currentSyncVersion !== void 0 && data.currentSyncVersion !== null) {
@@ -517,14 +411,11 @@ export function autoSync() {
         if (this.view && typeof this.view.showToast === "function") {
           this.view.showToast(
             "Xung đột đồng bộ",
-            "Dữ liệu trên máy chủ đã thay đổi. Tải lại dữ liệu mới trước khi đồng bộ tiếp.",
-            "warning",
-            {
-              actionLabel: "Xem và xử lý",
-              onAction: () => this.resolveSyncConflict().catch((err) => console.error("Failed conflict resolution:", err))
-            }
+            "Thay đổi không được lưu vì dữ liệu trên máy chủ đã thay đổi. Ứng dụng đang tải lại bản mới nhất.",
+            "warning"
           );
         }
+        await this.forceSyncData(true, true);
         return { ok: false, status, data, conflict: true };
       }
       if (validationErrors.length > 0) {
@@ -604,15 +495,8 @@ export function autoSync() {
         ? `${validationErrors.length} lỗi dữ liệu · Nhấn để xem`
         : data.error || data.message || "Lỗi đồng bộ";
       this.updateSyncState({ phase: "error", message: syncMessage });
-      const remainingPending = this.model?.getPendingMutationSummary?.().pendingCount || 0;
-      if (
-        validationErrors.length > 0
-        && rejectedRecords.length > 0
-        && remainingPending > 0
-        && globalThis.navigator?.onLine !== false
-      ) {
-        return this.autoSync();
-      }
+      this.model?.discardMutationBatch?.();
+      if (globalThis.navigator?.onLine !== false) await this.forceSyncData(true, true);
       return { ok: false, status, data, validation: validationErrors.length > 0 };
     }
     if (data.timestamp) {
@@ -622,8 +506,8 @@ export function autoSync() {
       currentWorkspaceStorage(this).setItem("bf_last_sync_version", data.syncVersion.toString());
     }
     if (this.model) this.model.syncErrors = [];
-    if (this.model && typeof this.model.clearSyncedMutationQueue === "function") {
-      this.model.clearSyncedMutationQueue(snapshot);
+    if (this.model && typeof this.model.clearCommittedMutationBatch === "function") {
+      this.model.clearCommittedMutationBatch(snapshot);
     } else {
       currentWorkspaceStorage(this).removeItem("bf_local_deletions");
     }
@@ -679,18 +563,24 @@ export function autoSync() {
     }
     this._syncConflict = null;
     hideOfflineBanner();
-    this.updateSyncState({ phase: "idle", online: true, pendingCount: this.model?.getPendingMutationSummary?.().pendingCount || 0, lastSyncedAt: Date.now() });
+    this.updateSyncState({ phase: "idle", online: true, lastSyncedAt: Date.now() });
     return { ok: true, status, data };
   }).catch((err) => {
     console.error("Error auto sync:", err);
+    this.model?.discardMutationBatch?.();
     this.updateSyncState({ phase: "error", message: "Không thể kết nối máy chủ" });
     return { ok: false, error: err };
   });
+  const trackedRequest = request.finally(() => {
+    if (this._autoSyncPromise === trackedRequest) this._autoSyncPromise = null;
+  });
+  this._autoSyncPromise = trackedRequest;
+  return trackedRequest;
 }
 
 export async function prepareExportSnapshot() {
   if (!this.model || typeof this.model.buildMutationSyncPayload !== "function") {
-    throw new Error("Không thể kiểm tra dữ liệu chờ đồng bộ.");
+    throw new Error("Không thể xác nhận dữ liệu với máy chủ.");
   }
 
   const syncResult = await this.autoSync();
@@ -698,7 +588,7 @@ export async function prepareExportSnapshot() {
     if (syncResult?.conflict || syncResult?.status === 409) {
       throw new Error("Dữ liệu đã thay đổi trên máy chủ. Vui lòng giải quyết xung đột trước khi xuất tệp.");
     }
-    throw new Error("Không thể đồng bộ dữ liệu chờ xử lý trước khi xuất tệp.");
+    throw new Error("Không thể xác nhận dữ liệu với máy chủ trước khi xuất tệp.");
   }
 
   let snapshotVersion = syncResult?.data?.syncVersion;
@@ -796,7 +686,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
       this.model?.acknowledgeServerDeletions?.(deletionsByTable);
       const committedCursor = commitSyncCursor(storage, dbData);
       if (committedCursor.syncVersion !== null) {
-        this.model?.rebasePendingMutationQueue?.(committedCursor.syncVersion);
+        this.model?.rebaseMutationBatch?.(committedCursor.syncVersion);
       }
       await renderChangedState(this, changedKeys, { isBackground });
       this.updateSyncStatusDisplay(Date.now());
@@ -905,6 +795,13 @@ export function setupWebSocketConnection() {
             this.view.renderManagerNhanVienPanel();
           });
         }
+      } else if (
+        msg.event === "organization_subscription_changed"
+        || msg.event === "user_access_settings_changed"
+      ) {
+        if (!workspaceIsCurrent(this, workspace)) return;
+        void this._checkSessionNow?.();
+        this.scheduleBackgroundSync(300);
       }
     } catch (e) {
       console.error("Error handling WebSocket message:", e);

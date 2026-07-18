@@ -721,8 +721,17 @@
   box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15);
 }
 .btn-danger:hover {
-  background-color: #b91c1c;
+  background-color: var(--danger-hover);
   box-shadow: 0 6px 16px rgba(220, 38, 38, 0.25);
+}
+.btn.btn-warning {
+  background-color: var(--warning);
+  color: white;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--warning) 22%, transparent);
+}
+.btn.btn-warning:hover {
+  background-color: var(--warning-hover);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--warning) 30%, transparent);
 }
 .btn-emerald {
   background:
@@ -824,8 +833,8 @@
     background-color var(--transition-fast),
     transform var(--transition-fast);
   line-height: 1;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -845,7 +854,60 @@
 #dialog-buttons > .btn {
   flex: 1 1 0;
   min-width: 0;
-  min-height: 38px;
+  min-height: 44px;
+}
+
+#modal-custom-dialog[data-dialog-tone="primary"] #dialog-icon-container {
+  --dialog-tone-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+#modal-custom-dialog[data-dialog-tone="success"] #dialog-icon-container {
+  --dialog-tone-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+}
+#modal-custom-dialog[data-dialog-tone="warning"] #dialog-icon-container {
+  --dialog-tone-color: var(--warning);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+#modal-custom-dialog[data-dialog-tone="danger"] #dialog-icon-container {
+  --dialog-tone-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+#modal-custom-dialog[data-dialog-tone="primary"] #btn-dialog-ok {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+#modal-custom-dialog[data-dialog-tone="success"] #btn-dialog-ok {
+  background: var(--success);
+  border-color: var(--success);
+}
+#modal-custom-dialog[data-dialog-tone="warning"] #btn-dialog-ok {
+  background: var(--warning);
+  border-color: var(--warning);
+}
+#modal-custom-dialog[data-dialog-tone="danger"] #btn-dialog-ok {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+#modal-custom-dialog[data-dialog-tone="primary"] #btn-dialog-ok:hover { background: var(--primary-hover); }
+#modal-custom-dialog[data-dialog-tone="success"] #btn-dialog-ok:hover { background: var(--success-hover); }
+#modal-custom-dialog[data-dialog-tone="warning"] #btn-dialog-ok:hover { background: var(--warning-hover); }
+#modal-custom-dialog[data-dialog-tone="danger"] #btn-dialog-ok:hover { background: var(--danger-hover); }
+
+#modal-custom-dialog[data-dialog-tone="primary"] { --dialog-tone-color: var(--primary); }
+#modal-custom-dialog[data-dialog-tone="success"] { --dialog-tone-color: var(--success); }
+#modal-custom-dialog[data-dialog-tone="warning"] { --dialog-tone-color: var(--warning); }
+#modal-custom-dialog[data-dialog-tone="danger"] { --dialog-tone-color: var(--danger); }
+
+#modal-custom-dialog[data-dialog-tone] #btn-dialog-ok:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--dialog-tone-color) 32%, transparent);
+  outline-offset: 3px;
 }
 
 #dialog-buttons.dialog-buttons-single {
@@ -1785,4 +1847,123 @@ textarea[disabled] {
   background: var(--neutral-soft);
   font-size: 0.84rem;
   line-height: 1.5;
+}
+
+#modal-detail-system-user .access-settings-modal {
+  width: min(960px, calc(100vw - 32px)) !important;
+  max-width: 960px !important;
+}
+.access-settings-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.access-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.access-settings-section {
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+.access-settings-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.access-settings-section-heading h4,
+.access-document-permissions h5 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+.access-settings-section-heading p,
+.access-document-permissions p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+.access-entitlement-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  background: var(--neutral-soft);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+.access-entitlement-summary[data-enabled="true"] {
+  border-color: color-mix(in srgb, var(--success) 36%, var(--border-color));
+  color: var(--success);
+  background: var(--success-soft);
+}
+.access-entitlement-summary[data-enabled="false"] {
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--border-color));
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.access-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.access-document-permissions {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-color);
+}
+.access-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.access-checkbox-grid .checkbox-item {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-app);
+  color: var(--text-main);
+  line-height: 1.35;
+}
+.access-checkbox-grid .checkbox-item:has(input:focus-visible) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+@media (max-width: 760px) {
+  #modal-detail-system-user .access-settings-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .access-settings-identity-grid,
+  .access-settings-section .form-grid,
+  .access-permission-grid,
+  .access-document-permissions,
+  .access-checkbox-grid {
+    grid-template-columns: 1fr;
+  }
+  .access-settings-section .col-span-2 {
+    grid-column: span 1;
+  }
+  .access-settings-section {
+    padding: 14px;
+  }
 }

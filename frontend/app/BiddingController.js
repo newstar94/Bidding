@@ -389,13 +389,9 @@ export class BiddingController {
     if (currentOrganizationId === organizationId && this.model?.workspaceScope?.organizationId === organizationId) {
       return { changed: false, organizationId };
     }
-    const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
     const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
-    if (!options.accessRevoked && !options.skipUnsyncedWarning && (pendingCount > 0 || hasUnsavedForm)) {
-      const details = [
-        pendingCount > 0 ? `${pendingCount} thay đổi chưa đồng bộ` : "",
-        hasUnsavedForm ? "biểu mẫu đang nhập chưa được lưu" : ""
-      ].filter(Boolean).join(" và ");
+    if (!options.accessRevoked && !options.skipUnsyncedWarning && hasUnsavedForm) {
+      const details = "biểu mẫu đang nhập chưa được lưu";
       const confirmed = await this.view?.customConfirm?.(
         "Đổi workspace?",
         `Workspace hiện tại còn ${details}. Dữ liệu đã lưu trên thiết bị vẫn được giữ riêng theo workspace; nội dung biểu mẫu chưa lưu sẽ không tự chuyển sang workspace mới.`,
@@ -949,6 +945,14 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const deleteHopDong = (id) => runWorkflow("deleteHopDong", id);
     const saveKetQuaChiDinhThau = (gtId) => runWorkflow("saveKetQuaChiDinhThau", gtId);
     const exportContractFromHopDong = async (pkgId, soHopDong) => {
+      if (!this.model.state.activeuser?.wordExportEnabled) {
+        await this.view.customAlert(
+          "Chức năng cần gói trả phí",
+          "Phạm vi đang làm việc chưa có quyền xuất Word.",
+          "lock-keyhole"
+        );
+        return;
+      }
       const dbId = pkgId;
       const btn = document.querySelector(`button[onclick*="${pkgId}"][onclick*="${soHopDong}"]`);
       const origHTML = btn ? btn.innerHTML : "";

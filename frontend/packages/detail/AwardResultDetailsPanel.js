@@ -309,6 +309,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           appraisalNumber: soBctdResult,
           appraisalDate: ngayBctdResult,
           isEditable,
+          wordExportEnabled: Boolean(view.model.state.activeuser?.wordExportEnabled),
           formatCurrency: (value) => view.model.formatCurrency(value),
           formatDate: (value) => view.model.formatDate(value)
         });

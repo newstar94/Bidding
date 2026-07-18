@@ -272,10 +272,9 @@ export function setupAuth() {
   };
   if (btnLogout) {
     btnLogout.onclick = async () => {
-      const pendingCount = this.model?.getPendingMutationSummary?.().pendingCount || 0;
       const hasUnsavedForm = Boolean(document.querySelector(".modal-overlay.active[data-bf-unsaved='true']"));
-      const warning = pendingCount || hasUnsavedForm
-        ? ` Cảnh báo: còn ${pendingCount ? `${pendingCount} thay đổi chưa đồng bộ` : ""}${pendingCount && hasUnsavedForm ? " và " : ""}${hasUnsavedForm ? "biểu mẫu chưa lưu" : ""}.`
+      const warning = hasUnsavedForm
+        ? " Cảnh báo: còn biểu mẫu chưa lưu."
         : "";
       const confirmed = await this.view.customConfirm("Xác nhận đăng xuất", `Bạn có chắc chắn muốn đăng xuất tài khoản này không?${warning}`, "log-out");
       if (confirmed) {

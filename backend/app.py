@@ -375,6 +375,7 @@ from backend.auth.auth_routes import (
     logout_api,
     list_users_api,
     delete_user_api,
+    update_user_access_settings_api,
     update_user_role_api,
     update_user_metadata_api,
     list_system_packages_api,
@@ -689,6 +690,7 @@ routes = [
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
     Route("/api/auth/privileged-reauth", privileged_reauth_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
+    Route("/api/auth/users/access-settings", update_user_access_settings_api, methods=["PUT"]),
 
     Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
     Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),

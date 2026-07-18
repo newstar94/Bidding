@@ -1,6 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
-import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeProfile } from "../auth/accessContext.js";
+import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import {
@@ -126,6 +126,108 @@ function idempotencyKey(prefix) {
   return `${prefix}:${random}`;
 }
 
+const ACCESS_PERMISSION_MODULES = [
+  "kehoach", "goithau", "thongtinmothau", "hopdong",
+  "chudautu", "nhathau", "chuyengia"
+];
+
+function accessPackageOptions(controller) {
+  const packages = Array.isArray(controller.model.state.systempackages)
+    ? controller.model.state.systempackages.filter((item) => item.status !== "inactive")
+    : [];
+  return packages.length ? packages : [
+    { id: "silver", name: "Gói Bạc (Silver)" },
+    { id: "gold", name: "Gói Vàng (Gold)" },
+    { id: "diamond", name: "Gói Kim Cương (Diamond)" }
+  ];
+}
+
+function populateAccessPackageSelect(controller, select, selectedValue) {
+  if (!select) return;
+  const noneOption = document.createElement("option");
+  noneOption.value = "none";
+  noneOption.textContent = "Không có gói trả phí";
+  const options = accessPackageOptions(controller).map((item) => {
+    const option = document.createElement("option");
+    option.value = String(item.id || "");
+    option.textContent = String(item.name || item.id || "");
+    return option;
+  });
+  select.replaceChildren(noneOption, ...options);
+  select.value = selectedValue || "none";
+}
+
+function populatePermissionSelect(select, value) {
+  if (!select) return;
+  select.innerHTML = `
+    <option value="">Không truy cập</option>
+    <option value="view">Chỉ xem</option>
+    <option value="edit">Thêm / Sửa / Xóa</option>`;
+  select.value = value || "view";
+}
+
+function renderWordEntitlement(element, enabled, message) {
+  if (!element) return;
+  element.dataset.enabled = enabled ? "true" : "false";
+  const icon = document.createElement("i");
+  icon.dataset.lucide = enabled ? "circle-check" : "lock-keyhole";
+  icon.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.textContent = String(message || "");
+  element.replaceChildren(icon, text);
+}
+
+function renderPersonalAccessSettings() {
+  const platformRole = document.getElementById("detail-su-platform-role")?.value || "user";
+  const packageSelect = document.getElementById("detail-su-account-package");
+  const isPlatformAdmin = platformRole === "super_admin";
+  if (packageSelect) packageSelect.disabled = isPlatformAdmin;
+  const hasPaidPackage = packageSelect?.value && packageSelect.value !== "none";
+  renderWordEntitlement(
+    document.getElementById("detail-su-personal-entitlement"),
+    isPlatformAdmin || Boolean(hasPaidPackage),
+    isPlatformAdmin
+      ? "Super Admin dùng quyền nền tảng và không có phạm vi dữ liệu Cá nhân."
+      : hasPaidPackage
+        ? "Được xuất Word trong phạm vi Cá nhân theo gói cá nhân đang hoạt động."
+        : "Chưa có gói cá nhân: vẫn được thêm, sửa, xóa dữ liệu nhưng chức năng xuất Word bị khóa."
+  );
+  globalThis.lucide?.createIcons?.();
+}
+
+function renderOrganizationAccessSettings(controller, user, organizationId) {
+  const organizations = businessOrganizations(user);
+  const organization = organizations.find((item) => item.id === organizationId) || organizations[0] || null;
+  const form = document.getElementById("form-detail-system-user");
+  if (form) form.dataset.organizationId = organization?.id || "";
+  const roleSelect = document.getElementById("detail-su-role");
+  if (roleSelect) roleSelect.value = organization?.role || "employee";
+  populateAccessPackageSelect(
+    controller,
+    document.getElementById("detail-su-package"),
+    organization?.subscription?.package_id || "none"
+  );
+  const isManager = organization?.role === "manager";
+  ACCESS_PERMISSION_MODULES.forEach((module) => {
+    const select = document.querySelector(`[data-permission-module="${module}"]`);
+    populatePermissionSelect(select, isManager ? "edit" : organization?.permissions?.[module] || "view");
+    if (select) select.disabled = isManager;
+  });
+  document.querySelectorAll("[data-document-capability]").forEach((input) => {
+    const field = input.dataset.documentCapability;
+    input.checked = isManager || Boolean(organization?.document_capabilities?.[field]);
+    input.disabled = isManager || !organization?.entitlements?.word_export;
+  });
+  renderWordEntitlement(
+    document.getElementById("detail-su-organization-entitlement"),
+    Boolean(organization?.entitlements?.word_export),
+    organization?.entitlements?.word_export
+      ? `Được xuất Word khi làm việc trong ${organization.name}; quyền lấy từ gói của tổ chức.`
+      : `${organization?.name || "Tổ chức"} chưa có gói trả phí hoạt động nên chức năng xuất Word bị khóa.`
+  );
+  globalThis.lucide?.createIcons?.();
+}
+
 async function updateOrganizationSubscription(organizationId, action, extra = {}) {
   const response = await apiFetch("/api/organizations/subscription", {
     method: "POST",
@@ -185,30 +287,33 @@ export async function showSystemUserDetail(userId) {
     document.getElementById("detail-su-username").value = user.username;
     document.getElementById("detail-su-name").value = user.name || "";
     document.getElementById("detail-su-email").value = user.email || "";
-    document.getElementById("detail-su-organization").value = organizationDisplayName(user);
-    const activeOrgId = getActiveOrganizationId();
-    const activeMembership = normalizeOrganizations(user).find((organization) => organization.id === activeOrgId);
-    document.getElementById("detail-su-role").value = activeMembership?.role || "employee";
+    document.getElementById("detail-su-platform-role").value = user.platform_role || "user";
+    populateAccessPackageSelect(
+      this,
+      document.getElementById("detail-su-account-package"),
+      user.account_subscription?.package_id || "none"
+    );
+    renderPersonalAccessSettings();
     const organizations = businessOrganizations(user);
-    const organization = organizations.find((item) => item.id === getActiveOrganizationId()) || organizations[0];
-    const subscription = organization?.subscription || {};
-    document.getElementById("form-detail-system-user").dataset.organizationId = organization?.id || "";
-    document.getElementById("detail-su-package").value = subscription.package_id || "none";
-    const orgContainer = document.getElementById("detail-su-org-container");
-    const organizationSettingIds = [
-      "detail-su-org-container",
-      "detail-su-role-container",
-      "detail-su-package-container",
-      "detail-su-dates-container"
-    ];
-    organizationSettingIds.forEach((id) => {
-      const element = document.getElementById(id);
-      if (element) setRuntimeStyle(element, "display", organization ? "block" : "none");
-    });
-    const personalNote = document.getElementById("detail-su-personal-note");
-    if (personalNote) personalNote.hidden = Boolean(organization);
-    document.getElementById("detail-su-startdate").value = subscription.start_date ? this.model.formatForDateInput(subscription.start_date) : "";
-    document.getElementById("detail-su-enddate").value = subscription.end_date ? this.model.formatForDateInput(subscription.end_date) : "";
+    const organizationSelect = document.getElementById("detail-su-organization");
+    if (organizationSelect) {
+      organizationSelect.replaceChildren(...organizations.map((organization) => {
+        const option = document.createElement("option");
+        option.value = organization.id;
+        option.textContent = organization.name;
+        return option;
+      }));
+    }
+    const selectedOrganization = organizations.find((item) => item.id === getActiveOrganizationId()) || organizations[0] || null;
+    if (organizationSelect) organizationSelect.value = selectedOrganization?.id || "";
+    const organizationSection = document.getElementById("detail-su-organization-section");
+    const permissionsSection = document.getElementById("detail-su-permissions-section");
+    if (organizationSection) organizationSection.hidden = !selectedOrganization;
+    if (permissionsSection) permissionsSection.hidden = !selectedOrganization;
+    const form = document.getElementById("form-detail-system-user");
+    form.__detailUser = user;
+    renderOrganizationAccessSettings(this, user, selectedOrganization?.id || "");
+    globalThis.lucide?.createIcons?.();
     this.view.openModal("modal-detail-system-user");
   } catch (err) {
     await this.view.customAlert("Lỗi hệ thống", "Không thể kết nối đến máy chủ: " + err.message, "alert-triangle");
@@ -405,8 +510,8 @@ export function setupRBACEvents() {
       const syncResult = await this.autoSync();
       if (!syncResult?.ok) {
         await this.view.customAlert(
-          "Chưa đồng bộ",
-          "Thay đổi đã được lưu trên thiết bị nhưng chưa được máy chủ xác nhận. Vui lòng đồng bộ lại.",
+          "Không thể lưu",
+          "Máy chủ chưa xác nhận thay đổi. Dữ liệu mới nhất sẽ được tải lại; vui lòng thử lại.",
           "alert-triangle"
         );
         return;
@@ -419,49 +524,104 @@ export function setupRBACEvents() {
       await this.view.customAlert("Thành công", "Trạng thái hồ sơ giấy đã được cập nhật thành công!", "check-circle");
     });
   }
-  const suPkgDropdown = document.getElementById("detail-su-package");
-  if (suPkgDropdown) {
-    bindAdminEvent(suPkgDropdown, "change", "toggle-system-user-org", (e) => {
-      const orgContainer = document.getElementById("detail-su-org-container");
-      if (orgContainer) {
-        setRuntimeStyle(orgContainer, "display", e.target.value !== "none" ? "block" : "none");
-      }
+  const accountPackageSelect = document.getElementById("detail-su-account-package");
+  bindAdminEvent(accountPackageSelect, "change", "preview-personal-entitlement", renderPersonalAccessSettings);
+  bindAdminEvent(
+    document.getElementById("detail-su-platform-role"),
+    "change",
+    "preview-platform-role",
+    renderPersonalAccessSettings
+  );
+  const organizationSelect = document.getElementById("detail-su-organization");
+  bindAdminEvent(organizationSelect, "change", "switch-user-organization-settings", (event) => {
+    const form = document.getElementById("form-detail-system-user");
+    renderOrganizationAccessSettings(this, form?.__detailUser || {}, event.target.value);
+  });
+  const organizationPackageSelect = document.getElementById("detail-su-package");
+  bindAdminEvent(organizationPackageSelect, "change", "preview-organization-entitlement", (event) => {
+    const form = document.getElementById("form-detail-system-user");
+    const organization = businessOrganizations(form?.__detailUser || {})
+      .find((item) => item.id === form?.dataset.organizationId);
+    const enabled = event.target.value !== "none";
+    renderWordEntitlement(
+      document.getElementById("detail-su-organization-entitlement"),
+      enabled,
+      enabled
+        ? `Sau khi lưu, thành viên của ${organization?.name || "tổ chức"} được dùng chức năng xuất Word.`
+        : `${organization?.name || "Tổ chức"} sẽ không dùng được chức năng xuất Word.`
+    );
+    document.querySelectorAll("[data-document-capability]").forEach((input) => {
+      input.disabled = document.getElementById("detail-su-role")?.value === "manager" || !enabled;
     });
-  }
+    globalThis.lucide?.createIcons?.();
+  });
+  const organizationRoleSelect = document.getElementById("detail-su-role");
+  bindAdminEvent(organizationRoleSelect, "change", "toggle-inherited-manager-permissions", (event) => {
+    const isManager = event.target.value === "manager";
+    document.querySelectorAll("[data-permission-module]").forEach((select) => {
+      select.disabled = isManager;
+      if (isManager) select.value = "edit";
+    });
+    document.querySelectorAll("[data-document-capability]").forEach((input) => {
+      input.disabled = isManager || document.getElementById("detail-su-package")?.value === "none";
+      if (isManager) input.checked = true;
+    });
+  });
   const formSu = document.getElementById("form-detail-system-user");
   if (formSu) {
     bindAdminEvent(formSu, "submit", "save-system-user", async (e) => {
       e.preventDefault();
       if (!this.view.validateForm(formSu)) return;
       const userId = document.getElementById("detail-su-id").value;
-      const role = document.getElementById("detail-su-role").value;
-      const packageId = document.getElementById("detail-su-package").value;
+      const platformRole = document.getElementById("detail-su-platform-role").value;
+      const accountPackageId = document.getElementById("detail-su-account-package").value;
       const organizationId = formSu.dataset.organizationId || "";
-      if (!organizationId) {
-        this.view.closeModal("modal-detail-system-user");
-        await this.view.customAlert(
-          "Không cần thiết lập",
-          "Tài khoản chưa thuộc tổ chức và đã tự động sử dụng không gian cá nhân với đầy đủ chức năng.",
-          "check-circle"
-        );
-        return;
-      }
+      const submitButton = document.getElementById("detail-su-submit");
+      const permissions = Object.fromEntries(ACCESS_PERMISSION_MODULES.map((module) => [
+        module,
+        document.querySelector(`[data-permission-module="${module}"]`)?.value || ""
+      ]));
+      const documentCapabilities = Object.fromEntries(
+        Array.from(document.querySelectorAll("[data-document-capability]")).map((input) => [
+          input.dataset.documentCapability,
+          Boolean(input.checked)
+        ])
+      );
       try {
-        const roleResponse = await apiFetch("/api/auth/users/update-role", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Active-Org": organizationId },
-          body: JSON.stringify({ user_id: userId, role, scope: "organization" })
-        });
-        if (!roleResponse.ok) {
-          const roleError = await roleResponse.json();
-          throw new Error(roleError.error || "Không thể cập nhật vai trò.");
+        formSu.setAttribute("aria-busy", "true");
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = "Đang lưu...";
         }
-        await updateOrganizationSubscription(organizationId, "set_package", { package_id: packageId });
+        const response = await apiFetch("/api/auth/users/access-settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            platform_role: platformRole,
+            account_package_id: accountPackageId,
+            organization_id: organizationId || null,
+            organization_role: organizationId ? document.getElementById("detail-su-role").value : null,
+            organization_package_id: organizationId ? document.getElementById("detail-su-package").value : null,
+            permissions: organizationId ? permissions : null,
+            document_capabilities: organizationId ? documentCapabilities : null
+          })
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Không thể cập nhật thiết lập tài khoản.");
+        }
         this.view.closeModal("modal-detail-system-user");
-        await this.view.customAlert("Thành công", "Đã lưu thiết lập tài khoản thành công!", "check-circle");
-        this.loadSystemUsers();
+        await this.view.customAlert("Thành công", payload.message || "Đã lưu thiết lập tài khoản.", "check-circle");
+        await this.loadSystemUsers();
       } catch (err) {
-        await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+        await this.view.customAlert("Không thể lưu", err.message, "alert-triangle");
+      } finally {
+        formSu.setAttribute("aria-busy", "false");
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = "Lưu thiết lập";
+        }
       }
     });
   }
@@ -862,16 +1022,9 @@ export async function deleteEmployee(id) {
         data = await res.json().catch(() => ({}));
       }
       if (res.ok) {
-        const removedPermissionIds = this.model.state.permissionmatrix
-          .filter((permission) => permission.empId === id)
-          .map((permission) => permission.id)
-          .filter(Boolean);
         await this.reloadEmployeesFromDatabase();
         this.model.state.permissionmatrix = this.model.state.permissionmatrix.filter((m) => m.empId !== id);
         await this.model.persistData("permissionmatrix", { trackMutation: false });
-        removedPermissionIds.forEach((permissionId) => {
-          this.model.removePendingMutation?.("permissionmatrix", permissionId);
-        });
         await this.forceSyncData(true, true);
         this.view.renderManagerNhanVienPanel();
         await this.view.customAlert("Đã cho nhân sự rời tổ chức", "Quyền truy cập đã được thu hồi và lịch sử phân công được giữ lại.", "check-circle");
@@ -1002,8 +1155,8 @@ export async function deleteHoSoGiayStatus(id) {
   const syncResult = await this.autoSync();
   if (!syncResult?.ok) {
     await this.view.customAlert(
-      "Chưa đồng bộ",
-      "Yêu cầu xóa đã được lưu trên thiết bị nhưng chưa được máy chủ xác nhận. Vui lòng đồng bộ lại.",
+      "Không thể xóa",
+      "Máy chủ chưa xác nhận yêu cầu xóa. Dữ liệu mới nhất sẽ được tải lại; vui lòng thử lại.",
       "alert-triangle"
     );
     return;

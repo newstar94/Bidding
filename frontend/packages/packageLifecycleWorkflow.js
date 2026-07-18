@@ -62,11 +62,11 @@ export async function deleteGoiThau(id) {
         }
       });
       if (!syncResult?.ok) {
-        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang được giữ trong hàng chờ đồng bộ. Vui lòng kiểm tra kết nối và đồng bộ lại dữ liệu.", "alert-triangle");
+        await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
     } catch (e) {
-      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Thao tác xóa vẫn được giữ trong hàng chờ đồng bộ.", "x-circle");
+      await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
       return;
     }
     await this.view.customAlert("Thành công", "Đã xóa phiên bản gói thầu gần nhất!", "check-circle");
@@ -91,14 +91,13 @@ export async function deleteGoiThau(id) {
         }
       });
       if (!syncResult?.ok) {
-        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang được giữ trong hàng chờ đồng bộ. Vui lòng kiểm tra kết nối và đồng bộ lại dữ liệu.", "alert-triangle");
+        await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
     } catch (e) {
-      await this.view.customAlert("Lỗi đồng bộ", "Gói thầu đã xóa khỏi giao diện nhưng có lỗi khi đồng bộ với cơ sở dữ liệu. Thao tác xóa vẫn được giữ trong hàng chờ đồng bộ.", "x-circle");
+      await this.view.customAlert("Không thể xóa", "Máy chủ không xác nhận thao tác xóa. Vui lòng kiểm tra kết nối và thử lại.", "x-circle");
       return;
     }
     await this.view.customAlert("Thành công", "Đã xóa toàn bộ các phiên bản của gói thầu!", "check-circle");
   }
 }
-

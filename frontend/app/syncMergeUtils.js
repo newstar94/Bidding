@@ -93,12 +93,12 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   } else {
     applyIncoming();
   }
-  const mutationQueue = typeof model.getMutationQueue === "function" ? model.getMutationQueue() : null;
+  const mutationBatch = typeof model.getMutationQueue === "function" ? model.getMutationQueue() : null;
   const applyReferenceData = () => Object.entries(dbData.referenceData || {}).forEach(([key, records]) => {
     if (!Array.isArray(records) || records.length === 0) return;
     const incoming = normalizeIncomingRecords(model, key, records);
-    const pendingIds = new Set(Object.keys(mutationQueue?.upserts?.[key] || {}).map((id) => String(id)));
-    mergeReferenceRecords(model, key, incoming, { preserveLocalIds: pendingIds });
+    const inFlightIds = new Set(Object.keys(mutationBatch?.upserts?.[key] || {}).map((id) => String(id)));
+    mergeReferenceRecords(model, key, incoming, { preserveLocalIds: inFlightIds });
     changedKeys.add(key);
     const recordsToPersist = incoming.map((item) => {
       const stored = model.state[key].find((record) => String(record.id) === String(item.id));
@@ -114,11 +114,11 @@ export function applyServerSnapshot(model, dbData, options = {}) {
   Object.entries(dbData.recordManifest || {}).forEach(([key, serverRecordIds]) => {
     if (!Array.isArray(serverRecordIds) || !Array.isArray(model.state[key])) return;
     const serverIds = new Set(serverRecordIds.map((id) => String(id)));
-    const pendingIds = new Set(Object.keys(mutationQueue?.upserts?.[key] || {}).map((id) => String(id)));
+    const inFlightIds = new Set(Object.keys(mutationBatch?.upserts?.[key] || {}).map((id) => String(id)));
     const removedIds = [];
     model.state[key] = model.state[key].filter((item) => {
       const id = String(item?.id || "");
-      const keep = serverIds.has(id) || pendingIds.has(id);
+      const keep = serverIds.has(id) || inFlightIds.has(id);
       if (!keep && id) removedIds.push(id);
       return keep;
     });

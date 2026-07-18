@@ -29,6 +29,7 @@ _WEBSOCKET_EVENT_FIELDS = {
     "db_changed": ("event",),
     "organization_member_changed": ("event",),
     "organization_subscription_changed": ("event",),
+    "user_access_settings_changed": ("event",),
     "sync_update": ("type", "table", "id", "syncVersion"),
 }
 

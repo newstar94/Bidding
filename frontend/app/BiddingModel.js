@@ -112,7 +112,9 @@ export class BiddingModel {
     this._hasPersistedWorkspaceData = false;
     this._suspendMutationTracking = 0;
     this._workspaceWriteLocked = false;
-    this.onMutationQueueChanged = null;
+    this.onMutationBatchChanged = null;
+    this._mutationBatch = null;
+    this._localDeletions = [];
     this._workspaceEpoch = 0;
     this.workspaceScope = null;
     this.workspaceStorage = null;
@@ -195,6 +197,8 @@ export class BiddingModel {
     this._loadedStorageKeys = /* @__PURE__ */ new Set();
     this._allDataLoadPromise = null;
     this._remainingHydrationScheduled = false;
+    this._mutationBatch = null;
+    this._localDeletions = [];
   }
 
   async deactivateWorkspace() {
@@ -289,6 +293,10 @@ export class BiddingModel {
       this.workspaceSessionStorage = new ScopedWorkspaceStorage(nextScope, sessionStorage);
       this.db = new BrowserDB(workspaceDatabaseName(nextScope));
       this._workspaceEpoch += 1;
+      // Pending-sync storage belonged to the removed offline queue feature.
+      // A mutation batch now only lives in memory until the immediate request ends.
+      this.workspaceStorage.removeItem(MUTATION_QUEUE_KEY);
+      this.workspaceStorage.removeItem(LOCAL_DELETIONS_KEY);
     }
     await this.db.init();
     const savedPages = this.workspaceSessionStorage.readJson("bf_current_pages", {});
@@ -370,28 +378,20 @@ export class BiddingModel {
     );
   }
   getMutationQueue() {
-    return normalizeMutationQueue(this.workspaceStorage?.readJson(MUTATION_QUEUE_KEY, null), {
+    return normalizeMutationQueue(
+      this._mutationBatch ? JSON.parse(JSON.stringify(this._mutationBatch)) : null,
+      {
       baseSyncVersion: this.workspaceStorage?.getItem("bf_last_sync_version") || "0",
       createId: createUUID
-    });
-  }
-  getPendingMutationSummary() {
-    return summarizeMutationQueue(this.getMutationQueue());
+      }
+    );
   }
   _notifyMutationQueueChanged(queue = this.getMutationQueue()) {
-    this.onMutationQueueChanged?.(summarizeMutationQueue(queue));
-  }
-  isRecordPending(type, recordId) {
-    if (!type || !recordId) return false;
-    const queue = this.getMutationQueue();
-    return Object.prototype.hasOwnProperty.call(queue.upserts?.[type] || {}, recordId);
-  }
-  getPendingLabel(type, recordId) {
-    return this.isRecordPending(type, recordId) ? " (Chờ đồng bộ)" : "";
+    this.onMutationBatchChanged?.(summarizeMutationQueue(queue));
   }
   discardRejectedMutations(errors) {
     const queue = this.getMutationQueue();
-    let localDeletions = this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [];
+    let localDeletions = [...this._localDeletions];
     const rejectedByRecord = /* @__PURE__ */ new Map();
     (errors || []).forEach((error) => {
       const type = STATE_KEY_BY_SERVER_TABLE[error?.table] || error?.table;
@@ -426,49 +426,12 @@ export class BiddingModel {
     });
     const rejected = Array.from(rejectedByRecord.values());
     if (rejected.length > 0) {
-      if (localDeletions.length > 0) {
-        this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
-      } else {
-        this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
-      }
+      this._localDeletions = localDeletions;
       queue.clientMutationId = createUUID();
       this._touchMutationQueue(queue);
       this._saveMutationQueue(queue);
     }
     return rejected;
-  }
-  removePendingMutation(type, recordId, operation = "") {
-    const id = String(recordId || "");
-    if (!type || !id) return null;
-    const queue = this.getMutationQueue();
-    let removedOperation = "";
-    if ((!operation || operation === "upsert") && queue.upserts?.[type]?.[id]) {
-      delete queue.upserts[type][id];
-      if (Object.keys(queue.upserts[type]).length === 0) delete queue.upserts[type];
-      removedOperation = "upsert";
-    }
-    if (!removedOperation && (!operation || operation === "delete")) {
-      const before = queue.deletes.length;
-      queue.deletes = queue.deletes.filter(
-        (item) => !(item.table === type && String(item.id) === id)
-      );
-      if (queue.deletes.length < before) removedOperation = "delete";
-    }
-    if (!removedOperation) return null;
-
-    let localDeletions = this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [];
-    localDeletions = localDeletions.filter(
-      (item) => !(item.table === type && String(item.id) === id)
-    );
-    if (localDeletions.length > 0) {
-      this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
-    } else {
-      this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
-    }
-    queue.clientMutationId = createUUID();
-    this._touchMutationQueue(queue);
-    this._saveMutationQueue(queue);
-    return { type, id, operation: removedOperation };
   }
   acknowledgeServerDeletions(deletionsByTable = {}) {
     const acknowledged = new Set();
@@ -486,23 +449,19 @@ export class BiddingModel {
       (item) => !acknowledged.has(`${item.table}:${String(item.id)}`)
     );
     const removedQueueCount = before - queue.deletes.length;
-    const previousLocalDeletions = this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [];
+    const previousLocalDeletions = [...this._localDeletions];
     const localDeletions = previousLocalDeletions
       .filter((item) => !acknowledged.has(`${item.table}:${String(item.id)}`));
     const removedLocalCount = previousLocalDeletions.length - localDeletions.length;
     if (removedQueueCount === 0 && removedLocalCount === 0) return 0;
 
-    if (localDeletions.length > 0) {
-      this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
-    } else {
-      this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
-    }
+    this._localDeletions = localDeletions;
     queue.clientMutationId = createUUID();
     this._touchMutationQueue(queue);
     this._saveMutationQueue(queue);
     return Math.max(removedQueueCount, removedLocalCount);
   }
-  rebasePendingMutationQueue(syncVersion) {
+  rebaseMutationBatch(syncVersion) {
     if (syncVersion === void 0 || syncVersion === null || syncVersion === "") return;
     const queue = this.getMutationQueue();
     const hasUpserts = Object.values(queue.upserts || {}).some(
@@ -517,11 +476,11 @@ export class BiddingModel {
   }
   _saveMutationQueue(queue) {
     if (!mutationQueueHasChanges(queue)) {
-      this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
+      this._mutationBatch = null;
       this._notifyMutationQueueChanged(this._emptyMutationQueue());
       return;
     }
-    this.workspaceStorage?.writeJson(MUTATION_QUEUE_KEY, queue);
+    this._mutationBatch = JSON.parse(JSON.stringify(queue));
     this._notifyMutationQueueChanged(queue);
   }
   _touchMutationQueue(queue) {
@@ -570,7 +529,7 @@ export class BiddingModel {
       if (typeof value === "object") return value;
       return (this.state[type] || []).find((record) => String(record.id) === String(value)) || { id: value };
     });
-    const localDeletions = this.workspaceStorage.readJson(LOCAL_DELETIONS_KEY, []);
+    const localDeletions = [...this._localDeletions];
     records.forEach((record) => {
       const id = record.id;
       const expectedVersion = Number.isInteger(record.rowVersion) ? record.rowVersion : void 0;
@@ -581,7 +540,7 @@ export class BiddingModel {
         localDeletions.push({ table: type, id, ...(expectedVersion ? { expectedVersion } : {}) });
       }
     });
-    this.workspaceStorage.writeJson(LOCAL_DELETIONS_KEY, localDeletions);
+    this._localDeletions = localDeletions;
     if (this._suspendMutationTracking > 0 || !this._isSyncedStateKey(type)) return;
     const queue = this.getMutationQueue();
     records.forEach((record) => {
@@ -615,7 +574,7 @@ export class BiddingModel {
     return buildMutationPayload({
       queue,
       state: this.state,
-      localDeletions: this.workspaceStorage?.readJson(LOCAL_DELETIONS_KEY, []) || [],
+      localDeletions: this._localDeletions,
       isSyncedType: (type) => this._isSyncedStateKey(type),
       normalizeRecord: (record, type) => serializeOutboundRecord(
         record,
@@ -642,11 +601,11 @@ export class BiddingModel {
     this._saveMutationQueue(queue);
     await Promise.all(writes);
   }
-  clearSyncedMutationQueue(snapshot) {
+  clearCommittedMutationBatch(snapshot) {
     const current = this.getMutationQueue();
     if (!snapshot || current.clientMutationId === snapshot.clientMutationId && current.revision === snapshot.revision) {
-      this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
-      this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
+      this._mutationBatch = null;
+      this._localDeletions = [];
       this._notifyMutationQueueChanged(this._emptyMutationQueue());
       return;
     }
@@ -665,46 +624,14 @@ export class BiddingModel {
       (item) => !(snapshot.deletes || []).some((oldItem) => oldItem.table === item.table && String(oldItem.id) === String(item.id))
     );
     this._saveMutationQueue(current);
-    this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, current.deletes || []);
+    this._localDeletions = current.deletes || [];
   }
-  discardAllPendingMutations() {
+  discardMutationBatch() {
+    this._mutationBatch = null;
+    this._localDeletions = [];
     this.workspaceStorage?.removeItem(MUTATION_QUEUE_KEY);
     this.workspaceStorage?.removeItem(LOCAL_DELETIONS_KEY);
     this._notifyMutationQueueChanged(this._emptyMutationQueue());
-  }
-  async reapplyPendingMutationQueue(queueSnapshot, syncVersion) {
-    const queue = queueSnapshot ? JSON.parse(JSON.stringify(queueSnapshot)) : this.getMutationQueue();
-    const writes = [];
-    Object.entries(queue.upserts || {}).forEach(([type, recordsById]) => {
-      if (!Array.isArray(this.state[type])) this.state[type] = [];
-      Object.entries(recordsById || {}).forEach(([id, localRecord]) => {
-        const index = this.state[type].findIndex((item) => String(item.id) === String(id));
-        const serverRecord = index >= 0 ? this.state[type][index] : null;
-        const restored = {
-          ...localRecord,
-          ...(Number.isInteger(serverRecord?.rowVersion) ? { rowVersion: serverRecord.rowVersion } : {})
-        };
-        if (index >= 0) this.state[type][index] = restored;
-        else this.state[type].push(restored);
-        queue.upserts[type][id] = restored;
-        if (this.db.stores.includes(type)) writes.push(this.db.putRecord(type, restored));
-      });
-    });
-    for (const deletion of queue.deletes || []) {
-      const list = this.state[deletion.table];
-      if (Array.isArray(list)) {
-        const serverRecord = list.find((item) => String(item.id) === String(deletion.id));
-        if (Number.isInteger(serverRecord?.rowVersion)) deletion.expectedVersion = serverRecord.rowVersion;
-        this.state[deletion.table] = list.filter((item) => String(item.id) !== String(deletion.id));
-      }
-      if (this.db.stores.includes(deletion.table)) writes.push(this.db.deleteRecord(deletion.table, deletion.id));
-    }
-    queue.baseSyncVersion = String(syncVersion ?? this.workspaceStorage?.getItem("bf_last_sync_version") ?? "0");
-    queue.clientMutationId = createUUID();
-    this._touchMutationQueue(queue);
-    this._saveMutationQueue(queue);
-    this.workspaceStorage?.writeJson(LOCAL_DELETIONS_KEY, queue.deletes || []);
-    await Promise.all(writes);
   }
   suspendMutationTracking(callback) {
     this._suspendMutationTracking += 1;

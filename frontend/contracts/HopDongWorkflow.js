@@ -40,7 +40,7 @@ export async function deleteHopDong(id) {
     try {
       const syncResult = await this.autoSync();
       if (!syncResult?.ok) {
-        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang chờ máy chủ xác nhận. Vui lòng xử lý trạng thái đồng bộ trước khi tiếp tục.", "alert-triangle");
+        await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
     } catch (e) {
@@ -55,7 +55,7 @@ export async function deleteHopDong(id) {
     try {
       const syncResult = await this.autoSync();
       if (!syncResult?.ok) {
-        await this.view.customAlert("Chưa đồng bộ", "Thao tác xóa đang chờ máy chủ xác nhận. Vui lòng xử lý trạng thái đồng bộ trước khi tiếp tục.", "alert-triangle");
+        await this.view.customAlert("Không thể xóa", "Máy chủ chưa xác nhận thao tác. Dữ liệu mới nhất sẽ được tải lại.", "alert-triangle");
         return;
       }
     } catch (e) {
@@ -95,16 +95,16 @@ export async function editHopDong(id) {
     const cdtSelect = document.getElementById("hd-chudautuid");
     document.getElementById("hd-chudautu-version-select").dataset.manualOverride = "";
     const chudautuList = this.model.getLatestChuDauTu();
-    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
+    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
     this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
     const ntSelect = document.getElementById("hd-nhathauid");
     document.getElementById("hd-nhathau-version-select").dataset.manualOverride = "";
     const nhathauList = this.model.getLatestNhaThau();
-    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}${escapeHtml(this.model.getPendingLabel("nhathau", n.id))}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
+    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
     this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu...");
     const khSelect = document.getElementById("hd-kehoachid");
     const planList = typeof this.model.getLatestPlans === "function" ? this.model.getLatestPlans() : Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : [];
-    khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${escapeHtml(kh.id)}" data-search="${escapeHtml(`${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}`)}">${escapeHtml(kh.tenKeHoach || "")}${escapeHtml(this.model.getPendingLabel("kehoach", kh.id))}</option>`).join("");
+    khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${escapeHtml(kh.id)}" data-search="${escapeHtml(`${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}`)}">${escapeHtml(kh.tenKeHoach || "")}</option>`).join("");
     this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch...");
     const getPlanVersionIds = (selectedPlanId) => {
       if (!selectedPlanId) return [];

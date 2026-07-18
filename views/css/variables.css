@@ -59,8 +59,10 @@
   --success-hover: #0b625c;
   --success-soft: #eaf9f4;
   --warning: #92400e;
+  --warning-hover: #78350f;
   --warning-soft: #fff5e6;
   --danger: #c73543;
+  --danger-hover: #a92d39;
   --danger-soft: #fff0f2;
   --neutral-soft: #f0f5fb;
   --neutral-hover: #e6edf6;
