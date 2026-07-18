@@ -28,6 +28,7 @@ REQUIRED_APPLICATION_TABLES = frozenset({
 
 _SYNC_DIRECTORY_MARKERS = ("onedrive", "dropbox", "google drive", "icloud")
 _SEPARATE_RUNTIME_PATHS = (
+    "AUDIT_CHECKPOINT_DIR",
     "BIDDING_BACKUP_DIR",
     "BIDDING_LOG_DIR",
     "BIDDING_UPLOAD_DIR",
@@ -107,6 +108,22 @@ def validate_startup_configuration(database, environ=None):
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if app_env in {"prod", "production"}:
         _validate_production_sqlite_layout(database, environ)
+        audit_hmac_key = str(environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
+        if len(audit_hmac_key.encode("utf-8")) < 32:
+            raise StartupValidationError(
+                "AUDIT_CHECKPOINT_HMAC_KEY must contain at least 32 bytes in production."
+            )
+        restore_drill_hmac_key = str(
+            environ.get("BIDDING_RESTORE_DRILL_HMAC_KEY", "")
+        )
+        if len(restore_drill_hmac_key.encode("utf-8")) < 32:
+            raise StartupValidationError(
+                "BIDDING_RESTORE_DRILL_HMAC_KEY must contain at least 32 bytes in production."
+            )
+        if str(environ.get("AUDIT_CHECKPOINT_OFFHOST_CONFIRMED", "")).strip().lower() != "true":
+            raise StartupValidationError(
+                "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED=true is required after configuring immutable off-host checkpoint replication."
+            )
         if str(environ.get("DATA_AT_REST_ENCRYPTION_CONFIRMED", "")).strip().lower() != "true":
             raise StartupValidationError(
                 "DATA_AT_REST_ENCRYPTION_CONFIRMED=true is required after verifying encrypted runtime and backup volumes."

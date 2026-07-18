@@ -4,6 +4,13 @@ import { businessOrganizations, normalizeOrganizations, organizationDisplayName,
 import { escapeHtml } from "../shared/view_helpers.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
+import {
+  buildProfileUpdatePayload,
+  deriveEmailChangeUiState,
+  emailChangeErrorMessage,
+  isValidEmailChangeOtp
+} from "./profileEmailChange.js";
+
 function bindAdminEvent(element, eventName, bindingName, handler) {
   if (!element) return;
   element.__bfBoundEvents = element.__bfBoundEvents || /* @__PURE__ */ new Set();
@@ -11,6 +18,51 @@ function bindAdminEvent(element, eventName, bindingName, handler) {
   if (element.__bfBoundEvents.has(bindingKey)) return;
   element.__bfBoundEvents.add(bindingKey);
   element.addEventListener(eventName, handler);
+}
+
+function setProfileFormBusy(form, label, busy, busyText, idleText) {
+  form?.setAttribute("aria-busy", busy ? "true" : "false");
+  const submitButton = form?.querySelector?.('button[type="submit"]');
+  if (submitButton) submitButton.disabled = busy;
+  if (label) label.textContent = busy ? busyText : idleText;
+}
+
+function persistActiveProfile(controller, profile) {
+  const activeUser = controller.model.state.activeuser || {};
+  controller.model.state.activeuser = activeUser;
+  activeUser.name = profile.name;
+  activeUser.email = profile.email;
+  activeUser.avatar = profile.avatar || "";
+  const serialized = JSON.stringify(activeUser);
+  localStorage.setItem(controller.model.STORAGE_KEYS.ACTIVEUSER, serialized);
+  sessionStorage.setItem(controller.model.STORAGE_KEYS.ACTIVEUSER, serialized);
+  controller.view.updateActiveUserProfileDisplay();
+}
+
+function showLoginAfterSecurityChange(controller) {
+  controller.disconnectWebSocket?.(false);
+  void Promise.resolve(controller.model.deactivateWorkspace?.()).catch((error) => {
+    console.error("Failed to deactivate workspace after email change:", error);
+  });
+  controller.model.clearSessionData();
+  if (controller._sessionInterval) clearInterval(controller._sessionInterval);
+  const overlay = document.getElementById("auth-overlay");
+  if (!overlay) {
+    window.location.assign("/");
+    return;
+  }
+  setRuntimeStyle(overlay, "display", "flex");
+  setRuntimeStyle(document.querySelector(".app-container"), "filter", "blur(10px)");
+  const formLogin = document.getElementById("form-auth-login");
+  const formRegister = document.getElementById("form-auth-register");
+  const formForgot = document.getElementById("form-auth-forgot");
+  if (formLogin) setRuntimeStyle(formLogin, "display", "block");
+  if (formRegister) setRuntimeStyle(formRegister, "display", "none");
+  if (formForgot) setRuntimeStyle(formForgot, "display", "none");
+  const loginUsername = document.getElementById("login-username");
+  const loginPassword = document.getElementById("login-password");
+  if (loginUsername) loginUsername.value = "";
+  if (loginPassword) loginPassword.value = "";
 }
 export async function triggerUpgradePrompt() {
   await this.view.customAlert(
@@ -526,32 +578,191 @@ export function setupRBACEvents() {
     });
   }
   const formProfileUpdate = document.getElementById("form-profile-update");
+  const profileEmailInput = document.getElementById("profile-email");
+  const profileCurrentPassword = document.getElementById("profile-current-password");
+  const profileCurrentPasswordGroup = document.getElementById("profile-current-password-group");
+  const profileUpdateSubmitLabel = document.getElementById("profile-update-submit-label");
+  const formProfileEmailVerification = document.getElementById("form-profile-email-verification");
+  const profileEmailVerificationStatus = document.getElementById("profile-email-verification-status");
+  const profileEmailOtp = document.getElementById("profile-email-otp");
+  const profileEmailVerifySubmitLabel = document.getElementById("profile-email-verify-submit-label");
+
+  const refreshEmailChangeControls = () => {
+    const state = deriveEmailChangeUiState({
+      currentEmail: this.model.state.activeuser?.email,
+      desiredEmail: profileEmailInput?.value,
+      pendingEmail: this.pendingProfileEmail
+    });
+    if (profileCurrentPasswordGroup) profileCurrentPasswordGroup.hidden = !state.passwordRequired;
+    if (profileCurrentPassword) {
+      profileCurrentPassword.required = state.passwordRequired;
+      profileCurrentPassword.setAttribute("aria-required", state.passwordRequired ? "true" : "false");
+      if (!state.passwordRequired) profileCurrentPassword.value = "";
+    }
+    if (formProfileEmailVerification) {
+      formProfileEmailVerification.hidden = !state.verificationPending;
+    }
+    return state;
+  };
+
+  if (profileEmailInput) {
+    bindAdminEvent(profileEmailInput, "input", "toggle-profile-email-password", () => {
+      if (this.pendingProfileEmail
+        && profileEmailInput.value.trim().toLowerCase() !== this.pendingProfileEmail.toLowerCase()) {
+        this.pendingProfileEmail = "";
+        if (profileEmailOtp) profileEmailOtp.value = "";
+      }
+      refreshEmailChangeControls();
+    });
+    refreshEmailChangeControls();
+  }
+
   if (formProfileUpdate) {
     bindAdminEvent(formProfileUpdate, "submit", "save-profile", async (e) => {
       e.preventDefault();
+      const emailState = refreshEmailChangeControls();
       if (!this.view.validateForm(formProfileUpdate)) return;
       const name = document.getElementById("profile-fullname").value.trim();
       const email = document.getElementById("profile-email").value.trim();
       const avatar = this.tempProfileAvatarBase64 || this.model.state.activeuser.avatar || "";
+      const password = profileCurrentPassword?.value || "";
+      if (emailState.passwordRequired && !password) {
+        await this.view.customAlert(
+          "Cần xác thực",
+          "Vui lòng nhập mật khẩu hiện tại để thay đổi email.",
+          "shield-alert",
+          profileCurrentPassword
+        );
+        return;
+      }
+      const { payload } = buildProfileUpdatePayload({
+        name,
+        email,
+        avatar,
+        currentEmail: this.model.state.activeuser?.email,
+        password
+      });
+      setProfileFormBusy(
+        formProfileUpdate,
+        profileUpdateSubmitLabel,
+        true,
+        "Đang cập nhật...",
+        "Cập nhật hồ sơ"
+      );
       try {
         const res = await apiFetch("/api/auth/update-profile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, avatar })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (res.ok && data.profile) {
-          this.model.state.activeuser.name = data.profile.name;
-          this.model.state.activeuser.email = data.profile.email;
-          this.model.state.activeuser.avatar = data.profile.avatar || "";
-          localStorage.setItem(this.model.STORAGE_KEYS.ACTIVEUSER, JSON.stringify(this.model.state.activeuser));
-          this.view.updateActiveUserProfileDisplay();
-          await this.view.customAlert("Thành công", "Thông tin cá nhân đã được cập nhật thành công!", "check-circle");
+          persistActiveProfile(this, data.profile);
+          if (data.emailChangePending && data.pendingEmail) {
+            this.pendingProfileEmail = String(data.pendingEmail).trim();
+            if (profileEmailInput) profileEmailInput.value = this.pendingProfileEmail;
+            if (profileCurrentPassword) profileCurrentPassword.value = "";
+            if (profileEmailVerificationStatus) {
+              profileEmailVerificationStatus.textContent = `Mã OTP đã được gửi đến ${this.pendingProfileEmail}.`;
+            }
+            refreshEmailChangeControls();
+            profileEmailOtp?.focus();
+            await this.view.customAlert(
+              "Cần xác minh email",
+              "Thông tin hồ sơ đã được lưu. Hãy nhập mã OTP gửi đến email mới để hoàn tất thay đổi.",
+              "mail-check"
+            );
+          } else {
+            this.pendingProfileEmail = "";
+            if (profileEmailInput) profileEmailInput.value = data.profile.email || "";
+            refreshEmailChangeControls();
+            await this.view.customAlert("Thành công", "Thông tin cá nhân đã được cập nhật thành công!", "check-circle");
+          }
         } else {
-          await this.view.customAlert("Thất bại", data.error || "Máy chủ không trả về hồ sơ đã cập nhật.", "alert-triangle");
+          await this.view.customAlert(
+            "Không thể cập nhật",
+            emailChangeErrorMessage(data.code, data.error || "Máy chủ không trả về hồ sơ đã cập nhật."),
+            "alert-triangle"
+          );
         }
       } catch (err) {
         await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+      } finally {
+        setProfileFormBusy(
+          formProfileUpdate,
+          profileUpdateSubmitLabel,
+          false,
+          "Đang cập nhật...",
+          "Cập nhật hồ sơ"
+        );
+      }
+    });
+  }
+
+  if (formProfileEmailVerification) {
+    bindAdminEvent(formProfileEmailVerification, "submit", "verify-profile-email", async (e) => {
+      e.preventDefault();
+      const code = profileEmailOtp?.value?.trim() || "";
+      if (!isValidEmailChangeOtp(code)) {
+        profileEmailOtp?.setAttribute("aria-invalid", "true");
+        await this.view.customAlert(
+          "Mã OTP không hợp lệ",
+          "Mã OTP phải gồm đúng 6 chữ số.",
+          "alert-triangle",
+          profileEmailOtp
+        );
+        return;
+      }
+      profileEmailOtp?.setAttribute("aria-invalid", "false");
+      setProfileFormBusy(
+        formProfileEmailVerification,
+        profileEmailVerifySubmitLabel,
+        true,
+        "Đang xác minh...",
+        "Xác minh và đổi email"
+      );
+      try {
+        const response = await apiFetch("/api/auth/verify-email-change", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const restartCodes = new Set([
+            "EMAIL_CHANGE_OTP_EXPIRED",
+            "EMAIL_CHANGE_NOT_PENDING",
+            "EMAIL_CHANGE_REQUEST_REPLACED",
+            "EMAIL_CHANGE_REQUEST_STALE"
+          ]);
+          if (restartCodes.has(data.code)) {
+            this.pendingProfileEmail = "";
+            refreshEmailChangeControls();
+          }
+          await this.view.customAlert(
+            "Không thể xác minh",
+            emailChangeErrorMessage(data.code, data.error),
+            "alert-triangle",
+            restartCodes.has(data.code) ? profileCurrentPassword : profileEmailOtp
+          );
+          return;
+        }
+        await this.view.customAlert(
+          "Email đã được thay đổi",
+          data.message || "Email mới đã được xác minh. Vui lòng đăng nhập lại.",
+          "check-circle"
+        );
+        showLoginAfterSecurityChange(this);
+      } catch (err) {
+        await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+      } finally {
+        setProfileFormBusy(
+          formProfileEmailVerification,
+          profileEmailVerifySubmitLabel,
+          false,
+          "Đang xác minh...",
+          "Xác minh và đổi email"
+        );
       }
     });
   }

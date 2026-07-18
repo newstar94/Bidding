@@ -12,6 +12,7 @@ def test_word_bid_context_uses_exact_contractor_version_and_keeps_jv_name():
         """
         CREATE TABLE nha_thau (
             id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
             ten_nha_thau TEXT,
             ten_viet_tat TEXT,
             ma_nha_thau TEXT,
@@ -32,12 +33,12 @@ def test_word_bid_context_uses_exact_contractor_version_and_keeps_jv_name():
     cursor.executemany(
         """
         INSERT INTO nha_thau (
-            id, ten_nha_thau, ten_viet_tat, ma_nha_thau, ma_so_thue
-        ) VALUES (?, ?, ?, ?, ?)
+            id, organization_id, ten_nha_thau, ten_viet_tat, ma_nha_thau, ma_so_thue
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """,
         [
-            ("nt-00", "Nhà thầu A", "A00", "vn-a", "0100000000"),
-            ("nt-01", "Nhà thầu A phiên bản mới", "A01", "vn-a", "0100000000"),
+            ("nt-00", "org-1", "Nhà thầu A", "A00", "vn-a", "0100000000"),
+            ("nt-01", "org-1", "Nhà thầu A phiên bản mới", "A01", "vn-a", "0100000000"),
         ],
     )
     bids = [
@@ -46,7 +47,7 @@ def test_word_bid_context_uses_exact_contractor_version_and_keeps_jv_name():
         {"nha_thau_id": "nt-00", "loai_nha_thau": "Liên danh", "ten_nha_thau": "Liên danh A - B"},
     ]
 
-    enrich_bids_with_contractor_fields(cursor, bids)
+    enrich_bids_with_contractor_fields(cursor, bids, "org-1")
 
     assert bids[0]["ten_nha_thau"] == "Nhà thầu A"
     assert bids[0]["ten_viet_tat"] == "A00"

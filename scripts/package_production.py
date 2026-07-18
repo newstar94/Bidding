@@ -37,6 +37,7 @@ RUNTIME_FILES = (
     "data/templates/words/mau_timeline_goi_thau.docx",
     "scripts/backup_database.py",
     "scripts/check_database.py",
+    "scripts/full_state_backup.py",
     "scripts/restore_database.py",
 )
 

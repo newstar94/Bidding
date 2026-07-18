@@ -20,6 +20,7 @@ from backend.shared.helpers import (
 from backend.auth.auth_service import (
     get_client_ip,
     get_rate_limit_decision,
+    RateLimitDecision,
     rate_limit_response,
     record_rate_limit_failure,
     build_user_access_payload,
@@ -34,7 +35,7 @@ from backend.auth.identity import (
     identity_conflict_code,
     normalize_email,
 )
-from backend.shared.request_validation import validate_or_response
+from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import create_session
 from backend.shared.async_io import (
@@ -42,8 +43,29 @@ from backend.shared.async_io import (
     BlockingIOTimeoutError,
     run_blocking_io,
 )
+from backend.shared.cpu_io import run_cpu_bound
+from backend.shared.database_io import run_database_write
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+
+
+async def _rate_limit_decision(*args, **kwargs):
+    try:
+        return await run_database_write(get_rate_limit_decision, *args, **kwargs)
+    except BlockingIOBusyError:
+        return RateLimitDecision(
+            False,
+            int(kwargs.get("window_seconds", 60)),
+            0,
+            storage_failed=True,
+        )
+
+
+async def _record_rate_limit_failure(bucket):
+    try:
+        return await run_database_write(record_rate_limit_failure, bucket)
+    except BlockingIOBusyError:
+        return False
 
 
 _GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo?id_token={token}"
@@ -104,7 +126,9 @@ async def google_login_api(request):
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
-        google_limit = get_rate_limit_decision(rate_key, consume_attempt=False)
+        google_limit = await _rate_limit_decision(
+            rate_key, consume_attempt=False
+        )
         if not google_limit.allowed:
             return rate_limit_response("Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau.", google_limit)
 
@@ -114,10 +138,9 @@ async def google_login_api(request):
                 status_code=503,
             )
 
-        try:
-            data = await request.json()
-        except Exception:
-            return JSONResponse({"error": "Dữ liệu yêu cầu không hợp lệ."}, status_code=400)
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "credential": {"type": "string", "required": True, "min_length": 1, "max_length": 20_000},
         })
@@ -126,7 +149,7 @@ async def google_login_api(request):
 
         credential = (data.get("credential") or "").strip()
         if not credential:
-            record_rate_limit_failure(rate_key)
+            await _record_rate_limit_failure(rate_key)
             return JSONResponse({"error": "Thiếu thông tin xác thực Google."}, status_code=400)
 
         try:
@@ -144,7 +167,7 @@ async def google_login_api(request):
                 status_code=503,
             )
         if not payload:
-            record_rate_limit_failure(rate_key)
+            await _record_rate_limit_failure(rate_key)
             log_audit("auth.google_login_failed", request=request, metadata={"reason": "invalid_token"})
             return JSONResponse(
                 {"error": "Token Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại."},
@@ -158,7 +181,7 @@ async def google_login_api(request):
         email_verified = payload.get("email_verified") in (True, "true", "True", "1")
 
         if not google_id or not email:
-            record_rate_limit_failure(rate_key)
+            await _record_rate_limit_failure(rate_key)
             return JSONResponse({"error": "Không lấy được thông tin từ tài khoản Google."}, status_code=400)
 
         if not email_verified:
@@ -244,7 +267,23 @@ async def google_login_api(request):
             # Google-only accounts receive an unrecoverable random local secret.
             # A local password can later be established through the verified-email
             # reset flow; credentials are never sent by email.
-            random_password_hash = _hash_password(_secrets.token_urlsafe(48))
+            try:
+                random_password_hash = await run_cpu_bound(
+                    _hash_password,
+                    _secrets.token_urlsafe(48),
+                    timeout_seconds=15,
+                )
+            except (BlockingIOBusyError, BlockingIOTimeoutError):
+                conn.rollback()
+                response = JSONResponse(
+                    {
+                        "error": "Hệ thống đang xử lý nhiều yêu cầu xác thực. Vui lòng thử lại sau.",
+                        "code": "PASSWORD_CPU_QUEUE_BUSY",
+                    },
+                    status_code=503,
+                )
+                response.headers["Retry-After"] = "1"
+                return response
             new_id = generate_record_id("tai_khoan")
             cursor.execute(
                 """INSERT INTO tai_khoan

@@ -8,12 +8,16 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.testclient import TestClient
 
-from backend.app import BodySizeLimitMiddleware, app
+from backend.app import BodySizeLimitMiddleware, app, health_live_api
 from backend.documents import routes_excel
 from backend.documents import export_routes
+from backend.auth import otp_routes
 from backend.auth.auth_service import RateLimitDecision
 from backend.partners import address_routes
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError, _BlockingIOPool
+from backend.shared.database_io import run_database_write
+from backend.db.db_helper import SQLiteDatabase
+from backend.sync import read_service
 from backend.sync import service as sync_service
 
 
@@ -64,6 +68,7 @@ def test_stream_limit_rejects_chunked_body_without_content_length(monkeypatch):
     async def endpoint(scope, receive, send):
         nonlocal endpoint_called
         endpoint_called = True
+        await Request(scope, receive).body()
         response = JSONResponse({"ok": True})
         await response(scope, receive, send)
 
@@ -76,12 +81,12 @@ def test_stream_limit_rejects_chunked_body_without_content_length(monkeypatch):
         ],
     )
 
-    assert endpoint_called is False
+    assert endpoint_called is True
     assert sent[0]["status"] == 413
     assert _response_json(sent)["code"] == "REQUEST_BODY_TOO_LARGE"
 
 
-def test_stream_limit_replays_valid_chunks_to_endpoint(monkeypatch):
+def test_stream_limit_passes_valid_chunks_to_endpoint(monkeypatch):
     monkeypatch.setenv("REQUEST_MAX_JSON_BYTES", "65536")
 
     async def endpoint(scope, receive, send):
@@ -100,6 +105,34 @@ def test_stream_limit_replays_valid_chunks_to_endpoint(monkeypatch):
 
     assert sent[0]["status"] == 200
     assert _response_json(sent) == {"size": 11, "value": "hello-world"}
+
+
+def test_stream_limit_does_not_prefetch_or_replay_request_body(monkeypatch):
+    monkeypatch.setenv("REQUEST_MAX_JSON_BYTES", "65536")
+    events = []
+    incoming = [
+        {"type": "http.request", "body": b"hello", "more_body": True},
+        {"type": "http.request", "body": b"-world", "more_body": False},
+    ]
+    sent = []
+
+    async def receive():
+        events.append("receive")
+        return incoming.pop(0)
+
+    async def send(message):
+        sent.append(message)
+
+    async def endpoint(scope, endpoint_receive, endpoint_send):
+        events.append("endpoint")
+        body = await Request(scope, endpoint_receive).body()
+        response = JSONResponse({"value": body.decode("ascii")})
+        await response(scope, endpoint_receive, endpoint_send)
+
+    asyncio.run(BodySizeLimitMiddleware(endpoint)(_scope(), receive, send))
+
+    assert events == ["endpoint", "receive", "receive"]
+    assert _response_json(sent) == {"value": "hello-world"}
 
 
 def test_bounded_io_pool_rejects_excess_work_and_tracks_timeout():
@@ -136,6 +169,115 @@ def test_bounded_io_pool_rejects_excess_work_and_tracks_timeout():
         assert stats.in_flight == 0
     finally:
         pool._executor.shutdown(wait=True)
+
+
+def test_database_write_lane_does_not_report_ambiguous_timeout():
+    completed = threading.Event()
+
+    def mutation():
+        completed.set()
+        return "committed"
+
+    assert asyncio.run(run_database_write(mutation)) == "committed"
+    assert completed.is_set()
+
+
+def test_database_write_lane_serializes_mutations():
+    first_started = threading.Event()
+    release_first = threading.Event()
+    second_started = threading.Event()
+
+    def first_mutation():
+        first_started.set()
+        release_first.wait(1)
+        return "first"
+
+    def second_mutation():
+        second_started.set()
+        return "second"
+
+    async def exercise():
+        first = asyncio.create_task(run_database_write(first_mutation))
+        while not first_started.is_set():
+            await asyncio.sleep(0.001)
+        second = asyncio.create_task(run_database_write(second_mutation))
+        await asyncio.sleep(0.02)
+        assert not second_started.is_set()
+
+        live = await asyncio.wait_for(
+            health_live_api(SimpleNamespace()),
+            timeout=0.1,
+        )
+        assert live.status_code == 200
+
+        release_first.set()
+        assert await first == "first"
+        assert await second == "second"
+
+    asyncio.run(exercise())
+
+
+def test_liveness_remains_responsive_while_sqlite_writer_waits_for_lock(tmp_path):
+    test_database = SQLiteDatabase(tmp_path / "locked-writer.db")
+    blocker = test_database.get_connection()
+    blocker.execute("CREATE TABLE lock_probe (id INTEGER PRIMARY KEY, value TEXT)")
+    blocker.execute("INSERT INTO lock_probe (id, value) VALUES (1, 'before')")
+    blocker.commit()
+    blocker.execute("BEGIN IMMEDIATE")
+    blocker.execute("UPDATE lock_probe SET value = 'held' WHERE id = 1")
+    worker_started = threading.Event()
+
+    def waiting_mutation():
+        connection = test_database.get_connection()
+        try:
+            worker_started.set()
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("UPDATE lock_probe SET value = 'after' WHERE id = 1")
+            connection.commit()
+        finally:
+            connection.close()
+
+    async def exercise():
+        pending = asyncio.create_task(run_database_write(waiting_mutation))
+        while not worker_started.is_set():
+            await asyncio.sleep(0.001)
+        await asyncio.sleep(0.02)
+
+        live = await asyncio.wait_for(
+            health_live_api(SimpleNamespace()),
+            timeout=0.1,
+        )
+        assert live.status_code == 200
+
+        blocker.commit()
+        await asyncio.wait_for(pending, timeout=1)
+
+    try:
+        asyncio.run(exercise())
+        verification = test_database.get_connection()
+        try:
+            assert verification.execute(
+                "SELECT value FROM lock_probe WHERE id = 1"
+            ).fetchone()[0] == "after"
+        finally:
+            verification.close()
+    finally:
+        blocker.close()
+
+
+def test_sync_read_returns_stable_503_when_database_queue_is_full(monkeypatch):
+    async def reject(*_args, **_kwargs):
+        raise BlockingIOBusyError("full")
+
+    monkeypatch.setattr(read_service, "run_database_read", reject)
+    request = SimpleNamespace(headers={}, state=SimpleNamespace())
+
+    response = asyncio.run(read_service.read_sync_data(request))
+    payload = json.loads(response.body)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "1"
+    assert payload["code"] == "DATABASE_READ_QUEUE_FULL"
 
 
 def test_address_catalog_fetch_runs_through_bounded_executor(monkeypatch):
@@ -218,6 +360,87 @@ def test_sync_batch_limit_rejects_before_opening_database(monkeypatch):
     assert payload["fields"] == {"maxItems": 100, "receivedItems": 101}
 
 
+def test_sync_mutation_runs_through_serialized_write_lane(monkeypatch):
+    calls = []
+
+    class SyncRequest:
+        headers = {}
+        state = SimpleNamespace()
+
+        async def json(self):
+            return {}
+
+    async def fake_write_lane(function, *args, **kwargs):
+        calls.append((function, args, kwargs))
+        return JSONResponse({"success": True})
+
+    monkeypatch.setattr(sync_service, "run_database_write", fake_write_lane)
+
+    response = asyncio.run(sync_service.process_sync_request(SyncRequest()))
+
+    assert response.status_code == 200
+    assert calls[0][0] is sync_service._process_sync_request_blocking
+    assert calls[0][1][1] == {}
+
+
+def test_sync_write_returns_stable_503_when_database_queue_is_full(monkeypatch):
+    class SyncRequest:
+        headers = {}
+        state = SimpleNamespace()
+
+        async def json(self):
+            return {}
+
+    async def reject(*_args, **_kwargs):
+        raise BlockingIOBusyError("full")
+
+    monkeypatch.setattr(sync_service, "run_database_write", reject)
+
+    response = asyncio.run(sync_service.process_sync_request(SyncRequest()))
+    payload = json.loads(response.body)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "1"
+    assert payload["code"] == "DATABASE_WRITE_QUEUE_FULL"
+
+
+def test_registration_rejects_busy_password_cpu_queue_before_database(monkeypatch):
+    class RegisterRequest:
+        headers = {}
+        client = SimpleNamespace(host="127.0.0.1")
+        state = SimpleNamespace()
+
+        async def json(self):
+            return {
+                "username": "bounded_user",
+                "password": "A-valid-password-123!",
+                "name": "Người dùng giới hạn",
+                "email": "bounded@example.com",
+            }
+
+    async def reject(*_args, **_kwargs):
+        raise BlockingIOBusyError("full")
+
+    monkeypatch.setattr(
+        otp_routes,
+        "get_rate_limit_decision",
+        lambda *_args, **_kwargs: RateLimitDecision(True, 0, 1),
+    )
+    monkeypatch.setattr(otp_routes, "run_cpu_bound", reject)
+    monkeypatch.setattr(
+        otp_routes.database,
+        "get_connection",
+        lambda: (_ for _ in ()).throw(AssertionError("Database must not be opened")),
+    )
+
+    response = asyncio.run(otp_routes.register_api(RegisterRequest()))
+    payload = json.loads(response.body)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "1"
+    assert payload["code"] == "PASSWORD_CPU_QUEUE_BUSY"
+
+
 def test_readiness_exposes_resource_pressure_headers():
     with TestClient(app) as client:
         response = client.get("/health/ready")
@@ -226,6 +449,12 @@ def test_readiness_exposes_resource_pressure_headers():
     assert float(response.headers["X-Event-Loop-Lag-Ms"]) >= 0
     assert int(response.headers["X-Blocking-IO-In-Flight"]) >= 0
     assert int(response.headers["X-Blocking-IO-Queue-Depth"]) >= 0
+    assert int(response.headers["X-Database-Read-In-Flight"]) >= 0
+    assert int(response.headers["X-Database-Read-Queue-Depth"]) >= 0
+    assert int(response.headers["X-Database-Write-In-Flight"]) >= 0
+    assert int(response.headers["X-Database-Write-Queue-Depth"]) >= 0
+    assert int(response.headers["X-CPU-Work-In-Flight"]) >= 0
+    assert int(response.headers["X-CPU-Work-Queue-Depth"]) >= 0
 
 
 def test_heavy_document_exports_are_rate_limited_before_loading_export_module(monkeypatch):

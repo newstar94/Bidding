@@ -85,7 +85,14 @@ def create_password_reset(database, username, email, requested_ip, now=None):
         conn.close()
 
 
-def redeem_password_reset(database, token, new_password, now=None):
+def redeem_password_reset(
+    database,
+    token,
+    new_password,
+    now=None,
+    *,
+    password_hash=None,
+):
     """Atomically consume a token, change the password and revoke sessions."""
     raw_token = str(token or "")
     if not raw_token or len(raw_token) > 512:
@@ -119,9 +126,10 @@ def redeem_password_reset(database, token, new_password, now=None):
             raise InvalidResetToken("Reset token has already been used.")
 
         user_id = row["user_id"]
+        replacement_password_hash = password_hash or hash_password(new_password)
         updated = conn.execute(
             "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
-            (hash_password(new_password), user_id),
+            (replacement_password_hash, user_id),
         )
         if updated.rowcount != 1:
             raise InvalidResetToken("Reset token user no longer exists.")

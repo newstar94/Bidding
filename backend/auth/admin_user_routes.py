@@ -264,11 +264,6 @@ async def delete_user_api(request):
         )
         cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE emp_id = ?", (user_id,))
         cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
-        conn.commit()
-
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
-        disconnect_user_websockets(user_id)
         log_audit(
             "admin.user_deleted",
             actor_user_id=role_or_err.user_id,
@@ -276,8 +271,14 @@ async def delete_user_api(request):
             target_id=user_id,
             request=request,
             metadata={"impact": impact},
+            cursor=cursor,
+            required=True,
         )
+        conn.commit()
 
+        _session_cache_invalidate_by_user_id(user_id)
+        _org_cache_invalidate_by_user_id(user_id)
+        disconnect_user_websockets(user_id)
         return JSONResponse({
             "success": True,
             "message": "Xóa người dùng thành công!",

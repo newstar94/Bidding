@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import os
 import pickle
 import shutil
@@ -12,15 +13,25 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
-from backend.shared.paths import PROJECT_ROOT
+from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT
+from backend.observability.metrics import (
+    document_worker_acquired,
+    document_worker_finished,
+    document_worker_rejected,
+    document_worker_wait_started,
+)
 
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
 MAX_RESULT_BYTES = 64 * 1024 * 1024
 MAX_JOB_BYTES = 64 * 1024 * 1024
+_BUSY_MESSAGE = (
+    "Hệ thống đang xử lý quá nhiều tài liệu. Vui lòng thử lại sau."
+)
 
 
 class DocumentWorkerError(RuntimeError):
@@ -42,6 +53,25 @@ class DocumentWorkerTimeoutError(DocumentWorkerError):
 _semaphore_guard = threading.Lock()
 _semaphore: threading.BoundedSemaphore | None = None
 _semaphore_size: int | None = None
+_async_runtime_guard = threading.Lock()
+
+
+class _AsyncWorkerRuntime:
+    """One bounded executor generation for async document submissions."""
+
+    def __init__(self, concurrency: int, queue_size: int) -> None:
+        self.config = (concurrency, queue_size)
+        self.capacity = concurrency + queue_size
+        # Every admitted call gets at most one thread. Threads waiting for the
+        # process semaphore are therefore bounded by ``capacity`` as well.
+        self.executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.capacity,
+            thread_name_prefix="document-worker",
+        )
+        self.admission = threading.BoundedSemaphore(self.capacity)
+
+
+_async_runtime: _AsyncWorkerRuntime | None = None
 
 
 def _positive_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -75,7 +105,6 @@ def _worker_semaphore() -> threading.BoundedSemaphore:
 def _worker_environment(job_dir: Path) -> dict[str, str]:
     allowed_names = {
         "APP_ENV",
-        "BIDDING_DB_PATH",
         "COMSPEC",
         "DOCUMENT_WORKER_CPU_SECONDS",
         "DOCUMENT_WORKER_GID",
@@ -103,6 +132,10 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
             "OMP_NUM_THREADS": "1",
             "OPENBLAS_NUM_THREADS": "1",
             "PYTHONIOENCODING": "utf-8",
+            # Import only the worker entrypoint and its allowlisted document
+            # modules from the application tree. The child starts in its
+            # private job directory and never receives the database path.
+            "PYTHONPATH": str(PROJECT_ROOT),
             "PYTHONUNBUFFERED": "1",
             "DOCUMENT_WORKER_JOB_DIR": str(job_dir),
             "TEMP": str(job_dir),
@@ -274,10 +307,16 @@ def run_document_job(
         "DOCUMENT_WORKER_QUEUE_TIMEOUT_SECONDS", 2.0, 0.0, 30.0
     )
     semaphore = _worker_semaphore()
+    wait_started = time.perf_counter()
+    document_worker_wait_started()
     if not semaphore.acquire(timeout=max(0.0, min(30.0, acquire_timeout))):
+        document_worker_rejected(time.perf_counter() - wait_started)
         raise DocumentWorkerBusyError(
             "Hệ thống đang xử lý quá nhiều tài liệu. Vui lòng thử lại sau."
         )
+    document_worker_acquired(time.perf_counter() - wait_started)
+    job_started = time.perf_counter()
+    outcome = "failed"
 
     job_root = Path(
         os.environ.get("DOCUMENT_WORKER_TEMP_DIR", "").strip()
@@ -307,7 +346,7 @@ def run_document_job(
                 str(result_path),
             ]
             popen_kwargs: dict[str, Any] = {
-                "cwd": str(PROJECT_ROOT),
+                "cwd": str(job_dir),
                 "env": _worker_environment(job_dir),
                 "stdin": subprocess.DEVNULL,
                 "stdout": subprocess.PIPE,
@@ -340,8 +379,14 @@ def run_document_job(
                 raise DocumentWorkerError(
                     "Tiến trình xử lý tài liệu đã dừng bất thường."
                 )
-            return _read_result(result_path)
+            result = _read_result(result_path)
+            outcome = "completed"
+            return result
+    except DocumentWorkerTimeoutError:
+        outcome = "timed_out"
+        raise
     finally:
+        document_worker_finished(outcome, time.perf_counter() - job_started)
         semaphore.release()
         try:
             if job_root.exists() and not any(job_root.iterdir()):
@@ -356,14 +401,51 @@ async def run_document_job_async(
     *,
     timeout_seconds: float | None = None,
 ) -> Any:
-    """Async wrapper that keeps subprocess waiting off the ASGI event loop."""
+    """Submit one job only after acquiring a bounded executor admission slot.
 
-    return await asyncio.to_thread(
-        run_document_job,
-        operation,
-        payload,
-        timeout_seconds=timeout_seconds,
-    )
+    ``asyncio.to_thread`` uses the event loop's shared executor, whose pending
+    queue is unbounded. A burst of exports could therefore retain every
+    payload in memory even though the subprocess semaphore was bounded. This
+    wrapper owns both a fixed executor and an admission semaphore. Admission
+    is non-blocking so overload has a deterministic 503 path at the route.
+
+    The admission slot is released by the *concurrent* future callback, not by
+    the awaiting task. Cancelling an HTTP request therefore cannot free a slot
+    while its underlying worker thread/subprocess is still running.
+    """
+
+    global _async_runtime
+    concurrency = _positive_int_env("DOCUMENT_WORKER_MAX_CONCURRENCY", 2, 1, 8)
+    queue_size = _positive_int_env("DOCUMENT_WORKER_QUEUE_SIZE", 2, 0, 32)
+    config = (concurrency, queue_size)
+    with _async_runtime_guard:
+        if _async_runtime is None or _async_runtime.config != config:
+            previous = _async_runtime
+            _async_runtime = _AsyncWorkerRuntime(*config)
+            if previous is not None:
+                previous.executor.shutdown(wait=False, cancel_futures=False)
+        runtime = _async_runtime
+        admitted = runtime.admission.acquire(blocking=False)
+
+    if not admitted:
+        document_worker_wait_started()
+        document_worker_rejected(0.0)
+        raise DocumentWorkerBusyError(_BUSY_MESSAGE)
+
+    try:
+        concurrent_future = runtime.executor.submit(
+            run_document_job,
+            operation,
+            payload,
+            timeout_seconds=timeout_seconds,
+        )
+    except BaseException:
+        runtime.admission.release()
+        raise
+
+    concurrent_future.add_done_callback(lambda _future: runtime.admission.release())
+    wrapped_future = asyncio.wrap_future(concurrent_future)
+    return await asyncio.shield(wrapped_future)
 
 
 def cleanup_stale_document_jobs(max_age_seconds: int = 3_600) -> int:

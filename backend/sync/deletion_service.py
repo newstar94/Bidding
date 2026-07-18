@@ -39,6 +39,8 @@ def apply_sync_deletions(
         "errors": [],
         "impacts": [],
         "updatedVersionedTables": set(),
+        "affectedVersionFamilies": {},
+        "affectedPlanIds": set(),
         "imageCleanupCandidates": set(),
         "privilegedError": None,
     }
@@ -171,4 +173,19 @@ def apply_sync_deletions(
         )
         if table_name in VERSIONED_TABLES:
             result["updatedVersionedTables"].add(table_name)
+            root_id = str(record.get("id_goc") or record.get("id") or "").strip()
+            if root_id:
+                family_key = root_id
+                if table_name == "goi_thau":
+                    family_key = (
+                        root_id,
+                        str(record.get("ke_hoach_id") or "").strip(),
+                    )
+                result["affectedVersionFamilies"].setdefault(table_name, set()).add(
+                    family_key
+                )
+        if table_name == "ke_hoach_lcnt":
+            result["affectedPlanIds"].add(record_id)
+        elif table_name == "goi_thau" and record.get("ke_hoach_id"):
+            result["affectedPlanIds"].add(str(record["ke_hoach_id"]).strip())
     return result

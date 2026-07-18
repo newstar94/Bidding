@@ -186,8 +186,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -208,7 +208,7 @@
   height: 16px;
 }
 #btn-sidebar-collapse:hover::after {
-  content: "Đóng thanh bên";
+  content: attr(aria-label);
   position: absolute;
   right: calc(100% + 10px);
   top: 50%;
@@ -225,33 +225,17 @@
   pointer-events: none;
 }
 .app-container.sidebar-collapsed #btn-sidebar-collapse {
-  display: none !important;
+  display: flex !important;
 }
 .app-container.sidebar-collapsed .brand-icon {
-  cursor: pointer;
-  position: relative;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  display: none;
 }
-.app-container.sidebar-collapsed .brand-icon:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+.app-container.sidebar-collapsed #btn-sidebar-collapse:hover::after {
+  right: auto;
+  left: calc(100% + 10px);
 }
-.app-container.sidebar-collapsed .brand-icon:hover::after {
-  content: "Mở thanh bên";
-  position: absolute;
-  left: calc(100% + 12px);
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--text-main);
-  color: var(--bg-sidebar);
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  z-index: 300;
-  box-shadow: var(--shadow-lg);
-  pointer-events: none;
+.app-container.sidebar-collapsed #btn-sidebar-collapse :is(i, svg) {
+  transform: rotate(180deg);
 }
 .app-container.sidebar-collapsed .sidebar-footer {
   display: none !important;
@@ -322,6 +306,8 @@
   padding: 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
 }
 .page-title {
   font-size: 1.4rem;

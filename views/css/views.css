@@ -1912,9 +1912,11 @@ table th {
 }
 .auth-input-wrapper .toggle-password {
   position: absolute;
-  right: 16px;
+  right: 4px;
   background: none;
   border: none;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
   padding: 0;
   color: var(--text-muted);
   cursor: pointer;
@@ -2089,6 +2091,9 @@ table th {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   transition: all var(--transition-normal);
 }
 .header-profile-trigger:hover {
@@ -2148,6 +2153,7 @@ table th {
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  min-height: var(--touch-target-min);
   transition: all var(--transition-fast);
 }
 .dropdown-item:hover {

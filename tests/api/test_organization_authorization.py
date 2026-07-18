@@ -312,6 +312,7 @@ def _profile_database(path):
             id TEXT PRIMARY KEY,
             ten_dang_nhap TEXT NOT NULL,
             username_norm TEXT NOT NULL UNIQUE,
+            mat_khau TEXT NOT NULL,
             ho_ten TEXT NOT NULL,
             email TEXT NOT NULL,
             email_norm TEXT NOT NULL UNIQUE,
@@ -322,8 +323,8 @@ def _profile_database(path):
             ten_to_chuc TEXT NOT NULL
         );
         INSERT INTO tai_khoan VALUES (
-            'actor', 'actor-name', 'actor-name', 'Old Name',
-            'old@example.com', 'old@example.com', 'old-avatar'
+            'actor', 'actor-name', 'actor-name', 'unused-password-hash', 'Old Name',
+            'canonical@example.com', 'canonical@example.com', 'old-avatar'
         );
         INSERT INTO to_chuc VALUES ('org-a', 'Organization A');
         """

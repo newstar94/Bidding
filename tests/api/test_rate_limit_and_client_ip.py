@@ -166,3 +166,23 @@ def test_nginx_baseline_overwrites_client_forwarding_headers():
     assert "proxy_set_header X-Forwarded-For $remote_addr;" in config
     assert "proxy_set_header Forwarded \"\";" in config
     assert "$proxy_add_x_forwarded_for" not in config
+
+
+def test_ingress_limits_match_application_request_classes():
+    nginx = Path("deploy/nginx-biddingflow.conf.example").read_text(encoding="utf-8")
+    service = Path("deploy/biddingflow.service.example").read_text(encoding="utf-8")
+
+    assert "location = /api/sync" in nginx
+    assert "client_max_body_size 10m;" in nginx
+    assert nginx.count("client_max_body_size 11m;") == 2
+    assert "client_max_body_size 64m;" not in nginx
+    assert "zone=biddingflow_auth" in nginx
+    assert "zone=biddingflow_api" in nginx
+    assert "zone=biddingflow_sync" in nginx
+    assert "zone=biddingflow_document" in nginx
+    assert "zone=biddingflow_websocket" in nginx
+    assert "--workers 1" in service
+    assert "--limit-concurrency 128" in service
+    assert "--backlog 256" in service
+    assert "--timeout-graceful-shutdown 30" in service
+    assert "--ws-max-size 65536" in service

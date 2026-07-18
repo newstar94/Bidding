@@ -23,7 +23,7 @@ class _Role:
 
 
 def _snapshot_connection():
-    connection = sqlite3.connect(":memory:")
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.row_factory = sqlite3.Row
     connection.execute("""
         CREATE TABLE ke_hoach_lcnt (

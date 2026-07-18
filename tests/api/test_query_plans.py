@@ -1,6 +1,11 @@
 import sqlite3
 
-from backend.db.db_utils import _build_create_table_sql, _create_baseline_indexes_and_triggers, _ensure_fts_indexes
+from backend.db.db_utils import (
+    _build_create_table_sql,
+    _create_baseline_indexes_and_triggers,
+    _ensure_fts_indexes,
+)
+from backend.db.migrations import m0005_selective_fts_updates
 from backend.db.schema import SCHEMA_DINH_NGHIA
 
 
@@ -83,6 +88,7 @@ def test_fts5_matches_vietnamese_with_or_without_diacritics_and_tracks_updates()
         CREATE TABLE hop_dong (organization_id TEXT, id TEXT, so_hop_dong TEXT, ten_hop_dong TEXT);
     """)
     _ensure_fts_indexes(connection.cursor())
+    m0005_selective_fts_updates.apply(connection.cursor(), context=None)
     connection.execute(
         "INSERT INTO goi_thau VALUES ('org-1', 'package-1', 'GT-01', 'Mua sắm thiết bị y tế')"
     )
@@ -96,6 +102,53 @@ def test_fts5_matches_vietnamese_with_or_without_diacritics_and_tracks_updates()
     assert connection.execute(
         "SELECT id FROM fts_goi_thau WHERE fts_goi_thau MATCH 'thiet bi' AND organization_id = 'org-1'"
     ).fetchone() is None
+    connection.close()
+
+
+def test_fts_update_trigger_skips_unindexed_technical_only_updates():
+    connection = sqlite3.connect(":memory:")
+    connection.executescript("""
+        CREATE TABLE ke_hoach_lcnt (organization_id TEXT, id TEXT, ma_ke_hoach TEXT, ten_ke_hoach TEXT, ten_du_an_du_toan TEXT);
+        CREATE TABLE goi_thau (organization_id TEXT, id TEXT, ma_goi_thau TEXT, ten_goi_thau TEXT, sync_version INTEGER, updated_at TEXT);
+        CREATE TABLE chu_dau_tu (organization_id TEXT, id TEXT, ma_chu_dau_tu TEXT, ten_chu_dau_tu TEXT, ten_viet_tat TEXT, ma_so_thue TEXT);
+        CREATE TABLE nha_thau (organization_id TEXT, id TEXT, ma_nha_thau TEXT, ten_nha_thau TEXT, ten_viet_tat TEXT, ma_so_thue TEXT);
+        CREATE TABLE hop_dong (organization_id TEXT, id TEXT, so_hop_dong TEXT, ten_hop_dong TEXT);
+    """)
+    _ensure_fts_indexes(connection.cursor())
+    m0005_selective_fts_updates.apply(connection.cursor(), context=None)
+    connection.execute(
+        """INSERT INTO goi_thau (
+               organization_id, id, ma_goi_thau, ten_goi_thau, sync_version, updated_at
+           ) VALUES ('org-1', 'package-1', 'GT-01', 'Thiết bị y tế', 1, '2026-01-01')"""
+    )
+    connection.commit()
+
+    before_technical_update = connection.total_changes
+    connection.execute(
+        "UPDATE goi_thau SET sync_version = 2, updated_at = '2026-01-02' WHERE id = 'package-1'"
+    )
+    assert connection.total_changes - before_technical_update == 1
+    assert connection.execute(
+        "SELECT id FROM fts_goi_thau WHERE fts_goi_thau MATCH 'thiet bi'"
+    ).fetchone()[0] == "package-1"
+    connection.commit()
+
+    before_indexed_update = connection.total_changes
+    connection.execute(
+        "UPDATE goi_thau SET ten_goi_thau = 'Dịch vụ tư vấn' WHERE id = 'package-1'"
+    )
+    assert connection.total_changes - before_indexed_update > 1
+    assert connection.execute(
+        "SELECT id FROM fts_goi_thau WHERE fts_goi_thau MATCH 'tu van'"
+    ).fetchone()[0] == "package-1"
+    assert connection.execute(
+        "SELECT id FROM fts_goi_thau WHERE fts_goi_thau MATCH 'thiet bi'"
+    ).fetchone() is None
+    trigger_sql = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_goi_thau_fts_au'"
+    ).fetchone()[0]
+    assert "WHEN" in trigger_sql
+    assert "old.ten_goi_thau IS NOT new.ten_goi_thau" in trigger_sql
     connection.close()
 
 

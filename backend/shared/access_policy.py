@@ -6,6 +6,7 @@ from backend.shared.text_utils import clean_id
 
 PLATFORM_ADMIN_ROLES = {"super_admin"}
 ORGANIZATION_MANAGER_ROLES = {"manager"}
+DOCUMENT_EXPORT_CAPABILITY_IDS = frozenset({"financial", "identity", "signature"})
 WRITE_PROTECTED_KEYS = {
     "assignments",
     "custompaperstatuses",
@@ -42,6 +43,26 @@ OWNERSHIP_SCOPED_TABLES = {
 class AccessDecision:
     allowed: bool
     message: str = ""
+
+
+@dataclass(frozen=True)
+class DocumentExportCapabilities:
+    """Effective permission to place sensitive field families in a document."""
+
+    financial: bool = False
+    identity: bool = False
+    signature: bool = False
+
+    @classmethod
+    def allow_all(cls):
+        return cls(financial=True, identity=True, signature=True)
+
+    def as_dict(self):
+        return {
+            "financial": self.financial,
+            "identity": self.identity,
+            "signature": self.signature,
+        }
 
 
 def _roles(role_str):
@@ -107,6 +128,50 @@ def has_active_organization_membership(cursor, role_str, user_id, organization_i
     if is_manager_role(role_str):
         return True
     return organization_membership_role(cursor, user_id, organization_id) is not None
+
+
+def resolve_document_export_capabilities(cursor, role_str, user_id, organization_id):
+    """Resolve effective sensitive-document grants inside one tenant.
+
+    Platform administrators, organization managers and personal-workspace owners
+    inherit all capabilities. Other active members receive only their explicit
+    per-organization grants and default to no sensitive exports.
+    """
+
+    if is_organization_manager(cursor, role_str, user_id, organization_id):
+        return DocumentExportCapabilities.allow_all()
+    if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return DocumentExportCapabilities.allow_all()
+    if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
+        return DocumentExportCapabilities()
+    row = cursor.execute(
+        """SELECT financial, identity, signature
+           FROM document_export_capabilities
+           WHERE organization_id = ? AND user_id = ?
+           LIMIT 1""",
+        (organization_id, user_id),
+    ).fetchone()
+    if not row:
+        return DocumentExportCapabilities()
+    return DocumentExportCapabilities(
+        financial=bool(row[0]),
+        identity=bool(row[1]),
+        signature=bool(row[2]),
+    )
+
+
+def can_export_document_capability(
+    cursor, role_str, user_id, organization_id, capability_id
+):
+    """Return one effective capability without accepting arbitrary field names."""
+
+    capability_id = str(capability_id or "").strip().lower()
+    if capability_id not in DOCUMENT_EXPORT_CAPABILITY_IDS:
+        return False
+    capabilities = resolve_document_export_capabilities(
+        cursor, role_str, user_id, organization_id
+    )
+    return bool(getattr(capabilities, capability_id))
 
 
 def _permission_for(cursor, organization_id, user_id, module_name):

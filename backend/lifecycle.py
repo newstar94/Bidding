@@ -12,7 +12,12 @@ from backend.documents.document_worker import (
     cleanup_stale_document_jobs,
     validate_document_worker_configuration,
 )
+from backend.observability.metrics import monitor_operational_artifacts
 from backend.shared.async_io import run_blocking_io
+from backend.shared.audit_monitor import (
+    monitor_audit_chain,
+    verify_audit_chain_before_ready,
+)
 from backend.shared.helpers import _org_cache_cleanup
 from backend.shared.logging_utils import log_error
 from backend.startup import validate_startup_configuration, verify_database_readiness
@@ -132,6 +137,8 @@ async def application_lifespan(
     application.state.startup_complete = False
     application.state.event_loop_lag_ms = 0.0
     monitor_task = None
+    audit_monitor_task = None
+    artifact_monitor_task = None
     broker_task = None
     writer_lease = None
     try:
@@ -143,6 +150,7 @@ async def application_lifespan(
             build_index_response()
         initialize_database()
         verify_database_readiness(database, schema_version)
+        await verify_audit_chain_before_ready(database)
     except Exception as exc:
         if writer_lease is not None:
             writer_lease.release()
@@ -152,14 +160,19 @@ async def application_lifespan(
     application.state.startup_complete = True
     application.state.ready = True
     monitor_task = asyncio.create_task(_monitor_event_loop(application))
+    audit_monitor_task = asyncio.create_task(
+        monitor_audit_chain(database, application=application)
+    )
+    artifact_monitor_task = asyncio.create_task(monitor_operational_artifacts())
     try:
         from backend.sync.websocket import _latest_broker_event_id, run_websocket_event_broker
         broker_cursor = await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)
         broker_task = asyncio.create_task(run_websocket_event_broker(start_after_id=broker_cursor))
     except Exception:
-        monitor_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await monitor_task
+        for task in (monitor_task, audit_monitor_task, artifact_monitor_task):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         application.state.ready = False
         application.state.startup_complete = False
         writer_lease.release()
@@ -180,7 +193,12 @@ async def application_lifespan(
     try:
         yield
     finally:
-        for task in (monitor_task, broker_task):
+        for task in (
+            monitor_task,
+            audit_monitor_task,
+            artifact_monitor_task,
+            broker_task,
+        ):
             if task is not None:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

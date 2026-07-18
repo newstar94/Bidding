@@ -1,0 +1,1 @@
+{"context":"observability_test","event":"application.error","exceptionType":"RuntimeError","message":"email=[REDACTED_EMAIL] [REDACTED_SECRET] cccd=[REDACTED_NUMBER] account=[REDACTED_NUMBER]","organizationId":"org-1","requestId":"request-1","severity":"ERROR","timestamp":"2026-07-18T04:55:35.500359+00:00","traceback":"NoneType: None\n","userId":"user-1"}

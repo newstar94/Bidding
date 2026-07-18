@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import os
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -37,6 +37,8 @@ class BlockingIOStats:
     timed_out: int
     capacity: int
     workers: int
+    queue_wait_seconds: float
+    execution_seconds: float
 
 
 class _BlockingIOPool:
@@ -55,6 +57,8 @@ class _BlockingIOPool:
         self._completed = 0
         self._rejected = 0
         self._timed_out = 0
+        self._queue_wait_seconds = 0.0
+        self._execution_seconds = 0.0
 
     def _mark_rejected(self) -> None:
         with self._lock:
@@ -68,6 +72,11 @@ class _BlockingIOPool:
     def _mark_timed_out(self) -> None:
         with self._lock:
             self._timed_out += 1
+
+    def _mark_worker_timing(self, queue_wait_seconds: float, execution_seconds: float) -> None:
+        with self._lock:
+            self._queue_wait_seconds += max(0.0, queue_wait_seconds)
+            self._execution_seconds += max(0.0, execution_seconds)
 
     def _complete(self, future: Future[Any]) -> None:
         # Retrieve worker exceptions even if the awaiting request already timed out.
@@ -85,7 +94,7 @@ class _BlockingIOPool:
         self,
         function: Callable[..., Any],
         *args: Any,
-        timeout_seconds: float,
+        timeout_seconds: float | None,
         **kwargs: Any,
     ) -> Any:
         if not self._slots.acquire(blocking=False):
@@ -94,15 +103,27 @@ class _BlockingIOPool:
                 "Hệ thống đang xử lý quá nhiều tác vụ mạng hoặc tệp."
             )
         self._mark_submitted()
+        submitted_at = time.perf_counter()
+
+        def execute():
+            worker_started_at = time.perf_counter()
+            try:
+                return function(*args, **kwargs)
+            finally:
+                self._mark_worker_timing(
+                    worker_started_at - submitted_at,
+                    time.perf_counter() - worker_started_at,
+                )
+
         try:
-            future = self._executor.submit(
-                functools.partial(function, *args, **kwargs)
-            )
+            future = self._executor.submit(execute)
         except Exception:
             self._complete(Future())
             raise
         future.add_done_callback(self._complete)
         try:
+            if timeout_seconds is None:
+                return await asyncio.shield(asyncio.wrap_future(future))
             return await asyncio.wait_for(
                 asyncio.wrap_future(future),
                 timeout=max(0.1, min(120.0, float(timeout_seconds))),
@@ -124,6 +145,8 @@ class _BlockingIOPool:
                 timed_out=self._timed_out,
                 capacity=self.capacity,
                 workers=self.workers,
+                queue_wait_seconds=self._queue_wait_seconds,
+                execution_seconds=self._execution_seconds,
             )
 
 
@@ -136,7 +159,7 @@ _pool = _BlockingIOPool(
 async def run_blocking_io(
     function: Callable[..., Any],
     *args: Any,
-    timeout_seconds: float = 15.0,
+    timeout_seconds: float | None = 15.0,
     **kwargs: Any,
 ) -> Any:
     return await _pool.run(

@@ -257,6 +257,9 @@ export class BiddingView {
         setRuntimeStyle(th, "cursor", "pointer");
         setRuntimeStyle(th, "userSelect", "none");
         const headerText = th.textContent;
+        th.tabIndex = 0;
+        th.setAttribute("aria-label", `Sắp xếp theo ${headerText.trim()}`);
+        th.setAttribute("aria-sort", "none");
         const sortContainer = document.createElement("div");
         sortContainer.className = "sort-header-container";
         const label = document.createElement("span");
@@ -266,6 +269,7 @@ export class BiddingView {
         label.textContent = headerText;
         const icon = document.createElement("span");
         icon.className = "sort-icon-btn";
+        icon.setAttribute("aria-hidden", "true");
         icon.innerHTML = svgUnsorted;
         sortContainer.append(label, icon);
         th.replaceChildren(sortContainer);
@@ -278,6 +282,7 @@ export class BiddingView {
             ths.forEach((otherTh) => {
               if (otherTh !== th) {
                 otherTh.removeAttribute("data-sort-order");
+                otherTh.setAttribute("aria-sort", "none");
                 const otherIcon = otherTh.querySelector(".sort-icon-btn");
                 if (otherIcon) {
                   otherIcon.innerHTML = svgUnsorted;
@@ -289,6 +294,7 @@ export class BiddingView {
               }
             });
             th.setAttribute("data-sort-order", currentOrder);
+            th.setAttribute("aria-sort", currentOrder === "asc" ? "ascending" : "descending");
             const iconBtn = th.querySelector(".sort-icon-btn");
             if (iconBtn) {
               iconBtn.innerHTML = currentOrder === "asc" ? svgAsc : svgDesc;
@@ -330,18 +336,25 @@ export class BiddingView {
             }
           }
         });
+        th.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          th.click();
+        });
       }
       if (tableKey && field) {
         const currentSort = this.model.sortState[tableKey] || {};
         const iconBtn = th.querySelector(".sort-icon-btn");
         if (iconBtn) {
           if (currentSort.field === field) {
+            th.setAttribute("aria-sort", currentSort.order === "asc" ? "ascending" : "descending");
             iconBtn.innerHTML = currentSort.order === "asc" ? svgAsc : svgDesc;
             iconBtn.classList.add("active");
             setRuntimeStyle(iconBtn, "opacity", "");
             setRuntimeStyle(iconBtn, "color", "");
             setRuntimeStyle(iconBtn, "fontWeight", "");
           } else {
+            th.setAttribute("aria-sort", "none");
             iconBtn.innerHTML = svgUnsorted;
             iconBtn.classList.remove("active");
             setRuntimeStyle(iconBtn, "opacity", "");

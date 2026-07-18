@@ -1,0 +1,16 @@
+{
+  "createdAt": "2026-07-18T04:12:22.418349Z",
+  "sourceDatabase": "C:\\Users\\newst\\OneDrive - 79401\\Bidding\\.pytest-full-state-legacy\\test_online_backup_and_rehears0\\database\\bidding.db",
+  "backupDatabase": "C:\\Users\\newst\\OneDrive - 79401\\Bidding\\.pytest-full-state-legacy\\test_online_backup_and_rehears0\\backups\\bidding-20260718T041222.418349Z.db",
+  "sizeBytes": 12288,
+  "sha256": "baaee307523f56e2986abdef945eb0400461775ec31cec07335c2515f4188d8f",
+  "schemaVersion": 7,
+  "integrity": "ok",
+  "foreignKeyViolations": 0,
+  "sourceSchemaVersion": 7,
+  "walCheckpoint": {
+    "busy": 0,
+    "logFrames": 7,
+    "checkpointedFrames": 7
+  }
+}

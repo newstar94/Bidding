@@ -84,6 +84,83 @@ def inspect_database(database_path):
     return result
 
 
+def create_verified_database_snapshot(database_path, destination_path):
+    """Copy SQLite to a new file with the online backup API and verify the copy.
+
+    This lower-level primitive intentionally does not create legacy sidecar
+    metadata.  Full-state snapshots record the returned verification data in
+    their own manifest, while ``create_online_backup`` keeps its existing file
+    and ``.json`` contract unchanged.
+    """
+    source_path = Path(database_path).resolve()
+    target_path = Path(destination_path).resolve()
+    if source_path == target_path:
+        raise DatabaseMaintenanceError(
+            "SQLite snapshot destination must differ from the source database."
+        )
+    if target_path.exists():
+        raise DatabaseMaintenanceError(
+            f"SQLite snapshot destination already exists: {target_path}"
+        )
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    partial_path = target_path.parent / f".{target_path.name}.partial-{uuid4().hex}"
+    source_connection = _connect_existing(source_path)
+    destination_connection = None
+    snapshot_created = False
+    try:
+        checkpoint = tuple(
+            int(value)
+            for value in source_connection.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+        )
+        source_check = _integrity_result(source_connection)
+        destination_connection = sqlite3.connect(str(partial_path))
+        source_connection.backup(destination_connection, pages=256, sleep=0.05)
+        destination_connection.commit()
+        snapshot_check = _integrity_result(destination_connection)
+        if snapshot_check != source_check:
+            raise DatabaseMaintenanceError(
+                "SQLite snapshot verification differs from the source database."
+            )
+        snapshot_created = True
+    except DatabaseMaintenanceError:
+        raise
+    except (sqlite3.Error, OSError) as exc:
+        raise DatabaseMaintenanceError(f"Online SQLite snapshot failed: {exc}") from exc
+    finally:
+        if destination_connection is not None:
+            destination_connection.close()
+        source_connection.close()
+        if not snapshot_created:
+            partial_path.unlink(missing_ok=True)
+
+    try:
+        with partial_path.open("r+b") as snapshot_file:
+            os.fsync(snapshot_file.fileno())
+        if os.name != "nt":
+            partial_path.chmod(0o600)
+        os.replace(partial_path, target_path)
+    except OSError as exc:
+        raise DatabaseMaintenanceError(f"Could not finalize SQLite snapshot: {exc}") from exc
+    finally:
+        partial_path.unlink(missing_ok=True)
+
+    return {
+        "database": str(target_path),
+        "sizeBytes": target_path.stat().st_size,
+        "sha256": _sha256(target_path),
+        "schemaVersion": snapshot_check["schemaVersion"],
+        "integrity": snapshot_check["integrity"],
+        "foreignKeyViolations": snapshot_check["foreignKeyViolations"],
+        "sourceSchemaVersion": source_check["schemaVersion"],
+        "walCheckpoint": {
+            "busy": checkpoint[0],
+            "logFrames": checkpoint[1],
+            "checkpointedFrames": checkpoint[2],
+        },
+    }
+
+
 def _remove_expired_backups(backup_directory, prefix, retention_count):
     candidates = sorted(
         backup_directory.glob(f"{prefix}-*.db"),

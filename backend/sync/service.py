@@ -84,9 +84,69 @@ from backend.sync.request_contract import (
 )
 from backend.sync.response import commit_sync_response
 from backend.sync.opening_uniqueness import validate_opening_participant_uniqueness
+from backend.shared.async_io import BlockingIOBusyError
+from backend.shared.database_io import run_database_write
+from backend.shared.request_validation import read_json_object
 
 
 async def process_sync_request(request, broadcast_callback=None):
+    """Validate the HTTP payload, then run the SQLite mutation off-loop."""
+    data, json_error = await read_json_object(request)
+    if json_error:
+        return json_error
+
+    shape_errors = validate_sync_payload_shape(data)
+    if shape_errors:
+        log_error(
+            "Payload shape invalid: "
+            + json.dumps(
+                [
+                    {"field": error.get("field"), "code": error.get("code")}
+                    for error in shape_errors
+                ],
+                ensure_ascii=False,
+            ),
+            "SyncAPI",
+            request_id=get_request_id(request),
+        )
+        return error_response(
+            request,
+            "SYNC_VALIDATION_FAILED",
+            "Dữ liệu đồng bộ không hợp lệ.",
+            status_code=400,
+            fields={"errors": shape_errors},
+        )
+
+    batch_size = _sync_batch_size(data)
+    batch_limit = _sync_batch_limit()
+    if batch_size > batch_limit:
+        return error_response(
+            request,
+            "SYNC_BATCH_TOO_LARGE",
+            "Số lượng bản ghi đồng bộ vượt quá giới hạn cho phép.",
+            status_code=413,
+            fields={"maxItems": batch_limit, "receivedItems": batch_size},
+        )
+
+    try:
+        return await run_database_write(
+            _process_sync_request_blocking,
+            request,
+            data,
+            broadcast_callback,
+        )
+    except BlockingIOBusyError:
+        response = error_response(
+            request,
+            "DATABASE_WRITE_QUEUE_FULL",
+            "Hệ thống đang xử lý quá nhiều thay đổi. Vui lòng thử lại sau.",
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+
+
+def _process_sync_request_blocking(request, data, broadcast_callback=None):
     """
     [POST] /api/sync
     Đồng bộ dữ liệu thay đổi từ ứng dụng Frontend vào cơ sở dữ liệu SQLite.
@@ -98,49 +158,13 @@ async def process_sync_request(request, broadcast_callback=None):
     transaction_committed = False
     newly_written_images = set()
     image_cleanup_candidates = set()
+    batch_limit = _sync_batch_limit()
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             log_sync_error(f"Xác thực thất bại khi đồng bộ: {role_or_err}")
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        data = await request.json()
-        if not isinstance(data, dict):
-            return error_response(
-                request,
-                "SYNC_PAYLOAD_INVALID",
-                "Dữ liệu đồng bộ phải là một JSON object.",
-                status_code=400,
-            )
-        shape_errors = validate_sync_payload_shape(data)
-        if shape_errors:
-            log_sync_error(
-                "Payload shape invalid: "
-                + json.dumps(
-                    [
-                        {"field": error.get("field"), "code": error.get("code")}
-                        for error in shape_errors
-                    ],
-                    ensure_ascii=False,
-                )
-            )
-            return error_response(
-                request,
-                "SYNC_VALIDATION_FAILED",
-                "Dữ liệu đồng bộ không hợp lệ.",
-                status_code=400,
-                fields={"errors": shape_errors},
-            )
-        batch_size = _sync_batch_size(data)
-        batch_limit = _sync_batch_limit()
-        if batch_size > batch_limit:
-            return error_response(
-                request,
-                "SYNC_BATCH_TOO_LARGE",
-                "Số lượng bản ghi đồng bộ vượt quá giới hạn cho phép.",
-                status_code=413,
-                fields={"maxItems": batch_limit, "receivedItems": batch_size},
-            )
         conn = database.get_connection()
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=10000")
@@ -248,10 +272,42 @@ async def process_sync_request(request, broadcast_callback=None):
                 return str(raw_id).strip()
             return clean_id(raw_id)
 
-        updated_versioned_tables = set()
+        affected_version_families = {}
+        affected_plan_ids = set()
         updated_row_versions = []
         orphaned_ids = []
         delete_impacts = []
+
+        def track_affected_record(table_name, record):
+            if not isinstance(record, dict):
+                return
+            if table_name in VERSIONED_TABLES:
+                root_id = get_clean_id(
+                    table_name,
+                    record.get("id_goc") or record.get("rootId") or record.get("id"),
+                )
+                if root_id:
+                    family_key = root_id
+                    if table_name == "goi_thau":
+                        plan_id = get_clean_id(
+                            "ke_hoach_lcnt",
+                            record.get("ke_hoach_id") or record.get("keHoachId"),
+                        )
+                        family_key = (root_id, plan_id or "")
+                    affected_version_families.setdefault(table_name, set()).add(
+                        family_key
+                    )
+            if table_name == "ke_hoach_lcnt":
+                plan_id = get_clean_id(table_name, record.get("id"))
+                if plan_id:
+                    affected_plan_ids.add(plan_id)
+            elif table_name == "goi_thau":
+                plan_id = get_clean_id(
+                    "ke_hoach_lcnt",
+                    record.get("ke_hoach_id") or record.get("keHoachId"),
+                )
+                if plan_id:
+                    affected_plan_ids.add(plan_id)
 
         sync_item_errors = []
 
@@ -260,6 +316,7 @@ async def process_sync_request(request, broadcast_callback=None):
         skipped_invalid_records = set()
         incoming_ids_by_table = {}
         incoming_records_by_table = {}
+        stored_records_by_table = {}
         for _payload_key, _table_name, _items in iter_sync_table_payloads(data):
             table_records = incoming_records_by_table.setdefault(_table_name, {})
             table_ids = incoming_ids_by_table.setdefault(_table_name, set())
@@ -318,6 +375,7 @@ async def process_sync_request(request, broadcast_callback=None):
                     ).fetchone()
                     if current_row:
                         current_record = dict(current_row)
+                        stored_records_by_table.setdefault(table_name, {})[str(c_id)] = current_record
                         expected_version = item.get("expectedVersion", item.get("rowVersion"))
                         current_row_version = int(current_record.get("row_version") or 1)
                         if expected_version != current_row_version:
@@ -514,15 +572,15 @@ async def process_sync_request(request, broadcast_callback=None):
             columns = list(table_spec["columns"].keys())
 
 
-            if table_name in VERSIONED_TABLES and items:
-                updated_versioned_tables.add(table_name)
-
-
             for item in items:
                 item_id_for_skip = get_clean_id(table_name, item.get("id")) if isinstance(item, dict) else None
                 if (table_name, str(item_id_for_skip)) in skipped_invalid_records:
                     continue
                 item = canonicalize_payload_item(table_name, item)
+                incoming_record_id = get_clean_id(table_name, item.get("id"))
+                previous_record = stored_records_by_table.get(table_name, {}).get(
+                    str(incoming_record_id)
+                )
                 try:
                     db_row_data = {}
                     for col in columns:
@@ -543,7 +601,7 @@ async def process_sync_request(request, broadcast_callback=None):
                                 get_clean_id(table_name, item.get("rootId"))
                                 or get_clean_id(
                                     table_name,
-                                    current_record.get("id_goc") if current_record else None,
+                                    previous_record.get("id_goc") if previous_record else None,
                                 )
                                 or get_clean_id(table_name, item.get("id"))
                             )
@@ -770,6 +828,8 @@ async def process_sync_request(request, broadcast_callback=None):
                                         "INSERT OR REPLACE INTO hop_dong_goi_thau (organization_id, owner_type, hop_dong_id, goi_thau_id) VALUES (?, ?, ?, ?)",
                                         (org_name, owner_type, c_hd_id, gt_id)
                                     )
+                    track_affected_record(table_name, previous_record)
+                    track_affected_record(table_name, db_row_data)
                 except Exception as item_err:
                     err_str = str(item_err)
                     item_id = get_clean_id(table_name, item.get('id'))
@@ -811,16 +871,27 @@ async def process_sync_request(request, broadcast_callback=None):
             return JSONResponse(deletion_result["privilegedError"], status_code=403)
         sync_item_errors.extend(deletion_result["errors"])
         delete_impacts.extend(deletion_result["impacts"])
-        updated_versioned_tables.update(deletion_result["updatedVersionedTables"])
+        for table_name, families in deletion_result["affectedVersionFamilies"].items():
+            affected_version_families.setdefault(table_name, set()).update(families)
+        affected_plan_ids.update(deletion_result["affectedPlanIds"])
         image_cleanup_candidates.update(deletion_result["imageCleanupCandidates"])
 
 
-        for tbl in updated_versioned_tables:
-            recalculate_is_latest(cursor, tbl, organization_id=org_name)
+        for tbl, families in affected_version_families.items():
+            recalculate_is_latest(
+                cursor,
+                tbl,
+                organization_id=org_name,
+                affected_families=families,
+            )
 
 
-        if "ke_hoach_lcnt" in updated_versioned_tables or "goi_thau" in updated_versioned_tables:
-            recalculate_tong_muc_dau_tu(cursor, organization_id=org_name)
+        if affected_plan_ids:
+            recalculate_tong_muc_dau_tu(
+                cursor,
+                organization_id=org_name,
+                plan_ids=affected_plan_ids,
+            )
 
         if sync_item_errors:
             conflict = any(error.get("code") == "ROW_VERSION_CONFLICT" for error in sync_item_errors)

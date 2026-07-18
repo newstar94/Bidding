@@ -431,8 +431,8 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
   padding: 0;
   border: 1px solid transparent;
   border-radius: 50%;
@@ -982,6 +982,10 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
@@ -989,6 +993,16 @@ button:disabled {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+@media (pointer: coarse), (max-width: 768px) {
+  .action-btn,
+  .pagination-btn,
+  .sort-icon-btn,
+  .flatpickr-grid-overlay .grid-nav-btn {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
   }
 }
 

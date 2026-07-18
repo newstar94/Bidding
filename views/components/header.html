@@ -1,10 +1,11 @@
 
             <header class="app-header">
                 <div class="header-left">
-                    <button class="menu-toggle-btn" id="sidebar-toggle" aria-label="Toggle Sidebar">
-                        <i data-lucide="menu"></i>
+                    <button type="button" class="menu-toggle-btn" id="sidebar-toggle"
+                        aria-label="Mở thanh điều hướng" aria-expanded="false" aria-controls="sidebar">
+                        <i data-lucide="menu" aria-hidden="true"></i>
                     </button>
-                    <h2 class="page-title" id="page-title">Tổng quan hệ thống</h2>
+                    <h2 class="page-title" id="page-title" tabindex="-1">Tổng quan hệ thống</h2>
                 </div>
                 <div class="header-right">
                     <button type="button" class="sync-status-pill" id="btn-force-sync"
@@ -32,32 +33,36 @@
 
 
                     <div class="header-profile-container" id="header-profile-menu">
-                        <div class="header-profile-trigger">
-                            <div class="profile-avatar has-initials" id="header-profile-avatar">AD</div>
-                            <div class="profile-info bf-s-0728c58517"
+                        <button type="button" class="header-profile-trigger" id="header-profile-trigger"
+                            aria-expanded="false" aria-controls="profile-dropdown-menu"
+                            aria-haspopup="menu" aria-labelledby="header-profile-name header-profile-role">
+                            <span class="profile-avatar has-initials" id="header-profile-avatar" aria-hidden="true">AD</span>
+                            <span class="profile-info bf-s-0728c58517"
                                >
-                                <h4 id="header-profile-name"
+                                <span id="header-profile-name"
                                     class="bf-s-ec329328f9">
-                                    Administrator</h4>
-                                <p id="header-profile-role"
+                                    Administrator</span>
+                                <span id="header-profile-role"
                                     class="bf-s-02d3432dae">
-                                    Chế độ: Ngoại tuyến</p>
-                            </div>
+                                    Chế độ: Ngoại tuyến</span>
+                            </span>
                             <i data-lucide="chevron-down"
-                                class="bf-s-2c108aea7b"></i>
-                        </div>
+                                class="bf-s-2c108aea7b" aria-hidden="true"></i>
+                        </button>
 
 
-                        <div class="header-profile-dropdown" id="profile-dropdown-menu">
-                            <button class="dropdown-item" id="btn-dropdown-profile">
-                                <i data-lucide="user-cog" class="bf-s-3e32597019"></i>
+                        <div class="header-profile-dropdown" id="profile-dropdown-menu" role="menu"
+                            aria-labelledby="header-profile-trigger" hidden>
+                            <button type="button" class="dropdown-item" id="btn-dropdown-profile" role="menuitem">
+                                <i data-lucide="user-cog" class="bf-s-3e32597019" aria-hidden="true"></i>
                                 <span>Thông tin tài khoản</span>
                             </button>
 
 
-                            <div id="org-switch-section" class="bf-s-65d1f1c3d7">
-                                <div class="dropdown-divider"></div>
-                                <div
+                            <div id="org-switch-section" class="bf-s-65d1f1c3d7" role="group"
+                                aria-labelledby="org-switch-heading">
+                                <div class="dropdown-divider" role="separator"></div>
+                                <div id="org-switch-heading"
                                     class="bf-s-fc347c359e">
                                     Tổ chức hoạt động</div>
                                 <div id="org-switch-list"
@@ -67,29 +72,30 @@
                             </div>
 
 
-                            <div id="sa-role-switch-section" class="bf-s-65d1f1c3d7">
-                                <div class="dropdown-divider"></div>
-                                <div
+                            <div id="sa-role-switch-section" class="bf-s-65d1f1c3d7" role="group"
+                                aria-labelledby="role-switch-heading">
+                                <div class="dropdown-divider" role="separator"></div>
+                                <div id="role-switch-heading"
                                     class="bf-s-fc347c359e">
                                     Xem dưới vai trò</div>
-                                <button class="dropdown-item dropdown-role-btn" data-switch-role="super_admin">
-                                    <i data-lucide="shield-alert" class="bf-s-641778be2c"></i>
+                                <button type="button" class="dropdown-item dropdown-role-btn" data-switch-role="super_admin" role="menuitem">
+                                    <i data-lucide="shield-alert" class="bf-s-641778be2c" aria-hidden="true"></i>
                                     <span>Super Admin</span>
                                 </button>
-                                <button class="dropdown-item dropdown-role-btn" data-switch-role="manager">
-                                    <i data-lucide="shield-check" class="bf-s-641778be2c"></i>
+                                <button type="button" class="dropdown-item dropdown-role-btn" data-switch-role="manager" role="menuitem">
+                                    <i data-lucide="shield-check" class="bf-s-641778be2c" aria-hidden="true"></i>
                                     <span>Quản lý</span>
                                 </button>
-                                <button class="dropdown-item dropdown-role-btn" data-switch-role="employee">
-                                    <i data-lucide="user" class="bf-s-641778be2c"></i>
+                                <button type="button" class="dropdown-item dropdown-role-btn" data-switch-role="employee" role="menuitem">
+                                    <i data-lucide="user" class="bf-s-641778be2c" aria-hidden="true"></i>
                                     <span>Chuyên viên</span>
                                 </button>
                             </div>
 
-                            <div class="dropdown-divider"></div>
-                            <button class="dropdown-item text-danger bf-s-b9a1c49b6b" id="btn-auth-logout"
+                            <div class="dropdown-divider" role="separator"></div>
+                            <button type="button" class="dropdown-item text-danger bf-s-b9a1c49b6b" id="btn-auth-logout" role="menuitem"
                                >
-                                <i data-lucide="log-out" class="bf-s-3e32597019"></i>
+                                <i data-lucide="log-out" class="bf-s-3e32597019" aria-hidden="true"></i>
                                 <span>Đăng xuất</span>
                             </button>
                         </div>

@@ -178,6 +178,12 @@ def verify_session(request, required_role=None):
         if not controls_valid:
             return False, controls_error
 
+    try:
+        # Observability consumes only the opaque account ID. Usernames, email,
+        # session tokens and other identity attributes never enter request logs.
+        request.state.auth_user_id = str(user['id'])
+    except (AttributeError, TypeError, KeyError):
+        pass
     _session_cache_set(token, user)
     return True, SessionRole(
         normalize_platform_role(user['vai_tro']), user['id'], user.get('session_id')

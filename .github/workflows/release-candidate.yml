@@ -1,0 +1,142 @@
+name: Gated production release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      database_mode:
+        description: Database topology covered by the evidence bundle
+        type: choice
+        required: true
+        options:
+          - sqlite-single-instance
+          - postgresql
+      p0_security_gate:
+        description: All P0 security regression tests and review passed
+        type: choice
+        required: true
+        default: failed
+        options: [failed, passed]
+      capacity_gate:
+        description: Mixed load/capacity test met the approved SLO
+        type: choice
+        required: true
+        default: failed
+        options: [failed, passed]
+      external_auth_gate:
+        description: Google Login and email OTP were verified with real services
+        type: choice
+        required: true
+        default: failed
+        options: [failed, passed]
+      reverse_proxy_limits_gate:
+        description: Rate/body/connection limits were verified at the production proxy
+        type: choice
+        required: true
+        default: failed
+        options: [failed, passed]
+      backup_restore_gate:
+        description: Latest full-state backup and isolated restore drill passed
+        type: choice
+        required: true
+        default: failed
+        options: [failed, passed]
+      migration_rehearsal_gate:
+        description: Migration rehearsal on a safe production-like copy passed
+        type: choice
+        required: true
+        default: failed
+        options: [failed, passed]
+      database_acceptance_gate:
+        description: SQLite single-instance capacity or all required PostgreSQL gates passed
+        type: choice
+        required: true
+        default: failed
+        options: [failed, passed]
+      ci_run_id:
+        description: Successful Production CI run ID for this exact commit
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-release-candidate
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  candidate:
+    name: Validate gates and build candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    env:
+      RELEASE_DATABASE_MODE: ${{ inputs.database_mode }}
+      RELEASE_P0_SECURITY_GATE: ${{ inputs.p0_security_gate }}
+      RELEASE_CAPACITY_GATE: ${{ inputs.capacity_gate }}
+      RELEASE_EXTERNAL_AUTH_GATE: ${{ inputs.external_auth_gate }}
+      RELEASE_PROXY_LIMITS_GATE: ${{ inputs.reverse_proxy_limits_gate }}
+      RELEASE_BACKUP_RESTORE_GATE: ${{ inputs.backup_restore_gate }}
+      RELEASE_MIGRATION_REHEARSAL_GATE: ${{ inputs.migration_rehearsal_gate }}
+      RELEASE_DATABASE_GATE: ${{ inputs.database_acceptance_gate }}
+      RELEASE_CI_RUN_ID: ${{ inputs.ci_run_id }}
+      RELEASE_REPOSITORY: ${{ github.repository }}
+      RELEASE_SOURCE_REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements/dev.lock.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: python -m pip install --require-hashes -r requirements/dev.lock.txt
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify selected CI run provenance and revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_CI_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "CI run ID must be numeric." >&2
+            exit 1
+          fi
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_CI_RUN_ID" --jq '[.name,.conclusion,.head_sha] | @tsv')"
+          expected=$'Production CI\tsuccess\t'"$GITHUB_SHA"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Selected CI run is not a successful Production CI run for this commit." >&2
+            exit 1
+          fi
+      - name: Download revision-bound CI evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: production-ci-evidence-${{ github.sha }}
+          path: trusted-ci-evidence
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+      - name: Fail closed on operational or capacity gates
+        run: >-
+          python scripts/release_attestation.py
+          --ci-evidence trusted-ci-evidence/ci-evidence.json
+          --output release/release-attestation.json
+      - name: Run complete preflight and build the candidate
+        run: python scripts/release_preflight.py all --artifact release/biddingflow-production.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gated-production-candidate-${{ github.sha }}
+          path: |
+            release/biddingflow-production.zip
+            release/release-attestation.json
+            sbom/*.cdx.json
+          if-no-files-found: error
+          retention-days: 30

@@ -166,6 +166,68 @@ def validate_template_statements(xml_parts: Iterable[str]) -> None:
             _validate_expression_source(plain_expression)
 
 
+def _expression_root_names(expression: str) -> set[str]:
+    parsed = create_template_environment().parse("{{ " + expression + " }}")
+    return {
+        node.name
+        for node in parsed.find_all(nodes.Name)
+        if getattr(node, "ctx", None) == "load"
+    }
+
+
+def validate_template_root_keys(
+    xml_parts: Iterable[str], allowed_root_keys: Iterable[str]
+) -> None:
+    """Reject template references outside the exact context manifest.
+
+    Loop target names are local variables, while the iterable and condition
+    expressions must still originate from an allowlisted context root.
+    """
+    parts = list(xml_parts)
+    allowed = {str(key) for key in allowed_root_keys}
+    local_names = {"loop"}
+    expressions = []
+
+    for xml in parts:
+        for statement in _STATEMENT_PATTERN.findall(xml):
+            plain = html.unescape(_XML_TAG_PATTERN.sub("", statement)).strip()
+            tag = plain.split(None, 1)[0].lower() if plain else ""
+            if tag in {"p", "tr", "tc", "r"}:
+                plain = plain[len(tag):].strip()
+                tag = plain.split(None, 1)[0].lower() if plain else ""
+            remainder = plain[len(tag):].strip()
+            if tag == "for":
+                match = re.fullmatch(
+                    r"([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_]*)*)"
+                    r"\s+in\s+(.+)",
+                    remainder,
+                    flags=re.DOTALL,
+                )
+                if match:
+                    local_names.update(
+                        name.strip() for name in match.group(1).split(",")
+                    )
+                    expressions.append(match.group(2).strip())
+            elif tag in {"if", "elif"}:
+                expressions.append(remainder)
+
+        for expression in _EXPRESSION_PATTERN.findall(xml):
+            expressions.append(
+                html.unescape(_XML_TAG_PATTERN.sub("", expression)).strip()
+            )
+
+    referenced = set()
+    for expression in expressions:
+        if expression:
+            referenced.update(_expression_root_names(expression))
+    unknown = sorted(referenced - allowed - local_names)
+    if unknown:
+        raise ValueError(
+            "Mẫu Word tham chiếu khóa ngữ cảnh không được phép: "
+            + ", ".join(unknown[:10])
+        )
+
+
 def validate_docx_template_statements(content: bytes) -> None:
     """Validate Jinja statement tags in all Word XML parts of a DOCX archive."""
 

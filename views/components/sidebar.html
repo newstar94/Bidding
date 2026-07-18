@@ -1,74 +1,75 @@
 
-<aside class="sidebar" id="sidebar">
+<aside class="sidebar" id="sidebar" aria-label="Thanh điều hướng ứng dụng">
     <div class="sidebar-brand">
         <div class="brand-icon">
-            <i data-lucide="layers"></i>
+            <i data-lucide="layers" aria-hidden="true"></i>
         </div>
         <div class="brand-text">
             <h1>BiddingFlow</h1>
             <span>Hệ Thống Đấu Thầu v1.0</span>
         </div>
-        <button id="btn-sidebar-collapse" title="Đóng thanh bên" aria-label="Toggle sidebar">
-            <i data-lucide="panel-left-close"></i>
+        <button type="button" id="btn-sidebar-collapse" title="Thu gọn thanh bên"
+            aria-label="Thu gọn thanh bên" aria-expanded="true" aria-controls="sidebar">
+            <i data-lucide="panel-left-close" aria-hidden="true"></i>
         </button>
     </div>
 
-    <nav class="sidebar-menu">
+    <nav class="sidebar-menu" aria-label="Điều hướng chính">
         <ul>
             <li class="role-menu-client">
-                <button class="nav-btn active" data-tab="dashboard" id="btn-tab-dashboard" data-tooltip="Tổng quan">
+                <button type="button" class="nav-btn active" data-tab="dashboard" id="btn-tab-dashboard" data-tooltip="Tổng quan" aria-label="Tổng quan">
                     <i data-lucide="layout-dashboard"></i>
                     <span>Tổng quan</span>
                 </button>
             </li>
             <li class="menu-divider role-menu-client">Nghiệp vụ chính</li>
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="kehoach" id="btn-tab-kehoach" data-tooltip="Kế hoạch LCNT">
+                <button type="button" class="nav-btn" data-tab="kehoach" id="btn-tab-kehoach" data-tooltip="Kế hoạch LCNT" aria-label="Kế hoạch LCNT">
                     <i data-lucide="file-text"></i>
                     <span>Kế hoạch LCNT</span>
                 </button>
             </li>
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="goithau" id="btn-tab-goithau" data-tooltip="Gói thầu">
+                <button type="button" class="nav-btn" data-tab="goithau" id="btn-tab-goithau" data-tooltip="Gói thầu" aria-label="Gói thầu">
                     <i data-lucide="briefcase"></i>
                     <span>Gói thầu</span>
                 </button>
             </li>
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="goithau-timeline" id="btn-tab-goithau-timeline" data-tooltip="Timeline gói thầu">
+                <button type="button" class="nav-btn" data-tab="goithau-timeline" id="btn-tab-goithau-timeline" data-tooltip="Timeline gói thầu" aria-label="Timeline gói thầu">
                     <i data-lucide="calendar-clock"></i>
                     <span>Timeline gói thầu</span>
                 </button>
             </li>
 
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="hopdong" id="btn-tab-hopdong" data-tooltip="Hợp đồng">
+                <button type="button" class="nav-btn" data-tab="hopdong" id="btn-tab-hopdong" data-tooltip="Hợp đồng" aria-label="Hợp đồng">
                     <i data-lucide="file-check-2"></i>
                     <span>Hợp đồng</span>
                 </button>
             </li>
             <li class="menu-divider role-menu-client">Đối tác & Nhân sự</li>
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="chudautu" id="btn-tab-chudautu">
+                <button type="button" class="nav-btn" data-tab="chudautu" id="btn-tab-chudautu" aria-label="Chủ đầu tư">
                     <i data-lucide="building-2"></i>
                     <span>Chủ đầu tư</span>
                 </button>
             </li>
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="nhathau" id="btn-tab-nhathau">
+                <button type="button" class="nav-btn" data-tab="nhathau" id="btn-tab-nhathau" aria-label="Nhà thầu">
                     <i data-lucide="shield-check"></i>
                     <span>Nhà thầu</span>
                 </button>
             </li>
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="chuyengia" id="btn-tab-chuyengia">
+                <button type="button" class="nav-btn" data-tab="chuyengia" id="btn-tab-chuyengia" aria-label="Chuyên gia">
                     <i data-lucide="users"></i>
                     <span>Chuyên gia</span>
                 </button>
             </li>
             <li class="menu-divider role-menu-client">Hệ thống mẫu</li>
             <li class="role-menu-client">
-                <button class="nav-btn" data-tab="bieumau" id="btn-tab-bieumau">
+                <button type="button" class="nav-btn" data-tab="bieumau" id="btn-tab-bieumau" aria-label="Biểu mẫu Word">
                     <i data-lucide="file-check"></i>
                     <span>Biểu mẫu Word</span>
                 </button>
@@ -77,14 +78,14 @@
 
             <li class="menu-divider role-menu-superadmin bf-s-6aa34d7432">Super Admin</li>
             <li class="role-menu-superadmin bf-s-6aa34d7432">
-                <button class="nav-btn text-purple fw-bold" data-tab="superadmin-dashboard"
-                    id="btn-tab-superadmin-dashboard">
+                <button type="button" class="nav-btn text-purple fw-bold" data-tab="superadmin-dashboard"
+                    id="btn-tab-superadmin-dashboard" aria-label="Tổng quan Super Admin">
                     <i data-lucide="line-chart" class="text-purple"></i>
                     <span>Tổng quan SA</span>
                 </button>
             </li>
             <li class="role-menu-superadmin bf-s-6aa34d7432">
-                <button class="nav-btn text-purple fw-bold" data-tab="superadmin" id="btn-tab-superadmin">
+                <button type="button" class="nav-btn text-purple fw-bold" data-tab="superadmin" id="btn-tab-superadmin" aria-label="Quản lý người dùng">
                     <i data-lucide="users-2" class="text-purple"></i>
                     <span>Quản lý Người dùng</span>
                 </button>
@@ -92,13 +93,13 @@
 
             <li class="menu-divider role-menu-manager bf-s-6aa34d7432">Quản lý đơn vị</li>
             <li class="role-menu-manager bf-s-6aa34d7432">
-                <button class="nav-btn text-blue fw-bold" data-tab="managernhanvien" id="btn-tab-managernhanvien">
+                <button type="button" class="nav-btn text-blue fw-bold" data-tab="managernhanvien" id="btn-tab-managernhanvien" aria-label="Nhân sự và phân quyền">
                     <i data-lucide="users-2" class="text-blue"></i>
                     <span>Nhân sự & Phân quyền</span>
                 </button>
             </li>
             <li class="role-menu-manager bf-s-6aa34d7432">
-                <button class="nav-btn text-blue fw-bold" data-tab="managerhosogiay" id="btn-tab-managerhosogiay">
+                <button type="button" class="nav-btn text-blue fw-bold" data-tab="managerhosogiay" id="btn-tab-managerhosogiay" aria-label="Trạng thái hồ sơ giấy">
                     <i data-lucide="folder-cog" class="text-blue"></i>
                     <span>Trạng thái Hồ sơ giấy</span>
                 </button>

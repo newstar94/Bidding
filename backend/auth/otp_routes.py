@@ -20,6 +20,7 @@ from backend.auth.auth_service import (
     ensure_personal_workspace,
     get_client_ip,
     get_rate_limit_decision,
+    RateLimitDecision,
     rate_limit_response,
     generate_otp,
 )
@@ -37,22 +38,63 @@ from backend.auth.password_reset_service import (
     create_password_reset,
     redeem_password_reset,
 )
-from backend.shared.request_validation import validate_or_response
+from backend.shared.request_validation import read_json_object, validate_or_response
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.cpu_io import run_cpu_bound
+from backend.shared.database_io import run_database_write
 
 
 PASSWORD_RESET_REQUEST_MESSAGE = (
     "Nếu thông tin phù hợp với một tài khoản, chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu qua email."
 )
 
+
+async def _rate_limit_decision(*args, **kwargs):
+    try:
+        return await run_database_write(get_rate_limit_decision, *args, **kwargs)
+    except BlockingIOBusyError:
+        return RateLimitDecision(
+            False,
+            int(kwargs.get("window_seconds", 60)),
+            0,
+            storage_failed=True,
+        )
+
+
+def _password_work_unavailable_response():
+    response = JSONResponse(
+        {
+            "error": "Hệ thống đang xử lý nhiều yêu cầu xác thực. Vui lòng thử lại sau.",
+            "code": "PASSWORD_CPU_QUEUE_BUSY",
+        },
+        status_code=503,
+    )
+    response.headers["Retry-After"] = "1"
+    return response
+
+
+def _database_write_unavailable_response():
+    response = JSONResponse(
+        {
+            "error": "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.",
+            "code": "DATABASE_WRITE_QUEUE_FULL",
+        },
+        status_code=503,
+    )
+    response.headers["Retry-After"] = "1"
+    return response
+
 async def register_api(request):
     conn = None
     try:
         ip = get_client_ip(request)
-        register_limit = get_rate_limit_decision(f"register:{ip}")
+        register_limit = await _rate_limit_decision(f"register:{ip}")
         if not register_limit.allowed:
             return rate_limit_response("Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau.", register_limit)
 
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
             "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
@@ -79,7 +121,7 @@ async def register_api(request):
         register_identity = hashlib.sha256(
             f"{username}\0{email}".encode("utf-8")
         ).hexdigest()[:24]
-        register_identity_limit = get_rate_limit_decision(
+        register_identity_limit = await _rate_limit_decision(
             f"register_identity:{register_identity}"
         )
         if not register_identity_limit.allowed:
@@ -92,6 +134,15 @@ async def register_api(request):
         valid, reason = validate_username(username)
         if not valid:
             return JSONResponse({"error": reason}, status_code=400)
+
+        try:
+            password_hash = await run_cpu_bound(
+                hash_password,
+                password,
+                timeout_seconds=15,
+            )
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
+            return _password_work_unavailable_response()
 
         conn = database.get_connection()
         conn.execute("BEGIN IMMEDIATE")
@@ -113,7 +164,7 @@ async def register_api(request):
 
         cursor.execute(
             "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_uuid, username, username, hash_password(password), name, role, email, email, 0, code, expiry)
+            (user_uuid, username, username, password_hash, name, role, email, email, 0, code, expiry)
         )
         ensure_personal_workspace(cursor, user_uuid, name)
         conn.commit()
@@ -163,7 +214,9 @@ async def register_api(request):
 
 async def verify_email_api(request):
     try:
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
             "code": {"type": "string", "required": True, "min_length": 6, "max_length": 6},
@@ -177,8 +230,10 @@ async def verify_email_api(request):
             return JSONResponse({"error": "Thiếu thông tin xác thực!"}, status_code=400)
 
         ip = get_client_ip(request)
-        verify_ip_limit = get_rate_limit_decision(f"verify:{ip}")
-        verify_identity_limit = get_rate_limit_decision(f"verify_identity:{username.lower()}")
+        verify_ip_limit = await _rate_limit_decision(f"verify:{ip}")
+        verify_identity_limit = await _rate_limit_decision(
+            f"verify_identity:{username.lower()}"
+        )
         if not verify_ip_limit.allowed or not verify_identity_limit.allowed:
             return rate_limit_response(
                 "Quá nhiều lần xác thực thất bại. Vui lòng thử lại sau.",
@@ -216,7 +271,9 @@ async def verify_email_api(request):
 
 async def resend_code_api(request):
     try:
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
         })
@@ -228,8 +285,8 @@ async def resend_code_api(request):
             return JSONResponse({"error": "Thiếu thông tin người dùng!"}, status_code=400)
 
         ip = get_client_ip(request)
-        resend_ip_limit = get_rate_limit_decision(f"resend:{ip}")
-        resend_identity_limit = get_rate_limit_decision(
+        resend_ip_limit = await _rate_limit_decision(f"resend:{ip}")
+        resend_identity_limit = await _rate_limit_decision(
             f"resend_identity:{username.lower()}"
         )
         if not resend_ip_limit.allowed or not resend_identity_limit.allowed:
@@ -293,7 +350,9 @@ async def resend_code_api(request):
 async def forgot_password_api(request):
     try:
         ip = get_client_ip(request)
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 64},
             "email": {"type": "string", "required": True, "min_length": 3, "max_length": 320},
@@ -306,8 +365,10 @@ async def forgot_password_api(request):
         identity_hash = hashlib.sha256(
             f"{username.lower()}\0{email.lower()}".encode("utf-8")
         ).hexdigest()[:24]
-        forgot_ip_limit = get_rate_limit_decision(f"forgot:{ip}")
-        forgot_identity_limit = get_rate_limit_decision(f"forgot_identity:{identity_hash}")
+        forgot_ip_limit = await _rate_limit_decision(f"forgot:{ip}")
+        forgot_identity_limit = await _rate_limit_decision(
+            f"forgot_identity:{identity_hash}"
+        )
         if not forgot_ip_limit.allowed or not forgot_identity_limit.allowed:
             return rate_limit_response(
                 "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
@@ -316,7 +377,16 @@ async def forgot_password_api(request):
 
         reset_request = None
         if username and email:
-            reset_request = create_password_reset(database, username, email, ip)
+            try:
+                reset_request = await run_database_write(
+                    create_password_reset,
+                    database,
+                    username,
+                    email,
+                    ip,
+                )
+            except BlockingIOBusyError:
+                return _database_write_unavailable_response()
 
         tasks = BackgroundTasks()
         if reset_request is not None:
@@ -358,7 +428,9 @@ async def forgot_password_api(request):
 async def reset_password_api(request):
     try:
         ip = get_client_ip(request)
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "token": {"type": "string", "required": True, "min_length": 20, "max_length": 512},
             "new_password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
@@ -368,8 +440,10 @@ async def reset_password_api(request):
         token = str(data.get('token') or '').strip()
         new_password = data.get('new_password')
         token_key = hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]
-        reset_ip_limit = get_rate_limit_decision(f"reset_password:{ip}")
-        reset_token_limit = get_rate_limit_decision(f"reset_password_token:{token_key}")
+        reset_ip_limit = await _rate_limit_decision(f"reset_password:{ip}")
+        reset_token_limit = await _rate_limit_decision(
+            f"reset_password_token:{token_key}"
+        )
         if not reset_ip_limit.allowed or not reset_token_limit.allowed:
             return rate_limit_response(
                 "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
@@ -381,7 +455,22 @@ async def reset_password_api(request):
             return JSONResponse({"error": password_error, "code": "PASSWORD_POLICY_FAILED"}, status_code=400)
 
         try:
-            user_id = redeem_password_reset(database, token, new_password)
+            password_hash = await run_cpu_bound(
+                hash_password,
+                new_password,
+                timeout_seconds=15,
+            )
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
+            return _password_work_unavailable_response()
+
+        try:
+            user_id = await run_database_write(
+                redeem_password_reset,
+                database,
+                token,
+                new_password,
+                password_hash=password_hash,
+            )
         except InvalidResetToken:
             return JSONResponse(
                 {
@@ -390,6 +479,8 @@ async def reset_password_api(request):
                 },
                 status_code=400,
             )
+        except BlockingIOBusyError:
+            return _database_write_unavailable_response()
 
         _session_cache_invalidate_by_user_id(user_id)
         from backend.sync.websocket import disconnect_user_websockets

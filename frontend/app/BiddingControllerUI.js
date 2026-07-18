@@ -1,6 +1,15 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { consumeModalReturnState } from "./modalReturnState.js";
 import { getContractorViewOnly, setContractorViewOnly } from "../shared/runtimeState.js";
+import {
+  createSidebarMediaQuery,
+  handleProfileMenuKeydown,
+  setDesktopSidebarCollapsed,
+  setMobileSidebarOpen,
+  setProfileMenuOpen,
+  synchronizeProfileMenu,
+  synchronizeSidebarViewport
+} from "./shellAccessibility.js";
 function requiredRoleForTab(tabName) {
   if (tabName === "superadmin-dashboard" || tabName === "superadmin") return "super_admin";
   if (tabName === "managernhanvien" || tabName === "managerhosogiay") return "manager";
@@ -38,34 +47,50 @@ export function setupTheme() {
 export function setupSidebar() {
   const appContainer = document.querySelector(".app-container");
   const sidebar = this.view.elements.sidebar;
-  const isCollapsed = localStorage.getItem("bf_sidebar_collapsed") === "true";
-  if (isCollapsed) appContainer.classList.add("sidebar-collapsed");
+  const sidebarToggle = this.view.elements.sidebarToggle;
   const btnCollapse = document.getElementById("btn-sidebar-collapse");
+  const mediaQuery = createSidebarMediaQuery(window);
+  const isCollapsed = localStorage.getItem("bf_sidebar_collapsed") === "true";
+  setDesktopSidebarCollapsed(appContainer, btnCollapse, isCollapsed);
+  const synchronizeViewport = () => {
+    if (!mediaQuery.matches) {
+      appContainer.classList.toggle("sidebar-collapsed", localStorage.getItem("bf_sidebar_collapsed") === "true");
+    }
+    return synchronizeSidebarViewport({
+      appContainer,
+      sidebar,
+      toggle: sidebarToggle,
+      collapseButton: btnCollapse,
+      mediaQuery
+    });
+  };
+  synchronizeViewport();
+  if (typeof mediaQuery.addEventListener === "function") mediaQuery.addEventListener("change", synchronizeViewport);
+  else mediaQuery.addListener?.(synchronizeViewport);
+
   if (btnCollapse) {
     btnCollapse.addEventListener("click", () => {
-      appContainer.classList.toggle("sidebar-collapsed");
-      const collapsed = appContainer.classList.contains("sidebar-collapsed");
+      const collapsed = !appContainer.classList.contains("sidebar-collapsed");
+      setDesktopSidebarCollapsed(appContainer, btnCollapse, collapsed);
       localStorage.setItem("bf_sidebar_collapsed", collapsed);
       this.view.createIconsScoped(sidebar);
     });
   }
-  const brandIcon = document.querySelector(".brand-icon");
-  if (brandIcon) {
-    brandIcon.addEventListener("click", () => {
-      if (appContainer.classList.contains("sidebar-collapsed")) {
-        appContainer.classList.remove("sidebar-collapsed");
-        localStorage.setItem("bf_sidebar_collapsed", "false");
-        this.view.createIconsScoped(sidebar);
-      }
-    });
-  }
-  this.view.elements.sidebarToggle.addEventListener("click", () => {
-    sidebar.classList.toggle("active");
+  sidebarToggle.addEventListener("click", () => {
+    const open = !sidebar.classList.contains("active");
+    setMobileSidebarOpen(sidebar, sidebarToggle, open, { focus: open ? "sidebar" : "toggle" });
   });
   this.view.elements.navButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      sidebar.classList.remove("active");
+      if (!mediaQuery.matches) return;
+      setMobileSidebarOpen(sidebar, sidebarToggle, false);
+      queueMicrotask(() => document.getElementById("page-title")?.focus?.({ preventScroll: true }));
     });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !mediaQuery.matches || !sidebar.classList.contains("active")) return;
+    event.preventDefault();
+    setMobileSidebarOpen(sidebar, sidebarToggle, false, { focus: "toggle" });
   });
   const currentDate = /* @__PURE__ */ new Date();
   const weekday = currentDate.toLocaleDateString("vi-VN", { weekday: "long" });
@@ -435,24 +460,31 @@ export function resetTimelineOnNavigation(controller, nextTab) {
 export function setupProfileDropdownEvents() {
   if (document.__bfProfileDropdownEventsBound) return;
   document.__bfProfileDropdownEventsBound = true;
+  const trigger = document.getElementById("header-profile-trigger");
+  const dropdown = document.getElementById("profile-dropdown-menu");
+  if (!trigger || !dropdown) return;
+  synchronizeProfileMenu(trigger, dropdown, { restoreFocus: false });
+  const observer = new MutationObserver(() => synchronizeProfileMenu(trigger, dropdown));
+  observer.observe(dropdown, { attributes: true, attributeFilter: ["class"] });
+  trigger.addEventListener("keydown", (event) => handleProfileMenuKeydown(event, trigger, dropdown));
+  dropdown.addEventListener("keydown", (event) => handleProfileMenuKeydown(event, trigger, dropdown));
   document.addEventListener("click", (event) => {
-    const trigger = event.target.closest?.(".header-profile-trigger");
-    const dropdown = document.getElementById("profile-dropdown-menu");
-    if (!dropdown) return;
+    const clickedTrigger = event.target.closest?.("#header-profile-trigger");
     const profileButton = event.target.closest?.("#btn-dropdown-profile");
     if (profileButton) {
       event.preventDefault();
-      dropdown.classList.remove("active");
+      setProfileMenuOpen(trigger, dropdown, false);
       this.switchTab("profile");
+      queueMicrotask(() => document.getElementById("page-title")?.focus?.({ preventScroll: true }));
       return;
     }
-    if (trigger) {
+    if (clickedTrigger) {
       event.stopPropagation();
-      dropdown.classList.toggle("active");
+      setProfileMenuOpen(trigger, dropdown, !dropdown.classList.contains("active"));
       return;
     }
     if (!event.target.closest?.("#profile-dropdown-menu")) {
-      dropdown.classList.remove("active");
+      setProfileMenuOpen(trigger, dropdown, false);
     }
   });
 }

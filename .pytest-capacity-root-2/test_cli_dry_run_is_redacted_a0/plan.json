@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "valid": true,
+  "profile": "mixed-100-burst-recovery",
+  "targetConcurrentActiveUsers": 100,
+  "totalDurationSeconds": 2100,
+  "phases": {
+    "warmupSeconds": 300,
+    "steadySeconds": 900,
+    "burstSeconds": 300,
+    "recoverySeconds": 600
+  },
+  "thresholds": {
+    "server5xxRate": 0.005,
+    "throttled429Rate": 0.05,
+    "unexpectedFailureRate": 0.01,
+    "recoveryFailureRate": 0.001,
+    "snapshotConflictRate": 0.05,
+    "readP95Ms": 750,
+    "readP99Ms": 2000,
+    "syncP95Ms": 1500,
+    "syncP99Ms": 4000,
+    "exportP95Ms": 10000,
+    "exportP99Ms": 20000,
+    "recoveryP95Ms": 250,
+    "recoveryP99Ms": 750
+  },
+  "scenarios": {
+    "login": {
+      "enabled": true,
+      "ratePerMinute": 20,
+      "burstRatePerMinute": 60,
+      "preAllocatedVUs": 4,
+      "maxVUs": 20
+    },
+    "pagination": {
+      "enabled": true,
+      "ratePerMinute": 1800,
+      "burstRatePerMinute": 3600,
+      "preAllocatedVUs": 50,
+      "maxVUs": 180
+    },
+    "sync": {
+      "enabled": true,
+      "ratePerMinute": 120,
+      "burstRatePerMinute": 360,
+      "preAllocatedVUs": 20,
+      "maxVUs": 80
+    },
+    "upload": {
+      "enabled": true,
+      "ratePerMinute": 3,
+      "burstRatePerMinute": 12,
+      "preAllocatedVUs": 2,
+      "maxVUs": 12
+    },
+    "export": {
+      "enabled": true,
+      "ratePerMinute": 6,
+      "burstRatePerMinute": 18,
+      "preAllocatedVUs": 4,
+      "maxVUs": 24
+    },
+    "websocket": {
+      "enabled": true,
+      "baseVUs": 40,
+      "burstVUs": 100,
+      "maxVUs": 100
+    },
+    "recovery": {
+      "enabled": true,
+      "ratePerMinute": 60,
+      "burstRatePerMinute": 120,
+      "preAllocatedVUs": 2,
+      "maxVUs": 10
+    }
+  }
+}

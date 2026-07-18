@@ -152,6 +152,10 @@ def test_production_accepts_explicit_separated_runtime_layout(tmp_path):
         "DEFAULT_ORG_NAME": "Bidding Organization",
         "BIDDING_DB_PATH": database.db_path,
         "BIDDING_SQLITE_SINGLE_WRITER": "true",
+        "AUDIT_CHECKPOINT_DIR": str((tmp_path / "audit-checkpoints").resolve()),
+        "AUDIT_CHECKPOINT_HMAC_KEY": "a" * 32,
+        "BIDDING_RESTORE_DRILL_HMAC_KEY": "r" * 32,
+        "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED": "true",
         "DATA_AT_REST_ENCRYPTION_CONFIRMED": "true",
         "SECRET_ROTATION_CONFIRMED_AT": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "BIDDING_BACKUP_DIR": str((tmp_path / "backups").resolve()),
@@ -175,6 +179,10 @@ def test_production_requires_encrypted_volume_confirmation(tmp_path):
         "APP_ENV": "production",
         "BIDDING_DB_PATH": database.db_path,
         "BIDDING_SQLITE_SINGLE_WRITER": "true",
+        "AUDIT_CHECKPOINT_DIR": str((tmp_path / "audit-checkpoints").resolve()),
+        "AUDIT_CHECKPOINT_HMAC_KEY": "a" * 32,
+        "BIDDING_RESTORE_DRILL_HMAC_KEY": "r" * 32,
+        "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED": "true",
         "BIDDING_BACKUP_DIR": str((tmp_path / "backups").resolve()),
         "BIDDING_LOG_DIR": str((tmp_path / "logs").resolve()),
         "BIDDING_UPLOAD_DIR": str((tmp_path / "uploads").resolve()),
@@ -190,6 +198,10 @@ def test_production_rejects_stale_secret_rotation_attestation(tmp_path):
     environment = {
         "APP_ENV": "production", "BIDDING_DB_PATH": database.db_path,
         "BIDDING_SQLITE_SINGLE_WRITER": "true", "DATA_AT_REST_ENCRYPTION_CONFIRMED": "true",
+        "AUDIT_CHECKPOINT_DIR": str((tmp_path / "audit-checkpoints").resolve()),
+        "AUDIT_CHECKPOINT_HMAC_KEY": "a" * 32,
+        "BIDDING_RESTORE_DRILL_HMAC_KEY": "r" * 32,
+        "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED": "true",
         "SECRET_ROTATION_CONFIRMED_AT": "2020-01-01",
         "BIDDING_BACKUP_DIR": str((tmp_path / "backups").resolve()),
         "BIDDING_LOG_DIR": str((tmp_path / "logs").resolve()),
@@ -199,3 +211,44 @@ def test_production_rejects_stale_secret_rotation_attestation(tmp_path):
     }
     with pytest.raises(StartupValidationError, match="rotated"):
         validate_startup_configuration(database, environment)
+
+
+def test_first_run_production_configuration_does_not_require_existing_database(tmp_path):
+    database = SQLiteDatabase(tmp_path / "database" / "new-bidding.db")
+    environment = {
+        "APP_ENV": "production",
+        "APP_DEBUG": "False",
+        "APP_SECURE_COOKIES": "True",
+        "APP_PUBLIC_URL": "https://bidding.example.com",
+        "ADMIN_PASSWORD": "valid first run password",
+        "ADMIN_USERNAME": "admin",
+        "ADMIN_NAME": "Administrator",
+        "ADMIN_EMAIL": "admin@bidding.example.com",
+        "DEFAULT_ORG_NAME": "Bidding Organization",
+        "BIDDING_DB_PATH": database.db_path,
+        "BIDDING_SQLITE_SINGLE_WRITER": "true",
+        "AUDIT_CHECKPOINT_DIR": str((tmp_path / "audit-checkpoints").resolve()),
+        "AUDIT_CHECKPOINT_HMAC_KEY": "a" * 32,
+        "BIDDING_RESTORE_DRILL_HMAC_KEY": "r" * 32,
+        "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED": "true",
+        "DATA_AT_REST_ENCRYPTION_CONFIRMED": "true",
+        "SECRET_ROTATION_CONFIRMED_AT": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "BIDDING_BACKUP_DIR": str((tmp_path / "backups").resolve()),
+        "BIDDING_LOG_DIR": str((tmp_path / "logs").resolve()),
+        "BIDDING_UPLOAD_DIR": str((tmp_path / "uploads").resolve()),
+        "BIDDING_WORD_TEMPLATE_DIR": str((tmp_path / "templates").resolve()),
+        "DOCUMENT_WORKER_TEMP_DIR": str((tmp_path / "temp").resolve()),
+    }
+
+    validate_startup_configuration(database, environment)
+    assert not Path(database.db_path).exists()
+
+    invalid_hmac = dict(environment, AUDIT_CHECKPOINT_HMAC_KEY="short")
+    with pytest.raises(StartupValidationError, match="AUDIT_CHECKPOINT_HMAC_KEY"):
+        validate_startup_configuration(database, invalid_hmac)
+
+    missing_offhost_anchor = dict(
+        environment, AUDIT_CHECKPOINT_OFFHOST_CONFIRMED="false"
+    )
+    with pytest.raises(StartupValidationError, match="OFFHOST"):
+        validate_startup_configuration(database, missing_offhost_anchor)

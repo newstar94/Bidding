@@ -1,0 +1,14 @@
+# Merge this job into the production Prometheus configuration. The bundled
+# application service listens on loopback, so a host-local Prometheus/agent is
+# the safest default. Store the optional bearer token outside this repository.
+scrape_configs:
+  - job_name: biddingflow
+    scrape_interval: 15s
+    scrape_timeout: 5s
+    static_configs:
+      - targets: ["127.0.0.1:8000"]
+        labels:
+          service: biddingflow
+          environment: production
+    # bearer_token_file: /run/secrets/biddingflow-metrics-token
+

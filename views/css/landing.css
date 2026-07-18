@@ -20,6 +20,10 @@ html[data-bf-shell="landing"] #auth-overlay {
   display: none !important;
 }
 
+html[data-bf-shell="landing"] .workspace-skip-link {
+  display: none !important;
+}
+
 html[data-bf-shell="workspace"] .landing-page {
   display: none !important;
 }

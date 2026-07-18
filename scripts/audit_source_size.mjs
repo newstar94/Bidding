@@ -4,12 +4,7 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const frontendRoot = path.join(root, "frontend");
 const defaultLimit = 64 * 1024;
-const temporaryLimits = new Map(Object.entries({
-  "frontend/packages/detail/AwardResultDetailsPanel.js": 96 * 1024,
-  "frontend/packages/BidProcessWorkflow.js": 88 * 1024,
-  "frontend/packages/BidEvaluationWorkflow.js": 80 * 1024,
-  "frontend/documents/wordVariableManifest.js": 68 * 1024
-}));
+const temporaryLimits = new Map();
 const ignoredGeneratedOrDataModules = new Set([
   "frontend/documents/wordVariableManifest.js"
 ]);

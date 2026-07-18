@@ -18,11 +18,13 @@ from backend.shared.access_policy import (
     OWNERSHIP_SCOPED_TABLES,
     authorize_record_write,
     can_read_table,
-    has_module_permission,
     is_organization_manager,
 )
 from backend.shared.media_helper import public_image_path
-from backend.shared.sensitive_data import redact_expert_item
+from backend.shared.sensitive_data import (
+    resolve_sensitive_read_policy,
+    serialize_sensitive_read_items,
+)
 from backend.sync.mapper import (
     attach_child_rows_to_items,
     db_column_for_json_key,
@@ -38,6 +40,8 @@ from backend.sync.queries import (
 from backend.shared.domain_enums import enum_code
 from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
 from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_io import run_database_read
 
 
 def _encode_keyset_cursor(table_name, column, direction, value, record_id):
@@ -76,6 +80,33 @@ def _decode_keyset_cursor(raw_cursor, table_name, column, direction):
 
 
 async def paginate_records(request):
+    try:
+        return await run_database_read(
+            _paginate_records_blocking,
+            request,
+            timeout_seconds=20.0,
+        )
+    except BlockingIOBusyError:
+        response = error_response(
+            request,
+            "DATABASE_READ_QUEUE_FULL",
+            "Hệ thống đang xử lý quá nhiều truy vấn. Vui lòng thử lại.",
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+    except BlockingIOTimeoutError:
+        response = error_response(
+            request,
+            "DATABASE_READ_TIMEOUT",
+            "Truy vấn dữ liệu vượt quá thời gian cho phép. Vui lòng thử lại.",
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+
+
+def _paginate_records_blocking(request):
     conn = None
     try:
         is_valid, role_or_err = verify_session(request)
@@ -99,6 +130,9 @@ async def paginate_records(request):
         search = params.get("search", "").strip().lower()
 
         org_name = get_active_org(request, role_or_err.user_id)
+        media_session_token = str(
+            getattr(request, "cookies", {}).get("session_token", "")
+        )
         role_str = str(role_or_err)
         user_id = role_or_err.user_id
         conn = database.get_connection()
@@ -106,9 +140,14 @@ async def paginate_records(request):
         if not can_read_table(cursor, role_str, user_id, org_name, table_key, table_name):
             conn.close()
             return JSONResponse({"items": [], "totalItems": 0})
-        can_view_sensitive_expert = table_name != "chuyen_gia" or has_module_permission(
-            cursor, role_str, user_id, org_name, "chuyengia", "edit"
+        sensitive_read_policy = resolve_sensitive_read_policy(
+            cursor,
+            role_str,
+            user_id,
+            org_name,
+            table_names=(table_name,),
         )
+        can_view_sensitive_expert = sensitive_read_policy.can_view("chuyen_gia")
 
 
         query_parts = ["organization_id = ?"]
@@ -404,10 +443,22 @@ async def paginate_records(request):
             if table_name == "chuyen_gia":
                 img_path = row_dict.get("anh_chung_chi", "")
                 sig_path = row_dict.get("anh_chu_ky", "")
-                row_dict["anh_chung_chi"] = public_image_path(img_path)
-                row_dict["anh_chu_ky"] = public_image_path(sig_path)
+                row_dict["anh_chung_chi"] = public_image_path(
+                    img_path,
+                    session_token=media_session_token,
+                    organization_id=org_name,
+                )
+                row_dict["anh_chu_ky"] = public_image_path(
+                    sig_path,
+                    session_token=media_session_token,
+                    organization_id=org_name,
+                )
             elif table_name == "nha_thau":
-                row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
+                row_dict["anh_dau"] = public_image_path(
+                    row_dict.get("anh_dau"),
+                    session_token=media_session_token,
+                    organization_id=org_name,
+                )
 
             item = map_db_to_json(table_name, row_dict)
             if table_name in OWNERSHIP_SCOPED_TABLES:
@@ -420,10 +471,6 @@ async def paginate_records(request):
                     table_name,
                     item,
                 ).allowed
-            if table_name == "chuyen_gia" and not can_view_sensitive_expert:
-                item = redact_expert_item(item)
-
-
             if table_name == "goi_thau":
                 gt_id = row_dict["id"]
                 pkg_rels = relations_map.get(gt_id, {"to_cg": [], "to_td": [], "cg_ids": []})
@@ -444,6 +491,9 @@ async def paginate_records(request):
             items.append(item)
         if table_name in ["ke_hoach_lcnt", "goi_thau", "nha_thau", "thong_tin_mo_thau"]:
             attach_child_rows_to_items(cursor, table_name, items, organization_id=org_name)
+        items = serialize_sensitive_read_items(
+            table_name, items, sensitive_read_policy
+        )
 
         conn.close()
         return JSONResponse({

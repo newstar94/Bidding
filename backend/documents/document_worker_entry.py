@@ -131,10 +131,14 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
     if operation == "render_docx":
         from backend.documents.custom_exporter import generate_report_from_custom_template
 
+        context_manifest = payload.get("context_manifest")
+        if not isinstance(context_manifest, dict):
+            raise ValueError("Tác vụ Word thiếu manifest ngữ cảnh.")
         stream = generate_report_from_custom_template(
             payload["template_path"],
             payload["context"],
             payload.get("custom_vars"),
+            context_manifest,
         )
         result = stream.getvalue()
         if len(result) > MAX_OUTPUT_BYTES:
@@ -142,8 +146,12 @@ def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
         return result
 
     if operation == "render_timeline_docx":
+        from backend.documents.docx_context_policy import validate_docx_context_manifest
         from backend.documents.timeline_document_service import render_timeline_document
 
+        validate_docx_context_manifest(
+            payload.get("context"), payload.get("context_manifest")
+        )
         stream = render_timeline_document(
             payload["template_path"],
             payload["context"],

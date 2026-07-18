@@ -14,25 +14,28 @@
         <form id="form-auth-login" class="auth-form-pane active">
             <h3 class="auth-title">Đăng nhập hệ thống</h3>
             <p class="auth-subtitle">Nhập tài khoản để truy cập hệ thống đấu thầu</p>
-            <div id="login-error" class="auth-error-msg bf-s-65d1f1c3d7"></div>
+            <div id="login-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Tên đăng nhập
+                <label for="login-username" class="bf-s-81f94caabd">Tên đăng nhập
                     / Email
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="user"></i>
-                    <input type="text" id="login-username" required placeholder="Tên đăng nhập hoặc email">
+                    <input type="text" id="login-username" required placeholder="Tên đăng nhập hoặc email"
+                        aria-describedby="login-error">
                 </div>
             </div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Mật khẩu
+                <label for="login-password" class="bf-s-81f94caabd">Mật khẩu
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock"></i>
-                    <input type="password" id="login-password" required placeholder="Nhập mật khẩu">
-                    <button type="button" class="toggle-password" data-target="login-password">
+                    <input type="password" id="login-password" required placeholder="Nhập mật khẩu"
+                        aria-describedby="login-error">
+                    <button type="button" class="toggle-password" data-target="login-password"
+                        aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye" class="bf-s-ecb5967c33"></i>
                     </button>
                 </div>
@@ -75,58 +78,65 @@
         <form id="form-auth-register" class="auth-form-pane bf-s-65d1f1c3d7">
             <h3 class="auth-title">Đăng ký thành viên</h3>
             <p class="auth-subtitle">Tạo tài khoản mới để tham gia</p>
-            <div id="register-error" class="auth-error-msg bf-s-65d1f1c3d7"></div>
-            <div id="register-success" class="auth-success-msg bf-s-65d1f1c3d7"></div>
+            <div id="register-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
+            <div id="register-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Tên đăng nhập
+                <label for="register-username" class="bf-s-81f94caabd">Tên đăng nhập
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="user"></i>
-                    <input type="text" id="register-username" required placeholder="Tên đăng nhập viết liền không dấu">
+                    <input type="text" id="register-username" required placeholder="Tên đăng nhập viết liền không dấu"
+                        aria-describedby="register-error">
                 </div>
             </div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Họ và tên
+                <label for="register-fullname" class="bf-s-81f94caabd">Họ và tên
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="file-signature"></i>
-                    <input type="text" id="register-fullname" required placeholder="Nhập họ và tên đầy đủ">
+                    <input type="text" id="register-fullname" required placeholder="Nhập họ và tên đầy đủ"
+                        aria-describedby="register-error">
                 </div>
             </div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Địa chỉ Email
+                <label for="register-email" class="bf-s-81f94caabd">Địa chỉ Email
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="mail"></i>
-                    <input type="email" id="register-email" required placeholder="Ví dụ: duong.vt@vinacorp.vn">
+                    <input type="email" id="register-email" required placeholder="Ví dụ: duong.vt@vinacorp.vn"
+                        aria-describedby="register-error">
                 </div>
             </div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Mật khẩu
+                <label for="register-password" class="bf-s-81f94caabd">Mật khẩu
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock"></i>
                     <input type="password" id="register-password" required minlength="8" maxlength="256"
-                        autocomplete="new-password" placeholder="Mật khẩu tối thiểu 8 ký tự">
-                    <button type="button" class="toggle-password" data-target="register-password">
+                        autocomplete="new-password" placeholder="Mật khẩu tối thiểu 8 ký tự"
+                        aria-describedby="register-error">
+                    <button type="button" class="toggle-password" data-target="register-password"
+                        aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye" class="bf-s-ecb5967c33"></i>
                     </button>
                 </div>
             </div>
 
             <div class="form-group bf-s-79cbf79464">
-                <label class="bf-s-81f94caabd">Nhập lại mật
+                <label for="register-confirm-password" class="bf-s-81f94caabd">Nhập lại mật
                     khẩu
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock"></i>
                     <input type="password" id="register-confirm-password" required minlength="8" maxlength="256"
-                        autocomplete="new-password" placeholder="Xác nhận lại mật khẩu">
-                    <button type="button" class="toggle-password" data-target="register-confirm-password">
+                        autocomplete="new-password" placeholder="Xác nhận lại mật khẩu"
+                        aria-describedby="register-error">
+                    <button type="button" class="toggle-password" data-target="register-confirm-password"
+                        aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye" class="bf-s-ecb5967c33"></i>
                     </button>
                 </div>
@@ -147,24 +157,26 @@
         <form id="form-auth-forgot" class="auth-form-pane bf-s-65d1f1c3d7">
             <h3 class="auth-title">Khôi phục mật khẩu</h3>
             <p class="auth-subtitle">Nhập thông tin đã đăng ký để nhận liên kết đặt lại mật khẩu</p>
-            <div id="forgot-error" class="auth-error-msg bf-s-65d1f1c3d7"></div>
-            <div id="forgot-success" class="auth-success-msg bf-s-65d1f1c3d7"></div>
+            <div id="forgot-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
+            <div id="forgot-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Tên đăng nhập
+                <label for="forgot-username" class="bf-s-81f94caabd">Tên đăng nhập
                     <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="user"></i>
-                    <input type="text" id="forgot-username" required placeholder="Nhập tài khoản của bạn">
+                    <input type="text" id="forgot-username" required placeholder="Nhập tài khoản của bạn"
+                        aria-describedby="forgot-error">
                 </div>
             </div>
 
             <div class="form-group bf-s-04390d6d23">
-                <label class="bf-s-81f94caabd">Địa chỉ Email
+                <label for="forgot-email" class="bf-s-81f94caabd">Địa chỉ Email
                     đã đăng ký <span class="required">*</span></label>
                 <div class="auth-input-wrapper">
                     <i data-lucide="mail"></i>
-                    <input type="email" id="forgot-email" required placeholder="Nhập email liên kết với tài khoản">
+                    <input type="email" id="forgot-email" required placeholder="Nhập email liên kết với tài khoản"
+                        aria-describedby="forgot-error">
                 </div>
             </div>
 
@@ -182,8 +194,8 @@
         <form id="form-auth-reset" class="auth-form-pane bf-s-65d1f1c3d7">
             <h3 class="auth-title">Đặt lại mật khẩu</h3>
             <p class="auth-subtitle">Tạo mật khẩu mới cho tài khoản của bạn. Liên kết chỉ sử dụng được một lần.</p>
-            <div id="reset-error" class="auth-error-msg bf-s-65d1f1c3d7"></div>
-            <div id="reset-success" class="auth-success-msg bf-s-65d1f1c3d7"></div>
+            <div id="reset-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
+            <div id="reset-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
 
             <div class="form-group bf-s-04390d6d23">
                 <label for="reset-new-password" class="bf-s-81f94caabd">Mật khẩu mới
@@ -191,7 +203,7 @@
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock-keyhole"></i>
                     <input type="password" id="reset-new-password" required minlength="8" maxlength="256"
-                        autocomplete="new-password" placeholder="Tối thiểu 8 ký tự">
+                        autocomplete="new-password" placeholder="Tối thiểu 8 ký tự" aria-describedby="reset-error">
                     <button type="button" class="toggle-password" data-target="reset-new-password" aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye"></i>
                     </button>
@@ -204,7 +216,7 @@
                 <div class="auth-input-wrapper">
                     <i data-lucide="lock-keyhole"></i>
                     <input type="password" id="reset-confirm-password" required minlength="8" maxlength="256"
-                        autocomplete="new-password" placeholder="Nhập lại mật khẩu mới">
+                        autocomplete="new-password" placeholder="Nhập lại mật khẩu mới" aria-describedby="reset-error">
                     <button type="button" class="toggle-password" data-target="reset-confirm-password" aria-label="Hiện hoặc ẩn mật khẩu">
                         <i data-lucide="eye"></i>
                     </button>
@@ -226,18 +238,19 @@
             <h3 class="auth-title">Xác thực Email</h3>
             <p class="auth-subtitle">Một mã OTP 6 chữ số đã được gửi đến email của bạn. Vui lòng nhập mã để kích hoạt
                 tài khoản.</p>
-            <div id="verify-error" class="auth-error-msg bf-s-65d1f1c3d7"></div>
-            <div id="verify-success" class="auth-success-msg bf-s-65d1f1c3d7"></div>
+            <div id="verify-error" class="auth-error-msg bf-s-65d1f1c3d7" role="alert" aria-live="assertive" aria-atomic="true"></div>
+            <div id="verify-success" class="auth-success-msg bf-s-65d1f1c3d7" role="status" aria-live="polite" aria-atomic="true"></div>
 
             <input type="hidden" id="verify-username-hidden">
 
             <div class="form-group bf-s-79cbf79464">
-                <label
+                <label for="verify-code"
                     class="bf-s-d01e51759d">Mã
                     xác thực OTP</label>
                 <div class="auth-input-wrapper bf-s-1bd0231f6d"
                    >
-                    <input type="text" id="verify-code" required placeholder="******" maxlength="6"
+                    <input type="text" id="verify-code" required placeholder="******" maxlength="6" inputmode="numeric"
+                        aria-describedby="verify-error"
                         class="bf-s-1f845de8bb">
                 </div>
             </div>
@@ -282,10 +295,10 @@
         </div>
 
 
-        <div id="set-username-error" class="bf-s-ad099eb788"></div>
+        <div id="set-username-error" class="bf-s-ad099eb788" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
         <div class="bf-s-79cbf79464">
-            <label class="bf-s-24d6999cd0">
+            <label for="input-set-username" class="bf-s-24d6999cd0">
                 Tên đăng nhập <span class="bf-s-7ba2906807">*</span>
             </label>
             <div class="bf-s-78852a80f4">
@@ -300,6 +313,7 @@
                     autocomplete="off"
                     autocapitalize="none"
                     spellcheck="false"
+                    aria-describedby="set-username-hint set-username-error"
                     class="bf-s-9422956936">
             </div>
             <p id="set-username-hint" class="bf-s-8fbd192806">

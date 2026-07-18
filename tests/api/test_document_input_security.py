@@ -1,6 +1,8 @@
+import asyncio
 import io
 import os
 import subprocess
+import threading
 import time
 import zipfile
 from types import SimpleNamespace
@@ -19,6 +21,7 @@ from backend.documents.custom_exporter import (
     TemplateRenderError,
     generate_report_from_custom_template,
 )
+from backend.documents.docx_context_policy import seal_docx_context
 from backend.documents import document_worker
 from backend.documents import routes_docx, routes_excel
 from backend.documents.document_worker import (
@@ -253,11 +256,18 @@ def test_template_grammar_rejects_calls_arithmetic_and_dynamic_access(expression
 
 def test_document_worker_renders_and_exports_in_subprocess(tmp_path):
     template_path = tmp_path / "safe.docx"
-    template_path.write_bytes(_docx_bytes("Hello {{ name | upper }}"))
+    template_path.write_bytes(_docx_bytes("Hello {{ investor_name | upper }}"))
+    context, context_manifest = seal_docx_context(
+        "plan", {"investor_name": "Lan"}
+    )
 
     rendered = run_document_job(
         "render_docx",
-        {"template_path": str(template_path), "context": {"name": "Lan"}},
+        {
+            "template_path": str(template_path),
+            "context": context,
+            "context_manifest": context_manifest,
+        },
     )
     rendered_document = Document(io.BytesIO(rendered))
     assert "Hello LAN" in "\n".join(
@@ -343,6 +353,82 @@ def test_document_worker_enforces_concurrency_quota(monkeypatch):
             run_document_job("validate_docx", {"content": _docx_bytes()})
     finally:
         semaphore.release()
+
+
+def test_async_document_worker_rejects_before_unbounded_executor_queue(monkeypatch):
+    monkeypatch.setenv("DOCUMENT_WORKER_MAX_CONCURRENCY", "1")
+    monkeypatch.setenv("DOCUMENT_WORKER_QUEUE_SIZE", "0")
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_job(*_args, **_kwargs):
+        entered.set()
+        assert release.wait(timeout=5)
+        return "done"
+
+    monkeypatch.setattr(document_worker, "run_document_job", blocking_job)
+
+    async def scenario():
+        first = asyncio.create_task(
+            document_worker.run_document_job_async("validate_docx", {"content": b"first"})
+        )
+        assert await asyncio.to_thread(entered.wait, 2)
+        with pytest.raises(DocumentWorkerBusyError):
+            await document_worker.run_document_job_async(
+                "validate_docx", {"content": b"second"}
+            )
+        release.set()
+        assert await first == "done"
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_async_request_keeps_admission_until_worker_finishes(monkeypatch):
+    monkeypatch.setenv("DOCUMENT_WORKER_MAX_CONCURRENCY", "1")
+    monkeypatch.setenv("DOCUMENT_WORKER_QUEUE_SIZE", "0")
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_job(*_args, **_kwargs):
+        entered.set()
+        assert release.wait(timeout=5)
+        return "done"
+
+    monkeypatch.setattr(document_worker, "run_document_job", blocking_job)
+
+    async def scenario():
+        first = asyncio.create_task(
+            document_worker.run_document_job_async("validate_docx", {"content": b"first"})
+        )
+        assert await asyncio.to_thread(entered.wait, 2)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        with pytest.raises(DocumentWorkerBusyError):
+            await document_worker.run_document_job_async(
+                "validate_docx", {"content": b"second"}
+            )
+        release.set()
+        for _ in range(100):
+            await asyncio.sleep(0.01)
+            runtime = document_worker._async_runtime
+            if runtime is not None and runtime.admission.acquire(blocking=False):
+                runtime.admission.release()
+                return
+        raise AssertionError("worker admission was not released after completion")
+
+    asyncio.run(scenario())
+
+
+def test_document_worker_environment_omits_database_path_and_uses_private_cwd(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("BIDDING_DB_PATH", str(tmp_path / "secret.db"))
+    environment = document_worker._worker_environment(tmp_path)
+
+    assert "BIDDING_DB_PATH" not in environment
+    assert environment["DOCUMENT_WORKER_JOB_DIR"] == str(tmp_path)
+    assert environment["PYTHONPATH"] == str(document_worker.PROJECT_ROOT)
 
 
 def test_stale_document_job_cleanup(monkeypatch, tmp_path):

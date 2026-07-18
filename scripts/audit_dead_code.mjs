@@ -3,11 +3,25 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const excludedDirectories = new Set([".git", "dist", "node_modules", "vendor", "__pycache__"]);
+const excludedDirectories = new Set([
+  ".git",
+  "artifacts",
+  "dist",
+  "node_modules",
+  "playwright-report",
+  "release",
+  "test-results",
+  "vendor",
+  "__pycache__",
+]);
+
+function isExcludedDirectory(name) {
+  return excludedDirectories.has(name) || name === ".pytest_cache" || name.startsWith(".pytest-");
+}
 
 function walk(directory, predicate) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    if (excludedDirectories.has(entry.name)) return [];
+    if (entry.isDirectory() && isExcludedDirectory(entry.name)) return [];
     const fullPath = path.join(directory, entry.name);
     if (entry.isDirectory()) return walk(fullPath, predicate);
     return entry.isFile() && predicate(fullPath) ? [fullPath] : [];

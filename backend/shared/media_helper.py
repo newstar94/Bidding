@@ -1,7 +1,11 @@
 import os
 import base64
 import glob
+import hashlib
+import hmac
 import re
+import time
+import urllib.parse
 
 from backend.shared.paths import IMAGE_DIR
 from backend.shared.logging_utils import log_error
@@ -23,9 +27,77 @@ def _safe_file_part(value: str, fallback: str) -> str:
     return safe or fallback
 
 
-def public_image_path(value: str) -> str:
-    path = str(value or "").strip()
-    return "/" + path if path.startswith("images/") else path
+def _protected_media_ttl_seconds():
+    try:
+        value = int(os.environ.get("PROTECTED_MEDIA_URL_TTL_SECONDS", "300"))
+    except (TypeError, ValueError):
+        value = 300
+    return min(900, max(30, value))
+
+
+def _protected_media_signature(session_token, organization_id, managed_path, expires_at):
+    message = f"{organization_id}\n{managed_path}\n{int(expires_at)}".encode("utf-8")
+    return hmac.new(
+        str(session_token).encode("utf-8"),
+        message,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def public_image_path(
+    value: str,
+    *,
+    session_token: str = "",
+    organization_id: str = "",
+    now: int | None = None,
+) -> str:
+    """Return a short-lived, session-bound URL for managed private media."""
+    path = normalize_managed_image_path(value)
+    if not path:
+        return str(value or "").strip()
+    session_token = str(session_token or "").strip()
+    organization_id = str(organization_id or "").strip()
+    if not session_token or not organization_id:
+        return ""
+    expires_at = int(now if now is not None else time.time()) + _protected_media_ttl_seconds()
+    signature = _protected_media_signature(
+        session_token,
+        organization_id,
+        path,
+        expires_at,
+    )
+    query = urllib.parse.urlencode(
+        {"expires": expires_at, "org": organization_id, "sig": signature}
+    )
+    relative_path = urllib.parse.quote(path.removeprefix("images/"), safe="/")
+    return f"/images/{relative_path}?{query}"
+
+
+def protected_image_signature_is_valid(
+    *,
+    session_token: str,
+    organization_id: str,
+    managed_path: str,
+    expires_at,
+    signature: str,
+    now: int | None = None,
+) -> bool:
+    try:
+        expires_at = int(expires_at)
+    except (TypeError, ValueError):
+        return False
+    current_time = int(now if now is not None else time.time())
+    if expires_at < current_time or expires_at > current_time + 900:
+        return False
+    if not session_token or not organization_id or not signature:
+        return False
+    expected = _protected_media_signature(
+        session_token,
+        organization_id,
+        normalize_managed_image_path(managed_path),
+        expires_at,
+    )
+    return hmac.compare_digest(expected, str(signature))
 
 
 def normalize_managed_image_path(value: str) -> str:

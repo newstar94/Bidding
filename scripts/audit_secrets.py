@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 EXCLUDED_PATHS = (
-    r"(^|[\\/])(?:\.git|\.venv|node_modules|dist|data|requirements|sbom|scratch|tests|"
+    r"(^|[\\/])(?:\.agents|\.codex|\.git|\.pw-bidding-profile|\.venv|"
+    r"\.pytest[-_][^\\/]*|node_modules|dist|data|release|requirements|sbom|scratch|tests|"
     r"test-results|playwright-report|views[\\/]vendor)(?:[\\/]|$)|"
     r"(^|[\\/])(?:package-lock\.json|\.env(?:\.example)?|.*\.lock\.txt)$"
 )

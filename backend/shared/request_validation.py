@@ -1,5 +1,6 @@
 """Small strict JSON request validator used at HTTP write boundaries."""
 
+import json
 import math
 
 from backend.shared.logging_utils import error_response
@@ -89,3 +90,28 @@ def request_validation_response(request, errors, *, code="REQUEST_VALIDATION_FAI
 def validate_or_response(request, data, fields, *, allow_unknown=False):
     errors = validate_json_object(data, fields, allow_unknown=allow_unknown)
     return request_validation_response(request, errors) if errors else None
+
+
+async def read_json_object(request):
+    """Parse one request JSON object and preserve the public 400 error contract.
+
+    Body-size enforcement happens while the ASGI receive stream is consumed.
+    Keeping syntax validation here avoids a second full-body middleware buffer.
+    """
+    try:
+        data = await request.json()
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, error_response(
+            request,
+            "REQUEST_JSON_INVALID",
+            "Nội dung JSON không hợp lệ.",
+            status_code=400,
+        )
+    if not isinstance(data, dict):
+        return None, error_response(
+            request,
+            "REQUEST_JSON_OBJECT_REQUIRED",
+            "Nội dung JSON phải là một object.",
+            status_code=400,
+        )
+    return data, None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import statistics
 import sys
 import tempfile
@@ -48,11 +49,12 @@ def seed(connection, organization_id, plans, packages):
     connection.executemany(
         """INSERT INTO ke_hoach_lcnt
         (id, organization_id, id_goc, ma_ke_hoach, ten_ke_hoach, ten_du_an_du_toan,
-         loai_hinh_mua_sam, chu_dau_tu_id, ngay_phe_duyet, quyet_dinh_phe_duyet, sync_version)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+         loai_hinh_mua_sam, chu_dau_tu_id, ngay_phe_duyet, quyet_dinh_phe_duyet,
+         is_tong_muc_tu_dong, sync_version)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         ((f"plan-{index}", organization_id, f"plan-{index}", f"KH-{index:06d}",
           f"Kế hoạch mua sắm {index}", f"Dự toán {index}", "Dự án",
-          "benchmark-investor", "2026-01-15", f"QD-{index}", index + 1)
+          "benchmark-investor", "2026-01-15", f"QD-{index}", 1, index + 1)
          for index in range(plans)),
     )
     statuses = ("PREPARING", "INVITED", "OPENED", "EVALUATING", "CANCELLED")
@@ -72,6 +74,189 @@ def seed(connection, organization_id, plans, packages):
     connection.execute("PRAGMA optimize")
 
 
+def _current_sync_version(connection, organization_id):
+    row = connection.execute(
+        "SELECT current_version FROM sync_metadata WHERE organization_id = ?",
+        (organization_id,),
+    ).fetchone()
+    return int(row[0] if row else 0)
+
+
+def _wal_snapshot(connection, database_path):
+    busy, frames, checkpointed = connection.execute(
+        "PRAGMA wal_checkpoint(PASSIVE)"
+    ).fetchone()
+    wal_path = Path(str(database_path) + "-wal")
+    return {
+        "busy": int(busy),
+        "frames": int(frames),
+        "checkpointedFrames": int(checkpointed),
+        "bytes": wal_path.stat().st_size if wal_path.exists() else 0,
+    }
+
+
+def _prepare_write_measurement(connection, organization_id):
+    target = connection.execute(
+        """SELECT id, COALESCE(NULLIF(id_goc, ''), id), ke_hoach_id
+           FROM goi_thau
+           WHERE organization_id = ?
+           ORDER BY id
+           LIMIT 1""",
+        (organization_id,),
+    ).fetchone()
+    connection.execute(
+        "UPDATE goi_thau SET is_latest = 0 WHERE organization_id = ? AND id = ?",
+        (organization_id, target[0]),
+    )
+    connection.commit()
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    return {
+        "packageId": target[0],
+        "rootId": target[1],
+        "planId": target[2],
+    }
+
+
+def _measurement_result(
+    connection,
+    database_path,
+    organization_id,
+    before_total_changes,
+    before_sync_version,
+    started_at,
+    *,
+    package_updates,
+    plan_updates,
+):
+    connection.commit()
+    elapsed_ms = (time.perf_counter() - started_at) * 1_000
+    after_sync_version = _current_sync_version(connection, organization_id)
+    wal = _wal_snapshot(connection, database_path)
+    return {
+        "elapsedMs": round(elapsed_ms, 3),
+        "baseRowsMatched": int(package_updates + plan_updates),
+        "packageRowsMatched": int(package_updates),
+        "planRowsMatched": int(plan_updates),
+        "sqliteTotalChangesIncludingTriggers": int(
+            connection.total_changes - before_total_changes
+        ),
+        "syncVersionAllocated": int(after_sync_version - before_sync_version),
+        "wal": wal,
+    }
+
+
+def measure_targeted_write_amplification(
+    connection, database_path, organization_id, target
+):
+    before_changes = connection.total_changes
+    before_version = _current_sync_version(connection, organization_id)
+    started_at = time.perf_counter()
+    connection.execute("BEGIN IMMEDIATE")
+    package_updates = db_utils.recalculate_is_latest(
+        connection.cursor(),
+        "goi_thau",
+        organization_id=organization_id,
+        affected_families={(target["rootId"], target["planId"])},
+    )
+    plan_updates = db_utils.recalculate_tong_muc_dau_tu(
+        connection.cursor(),
+        organization_id=organization_id,
+        plan_ids={target["planId"]},
+    )
+    return _measurement_result(
+        connection,
+        database_path,
+        organization_id,
+        before_changes,
+        before_version,
+        started_at,
+        package_updates=package_updates,
+        plan_updates=plan_updates,
+    )
+
+
+def measure_legacy_write_amplification(
+    connection, database_path, organization_id
+):
+    """Execute the pre-P0 whole-tenant recalculation for an actual comparison."""
+    before_changes = connection.total_changes
+    before_version = _current_sync_version(connection, organization_id)
+    started_at = time.perf_counter()
+    cursor = connection.cursor()
+    connection.execute("BEGIN IMMEDIATE")
+    cursor.execute(
+        "UPDATE goi_thau SET is_latest = 0 WHERE organization_id = ?",
+        (organization_id,),
+    )
+    package_updates = max(0, cursor.rowcount)
+    cursor.execute(
+        """UPDATE goi_thau SET is_latest = 1
+           WHERE organization_id = ? AND id IN (
+               SELECT id FROM (
+                   SELECT id, ROW_NUMBER() OVER (
+                       PARTITION BY CASE
+                           WHEN id_goc IS NOT NULL AND id_goc != '' THEN id_goc
+                           ELSE id
+                       END, COALESCE(ke_hoach_id, '')
+                       ORDER BY CAST(phien_ban AS INTEGER) DESC,
+                                updated_at DESC, id DESC
+                   ) AS rn
+                   FROM goi_thau
+                   WHERE organization_id = ? AND archived_at IS NULL
+               ) AS ranked WHERE rn = 1
+           )""",
+        (organization_id, organization_id),
+    )
+    package_updates += max(0, cursor.rowcount)
+
+    plan_updates = 0
+    plans = cursor.execute(
+        """SELECT id, loai_hinh_mua_sam
+           FROM ke_hoach_lcnt
+           WHERE organization_id = ? AND is_tong_muc_tu_dong = 1""",
+        (organization_id,),
+    ).fetchall()
+    for plan_id, procurement_type in plans:
+        package_total = sum(
+            int(row[0] or 0)
+            for row in cursor.execute(
+                """SELECT gia_goi_thau FROM goi_thau
+                   WHERE ke_hoach_id = ? AND is_latest = 1
+                     AND archived_at IS NULL AND is_rebid = 0""",
+                (plan_id,),
+            ).fetchall()
+        )
+        work_totals = {}
+        for work_type, value in cursor.execute(
+            "SELECT loai, gia_tri FROM ke_hoach_cong_viec WHERE ke_hoach_id = ?",
+            (plan_id,),
+        ).fetchall():
+            work_totals[work_type] = work_totals.get(work_type, 0) + int(value or 0)
+        total = (
+            work_totals.get("khong_ap_dung", 0)
+            + work_totals.get("chua_du_dieu_kien", 0)
+            + package_total
+        )
+        if procurement_type == "Dự án":
+            total += work_totals.get("da_thuc_hien", 0)
+        cursor.execute(
+            "UPDATE ke_hoach_lcnt SET tong_muc_dau_tu = ? WHERE id = ?",
+            (total, plan_id),
+        )
+        plan_updates += max(0, cursor.rowcount)
+
+    return _measurement_result(
+        connection,
+        database_path,
+        organization_id,
+        before_changes,
+        before_version,
+        started_at,
+        package_updates=package_updates,
+        plan_updates=plan_updates,
+    )
+
+
 def run_benchmark(database_path, plans, packages, rounds):
     os.environ.setdefault("ADMIN_PASSWORD", "Benchmark-only-password-123!")
     database = SQLiteDatabase(database_path)
@@ -85,6 +270,24 @@ def run_benchmark(database_path, plans, packages, rounds):
     organization_id = connection.execute("SELECT id FROM to_chuc LIMIT 1").fetchone()[0]
     seed_started = time.perf_counter()
     seed(connection, organization_id, plans, packages)
+    target = _prepare_write_measurement(connection, organization_id)
+    legacy_path = Path(str(database.db_path) + ".legacy")
+    legacy_connection = sqlite3.connect(legacy_path)
+    try:
+        connection.backup(legacy_connection)
+    finally:
+        legacy_connection.close()
+    legacy_database = SQLiteDatabase(legacy_path)
+    legacy_connection = legacy_database.get_connection()
+    legacy_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    targeted_write = measure_targeted_write_amplification(
+        connection, database.db_path, organization_id, target
+    )
+    legacy_write = measure_legacy_write_amplification(
+        legacy_connection, legacy_database.db_path, organization_id
+    )
+    legacy_connection.close()
     results = {
         "dataset": {"plans": plans, "packages": packages},
         "seedSeconds": round(time.perf_counter() - seed_started, 3),
@@ -96,6 +299,11 @@ def run_benchmark(database_path, plans, packages, rounds):
             "detail": measure(connection, "SELECT * FROM goi_thau WHERE organization_id=? AND id=?", (organization_id, f"package-{packages // 2}"), rounds),
             "syncDelta": measure(connection, "SELECT id, sync_version FROM goi_thau WHERE organization_id=? AND sync_version>? ORDER BY sync_version LIMIT 500", (organization_id, plans + packages - 500), rounds),
             "fullBootstrapPage": measure(connection, "SELECT id, sync_version FROM goi_thau WHERE organization_id=? ORDER BY sync_version LIMIT 500", (organization_id,), rounds),
+            "writeAmplification": {
+                "target": target,
+                "optimized": targeted_write,
+                "legacyWholeTenant": legacy_write,
+            },
         },
     }
     connection.close()

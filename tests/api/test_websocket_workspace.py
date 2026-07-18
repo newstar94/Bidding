@@ -51,6 +51,51 @@ def test_websocket_origin_policy_is_independent_and_fail_closed(monkeypatch):
     assert not is_websocket_origin_allowed("https://app.example.com@evil.example.com", allowed)
 
 
+def test_websocket_frame_limit_counts_utf8_bytes(monkeypatch):
+    monkeypatch.setenv("WEBSOCKET_MAX_FRAME_BYTES", "8")
+
+    assert websocket_module._websocket_frame_is_allowed("12345678")
+    assert websocket_module._websocket_frame_is_allowed("đđđđ")
+    assert not websocket_module._websocket_frame_is_allowed("đđđđđ")
+
+
+def test_websocket_ip_connection_quota_is_released(monkeypatch):
+    monkeypatch.setenv("WEBSOCKET_MAX_CONNECTIONS_PER_IP", "1")
+    first = object()
+    second = object()
+    websocket_module.active_connections_by_ip.clear()
+    try:
+        assert websocket_module._register_ip_connection("203.0.113.10", first)
+        assert not websocket_module._register_ip_connection("203.0.113.10", second)
+        websocket_module._release_ip_connection("203.0.113.10", first)
+        assert websocket_module._register_ip_connection("203.0.113.10", second)
+    finally:
+        websocket_module.active_connections_by_ip.clear()
+
+
+def test_websocket_event_policy_removes_business_and_sensitive_fields():
+    payload = websocket_module.serialize_websocket_event(
+        {
+            "type": "sync_update",
+            "table": "nhathau",
+            "id": "contractor-1",
+            "syncVersion": "7",
+            "soTaiKhoan": "secret-account",
+            "soCccd": "secret-identity",
+            "row": {"password": "never-broadcast"},
+        }
+    )
+
+    assert payload == {
+        "type": "sync_update",
+        "table": "nhathau",
+        "id": "contractor-1",
+        "syncVersion": 7,
+    }
+    with pytest.raises(ValueError, match="Unsupported"):
+        websocket_module.serialize_websocket_event({"event": "raw_record"})
+
+
 class _Socket:
     def __init__(self, user_id):
         self.user_id = user_id

@@ -11,13 +11,23 @@ from backend.shared.helpers import (
     verify_session,
     clean_id,
     get_active_org,
-    OrgPermissionError
+    OrgPermissionError,
+    log_audit,
 )
 from backend.db.id_utils import generate_record_id
-from backend.shared.access_policy import can_manage_word_config, can_read_record
+from backend.shared.access_policy import (
+    can_manage_word_config,
+    can_read_record,
+    resolve_document_export_capabilities,
+)
 from backend.shared.logging_utils import error_response, log_and_error
-from backend.shared.request_validation import validate_or_response
-from backend.shared.async_io import run_blocking_io
+from backend.shared.request_validation import read_json_object, validate_or_response
+from backend.shared.async_io import (
+    BlockingIOBusyError,
+    BlockingIOTimeoutError,
+    run_blocking_io,
+)
+from backend.shared.database_io import run_database_read
 from backend.documents import custom_exporter
 from backend.documents.document_worker import (
     DocumentWorkerError,
@@ -30,6 +40,13 @@ import backend.documents.docx_service as docx_service
 from backend.documents.docx_bid_context_service import (
     enrich_context_with_filtered_bidders,
     enrich_context_with_lot_summaries,
+)
+from backend.documents.docx_context_policy import (
+    REPORT_DOCUMENT_TYPES,
+    filter_mapping_rows,
+    seal_docx_context,
+    sensitive_capability_groups_present,
+    validate_mapping_definition,
 )
 from backend.documents.docx_formula_service import _format_formula_date, apply_computed_mappings
 from backend.documents.docx_mapping_service import apply_custom_mappings, lowercase_partner_identity_codes
@@ -232,6 +249,102 @@ def _validate_docx_upload(filename, content, *, deep_validation=True, total_size
     return _safe_filename(f"{root[:80]}_{uuid.uuid4().hex[:8]}.docx")
 
 
+def _database_read_unavailable_response(request, *, timed_out=False):
+    response = error_response(
+        request,
+        "DATABASE_READ_TIMEOUT" if timed_out else "DATABASE_READ_QUEUE_FULL",
+        "Dữ liệu xuất Word tạm thời chưa sẵn sàng. Vui lòng thử lại sau.",
+        status_code=503,
+    )
+    response.headers["Retry-After"] = "1"
+    return response
+
+
+def _load_word_export_policy(
+    role_str,
+    user_id,
+    organization_id,
+    document_type,
+):
+    conn = database.get_connection()
+    try:
+        capabilities = resolve_document_export_capabilities(
+            conn.cursor(),
+            role_str,
+            user_id,
+            organization_id,
+        )
+        rows = conn.execute(
+            """SELECT ten_bien, source_table, source_column
+               FROM cau_hinh_bien_word
+               WHERE organization_id = ?""",
+            (organization_id,),
+        ).fetchall()
+        return capabilities, filter_mapping_rows(
+            rows, document_type, capabilities
+        )
+    finally:
+        conn.close()
+
+
+def _prepare_plan_render(plan_id, user_id, organization_id, role_str):
+    capabilities, mappings = _load_word_export_policy(
+        role_str, user_id, organization_id, "plan"
+    )
+    context = docx_service.build_plan_context(
+        plan_id, user_id, organization_id, capabilities
+    )
+    enrich_context_with_lot_summaries(context)
+    enrich_context_with_filtered_bidders(context)
+    apply_custom_mappings(context, mappings)
+    apply_computed_mappings(context, mappings)
+    lowercase_partner_identity_codes(context, mappings)
+    context, manifest = seal_docx_context(
+        "plan", context, mappings, capabilities
+    )
+    sensitive_groups = sorted(sensitive_capability_groups_present(context))
+    active_template = custom_exporter.get_active_template(user_id)
+    template_path, _ = _resolve_template_path(
+        user_id, active_template
+    )
+    return context, manifest, mappings, template_path, sensitive_groups
+
+
+def _prepare_report_render(
+    package_id,
+    user_id,
+    organization_id,
+    role_str,
+    document_type,
+):
+    capabilities, mappings = _load_word_export_policy(
+        role_str, user_id, organization_id, document_type
+    )
+    context = docx_service.build_report_context(
+        package_id,
+        user_id,
+        organization_id,
+        document_type,
+        capabilities,
+    )
+    enrich_context_with_lot_summaries(context)
+    enrich_context_with_filtered_bidders(context)
+    apply_custom_mappings(context, mappings)
+    apply_computed_mappings(context, mappings)
+    lowercase_partner_identity_codes(context, mappings)
+    context, manifest = seal_docx_context(
+        document_type, context, mappings, capabilities
+    )
+    sensitive_groups = sorted(sensitive_capability_groups_present(context))
+    active_template = custom_exporter.get_active_template(user_id)
+    if document_type in {"contract", "liquidation"}:
+        active_template = "mau_hop_dong_lcnt.docx"
+    template_path, _ = _resolve_template_path(
+        user_id, active_template
+    )
+    return context, manifest, mappings, template_path, sensitive_groups
+
+
 async def export_plan_api(request):
     plan_id = clean_id(request.path_params.get('plan_id'))
     try:
@@ -245,26 +358,27 @@ async def export_plan_api(request):
             return snapshot_error
         if not _can_export_record(role_or_err, org_name, "kehoach", "ke_hoach_lcnt", plan_id):
             return JSONResponse({"error": "Ban khong co quyen xuat ke hoach nay."}, status_code=403)
+        try:
+            (
+                unified_context,
+                context_manifest,
+                mappings_rows,
+                tpl_path,
+                sensitive_groups,
+            ) = await run_database_read(
+                _prepare_plan_render,
+                plan_id,
+                user_id,
+                org_name,
+                str(role_or_err),
+                timeout_seconds=30,
+            )
+        except BlockingIOBusyError:
+            return _database_read_unavailable_response(request)
+        except BlockingIOTimeoutError:
+            return _database_read_unavailable_response(request, timed_out=True)
 
-
-        unified_context = docx_service.build_plan_context(plan_id, user_id, org_name)
-        enrich_context_with_lot_summaries(unified_context)
-        enrich_context_with_filtered_bidders(unified_context)
-
-
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE organization_id = ?", (org_name,))
-        mappings_rows = cursor.fetchall()
-        conn.close()
-
-        apply_custom_mappings(unified_context, mappings_rows)
-        apply_computed_mappings(unified_context, mappings_rows)
-        lowercase_partner_identity_codes(unified_context, mappings_rows)
         custom_vars_list = [row[0].lower() for row in mappings_rows]
-
-        active_tpl = custom_exporter.get_active_template(user_id)
-        tpl_path, active_tpl = _resolve_template_path(user_id, active_tpl)
 
         docx_bytes = await run_document_job_async(
             "render_docx",
@@ -272,6 +386,7 @@ async def export_plan_api(request):
                 "template_path": tpl_path,
                 "context": unified_context,
                 "custom_vars": custom_vars_list,
+                "context_manifest": context_manifest,
             },
         )
         docx_stream = BytesIO(docx_bytes)
@@ -279,6 +394,21 @@ async def export_plan_api(request):
         snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
         if snapshot_error is not None:
             return snapshot_error
+
+        log_audit(
+            "document.word_exported",
+            actor_user_id=user_id,
+            organization_id=org_name,
+            target_type="ke_hoach_lcnt",
+            target_id=plan_id,
+            request=request,
+            metadata={
+                "organization_id": org_name,
+                "document_type": "plan",
+                "sensitive_capabilities_used": sensitive_groups,
+            },
+            required=True,
+        )
 
         filename = f"Ke_hoach_LCNT_{unified_context['ke_hoach']['ma_ke_hoach']}.docx"
         return StreamingResponse(
@@ -304,35 +434,41 @@ async def export_report_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
+        if type_param not in REPORT_DOCUMENT_TYPES:
+            return JSONResponse(
+                {
+                    "error": "Loai bao cao Word khong duoc ho tro.",
+                    "code": "DOCX_TYPE_INVALID",
+                },
+                status_code=400,
+            )
         snapshot_version, snapshot_error = _validate_export_snapshot(request, org_name)
         if snapshot_error is not None:
             return snapshot_error
         if not _can_export_record(role_or_err, org_name, "goithau", "goi_thau", package_id):
             return JSONResponse({"error": "Ban khong co quyen xuat goi thau nay."}, status_code=403)
+        try:
+            (
+                unified_context,
+                context_manifest,
+                mappings_rows,
+                tpl_path,
+                sensitive_groups,
+            ) = await run_database_read(
+                _prepare_report_render,
+                package_id,
+                user_id,
+                org_name,
+                str(role_or_err),
+                type_param,
+                timeout_seconds=30,
+            )
+        except BlockingIOBusyError:
+            return _database_read_unavailable_response(request)
+        except BlockingIOTimeoutError:
+            return _database_read_unavailable_response(request, timed_out=True)
 
-
-        unified_context = docx_service.build_report_context(package_id, user_id, org_name, type_param)
-        enrich_context_with_lot_summaries(unified_context)
-        enrich_context_with_filtered_bidders(unified_context)
-
-
-        conn = database.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT ten_bien, source_table, source_column FROM cau_hinh_bien_word WHERE organization_id = ?", (org_name,))
-        mappings_rows = cursor.fetchall()
-        conn.close()
-
-        apply_custom_mappings(unified_context, mappings_rows)
-        apply_computed_mappings(unified_context, mappings_rows)
-        lowercase_partner_identity_codes(unified_context, mappings_rows)
         custom_vars_list = [row[0].lower() for row in mappings_rows]
-
-        active_tpl = custom_exporter.get_active_template(user_id)
-        if type_param in ('contract', 'liquidation'):
-            if active_tpl != 'mau_hop_dong_lcnt.docx':
-                active_tpl = 'mau_hop_dong_lcnt.docx'
-
-        tpl_path, active_tpl = _resolve_template_path(user_id, active_tpl)
 
         docx_bytes = await run_document_job_async(
             "render_docx",
@@ -340,6 +476,7 @@ async def export_report_api(request):
                 "template_path": tpl_path,
                 "context": unified_context,
                 "custom_vars": custom_vars_list,
+                "context_manifest": context_manifest,
             },
         )
         docx_stream = BytesIO(docx_bytes)
@@ -347,6 +484,21 @@ async def export_report_api(request):
         snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
         if snapshot_error is not None:
             return snapshot_error
+
+        log_audit(
+            "document.word_exported",
+            actor_user_id=user_id,
+            organization_id=org_name,
+            target_type="goi_thau",
+            target_id=package_id,
+            request=request,
+            metadata={
+                "organization_id": org_name,
+                "document_type": type_param,
+                "sensitive_capabilities_used": sensitive_groups,
+            },
+            required=True,
+        )
 
         if type_param in ('contract', 'liquidation'):
             prefix = "Thanh_ly_hop_dong" if type_param == 'liquidation' else "Hop_dong"
@@ -392,17 +544,37 @@ async def export_timeline_api(request):
             org_name,
             timeout_seconds=10,
         )
+        context, context_manifest = seal_docx_context("timeline", context)
         template_path, _template_name = _resolve_template_path(
             user_id,
             'mau_timeline_goi_thau.docx',
         )
         docx_bytes = await run_document_job_async(
             "render_timeline_docx",
-            {"template_path": template_path, "context": context},
+            {
+                "template_path": template_path,
+                "context": context,
+                "context_manifest": context_manifest,
+            },
         )
         snapshot_error = _ensure_export_snapshot_unchanged(org_name, snapshot_version)
         if snapshot_error is not None:
             return snapshot_error
+
+        log_audit(
+            "document.word_exported",
+            actor_user_id=user_id,
+            organization_id=org_name,
+            target_type="goi_thau",
+            target_id=package_id,
+            request=request,
+            metadata={
+                "organization_id": org_name,
+                "document_type": "timeline",
+                "sensitive_capabilities_used": [],
+            },
+            required=True,
+        )
 
         package_code = context.get("goi_thau", {}).get("ma_goi_thau") or "LCNT"
         filename = f"Timeline_goi_thau_{package_code}.docx"
@@ -439,7 +611,9 @@ async def set_active_template_api(request):
             return JSONResponse({"error": role_or_err}, status_code=403)
         user_id = role_or_err.user_id
 
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error is not None:
+            return json_error
         invalid = validate_or_response(request, data, {
             "template_name": {"type": "string", "max_length": 255},
             "filename": {"type": "string", "max_length": 255},
@@ -553,7 +727,9 @@ async def save_word_mapping_api(request):
         user_id = role_or_err.user_id
         org_name = get_active_org(request, user_id)
 
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error is not None:
+            return json_error
         invalid = validate_or_response(request, data, {
             "id": {"type": "string", "max_length": 128},
             "ten_bien": {"type": "string", "max_length": 128},
@@ -588,6 +764,17 @@ async def save_word_mapping_api(request):
 
         if source_table == COMPUTED_SOURCE_TABLE and not source_column:
             return JSONResponse({"error": "Vui lòng nhập công thức cho biến kết quả!"}, status_code=400)
+
+        try:
+            validate_mapping_definition(ten_bien, source_table, source_column)
+        except ValueError:
+            return JSONResponse(
+                {
+                    "error": "Ánh xạ Word sử dụng nguồn dữ liệu không được phép.",
+                    "code": "DOCX_MAPPING_FORBIDDEN",
+                },
+                status_code=400,
+            )
 
         id_param = data.get('id')
 

@@ -1,7 +1,11 @@
+import asyncio
+import json
+from types import SimpleNamespace
+
 from starlette.testclient import TestClient
 
 from backend.app import app
-from backend.shared.request_validation import validate_json_object
+from backend.shared.request_validation import read_json_object, validate_json_object
 from backend.sync.payload_validation import (
     validate_package_locked_fields,
     validate_sync_item,
@@ -23,6 +27,35 @@ def test_request_schema_distinguishes_absent_null_unknown_and_invalid_type():
     assert _codes(validate_json_object({"name": "ok", "extra": True}, fields)) == {"UNKNOWN_FIELD"}
     assert _codes(validate_json_object({"name": "ok", "count": 1.5}, fields)) == {"INVALID_INTEGER"}
     assert validate_json_object({"name": "ok", "count": None}, fields) == []
+
+
+def test_json_reader_preserves_syntax_and_top_level_object_errors():
+    class Request:
+        headers = {}
+        state = SimpleNamespace()
+
+        def __init__(self, value=None, error=None):
+            self.value = value
+            self.error = error
+
+        async def json(self):
+            if self.error:
+                raise self.error
+            return self.value
+
+    data, response = asyncio.run(read_json_object(Request(value={"ok": True})))
+    assert data == {"ok": True}
+    assert response is None
+
+    _, malformed = asyncio.run(
+        read_json_object(Request(error=json.JSONDecodeError("bad", "{", 1)))
+    )
+    assert malformed.status_code == 400
+    assert json.loads(malformed.body)["code"] == "REQUEST_JSON_INVALID"
+
+    _, non_object = asyncio.run(read_json_object(Request(value=[])))
+    assert non_object.status_code == 400
+    assert json.loads(non_object.body)["code"] == "REQUEST_JSON_OBJECT_REQUIRED"
 
 
 def test_sync_schema_rejects_unknown_fields_truncation_and_invalid_children():

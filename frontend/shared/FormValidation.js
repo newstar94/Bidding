@@ -31,7 +31,14 @@ export function setValidationError(control, message = "") {
   control?.setAttribute?.("aria-invalid", message ? "true" : "false");
   if (error) {
     if (!error.id && control?.id) error.id = `${control.id}-error`;
-    if (error.id) control?.setAttribute?.("aria-describedby", error.id);
+    if (error.id) {
+      const descriptions = new Set((control?.getAttribute?.("aria-describedby") || "").split(/\s+/).filter(Boolean));
+      descriptions.add(error.id);
+      control?.setAttribute?.("aria-describedby", [...descriptions].join(" "));
+    }
+    error.setAttribute?.("role", "alert");
+    error.setAttribute?.("aria-live", "assertive");
+    error.setAttribute?.("aria-atomic", "true");
     error.dataset.defaultValidationMessage ??= error.textContent || "";
     error.textContent = message || error.dataset.defaultValidationMessage;
   }

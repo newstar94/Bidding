@@ -4,6 +4,7 @@ import json
 import sqlite3
 import time
 import re
+import queue
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -11,11 +12,19 @@ from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from backend.shared.client_ip import get_client_ip
-from backend.shared.audit_chain import insert_audit_row
+from backend.shared.audit_chain import (
+    append_audit_row,
+    insert_audit_row,
+    require_audit_chain_available,
+)
 from backend.shared.paths import LOG_DIR
 
 _log_lock = threading.Lock()
+_structured_worker_lock = threading.Lock()
+_structured_log_queue = queue.Queue(maxsize=1024)
+_structured_worker_started = False
 _request_id_pattern = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+_structured_key_pattern = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _secret_patterns = (
     (
         re.compile(r"(?i)\b(authorization|cookie|set-cookie)\b\s*[\"']?\s*[:=]\s*[^\r\n]+"),
@@ -39,6 +48,9 @@ _secret_patterns = (
         ),
         "[REDACTED_FILE_CONTENT]",
     ),
+    # Citizen IDs and bank-account-like values have no place in runtime logs.
+    # This intentionally also redacts some long technical numbers.
+    (re.compile(r"(?<![A-Za-z0-9])\d{9,19}(?![A-Za-z0-9])"), "[REDACTED_NUMBER]"),
 )
 
 
@@ -62,8 +74,7 @@ def _rotate_log(path, max_bytes, backup_count):
     path.replace(path.with_name(f"{path.name}.1"))
 
 
-def append_runtime_log(filename, content):
-    """Append a redacted entry to a rotated runtime log outside source artifacts."""
+def _append_redacted_runtime_log(filename, content):
     configured_log_dir = os.environ.get("BIDDING_LOG_DIR", "").strip()
     log_dir = (type(LOG_DIR)(configured_log_dir) if configured_log_dir else LOG_DIR).resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -75,11 +86,103 @@ def append_runtime_log(filename, content):
     with _log_lock:
         _rotate_log(path, max_bytes, backup_count)
         with path.open("a", encoding="utf-8") as log_file:
-            log_file.write(redact_log_value(content))
+            log_file.write(content)
         try:
             path.chmod(0o600)
         except OSError:
             pass
+
+
+def append_runtime_log(filename, content):
+    """Append a redacted entry to a rotated runtime log outside source artifacts."""
+    _append_redacted_runtime_log(filename, redact_log_value(content))
+
+
+def _structured_log_worker():
+    while True:
+        line = _structured_log_queue.get()
+        try:
+            _append_redacted_runtime_log("runtime.jsonl", line)
+        except Exception:
+            pass
+        finally:
+            _structured_log_queue.task_done()
+
+
+def _enqueue_structured_log(line):
+    global _structured_worker_started
+    with _structured_worker_lock:
+        if not _structured_worker_started:
+            threading.Thread(
+                target=_structured_log_worker,
+                daemon=True,
+                name="structured-runtime-log",
+            ).start()
+            _structured_worker_started = True
+    try:
+        _structured_log_queue.put_nowait(line)
+    except queue.Full:
+        try:
+            from backend.observability.metrics import runtime_log_dropped
+
+            runtime_log_dropped()
+        except Exception:
+            pass
+
+
+def _structured_value(value):
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return "[REDACTED_NUMBER]" if abs(value) >= 100_000_000 else value
+    if isinstance(value, float):
+        return value
+    return redact_log_value(value)[:8_192]
+
+
+def _safe_identifier(value):
+    text = str(value or "").strip()
+    return text if _request_id_pattern.fullmatch(text) else None
+
+
+def log_structured_event(
+    event,
+    *,
+    level="INFO",
+    request_id=None,
+    actor_user_id=None,
+    organization_id=None,
+    fields=None,
+    nonblocking=False,
+):
+    """Write one JSON line using code-owned keys and redacted scalar values."""
+    event_name = str(event or "application.event").strip()
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,95}", event_name):
+        event_name = "application.event"
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "severity": str(level or "INFO").upper()[:16],
+        "event": event_name,
+    }
+    safe_request_id = _safe_identifier(request_id)
+    safe_user_id = _safe_identifier(actor_user_id)
+    safe_organization_id = _safe_identifier(organization_id)
+    if safe_request_id:
+        payload["requestId"] = safe_request_id
+    if safe_user_id:
+        payload["userId"] = safe_user_id
+    if safe_organization_id:
+        payload["organizationId"] = safe_organization_id
+    if isinstance(fields, dict):
+        for key, value in fields.items():
+            key_text = str(key or "")
+            if _structured_key_pattern.fullmatch(key_text):
+                payload[key_text] = _structured_value(value)
+    line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    if nonblocking:
+        _enqueue_structured_log(line + "\n")
+    else:
+        _append_redacted_runtime_log("runtime.jsonl", line + "\n")
 
 
 def get_request_id(request=None):
@@ -101,6 +204,35 @@ def get_request_id(request=None):
     return uuid.uuid4().hex
 
 
+def _request_actor_context(request):
+    state = getattr(request, "state", None)
+    actor_user_id = getattr(state, "auth_user_id", None)
+    organization_context = getattr(state, "organization_context", None)
+    organization_id = getattr(organization_context, "active_org_id", None)
+    return actor_user_id, organization_id
+
+
+def log_http_request(request, *, method, route, status_code, duration_seconds):
+    mode = str(os.environ.get("STRUCTURED_REQUEST_LOG_MODE", "errors")).strip().casefold()
+    if mode == "off" or (mode != "all" and int(status_code) < 400):
+        return
+    actor_user_id, organization_id = _request_actor_context(request)
+    log_structured_event(
+        "http.request.completed",
+        level="ERROR" if int(status_code) >= 500 else "WARN",
+        request_id=get_request_id(request),
+        actor_user_id=actor_user_id,
+        organization_id=organization_id,
+        fields={
+            "method": str(method or "UNKNOWN").upper()[:16],
+            "route": str(route or "unknown")[:96],
+            "status": int(status_code),
+            "durationMs": round(max(0.0, float(duration_seconds)) * 1000.0, 3),
+        },
+        nonblocking=True,
+    )
+
+
 def error_response(request, code, message, status_code=500, fields=None):
     request_id = get_request_id(request)
     payload = {
@@ -116,30 +248,86 @@ def error_response(request, code, message, status_code=500, fields=None):
 
 def log_and_error(request, exception, context, code, message, status_code=500, fields=None):
     request_id = get_request_id(request)
-    log_error(exception, context, request_id=request_id)
+    actor_user_id, organization_id = _request_actor_context(request)
+    log_error(
+        exception,
+        context,
+        request_id=request_id,
+        actor_user_id=actor_user_id,
+        organization_id=organization_id,
+    )
     return error_response(request, code, message, status_code=status_code, fields=fields)
 
 
-def log_error(e_or_msg, context="System", level="ERROR", request_id=None):
+def log_error(
+    e_or_msg,
+    context="System",
+    level="ERROR",
+    request_id=None,
+    actor_user_id=None,
+    organization_id=None,
+    fields=None,
+):
     try:
-        now_str = datetime.now(timezone.utc).isoformat()
-        request_part = f" [requestId={request_id}]" if request_id else ""
+        include_details = (
+            os.environ.get("APP_DEBUG", "False").lower() == "true"
+            or os.environ.get("LOG_INCLUDE_EXCEPTION_DETAILS", "False").lower() == "true"
+        )
+        event_fields = {
+            "context": redact_log_value(context)[:256],
+            **(fields if isinstance(fields, dict) else {}),
+        }
         if isinstance(e_or_msg, Exception):
-            tb = traceback.format_exc()
-            msg = f"[{now_str}] [{context}] [{level}]{request_part} LỖI: {e_or_msg}\n{tb}\n"
+            event_fields["exceptionType"] = e_or_msg.__class__.__name__[:128]
+            if include_details:
+                event_fields.update(
+                    {
+                        "message": redact_log_value(e_or_msg)[:8_192],
+                        "traceback": redact_log_value(traceback.format_exc())[:64_000],
+                    }
+                )
+            event_name = "application.error"
         else:
-            msg = f"[{now_str}] [{context}] [{level}]{request_part} THÔNG BÁO: {e_or_msg}\n"
-        append_runtime_log("sync_error.log", msg)
+            if include_details:
+                event_fields["message"] = redact_log_value(e_or_msg)[:8_192]
+            event_name = "application.message"
+        log_structured_event(
+            event_name,
+            level=level,
+            request_id=request_id,
+            actor_user_id=actor_user_id,
+            organization_id=organization_id,
+            fields=event_fields,
+        )
     except Exception:
         pass
     if os.environ.get("APP_DEBUG", "False").lower() == "true":
         print(redact_log_value(f"[{context}] [{level}] {e_or_msg}"))
 
 
-def log_audit(action, actor_user_id=None, organization_id=None, target_type=None, target_id=None, request=None, metadata=None):
+def log_audit(
+    action,
+    actor_user_id=None,
+    organization_id=None,
+    target_type=None,
+    target_id=None,
+    request=None,
+    metadata=None,
+    *,
+    cursor=None,
+    required=False,
+):
+    """Record an audit event.
+
+    Supplying ``cursor`` binds the event to the caller's ``BEGIN IMMEDIATE``
+    transaction and requires the write to succeed.  Standalone calls retain
+    the historical best-effort behaviour unless ``required=True`` is set.
+    """
 
     conn = None
     try:
+        if required:
+            require_audit_chain_available()
         ip_address = None
         if request is not None:
             ip_address = get_client_ip(request)
@@ -148,55 +336,36 @@ def log_audit(action, actor_user_id=None, organization_id=None, target_type=None
         if metadata is not None:
             metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
 
-        from backend.shared.helpers import database as _db
-        last_err = None
-        for attempt in range(3):
-            try:
-                conn = _db.get_connection()
-                try:
-                    conn.execute("PRAGMA busy_timeout = 1000")
-                except Exception:
-                    pass
-                cur = conn.cursor()
-                insert_audit_row(
-                    cur,
-                    actor_user_id=actor_user_id,
-                    organization_id=organization_id,
-                    action=action,
-                    target_type=target_type,
-                    target_id=target_id,
-                    ip_address=ip_address,
-                    metadata_json=metadata_json,
-                )
-                conn.commit()
-                return
-            except sqlite3.OperationalError as err:
-                last_err = err
-                if conn:
-                    try:
-                        conn.rollback()
-                    except Exception:
-                        pass
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-                    conn = None
-                if "locked" not in str(err).lower() or attempt == 2:
-                    raise
-                time.sleep(0.05 * (attempt + 1))
-            finally:
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-                    conn = None
+        event = {
+            "actor_user_id": actor_user_id,
+            "organization_id": organization_id,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "ip_address": ip_address,
+            "metadata_json": metadata_json,
+        }
+        if cursor is not None:
+            if not required:
+                raise ValueError("Transactional audit writes must set required=True.")
+            return insert_audit_row(cursor, **event)
 
-        if last_err:
-            raise last_err
+        from backend.shared.helpers import database as _db
+        # Do not retry with ``time.sleep`` here: many historical callers are
+        # async routes, and a synchronous backoff would freeze the ASGI event
+        # loop. Security-sensitive mutations bind required audit to their own
+        # transaction; best-effort standalone events get one bounded attempt.
+        conn = _db.get_connection()
+        try:
+            conn.execute("PRAGMA busy_timeout = 1000")
+        except Exception:
+            pass
+        return append_audit_row(conn, **event)
     except Exception as audit_err:
         log_error(audit_err, "audit_log", level="WARN")
+        if required:
+            raise
+        return None
 
 
 
@@ -216,13 +385,6 @@ class ErrorLoggingMiddleware:
             nonlocal response_started
             if message["type"] == "http.response.start":
                 response_started = True
-                status_code = int(message.get("status") or 0)
-                if status_code >= 500:
-                    log_error(
-                        f"Phản hồi lỗi server {status_code}",
-                        f"HTTP {request.method} {request.url.path}",
-                        request_id=get_request_id(request),
-                    )
             await send(message)
 
         try:
@@ -230,10 +392,17 @@ class ErrorLoggingMiddleware:
         except Exception as e:
             if response_started:
                 raise
-            response = log_and_error(
-                request,
+            actor_user_id, organization_id = _request_actor_context(request)
+            log_error(
                 e,
-                f"HTTP {request.method} {request.url.path}",
+                "HTTP request",
+                request_id=get_request_id(request),
+                actor_user_id=actor_user_id,
+                organization_id=organization_id,
+                fields={"method": request.method, "route": "unhandled_exception"},
+            )
+            response = error_response(
+                request,
                 "INTERNAL_SERVER_ERROR",
                 "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.",
             )

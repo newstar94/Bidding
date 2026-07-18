@@ -335,6 +335,14 @@ from backend.shared.helpers import (
 )
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import get_blocking_io_stats, run_blocking_io
+from backend.shared.database_io import get_database_io_stats, run_database_read
+from backend.shared.cpu_io import get_cpu_io_stats
+from backend.observability.metrics import ObservabilityMiddleware, metrics_api
+from backend.shared.access_policy import (
+    can_export_document_capability,
+    has_module_permission,
+)
+from backend.shared.media_helper import protected_image_signature_is_valid
 from backend.db.db_utils import DB_SCHEMA_VERSION
 from backend.startup import validate_startup_configuration, verify_database_responsive
 
@@ -348,13 +356,16 @@ from backend.auth.otp_routes import (
 from backend.api.org_routes import (
     add_user_to_org_api,
     activate_personal_subscription_api,
+    get_document_export_capabilities_api,
     remove_user_from_org_api,
+    update_document_export_capabilities_api,
     update_organization_subscription_api,
 )
 from backend.auth.auth_routes import (
     login_api,
     check_session_api,
     update_profile_api,
+    verify_email_change_api,
     change_password_api,
     privileged_reauth_api,
     logout_api,
@@ -372,6 +383,7 @@ from backend.auth.google_auth_routes import google_login_api
 from backend.sync.api import (
     sync_websocket_endpoint,
     sync_api,
+    current_sync_version_api,
     get_all_data_api,
     record_api,
     paginate_api
@@ -451,7 +463,12 @@ async def health_ready_api(request):
             headers={"Cache-Control": "no-store"},
         )
     try:
-        verify_database_responsive(database, DB_SCHEMA_VERSION)
+        await run_database_read(
+            verify_database_responsive,
+            database,
+            DB_SCHEMA_VERSION,
+            timeout_seconds=3.0,
+        )
     except Exception as readiness_error:
         log_error(readiness_error, "readiness_database_check")
         return JSONResponse(
@@ -460,6 +477,8 @@ async def health_ready_api(request):
             headers={"Cache-Control": "no-store"},
         )
     io_stats = get_blocking_io_stats()
+    database_io_stats = get_database_io_stats()
+    cpu_io_stats = get_cpu_io_stats()
     response = JSONResponse(
         {"status": "ready"},
         headers={
@@ -468,6 +487,12 @@ async def health_ready_api(request):
             "X-Blocking-IO-In-Flight": str(io_stats.in_flight),
             "X-Blocking-IO-Queue-Depth": str(io_stats.queued),
             "X-Blocking-IO-Timeouts": str(io_stats.timed_out),
+            "X-Database-Read-In-Flight": str(database_io_stats["read"].in_flight),
+            "X-Database-Read-Queue-Depth": str(database_io_stats["read"].queued),
+            "X-Database-Write-In-Flight": str(database_io_stats["write"].in_flight),
+            "X-Database-Write-Queue-Depth": str(database_io_stats["write"].queued),
+            "X-CPU-Work-In-Flight": str(cpu_io_stats.in_flight),
+            "X-CPU-Work-Queue-Depth": str(cpu_io_stats.queued),
         },
     )
     return response
@@ -506,11 +531,6 @@ async def protected_image_api(request):
     if rel_path.startswith('/') or '..' in rel_path.split('/'):
         return JSONResponse({"error": "Đường dẫn không hợp lệ"}, status_code=400)
 
-    images_root = os.path.realpath(IMAGE_DIR)
-    file_path = os.path.realpath(os.path.join(images_root, rel_path))
-    if not file_path.startswith(images_root + os.sep) or not os.path.isfile(file_path):
-        return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
-
     if not rel_path.startswith(('chuyen_gia/', 'nha_thau/')):
         return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
 
@@ -518,9 +538,46 @@ async def protected_image_api(request):
     try:
         organization_id = get_active_org(request, role_or_err.user_id)
         stored_path = 'images/' + rel_path
+        session_token = str(request.cookies.get("session_token") or "").strip()
+        if (
+            request.query_params.get("org") != organization_id
+            or not protected_image_signature_is_valid(
+                session_token=session_token,
+                organization_id=organization_id,
+                managed_path=stored_path,
+                expires_at=request.query_params.get("expires"),
+                signature=request.query_params.get("sig", ""),
+            )
+        ):
+            return JSONResponse({"error": "Liên kết ảnh không hợp lệ hoặc đã hết hạn"}, status_code=403)
+        images_root = os.path.realpath(IMAGE_DIR)
+        file_path = os.path.realpath(os.path.join(images_root, rel_path))
+        if not file_path.startswith(images_root + os.sep) or not os.path.isfile(file_path):
+            return JSONResponse({"error": "Không tìm thấy tệp"}, status_code=404)
         filename = os.path.basename(rel_path)
         conn = database.get_connection()
         cursor = conn.cursor()
+        # Sensitive media requires both record-module edit access and the
+        # independent document signature/image capability.
+        required_module = "nhathau" if rel_path.startswith('nha_thau/') else "chuyengia"
+        if (
+            not has_module_permission(
+                cursor,
+                str(role_or_err),
+                role_or_err.user_id,
+                organization_id,
+                required_module,
+                "edit",
+            )
+            or not can_export_document_capability(
+                cursor,
+                str(role_or_err),
+                role_or_err.user_id,
+                organization_id,
+                "signature",
+            )
+        ):
+            return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
         if rel_path.startswith('nha_thau/'):
             cursor.execute(
                 "SELECT 1 FROM nha_thau WHERE organization_id = ? AND anh_dau = ?",
@@ -567,7 +624,10 @@ async def protected_image_api(request):
             try: conn.close()
             except Exception: pass
 
-    return FileResponse(file_path)
+    return FileResponse(
+        file_path,
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 
@@ -579,11 +639,13 @@ os.makedirs(WORD_TEMPLATE_DIR, exist_ok=True)
 routes = [
     Route("/health/live", health_live_api, methods=["GET"]),
     Route("/health/ready", health_ready_api, methods=["GET"]),
+    Route("/metrics", metrics_api, methods=["GET"]),
     Route("/", index, methods=["GET"]),
     Route("/dang-nhap", index, methods=["GET"]),
     Route("/api/holidays", list_holidays_api, methods=["GET"]),
     Route("/images/{file_path:path}", protected_image_api, methods=["GET"]),
     Route("/api/sync", sync_api, methods=["POST"]),
+    Route("/api/sync-version", current_sync_version_api, methods=["GET"]),
     Route("/api/paginate", paginate_api, methods=["GET"]),
     Route("/api/record", record_api, methods=["GET"]),
     Route("/api/get-all-data", get_all_data_api, methods=["GET"]),
@@ -626,6 +688,7 @@ routes = [
     Route("/api/auth/forgot-password", forgot_password_api, methods=["POST"]),
     Route("/api/auth/reset-password", reset_password_api, methods=["POST"]),
     Route("/api/auth/update-profile", update_profile_api, methods=["POST"]),
+    Route("/api/auth/verify-email-change", verify_email_change_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
     Route("/api/auth/privileged-reauth", privileged_reauth_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
@@ -636,6 +699,16 @@ routes = [
     Route("/api/auth/users/activate-personal-package", activate_personal_subscription_api, methods=["POST"]),
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
     Route("/api/organizations/subscription", update_organization_subscription_api, methods=["POST"]),
+    Route(
+        "/api/organizations/document-export-capabilities/{user_id}",
+        get_document_export_capabilities_api,
+        methods=["GET"],
+    ),
+    Route(
+        "/api/organizations/document-export-capabilities/{user_id}",
+        update_document_export_capabilities_api,
+        methods=["PUT"],
+    ),
     Route("/api/auth/users/{user_id}", delete_user_api, methods=["DELETE"]),
 
 
@@ -746,6 +819,7 @@ middleware = [
                allow_headers=['Content-Type', 'X-Active-Org', 'X-CSRF-Token', 'X-Request-ID'],
                allow_credentials=True),
     Middleware(RequestIdMiddleware),
+    Middleware(ObservabilityMiddleware),
     Middleware(CSRFMiddleware),
     Middleware(SecurityHeadersMiddleware),
     Middleware(ErrorLoggingMiddleware),

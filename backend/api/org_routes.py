@@ -16,9 +16,14 @@ from backend.shared.helpers import (
 )
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, next_sync_version
-from backend.shared.access_policy import is_business_organization, is_organization_manager
+from backend.shared.access_policy import (
+    is_business_organization,
+    is_organization_manager,
+    is_personal_workspace_owner,
+    resolve_document_export_capabilities,
+)
 from backend.shared.logging_utils import error_response, log_and_error
-from backend.shared.request_validation import validate_or_response
+from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import utc_now_sql
 from backend.auth.auth_service import activate_personal_subscription, build_user_access_payload
 
@@ -33,7 +38,9 @@ async def activate_personal_subscription_api(request):
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
             "package_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
@@ -63,10 +70,6 @@ async def activate_personal_subscription_api(request):
             code = exc.args[0] if exc.args else "PERSONAL_SUBSCRIPTION_INVALID"
             message = "Gói dịch vụ không hoạt động." if code == "PACKAGE_INACTIVE" else "Tài khoản đã thuộc một tổ chức."
             return JSONResponse({"error": message, "code": code}, status_code=409)
-        access = build_user_access_payload(cursor, user_id, user[1], organization_id)
-        conn.commit()
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
         log_audit(
             "personal_subscription.activated",
             actor_user_id=role_or_err.user_id,
@@ -75,7 +78,13 @@ async def activate_personal_subscription_api(request):
             target_id=user_id,
             request=request,
             metadata={"package_id": package_id, "duration_days": duration_days},
+            cursor=cursor,
+            required=True,
         )
+        access = build_user_access_payload(cursor, user_id, user[1], organization_id)
+        conn.commit()
+        _session_cache_invalidate_by_user_id(user_id)
+        _org_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "user": access})
     except Exception as exc:
         if conn:
@@ -117,7 +126,9 @@ async def update_organization_subscription_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "organization_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
             "action": {"type": "string", "required": True, "enum": {"lock", "unlock", "renew", "set_package"}},
@@ -258,14 +269,6 @@ async def update_organization_subscription_api(request):
             "SELECT user_id FROM thanh_vien_to_chuc WHERE organization_id = ?",
             (organization_id,),
         ).fetchall()]
-        conn.commit()
-
-        for user_id in member_ids:
-            _session_cache_invalidate_by_user_id(user_id)
-            _org_cache_invalidate_by_user_id(user_id)
-            if action == 'lock':
-                disconnect_user_websockets(user_id)
-        broadcast_websocket_event(organization_id, {"event": "organization_subscription_changed"})
         log_audit(
             f"organization.subscription_{action}",
             actor_user_id=role_or_err.user_id,
@@ -274,7 +277,17 @@ async def update_organization_subscription_api(request):
             target_id=organization_id,
             request=request,
             metadata={"changed": changed, "subscription": subscription},
+            cursor=cursor,
+            required=True,
         )
+        conn.commit()
+
+        for user_id in member_ids:
+            _session_cache_invalidate_by_user_id(user_id)
+            _org_cache_invalidate_by_user_id(user_id)
+            if action == 'lock':
+                disconnect_user_websockets(user_id)
+        broadcast_websocket_event(organization_id, {"event": "organization_subscription_changed"})
         return JSONResponse(response_payload)
     except Exception as exc:
         if conn:
@@ -297,7 +310,9 @@ async def add_user_to_org_api(request):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
             "employee_name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
@@ -339,6 +354,17 @@ async def add_user_to_org_api(request):
                    SET ten_nhan_su = ?, so_dien_thoai = ?, updated_at = datetime('now')
                    WHERE user_id = ? AND organization_id = ?""",
                 (employee_name, phone or None, user_id, org_id),
+            )
+            log_audit(
+                "organization.member_profile_updated",
+                actor_user_id=role_or_err.user_id,
+                organization_id=org_id,
+                target_type="organization_membership",
+                target_id=f"{org_id}:{user_id}",
+                request=request,
+                metadata={"updated_fields": ["employee_name", "phone"]},
+                cursor=cursor,
+                required=True,
             )
             conn.commit()
             return JSONResponse({"success": True, "message": "Thông tin nhân sự đã được cập nhật!"})
@@ -401,18 +427,20 @@ async def add_user_to_org_api(request):
             (user_id, org_id, 'employee', employee_name, phone or None)
         )
 
-        conn.commit()
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
-
         log_audit(
             "organization.member_added",
             actor_user_id=role_or_err.user_id,
+            organization_id=org_id,
             target_type="organization_membership",
             target_id=f"{org_id}:{user_id}",
             request=request,
             metadata={"organization_id": org_id, "membership_role": "employee"},
+            cursor=cursor,
+            required=True,
         )
+        conn.commit()
+        _session_cache_invalidate_by_user_id(user_id)
+        _org_cache_invalidate_by_user_id(user_id)
 
         return JSONResponse({"success": True, "message": "Thêm nhân sự vào tổ chức thành công!"})
     except OrgPermissionError as e:
@@ -448,12 +476,15 @@ async def add_user_to_org_api(request):
             conn.close()
 
 async def remove_user_from_org_api(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
-        data = await request.json()
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
         invalid = validate_or_response(request, data, {
             "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
         })
@@ -470,6 +501,7 @@ async def remove_user_from_org_api(request):
         current_time = utc_now_sql()
 
         conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
         if not is_business_organization(cursor, org_id):
             conn.close()
@@ -524,22 +556,25 @@ async def remove_user_from_org_api(request):
         }
         impact["totalCount"] = sum(impact.values())
 
+        log_audit(
+            "organization.member_removed",
+            actor_user_id=role_or_err.user_id,
+            organization_id=org_id,
+            target_type="organization_membership",
+            target_id=f"{org_id}:{user_id}",
+            request=request,
+            metadata={"organization_id": org_id, "impact": impact},
+            cursor=cursor,
+            required=True,
+        )
         conn.commit()
         conn.close()
+        conn = None
 
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
         broadcast_websocket_event(org_id, {"event": "db_changed"})
-
-        log_audit(
-            "organization.member_removed",
-            actor_user_id=role_or_err.user_id,
-            target_type="organization_membership",
-            target_id=f"{org_id}:{user_id}",
-            request=request,
-            metadata={"organization_id": org_id, "impact": impact},
-        )
 
         return JSONResponse({
             "success": True,
@@ -554,6 +589,9 @@ async def remove_user_from_org_api(request):
             status_code=403,
         )
     except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
         return log_and_error(
             request,
             e,
@@ -561,3 +599,272 @@ async def remove_user_from_org_api(request):
             "ORGANIZATION_MEMBER_REMOVE_FAILED",
             "Không thể gỡ thành viên khỏi tổ chức.",
         )
+
+
+_DOCUMENT_EXPORT_FIELDS = ("financial", "identity", "signature")
+
+
+def _stored_document_export_grants(cursor, organization_id, user_id):
+    row = cursor.execute(
+        """SELECT financial, identity, signature
+           FROM document_export_capabilities
+           WHERE organization_id = ? AND user_id = ?
+           LIMIT 1""",
+        (organization_id, user_id),
+    ).fetchone()
+    if not row:
+        return {field: False for field in _DOCUMENT_EXPORT_FIELDS}
+    return {
+        field: bool(row[index])
+        for index, field in enumerate(_DOCUMENT_EXPORT_FIELDS)
+    }
+
+
+def _document_export_target(cursor, organization_id, user_id):
+    return cursor.execute(
+        """SELECT account.vai_tro, member.vai_tro_trong_to_chuc
+           FROM thanh_vien_to_chuc AS member
+           JOIN tai_khoan AS account ON account.id = member.user_id
+           WHERE member.organization_id = ? AND member.user_id = ?
+           LIMIT 1""",
+        (organization_id, user_id),
+    ).fetchone()
+
+
+def _can_manage_document_export_grants(cursor, role_str, user_id, organization_id):
+    return is_organization_manager(cursor, role_str, user_id, organization_id) or (
+        is_personal_workspace_owner(cursor, user_id, organization_id)
+    )
+
+
+def _inherits_all_document_export_capabilities(
+    cursor, role_str, user_id, organization_id
+):
+    return is_organization_manager(cursor, role_str, user_id, organization_id) or (
+        is_personal_workspace_owner(cursor, user_id, organization_id)
+    )
+
+
+def _document_export_grant_payload(cursor, organization_id, user_id, role_str):
+    grants = _stored_document_export_grants(cursor, organization_id, user_id)
+    effective = resolve_document_export_capabilities(
+        cursor, role_str, user_id, organization_id
+    ).as_dict()
+    return {
+        "success": True,
+        "organizationId": organization_id,
+        "userId": user_id,
+        "grants": grants,
+        "effectiveCapabilities": effective,
+        "inherited": _inherits_all_document_export_capabilities(
+            cursor, role_str, user_id, organization_id
+        ),
+    }
+
+
+async def get_document_export_capabilities_api(request):
+    """Read explicit and effective sensitive-export capabilities in the active org."""
+
+    conn = None
+    try:
+        is_valid, role_or_error = verify_session(request)
+        if not is_valid:
+            return error_response(
+                request,
+                "AUTH_REQUIRED",
+                "Phiên đăng nhập không hợp lệ.",
+                status_code=403,
+            )
+        target_user_id = str(request.path_params.get("user_id") or "").strip()
+        if not target_user_id or len(target_user_id) > 128:
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_TARGET_INVALID",
+                "Mã người dùng không hợp lệ.",
+                status_code=400,
+            )
+        organization_id = get_active_org(request, role_or_error.user_id)
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        if not _can_manage_document_export_grants(
+            cursor, str(role_or_error), role_or_error.user_id, organization_id
+        ):
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_MANAGE_FORBIDDEN",
+                "Bạn không có quyền quản lý quyền xuất tài liệu.",
+                status_code=403,
+            )
+        target = _document_export_target(cursor, organization_id, target_user_id)
+        if not target:
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_TARGET_NOT_FOUND",
+                "Không tìm thấy thành viên trong tổ chức hiện tại.",
+                status_code=404,
+            )
+        return JSONResponse(
+            _document_export_grant_payload(
+                cursor, organization_id, target_user_id, target[0]
+            )
+        )
+    except OrgPermissionError:
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
+    except Exception as exc:
+        return log_and_error(
+            request,
+            exc,
+            "get_document_export_capabilities_api",
+            "DOCUMENT_EXPORT_CAPABILITY_READ_FAILED",
+            "Không thể đọc quyền xuất tài liệu.",
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
+async def update_document_export_capabilities_api(request):
+    """Replace an ordinary member's sensitive-export grants in the active org."""
+
+    conn = None
+    try:
+        is_valid, role_or_error = verify_session(request)
+        if not is_valid:
+            return error_response(
+                request,
+                "AUTH_REQUIRED",
+                "Phiên đăng nhập không hợp lệ.",
+                status_code=403,
+            )
+        target_user_id = str(request.path_params.get("user_id") or "").strip()
+        if not target_user_id or len(target_user_id) > 128:
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_TARGET_INVALID",
+                "Mã người dùng không hợp lệ.",
+                status_code=400,
+            )
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(
+            request,
+            data,
+            {
+                "financial": {"type": "boolean", "required": True},
+                "identity": {"type": "boolean", "required": True},
+                "signature": {"type": "boolean", "required": True},
+            },
+        )
+        if invalid:
+            return invalid
+
+        organization_id = get_active_org(request, role_or_error.user_id)
+        conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.cursor()
+        if not _can_manage_document_export_grants(
+            cursor, str(role_or_error), role_or_error.user_id, organization_id
+        ):
+            conn.rollback()
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_MANAGE_FORBIDDEN",
+                "Bạn không có quyền quản lý quyền xuất tài liệu.",
+                status_code=403,
+            )
+        target = _document_export_target(cursor, organization_id, target_user_id)
+        if not target:
+            conn.rollback()
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_TARGET_NOT_FOUND",
+                "Không tìm thấy thành viên trong tổ chức hiện tại.",
+                status_code=404,
+            )
+        if _inherits_all_document_export_capabilities(
+            cursor, target[0], target_user_id, organization_id
+        ):
+            conn.rollback()
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_INHERITED",
+                "Thành viên này được thừa hưởng toàn bộ quyền xuất tài liệu.",
+                status_code=409,
+            )
+
+        values = tuple(1 if data[field] else 0 for field in _DOCUMENT_EXPORT_FIELDS)
+        cursor.execute(
+            """INSERT INTO document_export_capabilities (
+                   organization_id, user_id, financial, identity, signature
+               ) VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(organization_id, user_id) DO UPDATE SET
+                   financial = excluded.financial,
+                   identity = excluded.identity,
+                   signature = excluded.signature,
+                   updated_at = datetime('now')""",
+            (organization_id, target_user_id, *values),
+        )
+        payload = _document_export_grant_payload(
+            cursor, organization_id, target_user_id, target[0]
+        )
+        enabled_ids = [field for field in _DOCUMENT_EXPORT_FIELDS if data[field]]
+        disabled_ids = [
+            field for field in _DOCUMENT_EXPORT_FIELDS if not data[field]
+        ]
+        log_audit(
+            "document.export_capabilities_updated",
+            actor_user_id=role_or_error.user_id,
+            organization_id=organization_id,
+            target_type="document_export_capabilities",
+            target_id=f"{organization_id}:{target_user_id}",
+            request=request,
+            metadata={
+                "organization_id": organization_id,
+                "user_id": target_user_id,
+                "enabled_capability_ids": enabled_ids,
+                "disabled_capability_ids": disabled_ids,
+            },
+            cursor=cursor,
+            required=True,
+        )
+        conn.commit()
+        return JSONResponse(payload)
+    except OrgPermissionError:
+        if conn:
+            conn.rollback()
+        return error_response(
+            request,
+            "ORG_ACCESS_DENIED",
+            "Không có quyền truy cập tổ chức này.",
+            status_code=403,
+        )
+    except sqlite3.IntegrityError as exc:
+        if conn:
+            conn.rollback()
+        return log_and_error(
+            request,
+            exc,
+            "update_document_export_capabilities_api_integrity",
+            "DOCUMENT_EXPORT_CAPABILITY_CONFLICT",
+            "Không thể cập nhật quyền do xung đột dữ liệu.",
+            status_code=409,
+        )
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        return log_and_error(
+            request,
+            exc,
+            "update_document_export_capabilities_api",
+            "DOCUMENT_EXPORT_CAPABILITY_UPDATE_FAILED",
+            "Không thể cập nhật quyền xuất tài liệu.",
+        )
+    finally:
+        if conn:
+            conn.close()

@@ -1,6 +1,5 @@
 """HTTP transport safeguards kept separate from application routing/lifecycle."""
 
-import json
 import os
 import secrets
 from urllib.parse import urlparse
@@ -121,7 +120,7 @@ class SecurityHeadersMiddleware:
                 # Google Identity Services sets one stable inline style on its own
                 # iframe. Permit only that exact declaration; first-party inline
                 # styles and every other attribute remain blocked.
-                "style-src-attr 'unsafe-hashes' 'sha256-4PX7giCQMi8wBuhXIfPmyuw/Y9KfbeLY2K+XpOH6msQ='; "
+                "style-src-attr 'unsafe-hashes' 'sha256-4PX7giCQMi8wBuhXIfPmyuw/Y9KfbeLY2K+XpOH6msQ='; "  # pragma: allowlist secret
                 "img-src 'self' data: blob: https://lh3.googleusercontent.com; "
                 f"connect-src {_connect_sources()}; "
                 "font-src 'self' https://fonts.gstatic.com; "
@@ -198,44 +197,60 @@ class BodySizeLimitMiddleware:
             if declared_size > limit:
                 await self._reject(scope, send, "REQUEST_BODY_TOO_LARGE", "Dữ liệu gửi lên vượt quá giới hạn cho phép.", 413, {"maxBytes": limit})
                 return
-        messages = []
         received_size = 0
-        while True:
+        response_started = False
+
+        class BodyLimitSignal(BaseException):
+            """Internal signal that cannot be swallowed by broad route handlers."""
+
+            def __init__(self, code, message, status_code, fields=None):
+                super().__init__(message)
+                self.code = code
+                self.message = message
+                self.status_code = status_code
+                self.fields = fields
+
+        async def limited_receive():
+            nonlocal received_size
             message = await receive()
             if message["type"] == "http.disconnect":
-                await self._reject(scope, send, "REQUEST_BODY_INCOMPLETE", "Kết nối bị ngắt trước khi nhận đủ dữ liệu.", 400)
-                return
-            messages.append(message)
-            if message["type"] != "http.request":
-                continue
-            received_size += len(message.get("body", b""))
-            if received_size > limit:
-                await self._reject(scope, send, "REQUEST_BODY_TOO_LARGE", "Dữ liệu gửi lên vượt quá giới hạn cho phép.", 413, {"maxBytes": limit})
-                return
-            if not message.get("more_body", False):
-                break
-        content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
-        if content_type == "application/json":
-            raw_body = b"".join(message.get("body", b"") for message in messages if message.get("type") == "http.request")
-            try:
-                parsed_body = json.loads(raw_body.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                await self._reject(scope, send, "REQUEST_JSON_INVALID", "Nội dung JSON không hợp lệ.", 400)
-                return
-            if not isinstance(parsed_body, dict):
-                await self._reject(scope, send, "REQUEST_JSON_OBJECT_REQUIRED", "Nội dung JSON phải là một object.", 400)
-                return
-        message_index = 0
+                raise BodyLimitSignal(
+                    "REQUEST_BODY_INCOMPLETE",
+                    "Kết nối bị ngắt trước khi nhận đủ dữ liệu.",
+                    400,
+                )
+            if message["type"] == "http.request":
+                received_size += len(message.get("body", b""))
+                if received_size > limit:
+                    raise BodyLimitSignal(
+                        "REQUEST_BODY_TOO_LARGE",
+                        "Dữ liệu gửi lên vượt quá giới hạn cho phép.",
+                        413,
+                        {"maxBytes": limit},
+                    )
+            return message
 
-        async def replay_receive():
-            nonlocal message_index
-            if message_index < len(messages):
-                message = messages[message_index]
-                message_index += 1
-                return message
-            return {"type": "http.request", "body": b"", "more_body": False}
+        async def track_response_start(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
 
-        await self.app(scope, replay_receive, send)
+        try:
+            await self.app(scope, limited_receive, track_response_start)
+        except BodyLimitSignal as signal:
+            if response_started:
+                raise RuntimeError(
+                    "Request body validation failed after the response had started."
+                ) from signal
+            await self._reject(
+                scope,
+                send,
+                signal.code,
+                signal.message,
+                signal.status_code,
+                signal.fields,
+            )
 
 
 class CSRFMiddleware:

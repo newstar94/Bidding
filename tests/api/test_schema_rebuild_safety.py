@@ -52,10 +52,20 @@ def test_clean_baseline_is_transactional_versioned_and_idempotent(monkeypatch, t
         ).fetchall()
         assert [row[0] for row in migrations] == list(range(1, db_utils.DB_SCHEMA_VERSION + 1))
         assert migrations[0][1] == "0001_clean_baseline"
-        assert migrations[-1][1] == "0003_package_timeline"
+        assert migrations[3][1] == "0004_pending_email_changes"
+        assert migrations[4][1] == "0005_selective_fts_updates"
+        assert migrations[5][1] == "0006_document_export_capabilities"
+        assert migrations[6][1] == "0007_audit_chain_single_successor"
         assert all(len(row[2]) == 64 and row[3] for row in migrations)
         assert "record_edit_ownership" in tables
         assert "goi_thau_moc_tien_do" in tables
+        assert "pending_email_changes" in tables
+        assert "document_export_capabilities" in tables
+        audit_indexes = {
+            row[1]: row[2]
+            for row in connection.execute("PRAGMA index_list(audit_log)")
+        }
+        assert audit_indexes["idx_audit_log_single_successor"] == 1
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("SELECT count(*) FROM tai_khoan").fetchone()[0] == 1
         assert connection.execute("SELECT count(*) FROM goi_dich_vu").fetchone()[0] == 3
@@ -119,6 +129,18 @@ def test_schema_drift_fails_instead_of_being_repaired_at_runtime(monkeypatch, tm
     connection.close()
 
     with pytest.raises(RuntimeError, match="Schema drift: missing table rate_limit_buckets"):
+        db_utils.khoi_tao_va_di_tru_he_thong()
+
+
+def test_missing_audit_successor_index_fails_startup(monkeypatch, tmp_path):
+    database = _configure_clean_database(monkeypatch, tmp_path, "audit-index-drift.db")
+    db_utils.khoi_tao_va_di_tru_he_thong()
+    connection = database.get_connection()
+    connection.execute("DROP INDEX idx_audit_log_single_successor")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(RuntimeError, match="audit-chain successor index is missing"):
         db_utils.khoi_tao_va_di_tru_he_thong()
 
 

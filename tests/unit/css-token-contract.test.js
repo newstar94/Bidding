@@ -37,8 +37,8 @@ test("the final modal close-button override remains circular", async () => {
   const redesign = await readFile(new URL("../../views/css/ui-redesign.css", import.meta.url), "utf8");
   const closeButtonRule = redesign.match(/\.modal-close\s*\{([^}]*)\}/)?.[1] || "";
 
-  assert.match(closeButtonRule, /width:\s*40px/);
-  assert.match(closeButtonRule, /height:\s*40px/);
+  assert.match(closeButtonRule, /width:\s*var\(--touch-target-min\)/);
+  assert.match(closeButtonRule, /height:\s*var\(--touch-target-min\)/);
   assert.match(closeButtonRule, /border-radius:\s*50%/);
   assert.match(closeButtonRule, /align-items:\s*center/);
   assert.match(closeButtonRule, /justify-content:\s*center/);

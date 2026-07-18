@@ -78,6 +78,7 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --touch-target-min: 44px;
   --transition-fast: 0.15s ease-out;
   --transition-normal: 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }

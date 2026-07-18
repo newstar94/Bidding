@@ -28,9 +28,15 @@ async def paginate_api(request):
     return await paginate_records(request)
 
 
+async def current_sync_version_api(request):
+    from backend.sync.version_api import current_sync_version_api as read_version
+    return await read_version(request)
+
+
 __all__ = [
     "active_connections",
     "broadcast_websocket_event",
+    "current_sync_version_api",
     "disconnect_user_websockets",
     "get_all_data_api",
     "paginate_api",

@@ -10,12 +10,15 @@ from backend.shared.access_policy import (
     can_read_record,
     can_read_table,
     filter_items_for_read,
-    has_module_permission,
     is_organization_manager,
 )
 from backend.shared.media_helper import public_image_path
 from backend.shared.date_utils import utc_now_sql
-from backend.shared.sensitive_data import redact_contractor_financial_item, redact_expert_item
+from backend.shared.sensitive_data import (
+    resolve_sensitive_read_policy,
+    serialize_sensitive_read_item,
+    serialize_sensitive_read_items,
+)
 from backend.shared.domain_enums import enum_label
 from backend.sync.mapper import (
     attach_child_rows_to_items,
@@ -32,9 +35,38 @@ from backend.sync.repository import ARCHIVED_TABLES, get_current_sync_version
 from backend.sync.request_contract import parse_sync_read_window
 from backend.sync.payload_validation import get_package_field_policy
 from backend.shared.logging_utils import error_response, log_and_error
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_io import run_database_read
+
+
+def _database_read_unavailable(request, code, message):
+    response = error_response(request, code, message, status_code=503)
+    response.headers["Retry-After"] = "1"
+    return response
 
 
 async def read_sync_data(request):
+    try:
+        return await run_database_read(
+            _read_sync_data_blocking,
+            request,
+            timeout_seconds=30.0,
+        )
+    except BlockingIOBusyError:
+        return _database_read_unavailable(
+            request,
+            "DATABASE_READ_QUEUE_FULL",
+            "Hệ thống đang xử lý quá nhiều truy vấn. Vui lòng thử lại.",
+        )
+    except BlockingIOTimeoutError:
+        return _database_read_unavailable(
+            request,
+            "DATABASE_READ_TIMEOUT",
+            "Truy vấn dữ liệu vượt quá thời gian cho phép. Vui lòng thử lại.",
+        )
+
+
+def _read_sync_data_blocking(request):
     """
     [GET] /api/get-all-data
     Trả về dữ liệu thay đổi từ lần đồng bộ trước (nếu truyền since) hoặc toàn bộ dữ liệu.
@@ -67,13 +99,13 @@ async def read_sync_data(request):
 
 
         org_name = get_active_org(request, role_or_err.user_id)
+        media_session_token = str(
+            getattr(request, "cookies", {}).get("session_token", "")
+        )
         role_str = str(role_or_err)
         user_id = role_or_err.user_id
-        can_view_sensitive_expert = has_module_permission(
-            cursor, role_str, user_id, org_name, "chuyengia", "edit"
-        )
-        can_view_sensitive_contractor = has_module_permission(
-            cursor, role_str, user_id, org_name, "nhathau", "edit"
+        sensitive_read_policy = resolve_sensitive_read_policy(
+            cursor, role_str, user_id, org_name
         )
 
         metadata_row = cursor.execute(
@@ -140,17 +172,30 @@ async def read_sync_data(request):
             img_path = row_dict.get("anh_chung_chi", "")
             sig_path = row_dict.get("anh_chu_ky", "")
             item = map_db_to_json("chuyen_gia", row_dict)
-            item["anhChungChi"] = public_image_path(img_path)
-            item["anhChuKy"] = public_image_path(sig_path)
-            if not can_view_sensitive_expert:
-                item = redact_expert_item(item)
+            item["anhChungChi"] = public_image_path(
+                img_path,
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
+            item["anhChuKy"] = public_image_path(
+                sig_path,
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
+            item = serialize_sensitive_read_item(
+                "chuyen_gia", item, sensitive_read_policy
+            )
             chuyengia.append(item)
 
 
         nhathau = []
         for row in query_table("nha_thau"):
             row_dict = dict(row)
-            row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
+            row_dict["anh_dau"] = public_image_path(
+                row_dict.get("anh_dau"),
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
             nhathau.append(map_db_to_json("nha_thau", row_dict))
         attach_child_rows_to_items(cursor, "nha_thau", nhathau, organization_id=org_name)
 
@@ -266,8 +311,9 @@ async def read_sync_data(request):
         kehoach = filter_items_for_read(cursor, role_str, user_id, org_name, "kehoach", "ke_hoach_lcnt", kehoach)
         chuyengia = filter_items_for_read(cursor, role_str, user_id, org_name, "chuyengia", "chuyen_gia", chuyengia)
         nhathau = filter_items_for_read(cursor, role_str, user_id, org_name, "nhathau", "nha_thau", nhathau)
-        if not can_view_sensitive_contractor:
-            nhathau = [redact_contractor_financial_item(item) for item in nhathau]
+        nhathau = serialize_sensitive_read_items(
+            "nha_thau", nhathau, sensitive_read_policy
+        )
         goithau = filter_items_for_read(cursor, role_str, user_id, org_name, "goithau", "goi_thau", goithau)
         hopdong = filter_items_for_read(cursor, role_str, user_id, org_name, "hopdong", "hop_dong", hopdong)
         assignments = filter_items_for_read(cursor, role_str, user_id, org_name, "assignments", "phan_cong_nhan_su", assignments)
@@ -349,14 +395,11 @@ async def read_sync_data(request):
                     table_name,
                     reference_items,
                 )
-                if payload_key == "chuyengia" and not can_view_sensitive_expert:
-                    reference_data[payload_key] = [
-                        redact_expert_item(item) for item in reference_data[payload_key]
-                    ]
-                if payload_key == "nhathau" and not can_view_sensitive_contractor:
-                    reference_data[payload_key] = [
-                        redact_contractor_financial_item(item) for item in reference_data[payload_key]
-                    ]
+                reference_data[payload_key] = serialize_sensitive_read_items(
+                    table_name,
+                    reference_data[payload_key],
+                    sensitive_read_policy,
+                )
 
         if not is_organization_manager(cursor, role_str, user_id, org_name):
             deletions = [
@@ -432,6 +475,27 @@ async def read_sync_data(request):
                 pass
 
 async def read_single_record(request):
+    try:
+        return await run_database_read(
+            _read_single_record_blocking,
+            request,
+            timeout_seconds=15.0,
+        )
+    except BlockingIOBusyError:
+        return _database_read_unavailable(
+            request,
+            "DATABASE_READ_QUEUE_FULL",
+            "Hệ thống đang xử lý quá nhiều truy vấn. Vui lòng thử lại.",
+        )
+    except BlockingIOTimeoutError:
+        return _database_read_unavailable(
+            request,
+            "DATABASE_READ_TIMEOUT",
+            "Truy vấn dữ liệu vượt quá thời gian cho phép. Vui lòng thử lại.",
+        )
+
+
+def _read_single_record_blocking(request):
     conn = None
     try:
         is_valid, role_or_err = verify_session(request)
@@ -450,6 +514,9 @@ async def read_single_record(request):
         _assert_safe_table(table_name)
 
         org_name = get_active_org(request, role_or_err.user_id)
+        media_session_token = str(
+            getattr(request, "cookies", {}).get("session_token", "")
+        )
         role_str = str(role_or_err)
         user_id = role_or_err.user_id
         conn = database.get_connection()
@@ -494,7 +561,11 @@ async def read_single_record(request):
             return JSONResponse({"error": "Không có quyền đọc bản ghi này."}, status_code=403)
 
         if table_name == "nha_thau":
-            row_dict["anh_dau"] = public_image_path(row_dict.get("anh_dau"))
+            row_dict["anh_dau"] = public_image_path(
+                row_dict.get("anh_dau"),
+                session_token=media_session_token,
+                organization_id=org_name,
+            )
         item = map_db_to_json(table_name, row_dict)
         items = [item]
         if table_name in {"ke_hoach_lcnt", "goi_thau", "nha_thau"}:
@@ -510,6 +581,17 @@ async def read_single_record(request):
                     item[list_key] = []
         elif table_name == "hop_dong":
             item["goiThauIds"] = _get_contract_package_ids(cursor, [row_dict["id"]], org_name).get(row_dict["id"], [])
+
+        sensitive_read_policy = resolve_sensitive_read_policy(
+            cursor,
+            role_str,
+            user_id,
+            org_name,
+            table_names=(table_name,),
+        )
+        item = serialize_sensitive_read_item(
+            table_name, item, sensitive_read_policy
+        )
 
         return JSONResponse({"item": item})
     except OrgPermissionError as e:

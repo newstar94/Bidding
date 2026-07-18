@@ -3,7 +3,10 @@ import { expect, test } from "./fixtures.js";
 test("sensitive admin mutation prompts for password and retries once", async ({ page }) => {
   let sensitiveAttempts = 0;
   let submittedPassword = "";
-  await page.route("**/", async route => {
+  // Intercept the actual authenticated route. The previous `**/` glob only
+  // matched URLs ending in `/`, so `/tong-quan` could retain the anonymous
+  // server bootstrap and make this security flow nondeterministic.
+  await page.route("**/tong-quan", async route => {
     const response = await route.fetch();
     const session = {
       valid: true,
@@ -68,6 +71,13 @@ test("sensitive admin mutation prompts for password and retries once", async ({ 
 
   await page.goto("/tong-quan");
   await expect(page.locator("#header-profile-name")).toContainText("E2E Admin");
+  await expect(page.locator("#system-init-loader")).toBeHidden();
+  // This test supplies an authenticated bootstrap without calling the real
+  // login endpoint, so seed the CSRF cookie that login/check-session normally
+  // provides before exercising the protected POST recovery flow.
+  await page.evaluate(() => {
+    document.cookie = "csrf_token=e2e-csrf; path=/; SameSite=Lax";
+  });
   await page.evaluate(async () => {
     const { apiFetch } = await import("/frontend/shared/apiClient.js");
     window.__privilegedRequest = apiFetch("/api/test-privileged", {

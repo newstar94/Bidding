@@ -47,6 +47,17 @@
                                             placeholder="Nhập địa chỉ email của bạn">
                                         <span class="error-text">Email không hợp lệ</span>
                                     </div>
+                                    <div class="form-group form-group-conditional bf-s-79cbf79464"
+                                        id="profile-current-password-group" hidden>
+                                        <label for="profile-current-password">Mật khẩu hiện tại <span
+                                                class="required">*</span></label>
+                                        <input type="password" id="profile-current-password" maxlength="256"
+                                            autocomplete="current-password"
+                                            aria-describedby="profile-current-password-help profile-current-password-error"
+                                            placeholder="Nhập mật khẩu hiện tại để đổi email">
+                                        <span class="error-text" id="profile-current-password-error" role="alert">Vui lòng nhập mật khẩu hiện tại để đổi email</span>
+                                        <small class="helper-text" id="profile-current-password-help">Mật khẩu chỉ được yêu cầu khi bạn thay đổi địa chỉ email.</small>
+                                    </div>
                                     <div class="form-group bf-s-2bc05485a8" id="profile-org-container"
                                        >
                                         <label for="profile-organization">Tên tổ chức / Doanh nghiệp</label>
@@ -56,7 +67,29 @@
                                         <small id="profile-organization-help" class="text-muted">Tên tổ chức chỉ có thể thay đổi trong phần quản trị tổ chức.</small>
                                     </div>
                                     <button type="submit" class="btn btn-primary btn-full-width">
-                                        <i data-lucide="save"></i> Cập nhật hồ sơ
+                                        <i data-lucide="save"></i>
+                                        <span id="profile-update-submit-label">Cập nhật hồ sơ</span>
+                                    </button>
+                                </div>
+                            </form>
+                            <form id="form-profile-email-verification" class="card-body" novalidate hidden
+                                aria-labelledby="profile-email-verification-title">
+                                <div class="form-group-conditional">
+                                    <h4 id="profile-email-verification-title">Xác minh email mới</h4>
+                                    <p id="profile-email-verification-status" class="helper-text" role="status"
+                                        aria-live="polite" aria-atomic="true"></p>
+                                    <div class="form-group bf-s-79cbf79464">
+                                        <label for="profile-email-otp">Mã OTP <span class="required">*</span></label>
+                                        <input type="text" id="profile-email-otp" required minlength="6" maxlength="6"
+                                            inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}"
+                                            aria-describedby="profile-email-otp-help profile-email-otp-error"
+                                            placeholder="Nhập mã OTP gồm 6 chữ số">
+                                        <span class="error-text" id="profile-email-otp-error" role="alert">Mã OTP phải gồm đúng 6 chữ số</span>
+                                        <small id="profile-email-otp-help" class="helper-text">Mã xác minh đã được gửi đến email mới và chỉ dùng được một lần.</small>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-full-width">
+                                        <i data-lucide="badge-check"></i>
+                                        <span id="profile-email-verify-submit-label">Xác minh và đổi email</span>
                                     </button>
                                 </div>
                             </form>

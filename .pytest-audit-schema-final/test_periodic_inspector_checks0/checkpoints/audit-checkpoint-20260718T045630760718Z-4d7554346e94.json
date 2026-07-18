@@ -1,0 +1,19 @@
+{
+  "createdAt": "2026-07-18T04:56:30.760332+00:00",
+  "first": {
+    "id": 1,
+    "previousHash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "format": "biddingflow-audit-checkpoint",
+  "head": {
+    "entryHash": "4d7554346e9475fdecf6fb3a9348152e6cba42b69b619fc9895763a54b8bce10",
+    "id": 1
+  },
+  "integrity": {
+    "algorithm": "SHA-256",
+    "digest": "c7b88df70da5be499818a0f0129c518595efedd47127e68da1dee0b3b413486c",
+    "hmacSha256": "58eb8abaf91a9de0d634507a3fc81c4b83e68181d82fe194f1f380391b11309c"
+  },
+  "rowCount": 1,
+  "version": 1
+}

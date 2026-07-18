@@ -17,7 +17,12 @@ from backend.documents.docx_column_loop import (
 )
 from backend.documents.template_security import (
     create_template_environment,
+    validate_template_root_keys,
     validate_template_statements,
+)
+from backend.documents.docx_context_policy import (
+    BASE_IMAGE_FIELDS,
+    validate_docx_context_manifest,
 )
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, WORD_TEMPLATE_DIR
 from backend.shared.logging_utils import append_runtime_log, log_error
@@ -583,13 +588,15 @@ _TRANSLATED_TEMPLATES_CACHE = {}
 
 _TRANSLATED_DOCXTPL_CACHE = {}
 
-def translate_docx_template(template_path, context):
+def translate_docx_template(template_path, context, allowed_root_keys=None):
 
     global _TRANSLATED_DOCXTPL_CACHE
 
     mtime = os.path.getmtime(template_path)
 
     context.update(COLUMN_LITERAL_CONTEXT)
+    if allowed_root_keys is not None:
+        allowed_root_keys = set(allowed_root_keys) | set(COLUMN_LITERAL_CONTEXT)
     enrich_context_with_lowercase_keys(context)
     valid_vars = set(context.keys())
     for val in context.values():
@@ -631,6 +638,8 @@ def translate_docx_template(template_path, context):
                 yout.writestr(item, data)
 
     validate_template_statements(translated_xml_parts)
+    if allowed_root_keys is not None:
+        validate_template_root_keys(translated_xml_parts, allowed_root_keys)
 
     translated_data = temp_bytes.getvalue()
 
@@ -774,35 +783,75 @@ def prewarm_image_cache():
         log_error(e, "Document.ImagePrewarm")
 
 
-def _collect_image_tasks(data, project_root, tasks=None):
+def _resolve_docx_image_path(value, expected_subfolder):
+    if not isinstance(value, str) or expected_subfolder not in {"chuyen_gia", "nha_thau"}:
+        return "", ""
+    normalized = value.strip().replace("\\", "/").lstrip("/")
+    expected_prefix = f"images/{expected_subfolder}/"
+    if not normalized.startswith(expected_prefix):
+        return "", ""
+    filename = normalized.removeprefix(expected_prefix)
+    if not filename or "/" in filename or filename in {".", ".."}:
+        return "", ""
+    if os.path.splitext(filename)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+        return "", ""
+
+    images_root = os.path.realpath(IMAGE_DIR)
+    allowed_root = os.path.realpath(os.path.join(images_root, expected_subfolder))
+    filepath = os.path.realpath(os.path.join(allowed_root, filename))
+    try:
+        if os.path.commonpath([allowed_root, filepath]) != allowed_root:
+            return "", ""
+    except ValueError:
+        return "", ""
+    if not os.path.isfile(filepath):
+        return "", ""
+    return normalized, filepath
+
+
+def _collect_image_tasks(
+    data,
+    project_root=None,
+    tasks=None,
+    allowed_image_fields=None,
+):
 
     if tasks is None:
         tasks = []
+    if allowed_image_fields is None:
+        allowed_image_fields = BASE_IMAGE_FIELDS
     if isinstance(data, dict):
         for k, v in list(data.items()):
             if isinstance(v, str):
-
-                norm_v = v.lstrip('/')
-                if norm_v.startswith('images/'):
-                    filepath = os.path.join(IMAGE_DIR, norm_v.removeprefix('images/'))
-                    if os.path.exists(filepath):
-
-                        data[k] = norm_v
-                        max_w = 300
-                        width_hint = 'small'
-                        if 'chung_chi' in k or 'cert' in k:
-                            max_w = 1200
-                            width_hint = 'full'
-                        tasks.append((data, k, filepath, max_w, width_hint))
+                expected_subfolder = allowed_image_fields.get(str(k))
+                norm_v, filepath = _resolve_docx_image_path(v, expected_subfolder)
+                if filepath:
+                    data[k] = norm_v
+                    max_w = 300
+                    width_hint = 'small'
+                    if 'chung_chi' in k or 'cert' in k:
+                        max_w = 1200
+                        width_hint = 'full'
+                    tasks.append((data, k, filepath, max_w, width_hint))
             else:
-                _collect_image_tasks(v, project_root, tasks)
+                _collect_image_tasks(
+                    v,
+                    project_root,
+                    tasks,
+                    allowed_image_fields,
+                )
     elif isinstance(data, list):
         for item in data:
-            _collect_image_tasks(item, project_root, tasks)
+            _collect_image_tasks(
+                item,
+                project_root,
+                tasks,
+                allowed_image_fields,
+            )
     return tasks
 
 
-def convert_images_in_context(doc, data):
+def convert_images_in_context(doc, data, allowed_image_fields=None):
 
 
     try:
@@ -812,7 +861,15 @@ def convert_images_in_context(doc, data):
         usable_width = Inches(6.0)
 
 
-    tasks = _collect_image_tasks(data, project_root)
+    tasks = _collect_image_tasks(
+        data,
+        project_root,
+        allowed_image_fields=(
+            BASE_IMAGE_FIELDS
+            if allowed_image_fields is None
+            else allowed_image_fields
+        ),
+    )
     if not tasks:
         return
 
@@ -835,9 +892,20 @@ class TemplateRenderError(ValueError):
     """Public, non-sensitive error raised when a DOCX template cannot render."""
 
 
-def generate_report_from_custom_template(template_path, context, custom_vars=None):
+def generate_report_from_custom_template(
+    template_path,
+    context,
+    custom_vars=None,
+    context_manifest=None,
+):
 
-
+    if context_manifest is not None:
+        render_policy = validate_docx_context_manifest(context, context_manifest)
+        allowed_root_keys = render_policy["allowed_root_keys"]
+        allowed_image_fields = render_policy["allowed_image_fields"]
+    else:
+        allowed_root_keys = set(context or {})
+        allowed_image_fields = BASE_IMAGE_FIELDS
     context = replace_placeholders_with_empty(context)
 
     enrich_context_with_words(context)
@@ -846,8 +914,16 @@ def generate_report_from_custom_template(template_path, context, custom_vars=Non
 
     doc = None
     try:
-        doc = translate_docx_template(template_path, context)
-        convert_images_in_context(doc, context)
+        doc = translate_docx_template(
+            template_path,
+            context,
+            allowed_root_keys=allowed_root_keys,
+        )
+        convert_images_in_context(
+            doc,
+            context,
+            allowed_image_fields=allowed_image_fields,
+        )
         doc.render(context, jinja_env=create_template_environment())
     except Exception as e:
         try:

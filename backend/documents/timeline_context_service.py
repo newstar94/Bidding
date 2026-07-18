@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import date, datetime
 
 from backend.shared.helpers import database
+from backend.documents.docx_context_policy import project_docx_context
 
 
 TIMELINE_TEMPLATE_VERSION = 1
@@ -368,7 +369,7 @@ def build_timeline_context(package_id, user_id, organization_id):
             _number_section_items(section_items)
             sections.append({"code": code, "title": title, "items": section_items})
 
-    return {
+    context = {
         "goi_thau": package,
         "ke_hoach": plan,
         "chu_dau_tu": investor,
@@ -377,3 +378,4 @@ def build_timeline_context(package_id, user_id, organization_id):
         "generated_date": datetime.now().strftime("%d/%m/%Y"),
         "planned_date_note": "Ngày màu đỏ là ngày dự kiến/chưa xác nhận.",
     }
+    return project_docx_context("timeline", context)

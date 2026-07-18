@@ -6,6 +6,10 @@ from backend.shared.helpers import (
     _org_cache_invalidate_by_user_id
 )
 from backend.documents import custom_exporter
+from backend.documents.docx_context_policy import (
+    REPORT_DOCUMENT_TYPES,
+    project_docx_context,
+)
 from backend.sync.mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
 
 def to_snake_case(s):
@@ -43,7 +47,7 @@ def parse_json_fields(row_dict):
             row_dict[col] = [] if col != "thong_tin_thiet_bi_cuoi" else {}
     return row_dict
 
-def enrich_bids_with_contractor_fields(cursor, bids):
+def enrich_bids_with_contractor_fields(cursor, bids, organization_id):
     contractor_ids = sorted({
         str(bid.get('nha_thau_id')).strip()
         for bid in bids
@@ -59,9 +63,10 @@ def enrich_bids_with_contractor_fields(cursor, bids):
                    nguoi_dai_dien, chuc_vu_dai_dien, danh_xung, dia_chi,
                    dia_chi_goc, so_dien_thoai, email, so_tai_khoan,
                    noi_mo_tai_khoan, ma_ngan_hang
-            FROM nha_thau WHERE id IN ({placeholders})
+            FROM nha_thau
+            WHERE organization_id = ? AND id IN ({placeholders})
         """,
-        contractor_ids,
+        (organization_id, *contractor_ids),
     )
     contractors = {row['id']: dict(row) for row in cursor.fetchall()}
     for bid in bids:
@@ -148,7 +153,7 @@ def clear_competitive_quotation_appraisal(pkg):
         pkg[metadata_key] = json.dumps(metadata, ensure_ascii=False) if isinstance(raw_metadata, str) else metadata
     return pkg
 
-def build_plan_context(plan_id, user_id, org_name):
+def build_plan_context(plan_id, user_id, org_name, capabilities=None):
     """Truy vấn CSDL để xây dựng ngữ cảnh đầy đủ phục vụ xuất file Word Kế hoạch LCNT."""
     conn = database.get_connection()
     cursor = conn.cursor()
@@ -175,17 +180,22 @@ def build_plan_context(plan_id, user_id, org_name):
             investor_name = inv_data.get('ten_chu_dau_tu', '--')
             investor_address = inv_data.get('dia_chi', '')
 
-    cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (user_id,))
+    cursor.execute(
+        """SELECT ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien,
+                  da_xac_minh
+           FROM tai_khoan WHERE id = ?""",
+        (user_id,),
+    )
     row_user = cursor.fetchone()
     user_data = parse_json_fields(dict(row_user)) if row_user else {}
 
-    cursor.execute("SELECT * FROM to_chuc WHERE id = ?", (org_name,))
+    cursor.execute("SELECT ten_to_chuc FROM to_chuc WHERE id = ?", (org_name,))
     row_org = cursor.fetchone()
     org_data = parse_json_fields(dict(row_org)) if row_org else {}
 
     gdv_data = {}
     cursor.execute(
-        """SELECT pkg.*
+        """SELECT pkg.ten_goi, pkg.gia_ca, pkg.han_muc_nhan_su, pkg.mo_ta
            FROM organization_subscriptions sub
            JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
            WHERE sub.organization_id = ?
@@ -222,10 +232,18 @@ def build_plan_context(plan_id, user_id, org_name):
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat()
     }
-    return unified_context
+    return project_docx_context("plan", unified_context, capabilities)
 
-def build_report_context(package_id, user_id, org_name, type_param):
+def build_report_context(
+    package_id,
+    user_id,
+    org_name,
+    type_param,
+    capabilities=None,
+):
     """Truy vấn CSDL để xây dựng ngữ cảnh phục vụ xuất file Word HSMT/Mở thầu/Đánh giá/Hợp đồng."""
+    if type_param not in REPORT_DOCUMENT_TYPES:
+        raise ValueError("Loại báo cáo Word không được hỗ trợ")
     conn = database.get_connection()
     cursor = conn.cursor()
 
@@ -263,17 +281,22 @@ def build_report_context(package_id, user_id, org_name, type_param):
                     investor_name = inv_data.get('ten_chu_dau_tu', '--')
                     investor_address = inv_data.get('dia_chi', '')
 
-    cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (user_id,))
+    cursor.execute(
+        """SELECT ten_dang_nhap, ho_ten, vai_tro, email, anh_dai_dien,
+                  da_xac_minh
+           FROM tai_khoan WHERE id = ?""",
+        (user_id,),
+    )
     row_user = cursor.fetchone()
     user_data = parse_json_fields(dict(row_user)) if row_user else {}
 
-    cursor.execute("SELECT * FROM to_chuc WHERE id = ?", (org_name,))
+    cursor.execute("SELECT ten_to_chuc FROM to_chuc WHERE id = ?", (org_name,))
     row_org = cursor.fetchone()
     org_data = parse_json_fields(dict(row_org)) if row_org else {}
 
     gdv_data = {}
     cursor.execute(
-        """SELECT pkg.*
+        """SELECT pkg.ten_goi, pkg.gia_ca, pkg.han_muc_nhan_su, pkg.mo_ta
            FROM organization_subscriptions sub
            JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
            WHERE sub.organization_id = ?
@@ -311,7 +334,7 @@ def build_report_context(package_id, user_id, org_name, type_param):
             winning_ids.update(str(item.get('nha_thau_trung_thau_id')) for item in pkg.get('phan_lo_list', []) if item.get('nha_thau_trung_thau_id'))
             bids = [bid for bid in bids if str(bid.get('nha_thau_id')) in winning_ids or str(bindings.get(str(bid.get('id') or ''), {}).get('contractorVersionId')) in winning_ids]
         _enrich_opening_bid_contractor_versions(cursor, {str(bid.get('id')): bid for bid in bids}, org_name, 'snake')
-    enrich_bids_with_contractor_fields(cursor, bids)
+    enrich_bids_with_contractor_fields(cursor, bids, org_name)
 
 
     id_goc = pkg.get('id_goc')
@@ -397,4 +420,4 @@ def build_report_context(package_id, user_id, org_name, type_param):
         'current_time': now.isoformat(timespec='seconds'),
         'today': now.date().isoformat()
     }
-    return unified_context
+    return project_docx_context(type_param, unified_context, capabilities)
