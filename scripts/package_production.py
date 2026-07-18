@@ -21,7 +21,6 @@ RUNTIME_DIRECTORIES = {
     "dist": lambda path: path.is_file(),
     "views": lambda path: path.is_file(),
     "deploy": lambda path: path.is_file(),
-    "sbom": lambda path: path.suffix == ".json",
     "docs": lambda path: path.suffix == ".md",
 }
 

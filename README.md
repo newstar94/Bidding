@@ -5,20 +5,20 @@
 ## Yêu cầu hệ thống
 
 - Python theo phiên bản trong `.python-version`.
-- Node.js 24 khi phát triển hoặc tạo gói phát hành.
+- Node.js 24 khi chỉnh sửa frontend hoặc tạo gói phát hành.
 - HTTPS reverse proxy khi chạy production.
 - Volume bền vững và được mã hóa cho database, media và backup.
 
-## Phát triển và kiểm thử
+## Cài đặt mã nguồn tối giản
 
 ```bash
-python -m pip install --require-hashes -r requirements/dev.lock.txt
+python -m pip install --require-hashes -r requirements/runtime.lock.txt
 npm ci
-npm run check
-npm run test:e2e
+npm run build:secure
 ```
 
-API test luôn tạo database tạm riêng và không sử dụng database phát triển.
+Repository đã được thu gọn cho vận hành production. Bộ kiểm thử, load test,
+CI và các công cụ audit không được triển khai cùng ứng dụng.
 
 ## Tạo gói production
 
@@ -69,4 +69,3 @@ Luôn diễn tập restore trên môi trường tách biệt trước khi phát 
 - Thời điểm lưu trong database: `YYYY-MM-DD HH:mm:ss`.
 - Hiển thị tiếng Việt: ngày có hai chữ số; tháng `01`, `02` có số 0, tháng `3`–`12` không thêm số 0.
 - Thời điểm hiển thị: `HH:mm ngày dd/M/yyyy` theo quy tắc tháng trên.
-

@@ -1,5 +1,19 @@
 # Kế hoạch cải thiện BiddingFlow trước production
 
+## 0. Dọn cây mã nguồn production tối giản — 18/07/2026
+
+- [x] Build lại frontend ở chế độ secure và giữ bundle trong `dist`.
+- [x] Xóa test, load test, GitHub Actions, SBOM sinh sẵn, metadata agent và các công cụ audit/benchmark/release-evidence khỏi cây triển khai.
+- [x] Thu gọn dependency Node về Vite, esbuild và JavaScript obfuscator; xóa dependency Playwright, axe, CycloneDX và RetireJS.
+- [x] Chỉ giữ `requirements/runtime.lock.txt`; xóa dependency Python dành riêng cho test/audit.
+- [x] Giữ toàn bộ `docs`, mã nguồn backend/frontend/views, migration, template Word hệ thống, cấu hình `deploy`, `.env` và các script backup/restore/check DB.
+- [x] Xác minh gói production sau khi dọn bằng extracted-runtime smoke test: 239 tệp runtime, khởi tạo database tạm mới và chạy thành công.
+- [x] Thư mục `data` không chứa database/log/backup cũ; chỉ còn ba template Word hệ thống cho lần cài đầu.
+
+Các tham chiếu CI/test/load/SBOM ở phần lịch sử bên dưới là bằng chứng của giai đoạn
+phát triển trước khi dọn cây triển khai; các công cụ đó không còn nằm trong bản
+production tối giản này và phải được duy trì ở repository phát triển riêng nếu cần chạy lại.
+
 - Ngày lập: 18/07/2026
 - Phạm vi: backend, frontend, bảo mật, hiệu năng, SQLite, triển khai và vận hành
 - Trạng thái: đang triển khai; chỉ đánh dấu `[x]` sau khi mã và regression test tương ứng đã đạt
