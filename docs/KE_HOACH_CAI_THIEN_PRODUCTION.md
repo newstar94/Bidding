@@ -460,7 +460,7 @@ Giai đoạn này bắt đầu sau P0, server stability và capacity evidence. �
 - [ ] Backup toàn trạng thái đã tự động chạy và có cảnh báo.
 - [ ] Full restore sang môi trường tách biệt đã thành công.
 - [ ] Migration được chạy trên bản sao dữ liệu và có rollback plan.
-- [ ] CI chạy lint, unit, API, E2E, audit dependency/secret và package smoke. Local `release_preflight.py all` đã đạt trên mã hiện tại; vẫn phải push và nhận một `Production CI` run thành công của đúng commit trước khi đánh dấu gate này.
+- [ ] CI chạy lint, unit, API, E2E, audit dependency/secret và package smoke. Local `release_preflight.py all` đã đạt; `Production CI` run #3 xác nhận cả năm job nền đạt nhưng bước ghi revision-bound evidence thiếu checkout repository. Workflow đã được sửa và đang chờ run của commit kế tiếp đạt trước khi đánh dấu gate này.
 - [ ] Dashboard vận hành hiển thị latency, error rate, queue, WAL/disk và backup age.
 
 ## 8. Kết quả kiểm chứng

@@ -145,6 +145,10 @@ jobs:
             fi
           done
           echo "All automated release gates passed."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
       - name: Write revision-bound CI evidence
         env:
           QUALITY_RESULT: ${{ needs.quality.result }}
