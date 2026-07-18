@@ -16,6 +16,11 @@ backend/db/bidding.db*
 *.log
 data/logs/
 
+# Local runtime operations
+data/backups/
+data/audit-checkpoints/
+data/document-worker-temp/
+
 # Runtime images and user-specific Word templates
 data/templates/images/
 data/templates/words/config.json
