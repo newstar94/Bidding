@@ -61,7 +61,7 @@ if os.path.exists(env_path):
                 k, v = line.split('=', 1)
                 os.environ.setdefault(k.strip(), v.strip().strip("'").strip('"'))
 
-from backend.shared.paths import IMAGE_DIR, WORD_TEMPLATE_DIR
+from backend.shared.paths import IMAGE_DIR, provision_system_word_templates
 
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "8000"))
@@ -634,7 +634,7 @@ async def protected_image_api(request):
 dist_dir = os.path.join(project_root, 'dist')
 os.makedirs(dist_dir, exist_ok=True)
 os.makedirs(IMAGE_DIR, exist_ok=True)
-os.makedirs(WORD_TEMPLATE_DIR, exist_ok=True)
+provision_system_word_templates()
 
 routes = [
     Route("/health/live", health_live_api, methods=["GET"]),

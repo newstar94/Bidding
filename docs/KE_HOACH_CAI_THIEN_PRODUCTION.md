@@ -289,7 +289,7 @@ PostgreSQL Community có chi phí bản quyền phần mềm bằng **0**. Tuy n
 
 ### SQLite trong giai đoạn chuyển tiếp
 
-- [ ] Chuyển `BIDDING_DB_PATH` development ra ngoài OneDrive.
+- [x] Chuyển toàn bộ đường dẫn runtime development ra ngoài thư mục mã nguồn/file-sync (`D:/BiddingRuntime` trên máy hiện tại); giữ database ở trạng thái chưa khởi tạo cho lần chạy đầu tiên.
 - [ ] Giữ chính xác một BiddingFlow process trên database đó.
 - [ ] Không xóa `.writer.lock`, `-wal` hoặc `-shm` khi process còn chạy.
 - [ ] Xác minh production SQLite dùng local encrypted persistent volume, không dùng thư mục file-sync.

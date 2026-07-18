@@ -4,6 +4,8 @@ from collections import defaultdict
 
 from starlette.responses import JSONResponse
 
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.helpers import (
     OrgPermissionError,
     _org_cache_invalidate_by_user_id,
@@ -19,7 +21,24 @@ from backend.shared.logging_utils import error_response
 from backend.sync.api import disconnect_user_websockets
 
 
-async def list_users_api(request):
+def _database_lane_unavailable_response(request, *, write=False, timed_out=False):
+    if write:
+        code = "DATABASE_WRITE_QUEUE_FULL"
+    elif timed_out:
+        code = "DATABASE_READ_TIMEOUT"
+    else:
+        code = "DATABASE_READ_QUEUE_FULL"
+    response = error_response(
+        request,
+        code,
+        "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
+        status_code=503,
+    )
+    response.headers["Retry-After"] = "1"
+    return response
+
+
+def _list_users_sync(request):
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -176,7 +195,17 @@ async def list_users_api(request):
         log_error(e, "list_users_api")
         return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
 
-async def delete_user_api(request):
+
+async def list_users_api(request):
+    try:
+        return await run_database_read(_list_users_sync, request)
+    except BlockingIOBusyError:
+        return _database_lane_unavailable_response(request)
+    except BlockingIOTimeoutError:
+        return _database_lane_unavailable_response(request, timed_out=True)
+
+
+def _delete_user_sync(request):
     conn = None
     try:
         is_valid, role_or_err = verify_session(request, required_role='super_admin')
@@ -292,3 +321,10 @@ async def delete_user_api(request):
     finally:
         if conn:
             conn.close()
+
+
+async def delete_user_api(request):
+    try:
+        return await run_database_write(_delete_user_sync, request)
+    except BlockingIOBusyError:
+        return _database_lane_unavailable_response(request, write=True)
