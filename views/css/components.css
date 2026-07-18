@@ -591,6 +591,34 @@
   gap: 8px;
   justify-content: flex-end;
 }
+
+#manager-employees-table .employee-status-cell {
+    white-space: nowrap;
+}
+
+#manager-employees-table .employee-status-cell .badge {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.35rem;
+}
+
+#manager-employees-table .employee-status-cell .badge svg {
+    height: 0.9rem;
+    width: 0.9rem;
+}
+
+#manager-employees-table .employee-status-meta {
+    color: var(--text-muted);
+    display: block;
+    font-size: 0.75rem;
+    margin-top: 0.3rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #manager-employees-table .action-btn[aria-busy="true"] .anim-spin {
+    animation: none;
+  }
+}
 .action-btn {
   width: 32px;
   height: 32px;
@@ -1748,4 +1776,13 @@ textarea[disabled] {
   clip: rect(0, 0, 0, 0) !important;
   white-space: nowrap !important;
   border: 0 !important;
+}
+.personal-workspace-note {
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  background: var(--neutral-soft);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }

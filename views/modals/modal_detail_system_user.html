@@ -32,14 +32,14 @@
                             <input type="text" id="detail-su-organization" readonly disabled
                                 placeholder="Nhập tên tổ chức, doanh nghiệp..." class="bf-s-d29233953c">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="detail-su-role-container">
                             <label for="detail-su-role">Vai trò trong tổ chức</label>
                             <select id="detail-su-role">
                                 <option value="manager">Quản lý</option>
                                 <option value="employee">Chuyên viên</option>
                             </select>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="detail-su-package-container">
                             <label for="detail-su-package">Gói đăng ký dịch vụ</label>
                             <select id="detail-su-package">
                                 <option value="silver">Gói Bạc (Silver)</option>
@@ -47,7 +47,7 @@
                                 <option value="diamond">Gói Kim Cương (Diamond)</option>
                             </select>
                         </div>
-                        <div class="form-grid bf-s-0ba89ebac6">
+                        <div class="form-grid bf-s-0ba89ebac6" id="detail-su-dates-container">
                             <div class="form-group bf-s-4bbf3df076">
                                 <label for="detail-su-startdate">Ngày bắt đầu gói</label>
                                 <input type="text" id="detail-su-startdate" placeholder="dd/MM/yyyy" readonly>
@@ -56,6 +56,9 @@
                                 <label for="detail-su-enddate">Ngày kết thúc gói</label>
                                 <input type="text" id="detail-su-enddate" placeholder="dd/MM/yyyy" readonly>
                             </div>
+                        </div>
+                        <div class="personal-workspace-note col-span-2" id="detail-su-personal-note" hidden>
+                            Tài khoản chưa thuộc tổ chức. Không gian cá nhân được sử dụng tự động và không cần gói dịch vụ.
                         </div>
                     </div>
                 </div>

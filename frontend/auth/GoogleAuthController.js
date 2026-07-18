@@ -52,25 +52,29 @@ export function setupGoogleSignIn() {
       reloadWithInitLoader();
       return;
     }
-    hideGoogleAuthPending();
     hideAuthOverlay();
     try {
-      await this.forceSyncData();
-    } catch (err) {
-      console.error("Failed sync after Google login:", err);
+      try {
+        await this.forceSyncData();
+      } catch (err) {
+        console.error("Failed sync after Google login:", err);
+      }
+      if (typeof this.setupWebSocketConnection === "function") {
+        this.setupWebSocketConnection();
+      }
+      this.view.updateActiveUserProfileDisplay();
+      if (typeof this.renderWorkspaceSwitcher === "function") this.renderWorkspaceSwitcher();
+      if (activeRole === "super_admin") {
+        await this.switchTab("superadmin-dashboard");
+      } else {
+        await this.switchTab("dashboard");
+      }
+      this.setupRBACEvents?.();
+      this.startBackgroundSessionChecker();
+    } finally {
+      hideGoogleAuthPending();
+      setAuthFlowInProgress(false);
     }
-    if (typeof this.setupWebSocketConnection === "function") {
-      this.setupWebSocketConnection();
-    }
-    this.view.updateActiveUserProfileDisplay();
-    if (typeof this.renderWorkspaceSwitcher === "function") this.renderWorkspaceSwitcher();
-    if (activeRole === "super_admin") {
-      await this.switchTab("superadmin-dashboard");
-    } else {
-      await this.switchTab("dashboard");
-    }
-    this.setupRBACEvents?.();
-    this.startBackgroundSessionChecker();
   };
   this._showSetUsernameModal = (activeRole, onSuccess, suggestedUsername = "", accountLinked = false) => {
     const modalOverlay = document.getElementById("modal-set-username-overlay");
@@ -86,7 +90,7 @@ export function setupGoogleSignIn() {
       if (accountLinked) {
         descEl.innerHTML = 'Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
       } else {
-        descEl.innerHTML = 'Tài khoản Google của bạn đã được tạo. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
+        descEl.innerHTML = 'Tài khoản Google của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Hệ thống không gửi mật khẩu tạm qua email. Bạn có thể tiếp tục đăng nhập bằng Google; nếu muốn tạo mật khẩu riêng, hãy dùng “Quên mật khẩu” sau khi hoàn tất.</span>';
       }
     }
     setRuntimeStyle(modalOverlay, "display", "flex");
@@ -204,6 +208,10 @@ export function setupGoogleSignIn() {
         showGoogleLoginError(data.error || "Dang nhap Google that bai!");
         return;
       }
+      showGoogleAuthPending({
+        title: "Đăng nhập Google thành công",
+        detail: "Đang tải không gian làm việc..."
+      });
       setAuthSessionActive(true);
       if (data.username) {
         sessionStorage.setItem("bf_username", data.username);

@@ -87,9 +87,17 @@
     const orgPill = document.getElementById("header-active-org-pill");
     const orgName = document.getElementById("header-active-org-name");
     const orgPillContainer = document.getElementById("workspace-pill-container");
-    if (orgPillContainer) orgPillContainer.hidden = !selectedOrganization;
-    if (orgPill && orgName && selectedOrganization) {
-      orgName.textContent = selectedOrganization.name;
+    const activeOrganizations = organizations.filter((organization) => organization.status === "active");
+    const onlyPersonalWorkspace = activeOrganizations.length === 1
+      && String(activeOrganizations[0]?.scope_type || "organization").toLowerCase() === "personal";
+    const showWorkspacePill = Boolean(selectedOrganization && !onlyPersonalWorkspace);
+    if (orgPillContainer) {
+      orgPillContainer.hidden = !showWorkspacePill;
+      orgPillContainer.style.display = showWorkspacePill ? "inline-block" : "none";
+    }
+    if (orgPill && orgName && showWorkspacePill) {
+      const selectedScopeType = String(selectedOrganization.scope_type || "organization").toLowerCase();
+      orgName.textContent = selectedScopeType === "personal" ? "Cá nhân" : selectedOrganization.name;
     }
 
     document.querySelectorAll(".role-menu-superadmin").forEach((item) => {

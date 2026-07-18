@@ -1,6 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
-import { escapeHtml as escapeHTML, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
+import { escapeHtml as escapeHTML, formatDateOnly, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { registerCommandArgs } from "../shared/commandArgs.js";
 import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeProfile } from "../auth/accessContext.js";
 import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
@@ -45,13 +45,18 @@ export function updateActiveUserProfileDisplay() {
     const orgPill = document.getElementById("header-active-org-pill");
     const orgPillName = document.getElementById("header-active-org-name");
     const orgPillContainer = document.getElementById("workspace-pill-container");
-    const activeBusinessOrganization = normalizeOrganizations(user).find(
+    const activeWorkspace = orgs.find(
       (organization) => organization.status === "active" && organization.id === activeOrg
     );
-    if (orgPillContainer) orgPillContainer.hidden = !activeBusinessOrganization;
+    const onlyPersonalWorkspace = orgs.length === 1 && orgs[0].scope_type === "personal";
+    const showWorkspacePill = Boolean(activeWorkspace && !onlyPersonalWorkspace);
+    if (orgPillContainer) {
+      orgPillContainer.hidden = !showWorkspacePill;
+      setRuntimeStyle(orgPillContainer, "display", showWorkspacePill ? "inline-block" : "none");
+    }
     if (orgPill && orgPillName) {
-      if (activeBusinessOrganization) {
-        orgPillName.textContent = activeBusinessOrganization.name;
+      if (showWorkspacePill) {
+        orgPillName.textContent = activeWorkspace.name;
         setRuntimeStyle(orgPill, "display", "flex");
         setRuntimeStyle(orgPill, "cursor", "default");
       } else {
@@ -329,11 +334,14 @@ export function renderManagerNhanVienPanel() {
                     <td class="fw-bold bf-s-0c5104285b">${escapeHTML(emp.name)}</td>
                     <td class="bf-s-0c5104285b">${escapeHTML(emp.email)}</td>
                     <td class="bf-s-0c5104285b">${escapeHTML(emp.phone)}</td>
+                    <td class="employee-status-cell">
+                        <span class="badge badge-success"><i data-lucide="circle-check" aria-hidden="true"></i> Đang làm việc</span>
+                    </td>
                     <td class="bf-s-922aea7b47">${assignedTasks || '<span class="text-muted">Chưa giao thầu</span>'}</td>
                     <td class="bf-s-0c5104285b">
                         <div class="action-btn-group bf-s-273ba347d4">
-                            <button class="action-btn btn-edit" data-bf-action="call" data-fn="editEmployee" data-arg-key="${editArgsKey}" title="Sửa"><i data-lucide="edit-2"></i></button>
-                            <button class="action-btn btn-delete" data-bf-action="call" data-fn="deleteEmployee" data-arg-key="${deleteArgsKey}" title="Xóa"><i data-lucide="trash-2"></i></button>
+                            <button type="button" class="action-btn btn-edit" data-bf-action="call" data-fn="editEmployee" data-arg-key="${editArgsKey}" title="Sửa nhân viên" aria-label="Sửa nhân viên ${safeAttr(emp.name)}"><i data-lucide="edit-2" aria-hidden="true"></i></button>
+                            <button type="button" class="action-btn btn-delete" data-bf-action="call" data-fn="deleteEmployee" data-arg-key="${deleteArgsKey}" title="Cho nhân viên rời tổ chức" aria-label="Cho nhân viên ${safeAttr(emp.name)} rời tổ chức"><i data-lucide="trash-2" aria-hidden="true"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -347,14 +355,29 @@ export function renderManagerNhanVienPanel() {
         const label = assignment.type === "goithau" ? target?.maGoiThau : target?.soHopDong;
         return label ? `<span class="badge badge-neutral">${assignment.type === "goithau" ? "GT" : "HD"}: ${escapeHTML(label)}</span>` : "";
       }).filter(Boolean).join(" ");
+      const reAddArgsKey = registerCommandArgs([String(emp.id || ""), null]);
+      const leftDate = emp.leftAt ? formatDateOnly(emp.leftAt) : "";
       return `<tr class="is-former-member">
-        <td class="fw-bold">${escapeHTML(emp.name)} <span class="badge badge-neutral">Đã rời</span></td>
+        <td class="fw-bold">${escapeHTML(emp.name)}</td>
         <td>${escapeHTML(emp.email)}</td><td>${escapeHTML(emp.phone)}</td>
+        <td class="employee-status-cell">
+          <span class="badge badge-danger"><i data-lucide="user-minus" aria-hidden="true"></i> Đã rời</span>
+          ${leftDate ? `<span class="employee-status-meta">${escapeHTML(leftDate)}</span>` : ""}
+        </td>
         <td>${history || '<span class="text-muted">Không có lịch sử phân công</span>'}</td>
-        <td><span class="text-muted">${escapeHTML(emp.leftAt || "")}</span></td>
+        <td>
+          <div class="action-btn-group">
+            <button type="button" class="action-btn btn-view" data-bf-action="call" data-fn="reAddEmployee" data-arg-key="${reAddArgsKey}" title="Thêm lại nhân viên" aria-label="Thêm lại nhân viên ${safeAttr(emp.name)}">
+              <i data-lucide="user-plus" aria-hidden="true"></i>
+            </button>
+          </div>
+        </td>
       </tr>`;
     }).join("");
-    tbody.innerHTML = activeRows + formerRows;
+    tbody.innerHTML = activeRows + formerRows || `
+      <tr>
+        <td colspan="6" class="text-center text-muted">Chưa có nhân viên trong danh sách.</td>
+      </tr>`;
   }
   const matrixTbody = document.getElementById("manager-matrix-tbody");
   if (matrixTbody) {

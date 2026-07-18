@@ -355,7 +355,6 @@ from backend.auth.otp_routes import (
 )
 from backend.api.org_routes import (
     add_user_to_org_api,
-    activate_personal_subscription_api,
     get_document_export_capabilities_api,
     list_former_organization_members_api,
     remove_user_from_org_api,
@@ -694,7 +693,6 @@ routes = [
     Route("/api/auth/users/update-role", update_user_role_api, methods=["POST"]),
     Route("/api/auth/users/update-metadata", update_user_metadata_api, methods=["POST"]),
     Route("/api/auth/users/add-to-org", add_user_to_org_api, methods=["POST"]),
-    Route("/api/auth/users/activate-personal-package", activate_personal_subscription_api, methods=["POST"]),
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
     Route("/api/organizations/subscription", update_organization_subscription_api, methods=["POST"]),
     Route("/api/organizations/former-members", list_former_organization_members_api, methods=["GET"]),

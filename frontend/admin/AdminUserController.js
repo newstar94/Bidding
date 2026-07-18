@@ -1,8 +1,7 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
 import { businessOrganizations, normalizeOrganizations, organizationDisplayName, organizationEmployeeProfile } from "../auth/accessContext.js";
-import { escapeHtml } from "../shared/view_helpers.js";
-import { getActiveOrganizationId, setActiveOrganizationId } from "../app/workspaceState.js";
+import { getActiveOrganizationId } from "../app/workspaceState.js";
 import { apiFetch } from "../shared/apiClient.js";
 import {
   buildProfileUpdatePayload,
@@ -190,15 +189,24 @@ export async function showSystemUserDetail(userId) {
     const activeOrgId = getActiveOrganizationId();
     const activeMembership = normalizeOrganizations(user).find((organization) => organization.id === activeOrgId);
     document.getElementById("detail-su-role").value = activeMembership?.role || "employee";
-    const organizations = normalizeOrganizations(user);
+    const organizations = businessOrganizations(user);
     const organization = organizations.find((item) => item.id === getActiveOrganizationId()) || organizations[0];
     const subscription = organization?.subscription || {};
     document.getElementById("form-detail-system-user").dataset.organizationId = organization?.id || "";
     document.getElementById("detail-su-package").value = subscription.package_id || "none";
     const orgContainer = document.getElementById("detail-su-org-container");
-    if (orgContainer) {
-      setRuntimeStyle(orgContainer, "display", organization ? "block" : "none");
-    }
+    const organizationSettingIds = [
+      "detail-su-org-container",
+      "detail-su-role-container",
+      "detail-su-package-container",
+      "detail-su-dates-container"
+    ];
+    organizationSettingIds.forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) setRuntimeStyle(element, "display", organization ? "block" : "none");
+    });
+    const personalNote = document.getElementById("detail-su-personal-note");
+    if (personalNote) personalNote.hidden = Boolean(organization);
     document.getElementById("detail-su-startdate").value = subscription.start_date ? this.model.formatForDateInput(subscription.start_date) : "";
     document.getElementById("detail-su-enddate").value = subscription.end_date ? this.model.formatForDateInput(subscription.end_date) : "";
     this.view.openModal("modal-detail-system-user");
@@ -207,7 +215,6 @@ export async function showSystemUserDetail(userId) {
   }
 }
 export function setupRBACEvents() {
-  this.renderWorkspaceSwitcher();
   const profileDropdown = document.getElementById("profile-dropdown-menu");
   bindAdminEvent(document, "click", "switch-active-role", (e) => {
       const btn = e.target.closest?.(".dropdown-role-btn");
@@ -431,24 +438,12 @@ export function setupRBACEvents() {
       const packageId = document.getElementById("detail-su-package").value;
       const organizationId = formSu.dataset.organizationId || "";
       if (!organizationId) {
-        if (!packageId || packageId === "none") {
-          await this.view.customAlert("Chưa chọn gói", "Hãy chọn gói dịch vụ để kích hoạt không gian làm việc cá nhân.", "alert-triangle");
-          return;
-        }
-        try {
-          const response = await apiFetch("/api/auth/users/activate-personal-package", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: userId, package_id: packageId })
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Không thể kích hoạt gói cá nhân.");
-          this.view.closeModal("modal-detail-system-user");
-          await this.view.customAlert("Thành công", "Đã kích hoạt gói và không gian làm việc cá nhân.", "check-circle");
-          this.loadSystemUsers();
-        } catch (err) {
-          await this.view.customAlert("Không thể kích hoạt", err.message, "alert-triangle");
-        }
+        this.view.closeModal("modal-detail-system-user");
+        await this.view.customAlert(
+          "Không cần thiết lập",
+          "Tài khoản chưa thuộc tổ chức và đã tự động sử dụng không gian cá nhân với đầy đủ chức năng.",
+          "check-circle"
+        );
         return;
       }
       try {
@@ -840,11 +835,15 @@ export async function deleteEmployee(id) {
   const confirmed = await this.view.customConfirm("Xác nhận gỡ nhân sự", warningText, "trash-2");
   if (confirmed) {
     try {
-      const submitOffboarding = (successorUserId = "") => apiFetch("/api/auth/users/remove-from-org", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: id, successor_user_id: successorUserId })
-      });
+      const submitOffboarding = (successorUserId = "") => {
+        const payload = { user_id: id };
+        if (successorUserId) payload.successor_user_id = successorUserId;
+        return apiFetch("/api/auth/users/remove-from-org", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      };
       let res = await submitOffboarding();
       let data = await res.json().catch(() => ({}));
       if (res.status === 409 && data.code === "SUCCESSOR_REQUIRED") {
@@ -863,9 +862,16 @@ export async function deleteEmployee(id) {
         data = await res.json().catch(() => ({}));
       }
       if (res.ok) {
+        const removedPermissionIds = this.model.state.permissionmatrix
+          .filter((permission) => permission.empId === id)
+          .map((permission) => permission.id)
+          .filter(Boolean);
         await this.reloadEmployeesFromDatabase();
         this.model.state.permissionmatrix = this.model.state.permissionmatrix.filter((m) => m.empId !== id);
-        await this.model.persistData("permissionmatrix");
+        await this.model.persistData("permissionmatrix", { trackMutation: false });
+        removedPermissionIds.forEach((permissionId) => {
+          this.model.removePendingMutation?.("permissionmatrix", permissionId);
+        });
         await this.forceSyncData(true, true);
         this.view.renderManagerNhanVienPanel();
         await this.view.customAlert("Đã cho nhân sự rời tổ chức", "Quyền truy cập đã được thu hồi và lịch sử phân công được giữ lại.", "check-circle");
@@ -874,6 +880,67 @@ export async function deleteEmployee(id) {
       }
     } catch (err) {
       await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+    }
+  }
+}
+export async function reAddEmployee(id, actionButton = null) {
+  const employee = (this.model.state.formerEmployees || []).find((item) => item.id === id);
+  if (!employee) return;
+  const confirmed = await this.view.customConfirm(
+    "Thêm lại nhân viên",
+    `Thêm “${employee.name}” trở lại tổ chức với email hiện tại ${employee.email}? Nhân viên sẽ được cấp lại quyền xem mặc định.`,
+    "user-plus"
+  );
+  if (!confirmed) return;
+
+  const originalButtonHtml = actionButton?.innerHTML || "";
+  if (actionButton) {
+    actionButton.disabled = true;
+    actionButton.setAttribute("aria-busy", "true");
+    actionButton.innerHTML = '<i class="anim-spin" data-lucide="loader-circle" aria-hidden="true"></i>';
+    lucide.createIcons({ root: actionButton });
+  }
+  try {
+    const response = await apiFetch("/api/auth/users/add-to-org", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: employee.id,
+        employee_name: employee.name,
+        phone: employee.phone || ""
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      await this.view.customAlert("Không thể thêm lại", data.error || "Không thể thêm lại nhân viên này.", "alert-triangle");
+      return;
+    }
+
+    await this.reloadEmployeesFromDatabase();
+    if (!this.model.state.permissionmatrix.some((item) => item.empId === employee.id)) {
+      this.model.state.permissionmatrix.push({
+        id: generateRecordId("permissionmatrix"),
+        empId: employee.id,
+        kehoach: "view",
+        goithau: "view",
+        hopdong: "view",
+        chudautu: "view",
+        nhathau: "view",
+        chuyengia: "view"
+      });
+      await this.model.persistData("permissionmatrix");
+      await this.forceSyncData(true, true);
+    }
+    this.view.renderManagerNhanVienPanel();
+    await this.view.customAlert("Đã thêm lại nhân viên", data.message || "Nhân viên đã trở lại tổ chức.", "check-circle");
+  } catch (err) {
+    await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
+  } finally {
+    if (actionButton?.isConnected) {
+      actionButton.disabled = false;
+      actionButton.removeAttribute("aria-busy");
+      actionButton.innerHTML = originalButtonHtml;
+      lucide.createIcons({ root: actionButton });
     }
   }
 }
@@ -890,6 +957,7 @@ export async function reloadEmployeesFromDatabase() {
           name: employeeProfile.name,
           email: u.email || "",
           phone: employeeProfile.phone,
+          status: "active",
           role: u.role,
           organizations: normalizeOrganizations(u)
         };
@@ -1026,72 +1094,5 @@ export async function togglePackageLock(pkgId) {
     }
   }
 }
-export function renderWorkspaceSwitcher() {
-  const orgSwitchSection = document.getElementById("org-switch-section");
-  const orgSwitchList = document.getElementById("org-switch-list");
-  const currentUser = this.model.state.activeuser;
-  const orgs = normalizeOrganizations(currentUser || {}).filter((organization) => organization.status === "active");
-  if (!currentUser || orgs.length === 0) {
-    if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "none");
-    return;
-  }
-  if (orgs.length <= 1) {
-    if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "none");
-    return;
-  }
-  if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "block");
-  let activeOrg = getActiveOrganizationId();
-  if (!activeOrg || !orgs.some((organization) => organization.id === activeOrg)) {
-    activeOrg = orgs[0].id;
-    setActiveOrganizationId(activeOrg);
-  }
-  const htmlContent = orgs.map((org) => {
-    const isActive = org.id === activeOrg;
-    const initials = org.scope_type === "personal"
-      ? '<i data-lucide="user" aria-hidden="true"></i>'
-      : escapeHtml(org.name.split(" ").map((w) => w[0]).join("").substring(0, 2).toUpperCase());
-    const activeBg = isActive ? "var(--primary-soft)" : "transparent";
-    return `
-            <button class="dropdown-item dropdown-org-btn" data-org="${escapeHtml(org.id)}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; background: ${activeBg}; width: 100%; text-align: left; padding: 8px 16px; cursor: pointer; transition: background 0.15s ease;">
-                <div class="bf-s-1ec945a6d2">
-                    <div style="width: 24px; height: 24px; border-radius: 6px; background: ${isActive ? "var(--primary)" : "var(--border-color)"}; color: ${isActive ? "#ffffff" : "var(--text-muted)"}; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; transition: all 0.2s;">
-                        ${initials}
-                    </div>
-                    <span style="font-size: 0.78rem; font-weight: ${isActive ? "700" : "500"}; color: ${isActive ? "var(--primary)" : "var(--text-main)"}; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: 1; min-width: 0;">
-                        ${escapeHtml(org.name)}
-                    </span>
-                </div>
-                ${isActive ? `<i data-lucide="check" class="bf-s-2238b82015"></i>` : ""}
-            </button>
-        `;
-  }).join("");
-  if (orgSwitchList) orgSwitchList.innerHTML = htmlContent;
-  lucide.createIcons();
-  const registerClick = (listEl) => {
-    if (!listEl) return;
-    listEl.querySelectorAll(".dropdown-org-btn").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const selectedOrg = btn.getAttribute("data-org");
-        const currentActive = getActiveOrganizationId();
-        if (selectedOrg === currentActive) {
-          const profileDropdown = document.getElementById("profile-dropdown-menu");
-          if (profileDropdown) profileDropdown.classList.remove("active");
-          return;
-        }
-        try {
-          await this.switchWorkspaceContext(selectedOrg);
-          await this.reloadEmployeesFromDatabase();
-          const selectedName = orgs.find((org) => org.id === selectedOrg)?.name || selectedOrg;
-          await this.view.customAlert("Chuyển đổi thành công", `Đã chuyển sang không gian làm việc của "${selectedName}"!`, "check-circle");
-          const profileDropdown = document.getElementById("profile-dropdown-menu");
-          if (profileDropdown) profileDropdown.classList.remove("active");
-        } catch (err) {
-          await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
-        }
-      });
-    });
-  };
-  registerClick(orgSwitchList);
-}
+export { renderWorkspaceSwitcher } from "../auth/WorkspaceSwitcherController.js";
 import { generateRecordId } from "../shared/idUtils.js";

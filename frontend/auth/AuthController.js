@@ -6,3 +6,4 @@ export {
   startBackgroundSessionChecker
 } from "./AuthSessionController.js";
 export { validateUsernameClient } from "./usernameClientPolicy.js";
+export { renderWorkspaceSwitcher } from "./WorkspaceSwitcherController.js";

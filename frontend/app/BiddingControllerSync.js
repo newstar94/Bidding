@@ -790,9 +790,10 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     if (response.ok) {
       const dbData = await response.json();
       if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
-      const { changedKeys, persistencePromise } = applyServerSnapshot(this.model, dbData, { useVersionDelta, since });
+      const { changedKeys, deletionsByTable, persistencePromise } = applyServerSnapshot(this.model, dbData, { useVersionDelta, since });
       await persistencePromise;
       if (!workspaceIsCurrent(this, workspace)) return { ok: false, stale: true };
+      this.model?.acknowledgeServerDeletions?.(deletionsByTable);
       const committedCursor = commitSyncCursor(storage, dbData);
       if (committedCursor.syncVersion !== null) {
         this.model?.rebasePendingMutationQueue?.(committedCursor.syncVersion);
@@ -896,6 +897,14 @@ export function setupWebSocketConnection() {
         if (!workspaceIsCurrent(this, workspace)) return;
         if (debug) console.log("Database changed event received from WebSocket. Triggering Delta Sync...");
         this.scheduleBackgroundSync(300);
+      } else if (msg.event === "organization_member_changed") {
+        if (!workspaceIsCurrent(this, workspace)) return;
+        const employeeTab = document.getElementById("tab-managernhanvien");
+        if (employeeTab?.classList.contains("active") && typeof this.reloadEmployeesFromDatabase === "function") {
+          void this.reloadEmployeesFromDatabase().then(() => {
+            this.view.renderManagerNhanVienPanel();
+          });
+        }
       }
     } catch (e) {
       console.error("Error handling WebSocket message:", e);

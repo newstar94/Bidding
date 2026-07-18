@@ -771,6 +771,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     this.setupDelegatedActions();
     this.setupConditionalUI();
     this.view.updateActiveUserProfileDisplay();
+    this.renderWorkspaceSwitcher?.();
     this.setupRBACEvents();
     this.markStartup("ui:critical");
     window.addEventListener("popstate", (e) => {
@@ -993,6 +994,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const togglePackageLock = (id) => this.togglePackageLock(id);
     const editEmployee = (id) => this.editEmployee(id);
     const deleteEmployee = (id) => this.deleteEmployee(id);
+    const reAddEmployee = (id, actionButton) => this.reAddEmployee(id, actionButton);
     const editHoSoGiayStatus = (id) => this.editHoSoGiayStatus(id);
     const deleteHoSoGiayStatus = (id) => this.deleteHoSoGiayStatus(id);
     const triggerUpgradePrompt = () => this.triggerUpgradePrompt();
@@ -1108,6 +1110,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       togglePackageLock,
       editEmployee,
       deleteEmployee,
+      reAddEmployee,
       editHoSoGiayStatus,
       deleteHoSoGiayStatus,
       triggerUpgradePrompt,

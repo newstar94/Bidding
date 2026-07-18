@@ -20,6 +20,7 @@ from backend.shared.access_policy import (
     can_read_record,
     resolve_document_export_capabilities,
 )
+from backend.shared.subscription_policy import can_use_word_export
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.async_io import (
@@ -178,14 +179,19 @@ def _can_export_record(role_or_err, org_name, payload_key, table_name, record_id
     conn = database.get_connection()
     try:
         cursor = conn.cursor()
-        return can_read_record(
-            cursor,
-            str(role_or_err),
-            role_or_err.user_id,
-            org_name,
-            payload_key,
-            table_name,
-            record_id,
+        return (
+            can_use_word_export(
+                cursor, str(role_or_err), role_or_err.user_id, org_name
+            )
+            and can_read_record(
+                cursor,
+                str(role_or_err),
+                role_or_err.user_id,
+                org_name,
+                payload_key,
+                table_name,
+                record_id,
+            )
         )
     finally:
         conn.close()

@@ -30,8 +30,9 @@
   --surface-subtle: #f0f5fb;
   --surface-raised: #ffffff;
   --ink: #111a2c;
-  --ink-muted: #526079;
-  --ink-subtle: #6a778d;
+  /* Readable secondary copy: 7.44:1 and 5.64:1 on the subtle surface. */
+  --ink-muted: #40506a;
+  --ink-subtle: #53627a;
   --line: #dce5f0;
   --line-strong: #c7d5e5;
   --brand: #3157e8;
@@ -48,8 +49,8 @@
   --border-color: #dce5f0;
   --border-hover: #c7d5e5;
   --text-main: #111a2c;
-  --text-muted: #526079;
-  --text-light: #6a778d;
+  --text-muted: #40506a;
+  --text-light: #53627a;
   --primary: #3157e8;
   --primary-hover: #2446c7;
   --primary-soft: #edf2ff;

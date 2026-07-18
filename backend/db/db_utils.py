@@ -1,13 +1,15 @@
 from .schema import SCHEMA_DINH_NGHIA
-from backend.db.migration_runner import MigrationContext, run_migrations
-from backend.db.migrations import MIGRATIONS
+from backend.db.upgrades import (
+    DB_SCHEMA_VERSION,
+    DatabaseUpgradeContext,
+    apply_database_upgrades,
+    read_database_version,
+    record_database_version,
+)
 from .db_helper import database
 import os
 import re
 from backend.shared.logging_utils import log_error
-
-DB_SCHEMA_VERSION = MIGRATIONS[-1].VERSION if MIGRATIONS else 0
-
 
 _ALLOWED_TABLES: frozenset = frozenset()
 
@@ -25,7 +27,7 @@ def _assert_safe_table(table_name: str) -> str:
 
 
 def _build_create_table_sql(table_name: str, table_spec: dict) -> str:
-    """Build canonical table DDL used by the clean baseline migration."""
+    """Build canonical table DDL used by a fresh database installation."""
     cols_def = []
     primary_keys = table_spec.get("primary_keys", [])
     for col_name, col_def in table_spec["columns"].items():
@@ -56,12 +58,6 @@ def _assert_schema_contract(cursor):
         ).fetchone()
         if not row:
             raise RuntimeError(f"Schema drift: missing table {table_name}.")
-        if table_name == "thanh_vien_to_chuc":
-            actual_columns = {item[1] for item in cursor.execute(f"PRAGMA table_info({table_name})")}
-            required_columns = set(table_spec["columns"])
-            if not required_columns.issubset(actual_columns):
-                raise RuntimeError(f"Schema drift: table definition changed for {table_name}.")
-            continue
         expected = _normalize_ddl(_build_create_table_sql(table_name, table_spec))
         actual = _normalize_ddl(row[0])
         if actual != expected:
@@ -69,7 +65,7 @@ def _assert_schema_contract(cursor):
 
 
 def _assert_post_baseline_schema(cursor):
-    """Validate objects introduced after the immutable baseline migration."""
+    """Validate canonical indexes and triggers that are not table definitions."""
     timeline_columns = [
         "id", "organization_id", "owner_type", "goi_thau_id", "ma_nhom",
         "ten_nhom", "ma_moc", "cong_viec", "don_vi_ban_hanh", "so_van_ban",
@@ -91,6 +87,31 @@ def _assert_post_baseline_schema(cursor):
     }
     if not required_indexes <= actual_indexes:
         raise RuntimeError("Schema drift: package timeline indexes are missing.")
+    required_timeline_triggers = {
+        "trg_goi_thau_moc_tien_do_workspace_owner_insert",
+        "trg_goi_thau_moc_tien_do_workspace_owner_update",
+    }
+    actual_timeline_triggers = {
+        row[0]
+        for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'goi_thau_moc_tien_do'"
+        ).fetchall()
+    }
+    if not required_timeline_triggers <= actual_timeline_triggers:
+        raise RuntimeError("Schema drift: package timeline workspace triggers are missing.")
+
+    required_record_ownership_triggers = {
+        "trg_record_edit_ownership_workspace_insert",
+        "trg_record_edit_ownership_workspace_update",
+    }
+    actual_record_ownership_triggers = {
+        row[0]
+        for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'record_edit_ownership'"
+        ).fetchall()
+    }
+    if not required_record_ownership_triggers <= actual_record_ownership_triggers:
+        raise RuntimeError("Schema drift: record ownership workspace triggers are missing.")
 
     pending_email_columns = [
         "user_id", "current_email_norm", "pending_email", "pending_email_norm",
@@ -161,10 +182,14 @@ def _assert_post_baseline_schema(cursor):
 
 
 def _create_baseline_indexes_and_triggers(cursor):
-    """Create indexes, invariant triggers and FTS exactly once in migration 0001."""
+    """Create canonical indexes, invariant triggers and FTS for a fresh database."""
     versioned_tables = ["chu_dau_tu", "ke_hoach_lcnt", "goi_thau", "nha_thau", "chuyen_gia", "hop_dong"]
     synced_tables = versioned_tables + ["phan_cong_nhan_su", "trang_thai_ho_so_giay", "thong_tin_mo_thau", "ma_tran_phan_quyen"]
-    owner_typed_tables = synced_tables + ["cau_hinh_bien_word"]
+    owner_typed_tables = [
+        table_name
+        for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
+        if "owner_type" in table_spec.get("columns", {})
+    ]
 
     for table in versioned_tables:
         _assert_safe_table(table)
@@ -285,6 +310,7 @@ def _create_baseline_indexes_and_triggers(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limit_expires ON rate_limit_buckets (expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (organization_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_status_expiry ON organization_subscriptions (status, expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_subscriptions_status_expiry ON account_subscriptions (status, expires_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_idempotency_created ON api_idempotency (created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_deleted ON deleted_records (organization_id, deleted_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (organization_id, delete_version)")
@@ -293,17 +319,108 @@ def _create_baseline_indexes_and_triggers(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (organization_id, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log (actor_user_id, created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_action_created ON audit_log (action, created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_record_edit_ownership_user ON record_edit_ownership (organization_id, user_id, table_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_package ON goi_thau_moc_tien_do (organization_id, goi_thau_id, sort_order, ma_moc)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_status ON goi_thau_moc_tien_do (organization_id, trang_thai, ngay_du_kien)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_document_export_capabilities_user ON document_export_capabilities (user_id, organization_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_assignment_history_member ON phan_cong_nhan_su_lich_su (organization_id, id_nhan_vien, ended_at)")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_log_single_successor ON audit_log (previous_hash)")
 
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_deleted_records_unique_record
         ON deleted_records (organization_id, table_name, record_id)
     """)
     _ensure_fts_indexes(cursor)
+    _ensure_workspace_owner_triggers(cursor, owner_typed_tables)
+    _ensure_record_edit_ownership_triggers(cursor)
+    _ensure_verified_email_change_trigger(cursor)
     _ensure_delta_sync_triggers(cursor, synced_tables)
     _ensure_assignment_tenant_triggers(cursor)
     _ensure_contract_package_triggers(cursor)
     _ensure_evaluation_actor_triggers(cursor)
     _ensure_lineage_triggers(cursor, versioned_tables)
+
+
+def _ensure_workspace_owner_triggers(cursor, owner_typed_tables):
+    """Validate polymorphic organization/personal scope references."""
+    for table_name in owner_typed_tables:
+        _assert_safe_table(table_name)
+        for operation, event in (("insert", "INSERT"), ("update", "UPDATE OF organization_id, owner_type")):
+            trigger_name = f"trg_{table_name}_workspace_owner_{operation}"
+            cursor.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+            cursor.execute(f"""
+                CREATE TRIGGER {trigger_name}
+                BEFORE {event} ON {table_name}
+                FOR EACH ROW
+                BEGIN
+                    SELECT CASE
+                        WHEN NEW.owner_type = 'organization'
+                         AND NOT EXISTS (SELECT 1 FROM to_chuc WHERE id = NEW.organization_id)
+                        THEN RAISE(ABORT, 'organization workspace does not exist')
+                    END;
+                    SELECT CASE
+                        WHEN NEW.owner_type = 'personal'
+                         AND NOT EXISTS (
+                             SELECT 1 FROM tai_khoan
+                             WHERE id = substr(NEW.organization_id, 10)
+                               AND vai_tro != 'super_admin'
+                         )
+                        THEN RAISE(ABORT, 'personal workspace owner does not exist')
+                    END;
+                END
+            """)
+
+
+def _ensure_record_edit_ownership_triggers(cursor):
+    """Allow record ownership only in a real organization or a user's implicit scope."""
+    for operation, event in (
+        ("insert", "INSERT"),
+        ("update", "UPDATE OF organization_id, user_id"),
+    ):
+        cursor.execute(
+            f"""
+            CREATE TRIGGER trg_record_edit_ownership_workspace_{operation}
+            BEFORE {event} ON record_edit_ownership
+            FOR EACH ROW
+            WHEN NOT EXISTS (SELECT 1 FROM to_chuc WHERE id = NEW.organization_id)
+             AND NOT (
+                 NEW.organization_id = 'personal:' || NEW.user_id
+                 AND EXISTS (
+                     SELECT 1 FROM tai_khoan
+                     WHERE id = NEW.user_id AND vai_tro != 'super_admin'
+                 )
+             )
+            BEGIN
+                SELECT RAISE(ABORT, 'record ownership workspace does not exist');
+            END
+            """
+        )
+
+
+def _ensure_verified_email_change_trigger(cursor):
+    """Require a verified, unexpired pending request before changing account email."""
+    cursor.execute(
+        """
+        CREATE TRIGGER trg_tai_khoan_verified_email_update
+        BEFORE UPDATE OF email, email_norm ON tai_khoan
+        FOR EACH ROW
+        WHEN OLD.email_norm IS NOT NEW.email_norm
+        BEGIN
+            SELECT CASE WHEN NOT EXISTS (
+                SELECT 1
+                FROM pending_email_changes AS pending
+                WHERE pending.user_id = OLD.id
+                  AND pending.current_email_norm = OLD.email_norm
+                  AND pending.pending_email_norm = NEW.email_norm
+                  AND pending.pending_email = NEW.email
+                  AND pending.verified_at IS NOT NULL
+                  AND pending.verified_at <= pending.expires_at
+                  AND CAST(strftime('%s', 'now') AS INTEGER) < pending.expires_at
+            ) THEN RAISE(ABORT, 'verified email change required') END;
+        END
+        """
+    )
 
 
 def _ensure_lineage_triggers(cursor, versioned_tables):
@@ -467,6 +584,11 @@ def _ensure_fts_indexes(cursor):
         fts_table = f"fts_{table}"
         cols_sql = ", ".join(columns)
         new_cols = ", ".join(f"new.{col}" for col in columns)
+        changed_terms = [
+            "old.organization_id IS NOT new.organization_id",
+            "old.id IS NOT new.id",
+            *(f"old.{column} IS NOT new.{column}" for column in columns),
+        ]
         try:
             cursor.execute(f"DROP TABLE IF EXISTS {fts_table}")
             cursor.execute(f"""
@@ -500,6 +622,8 @@ def _ensure_fts_indexes(cursor):
             """)
             cursor.execute(f"""
                 CREATE TRIGGER trg_{table}_fts_au AFTER UPDATE ON {table}
+                FOR EACH ROW
+                WHEN {" OR ".join(changed_terms)}
                 BEGIN
                     DELETE FROM {fts_table} WHERE rowid = old.rowid;
                     INSERT OR REPLACE INTO {fts_table}(rowid, organization_id, id, {cols_sql})
@@ -795,8 +919,139 @@ def recalculate_tong_muc_dau_tu(cursor, organization_id=None, *, plan_ids=None):
     return changed_rows
 
 
+def _create_fresh_database(cursor, context):
+    """Create the complete current schema without replaying historical upgrades."""
+    import time
+
+    from backend.auth.auth_helper import hash_password
+    from backend.auth.identity import normalize_email, normalize_username
+    from backend.auth.password_policy import validate_new_password
+    from backend.db.id_utils import generate_record_id, stable_org_id
+    from backend.documents.word_defaults import ensure_default_word_mappings_for_all_orgs
+
+    existing_application_tables = {
+        row[0]
+        for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+        if row[0] in SCHEMA_DINH_NGHIA
+    }
+    if existing_application_tables:
+        raise RuntimeError(
+            "The clean schema baseline requires an empty database; existing tables: "
+            + ", ".join(sorted(existing_application_tables))
+        )
+
+    for table_name, table_spec in SCHEMA_DINH_NGHIA.items():
+        cursor.execute(context.build_create_table_sql(table_name, table_spec))
+
+    cursor.executemany(
+        """INSERT INTO goi_dich_vu
+           (id, ten_goi, gia_ca, han_muc_nhan_su, mo_ta)
+           VALUES (?, ?, ?, ?, ?)""",
+        [
+            (
+                "silver",
+                "Gói Bạc (Silver)",
+                15_000_000,
+                5,
+                "Phù hợp với đơn vị quy mô nhỏ, quản lý tối đa 5 nhân sự.",
+            ),
+            (
+                "gold",
+                "Gói Vàng (Gold)",
+                35_000_000,
+                15,
+                "Giải pháp cho phòng thầu chuyên nghiệp, tối đa 15 nhân sự.",
+            ),
+            (
+                "diamond",
+                "Gói Kim Cương (Diamond)",
+                75_000_000,
+                999,
+                "Gói quản trị không giới hạn số lượng nhân sự.",
+            ),
+        ],
+    )
+
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    password_valid, password_error = validate_new_password(admin_password)
+    if not password_valid:
+        raise RuntimeError(
+            f"ADMIN_PASSWORD does not satisfy password policy: {password_error}"
+        )
+    admin_id = generate_record_id("tai_khoan")
+    admin_name = os.environ.get("ADMIN_NAME", "Administrator").strip() or "Administrator"
+    admin_username = normalize_username(os.environ.get("ADMIN_USERNAME", "admin"))
+    admin_email = normalize_email(os.environ.get("ADMIN_EMAIL", "admin@localhost"))
+    organization_name = os.environ.get("DEFAULT_ORG_NAME", "HTD").strip() or "HTD"
+    organization_id = stable_org_id(organization_name)
+    cursor.execute(
+        """
+        INSERT INTO tai_khoan (
+            id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
+            email, email_norm, da_xac_minh
+        ) VALUES (?, ?, ?, ?, ?, 'super_admin', ?, ?, 1)
+        """,
+        (
+            admin_id,
+            admin_username,
+            admin_username,
+            hash_password(admin_password),
+            admin_name,
+            admin_email,
+            admin_email,
+        ),
+    )
+    cursor.execute(
+        "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+        (organization_id, organization_name),
+    )
+    cursor.execute(
+        """INSERT INTO thanh_vien_to_chuc
+           (user_id, organization_id, vai_tro_trong_to_chuc)
+           VALUES (?, ?, 'manager')""",
+        (admin_id, organization_id),
+    )
+    now = int(time.time())
+    cursor.execute(
+        """
+        INSERT INTO organization_subscriptions (
+            organization_id, package_id, status, starts_at, expires_at,
+            member_quota
+        ) VALUES (?, 'diamond', 'active', ?, ?, 999)
+        """,
+        (organization_id, now, now + 3650 * 24 * 60 * 60),
+    )
+    cursor.execute(
+        "INSERT INTO sync_metadata (organization_id, current_version) VALUES (?, 1)",
+        (organization_id,),
+    )
+
+    context.create_indexes_and_triggers(cursor)
+    ensure_default_word_mappings_for_all_orgs(cursor)
+    record_database_version(cursor, DB_SCHEMA_VERSION)
+
+    missing_tables = sorted(
+        set(SCHEMA_DINH_NGHIA)
+        - {
+            row[0]
+            for row in cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+    )
+    if missing_tables:
+        raise RuntimeError(
+            "Fresh database initialization did not create: "
+            + ", ".join(missing_tables)
+        )
+    context.assert_foreign_key_integrity(cursor)
+    return DB_SCHEMA_VERSION
+
+
 def khoi_tao_va_di_tru_he_thong():
-    """Apply immutable, ordered migrations to a clean or already-versioned DB."""
+    """Initialize a fresh schema or apply future upgrades from one registry file."""
     conn = None
     try:
         conn = database.get_connection()
@@ -804,23 +1059,31 @@ def khoi_tao_va_di_tru_he_thong():
 
         cursor.execute("PRAGMA foreign_keys = ON")
         cursor.execute("BEGIN IMMEDIATE")
-        version = run_migrations(
-            cursor,
-            MigrationContext(
-                build_create_table_sql=_build_create_table_sql,
-                create_indexes_and_triggers=_create_baseline_indexes_and_triggers,
-                assert_foreign_key_integrity=_assert_foreign_key_integrity,
-            ),
+        context = DatabaseUpgradeContext(
+            build_create_table_sql=_build_create_table_sql,
+            create_indexes_and_triggers=_create_baseline_indexes_and_triggers,
+            assert_foreign_key_integrity=_assert_foreign_key_integrity,
         )
+        installed_version = read_database_version(cursor)
+        if installed_version is None:
+            version = _create_fresh_database(cursor, context)
+        else:
+            version = apply_database_upgrades(cursor, installed_version, context)
         if version != DB_SCHEMA_VERSION:
-            raise RuntimeError(f"Migration runner stopped at unexpected version {version}.")
+            raise RuntimeError(
+                f"Database initialization stopped at unexpected version {version}."
+            )
         _assert_schema_contract(cursor)
         _assert_post_baseline_schema(cursor)
         _assert_foreign_key_integrity(cursor)
 
         conn.commit()
         if os.environ.get("APP_DEBUG", "False").lower() == "true":
-            log_error(f"Database migrations applied successfully (version {version}).", "Database", level="INFO")
+            log_error(
+                f"Database schema ready (version {version}).",
+                "Database",
+                level="INFO",
+            )
     except Exception as e:
         if conn:
             conn.rollback()

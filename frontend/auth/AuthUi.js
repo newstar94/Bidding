@@ -17,7 +17,10 @@ export function reloadWithInitLoader() {
     requestAnimationFrame(() => window.location.reload());
   });
 }
-export function showGoogleAuthPending() {
+export function showGoogleAuthPending({
+  title = "Đang đăng nhập bằng Google",
+  detail = "Đang xác thực tài khoản..."
+} = {}) {
   let pending = document.getElementById("google-auth-pending-overlay");
   if (!pending) {
     pending = document.createElement("div");
@@ -36,12 +39,16 @@ export function showGoogleAuthPending() {
     pending.innerHTML = `
             <div class="bf-s-c439060eb8">
                 <div class="bf-s-41cbab3292"></div>
-                <div class="bf-s-b0e7843cfa">Đang tạo tài khoản Google</div>
-                <div class="bf-s-513ea906bd">Vui lòng chờ trong giây lát...</div>
+                <div class="bf-s-b0e7843cfa" data-google-auth-pending-title></div>
+                <div class="bf-s-513ea906bd" data-google-auth-pending-detail></div>
             </div>
         `;
     document.body.appendChild(pending);
   }
+  const titleElement = pending.querySelector("[data-google-auth-pending-title]");
+  const detailElement = pending.querySelector("[data-google-auth-pending-detail]");
+  if (titleElement) titleElement.textContent = title;
+  if (detailElement) detailElement.textContent = detail;
   setRuntimeStyle(pending, "display", "flex");
 }
 export function hideGoogleAuthPending() {

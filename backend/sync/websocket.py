@@ -27,6 +27,7 @@ active_connections_by_ip = {}
 
 _WEBSOCKET_EVENT_FIELDS = {
     "db_changed": ("event",),
+    "organization_member_changed": ("event",),
     "organization_subscription_changed": ("event",),
     "sync_update": ("type", "table", "id", "syncVersion"),
 }

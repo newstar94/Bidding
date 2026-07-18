@@ -2,6 +2,7 @@ from backend.shared.helpers import clean_id
 from backend.sync.mapper import get_payload_value
 from backend.shared.domain_enums import enum_label
 from backend.shared.numeric_utils import parse_vnd_amount
+from backend.shared.workspace_scope import personal_scope_owner_id
 
 
 OWNER_SCOPED_REFERENCES = {
@@ -27,9 +28,15 @@ ARCHIVABLE_REFERENCE_TABLES = {
 
 
 def get_owner_type(cursor, organization_id):
-    cursor.execute("SELECT scope_type FROM to_chuc WHERE id = ?", (organization_id,))
-    row = cursor.fetchone()
-    return str(row[0]) if row else "unknown"
+    if cursor.execute("SELECT 1 FROM to_chuc WHERE id = ?", (organization_id,)).fetchone():
+        return "organization"
+    owner_id = personal_scope_owner_id(organization_id)
+    if owner_id and cursor.execute(
+        "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin'",
+        (owner_id,),
+    ).fetchone():
+        return "personal"
+    return "unknown"
 
 
 def _incoming_record(incoming_records_by_table, table_name, record_id):

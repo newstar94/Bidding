@@ -21,7 +21,7 @@ REQUIRED_APPLICATION_TABLES = frozenset({
     "tai_khoan",
     "to_chuc",
     "thanh_vien_to_chuc",
-    "schema_migrations",
+    "database_metadata",
     "password_reset_tokens",
     "rate_limit_buckets",
 })
@@ -110,7 +110,7 @@ def database_requires_admin_bootstrap(database):
 
 
 def validate_startup_configuration(database, environ=None):
-    """Validate configuration that must exist before first-run migration."""
+    """Validate configuration that must exist before first-run initialization."""
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
     requires_bootstrap = database_requires_admin_bootstrap(database)

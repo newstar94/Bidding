@@ -4,18 +4,21 @@ const ACTIVE_ORG_KEY = "bf_active_org";
 
 export function normalizeOrganizations(payload = {}) {
   if (Array.isArray(payload.organizations)) {
-    return payload.organizations.map((organization) => ({
-      id: String(organization?.id || "").trim(),
-      name: String(organization?.name || "").trim(),
-      scope_type: String(organization?.scope_type || "organization").trim().toLowerCase(),
-      role: String(organization?.role || "employee").trim().toLowerCase(),
-      status: String(organization?.status || "active").trim().toLowerCase(),
-      employee_name: String(organization?.employee_name || "").trim(),
-      employee_phone: String(organization?.employee_phone || "").trim(),
-      subscription: organization?.subscription && typeof organization.subscription === "object"
-        ? { ...organization.subscription }
-        : null
-    })).filter((organization) => organization.id && organization.name);
+    return payload.organizations.map((organization) => {
+      const scopeType = String(organization?.scope_type || "organization").trim().toLowerCase();
+      return {
+        id: String(organization?.id || "").trim(),
+        name: scopeType === "personal" ? "Cá nhân" : String(organization?.name || "").trim(),
+        scope_type: scopeType,
+        role: String(organization?.role || "employee").trim().toLowerCase(),
+        status: String(organization?.status || "active").trim().toLowerCase(),
+        employee_name: String(organization?.employee_name || "").trim(),
+        employee_phone: String(organization?.employee_phone || "").trim(),
+        subscription: organization?.subscription && typeof organization.subscription === "object"
+          ? { ...organization.subscription }
+          : null
+      };
+    }).filter((organization) => organization.id && organization.name);
   }
   return [];
 }

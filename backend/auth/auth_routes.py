@@ -52,7 +52,7 @@ from backend.auth.identity import (
 )
 from backend.auth.password_policy import validate_new_password, validate_password_input
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
-from backend.sync.api import disconnect_user_websockets
+from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.shared.logging_utils import error_response
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.access_policy import is_business_organization
@@ -1073,6 +1073,15 @@ async def verify_email_change_api(request):
             )
             conn.commit()
             return JSONResponse(conflict_payload("EMAIL_ALREADY_EXISTS"), status_code=409)
+        affected_organization_ids = [
+            str(row[0])
+            for row in cursor.execute(
+                """SELECT organization_id
+                   FROM thanh_vien_to_chuc
+                   WHERE user_id = ?""",
+                (role_or_err.user_id,),
+            ).fetchall()
+        ]
 
         cursor.execute(
             """UPDATE pending_email_changes
@@ -1122,6 +1131,11 @@ async def verify_email_change_api(request):
 
         _session_cache_invalidate_by_user_id(role_or_err.user_id)
         disconnect_user_websockets(role_or_err.user_id)
+        for organization_id in affected_organization_ids:
+            broadcast_websocket_event(
+                organization_id,
+                {"event": "organization_member_changed"},
+            )
         response = JSONResponse(
             {
                 "success": True,
@@ -1488,7 +1502,10 @@ async def update_user_role_api(request):
 
             if target_role == "manager" and new_role != "manager":
                 cursor.execute(
-                    "SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ? AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'",
+                    """SELECT count(*) FROM thanh_vien_to_chuc
+                       WHERE organization_id = ?
+                         AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'
+                         AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
                     (org_id,),
                 )
                 if int(cursor.fetchone()[0]) <= 1:

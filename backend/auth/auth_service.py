@@ -5,13 +5,14 @@ import hashlib
 import sqlite3
 from dataclasses import dataclass
 from starlette.responses import JSONResponse
-from backend.db.id_utils import stable_org_id
 from backend.auth.roles import (
     effective_access_roles,
     normalize_organization_role,
     normalize_platform_role,
 )
 from backend.shared.client_ip import get_client_ip
+from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
+from backend.shared.subscription_policy import get_account_subscription
 
 
 _SECURE_COOKIES = os.environ.get("APP_SECURE_COOKIES", "False").lower() == "true"
@@ -169,22 +170,22 @@ def get_user_organizations(cursor, user_id):
 
     cursor.execute(
         """
-        SELECT tc.id, tc.ten_to_chuc, tc.scope_type,
+        SELECT tc.id, tc.ten_to_chuc,
                tc.trang_thai AS organization_status,
                tvtc.vai_tro_trong_to_chuc,
                sub.package_id, sub.status AS subscription_status,
                sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
                pkg.trang_thai AS package_status,
                (SELECT count(*) FROM thanh_vien_to_chuc members
-                WHERE members.organization_id = tc.id) AS member_count
+                WHERE members.organization_id = tc.id
+                  AND COALESCE(members.trang_thai_thanh_vien, 'active') = 'active') AS member_count
         FROM thanh_vien_to_chuc AS tvtc
         JOIN to_chuc AS tc ON tc.id = tvtc.organization_id
         LEFT JOIN organization_subscriptions AS sub ON sub.organization_id = tc.id
         LEFT JOIN goi_dich_vu AS pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
           AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
-        ORDER BY CASE tc.scope_type WHEN 'organization' THEN 0 ELSE 1 END,
-                 CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
+        ORDER BY CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
                     WHEN 'manager' THEN 0
                     WHEN 'employee' THEN 1
                     ELSE 2
@@ -199,7 +200,6 @@ def get_user_organizations(cursor, user_id):
         membership_role = normalize_organization_role(row['vai_tro_trong_to_chuc'])
         if membership_role is None:
             continue
-        scope_type = str(row['scope_type'] or 'organization').strip().lower()
         has_subscription = row['package_id'] is not None
         subscription_status = (
             str(row['subscription_status'] or 'missing').strip().lower()
@@ -214,13 +214,12 @@ def get_user_organizations(cursor, user_id):
         effective_status = 'active'
         if organization_status != 'active':
             effective_status = 'suspended'
-        elif scope_type != 'personal':
-            if subscription_status == 'suspended':
-                effective_status = 'suspended'
-            elif subscription_status != 'active':
-                effective_status = subscription_status or 'missing'
-            elif package_status != 'active':
-                effective_status = 'package_inactive'
+        elif subscription_status == 'suspended':
+            effective_status = 'suspended'
+        elif subscription_status != 'active':
+            effective_status = subscription_status or 'missing'
+        elif package_status != 'active':
+            effective_status = 'package_inactive'
         starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
         subscription = {
             "package_id": row['package_id'],
@@ -237,64 +236,37 @@ def get_user_organizations(cursor, user_id):
             {
                 "id": str(row['id']),
                 "name": str(row['ten_to_chuc']),
-                "scope_type": scope_type,
+                "scope_type": "organization",
                 "role": membership_role,
                 "status": effective_status,
                 "subscription": subscription,
+                "entitlements": {
+                    "word_export": effective_status == "active",
+                    "source": "organization_subscription",
+                },
             }
         )
     return organizations
 
 
-def ensure_personal_workspace(cursor, user_id, display_name=None):
-    """Ensure every account has a durable personal data scope.
-
-    A personal workspace is an ownership boundary, not a paid entitlement. It is
-    created without an organization subscription and remains available alongside
-    business workspaces.
-    """
-    personal_workspace = cursor.execute(
-        """SELECT id FROM to_chuc
-           WHERE scope_type = 'personal' AND personal_owner_user_id = ?
-           LIMIT 1""",
-        (user_id,),
-    ).fetchone()
-    org_id = str(personal_workspace[0]) if personal_workspace else stable_org_id(f"personal:{user_id}")
-    if not personal_workspace:
-        label = str(display_name or '').strip()
-        workspace_name = f"Không gian cá nhân của {label}" if label else "Không gian cá nhân"
-        cursor.execute(
-            """INSERT OR IGNORE INTO to_chuc (
-                   id, ten_to_chuc, scope_type, personal_owner_user_id, trang_thai
-               ) VALUES (?, ?, 'personal', ?, 'active')""",
-            (org_id, workspace_name, user_id),
-        )
-        personal_workspace = cursor.execute(
-            """SELECT id FROM to_chuc
-               WHERE scope_type = 'personal' AND personal_owner_user_id = ?
-               LIMIT 1""",
-            (user_id,),
-        ).fetchone()
-        if not personal_workspace:
-            raise sqlite3.IntegrityError("Unable to allocate a personal workspace")
-        org_id = str(personal_workspace[0])
-
-    cursor.execute(
-        """INSERT OR IGNORE INTO thanh_vien_to_chuc
-               (user_id, organization_id, vai_tro_trong_to_chuc)
-           VALUES (?, ?, 'employee')""",
-        (user_id, org_id),
-    )
-    cursor.execute(
-        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 1)",
-        (org_id,),
-    )
-    return org_id
-
-
 def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=None, display_name=None):
-    ensure_personal_workspace(cursor, user_id, display_name)
+    platform_role = normalize_platform_role(platform_role)
     organizations = get_user_organizations(cursor, user_id)
+    if platform_role != "super_admin":
+        scope_id = personal_scope_id(user_id)
+        cursor.execute(
+            "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 1)",
+            (scope_id,),
+        )
+        from backend.documents.word_defaults import ensure_default_word_mappings
+        ensure_default_word_mappings(cursor, scope_id)
+        organizations.append(
+            personal_workspace_payload(
+                user_id,
+                display_name,
+                get_account_subscription(cursor, user_id),
+            )
+        )
     active_organizations = [org for org in organizations if org["status"] == "active"]
     hint = str(active_org_hint or '').strip()
     selected = next(
@@ -304,9 +276,12 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
     if selected is None and active_organizations:
         selected = active_organizations[0]
 
-    platform_role = normalize_platform_role(platform_role)
     membership_role = selected["role"] if selected else None
     subscription = selected.get("subscription") if selected else None
+    entitlements = dict(selected.get("entitlements") or {}) if selected else {}
+    if platform_role == "super_admin":
+        entitlements["word_export"] = True
+        entitlements["source"] = "platform"
     display_role = "super_admin" if platform_role == "super_admin" else membership_role
     return {
         "role": display_role or "employee",
@@ -316,43 +291,8 @@ def build_user_access_payload(cursor, user_id, platform_role, active_org_hint=No
         "active_org_id": selected["id"] if selected else None,
         "organizations": organizations,
         "subscription": subscription,
+        "entitlements": entitlements,
         "package_id": subscription.get("package_id") if subscription else None,
         "package_start_date": subscription.get("start_date") if subscription else None,
         "package_end_date": subscription.get("end_date") if subscription else None,
     }
-
-
-def activate_personal_subscription(cursor, user_id, display_name, package_id, duration_days=365):
-    """Assign an optional package to an account's personal workspace."""
-    package = cursor.execute(
-        "SELECT han_muc_nhan_su FROM goi_dich_vu WHERE id = ? AND trang_thai = 'active'",
-        (package_id,),
-    ).fetchone()
-    if not package:
-        raise ValueError("PACKAGE_INACTIVE")
-    business_membership = cursor.execute(
-        """SELECT 1 FROM thanh_vien_to_chuc membership
-           JOIN to_chuc organization ON organization.id = membership.organization_id
-           WHERE membership.user_id = ? AND organization.scope_type = 'organization'
-           LIMIT 1""",
-        (user_id,),
-    ).fetchone()
-    if business_membership:
-        raise ValueError("USER_ALREADY_HAS_BUSINESS_ORGANIZATION")
-    org_id = ensure_personal_workspace(cursor, user_id, display_name)
-    cursor.execute("UPDATE to_chuc SET trang_thai = 'active' WHERE id = ?", (org_id,))
-    now = int(time.time())
-    expires_at = now + int(duration_days) * 24 * 60 * 60
-    cursor.execute(
-        """INSERT INTO organization_subscriptions (
-               organization_id, package_id, status, starts_at, expires_at, member_quota
-           ) VALUES (?, ?, 'active', ?, ?, ?)
-           ON CONFLICT(organization_id) DO UPDATE SET
-               package_id = excluded.package_id,
-               status = 'active',
-               expires_at = excluded.expires_at,
-               member_quota = excluded.member_quota,
-               revision = organization_subscriptions.revision + 1""",
-        (org_id, package_id, now, expires_at, int(package[0])),
-    )
-    return org_id

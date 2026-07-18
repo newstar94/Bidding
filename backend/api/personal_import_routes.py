@@ -5,6 +5,7 @@ from backend.shared.helpers import database, get_active_org, log_audit, verify_s
 from backend.shared.access_policy import is_business_organization, is_organization_manager
 from backend.shared.request_validation import read_json_object
 from backend.sync.repository import next_sync_version
+from backend.shared.workspace_scope import personal_scope_id
 
 
 EXPERT_FIELDS = (
@@ -14,11 +15,8 @@ EXPERT_FIELDS = (
 
 
 def _personal_workspace_id(cursor, user_id):
-    row = cursor.execute(
-        "SELECT id FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
-        (user_id,),
-    ).fetchone()
-    return str(row[0]) if row else None
+    del cursor
+    return personal_scope_id(user_id)
 
 
 def _expert_payload(row):

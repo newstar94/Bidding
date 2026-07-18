@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from backend.auth.auth_helper import get_effective_roles
 from backend.shared.text_utils import clean_id
+from backend.shared.workspace_scope import is_personal_scope_for_user
+from backend.shared.subscription_policy import can_use_word_export
 
 
 PLATFORM_ADMIN_ROLES = {"super_admin"}
@@ -98,23 +100,18 @@ def organization_membership_role(cursor, user_id, organization_id):
 
 def is_business_organization(cursor, organization_id):
     cursor.execute(
-        "SELECT scope_type FROM to_chuc WHERE id = ? LIMIT 1",
+        "SELECT 1 FROM to_chuc WHERE id = ? LIMIT 1",
         (organization_id,),
     )
-    row = cursor.fetchone()
-    return bool(row and str(row[0] or "").strip().lower() == "organization")
+    return cursor.fetchone() is not None
 
 
 def is_personal_workspace_owner(cursor, user_id, organization_id):
-    if not user_id or not organization_id:
+    if not is_personal_scope_for_user(organization_id, user_id):
         return False
     cursor.execute(
-        """
-        SELECT 1 FROM to_chuc
-        WHERE id = ? AND scope_type = 'personal' AND personal_owner_user_id = ?
-        LIMIT 1
-        """,
-        (organization_id, user_id),
+        "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin' LIMIT 1",
+        (user_id,),
     )
     return cursor.fetchone() is not None
 
@@ -132,12 +129,28 @@ def has_active_organization_membership(cursor, role_str, user_id, organization_i
 
 
 def resolve_document_export_capabilities(cursor, role_str, user_id, organization_id):
-    """Allow complete business documents inside an accessible workspace."""
+    """Resolve sensitive Word fields after the scope subscription is authorized."""
 
+    if not can_use_word_export(cursor, role_str, user_id, organization_id):
+        return DocumentExportCapabilities()
     if is_personal_workspace_owner(cursor, user_id, organization_id):
         return DocumentExportCapabilities.allow_all()
-    if has_active_organization_membership(cursor, role_str, user_id, organization_id):
+    if is_organization_manager(cursor, role_str, user_id, organization_id):
         return DocumentExportCapabilities.allow_all()
+    if has_active_organization_membership(cursor, role_str, user_id, organization_id):
+        row = cursor.execute(
+            """SELECT financial, identity, signature
+               FROM document_export_capabilities
+               WHERE organization_id = ? AND user_id = ?
+               LIMIT 1""",
+            (organization_id, user_id),
+        ).fetchone()
+        if row:
+            return DocumentExportCapabilities(
+                financial=bool(row[0]),
+                identity=bool(row[1]),
+                signature=bool(row[2]),
+            )
     return DocumentExportCapabilities()
 
 
@@ -187,6 +200,8 @@ def has_module_permission(cursor, role_str, user_id, organization_id, module_nam
 def can_manage_word_config(cursor, role_str, user_id, organization_id):
     """Allow personal owners, managers, or employees with related edit rights."""
 
+    if not can_use_word_export(cursor, role_str, user_id, organization_id):
+        return False
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return True
     if is_personal_workspace_owner(cursor, user_id, organization_id):
@@ -405,6 +420,8 @@ def can_read_table(cursor, role_str, user_id, organization_id, payload_key, tabl
 def can_read_record(cursor, role_str, user_id, organization_id, payload_key, table_name, item_or_id):
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return True
+    if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return payload_key not in WRITE_PROTECTED_KEYS
     if not can_read_table(cursor, role_str, user_id, organization_id, payload_key, table_name):
         return False
     if table_name not in ASSIGNED_TABLE_TYPES and table_name != "thong_tin_mo_thau":
@@ -415,6 +432,8 @@ def can_read_record(cursor, role_str, user_id, organization_id, payload_key, tab
 def filter_items_for_read(cursor, role_str, user_id, organization_id, payload_key, table_name, items):
     if is_organization_manager(cursor, role_str, user_id, organization_id):
         return list(items or [])
+    if is_personal_workspace_owner(cursor, user_id, organization_id):
+        return list(items or []) if payload_key not in WRITE_PROTECTED_KEYS else []
 
     source_items = list(items or [])
     if payload_key == "assignments":

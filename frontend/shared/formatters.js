@@ -67,8 +67,7 @@ export function parseDisplayDateParts(value) {
   };
 }
 export function formatDisplayMonth(month) {
-  const number = Number(month);
-  return number === 1 || number === 2 ? String(number).padStart(2, "0") : String(number);
+  return String(Number(month)).padStart(2, "0");
 }
 export function formatDate(dateStr) {
   if (!dateStr) return "--";

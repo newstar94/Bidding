@@ -17,7 +17,6 @@ from backend.shared.helpers import (
     _session_cache_invalidate_by_user_id,
 )
 from backend.auth.auth_service import (
-    ensure_personal_workspace,
     get_client_ip,
     get_rate_limit_decision,
     RateLimitDecision,
@@ -166,7 +165,6 @@ async def register_api(request):
             "INSERT INTO tai_khoan (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro, email, email_norm, da_xac_minh, ma_xac_minh, han_xac_minh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (user_uuid, username, username, password_hash, name, role, email, email, 0, code, expiry)
         )
-        ensure_personal_workspace(cursor, user_uuid, name)
         conn.commit()
 
         tieu_de = "[BiddingFlow] Xác thực tài khoản đăng ký mới"

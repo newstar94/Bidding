@@ -105,7 +105,6 @@ const RUNTIME_SCHEMA = {
     "noi_mo_tai_khoan": "noiMoTaiKhoan",
     "organization_id": "organizationId",
     "owner_type": "ownerType",
-    "personal_owner_user_id": "personalOwnerUserId",
     "phan_lo": "phanLo",
     "phan_loai": "phanLoai",
     "phe_duyet": "pheDuyet",
@@ -116,7 +115,6 @@ const RUNTIME_SCHEMA = {
     "quyet_dinh_phe_duyet": "quyetDinhPheDuyet",
     "rebid_from_package_id": "rebidFromPackageId",
     "row_version": "rowVersion",
-    "scope_type": "scopeType",
     "so_bao_cao_tham_dinh_hsmt": "soBaoCaoThamDinhHsmt",
     "so_cccd": "soCCCD",
     "so_chung_chi": "soChungChi",
@@ -463,8 +461,6 @@ const RUNTIME_SCHEMA = {
     "to_chuc": {
       "created_at": "createdAt",
       "id": "id",
-      "personal_owner_user_id": "personalOwnerUserId",
-      "scope_type": "scopeType",
       "ten_to_chuc": "tenToChuc",
       "trang_thai": "trangThai",
       "updated_at": "updatedAt"

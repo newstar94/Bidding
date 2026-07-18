@@ -2,6 +2,7 @@ import hashlib
 
 from .field_manifest import build_field_manifest
 from .schema_contract import json_key_for_column
+from backend.shared.workspace_scope import personal_scope_owner_id
 
 
 WORD_DEFAULT_MAPPINGS_VERSION = 7
@@ -451,14 +452,19 @@ def ensure_default_word_mappings(cursor, organization_id):
     if not organization_id:
         return 0
 
-    cursor.execute(
-        "SELECT scope_type FROM to_chuc WHERE id = ?",
+    organization_row = cursor.execute(
+        "SELECT 1 FROM to_chuc WHERE id = ?",
         (organization_id,),
-    )
-    organization_row = cursor.fetchone()
-    if not organization_row:
-        return 0
-    owner_type = "personal" if str(organization_row[0] or "").strip().lower() == "personal" else "organization"
+    ).fetchone()
+    if organization_row:
+        owner_type = "organization"
+    else:
+        owner_id = personal_scope_owner_id(organization_id)
+        if not owner_id or not cursor.execute(
+            "SELECT 1 FROM tai_khoan WHERE id = ? AND vai_tro != 'super_admin'", (owner_id,)
+        ).fetchone():
+            return 0
+        owner_type = "personal"
 
     cursor.execute(
         "SELECT mappings_version FROM word_default_seeds WHERE organization_id = ?",

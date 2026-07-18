@@ -14,7 +14,7 @@
 | Ma trận quyền đầy đủ | Với từng phân hệ: `không quyền`, `chỉ xem`, `sửa`; kiểm tra thêm/sửa/xóa/nhập Excel/xem chi tiết | Giao diện ẩn hoặc khóa đúng thao tác và API vẫn từ chối mọi yêu cầu vượt quyền | Bảng kết quả theo vai trò và phân hệ |
 | Xung đột đồng thời | Hai người cùng sửa một bản ghi; sửa trong khi người khác xóa; hai thẻ cùng gửi mutation; mất mạng rồi kết nối lại | Không mất dữ liệu âm thầm; có cảnh báo xung đột; hàng đợi không gửi lặp vô hạn | Log hai phiên, dữ liệu cuối trong SQLite |
 | Sao lưu và khôi phục | Sao lưu khi hệ thống đang hoạt động; khôi phục sang máy mới; kiểm tra tệp hỏng; kiểm tra quyền truy cập tệp | Khôi phục đủ tài khoản, tổ chức, nghiệp vụ và tệp đính kèm; có lỗi rõ ràng với bản sao hỏng | Hash tệp sao lưu, biên bản khôi phục |
-| Nâng cấp cơ sở dữ liệu | Chạy migration trên bản sao dữ liệu production; chạy lại migration; khởi động bằng schema cũ/thiếu | Migration chạy một lần, không mất dữ liệu, có phương án quay lui | Bản sao trước/sau và kết quả kiểm tra số lượng bản ghi |
+| Nâng cấp cơ sở dữ liệu | Chạy hàm nâng cấp trong `backend/db/upgrades.py` trên bản sao dữ liệu production; chạy lại; khởi động bằng schema cũ/thiếu | Nâng cấp chạy một lần, không mất dữ liệu, có phương án quay lui | Bản sao trước/sau và kết quả kiểm tra số lượng bản ghi |
 
 ## P1 — Kiểm tra dữ liệu và tích hợp thực tế
 
@@ -41,7 +41,7 @@
 
 | Mức | Trường hợp cần kiểm tra | Tiêu chí đạt |
 |---|---|---|
-| P0 | Nâng database version 2 lên 3 trên bản sao production; khởi động lại lần hai; `PRAGMA foreign_key_check`; thử khôi phục backup | Không đổi checksum migration 1/2, không mất dữ liệu, bảng/index timeline chỉ tạo một lần |
+| P0 | Nâng database từ phiên bản đã phát hành lên phiên bản kế tiếp trên bản sao production; khởi động lại lần hai; `PRAGMA foreign_key_check`; thử khôi phục backup | Không sửa hàm nâng cấp đã phát hành, không mất dữ liệu, bảng/index mới chỉ tạo một lần |
 | P0 | Manager, chuyên viên được phân công, chuyên viên không được phân công và quyền `none/view/edit` | Menu, dữ liệu, nút lưu và endpoint xuất Word tuân thủ đúng quyền `goithau`; không đọc chéo tổ chức |
 | P0 | Hai người cùng sửa timeline; mất mạng khi lưu; reconnect; payload thiếu `timelineItems`; payload `timelineItems: []` | Có xung đột `409` khi cần, không nhân đôi hoặc mất timeline ngoài ý muốn |
 | P0 | Xuất Word không có snapshot, snapshot cũ và dữ liệu đổi trong lúc render | Lần lượt trả `428`, `409`, `409`; không trả tệp từ snapshot không nhất quán |

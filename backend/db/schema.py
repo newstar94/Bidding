@@ -20,6 +20,15 @@ MONEY_COLUMNS = frozenset({
 
 
 SCHEMA_DINH_NGHIA = {
+    "database_metadata": {
+        "columns": {
+            "id": "INTEGER PRIMARY KEY CHECK(id = 1)",
+            "schema_version": "INTEGER NOT NULL CHECK(schema_version > 0)",
+            "baseline": "TEXT NOT NULL CHECK(baseline != '')",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        }
+    },
     "goi_dich_vu": {
         "columns": {
             "id": "TEXT PRIMARY KEY",
@@ -705,17 +714,10 @@ SCHEMA_DINH_NGHIA = {
         "columns": {
             "id": "TEXT PRIMARY KEY",
             "ten_to_chuc": "TEXT NOT NULL",
-            "scope_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(scope_type IN ('organization', 'personal'))",
-            "personal_owner_user_id": "TEXT UNIQUE",
             "trang_thai": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai IN ('active', 'suspended'))",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
-        },
-        "foreign_keys": [
-            "FOREIGN KEY (personal_owner_user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
-            "CHECK((scope_type = 'organization' AND personal_owner_user_id IS NULL) OR (scope_type = 'personal' AND personal_owner_user_id IS NOT NULL))"
-        ],
-        "unique_constraints": ["UNIQUE(id, scope_type)"]
+        }
     },
     "thanh_vien_to_chuc": {
         "columns": {
@@ -724,6 +726,9 @@ SCHEMA_DINH_NGHIA = {
             "vai_tro_trong_to_chuc": "TEXT NOT NULL DEFAULT 'employee' CHECK(vai_tro_trong_to_chuc IN ('manager', 'employee'))",
             "ten_nhan_su": "TEXT",
             "so_dien_thoai": "TEXT",
+            "trang_thai_thanh_vien": "TEXT NOT NULL DEFAULT 'active' CHECK(trang_thai_thanh_vien IN ('active', 'left'))",
+            "left_at": "TEXT",
+            "left_by": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))"
         },
@@ -823,6 +828,22 @@ SCHEMA_DINH_NGHIA = {
         },
         "foreign_keys": [
             "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE CASCADE",
+            "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT"
+        ]
+    },
+    "account_subscriptions": {
+        "columns": {
+            "user_id": "TEXT PRIMARY KEY",
+            "package_id": "TEXT NOT NULL",
+            "status": "TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'expired', 'cancelled'))",
+            "starts_at": "INTEGER NOT NULL CHECK(starts_at > 0)",
+            "expires_at": "INTEGER CHECK(expires_at IS NULL OR expires_at > starts_at)",
+            "revision": "INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE",
             "FOREIGN KEY (package_id) REFERENCES goi_dich_vu(id) ON DELETE RESTRICT"
         ]
     },
@@ -937,6 +958,104 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (actor_user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
         ]
     },
+    "record_edit_ownership": {
+        "columns": {
+            "organization_id": "TEXT NOT NULL",
+            "table_name": "TEXT NOT NULL CHECK(table_name IN ('chu_dau_tu', 'nha_thau'))",
+            "record_id": "TEXT NOT NULL",
+            "user_id": "TEXT NOT NULL",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["organization_id", "table_name", "record_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
+    "goi_thau_moc_tien_do": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "owner_type": "TEXT NOT NULL DEFAULT 'organization' CHECK(owner_type IN ('organization', 'personal'))",
+            "goi_thau_id": "TEXT NOT NULL CHECK(trim(goi_thau_id) != '')",
+            "ma_nhom": "TEXT NOT NULL CHECK(ma_nhom IN ('I', 'II', 'III', 'IV', 'V'))",
+            "ten_nhom": "TEXT NOT NULL CHECK(length(trim(ten_nhom)) BETWEEN 1 AND 160)",
+            "ma_moc": "TEXT NOT NULL CHECK(length(trim(ma_moc)) BETWEEN 3 AND 10)",
+            "cong_viec": "TEXT NOT NULL CHECK(length(trim(cong_viec)) BETWEEN 1 AND 300)",
+            "don_vi_ban_hanh": "TEXT NOT NULL DEFAULT '' CHECK(length(don_vi_ban_hanh) <= 300)",
+            "so_van_ban": "TEXT NOT NULL DEFAULT '' CHECK(length(so_van_ban) <= 300)",
+            "ngay_du_kien": "TEXT CHECK(ngay_du_kien IS NULL OR (length(ngay_du_kien) = 10 AND date(ngay_du_kien) IS NOT NULL))",
+            "ngay_thuc_te": "TEXT CHECK(ngay_thuc_te IS NULL OR (length(ngay_thuc_te) = 10 AND date(ngay_thuc_te) IS NOT NULL))",
+            "ghi_chu": "TEXT NOT NULL DEFAULT '' CHECK(length(ghi_chu) <= 2000)",
+            "source_key": "TEXT NOT NULL DEFAULT '' CHECK(length(source_key) <= 160)",
+            "source_mode": "TEXT NOT NULL DEFAULT 'MANUAL' CHECK(source_mode IN ('AUTO', 'MANUAL'))",
+            "is_optional": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(is_optional) = 'integer' AND is_optional IN (0, 1))",
+            "trang_thai": "TEXT NOT NULL DEFAULT 'PENDING' CHECK(trang_thai IN ('PENDING', 'IN_PROGRESS', 'DONE', 'NOT_APPLICABLE'))",
+            "sort_order": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sort_order) = 'integer' AND sort_order BETWEEN 0 AND 499)",
+            "template_version": "INTEGER NOT NULL DEFAULT 1 CHECK(typeof(template_version) = 'integer' AND template_version >= 1)",
+            "sync_version": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(sync_version) = 'integer' AND sync_version >= 0)",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, goi_thau_id, ma_moc)"
+        ],
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, goi_thau_id) REFERENCES goi_thau(organization_id, id) ON DELETE CASCADE"
+        ]
+    },
+    "pending_email_changes": {
+        "columns": {
+            "user_id": "TEXT PRIMARY KEY",
+            "current_email_norm": "TEXT NOT NULL CHECK(current_email_norm != '')",
+            "pending_email": "TEXT NOT NULL CHECK(pending_email != '')",
+            "pending_email_norm": "TEXT NOT NULL UNIQUE CHECK(pending_email_norm != '')",
+            "otp_hash": "TEXT NOT NULL CHECK(otp_hash != '')",
+            "requested_at": "INTEGER NOT NULL CHECK(requested_at > 0)",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > requested_at)",
+            "verified_at": "INTEGER",
+            "requested_ip": "TEXT"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ],
+        "unique_constraints": [
+            "CHECK(pending_email_norm != current_email_norm)",
+            "CHECK(verified_at IS NULL OR (verified_at >= requested_at AND verified_at <= expires_at))"
+        ]
+    },
+    "document_export_capabilities": {
+        "columns": {
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "user_id": "TEXT NOT NULL CHECK(user_id != '')",
+            "financial": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(financial) = 'integer' AND financial IN (0, 1))",
+            "identity": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(identity) = 'integer' AND identity IN (0, 1))",
+            "signature": "INTEGER NOT NULL DEFAULT 0 CHECK(typeof(signature) = 'integer' AND signature IN (0, 1))",
+            "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        },
+        "primary_keys": ["organization_id", "user_id"],
+        "foreign_keys": [
+            "FOREIGN KEY (user_id, organization_id) REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
+        ]
+    },
+    "phan_cong_nhan_su_lich_su": {
+        "columns": {
+            "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+            "organization_id": "TEXT NOT NULL",
+            "assignment_id": "TEXT NOT NULL",
+            "id_nhan_vien": "TEXT NOT NULL",
+            "id_muc_tieu": "TEXT NOT NULL",
+            "loai_doi_tuong": "TEXT NOT NULL CHECK(loai_doi_tuong IN ('kehoach', 'goithau', 'hopdong'))",
+            "assigned_at": "TEXT",
+            "ended_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
+            "ended_by": "TEXT",
+            "successor_user_id": "TEXT",
+            "reason": "TEXT NOT NULL DEFAULT 'member_left'"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, assignment_id, ended_at)"
+        ]
+    },
     "audit_log": {
         "columns": {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
@@ -1029,26 +1148,10 @@ def _apply_tenant_constraints(schema):
             else:
                 upgraded_foreign_keys.append(foreign_key)
 
-        if not any("REFERENCES to_chuc(" in fk for fk in upgraded_foreign_keys):
-            if "owner_type" in columns:
-                upgraded_foreign_keys.append(
-                    "FOREIGN KEY (organization_id, owner_type) "
-                    "REFERENCES to_chuc(id, scope_type) ON DELETE RESTRICT"
-                )
-            else:
-                upgraded_foreign_keys.append(
-                    "FOREIGN KEY (organization_id) REFERENCES to_chuc(id) ON DELETE RESTRICT"
-                )
-
-        if table_name == "phan_cong_nhan_su":
+        if "owner_type" in columns:
             upgraded_foreign_keys.append(
-                "FOREIGN KEY (id_nhan_vien, organization_id) "
-                "REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
-            )
-        elif table_name == "ma_tran_phan_quyen":
-            upgraded_foreign_keys.append(
-                "FOREIGN KEY (emp_id, organization_id) "
-                "REFERENCES thanh_vien_to_chuc(user_id, organization_id) ON DELETE CASCADE"
+                "CHECK((owner_type = 'personal' AND organization_id LIKE 'personal:%') "
+                "OR (owner_type = 'organization' AND organization_id NOT LIKE 'personal:%'))"
             )
 
         table_spec["foreign_keys"] = list(dict.fromkeys(upgraded_foreign_keys))

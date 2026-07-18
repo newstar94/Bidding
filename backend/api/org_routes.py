@@ -25,75 +25,9 @@ from backend.shared.access_policy import (
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import utc_now_sql
-from backend.auth.auth_service import activate_personal_subscription, build_user_access_payload
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
-
-
-async def activate_personal_subscription_api(request):
-    """Grant a package to an account without creating an organization at registration time."""
-    conn = None
-    try:
-        is_valid, role_or_err = verify_session(request, required_role='super_admin')
-        if not is_valid:
-            return JSONResponse({"error": role_or_err}, status_code=403)
-        data, json_error = await read_json_object(request)
-        if json_error:
-            return json_error
-        invalid = validate_or_response(request, data, {
-            "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-            "successor_user_id": {"type": "string", "max_length": 128},
-            "package_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-            "duration_days": {"type": "integer", "min": 1, "max": 3650},
-        })
-        if invalid:
-            return invalid
-        user_id = str(data.get("user_id") or "").strip()
-        package_id = str(data.get("package_id") or "").strip()
-        duration_days = data.get("duration_days", 365)
-        conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
-        cursor = conn.cursor()
-        user = cursor.execute(
-            "SELECT ho_ten, vai_tro FROM tai_khoan WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-        if not user:
-            conn.rollback()
-            return JSONResponse({"error": "Người dùng không tồn tại.", "code": "USER_NOT_FOUND"}, status_code=404)
-        try:
-            organization_id = activate_personal_subscription(
-                cursor, user_id, user[0], package_id, duration_days
-            )
-        except ValueError as exc:
-            conn.rollback()
-            code = exc.args[0] if exc.args else "PERSONAL_SUBSCRIPTION_INVALID"
-            message = "Gói dịch vụ không hoạt động." if code == "PACKAGE_INACTIVE" else "Tài khoản đã thuộc một tổ chức."
-            return JSONResponse({"error": message, "code": code}, status_code=409)
-        log_audit(
-            "personal_subscription.activated",
-            actor_user_id=role_or_err.user_id,
-            organization_id=organization_id,
-            target_type="tai_khoan",
-            target_id=user_id,
-            request=request,
-            metadata={"package_id": package_id, "duration_days": duration_days},
-            cursor=cursor,
-            required=True,
-        )
-        access = build_user_access_payload(cursor, user_id, user[1], organization_id)
-        conn.commit()
-        _session_cache_invalidate_by_user_id(user_id)
-        _org_cache_invalidate_by_user_id(user_id)
-        return JSONResponse({"success": True, "user": access})
-    except Exception as exc:
-        if conn:
-            conn.rollback()
-        return log_and_error(request, exc, "activate_personal_subscription_api", "PERSONAL_SUBSCRIPTION_FAILED", "Không thể kích hoạt gói cá nhân.")
-    finally:
-        if conn:
-            conn.close()
 
 
 def _subscription_payload(cursor, organization_id):
@@ -102,7 +36,8 @@ def _subscription_payload(cursor, organization_id):
         SELECT sub.organization_id, sub.package_id, sub.status, sub.starts_at,
                sub.expires_at, sub.member_quota, sub.revision,
                (SELECT count(*) FROM thanh_vien_to_chuc members
-                WHERE members.organization_id = sub.organization_id) AS member_count
+                WHERE members.organization_id = sub.organization_id
+                  AND COALESCE(members.trang_thai_thanh_vien, 'active') = 'active') AS member_count
         FROM organization_subscriptions sub
         WHERE sub.organization_id = ?
         """,
@@ -348,12 +283,16 @@ async def add_user_to_org_api(request):
 
         effective_roles = get_effective_roles(role_or_err)
 
-        cursor.execute("SELECT user_id FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?", (user_id, org_id))
-        if cursor.fetchone():
+        membership = cursor.execute(
+            """SELECT user_id, COALESCE(trang_thai_thanh_vien, 'active') AS membership_status
+               FROM thanh_vien_to_chuc
+               WHERE user_id = ? AND organization_id = ?""",
+            (user_id, org_id),
+        ).fetchone()
+        if membership and membership['membership_status'] == 'active':
             cursor.execute(
                 """UPDATE thanh_vien_to_chuc
-                   SET ten_nhan_su = ?, so_dien_thoai = ?, trang_thai_thanh_vien = 'active',
-                       left_at = NULL, left_by = NULL, updated_at = datetime('now')
+                   SET ten_nhan_su = ?, so_dien_thoai = ?, updated_at = datetime('now')
                    WHERE user_id = ? AND organization_id = ?""",
                 (employee_name, phone or None, user_id, org_id),
             )
@@ -369,6 +308,11 @@ async def add_user_to_org_api(request):
                 required=True,
             )
             conn.commit()
+            broadcast_websocket_event(org_id, {
+                "event": "organization_member_changed",
+                "userId": user_id,
+                "status": "active",
+            })
             return JSONResponse({"success": True, "message": "Thông tin nhân sự đã được cập nhật!"})
 
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
@@ -423,15 +367,29 @@ async def add_user_to_org_api(request):
                 status_code=409,
             )
 
-        cursor.execute(
-            """INSERT INTO thanh_vien_to_chuc (
-                   user_id, organization_id, vai_tro_trong_to_chuc, ten_nhan_su, so_dien_thoai
-               ) VALUES (?, ?, ?, ?, ?)""",
-            (user_id, org_id, 'employee', employee_name, phone or None)
-        )
+        if membership:
+            cursor.execute(
+                """UPDATE thanh_vien_to_chuc
+                   SET vai_tro_trong_to_chuc = 'employee',
+                       ten_nhan_su = ?, so_dien_thoai = ?, trang_thai_thanh_vien = 'active',
+                       left_at = NULL, left_by = NULL, updated_at = datetime('now')
+                   WHERE user_id = ? AND organization_id = ?""",
+                (employee_name, phone or None, user_id, org_id),
+            )
+            audit_event = "organization.member_reactivated"
+            success_message = "Đã thêm lại nhân viên vào tổ chức!"
+        else:
+            cursor.execute(
+                """INSERT INTO thanh_vien_to_chuc (
+                       user_id, organization_id, vai_tro_trong_to_chuc, ten_nhan_su, so_dien_thoai
+                   ) VALUES (?, ?, ?, ?, ?)""",
+                (user_id, org_id, 'employee', employee_name, phone or None)
+            )
+            audit_event = "organization.member_added"
+            success_message = "Thêm nhân sự vào tổ chức thành công!"
 
         log_audit(
-            "organization.member_added",
+            audit_event,
             actor_user_id=role_or_err.user_id,
             organization_id=org_id,
             target_type="organization_membership",
@@ -444,8 +402,13 @@ async def add_user_to_org_api(request):
         conn.commit()
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
+        broadcast_websocket_event(org_id, {
+            "event": "organization_member_changed",
+            "userId": user_id,
+            "status": "active",
+        })
 
-        return JSONResponse({"success": True, "message": "Thêm nhân sự vào tổ chức thành công!"})
+        return JSONResponse({"success": True, "message": success_message})
     except OrgPermissionError as e:
         return error_response(
             request,
@@ -490,6 +453,7 @@ async def remove_user_from_org_api(request):
             return json_error
         invalid = validate_or_response(request, data, {
             "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "successor_user_id": {"type": "string", "max_length": 128},
         })
         if invalid:
             return invalid
@@ -559,7 +523,7 @@ async def remove_user_from_org_api(request):
         open_assignments = [row for row in assignment_rows if int(row['is_open'] or 0) == 1]
         if open_assignments and not successor_user_id:
             candidates = cursor.execute(
-                """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ten_hien_thi, tk.ten_dang_nhap) AS name
+                """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ho_ten, tk.ten_dang_nhap) AS name
                    FROM thanh_vien_to_chuc tv JOIN tai_khoan tk ON tk.id = tv.user_id
                    WHERE tv.organization_id = ? AND tv.user_id != ?
                      AND COALESCE(tv.trang_thai_thanh_vien, 'active') = 'active'
@@ -698,7 +662,7 @@ async def list_former_organization_members_api(request):
         if not is_organization_manager(cursor, str(session), session.user_id, org_id):
             return JSONResponse({"error": "Không có quyền xem lịch sử nhân sự."}, status_code=403)
         rows = cursor.execute(
-            """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ten_hien_thi, tk.ten_dang_nhap) AS name,
+            """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ho_ten, tk.ten_dang_nhap) AS name,
                       tk.email, tv.so_dien_thoai AS phone, tv.left_at,
                       h.loai_doi_tuong AS type, h.id_muc_tieu AS target_id, h.successor_user_id
                FROM thanh_vien_to_chuc tv JOIN tai_khoan tk ON tk.id = tv.user_id
@@ -712,7 +676,8 @@ async def list_former_organization_members_api(request):
         for row in rows:
             member = members.setdefault(row['user_id'], {
                 "id": row['user_id'], "name": row['name'], "email": row['email'] or "",
-                "phone": row['phone'] or "", "leftAt": row['left_at'], "assignmentHistory": [],
+                "phone": row['phone'] or "", "status": "left", "leftAt": row['left_at'],
+                "assignmentHistory": [],
             })
             if row['target_id']:
                 member["assignmentHistory"].append({

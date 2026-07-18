@@ -51,6 +51,7 @@ from backend.sync.mapper import (
 from backend.shared.text_utils import normalize_person_name
 from backend.db.schema import MONEY_COLUMNS
 from backend.shared.numeric_utils import parse_vnd_amount
+from backend.shared.workspace_scope import is_personal_scope_for_user
 from backend.sync.queries import (
     ALLOWED_ORPHAN_TABLES,
     SYNCED_TABLES,
@@ -193,12 +194,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
 
 
         if owner_type == "personal":
-            cursor.execute(
-                """SELECT 1 FROM to_chuc
-                   WHERE id = ? AND personal_owner_user_id = ? AND scope_type = 'personal'""",
-                (org_name, user_id),
-            )
-            if not cursor.fetchone():
+            if not is_personal_scope_for_user(org_name, user_id):
                 log_sync_error(f"personal workspace không thuộc actor: {org_name}")
                 return JSONResponse(
                     {"error": "Không thể xác định tài khoản sở hữu dữ liệu.", "code": "PERSONAL_WORKSPACE_OWNER_MISMATCH"},

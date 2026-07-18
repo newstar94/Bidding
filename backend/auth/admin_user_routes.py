@@ -1,4 +1,3 @@
-import sqlite3
 import time
 from collections import defaultdict
 
@@ -18,7 +17,20 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.logging_utils import error_response
-from backend.sync.api import disconnect_user_websockets
+from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
+from backend.shared.workspace_scope import personal_scope_id, personal_workspace_payload
+from backend.shared.subscription_policy import get_account_subscription
+from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.db.id_utils import generate_record_id
+from backend.shared.request_validation import read_json_object
+from backend.sync.repository import next_sync_version
+
+
+_USER_PERMISSION_MODULES = (
+    "kehoach", "goithau", "chudautu", "nhathau",
+    "chuyengia", "hopdong", "thongtinmothau",
+)
+_DOCUMENT_CAPABILITY_FIELDS = ("financial", "identity", "signature")
 
 
 def _database_lane_unavailable_response(request, *, write=False, timed_out=False):
@@ -111,13 +123,17 @@ def _list_users_sync(request):
         if user_ids:
             placeholders = ",".join("?" for _ in user_ids)
             cursor.execute(f"""
-                SELECT tvtc.user_id, tc.id, tc.ten_to_chuc, tc.scope_type,
+                SELECT tvtc.user_id, tc.id, tc.ten_to_chuc,
                        tc.trang_thai AS organization_status,
                        tvtc.vai_tro_trong_to_chuc,
                        tvtc.ten_nhan_su, tvtc.so_dien_thoai,
                        sub.package_id, sub.status AS subscription_status,
                        sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
                        pkg.trang_thai AS package_status,
+                       permission.kehoach, permission.goithau, permission.chudautu,
+                       permission.nhathau, permission.chuyengia, permission.hopdong,
+                       permission.thongtinmothau,
+                       export_grant.financial, export_grant.identity, export_grant.signature,
                        (SELECT count(*) FROM thanh_vien_to_chuc members
                         WHERE members.organization_id = tc.id
                           AND COALESCE(members.trang_thai_thanh_vien, 'active') = 'active') AS member_count
@@ -125,22 +141,14 @@ def _list_users_sync(request):
                 JOIN to_chuc tc ON tvtc.organization_id = tc.id
                 LEFT JOIN organization_subscriptions sub ON sub.organization_id = tc.id
                 LEFT JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
+                LEFT JOIN ma_tran_phan_quyen permission
+                  ON permission.organization_id = tc.id AND permission.emp_id = tvtc.user_id
+                LEFT JOIN document_export_capabilities export_grant
+                  ON export_grant.organization_id = tc.id AND export_grant.user_id = tvtc.user_id
                 WHERE tvtc.user_id IN ({placeholders})
                   AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
-                  AND (
-                      tc.scope_type = 'organization'
-                      OR NOT EXISTS (
-                          SELECT 1
-                          FROM thanh_vien_to_chuc business_membership
-                          JOIN to_chuc business_org
-                            ON business_org.id = business_membership.organization_id
-                          WHERE business_membership.user_id = tvtc.user_id
-                            AND business_org.scope_type = 'organization'
-                      )
-                  )
             """, user_ids)
             for row in cursor.fetchall():
-                scope_type = str(row['scope_type'] or 'organization').strip().lower()
                 has_subscription = row['package_id'] is not None
                 expires_at = int(row['expires_at']) if row['expires_at'] is not None else None
                 subscription_status = (
@@ -153,18 +161,17 @@ def _list_users_sync(request):
                 effective_status = 'active'
                 if row['organization_status'] != 'active':
                     effective_status = 'suspended'
-                elif scope_type != 'personal':
-                    if subscription_status == 'suspended':
-                        effective_status = 'suspended'
-                    elif subscription_status != 'active':
-                        effective_status = subscription_status or 'missing'
-                    elif row['package_status'] != 'active':
-                        effective_status = 'package_inactive'
+                elif subscription_status == 'suspended':
+                    effective_status = 'suspended'
+                elif subscription_status != 'active':
+                    effective_status = subscription_status or 'missing'
+                elif row['package_status'] != 'active':
+                    effective_status = 'package_inactive'
                 starts_at = int(row['starts_at']) if row['starts_at'] is not None else None
                 orgs_by_user[row['user_id']].append({
                     "id": row['id'],
                     "name": row['ten_to_chuc'],
-                    "scope_type": scope_type,
+                    "scope_type": "organization",
                     "status": effective_status,
                     "role": row['vai_tro_trong_to_chuc'],
                     "employee_name": row['ten_nhan_su'],
@@ -180,12 +187,35 @@ def _list_users_sync(request):
                         "member_count": int(row['member_count'] or 0),
                         "revision": int(row['revision'] or 0),
                     } if has_subscription else None,
+                    "entitlements": {
+                        "word_export": effective_status == "active",
+                        "source": "organization_subscription",
+                    },
+                    "permissions": {
+                        module: str(row[module] or "")
+                        for module in (
+                            "kehoach", "goithau", "chudautu", "nhathau",
+                            "chuyengia", "hopdong", "thongtinmothau",
+                        )
+                    },
+                    "document_capabilities": {
+                        field: bool(row[field])
+                        for field in ("financial", "identity", "signature")
+                    },
                 })
 
         users = []
         for row in users_raw:
             u = dict(row)
-            u['organizations'] = orgs_by_user[u['id']]
+            account_subscription = get_account_subscription(cursor, u['id'])
+            u['account_subscription'] = account_subscription
+            u['organizations'] = list(orgs_by_user[u['id']])
+            if str(u.get('platform_role') or '').strip().lower() != 'super_admin':
+                u['organizations'].append(
+                    personal_workspace_payload(
+                        u['id'], u.get('name'), account_subscription
+                    )
+                )
             users.append(u)
         conn.close()
         return JSONResponse(users)
@@ -238,7 +268,6 @@ def _delete_user_sync(request):
             JOIN to_chuc AS organization
               ON organization.id = membership.organization_id
             WHERE membership.user_id = ?
-              AND organization.scope_type = 'organization'
               AND lower(trim(membership.vai_tro_trong_to_chuc)) = 'manager'
               AND NOT EXISTS (
                   SELECT 1
@@ -253,29 +282,29 @@ def _delete_user_sync(request):
         )
         if cursor.fetchone():
             return JSONResponse({"error": "Không thể xóa Quản lý cuối cùng của tổ chức."}, status_code=409)
-        personal_workspace_count = int(cursor.execute(
-            "SELECT COUNT(*) FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
-            (user_id,),
-        ).fetchone()[0])
-        if personal_workspace_count:
-            cursor.execute("SAVEPOINT delete_personal_workspace")
-            try:
-                cursor.execute(
-                    "DELETE FROM to_chuc WHERE scope_type = 'personal' AND personal_owner_user_id = ?",
-                    (user_id,),
-                )
-                cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
-            except sqlite3.IntegrityError:
-                cursor.execute("ROLLBACK TO SAVEPOINT delete_personal_workspace")
-                cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
-                conn.rollback()
-                return JSONResponse({
-                    "error": "Không thể xóa tài khoản khi không gian cá nhân còn dữ liệu.",
-                    "code": "PERSONAL_WORKSPACE_NOT_EMPTY",
-                }, status_code=409)
+        personal_scope = personal_scope_id(user_id)
+        personal_content_tables = [
+            table_name
+            for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
+            if "owner_type" in table_spec.get("columns", {})
+            and table_name != "cau_hinh_bien_word"
+        ]
+        personal_record_count = sum(
+            int(cursor.execute(
+                f"SELECT COUNT(*) FROM {table_name} WHERE organization_id = ? AND owner_type = 'personal'",
+                (personal_scope,),
+            ).fetchone()[0])
+            for table_name in personal_content_tables
+        )
+        if personal_record_count:
+            conn.rollback()
+            return JSONResponse({
+                "error": "Không thể xóa tài khoản khi không gian cá nhân còn dữ liệu.",
+                "code": "PERSONAL_WORKSPACE_NOT_EMPTY",
+            }, status_code=409)
         impact = {
             "rootCount": 1,
-            "personalWorkspaces": personal_workspace_count,
+            "personalRecords": personal_record_count,
             "memberships": int(cursor.execute(
                 "SELECT COUNT(*) FROM thanh_vien_to_chuc WHERE user_id = ?",
                 (user_id,),
@@ -296,6 +325,9 @@ def _delete_user_sync(request):
         impact["totalCount"] = impact["rootCount"] + sum(
             value for key, value in impact.items() if key not in {"rootCount", "totalCount"}
         )
+        cursor.execute("DELETE FROM cau_hinh_bien_word WHERE organization_id = ?", (personal_scope,))
+        cursor.execute("DELETE FROM word_default_seeds WHERE organization_id = ?", (personal_scope,))
+        cursor.execute("DELETE FROM sync_metadata WHERE organization_id = ?", (personal_scope,))
         cursor.execute("DELETE FROM ma_tran_phan_quyen WHERE emp_id = ?", (user_id,))
         cursor.execute("DELETE FROM tai_khoan WHERE id = ?", (user_id,))
         log_audit(

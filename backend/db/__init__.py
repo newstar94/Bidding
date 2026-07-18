@@ -1,1 +1,1 @@
-"""SQLite connection, schema, migrations, and database identifiers."""
+"""SQLite connection, canonical schema, upgrades, and database identifiers."""
