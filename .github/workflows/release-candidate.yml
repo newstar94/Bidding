@@ -74,7 +74,6 @@ jobs:
     name: Validate gates and build candidate
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    environment: production
     env:
       RELEASE_DATABASE_MODE: ${{ inputs.database_mode }}
       RELEASE_P0_SECURITY_GATE: ${{ inputs.p0_security_gate }}
