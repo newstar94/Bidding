@@ -12,7 +12,7 @@
 ## Cài đặt mã nguồn tối giản
 
 ```bash
-python -m pip install --require-hashes -r requirements/runtime.lock.txt
+python -m pip install --require-hashes -r requirements.txt
 npm ci
 npm run build:secure
 ```
@@ -34,7 +34,7 @@ Artifact mặc định được tạo tại `release/biddingflow-production.zip`
 2. Cài dependency runtime:
 
    ```bash
-   python -m pip install --require-hashes -r requirements/runtime.lock.txt
+   python -m pip install --require-hashes -r requirements.txt
    ```
 
 3. Tạo `.env` từ `.env.example` ở bên ngoài source control.

@@ -5,7 +5,7 @@
 - [x] Build lại frontend ở chế độ secure và giữ bundle trong `dist`.
 - [x] Xóa test, load test, GitHub Actions, SBOM sinh sẵn, metadata agent và các công cụ audit/benchmark/release-evidence khỏi cây triển khai.
 - [x] Thu gọn dependency Node về Vite, esbuild và JavaScript obfuscator; xóa dependency Playwright, axe, CycloneDX và RetireJS.
-- [x] Chỉ giữ `requirements/runtime.lock.txt`; xóa dependency Python dành riêng cho test/audit.
+- [x] Chỉ giữ `requirements.txt` tại thư mục gốc; xóa dependency Python dành riêng cho test/audit.
 - [x] Giữ toàn bộ `docs`, mã nguồn backend/frontend/views, migration, template Word hệ thống, cấu hình `deploy`, `.env` và các script backup/restore/check DB.
 - [x] Xác minh gói production sau khi dọn bằng extracted-runtime smoke test: 239 tệp runtime, khởi tạo database tạm mới và chạy thành công.
 - [x] Thư mục `data` không chứa database/log/backup cũ; chỉ còn ba template Word hệ thống cho lần cài đầu.

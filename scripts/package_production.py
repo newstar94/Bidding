@@ -30,7 +30,7 @@ RUNTIME_FILES = (
     "README.md",
     "holidays.json",
     "pyproject.toml",
-    "requirements/runtime.lock.txt",
+    "requirements.txt",
     "data/templates/words/mau_bao_cao_dau_thau.docx",
     "data/templates/words/mau_hop_dong_lcnt.docx",
     "data/templates/words/mau_timeline_goi_thau.docx",
