@@ -12,15 +12,3 @@ scrape_configs:
           environment: production
     # bearer_token_file: /run/secrets/biddingflow-metrics-token
 
-  # postgres_exporter listens on 9187 by default. Configure it with the
-  # bidding_backup_monitor role and DATA_SOURCE_PASS_FILE; never place the
-  # password in this Prometheus file. Managed providers may expose equivalent
-  # metrics through their native integration instead.
-  - job_name: biddingflow-postgresql
-    scrape_interval: 15s
-    scrape_timeout: 5s
-    static_configs:
-      - targets: ["127.0.0.1:9187"]
-        labels:
-          service: biddingflow-postgresql
-          environment: production

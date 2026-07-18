@@ -37,12 +37,9 @@ def commit_sync_response(
         response["orphanedIds"] = orphaned_ids
     if client_mutation_id:
         cursor.execute(
-            "INSERT INTO sync_mutations "
+            "INSERT OR REPLACE INTO sync_mutations "
             "(organization_id, actor_user_id, client_mutation_id, response_json) "
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(organization_id, actor_user_id, client_mutation_id) "
-            "DO UPDATE SET response_json = excluded.response_json, "
-            "created_at = datetime('now')",
+            "VALUES (?, ?, ?, ?)",
             (
                 organization_id,
                 actor_user_id,

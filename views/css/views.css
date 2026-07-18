@@ -2466,6 +2466,17 @@ table th {
   font-size: 0.74rem;
   line-height: 1.25;
 }
+
+#modal-plan-breakdown .modal-header {
+  position: relative;
+  padding-right: 84px;
+}
+
+#modal-plan-breakdown .modal-header .modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
 #modal-plan-breakdown .table tbody td {
   font-size: 0.82rem;
   line-height: 1.35;
@@ -2620,16 +2631,22 @@ table th {
   gap: var(--space-5);
 }
 
+.timeline-control-panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
 .timeline-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-6);
   padding: var(--space-6);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-bottom: 1px solid var(--line);
   background: linear-gradient(135deg, var(--surface) 0%, var(--brand-soft) 100%);
-  box-shadow: var(--shadow-sm);
 }
 
 .timeline-hero h2 {
@@ -2669,8 +2686,6 @@ table th {
   height: 27px;
 }
 
-.timeline-toolbar,
-.timeline-actionbar,
 .timeline-content {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -2683,6 +2698,7 @@ table th {
   grid-template-columns: minmax(260px, 1.15fr) minmax(320px, 1.65fr) minmax(140px, 0.55fr);
   gap: var(--space-4);
   padding: var(--space-5);
+  border-bottom: 1px solid var(--line);
 }
 
 .timeline-field {

@@ -225,17 +225,36 @@
   pointer-events: none;
 }
 .app-container.sidebar-collapsed #btn-sidebar-collapse {
-  display: flex !important;
+  display: none !important;
 }
 .app-container.sidebar-collapsed .brand-icon {
-  display: none;
+  cursor: pointer;
+  position: relative;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
-.app-container.sidebar-collapsed #btn-sidebar-collapse:hover::after {
-  right: auto;
-  left: calc(100% + 10px);
+.app-container.sidebar-collapsed .brand-icon:hover,
+.app-container.sidebar-collapsed .brand-icon:focus-visible {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+  outline: none;
 }
-.app-container.sidebar-collapsed #btn-sidebar-collapse :is(i, svg) {
-  transform: rotate(180deg);
+.app-container.sidebar-collapsed .brand-icon:hover::after,
+.app-container.sidebar-collapsed .brand-icon:focus-visible::after {
+  content: attr(aria-label);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--text-main);
+  color: var(--bg-sidebar);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  z-index: 300;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
 }
 .app-container.sidebar-collapsed .sidebar-footer {
   display: none !important;

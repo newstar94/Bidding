@@ -58,23 +58,26 @@ SYSTEM_WORD_TEMPLATE_NAMES = (
 
 
 def provision_system_word_templates(source_dir=None, target_dir=None):
-    """Copy missing bundled Word templates into the mutable runtime directory.
+    """Copy available bundled Word templates into the mutable runtime directory.
 
     Existing runtime templates are preserved so an application upgrade cannot
-    overwrite an operator-managed or customized file.
+    overwrite an operator-managed or customized file. Missing bundled templates
+    are tolerated so a fresh install can start before optional templates are
+    added or uploaded.
     """
     source = Path(source_dir or SYSTEM_WORD_TEMPLATE_DIR).resolve()
     target = Path(target_dir or WORD_TEMPLATE_DIR).resolve()
     target.mkdir(parents=True, exist_ok=True)
 
-    copied = []
+    result = {"copied": [], "missing": []}
     for filename in SYSTEM_WORD_TEMPLATE_NAMES:
         source_path = source / filename
         destination_path = target / filename
         if destination_path.exists():
             continue
         if not source_path.is_file():
-            raise FileNotFoundError(f"Bundled Word template is missing: {source_path}")
+            result["missing"].append(source_path)
+            continue
         shutil.copyfile(source_path, destination_path)
-        copied.append(destination_path)
-    return copied
+        result["copied"].append(destination_path)
+    return result

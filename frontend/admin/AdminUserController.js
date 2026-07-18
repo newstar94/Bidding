@@ -840,21 +840,36 @@ export async function deleteEmployee(id) {
   const confirmed = await this.view.customConfirm("Xác nhận gỡ nhân sự", warningText, "trash-2");
   if (confirmed) {
     try {
-      const res = await apiFetch("/api/auth/users/remove-from-org", {
+      const submitOffboarding = (successorUserId = "") => apiFetch("/api/auth/users/remove-from-org", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: id })
+        body: JSON.stringify({ user_id: id, successor_user_id: successorUserId })
       });
+      let res = await submitOffboarding();
+      let data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.code === "SUCCESSOR_REQUIRED") {
+        const candidates = Array.isArray(data.successorCandidates) ? data.successorCandidates : [];
+        if (!candidates.length) {
+          await this.view.customAlert("Chưa thể cho rời tổ chức", "Không có nhân sự đang hoạt động để tiếp quản công việc.", "alert-triangle");
+          return;
+        }
+        const successorId = await this.view.customSelectConfirm(
+          "Chọn người tiếp quản",
+          `${emp.name} còn ${data.openAssignments?.length || 0} gói thầu/hợp đồng chưa kết thúc. Chọn người tiếp quản trước khi cho nhân sự rời tổ chức.`,
+          candidates.map((candidate) => ({ value: candidate.user_id, label: candidate.name }))
+        );
+        if (!successorId) return;
+        res = await submitOffboarding(successorId);
+        data = await res.json().catch(() => ({}));
+      }
       if (res.ok) {
         await this.reloadEmployeesFromDatabase();
         this.model.state.permissionmatrix = this.model.state.permissionmatrix.filter((m) => m.empId !== id);
-        this.model.state.assignments = this.model.state.assignments.filter((a) => a.empId !== id);
         await this.model.persistData("permissionmatrix");
-        await this.model.persistData("assignments");
+        await this.forceSyncData(true, true);
         this.view.renderManagerNhanVienPanel();
-        await this.autoSync();
+        await this.view.customAlert("Đã cho nhân sự rời tổ chức", "Quyền truy cập đã được thu hồi và lịch sử phân công được giữ lại.", "check-circle");
       } else {
-        const data = await res.json();
         await this.view.customAlert("Thất bại", data.error || "Không thể gỡ bỏ nhân sự này.", "alert-triangle");
       }
     } catch (err) {
@@ -882,6 +897,8 @@ export async function reloadEmployeesFromDatabase() {
       this.model.persistData("employees");
       this.view.populateNhanVienPhuTrachDropdowns();
     }
+    const formerRes = await apiFetch("/api/organizations/former-members");
+    this.model.state.formerEmployees = formerRes.ok ? await formerRes.json() : [];
   } catch (err) {
     console.error("Failed to reload employees:", err);
   }
@@ -1013,7 +1030,7 @@ export function renderWorkspaceSwitcher() {
   const orgSwitchSection = document.getElementById("org-switch-section");
   const orgSwitchList = document.getElementById("org-switch-list");
   const currentUser = this.model.state.activeuser;
-  const orgs = businessOrganizations(currentUser || {}).filter((organization) => organization.status === "active");
+  const orgs = normalizeOrganizations(currentUser || {}).filter((organization) => organization.status === "active");
   if (!currentUser || orgs.length === 0) {
     if (orgSwitchSection) setRuntimeStyle(orgSwitchSection, "display", "none");
     return;
@@ -1030,7 +1047,9 @@ export function renderWorkspaceSwitcher() {
   }
   const htmlContent = orgs.map((org) => {
     const isActive = org.id === activeOrg;
-    const initials = escapeHtml(org.name.split(" ").map((w) => w[0]).join("").substring(0, 2).toUpperCase());
+    const initials = org.scope_type === "personal"
+      ? '<i data-lucide="user" aria-hidden="true"></i>'
+      : escapeHtml(org.name.split(" ").map((w) => w[0]).join("").substring(0, 2).toUpperCase());
     const activeBg = isActive ? "var(--primary-soft)" : "transparent";
     return `
             <button class="dropdown-item dropdown-org-btn" data-org="${escapeHtml(org.id)}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; background: ${activeBg}; width: 100%; text-align: left; padding: 8px 16px; cursor: pointer; transition: background 0.15s ease;">

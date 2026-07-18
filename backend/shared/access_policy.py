@@ -87,6 +87,7 @@ def organization_membership_role(cursor, user_id, organization_id):
         SELECT lower(trim(vai_tro_trong_to_chuc))
         FROM thanh_vien_to_chuc
         WHERE user_id = ? AND organization_id = ?
+          AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'
         LIMIT 1
         """,
         (user_id, organization_id),
@@ -131,33 +132,13 @@ def has_active_organization_membership(cursor, role_str, user_id, organization_i
 
 
 def resolve_document_export_capabilities(cursor, role_str, user_id, organization_id):
-    """Resolve effective sensitive-document grants inside one tenant.
+    """Allow complete business documents inside an accessible workspace."""
 
-    Platform administrators, organization managers and personal-workspace owners
-    inherit all capabilities. Other active members receive only their explicit
-    per-organization grants and default to no sensitive exports.
-    """
-
-    if is_organization_manager(cursor, role_str, user_id, organization_id):
-        return DocumentExportCapabilities.allow_all()
     if is_personal_workspace_owner(cursor, user_id, organization_id):
         return DocumentExportCapabilities.allow_all()
-    if not has_active_organization_membership(cursor, role_str, user_id, organization_id):
-        return DocumentExportCapabilities()
-    row = cursor.execute(
-        """SELECT financial, identity, signature
-           FROM document_export_capabilities
-           WHERE organization_id = ? AND user_id = ?
-           LIMIT 1""",
-        (organization_id, user_id),
-    ).fetchone()
-    if not row:
-        return DocumentExportCapabilities()
-    return DocumentExportCapabilities(
-        financial=bool(row[0]),
-        identity=bool(row[1]),
-        signature=bool(row[2]),
-    )
+    if has_active_organization_membership(cursor, role_str, user_id, organization_id):
+        return DocumentExportCapabilities.allow_all()
+    return DocumentExportCapabilities()
 
 
 def can_export_document_capability(

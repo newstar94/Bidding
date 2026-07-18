@@ -8,7 +8,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from backend.shared.paths import PROJECT_ROOT, resolve_runtime_path
 
@@ -89,59 +89,8 @@ def _validate_production_sqlite_layout(database, environ):
             )
 
 
-def _validated_postgresql_url(database_url, label):
-    parsed = urlparse(str(database_url or ""))
-    sslmode = (parse_qs(parsed.query).get("sslmode") or [""])[0].casefold()
-    if parsed.scheme.casefold() not in {"postgres", "postgresql"}:
-        raise StartupValidationError(f"{label} requires a valid PostgreSQL URL.")
-    if not parsed.username or not parsed.hostname or not parsed.path.strip("/"):
-        raise StartupValidationError(
-            f"{label} must include role, host and database name."
-        )
-    if sslmode != "verify-full":
-        raise StartupValidationError(f"{label} requires sslmode=verify-full.")
-    return parsed
-
-
-def _validate_production_postgresql_layout(database, environ=None):
-    environment = os.environ if environ is None else environ
-    parsed = urlparse(str(getattr(database, "dsn", "")))
-    parsed = _validated_postgresql_url(parsed.geturl(), "BIDDING_DATABASE_URL")
-    migration_url = str(environment.get("BIDDING_MIGRATION_DATABASE_URL", "")).strip()
-    migration = _validated_postgresql_url(
-        migration_url, "BIDDING_MIGRATION_DATABASE_URL"
-    )
-    if parsed.username.casefold() == migration.username.casefold():
-        raise StartupValidationError(
-            "PostgreSQL application and migration roles must be different."
-        )
-    if (
-        parsed.hostname.casefold(),
-        parsed.port or 5432,
-        parsed.path.strip("/"),
-    ) != (
-        migration.hostname.casefold(),
-        migration.port or 5432,
-        migration.path.strip("/"),
-    ):
-        raise StartupValidationError(
-            "Application and migration URLs must target the same PostgreSQL database."
-        )
-
-
 def database_requires_admin_bootstrap(database):
     """Return True when the configured DB has no account to administer it."""
-    if getattr(database, "backend_name", "sqlite") == "postgresql":
-        conn = None
-        try:
-            conn = database.get_connection()
-            table = conn.execute("SELECT to_regclass('public.tai_khoan')").fetchone()
-            if table is None or table[0] is None:
-                return True
-            return conn.execute("SELECT 1 FROM tai_khoan LIMIT 1").fetchone() is None
-        finally:
-            if conn is not None:
-                conn.close()
     db_path = getattr(database, "db_path", None)
     if not db_path or not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
         return True
@@ -164,13 +113,9 @@ def validate_startup_configuration(database, environ=None):
     """Validate configuration that must exist before first-run migration."""
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
-    if app_env in {"prod", "production"}:
-        if getattr(database, "backend_name", "sqlite") == "postgresql":
-            _validate_production_postgresql_layout(database, environ)
-        else:
-            _validate_production_sqlite_layout(database, environ)
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if app_env in {"prod", "production"}:
+        _validate_production_sqlite_layout(database, environ)
         audit_hmac_key = str(environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
         if len(audit_hmac_key.encode("utf-8")) < 32:
             raise StartupValidationError(
@@ -247,8 +192,6 @@ def verify_database_readiness(database, expected_schema_version):
     ``BEGIN IMMEDIATE`` obtains SQLite's write reservation without changing
     application data. The transaction is always rolled back.
     """
-    if getattr(database, "backend_name", "sqlite") == "postgresql":
-        return _verify_postgresql_readiness(database, expected_schema_version)
     conn = None
     transaction_started = False
     try:
@@ -310,66 +253,12 @@ def verify_database_readiness(database, expected_schema_version):
             conn.close()
 
 
-def _verify_postgresql_readiness(database, expected_schema_version):
-    from backend.db.postgresql_schema import (
-        POSTGRESQL_EXTRA_TABLES,
-        SCHEMA_DINH_NGHIA,
-    )
-
-    conn = database.get_connection()
-    try:
-        migration = conn.execute(
-            "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"
-        ).fetchone()
-        if migration is None or int(migration[0]) != int(expected_schema_version):
-            raise StartupValidationError("Unexpected PostgreSQL schema version.")
-        expected_tables = set(SCHEMA_DINH_NGHIA) | set(POSTGRESQL_EXTRA_TABLES)
-        actual_tables = {
-            row[0]
-            for row in conn.execute(
-                """SELECT table_name FROM information_schema.tables
-                   WHERE table_schema = current_schema()"""
-            ).fetchall()
-        }
-        missing_tables = sorted(expected_tables - actual_tables)
-        if missing_tables:
-            raise StartupValidationError(
-                "Required PostgreSQL tables are missing: " + ", ".join(missing_tables)
-            )
-        bootstrap_admin = conn.execute(
-            """
-            SELECT 1
-            FROM tai_khoan AS users
-            INNER JOIN thanh_vien_to_chuc AS memberships
-                ON memberships.user_id = users.id
-            INNER JOIN to_chuc AS organizations
-                ON organizations.id = memberships.organization_id
-            WHERE users.vai_tro = 'super_admin'
-            LIMIT 1
-            """
-        ).fetchone()
-        if bootstrap_admin is None:
-            raise StartupValidationError(
-                "No super administrator with an organization membership exists."
-            )
-        return True
-    finally:
-        conn.close()
-
-
 def verify_database_responsive(database, expected_schema_version):
     """Run the lightweight checks used by the readiness HTTP endpoint."""
     conn = None
     try:
         conn = database.get_connection()
-        if getattr(database, "backend_name", "sqlite") == "postgresql":
-            version = int(
-                conn.execute(
-                    "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"
-                ).fetchone()[0]
-            )
-        else:
-            version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
         if version != int(expected_schema_version):
             raise StartupValidationError("Database schema version changed after startup.")
         if conn.execute("SELECT 1 FROM tai_khoan LIMIT 1").fetchone() is None:

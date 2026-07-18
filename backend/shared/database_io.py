@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import sqlite3
 import time
 from typing import Any, Callable
 
 from backend.observability.metrics import record_database_operation
-from backend.db.errors import DatabasePoolTimeout, OPERATIONAL_ERRORS
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOStats,
@@ -51,10 +51,7 @@ async def run_database_read(
     except BlockingIOTimeoutError:
         outcome = "timed_out"
         raise
-    except DatabasePoolTimeout as exc:
-        outcome = "timed_out"
-        raise BlockingIOTimeoutError(str(exc)) from exc
-    except OPERATIONAL_ERRORS as exc:
+    except sqlite3.OperationalError as exc:
         outcome = "error"
         busy = any(marker in str(exc).casefold() for marker in ("busy", "locked"))
         raise
@@ -73,12 +70,10 @@ async def run_database_read(
 async def run_database_write(
     function: Callable[..., Any],
     *args: Any,
-    timeout_seconds: float | None = None,
     **kwargs: Any,
 ) -> Any:
-    # Callers may only set a response deadline when their mutation contract is
-    # idempotent. The worker is deliberately allowed to finish after an
-    # awaiting request times out; a retry must use the same idempotency key.
+    # A submitted mutation is allowed to finish. Returning a timeout while its
+    # transaction can still commit would give clients an ambiguous result.
     started = time.perf_counter()
     outcome = "ok"
     busy = False
@@ -86,19 +81,13 @@ async def run_database_write(
         return await _write_lane.run(
             function,
             *args,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=None,
             **kwargs,
         )
     except BlockingIOBusyError:
         outcome = "rejected"
         raise
-    except BlockingIOTimeoutError:
-        outcome = "timed_out"
-        raise
-    except DatabasePoolTimeout as exc:
-        outcome = "rejected"
-        raise BlockingIOBusyError(str(exc)) from exc
-    except OPERATIONAL_ERRORS as exc:
+    except sqlite3.OperationalError as exc:
         outcome = "error"
         busy = any(marker in str(exc).casefold() for marker in ("busy", "locked"))
         raise

@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import sqlite3
 import zipfile
 import traceback
 from io import BytesIO
@@ -423,29 +424,32 @@ def set_active_template(filename, user_id=None):
 
 def list_templates(user_id=None):
     templates = []
-
-    templates.append({
-        'filename': 'mau_bao_cao_dau_thau.docx',
-        'name': 'Bản báo cáo đánh giá mặc định',
-        'is_system': True,
-        'is_active': get_active_template(user_id) == 'mau_bao_cao_dau_thau.docx'
-    })
-    templates.append({
-        'filename': 'mau_hop_dong_lcnt.docx',
-        'name': 'Mẫu hợp đồng kinh tế LCNT',
-        'is_system': True,
-        'is_active': get_active_template(user_id) == 'mau_hop_dong_lcnt.docx'
-    })
+    active_template = get_active_template(user_id)
+    system_templates = (
+        ('mau_bao_cao_dau_thau.docx', 'Bản báo cáo đánh giá mặc định'),
+        ('mau_hop_dong_lcnt.docx', 'Mẫu hợp đồng kinh tế LCNT'),
+    )
+    system_filenames = {filename for filename, _ in system_templates}
+    for filename, name in system_templates:
+        is_available = os.path.isfile(os.path.join(TEMPLATE_DIR, filename))
+        templates.append({
+            'filename': filename,
+            'name': name,
+            'is_system': True,
+            'is_available': is_available,
+            'is_active': is_available and active_template == filename
+        })
 
     user_dir = get_user_template_dir(user_id)
     if os.path.exists(user_dir):
         for f in os.listdir(user_dir):
-            if f.endswith('.docx') and f != 'mau_bao_cao_dau_thau.docx':
+            if f.endswith('.docx') and f not in system_filenames:
                 templates.append({
                     'filename': f,
                     'name': f,
                     'is_system': False,
-                    'is_active': get_active_template(user_id) == f
+                    'is_available': True,
+                    'is_active': active_template == f
                 })
     return templates
 

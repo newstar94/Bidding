@@ -1,6 +1,7 @@
 """Execute synchronized deletions/archives as one authorization-aware use case."""
 
-from backend.db.errors import INTEGRITY_ERRORS
+import sqlite3
+
 from backend.shared.access_policy import authorize_record_write, is_organization_manager
 from backend.shared.media_helper import normalize_managed_image_path
 from backend.sync.delete_policy import (
@@ -146,7 +147,7 @@ def apply_sync_deletions(
                     f"DELETE FROM {table_name} WHERE organization_id = ? AND id = ?",
                     (organization_id, record_id),
                 )
-            except INTEGRITY_ERRORS:
+            except sqlite3.IntegrityError:
                 result["errors"].append({
                     "table": table_name,
                     "id": record_id,

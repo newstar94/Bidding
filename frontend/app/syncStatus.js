@@ -106,6 +106,16 @@ export function buildConflictDiff(queue = {}, responseData = {}) {
   for (const error of responseData.errors || []) {
     const type = error.table || "unknown";
     const id = String(error.id || "");
+    const pendingDeletion = (queue.deletes || []).find(
+      (item) => item.table === type && String(item.id) === id
+    );
+    if (pendingDeletion) {
+      lines.push(`[${type}/${id || "?"}] ${error.message || "Bản ghi cần xóa đã thay đổi trên máy chủ."}`);
+      lines.push(`  • Thao tác máy này: xóa bản ghi`);
+      lines.push(`  • Phiên máy này: ${displayValue(pendingDeletion.expectedVersion)}`);
+      lines.push(`  • Phiên máy chủ: ${displayValue(error.currentVersion)}`);
+      continue;
+    }
     const local = queue.upserts?.[type]?.[id] || {};
     const server = error.serverRecord || {};
     const differences = collectFieldConflicts(

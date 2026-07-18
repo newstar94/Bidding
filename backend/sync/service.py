@@ -1,11 +1,9 @@
 import json
-import os
 import re
 import traceback
+import sqlite3
 
 from starlette.responses import JSONResponse
-
-from backend.db.errors import DATABASE_ERRORS
 
 from backend.shared.helpers import (
     OrgPermissionError,
@@ -86,13 +84,13 @@ from backend.sync.request_contract import (
 )
 from backend.sync.response import commit_sync_response
 from backend.sync.opening_uniqueness import validate_opening_participant_uniqueness
-from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
+from backend.shared.async_io import BlockingIOBusyError
 from backend.shared.database_io import run_database_write
 from backend.shared.request_validation import read_json_object
 
 
 async def process_sync_request(request, broadcast_callback=None):
-    """Validate the HTTP payload, then run the database mutation off-loop."""
+    """Validate the HTTP payload, then run the SQLite mutation off-loop."""
     data, json_error = await read_json_object(request)
     if json_error:
         return json_error
@@ -130,31 +128,12 @@ async def process_sync_request(request, broadcast_callback=None):
             fields={"maxItems": batch_limit, "receivedItems": batch_size},
         )
 
-    client_mutation_id = str(data.get("clientMutationId") or "").strip()
-    app_environment = str(os.environ.get("APP_ENV", "development")).strip().casefold()
-    if batch_size > 0 and app_environment in {"prod", "production"} and not client_mutation_id:
-        return error_response(
-            request,
-            "SYNC_MUTATION_ID_REQUIRED",
-            "clientMutationId là bắt buộc cho mọi thay đổi dữ liệu trong production.",
-            status_code=400,
-        )
-
-    write_timeout_seconds = None
-    if client_mutation_id:
-        try:
-            configured_timeout = float(os.environ.get("DATABASE_WRITE_TIMEOUT_SECONDS", "30"))
-        except (TypeError, ValueError):
-            configured_timeout = 30.0
-        write_timeout_seconds = min(120.0, max(1.0, configured_timeout))
-
     try:
         return await run_database_write(
             _process_sync_request_blocking,
             request,
             data,
             broadcast_callback,
-            timeout_seconds=write_timeout_seconds,
         )
     except BlockingIOBusyError:
         response = error_response(
@@ -165,21 +144,12 @@ async def process_sync_request(request, broadcast_callback=None):
         )
         response.headers["Retry-After"] = "1"
         return response
-    except BlockingIOTimeoutError:
-        response = error_response(
-            request,
-            "DATABASE_WRITE_TIMEOUT",
-            "Thay đổi đang xử lý lâu hơn thời hạn phản hồi. Hãy thử lại với cùng clientMutationId; máy chủ sẽ không ghi trùng.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
 
 
 def _process_sync_request_blocking(request, data, broadcast_callback=None):
     """
     [POST] /api/sync
-    Đồng bộ dữ liệu thay đổi từ ứng dụng Frontend vào cơ sở dữ liệu đã cấu hình.
+    Đồng bộ dữ liệu thay đổi từ ứng dụng Frontend vào cơ sở dữ liệu SQLite.
     """
     def log_sync_error(msg):
         log_error(msg, "SyncAPI", request_id=get_request_id(request))
@@ -196,6 +166,8 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
             return JSONResponse({"error": role_or_err}, status_code=403)
 
         conn = database.get_connection()
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
         conn.execute("BEGIN TRANSACTION")
         cursor = conn.cursor()
 
@@ -853,11 +825,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                                     if not cursor.fetchone():
                                         raise ValueError(f"Goi thau {gt_id} khong thuoc owner hien tai.")
                                     cursor.execute(
-                                        """INSERT INTO hop_dong_goi_thau
-                                           (organization_id, owner_type, hop_dong_id, goi_thau_id)
-                                           VALUES (?, ?, ?, ?)
-                                           ON CONFLICT(organization_id, hop_dong_id, goi_thau_id)
-                                           DO UPDATE SET owner_type = excluded.owner_type""",
+                                        "INSERT OR REPLACE INTO hop_dong_goi_thau (organization_id, owner_type, hop_dong_id, goi_thau_id) VALUES (?, ?, ?, ?)",
                                         (org_name, owner_type, c_hd_id, gt_id)
                                     )
                     track_affected_record(table_name, previous_record)
@@ -873,7 +841,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                                 (table_name, item_id, org_name, current_time, batch_sync_version)
                             )
                             orphaned_ids.append({"table": table_name, "id": item_id})
-                        except DATABASE_ERRORS as orphan_cleanup_error:
+                        except sqlite3.Error as orphan_cleanup_error:
                             log_sync_error(f"Không thể đánh dấu bản ghi mồ côi {item_id}: {orphan_cleanup_error}")
                     else:
                         log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")
@@ -971,7 +939,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         if conn:
             try:
                 conn.rollback()
-            except DATABASE_ERRORS:
+            except sqlite3.Error:
                 pass
         return error_response(
             request,
@@ -983,7 +951,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         if conn:
             try:
                 conn.rollback()
-            except DATABASE_ERRORS:
+            except sqlite3.Error:
                 pass
         log_sync_error(f"Lỗi tổng quát sync_api: {e}\n{traceback.format_exc()}")
         return JSONResponse({"error": "Đồng bộ dữ liệu thất bại. Vui lòng thử lại."}, status_code=500)
@@ -991,7 +959,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         if conn:
             try:
                 conn.close()
-            except DATABASE_ERRORS:
+            except sqlite3.Error:
                 pass
         if not transaction_committed and newly_written_images:
             cleanup_conn = None

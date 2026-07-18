@@ -1,6 +1,4 @@
-import contextlib
 import os
-import re
 import sqlite3
 from pathlib import Path
 
@@ -8,9 +6,6 @@ from backend.shared.paths import DATA_DIR, PROJECT_ROOT
 
 
 class SQLiteDatabase:
-    backend_name = "sqlite"
-    supports_multiple_writers = False
-
     def __init__(self, db_path=None):
         default_path = DATA_DIR / "bidding.db"
         configured_path = db_path or os.environ.get("BIDDING_DB_PATH") or default_path
@@ -30,56 +25,6 @@ class SQLiteDatabase:
         conn.row_factory = sqlite3.Row
         self._apply_pragmas(conn)
         return conn
-
-    def healthcheck(self):
-        conn = self.get_connection()
-        try:
-            return conn.execute("SELECT 1").fetchone()[0] == 1
-        finally:
-            conn.close()
-
-    @staticmethod
-    @contextlib.contextmanager
-    def transaction(connection):
-        try:
-            yield connection
-            connection.commit()
-        except BaseException:
-            connection.rollback()
-            raise
-
-    @staticmethod
-    @contextlib.contextmanager
-    def savepoint(connection, name):
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", str(name)):
-            raise ValueError("Invalid database savepoint name.")
-        connection.execute(f"SAVEPOINT {name}")
-        try:
-            yield connection
-            connection.execute(f"RELEASE SAVEPOINT {name}")
-        except BaseException:
-            connection.execute(f"ROLLBACK TO SAVEPOINT {name}")
-            connection.execute(f"RELEASE SAVEPOINT {name}")
-            raise
-
-    @staticmethod
-    def is_unique_violation(error):
-        return isinstance(error, sqlite3.IntegrityError) and "unique" in str(error).lower()
-
-    @staticmethod
-    def is_foreign_key_violation(error):
-        return isinstance(error, sqlite3.IntegrityError) and "foreign key" in str(error).lower()
-
-    @staticmethod
-    def is_retryable_error(error):
-        return isinstance(error, sqlite3.OperationalError) and any(
-            marker in str(error).lower()
-            for marker in ("locked", "busy", "unable to open")
-        )
-
-    @staticmethod
-    def close():
-        return None
 
     @staticmethod
     def _apply_pragmas(conn):
@@ -163,15 +108,7 @@ class SQLiteWriterLease:
 
 
 models = None
-
-
-def _create_configured_database():
-    from backend.db.factory import create_database
-
-    return create_database()
-
-
-database = _create_configured_database()
+database = SQLiteDatabase()
 
 
 def load_and_register(name, filepath):

@@ -15,103 +15,22 @@ function requiredRoleForTab(tabName) {
   if (tabName === "managernhanvien" || tabName === "managerhosogiay") return "manager";
   return null;
 }
-
-const TAB_PERMISSION_MODULES = Object.freeze({
-  kehoach: "kehoach",
-  "kehoach-detail": "kehoach",
-  goithau: "goithau",
-  "goithau-timeline": "goithau",
-  "goithau-detail": "goithau",
-  danhgiahsdt: "goithau",
-  mothau: "thongtinmothau",
-  hopdong: "hopdong",
-  "hopdong-detail": "hopdong",
-  chudautu: "chudautu",
-  "chudautu-detail": "chudautu",
-  nhathau: "nhathau",
-  "nhathau-detail": "nhathau",
-  chuyengia: "chuyengia"
-});
-
-const MODULE_EDIT_CONTROL_SELECTOR = [
-  '[id^="btn-add-"]',
-  '.btn-edit',
-  '.btn-delete',
-  '.btn-add-row',
-  '.btn-delete-row',
-  '[data-bf-action^="edit-"]',
-  '[data-bf-action^="delete-"]',
-  '[data-bf-action="restore-package"]'
-].join(",");
-
-export function moduleForTab(tabName) {
-  return TAB_PERMISSION_MODULES[String(tabName || "")] || null;
-}
-
-export function hasCurrentModulePermission(model, moduleName, action = "view") {
-  if (!moduleName) return true;
-  const userId = String(model?.state?.activeuser?.id || "").trim();
-  if (!userId) return false;
-  return model.hasPermission(userId, moduleName, action);
-}
-
-function setPermissionVisibility(element, visible) {
-  if (!element) return;
-  if (visible) {
-    if (element.dataset.bfPermissionHidden === "true") {
-      element.hidden = false;
-      element.removeAttribute("aria-hidden");
-      delete element.dataset.bfPermissionHidden;
-    }
-    return;
-  }
-  element.hidden = true;
-  element.setAttribute("aria-hidden", "true");
-  element.dataset.bfPermissionHidden = "true";
-}
-
-export function synchronizeModuleAccess(root = document) {
-  const model = this.model;
-  root.querySelectorAll?.(".nav-btn[data-tab]").forEach((button) => {
-    const moduleName = moduleForTab(button.dataset.tab);
-    if (!moduleName) return;
-    setPermissionVisibility(
-      button,
-      hasCurrentModulePermission(model, moduleName, "view")
-    );
-  });
-
-  const activeTab = model?.state?.activetab;
-  const moduleName = moduleForTab(activeTab);
-  const pane = root.querySelector?.(`#tab-${CSS.escape(String(activeTab || ""))}`);
-  if (!moduleName || !pane) return;
-  const canEdit = hasCurrentModulePermission(model, moduleName, "edit");
-  pane.querySelectorAll(MODULE_EDIT_CONTROL_SELECTOR).forEach((control) => {
-    setPermissionVisibility(control, canEdit);
-  });
-}
-
 function defaultTabForRole(model) {
   return model?.state?.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard";
 }
-function canAccessTab(controller, tabName, action = null) {
+function canAccessTab(controller, tabName) {
   const requiredRole = requiredRoleForTab(tabName);
-  if (requiredRole && !controller.model.hasActiveEffectiveRole(requiredRole)) return false;
-  const moduleName = moduleForTab(tabName);
-  const permissionType = ["taomoi", "chinhsua"].includes(String(action || ""))
-    ? "edit"
-    : "view";
-  return hasCurrentModulePermission(controller.model, moduleName, permissionType);
+  return !requiredRole || controller.model.hasActiveEffectiveRole(requiredRole);
 }
 function guardTabAccess(controller, tabName, action = null, updateState = true) {
-  if (canAccessTab(controller, tabName, action)) {
+  if (canAccessTab(controller, tabName)) {
     return { tabName, action };
   }
   const fallbackTab = defaultTabForRole(controller.model);
   if (typeof controller.view?.showToast === "function") {
     controller.view.showToast(
       "Không có quyền truy cập",
-      "Tài khoản của bạn không có quyền xem phân hệ này.",
+      "Tài khoản của bạn không có quyền mở trang quản trị này.",
       "warning"
     );
   }
@@ -157,6 +76,19 @@ export function setupSidebar() {
       this.view.createIconsScoped(sidebar);
     });
   }
+  const brandIcon = sidebar?.querySelector(".brand-icon");
+  const expandCollapsedSidebar = () => {
+    if (!appContainer.classList.contains("sidebar-collapsed")) return;
+    setDesktopSidebarCollapsed(appContainer, btnCollapse, false);
+    localStorage.setItem("bf_sidebar_collapsed", "false");
+    this.view.createIconsScoped(sidebar);
+  };
+  brandIcon?.addEventListener("click", expandCollapsedSidebar);
+  brandIcon?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    expandCollapsedSidebar();
+  });
   sidebarToggle.addEventListener("click", () => {
     const open = !sidebar.classList.contains("active");
     setMobileSidebarOpen(sidebar, sidebarToggle, open, { focus: open ? "sidebar" : "toggle" });
@@ -393,8 +325,8 @@ export function switchTab(tabName, action = null, updateState = true) {
     });
   }
   const workflowTabs = ["mothau", "danhgiahsdt", "goithau-detail"];
-  if (!this.isWorkflowScopeReady(tabName) && (action === "taomoi" || workflowTabs.includes(tabName))) {
-    return this.ensureWorkflowModules(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+  if (!this._workflowModulesReady && (action === "taomoi" || workflowTabs.includes(tabName))) {
+    return this.ensureWorkflowModules().then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
       console.error("Failed to load workflow module:", tabName, err);
       this.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
     });
@@ -502,7 +434,6 @@ export function switchTab(tabName, action = null, updateState = true) {
   };
   this.view.elements.pageTitle.textContent = titleMap[tabName] || "Hệ thống Quản lý";
   this.renderTabData(tabName, action);
-  this.synchronizeModuleAccess();
   if (action === "taomoi") {
     setTimeout(() => {
       if (!shouldAutoOpenCreateModal(this.model?.state, tabName)) return;

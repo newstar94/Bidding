@@ -1,13 +1,14 @@
 <section class="tab-pane timeline-page" id="tab-goithau-timeline" aria-labelledby="timeline-page-heading">
-    <div class="timeline-hero">
+    <div class="timeline-control-panel">
+      <div class="timeline-hero">
         <div>
             <span class="timeline-kicker">Tiến độ hồ sơ</span>
             <h2 id="timeline-page-heading">Timeline gói thầu</h2>
         </div>
         <div class="timeline-hero-icon" aria-hidden="true"><i data-lucide="calendar-clock"></i></div>
-    </div>
+      </div>
 
-    <div class="timeline-toolbar" aria-label="Bộ chọn timeline">
+      <div class="timeline-toolbar" aria-label="Bộ chọn timeline">
         <div class="timeline-field">
             <label for="timeline-plan-select">Kế hoạch LCNT <span class="required">*</span></label>
             <select id="timeline-plan-select"><option value="">Chọn kế hoạch</option></select>
@@ -20,9 +21,9 @@
             <label for="timeline-version-select">Phiên bản</label>
             <select id="timeline-version-select" disabled><option value="">--</option></select>
         </div>
-    </div>
+      </div>
 
-    <div class="timeline-actionbar">
+      <div class="timeline-actionbar">
         <div class="timeline-filters" aria-label="Lọc mốc timeline">
             <label class="timeline-filter-label" for="timeline-status-filter">Trạng thái</label>
             <select id="timeline-status-filter">
@@ -47,6 +48,7 @@
                 <i data-lucide="save"></i> Lưu thay đổi
             </button>
         </div>
+      </div>
     </div>
 
     <div class="timeline-content" id="timeline-content">

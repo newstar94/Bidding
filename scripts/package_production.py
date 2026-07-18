@@ -21,7 +21,6 @@ RUNTIME_DIRECTORIES = {
     "dist": lambda path: path.is_file(),
     "views": lambda path: path.is_file(),
     "deploy": lambda path: path.is_file(),
-    "sbom": lambda path: path.suffix == ".json",
     "docs": lambda path: path.suffix == ".md",
 }
 
@@ -53,7 +52,7 @@ FORBIDDEN_PARTS = {
     "tests",
 }
 FORBIDDEN_NAMES = {".env", "bidding.db", "bidding.db-shm", "bidding.db-wal"}
-FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".map", ".pyc", ".tmp"}
+FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".pyc", ".tmp"}
 REPRODUCIBLE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 

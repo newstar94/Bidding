@@ -2,10 +2,7 @@
 
 from dataclasses import dataclass
 
-from backend.shared.access_policy import (
-    can_export_document_capability,
-    has_module_permission,
-)
+from backend.shared.access_policy import has_module_permission
 
 
 SENSITIVE_READ_MODULES = {
@@ -16,7 +13,7 @@ SENSITIVE_READ_MODULES = {
 
 @dataclass(frozen=True)
 class SensitiveReadPolicy:
-    """Workspace-scoped access to fields that require module edit rights."""
+    """Workspace-scoped access to complete business records."""
 
     can_view_expert_details: bool
     can_view_contractor_financials: bool
@@ -37,7 +34,7 @@ def resolve_sensitive_read_policy(
     organization_id,
     table_names=None,
 ):
-    """Resolve sensitive read access against the active workspace and module."""
+    """Allow complete business fields whenever the module itself is viewable."""
     requested_tables = (
         set(SENSITIVE_READ_MODULES)
         if table_names is None
@@ -53,22 +50,13 @@ def resolve_sensitive_read_policy(
             user_id,
             organization_id,
             SENSITIVE_READ_MODULES[table_name],
-            "edit",
+            "view",
         )
 
     return SensitiveReadPolicy(
         can_view_expert_details=can_view("chuyen_gia"),
         can_view_contractor_financials=can_view("nha_thau"),
-        can_view_signature_images=(
-            bool(requested_tables)
-            and can_export_document_capability(
-                cursor,
-                role_str,
-                user_id,
-                organization_id,
-                "signature",
-            )
-        ),
+        can_view_signature_images=any(can_view(table) for table in requested_tables),
     )
 
 

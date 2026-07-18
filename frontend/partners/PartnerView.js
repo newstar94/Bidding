@@ -26,8 +26,17 @@ export function renderBieumauTab(templatesList = []) {
   }
   tbody.innerHTML = templatesList.map((tpl) => {
     const safeFilename = safeAttr(tpl.filename);
-    const activeBadge = tpl.is_active ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đang hoạt động</span>' : `<span class="badge badge-neutral btn-activate-template bf-s-f444e8c07d" data-filename="${safeFilename}" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" class="bf-s-38e6fd7439"></i> Sẵn sàng</span>`;
-    const actionButton = tpl.is_active ? `<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>` : `<button class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`;
+    const isAvailable = tpl.is_available !== false;
+    const activeBadge = !isAvailable
+      ? '<span class="badge badge-neutral"><i data-lucide="file-x"></i> Chưa có tệp mẫu</span>'
+      : tpl.is_active
+        ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Đang hoạt động</span>'
+        : `<span class="badge badge-neutral btn-activate-template bf-s-f444e8c07d" data-filename="${safeFilename}" title="Nhấn để sử dụng làm mẫu chính"><i data-lucide="play" class="bf-s-38e6fd7439"></i> Sẵn sàng</span>`;
+    const actionButton = !isAvailable
+      ? '<span class="text-muted">Chưa cài đặt</span>'
+      : tpl.is_active
+        ? '<span class="text-success fw-bold bf-s-51a7b72acc">Đang dùng</span>'
+        : `<button class="btn btn-outline btn-sm btn-activate-template" data-filename="${safeFilename}">Sử dụng</button>`;
     return `
             <tr>
                 <td class="fw-bold">${escapeHtml(tpl.name)}</td>

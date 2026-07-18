@@ -336,12 +336,10 @@ from backend.shared.helpers import (
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import get_blocking_io_stats, run_blocking_io
 from backend.shared.database_io import get_database_io_stats, run_database_read
-from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import get_cpu_io_stats
 from backend.observability.metrics import ObservabilityMiddleware, metrics_api
 from backend.observability.client_errors import client_error_api
 from backend.shared.access_policy import (
-    can_export_document_capability,
     has_module_permission,
 )
 from backend.shared.media_helper import protected_image_signature_is_valid
@@ -359,9 +357,14 @@ from backend.api.org_routes import (
     add_user_to_org_api,
     activate_personal_subscription_api,
     get_document_export_capabilities_api,
+    list_former_organization_members_api,
     remove_user_from_org_api,
     update_document_export_capabilities_api,
     update_organization_subscription_api,
+)
+from backend.api.personal_import_routes import (
+    import_personal_experts_api,
+    preview_personal_experts_api,
 )
 from backend.auth.auth_routes import (
     login_api,
@@ -468,7 +471,7 @@ async def health_ready_api(request):
         await run_database_read(
             verify_database_responsive,
             database,
-            getattr(database, "schema_version", DB_SCHEMA_VERSION),
+            DB_SCHEMA_VERSION,
             timeout_seconds=3.0,
         )
     except Exception as readiness_error:
@@ -524,7 +527,7 @@ class ProductionViewStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
-def _protected_image_response_sync(request):
+async def protected_image_api(request):
     is_valid, role_or_err = verify_session(request)
     if not is_valid:
         return JSONResponse({"error": role_or_err}, status_code=403)
@@ -559,25 +562,17 @@ def _protected_image_response_sync(request):
         filename = os.path.basename(rel_path)
         conn = database.get_connection()
         cursor = conn.cursor()
-        # Sensitive media requires both record-module edit access and the
-        # independent document signature/image capability.
+        # Business media follows the same workspace-scoped view permission as
+        # the record that owns it. Signed URLs and record ownership remain
+        # mandatory below.
         required_module = "nhathau" if rel_path.startswith('nha_thau/') else "chuyengia"
-        if (
-            not has_module_permission(
-                cursor,
-                str(role_or_err),
-                role_or_err.user_id,
-                organization_id,
-                required_module,
-                "edit",
-            )
-            or not can_export_document_capability(
-                cursor,
-                str(role_or_err),
-                role_or_err.user_id,
-                organization_id,
-                "signature",
-            )
+        if not has_module_permission(
+            cursor,
+            str(role_or_err),
+            role_or_err.user_id,
+            organization_id,
+            required_module,
+            "view",
         ):
             return JSONResponse({"error": "Không có quyền truy cập tệp này"}, status_code=403)
         if rel_path.startswith('nha_thau/'):
@@ -630,33 +625,6 @@ def _protected_image_response_sync(request):
         file_path,
         headers={"Cache-Control": "private, no-store"},
     )
-
-
-async def protected_image_api(request):
-    try:
-        return await run_database_read(
-            _protected_image_response_sync,
-            request,
-            timeout_seconds=10.0,
-        )
-    except BlockingIOBusyError:
-        response = error_response(
-            request,
-            "DATABASE_READ_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
-    except BlockingIOTimeoutError:
-        response = error_response(
-            request,
-            "DATABASE_READ_TIMEOUT",
-            "Không thể kiểm tra quyền truy cập tệp trong thời gian cho phép.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
 
 
 
@@ -729,6 +697,9 @@ routes = [
     Route("/api/auth/users/activate-personal-package", activate_personal_subscription_api, methods=["POST"]),
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
     Route("/api/organizations/subscription", update_organization_subscription_api, methods=["POST"]),
+    Route("/api/organizations/former-members", list_former_organization_members_api, methods=["GET"]),
+    Route("/api/personal-import/experts/preview", preview_personal_experts_api, methods=["GET"]),
+    Route("/api/personal-import/experts", import_personal_experts_api, methods=["POST"]),
     Route(
         "/api/organizations/document-export-capabilities/{user_id}",
         get_document_export_capabilities_api,
@@ -871,7 +842,7 @@ async def lifespan(application):
     async with application_lifespan(
         application,
         database=database,
-        schema_version=getattr(database, "schema_version", DB_SCHEMA_VERSION),
+        schema_version=DB_SCHEMA_VERSION,
         initialize_database=_initialize_database,
         build_index_response=_build_index_response_payload,
         is_production=IS_PRODUCTION,

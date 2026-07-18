@@ -64,8 +64,8 @@ export function setupAuth() {
     try {
       const initialTab = this.getTabNameForPath?.(window.location.pathname) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
       await this.view.ensureViewModules(initialTab);
-      if (["mothau", "danhgiahsdt"].includes(initialTab) && !this.isWorkflowScopeReady(initialTab)) {
-        await this.ensureWorkflowModules(initialTab);
+      if (["mothau", "danhgiahsdt"].includes(initialTab) && !this._workflowModulesReady) {
+        await this.ensureWorkflowModules();
       }
       if (!document.getElementById(`tab-${initialTab}`) && this.lazyTabPartials?.[initialTab]) {
         await this.ensureLazyTab(initialTab);
@@ -92,7 +92,6 @@ export function setupAuth() {
     }
     if (!this.model.state.activeuser) this.model.state.activeuser = {};
     applyAccessContext(this.model.state.activeuser, user);
-    this.model.state.activeuser.id = String(user.id || "").trim();
     const requestedRole = this.model.state.activeuser.dbRole ? this.model.state.activerole : null;
     this.model.state.activerole = this.model.constructor.resolveAllowedActiveRole(this.model.state.activeuser, requestedRole);
     this.model.state.activeuser.name = user.name || user.username || "Người dùng";

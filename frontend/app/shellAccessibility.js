@@ -83,6 +83,13 @@ export function handleProfileMenuKeydown(event, trigger, menu) {
 export function setDesktopSidebarCollapsed(appContainer, collapseButton, collapsed) {
   const isCollapsed = Boolean(collapsed);
   appContainer?.classList.toggle("sidebar-collapsed", isCollapsed);
+  const brandIcon = appContainer?.querySelector?.(".brand-icon");
+  if (brandIcon) {
+    brandIcon.setAttribute("aria-hidden", String(!isCollapsed));
+    brandIcon.setAttribute("aria-label", "Mở rộng thanh bên");
+    brandIcon.setAttribute("role", "button");
+    brandIcon.tabIndex = isCollapsed ? 0 : -1;
+  }
   if (collapseButton) {
     collapseButton.setAttribute("aria-expanded", String(!isCollapsed));
     collapseButton.setAttribute("aria-label", isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên");

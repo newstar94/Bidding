@@ -5,10 +5,11 @@ import time
 import urllib.request
 import urllib.error
 import urllib.parse
+import sqlite3
 from datetime import datetime, timezone
 
 from starlette.responses import JSONResponse
-from backend.db.errors import INTEGRITY_ERRORS
+from starlette.background import BackgroundTasks
 
 from backend.shared.helpers import (
     database,
@@ -43,7 +44,7 @@ from backend.shared.async_io import (
     run_blocking_io,
 )
 from backend.shared.cpu_io import run_cpu_bound
-from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.database_io import run_database_write
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
@@ -110,172 +111,18 @@ def _verify_google_token(id_token: str):
     return payload
 
 
-def _google_account_exists_sync(google_id, email):
-    conn = database.get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT 1
-            FROM dinh_danh_ngoai
-            WHERE issuer = ? AND subject = ?
-            """,
-            ("https://accounts.google.com", google_id),
-        )
-        if cursor.fetchone():
-            return True
-        cursor.execute("SELECT 1 FROM tai_khoan WHERE email_norm = ?", (email,))
-        return cursor.fetchone() is not None
-    finally:
-        conn.close()
-
-
-def _complete_google_login_sync(
-    request,
-    *,
-    google_id,
-    email,
-    name,
-    picture,
-    random_password_hash,
-    session_token,
-    token_expiry,
-    device_info,
-    active_org_hint,
-):
-    conn = database.get_connection()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT tk.*
-            FROM dinh_danh_ngoai dd
-            JOIN tai_khoan tk ON tk.id = dd.user_id
-            WHERE dd.issuer = ? AND dd.subject = ?
-            """,
-            ("https://accounts.google.com", google_id),
-        )
-        row = cursor.fetchone()
-        user = dict(row) if row else None
-        account_linked = False
-
-        if not user:
-            cursor.execute("SELECT * FROM tai_khoan WHERE email_norm = ?", (email,))
-            row = cursor.fetchone()
-            if row:
-                user = dict(row)
-                account_linked = True
-                already_has_username = bool(user.get("ten_dang_nhap"))
-                cursor.execute(
-                    """
-                    INSERT INTO dinh_danh_ngoai (issuer, subject, user_id, email_norm)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    ("https://accounts.google.com", google_id, user["id"], email),
-                )
-                cursor.execute(
-                    "UPDATE tai_khoan SET anh_dai_dien = COALESCE(NULLIF(anh_dai_dien,''), ?), username_da_dat = ? WHERE id = ?",
-                    (picture, 1 if already_has_username else 0, user["id"]),
-                )
-                user["username_da_dat"] = 1 if already_has_username else 0
-                if not user.get("anh_dai_dien") and picture:
-                    user["anh_dai_dien"] = picture
-                log_audit(
-                    "auth.google_account_linked",
-                    actor_user_id=user["id"],
-                    target_type="tai_khoan",
-                    target_id=user["id"],
-                    request=request,
-                    metadata={"email": email, "had_username": already_has_username},
-                    cursor=cursor,
-                    required=True,
-                )
-
-        if not user:
-            if not random_password_hash:
-                raise RuntimeError("Google account creation requires a prepared password hash.")
-            new_id = generate_record_id("tai_khoan")
-            cursor.execute(
-                """INSERT INTO tai_khoan
-                   (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
-                    email, email_norm, anh_dai_dien, da_xac_minh, username_da_dat)
-                   VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, 0)""",
-                (new_id, random_password_hash, name, email, email, picture),
-            )
-            cursor.execute(
-                """
-                INSERT INTO dinh_danh_ngoai (issuer, subject, user_id, email_norm)
-                VALUES (?, ?, ?, ?)
-                """,
-                ("https://accounts.google.com", google_id, new_id, email),
-            )
-            cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
-            user = dict(cursor.fetchone())
-            log_audit(
-                "auth.google_auto_register",
-                actor_user_id=new_id,
-                target_type="tai_khoan",
-                target_id=new_id,
-                request=request,
-                metadata={"email": email, "username": None},
-                cursor=cursor,
-                required=True,
-            )
-
-        if not user.get("da_xac_minh"):
-            cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE id = ?", (user["id"],))
-            user["da_xac_minh"] = 1
-
-        create_session(
-            cursor,
-            user_id=user["id"],
-            token=session_token,
-            absolute_expires_at=token_expiry,
-            idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
-            remember=False,
-            device_info=device_info,
-        )
-        access_payload = build_user_access_payload(
-            cursor,
-            user["id"],
-            user["vai_tro"],
-            active_org_hint,
-            user.get("ho_ten"),
-        )
-        needs_username = not user.get("ten_dang_nhap")
-        suggested_username = (
-            generate_suggested_username(user.get("ho_ten", ""), email, cursor)
-            if needs_username else ""
-        )
-        log_audit(
-            "auth.google_login_success",
-            actor_user_id=user["id"],
-            organization_id=access_payload["active_org_id"],
-            target_type="tai_khoan",
-            target_id=user["id"],
-            request=request,
-            metadata={"email": email},
-            cursor=cursor,
-            required=True,
-        )
-        conn.commit()
-        _session_cache_invalidate_by_user_id(user["id"])
-        return {
-            "user": user,
-            "access": access_payload,
-            "needs_username": needs_username,
-            "suggested_username": suggested_username,
-            "account_linked": account_linked,
-        }
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+def _add_background_audit(bg_tasks, action, **kwargs):
+    if bg_tasks is None:
+        bg_tasks = BackgroundTasks()
+    bg_tasks.add_task(log_audit, action, **kwargs)
+    return bg_tasks
 
 
 async def google_login_api(request):
+
+    conn = None
+    bg_tasks = None
+    pending_audits = []
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
@@ -351,28 +198,75 @@ async def google_login_api(request):
         except ProfileValidationError as exc:
             return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
 
-        try:
-            account_exists = await run_database_read(
-                _google_account_exists_sync,
-                google_id,
-                email,
-                timeout_seconds=10.0,
-            )
-        except (BlockingIOBusyError, BlockingIOTimeoutError):
-            response = JSONResponse(
-                {
-                    "error": "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
-                    "code": "DATABASE_READ_QUEUE_FULL",
-                },
-                status_code=503,
-            )
-            response.headers["Retry-After"] = "1"
-            return response
+        conn = database.get_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.cursor()
 
-        random_password_hash = None
-        if not account_exists:
+
+        user = None
+        cursor.execute(
+            """
+            SELECT tk.*
+            FROM dinh_danh_ngoai dd
+            JOIN tai_khoan tk ON tk.id = dd.user_id
+            WHERE dd.issuer = ? AND dd.subject = ?
+            """,
+            ("https://accounts.google.com", google_id),
+        )
+        row = cursor.fetchone()
+        if row:
+            user = dict(row)
+
+
+        account_linked = False
+        if not user:
+            cursor.execute(
+                "SELECT * FROM tai_khoan WHERE email_norm = ?",
+                (email,),
+            )
+            row = cursor.fetchone()
+            if row:
+                user = dict(row)
+                account_linked = True
+
+
+                already_has_username = bool(user.get("ten_dang_nhap"))
+                cursor.execute(
+                    """
+                    INSERT INTO dinh_danh_ngoai (issuer, subject, user_id, email_norm)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    ("https://accounts.google.com", google_id, user["id"], email),
+                )
+                cursor.execute(
+                    "UPDATE tai_khoan SET anh_dai_dien = COALESCE(NULLIF(anh_dai_dien,''), ?), username_da_dat = ? WHERE id = ?",
+                    (picture, 1 if already_has_username else 0, user["id"]),
+                )
+                user["username_da_dat"] = 1 if already_has_username else 0
+                if not user.get("anh_dai_dien") and picture:
+                    user["anh_dai_dien"] = picture
+                pending_audits.append((
+                    "auth.google_account_linked",
+                    {
+                        "actor_user_id": user["id"],
+                        "target_type": "tai_khoan",
+                        "target_id": user["id"],
+                        "request": request,
+                        "metadata": {"email": email, "had_username": already_has_username},
+                    },
+                ))
+
+        else:
+            account_linked = False
+
+
+        if not user:
             import secrets as _secrets
             from backend.shared.helpers import hash_password as _hash_password
+
+            # Google-only accounts receive an unrecoverable random local secret.
+            # A local password can later be established through the verified-email
+            # reset flow; credentials are never sent by email.
             try:
                 random_password_hash = await run_cpu_bound(
                     _hash_password,
@@ -380,6 +274,7 @@ async def google_login_api(request):
                     timeout_seconds=15,
                 )
             except (BlockingIOBusyError, BlockingIOTimeoutError):
+                conn.rollback()
                 response = JSONResponse(
                     {
                         "error": "Hệ thống đang xử lý nhiều yêu cầu xác thực. Vui lòng thử lại sau.",
@@ -389,6 +284,39 @@ async def google_login_api(request):
                 )
                 response.headers["Retry-After"] = "1"
                 return response
+            new_id = generate_record_id("tai_khoan")
+            cursor.execute(
+                """INSERT INTO tai_khoan
+                   (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
+                    email, email_norm, anh_dai_dien, da_xac_minh, username_da_dat)
+                   VALUES (?, NULL, NULL, ?, ?, 'user', ?, ?, ?, 1, 0)""",
+                (new_id, random_password_hash, name, email, email, picture),
+            )
+            cursor.execute(
+                """
+                INSERT INTO dinh_danh_ngoai (issuer, subject, user_id, email_norm)
+                VALUES (?, ?, ?, ?)
+                """,
+                ("https://accounts.google.com", google_id, new_id, email),
+            )
+            cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
+            user = dict(cursor.fetchone())
+            pending_audits.append((
+                "auth.google_auto_register",
+                {
+                    "actor_user_id": new_id,
+                    "target_type": "tai_khoan",
+                    "target_id": new_id,
+                    "request": request,
+                    "metadata": {"email": email, "username": None},
+                },
+            ))
+
+
+        if not user.get("da_xac_minh"):
+            cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE id = ?", (user["id"],))
+            user["da_xac_minh"] = 1
+
 
         session_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
@@ -398,61 +326,74 @@ async def google_login_api(request):
             "login_time": datetime.now(timezone.utc).isoformat(),
             "method": "google",
         })
+        create_session(
+            cursor,
+            user_id=user["id"],
+            token=session_token,
+            absolute_expires_at=token_expiry,
+            idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
+            remember=False,
+            device_info=device_info,
+        )
+        _session_cache_invalidate_by_user_id(user["id"])
+
         active_org_hint = urllib.parse.unquote(
             (request.headers.get("X-Active-Org") or "").strip()
         ) or None
-        try:
-            login = await run_database_write(
-                _complete_google_login_sync,
-                request,
-                google_id=google_id,
-                email=email,
-                name=name,
-                picture=picture,
-                random_password_hash=random_password_hash,
-                session_token=session_token,
-                token_expiry=token_expiry,
-                device_info=device_info,
-                active_org_hint=active_org_hint,
-            )
-        except BlockingIOBusyError:
-            response = JSONResponse(
-                {
-                    "error": "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.",
-                    "code": "DATABASE_WRITE_QUEUE_FULL",
-                },
-                status_code=503,
-            )
-            response.headers["Retry-After"] = "1"
-            return response
+        access_payload = build_user_access_payload(
+            cursor,
+            user["id"],
+            user["vai_tro"],
+            active_org_hint,
+            user.get("ho_ten"),
+        )
+        conn.commit()
 
-        user = login["user"]
+        for audit_action, audit_kwargs in pending_audits:
+            bg_tasks = _add_background_audit(bg_tasks, audit_action, **audit_kwargs)
+
+        bg_tasks = _add_background_audit(
+            bg_tasks,
+            "auth.google_login_success",
+            actor_user_id=user["id"],
+            organization_id=access_payload["active_org_id"],
+            target_type="tai_khoan",
+            target_id=user["id"],
+            request=request,
+            metadata={"email": email},
+        )
+
+        needs_username = not user.get("ten_dang_nhap")
+
+
+        suggested_username = ""
+        if needs_username:
+            suggested_username = generate_suggested_username(user.get("ho_ten", ""), email, cursor)
+
         response = JSONResponse({
             "success": True,
             "id": user["id"],
             "username": user["ten_dang_nhap"],
             "name": user["ho_ten"],
-            **login["access"],
+            **access_payload,
             "email": user["email"],
             "avatar": user.get("anh_dai_dien") or "",
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
-            "needs_username": login["needs_username"],
-            "suggested_username": login["suggested_username"],
-            "account_linked": login["account_linked"],
-        })
+            "needs_username": needs_username,
+            "suggested_username": suggested_username,
+            "account_linked": account_linked,
+        }, background=bg_tasks)
+        cookie_max_age = SESSION_EXPIRY_HOURS * 3600
         response.set_cookie(
-            "session_token",
-            session_token,
-            httponly=True,
-            secure=_SECURE_COOKIES,
-            samesite="lax",
-            path="/",
-            max_age=SESSION_EXPIRY_HOURS * 3600,
+            "session_token", session_token,
+            httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/", max_age=cookie_max_age,
         )
         response.delete_cookie("username", path="/")
         return response
 
-    except INTEGRITY_ERRORS as e:
+    except sqlite3.IntegrityError as e:
+        if conn:
+            conn.rollback()
         conflict_code = identity_conflict_code(e)
         if conflict_code:
             return JSONResponse(conflict_payload(conflict_code), status_code=409)
@@ -462,8 +403,16 @@ async def google_login_api(request):
             status_code=409,
         )
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "google_login_api")
         return JSONResponse(
             {"error": "Đã xảy ra lỗi khi đăng nhập bằng Google. Vui lòng thử lại sau."},
             status_code=500,
         )
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass

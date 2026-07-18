@@ -4,6 +4,7 @@ import { bindImageUploadPreview } from "./fileUploadUtils.js";
 import { setDisabled, setFieldFeedback, setReadonlyVisual, setRequired, setVisible } from "./formStateUtils.js";
 import { setupInlineExcelControls } from "./inlineExcelControls.js";
 import { escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
+import { apiFetch } from "../shared/apiClient.js";
 
 function setDynamicFieldLabel(label, text, required = false) {
   if (!label) return;
@@ -218,6 +219,55 @@ export function setupActionListeners() {
   onById("btn-add-chudautu", "click", () => runWorkflow("editChuDauTu", null));
   onById("btn-add-nhathau", "click", () => runWorkflow("editNhaThau", null));
   onById("btn-add-chuyengia", "click", () => runWorkflow("editChuyenGia", null));
+  onById("btn-import-personal-chuyengia", "click", async () => {
+    try {
+      const previewResponse = await apiFetch("/api/personal-import/experts/preview");
+      const preview = await previewResponse.json();
+      if (!previewResponse.ok) throw new Error(preview.error || "Không thể đọc dữ liệu cá nhân.");
+      const items = Array.isArray(preview.items) ? preview.items : [];
+      if (!items.length) {
+        await this.view.customAlert("Không có dữ liệu", "Không gian cá nhân chưa có chuyên gia để nhập.", "info");
+        return;
+      }
+      const confirmed = await this.view.customConfirm(
+        "Nhập chuyên gia cá nhân",
+        `Tìm thấy ${items.length} chuyên gia. Bản ghi mới sẽ được sao chép; bản trùng CCCD sẽ được hỏi riêng. Tiếp tục?`,
+        "user-round-plus"
+      );
+      if (!confirmed) return;
+      const decisions = [];
+      for (const item of items) {
+        if (item.status !== "conflict") {
+          decisions.push({ sourceId: item.source.id, action: "copy" });
+          continue;
+        }
+        const fillMissing = await this.view.customConfirm(
+          "Phát hiện trùng CCCD",
+          `${item.source.ho_ten} đã có trong tổ chức. Chọn Đồng ý để bổ sung các trường còn trống; chọn Hủy để dùng nguyên bản của tổ chức.`,
+          "git-merge"
+        );
+        decisions.push({
+          sourceId: item.source.id,
+          action: fillMissing ? "fill_missing" : "use_organization"
+        });
+      }
+      const importResponse = await apiFetch("/api/personal-import/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisions })
+      });
+      const result = await importResponse.json();
+      if (!importResponse.ok) throw new Error(result.error || "Không thể nhập chuyên gia.");
+      await this.view.customAlert(
+        "Nhập hoàn tất",
+        `Đã tạo ${result.copied}, bổ sung ${result.filled}, dùng bản tổ chức ${result.linked}.`,
+        "check-circle"
+      );
+      window.location.reload();
+    } catch (error) {
+      await this.view.customAlert("Không thể nhập dữ liệu", error.message, "alert-triangle");
+    }
+  });
   onById("btn-add-hopdong", "click", () => runWorkflow("editHopDong", null));
   [
     "kh-tongmuc",

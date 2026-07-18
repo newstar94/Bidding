@@ -1,10 +1,9 @@
 """Persistent, revocable multi-device authentication sessions."""
 
 import hashlib
+import sqlite3
 import time
 import uuid
-
-from backend.db.errors import OPERATIONAL_ERRORS
 
 
 def hash_session_token(token):
@@ -92,7 +91,7 @@ def touch_session(database, user, *, idle_timeout_seconds, now=None):
             (current, idle_expiry, user["session_id"]),
         )
         conn.commit()
-    except OPERATIONAL_ERRORS as exc:
+    except sqlite3.OperationalError as exc:
         if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
             raise
         conn.rollback()

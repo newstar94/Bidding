@@ -2,10 +2,10 @@ import os
 import time
 import secrets
 import hashlib
+import sqlite3
 from dataclasses import dataclass
 from starlette.responses import JSONResponse
 from backend.db.id_utils import stable_org_id
-from backend.db.errors import DATABASE_ERRORS, DatabaseContractError
 from backend.auth.roles import (
     effective_access_roles,
     normalize_organization_role,
@@ -89,7 +89,7 @@ def get_rate_limit_decision(
         if conn is not None:
             try:
                 conn.rollback()
-            except DATABASE_ERRORS:
+            except sqlite3.Error:
                 pass
         from backend.shared.logging_utils import log_error
         log_error(rate_limit_error, "rate_limit", level="WARN")
@@ -182,17 +182,7 @@ def get_user_organizations(cursor, user_id):
         LEFT JOIN organization_subscriptions AS sub ON sub.organization_id = tc.id
         LEFT JOIN goi_dich_vu AS pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
-          AND (
-              tc.scope_type = 'organization'
-              OR NOT EXISTS (
-                  SELECT 1
-                  FROM thanh_vien_to_chuc business_membership
-                  JOIN to_chuc business_org
-                    ON business_org.id = business_membership.organization_id
-                  WHERE business_membership.user_id = tvtc.user_id
-                    AND business_org.scope_type = 'organization'
-              )
-          )
+          AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
         ORDER BY CASE tc.scope_type WHEN 'organization' THEN 0 ELSE 1 END,
                  CASE lower(trim(tvtc.vai_tro_trong_to_chuc))
                     WHEN 'manager' THEN 0
@@ -257,21 +247,12 @@ def get_user_organizations(cursor, user_id):
 
 
 def ensure_personal_workspace(cursor, user_id, display_name=None):
-    """Ensure an account without a business organization has a personal data scope.
+    """Ensure every account has a durable personal data scope.
 
     A personal workspace is an ownership boundary, not a paid entitlement. It is
-    created without an organization subscription and remains usable without a plan.
+    created without an organization subscription and remains available alongside
+    business workspaces.
     """
-    business_membership = cursor.execute(
-        """SELECT 1 FROM thanh_vien_to_chuc membership
-           JOIN to_chuc organization ON organization.id = membership.organization_id
-           WHERE membership.user_id = ? AND organization.scope_type = 'organization'
-           LIMIT 1""",
-        (user_id,),
-    ).fetchone()
-    if business_membership:
-        return None
-
     personal_workspace = cursor.execute(
         """SELECT id FROM to_chuc
            WHERE scope_type = 'personal' AND personal_owner_user_id = ?
@@ -295,7 +276,7 @@ def ensure_personal_workspace(cursor, user_id, display_name=None):
             (user_id,),
         ).fetchone()
         if not personal_workspace:
-            raise DatabaseContractError("Unable to allocate a personal workspace")
+            raise sqlite3.IntegrityError("Unable to allocate a personal workspace")
         org_id = str(personal_workspace[0])
 
     cursor.execute(

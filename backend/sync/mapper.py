@@ -458,13 +458,9 @@ def _save_package_expert_relations(cursor, parent_id, item, organization_id, own
             ))
         if rows:
             cursor.executemany("""
-                INSERT INTO goi_thau_chuyen_gia (
+                INSERT OR REPLACE INTO goi_thau_chuyen_gia (
                     organization_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(organization_id, goi_thau_id, chuyen_gia_id, loai)
-                DO UPDATE SET owner_type = excluded.owner_type,
-                              chuc_vu = excluded.chuc_vu,
-                              cong_viec = excluded.cong_viec
             """, rows)
 
 

@@ -107,11 +107,10 @@ export async function editKeHoach(id) {
   cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}${escapeHtml(this.model.getPendingLabel("chudautu", c.id))}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
   // The plan modal is lazy-loaded, so this select does not exist when the
   // application's one-time conditional handlers are registered.
-  cdtSelect.onchange = async (event) => {
+  cdtSelect.onchange = (event) => {
     if (event.target.value !== "__NEW_INVESTOR__") return;
     event.target.value = "";
-    await this.ensureWorkflowModules?.("partner");
-    await this.editChuDauTu(null);
+    void this.editChuDauTu(null);
   };
   this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
   const loaiHinhSelect = document.getElementById("kh-loaihinh");
@@ -484,7 +483,6 @@ export async function openPlanBreakdownModal(planId) {
   const btnAddPkg = document.getElementById("btn-breakdown-add-package");
   if (btnAddPkg) {
     btnAddPkg.onclick = async () => {
-      await this.ensureWorkflowModules?.("package");
       await this.editGoiThau(null);
       const planSelect = document.getElementById("gt-kehoachid");
       if (planSelect) {

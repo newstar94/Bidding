@@ -1,9 +1,8 @@
 import json
 import re
+import sqlite3
 import time
 from starlette.responses import JSONResponse
-
-from backend.db.errors import INTEGRITY_ERRORS
 
 from backend.shared.helpers import (
     database,
@@ -24,8 +23,6 @@ from backend.shared.access_policy import (
     resolve_document_export_capabilities,
 )
 from backend.shared.logging_utils import error_response, log_and_error
-from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
-from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.shared.date_utils import utc_now_sql
 from backend.auth.auth_service import activate_personal_subscription, build_user_access_payload
@@ -34,15 +31,27 @@ from backend.auth.auth_service import activate_personal_subscription, build_user
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
-def _activate_personal_subscription_sync(
-    request,
-    actor_user_id,
-    user_id,
-    package_id,
-    duration_days,
-):
+async def activate_personal_subscription_api(request):
+    """Grant a package to an account without creating an organization at registration time."""
     conn = None
     try:
+        is_valid, role_or_err = verify_session(request, required_role='super_admin')
+        if not is_valid:
+            return JSONResponse({"error": role_or_err}, status_code=403)
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(request, data, {
+            "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "successor_user_id": {"type": "string", "max_length": 128},
+            "package_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "duration_days": {"type": "integer", "min": 1, "max": 3650},
+        })
+        if invalid:
+            return invalid
+        user_id = str(data.get("user_id") or "").strip()
+        package_id = str(data.get("package_id") or "").strip()
+        duration_days = data.get("duration_days", 365)
         conn = database.get_connection()
         conn.execute("BEGIN IMMEDIATE")
         cursor = conn.cursor()
@@ -64,7 +73,7 @@ def _activate_personal_subscription_sync(
             return JSONResponse({"error": message, "code": code}, status_code=409)
         log_audit(
             "personal_subscription.activated",
-            actor_user_id=actor_user_id,
+            actor_user_id=role_or_err.user_id,
             organization_id=organization_id,
             target_type="tai_khoan",
             target_id=user_id,
@@ -85,41 +94,6 @@ def _activate_personal_subscription_sync(
     finally:
         if conn:
             conn.close()
-
-
-async def activate_personal_subscription_api(request):
-    """Grant a package to an account without blocking the event loop on its transaction."""
-    is_valid, role_or_err = verify_session(request, required_role='super_admin')
-    if not is_valid:
-        return JSONResponse({"error": role_or_err}, status_code=403)
-    data, json_error = await read_json_object(request)
-    if json_error:
-        return json_error
-    invalid = validate_or_response(request, data, {
-        "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-        "package_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-        "duration_days": {"type": "integer", "min": 1, "max": 3650},
-    })
-    if invalid:
-        return invalid
-    try:
-        return await run_database_write(
-            _activate_personal_subscription_sync,
-            request,
-            role_or_err.user_id,
-            str(data.get("user_id") or "").strip(),
-            str(data.get("package_id") or "").strip(),
-            data.get("duration_days", 365),
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(
-            request,
-            "DATABASE_WRITE_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
 
 
 def _subscription_payload(cursor, organization_id):
@@ -145,7 +119,7 @@ def _subscription_payload(cursor, organization_id):
     return result
 
 
-def _update_organization_subscription_sync(request, data, idempotency_key):
+async def update_organization_subscription_api(request):
     """Lock, unlock, renew or change an organization subscription atomically."""
     conn = None
     try:
@@ -153,8 +127,20 @@ def _update_organization_subscription_sync(request, data, idempotency_key):
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
 
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(request, data, {
+            "organization_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "action": {"type": "string", "required": True, "enum": {"lock", "unlock", "renew", "set_package"}},
+            "duration_days": {"type": "integer", "min": 1, "max": 3650},
+            "package_id": {"type": "string", "min_length": 1, "max_length": 128},
+        })
+        if invalid:
+            return invalid
         organization_id = str(data.get("organization_id") or "").strip()
         action = str(data.get("action") or "").strip().lower()
+        idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
         if not organization_id or action not in {"lock", "unlock", "renew", "set_package"}:
             return JSONResponse(
                 {"error": "Yêu cầu cập nhật gói dịch vụ không hợp lệ.", "code": "INVALID_SUBSCRIPTION_UPDATE"},
@@ -318,63 +304,28 @@ def _update_organization_subscription_sync(request, data, idempotency_key):
         if conn:
             conn.close()
 
-
-async def update_organization_subscription_api(request):
-    """Lock, unlock, renew or change a subscription through the DB write lane."""
-    try:
-        is_valid, role_or_err = await run_database_read(
-            verify_session,
-            request,
-            required_role='super_admin',
-            timeout_seconds=10.0,
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(
-            request,
-            "DATABASE_READ_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
-    if not is_valid:
-        return JSONResponse({"error": role_or_err}, status_code=403)
-    data, json_error = await read_json_object(request)
-    if json_error:
-        return json_error
-    invalid = validate_or_response(request, data, {
-        "organization_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-        "action": {"type": "string", "required": True, "enum": {"lock", "unlock", "renew", "set_package"}},
-        "duration_days": {"type": "integer", "min": 1, "max": 3650},
-        "package_id": {"type": "string", "min_length": 1, "max_length": 128},
-    })
-    if invalid:
-        return invalid
-    idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
-    try:
-        return await run_database_write(
-            _update_organization_subscription_sync,
-            request,
-            data,
-            idempotency_key,
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(
-            request,
-            "DATABASE_WRITE_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
-
-
-def _add_user_to_org_sync(request, user_id, employee_name, phone):
+async def add_user_to_org_api(request):
     conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
+
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(request, data, {
+            "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+            "employee_name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
+            "phone": {"type": "string", "max_length": 32},
+        })
+        if invalid:
+            return invalid
+        user_id = str(data.get('user_id') or '').strip()
+        employee_name = re.sub(r"\s+", " ", str(data.get('employee_name') or '').strip())
+        phone = str(data.get('phone') or '').strip()
+        if not user_id or not employee_name:
+            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
 
         org_id = get_active_org(request, role_or_err.user_id)
 
@@ -401,7 +352,8 @@ def _add_user_to_org_sync(request, user_id, employee_name, phone):
         if cursor.fetchone():
             cursor.execute(
                 """UPDATE thanh_vien_to_chuc
-                   SET ten_nhan_su = ?, so_dien_thoai = ?, updated_at = datetime('now')
+                   SET ten_nhan_su = ?, so_dien_thoai = ?, trang_thai_thanh_vien = 'active',
+                       left_at = NULL, left_by = NULL, updated_at = datetime('now')
                    WHERE user_id = ? AND organization_id = ?""",
                 (employee_name, phone or None, user_id, org_id),
             )
@@ -454,7 +406,8 @@ def _add_user_to_org_sync(request, user_id, employee_name, phone):
                 status_code=403,
             )
         member_count = int(cursor.execute(
-            "SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ?",
+            """SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ?
+               AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
             (org_id,),
         ).fetchone()[0])
         member_quota = int(subscription['member_quota'])
@@ -500,7 +453,7 @@ def _add_user_to_org_sync(request, user_id, employee_name, phone):
             "Không có quyền truy cập tổ chức này.",
             status_code=403,
         )
-    except INTEGRITY_ERRORS as e:
+    except sqlite3.IntegrityError as e:
         if conn:
             conn.rollback()
         return log_and_error(
@@ -525,55 +478,25 @@ def _add_user_to_org_sync(request, user_id, employee_name, phone):
         if conn:
             conn.close()
 
-
-async def add_user_to_org_api(request):
-    try:
-        is_valid, role_or_err = await run_database_read(
-            verify_session,
-            request,
-            timeout_seconds=10.0,
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(request, "DATABASE_READ_QUEUE_FULL", "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.", status_code=503)
-        response.headers["Retry-After"] = "1"
-        return response
-    if not is_valid:
-        return JSONResponse({"error": role_or_err}, status_code=403)
-    data, json_error = await read_json_object(request)
-    if json_error:
-        return json_error
-    invalid = validate_or_response(request, data, {
-        "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-        "employee_name": {"type": "string", "required": True, "min_length": 1, "max_length": 200},
-        "phone": {"type": "string", "max_length": 32},
-    })
-    if invalid:
-        return invalid
-    user_id = str(data.get('user_id') or '').strip()
-    employee_name = re.sub(r"\s+", " ", str(data.get('employee_name') or '').strip())
-    phone = str(data.get('phone') or '').strip()
-    if not user_id or not employee_name:
-        return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-    try:
-        return await run_database_write(
-            _add_user_to_org_sync,
-            request,
-            user_id,
-            employee_name,
-            phone,
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(request, "DATABASE_WRITE_QUEUE_FULL", "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.", status_code=503)
-        response.headers["Retry-After"] = "1"
-        return response
-
-
-def _remove_user_from_org_sync(request, user_id):
+async def remove_user_from_org_api(request):
     conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
             return JSONResponse({"error": role_or_err}, status_code=403)
+
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(request, data, {
+            "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
+        })
+        if invalid:
+            return invalid
+        user_id = data.get('user_id')
+        successor_user_id = str(data.get('successor_user_id') or '').strip()
+        if not user_id:
+            return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
 
         if str(user_id) == str(role_or_err.user_id):
             return JSONResponse({"error": "Không thể tự gỡ chính mình khỏi tổ chức."}, status_code=400)
@@ -598,7 +521,9 @@ def _remove_user_from_org_sync(request, user_id):
         sync_version = next_sync_version(cursor, org_id)
 
         cursor.execute(
-            "SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?",
+            """SELECT vai_tro_trong_to_chuc FROM thanh_vien_to_chuc
+               WHERE user_id = ? AND organization_id = ?
+                 AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
             (user_id, org_id),
         )
         target_membership = cursor.fetchone()
@@ -607,14 +532,94 @@ def _remove_user_from_org_sync(request, user_id):
             return JSONResponse({"error": "Nguoi dung khong thuoc to chuc hien tai."}, status_code=404)
         if str(target_membership[0] or "").strip().lower() == "manager":
             manager_count = int(cursor.execute(
-                "SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ? AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'",
+                """SELECT count(*) FROM thanh_vien_to_chuc WHERE organization_id = ?
+                   AND lower(trim(vai_tro_trong_to_chuc)) = 'manager'
+                   AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
                 (org_id,),
             ).fetchone()[0])
             if manager_count <= 1:
                 conn.close()
                 return JSONResponse({"error": "Không thể xóa Quản lý cuối cùng của tổ chức."}, status_code=409)
 
-        cursor.execute("DELETE FROM thanh_vien_to_chuc WHERE user_id = ? AND organization_id = ?", (user_id, org_id))
+        assignment_rows = cursor.execute(
+            """SELECT pc.*,
+                      CASE
+                        WHEN pc.loai_doi_tuong = 'goithau' THEN
+                          (SELECT CASE WHEN gt.trang_thai IN ('AWARDED','CANCELLED') THEN 0 ELSE 1 END
+                           FROM goi_thau gt WHERE gt.organization_id = pc.organization_id AND gt.id = pc.id_muc_tieu)
+                        WHEN pc.loai_doi_tuong = 'hopdong' THEN
+                          (SELECT CASE WHEN hd.trang_thai_hop_dong IN ('COMPLETED','LIQUIDATED','CANCELLED') THEN 0 ELSE 1 END
+                           FROM hop_dong hd WHERE hd.organization_id = pc.organization_id AND hd.id = pc.id_muc_tieu)
+                        ELSE 0
+                      END AS is_open
+               FROM phan_cong_nhan_su pc
+               WHERE pc.id_nhan_vien = ? AND pc.organization_id = ?""",
+            (user_id, org_id),
+        ).fetchall()
+        open_assignments = [row for row in assignment_rows if int(row['is_open'] or 0) == 1]
+        if open_assignments and not successor_user_id:
+            candidates = cursor.execute(
+                """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ten_hien_thi, tk.ten_dang_nhap) AS name
+                   FROM thanh_vien_to_chuc tv JOIN tai_khoan tk ON tk.id = tv.user_id
+                   WHERE tv.organization_id = ? AND tv.user_id != ?
+                     AND COALESCE(tv.trang_thai_thanh_vien, 'active') = 'active'
+                   ORDER BY lower(name)""",
+                (org_id, user_id),
+            ).fetchall()
+            conn.rollback()
+            return JSONResponse({
+                "error": "Nhân sự còn công việc đang mở. Phải chọn người tiếp quản trước khi rời tổ chức.",
+                "code": "SUCCESSOR_REQUIRED",
+                "openAssignments": [
+                    {"id": row['id'], "targetId": row['id_muc_tieu'], "type": row['loai_doi_tuong']}
+                    for row in open_assignments
+                ],
+                "successorCandidates": [dict(row) for row in candidates],
+            }, status_code=409)
+        if successor_user_id:
+            successor = cursor.execute(
+                """SELECT 1 FROM thanh_vien_to_chuc WHERE organization_id = ? AND user_id = ?
+                   AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'""",
+                (org_id, successor_user_id),
+            ).fetchone()
+            if not successor or successor_user_id == str(user_id):
+                conn.rollback()
+                return JSONResponse({"error": "Người tiếp quản không hợp lệ."}, status_code=400)
+
+        for assignment in assignment_rows:
+            is_open = int(assignment['is_open'] or 0) == 1
+            successor = successor_user_id if is_open else None
+            cursor.execute(
+                """INSERT INTO phan_cong_nhan_su_lich_su
+                   (organization_id, assignment_id, id_nhan_vien, id_muc_tieu, loai_doi_tuong,
+                    assigned_at, ended_at, ended_by, successor_user_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (org_id, assignment['id'], user_id, assignment['id_muc_tieu'],
+                 assignment['loai_doi_tuong'], assignment['created_at'], current_time,
+                 role_or_err.user_id, successor),
+            )
+            if successor:
+                existing = cursor.execute(
+                    """SELECT 1 FROM phan_cong_nhan_su WHERE organization_id = ? AND id_nhan_vien = ?
+                       AND id_muc_tieu = ? AND loai_doi_tuong = ?""",
+                    (org_id, successor, assignment['id_muc_tieu'], assignment['loai_doi_tuong']),
+                ).fetchone()
+                if existing:
+                    cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id = ?", (assignment['id'],))
+                else:
+                    cursor.execute(
+                        """UPDATE phan_cong_nhan_su SET id_nhan_vien = ?, row_version = row_version + 1,
+                           sync_version = ?, updated_at = ? WHERE id = ? AND organization_id = ?""",
+                        (successor, sync_version, current_time, assignment['id'], org_id),
+                    )
+            else:
+                cursor.execute("DELETE FROM phan_cong_nhan_su WHERE id = ?", (assignment['id'],))
+
+        cursor.execute(
+            """UPDATE thanh_vien_to_chuc SET trang_thai_thanh_vien = 'left', left_at = ?, left_by = ?,
+               updated_at = ? WHERE user_id = ? AND organization_id = ?""",
+            (current_time, role_or_err.user_id, current_time, user_id, org_id),
+        )
 
         cursor.execute("SELECT id FROM ma_tran_phan_quyen WHERE emp_id = ? AND organization_id = ?", (user_id, org_id))
         pq_rows = cursor.fetchall()
@@ -626,25 +631,22 @@ def _remove_user_from_org_sync(request, user_id):
                 ("ma_tran_phan_quyen", pq_id, org_id, current_time, sync_version)
             )
 
-        assignment_result = cursor.execute(
-            "DELETE FROM phan_cong_nhan_su WHERE id_nhan_vien = ? AND organization_id = ?",
-            (user_id, org_id),
-        )
         impact = {
             "rootCount": 1,
             "permissionRows": len(pq_rows),
-            "assignments": int(assignment_result.rowcount or 0),
+            "assignments": len(assignment_rows),
+            "transferredAssignments": len(open_assignments),
         }
         impact["totalCount"] = sum(impact.values())
 
         log_audit(
-            "organization.member_removed",
+            "organization.member_left",
             actor_user_id=role_or_err.user_id,
             organization_id=org_id,
             target_type="organization_membership",
             target_id=f"{org_id}:{user_id}",
             request=request,
-            metadata={"organization_id": org_id, "impact": impact},
+            metadata={"organization_id": org_id, "impact": impact, "successor_user_id": successor_user_id or None},
             cursor=cursor,
             required=True,
         )
@@ -682,41 +684,44 @@ def _remove_user_from_org_sync(request, user_id):
         )
 
 
-async def remove_user_from_org_api(request):
-    try:
-        is_valid, role_or_err = await run_database_read(
-            verify_session,
-            request,
-            timeout_seconds=10.0,
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(request, "DATABASE_READ_QUEUE_FULL", "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.", status_code=503)
-        response.headers["Retry-After"] = "1"
-        return response
-    if not is_valid:
-        return JSONResponse({"error": role_or_err}, status_code=403)
-    data, json_error = await read_json_object(request)
-    if json_error:
-        return json_error
-    invalid = validate_or_response(request, data, {
-        "user_id": {"type": "string", "required": True, "min_length": 1, "max_length": 128},
-    })
-    if invalid:
-        return invalid
-    user_id = data.get('user_id')
-    if not user_id:
-        return JSONResponse({"error": "Thiếu thông tin bắt buộc!"}, status_code=400)
-    if str(user_id) == str(role_or_err.user_id):
-        return JSONResponse({"error": "Không thể tự gỡ chính mình khỏi tổ chức."}, status_code=400)
-    try:
-        return await run_database_write(_remove_user_from_org_sync, request, user_id)
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(request, "DATABASE_WRITE_QUEUE_FULL", "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.", status_code=503)
-        response.headers["Retry-After"] = "1"
-        return response
-
-
 _DOCUMENT_EXPORT_FIELDS = ("financial", "identity", "signature")
+
+
+async def list_former_organization_members_api(request):
+    valid, session = verify_session(request)
+    if not valid:
+        return JSONResponse({"error": session}, status_code=403)
+    org_id = get_active_org(request, session.user_id)
+    conn = database.get_connection()
+    try:
+        cursor = conn.cursor()
+        if not is_organization_manager(cursor, str(session), session.user_id, org_id):
+            return JSONResponse({"error": "Không có quyền xem lịch sử nhân sự."}, status_code=403)
+        rows = cursor.execute(
+            """SELECT tv.user_id, COALESCE(NULLIF(tv.ten_nhan_su, ''), tk.ten_hien_thi, tk.ten_dang_nhap) AS name,
+                      tk.email, tv.so_dien_thoai AS phone, tv.left_at,
+                      h.loai_doi_tuong AS type, h.id_muc_tieu AS target_id, h.successor_user_id
+               FROM thanh_vien_to_chuc tv JOIN tai_khoan tk ON tk.id = tv.user_id
+               LEFT JOIN phan_cong_nhan_su_lich_su h
+                 ON h.organization_id = tv.organization_id AND h.id_nhan_vien = tv.user_id
+               WHERE tv.organization_id = ? AND tv.trang_thai_thanh_vien = 'left'
+               ORDER BY tv.left_at DESC, h.ended_at DESC""",
+            (org_id,),
+        ).fetchall()
+        members = {}
+        for row in rows:
+            member = members.setdefault(row['user_id'], {
+                "id": row['user_id'], "name": row['name'], "email": row['email'] or "",
+                "phone": row['phone'] or "", "leftAt": row['left_at'], "assignmentHistory": [],
+            })
+            if row['target_id']:
+                member["assignmentHistory"].append({
+                    "type": row['type'], "targetId": row['target_id'],
+                    "successorUserId": row['successor_user_id'],
+                })
+        return JSONResponse(list(members.values()))
+    finally:
+        conn.close()
 
 
 def _stored_document_export_grants(cursor, organization_id, user_id):
@@ -777,7 +782,7 @@ def _document_export_grant_payload(cursor, organization_id, user_id, role_str):
     }
 
 
-def _get_document_export_capabilities_sync(request):
+async def get_document_export_capabilities_api(request):
     """Read explicit and effective sensitive-export capabilities in the active org."""
 
     conn = None
@@ -843,34 +848,7 @@ def _get_document_export_capabilities_sync(request):
             conn.close()
 
 
-async def get_document_export_capabilities_api(request):
-    try:
-        return await run_database_read(
-            _get_document_export_capabilities_sync,
-            request,
-            timeout_seconds=10.0,
-        )
-    except BlockingIOBusyError:
-        response = error_response(
-            request,
-            "DATABASE_READ_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
-    except BlockingIOTimeoutError:
-        response = error_response(
-            request,
-            "DATABASE_READ_TIMEOUT",
-            "Không thể đọc quyền xuất tài liệu trong thời gian cho phép.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
-
-
-def _update_document_export_capabilities_sync(request, target_user_id, data):
+async def update_document_export_capabilities_api(request):
     """Replace an ordinary member's sensitive-export grants in the active org."""
 
     conn = None
@@ -883,6 +861,29 @@ def _update_document_export_capabilities_sync(request, target_user_id, data):
                 "Phiên đăng nhập không hợp lệ.",
                 status_code=403,
             )
+        target_user_id = str(request.path_params.get("user_id") or "").strip()
+        if not target_user_id or len(target_user_id) > 128:
+            return error_response(
+                request,
+                "DOCUMENT_EXPORT_CAPABILITY_TARGET_INVALID",
+                "Mã người dùng không hợp lệ.",
+                status_code=400,
+            )
+        data, json_error = await read_json_object(request)
+        if json_error:
+            return json_error
+        invalid = validate_or_response(
+            request,
+            data,
+            {
+                "financial": {"type": "boolean", "required": True},
+                "identity": {"type": "boolean", "required": True},
+                "signature": {"type": "boolean", "required": True},
+            },
+        )
+        if invalid:
+            return invalid
+
         organization_id = get_active_org(request, role_or_error.user_id)
         conn = database.get_connection()
         conn.execute("BEGIN IMMEDIATE")
@@ -963,7 +964,7 @@ def _update_document_export_capabilities_sync(request, target_user_id, data):
             "Không có quyền truy cập tổ chức này.",
             status_code=403,
         )
-    except INTEGRITY_ERRORS as exc:
+    except sqlite3.IntegrityError as exc:
         if conn:
             conn.rollback()
         return log_and_error(
@@ -987,68 +988,3 @@ def _update_document_export_capabilities_sync(request, target_user_id, data):
     finally:
         if conn:
             conn.close()
-
-
-async def update_document_export_capabilities_api(request):
-    """Replace sensitive-export grants without blocking the event loop."""
-    try:
-        is_valid, role_or_error = await run_database_read(
-            verify_session,
-            request,
-            timeout_seconds=10.0,
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(
-            request,
-            "DATABASE_READ_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response
-    if not is_valid:
-        return error_response(
-            request,
-            "AUTH_REQUIRED",
-            "Phiên đăng nhập không hợp lệ.",
-            status_code=403,
-        )
-    del role_or_error
-    target_user_id = str(request.path_params.get("user_id") or "").strip()
-    if not target_user_id or len(target_user_id) > 128:
-        return error_response(
-            request,
-            "DOCUMENT_EXPORT_CAPABILITY_TARGET_INVALID",
-            "Mã người dùng không hợp lệ.",
-            status_code=400,
-        )
-    data, json_error = await read_json_object(request)
-    if json_error:
-        return json_error
-    invalid = validate_or_response(
-        request,
-        data,
-        {
-            "financial": {"type": "boolean", "required": True},
-            "identity": {"type": "boolean", "required": True},
-            "signature": {"type": "boolean", "required": True},
-        },
-    )
-    if invalid:
-        return invalid
-    try:
-        return await run_database_write(
-            _update_document_export_capabilities_sync,
-            request,
-            target_user_id,
-            data,
-        )
-    except (BlockingIOBusyError, BlockingIOTimeoutError):
-        response = error_response(
-            request,
-            "DATABASE_WRITE_QUEUE_FULL",
-            "Hệ thống đang xử lý nhiều thay đổi. Vui lòng thử lại sau.",
-            status_code=503,
-        )
-        response.headers["Retry-After"] = "1"
-        return response

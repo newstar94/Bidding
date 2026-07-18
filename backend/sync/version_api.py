@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from starlette.responses import JSONResponse
+import sqlite3
 
-from backend.db.errors import DATABASE_ERRORS
+from starlette.responses import JSONResponse
 
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
@@ -88,5 +88,5 @@ def _read_current_sync_version(request):
         if connection is not None:
             try:
                 connection.close()
-            except DATABASE_ERRORS:
+            except sqlite3.Error:
                 pass

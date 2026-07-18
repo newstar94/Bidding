@@ -739,8 +739,11 @@ export class BiddingModel {
   }
   async deleteRecord(type, recordId) {
     this._assertWorkspaceWritable();
+    const deletedRecord = (this.state[type] || []).find(
+      (record) => String(record.id) === String(recordId)
+    );
     removeEntity(this.state, type, recordId);
-    this.commitLocalMutation(type, { deletedIds: recordId });
+    this.commitLocalMutation(type, { deletedIds: deletedRecord || { id: recordId } });
     if (this.db.stores.includes(type)) {
       await this.db.deleteRecord(type, recordId);
     } else {
@@ -846,13 +849,7 @@ export class BiddingModel {
     return effective;
   }
   hasPermission(empId, moduleName, permissionType) {
-    const accountRoleSource = Array.isArray(this.state.activeuser?.dbRoles)
-      ? this.state.activeuser.dbRoles.join(",")
-      : this.state.activeuser?.dbRole || this.state.activeuser?.role || "";
-    if (
-      this.hasEffectiveRole(accountRoleSource, "manager")
-      || this.hasActiveEffectiveRole("manager")
-    ) {
+    if (this.hasActiveEffectiveRole("manager")) {
       return true;
     }
     const matrix = this.state.permissionmatrix.find((m) => m.empId === empId);

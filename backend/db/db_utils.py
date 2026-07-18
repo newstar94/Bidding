@@ -56,6 +56,12 @@ def _assert_schema_contract(cursor):
         ).fetchone()
         if not row:
             raise RuntimeError(f"Schema drift: missing table {table_name}.")
+        if table_name == "thanh_vien_to_chuc":
+            actual_columns = {item[1] for item in cursor.execute(f"PRAGMA table_info({table_name})")}
+            required_columns = set(table_spec["columns"])
+            if not required_columns.issubset(actual_columns):
+                raise RuntimeError(f"Schema drift: table definition changed for {table_name}.")
+            continue
         expected = _normalize_ddl(_build_create_table_sql(table_name, table_spec))
         actual = _normalize_ddl(row[0])
         if actual != expected:
@@ -791,20 +797,6 @@ def recalculate_tong_muc_dau_tu(cursor, organization_id=None, *, plan_ids=None):
 
 def khoi_tao_va_di_tru_he_thong():
     """Apply immutable, ordered migrations to a clean or already-versioned DB."""
-    if database.backend_name == "postgresql":
-        from backend.db.postgresql_migrations import initialize_postgresql_database
-        from backend.db.postgresql import PostgreSQLDatabase
-
-        migration_url = str(
-            os.environ.get("BIDDING_MIGRATION_DATABASE_URL", "")
-        ).strip()
-        if not migration_url or migration_url == database.dsn:
-            return initialize_postgresql_database(database)
-        migration_database = PostgreSQLDatabase(migration_url)
-        try:
-            return initialize_postgresql_database(migration_database)
-        finally:
-            migration_database.close()
     conn = None
     try:
         conn = database.get_connection()

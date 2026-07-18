@@ -274,12 +274,11 @@ export async function editHopDong(id) {
           const assignment = this.model.state.assignments.find((a) => a.targetId === id && a.type === "hopdong");
           empSelect.value = assignment ? assignment.empId : "";
         } else {
-          if (this.model.state.activerole === "employee") {
-            const currentUserId = sessionStorage.getItem("bf_user_id");
-            empSelect.value = currentUserId || "";
-          } else {
-            empSelect.value = "";
-          }
+          const activeWorkspace = (this.model.state.activeuser?.organizations || []).find(
+            (organization) => String(organization.id) === String(this.model.workspaceScope?.organizationId || "")
+          );
+          const currentUserId = this.model.state.activeuser?.id || sessionStorage.getItem("bf_user_id");
+          empSelect.value = activeWorkspace?.scope_type === "organization" ? currentUserId || "" : "";
         }
         if (this.model.state.activerole === "employee") {
           empSelect.disabled = true;

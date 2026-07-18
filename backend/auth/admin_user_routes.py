@@ -1,9 +1,9 @@
+import sqlite3
 import time
 from collections import defaultdict
 
 from starlette.responses import JSONResponse
 
-from backend.db.errors import INTEGRITY_ERRORS
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.helpers import (
@@ -75,6 +75,7 @@ def _list_users_sync(request):
                 SELECT lower(trim(vai_tro_trong_to_chuc))
                 FROM thanh_vien_to_chuc
                 WHERE user_id = ? AND organization_id = ?
+                  AND COALESCE(trang_thai_thanh_vien, 'active') = 'active'
                 """,
                 (role_or_err.user_id, active_org_id),
             )
@@ -88,7 +89,8 @@ def _list_users_sync(request):
                            tk.email, tk.anh_dai_dien AS avatar
                     FROM tai_khoan AS tk
                     JOIN thanh_vien_to_chuc AS tvtc ON tvtc.user_id = tk.id
-                    WHERE tk.id = ? AND tvtc.organization_id = ?{email_filter_tk_sql}
+                    WHERE tk.id = ? AND tvtc.organization_id = ?
+                      AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'{email_filter_tk_sql}
                 """, tuple([role_or_err.user_id, active_org_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
             else:
@@ -99,7 +101,8 @@ def _list_users_sync(request):
                                     tk.email, tk.anh_dai_dien AS avatar
                     FROM tai_khoan tk
                     JOIN thanh_vien_to_chuc tvtc ON tk.id = tvtc.user_id
-                    WHERE tvtc.organization_id = ?{email_filter_tk_sql}
+                    WHERE tvtc.organization_id = ?
+                      AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'{email_filter_tk_sql}
                 """, tuple([active_org_id] + ([email_query] if email_query else [])))
                 users_raw = cursor.fetchall()
 
@@ -116,12 +119,14 @@ def _list_users_sync(request):
                        sub.starts_at, sub.expires_at, sub.member_quota, sub.revision,
                        pkg.trang_thai AS package_status,
                        (SELECT count(*) FROM thanh_vien_to_chuc members
-                        WHERE members.organization_id = tc.id) AS member_count
+                        WHERE members.organization_id = tc.id
+                          AND COALESCE(members.trang_thai_thanh_vien, 'active') = 'active') AS member_count
                 FROM thanh_vien_to_chuc tvtc
                 JOIN to_chuc tc ON tvtc.organization_id = tc.id
                 LEFT JOIN organization_subscriptions sub ON sub.organization_id = tc.id
                 LEFT JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
                 WHERE tvtc.user_id IN ({placeholders})
+                  AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
                   AND (
                       tc.scope_type = 'organization'
                       OR NOT EXISTS (
@@ -260,7 +265,7 @@ def _delete_user_sync(request):
                     (user_id,),
                 )
                 cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
-            except INTEGRITY_ERRORS:
+            except sqlite3.IntegrityError:
                 cursor.execute("ROLLBACK TO SAVEPOINT delete_personal_workspace")
                 cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
                 conn.rollback()

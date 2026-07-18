@@ -59,17 +59,7 @@ def get_active_org(request, user_id):
         LEFT JOIN organization_subscriptions sub ON sub.organization_id = tc.id
         LEFT JOIN goi_dich_vu pkg ON pkg.id = sub.package_id
         WHERE tvtc.user_id = ?
-          AND (
-              tc.scope_type = 'organization'
-              OR NOT EXISTS (
-                  SELECT 1
-                  FROM thanh_vien_to_chuc business_membership
-                  JOIN to_chuc business_org
-                    ON business_org.id = business_membership.organization_id
-                  WHERE business_membership.user_id = tvtc.user_id
-                    AND business_org.scope_type = 'organization'
-              )
-          )
+          AND COALESCE(tvtc.trang_thai_thanh_vien, 'active') = 'active'
         ORDER BY CASE tc.scope_type WHEN 'organization' THEN 0 ELSE 1 END,
                  lower(tc.ten_to_chuc), tc.id
     """, (user_id,))

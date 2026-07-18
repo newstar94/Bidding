@@ -45,7 +45,7 @@ export function updateActiveUserProfileDisplay() {
     const orgPill = document.getElementById("header-active-org-pill");
     const orgPillName = document.getElementById("header-active-org-name");
     const orgPillContainer = document.getElementById("workspace-pill-container");
-    const activeBusinessOrganization = businessOrganizations(user).find(
+    const activeBusinessOrganization = normalizeOrganizations(user).find(
       (organization) => organization.status === "active" && organization.id === activeOrg
     );
     if (orgPillContainer) orgPillContainer.hidden = !activeBusinessOrganization;
@@ -62,7 +62,6 @@ export function updateActiveUserProfileDisplay() {
     if (typeof appController?.renderWorkspaceSwitcher === "function") {
       appController.renderWorkspaceSwitcher();
     }
-    appController?.synchronizeModuleAccess?.();
     const activeRole = this.model.state.activerole || "employee";
     const sidebar = document.getElementById("sidebar");
     if (sidebar) sidebar.dataset.activeRole = activeRole;
@@ -311,7 +310,7 @@ export function renderManagerNhanVienPanel() {
   if (pkgNameSpan) pkgNameSpan.textContent = pkg ? pkg.name : "--";
   const tbody = document.getElementById("manager-employees-tbody");
   if (tbody) {
-    tbody.innerHTML = orgEmployees.map((emp) => {
+    const activeRows = orgEmployees.map((emp) => {
       const empAssignments = this.model.state.assignments.filter((a) => a.empId === emp.id);
       const assignedTasks = empAssignments.map((a) => {
         if (a.type === "goithau") {
@@ -340,6 +339,22 @@ export function renderManagerNhanVienPanel() {
                 </tr>
             `;
     }).join("");
+    const formerRows = (this.model.state.formerEmployees || []).map((emp) => {
+      const history = (emp.assignmentHistory || []).map((assignment) => {
+        const target = assignment.type === "goithau"
+          ? this.model.state.goithau.find((item) => item.id === assignment.targetId)
+          : this.model.state.hopdong.find((item) => item.id === assignment.targetId);
+        const label = assignment.type === "goithau" ? target?.maGoiThau : target?.soHopDong;
+        return label ? `<span class="badge badge-neutral">${assignment.type === "goithau" ? "GT" : "HD"}: ${escapeHTML(label)}</span>` : "";
+      }).filter(Boolean).join(" ");
+      return `<tr class="is-former-member">
+        <td class="fw-bold">${escapeHTML(emp.name)} <span class="badge badge-neutral">Đã rời</span></td>
+        <td>${escapeHTML(emp.email)}</td><td>${escapeHTML(emp.phone)}</td>
+        <td>${history || '<span class="text-muted">Không có lịch sử phân công</span>'}</td>
+        <td><span class="text-muted">${escapeHTML(emp.leftAt || "")}</span></td>
+      </tr>`;
+    }).join("");
+    tbody.innerHTML = activeRows + formerRows;
   }
   const matrixTbody = document.getElementById("manager-matrix-tbody");
   if (matrixTbody) {

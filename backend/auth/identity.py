@@ -1,6 +1,6 @@
 """Canonical account identity handling shared by every authentication flow."""
 
-from backend.db.errors import INTEGRITY_ERRORS
+import sqlite3
 
 
 GOOGLE_ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
@@ -15,8 +15,8 @@ def normalize_email(value):
 
 
 def identity_conflict_code(error):
-    """Map database uniqueness failures to a stable public field error code."""
-    if not isinstance(error, INTEGRITY_ERRORS):
+    """Map SQLite uniqueness failures to a stable public field error code."""
+    if not isinstance(error, sqlite3.IntegrityError):
         return None
     message = str(error).casefold()
     if "username_norm" in message:
