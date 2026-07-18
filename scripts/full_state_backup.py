@@ -16,6 +16,7 @@ from backend.db.full_state_backup import (
     restore_full_state_snapshot,
     verify_full_state_snapshot,
 )
+from backend.shared.paths import DATA_DIR, resolve_runtime_path
 
 
 def _build_parser():
@@ -26,12 +27,21 @@ def _build_parser():
         "create",
         help="atomically create and verify a new full-state snapshot",
     )
-    create_parser.add_argument("--database", default=os.environ.get("BIDDING_DB_PATH"))
-    create_parser.add_argument("--backup-dir", default=os.environ.get("BIDDING_BACKUP_DIR"))
-    create_parser.add_argument("--uploads", default=os.environ.get("BIDDING_UPLOAD_DIR"))
+    create_parser.add_argument(
+        "--database",
+        default=os.environ.get("BIDDING_DB_PATH") or str(DATA_DIR / "bidding.db"),
+    )
+    create_parser.add_argument(
+        "--backup-dir",
+        default=str(resolve_runtime_path("BIDDING_BACKUP_DIR")),
+    )
+    create_parser.add_argument(
+        "--uploads",
+        default=str(resolve_runtime_path("BIDDING_UPLOAD_DIR")),
+    )
     create_parser.add_argument(
         "--word-templates",
-        default=os.environ.get("BIDDING_WORD_TEMPLATE_DIR"),
+        default=str(resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR")),
     )
 
     verify_parser = commands.add_parser(

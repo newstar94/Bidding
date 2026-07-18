@@ -12,14 +12,42 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("BIDDING_DATA_DIR") or PROJECT_ROOT / "data").resolve()
-LOG_DIR = Path(os.environ.get("BIDDING_LOG_DIR") or DATA_DIR / "logs").resolve()
+
+_RUNTIME_PATH_DEFAULTS = {
+    "AUDIT_CHECKPOINT_DIR": Path("audit-checkpoints"),
+    "BIDDING_BACKUP_DIR": Path("backups"),
+    "BIDDING_LOG_DIR": Path("logs"),
+    "BIDDING_UPLOAD_DIR": Path("templates") / "images",
+    "BIDDING_WORD_TEMPLATE_DIR": Path("templates") / "words",
+    "DOCUMENT_WORKER_TEMP_DIR": Path("document-worker-temp"),
+}
+
+
+def resolve_runtime_path(name, *, environ=None, allow_empty=False):
+    """Resolve an optional runtime override below the configured data root."""
+
+    if name not in _RUNTIME_PATH_DEFAULTS:
+        raise KeyError(f"Unknown runtime path: {name}")
+    environment = os.environ if environ is None else environ
+    configured = environment.get(name)
+    if configured is not None:
+        configured = str(configured).strip()
+        if configured:
+            return Path(configured).resolve()
+        if allow_empty:
+            return None
+    data_root = Path(
+        environment.get("BIDDING_DATA_DIR") or PROJECT_ROOT / "data"
+    ).resolve()
+    return (data_root / _RUNTIME_PATH_DEFAULTS[name]).resolve()
+
+
+LOG_DIR = resolve_runtime_path("BIDDING_LOG_DIR")
 TEMPLATE_DATA_DIR = Path(
     os.environ.get("BIDDING_TEMPLATE_DATA_DIR") or DATA_DIR / "templates"
 ).resolve()
-IMAGE_DIR = Path(os.environ.get("BIDDING_UPLOAD_DIR") or TEMPLATE_DATA_DIR / "images").resolve()
-WORD_TEMPLATE_DIR = Path(
-    os.environ.get("BIDDING_WORD_TEMPLATE_DIR") or TEMPLATE_DATA_DIR / "words"
-).resolve()
+IMAGE_DIR = resolve_runtime_path("BIDDING_UPLOAD_DIR")
+WORD_TEMPLATE_DIR = resolve_runtime_path("BIDDING_WORD_TEMPLATE_DIR")
 
 SYSTEM_WORD_TEMPLATE_DIR = (PROJECT_ROOT / "data" / "templates" / "words").resolve()
 SYSTEM_WORD_TEMPLATE_NAMES = (

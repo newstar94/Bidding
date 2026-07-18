@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT
+from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, resolve_runtime_path
 from backend.observability.metrics import (
     document_worker_acquired,
     document_worker_finished,
@@ -318,10 +318,7 @@ def run_document_job(
     job_started = time.perf_counter()
     outcome = "failed"
 
-    job_root = Path(
-        os.environ.get("DOCUMENT_WORKER_TEMP_DIR", "").strip()
-        or str(Path(tempfile.gettempdir()) / "bidding-document-worker")
-    )
+    job_root = resolve_runtime_path("DOCUMENT_WORKER_TEMP_DIR")
     job_root.mkdir(parents=True, exist_ok=True)
     try:
         with tempfile.TemporaryDirectory(prefix="job-", dir=job_root) as raw_job_dir:
@@ -451,10 +448,7 @@ async def run_document_job_async(
 def cleanup_stale_document_jobs(max_age_seconds: int = 3_600) -> int:
     """Remove abandoned per-job directories left by a terminated web process."""
 
-    root = Path(
-        os.environ.get("DOCUMENT_WORKER_TEMP_DIR", "").strip()
-        or str(Path(tempfile.gettempdir()) / "bidding-document-worker")
-    )
+    root = resolve_runtime_path("DOCUMENT_WORKER_TEMP_DIR")
     if not root.exists():
         return 0
     cutoff = __import__("time").time() - max(60, max_age_seconds)

@@ -134,7 +134,7 @@ def test_production_rejects_synced_or_relative_sqlite_paths(tmp_path):
         )
 
 
-def test_production_accepts_explicit_separated_runtime_layout(tmp_path):
+def test_production_accepts_runtime_layout_derived_from_data_root(tmp_path):
     database = SQLiteDatabase(tmp_path / "database" / "bidding.db")
     writer = _create_source_database(database.db_path)
     writer.execute("CREATE TABLE tai_khoan (id TEXT PRIMARY KEY)")
@@ -151,19 +151,14 @@ def test_production_accepts_explicit_separated_runtime_layout(tmp_path):
         "ADMIN_NAME": "Administrator",
         "ADMIN_EMAIL": "admin@bidding.example.com",
         "DEFAULT_ORG_NAME": "Bidding Organization",
+        "BIDDING_DATA_DIR": str(tmp_path.resolve()),
         "BIDDING_DB_PATH": database.db_path,
         "BIDDING_SQLITE_SINGLE_WRITER": "true",
-        "AUDIT_CHECKPOINT_DIR": str((tmp_path / "audit-checkpoints").resolve()),
         "AUDIT_CHECKPOINT_HMAC_KEY": "a" * 32,
         "BIDDING_RESTORE_DRILL_HMAC_KEY": "r" * 32,
         "AUDIT_CHECKPOINT_OFFHOST_CONFIRMED": "true",
         "DATA_AT_REST_ENCRYPTION_CONFIRMED": "true",
         "SECRET_ROTATION_CONFIRMED_AT": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "BIDDING_BACKUP_DIR": str((tmp_path / "backups").resolve()),
-        "BIDDING_LOG_DIR": str((tmp_path / "logs").resolve()),
-        "BIDDING_UPLOAD_DIR": str((tmp_path / "uploads").resolve()),
-        "BIDDING_WORD_TEMPLATE_DIR": str((tmp_path / "templates").resolve()),
-        "DOCUMENT_WORKER_TEMP_DIR": str((tmp_path / "temp").resolve()),
     }
 
     validate_startup_configuration(database, environment)

@@ -21,6 +21,7 @@ from backend.shared.audit_chain import (
 )
 from backend.shared.database_io import run_database_read
 from backend.shared.logging_utils import log_structured_event
+from backend.shared.paths import resolve_runtime_path
 
 
 def _bounded_seconds(name, default, minimum, maximum):
@@ -29,6 +30,11 @@ def _bounded_seconds(name, default, minimum, maximum):
     except (TypeError, ValueError):
         value = float(default)
     return min(float(maximum), max(float(minimum), value))
+
+
+def _checkpoint_destination():
+    path = resolve_runtime_path("AUDIT_CHECKPOINT_DIR", allow_empty=True)
+    return str(path) if path is not None else ""
 
 
 def _latest_checkpoint(destination):
@@ -96,7 +102,7 @@ async def monitor_audit_chain(database, application=None):
     checkpoint_interval = _bounded_seconds(
         "AUDIT_CHECKPOINT_INTERVAL_SECONDS", 86_400, interval, 31 * 86_400
     )
-    checkpoint_destination = str(os.environ.get("AUDIT_CHECKPOINT_DIR", "")).strip()
+    checkpoint_destination = _checkpoint_destination()
     hmac_key = str(os.environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
     last_checkpoint_at = 0.0
     while True:
@@ -161,7 +167,7 @@ async def monitor_audit_chain(database, application=None):
 async def verify_audit_chain_before_ready(database):
     """Fail startup until the chain and latest configured anchor verify."""
 
-    checkpoint_destination = str(os.environ.get("AUDIT_CHECKPOINT_DIR", "")).strip()
+    checkpoint_destination = _checkpoint_destination()
     hmac_key = str(os.environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
     started = time.perf_counter()
     try:

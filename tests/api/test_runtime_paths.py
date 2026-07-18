@@ -1,6 +1,43 @@
 from pathlib import Path
 
-from backend.shared.paths import SYSTEM_WORD_TEMPLATE_NAMES, provision_system_word_templates
+from backend.shared.paths import (
+    SYSTEM_WORD_TEMPLATE_NAMES,
+    provision_system_word_templates,
+    resolve_runtime_path,
+)
+
+
+def test_runtime_paths_derive_from_single_data_root(tmp_path):
+    environment = {"BIDDING_DATA_DIR": str(tmp_path)}
+
+    assert resolve_runtime_path(
+        "BIDDING_BACKUP_DIR", environ=environment
+    ) == (tmp_path / "backups").resolve()
+    assert resolve_runtime_path(
+        "BIDDING_UPLOAD_DIR", environ=environment
+    ) == (tmp_path / "templates" / "images").resolve()
+    assert resolve_runtime_path(
+        "BIDDING_WORD_TEMPLATE_DIR", environ=environment
+    ) == (tmp_path / "templates" / "words").resolve()
+    assert resolve_runtime_path(
+        "DOCUMENT_WORKER_TEMP_DIR", environ=environment
+    ) == (tmp_path / "document-worker-temp").resolve()
+    assert resolve_runtime_path(
+        "AUDIT_CHECKPOINT_DIR", environ=environment
+    ) == (tmp_path / "audit-checkpoints").resolve()
+
+
+def test_runtime_path_override_and_explicit_empty_checkpoint(tmp_path):
+    override = tmp_path / "separate-backups"
+    assert resolve_runtime_path(
+        "BIDDING_BACKUP_DIR",
+        environ={"BIDDING_BACKUP_DIR": str(override)},
+    ) == override.resolve()
+    assert resolve_runtime_path(
+        "AUDIT_CHECKPOINT_DIR",
+        environ={"AUDIT_CHECKPOINT_DIR": ""},
+        allow_empty=True,
+    ) is None
 
 
 def test_provision_system_word_templates_copies_all_bundled_templates(tmp_path):

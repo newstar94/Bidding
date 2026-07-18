@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from backend.shared.paths import PROJECT_ROOT
+from backend.shared.paths import PROJECT_ROOT, resolve_runtime_path
 
 
 class StartupValidationError(RuntimeError):
@@ -70,11 +70,19 @@ def _validate_production_sqlite_layout(database, environ):
     db_directory = db_path.parent
     for variable in _SEPARATE_RUNTIME_PATHS:
         raw_path = str(environ.get(variable, "")).strip()
-        if not raw_path or not Path(raw_path).is_absolute():
+        if raw_path:
+            runtime_path = Path(raw_path).resolve()
+        else:
+            raw_data_root = str(environ.get("BIDDING_DATA_DIR", "")).strip()
+            if not raw_data_root or not Path(raw_data_root).is_absolute():
+                raise StartupValidationError(
+                    f"{variable} requires an explicit absolute override or an absolute BIDDING_DATA_DIR in production."
+                )
+            runtime_path = resolve_runtime_path(variable, environ=environ)
+        if not runtime_path.is_absolute():
             raise StartupValidationError(
-                f"{variable} must be an explicit absolute path in production."
+                f"{variable} must resolve to an absolute path in production."
             )
-        runtime_path = Path(raw_path).resolve()
         if _is_within(runtime_path, db_directory):
             raise StartupValidationError(
                 f"{variable} must be outside the SQLite database directory."
