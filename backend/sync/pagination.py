@@ -2,10 +2,10 @@
 
 import base64
 import json
-import sqlite3
 
 from starlette.responses import JSONResponse
 
+from backend.db.errors import DATABASE_ERRORS
 from backend.shared.helpers import (
     SCHEMA_DINH_NGHIA,
     OrgPermissionError,
@@ -34,6 +34,7 @@ from backend.sync.queries import (
     FTS_SEARCH_TABLES,
     TABLE_KEYS,
     build_fts_match_query,
+    build_postgresql_search_filter,
     get_contract_package_ids as _get_contract_package_ids,
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
@@ -251,13 +252,26 @@ def _paginate_records_blocking(request):
         if search:
             fts_query = build_fts_match_query(search)
             if table_name in FTS_SEARCH_TABLES and fts_query:
-                fts_table = f"fts_{table_name}"
-                cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (fts_table,))
-                if cursor.fetchone():
-                    query_parts.append(f"id IN (SELECT id FROM {fts_table} WHERE {fts_table} MATCH ? AND organization_id = ?)")
-                    query_params.extend([fts_query, org_name])
+                if getattr(database, "backend_name", "sqlite") == "postgresql":
+                    search_filter, search_parameters = build_postgresql_search_filter(
+                        table_name, search
+                    )
+                    query_parts.append(search_filter)
+                    query_params.extend(search_parameters)
                 else:
-                    add_like_search_filter()
+                    fts_table = f"fts_{table_name}"
+                    cursor.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                        (fts_table,),
+                    )
+                    if cursor.fetchone():
+                        query_parts.append(
+                            f"id IN (SELECT id FROM {fts_table} "
+                            f"WHERE {fts_table} MATCH ? AND organization_id = ?)"
+                        )
+                        query_params.extend([fts_query, org_name])
+                    else:
+                        add_like_search_filter()
             else:
                 add_like_search_filter()
 
@@ -522,5 +536,5 @@ def _paginate_records_blocking(request):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DATABASE_ERRORS:
                 pass

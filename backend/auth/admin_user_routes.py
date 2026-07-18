@@ -1,9 +1,9 @@
-import sqlite3
 import time
 from collections import defaultdict
 
 from starlette.responses import JSONResponse
 
+from backend.db.errors import INTEGRITY_ERRORS
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.helpers import (
@@ -260,7 +260,7 @@ def _delete_user_sync(request):
                     (user_id,),
                 )
                 cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
-            except sqlite3.IntegrityError:
+            except INTEGRITY_ERRORS:
                 cursor.execute("ROLLBACK TO SAVEPOINT delete_personal_workspace")
                 cursor.execute("RELEASE SAVEPOINT delete_personal_workspace")
                 conn.rollback()

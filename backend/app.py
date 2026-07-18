@@ -336,6 +336,7 @@ from backend.shared.helpers import (
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import get_blocking_io_stats, run_blocking_io
 from backend.shared.database_io import get_database_io_stats, run_database_read
+from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import get_cpu_io_stats
 from backend.observability.metrics import ObservabilityMiddleware, metrics_api
 from backend.observability.client_errors import client_error_api
@@ -467,7 +468,7 @@ async def health_ready_api(request):
         await run_database_read(
             verify_database_responsive,
             database,
-            DB_SCHEMA_VERSION,
+            getattr(database, "schema_version", DB_SCHEMA_VERSION),
             timeout_seconds=3.0,
         )
     except Exception as readiness_error:
@@ -523,7 +524,7 @@ class ProductionViewStaticFiles(StaticFiles):
         return await super().get_response(path, scope)
 
 
-async def protected_image_api(request):
+def _protected_image_response_sync(request):
     is_valid, role_or_err = verify_session(request)
     if not is_valid:
         return JSONResponse({"error": role_or_err}, status_code=403)
@@ -629,6 +630,33 @@ async def protected_image_api(request):
         file_path,
         headers={"Cache-Control": "private, no-store"},
     )
+
+
+async def protected_image_api(request):
+    try:
+        return await run_database_read(
+            _protected_image_response_sync,
+            request,
+            timeout_seconds=10.0,
+        )
+    except BlockingIOBusyError:
+        response = error_response(
+            request,
+            "DATABASE_READ_QUEUE_FULL",
+            "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
+    except BlockingIOTimeoutError:
+        response = error_response(
+            request,
+            "DATABASE_READ_TIMEOUT",
+            "Không thể kiểm tra quyền truy cập tệp trong thời gian cho phép.",
+            status_code=503,
+        )
+        response.headers["Retry-After"] = "1"
+        return response
 
 
 
@@ -843,7 +871,7 @@ async def lifespan(application):
     async with application_lifespan(
         application,
         database=database,
-        schema_version=DB_SCHEMA_VERSION,
+        schema_version=getattr(database, "schema_version", DB_SCHEMA_VERSION),
         initialize_database=_initialize_database,
         build_index_response=_build_index_response_payload,
         is_production=IS_PRODUCTION,

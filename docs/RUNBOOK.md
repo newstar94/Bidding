@@ -10,6 +10,17 @@
 
 ## Backup và restore diễn tập
 
+Recovery contract production nằm tại
+[`load/recovery-objectives.json`](../load/recovery-objectives.json): toàn ứng dụng
+RPO 15 phút/RTO 120 phút; PostgreSQL RPO 5 phút/RTO 60 phút; uploads, ảnh và Word
+template RPO 15 phút/RTO 120 phút; audit checkpoint RPO 5 phút/RTO 60 phút. Các
+mốc này là gate, không phải ước lượng: nếu restore/failover vượt một mốc thì drill
+thất bại và release vẫn đóng.
+
+PITR giữ tối thiểu 35 ngày, backup bất biến 90 ngày, restore drill mỗi 30 ngày;
+alert bật sau 35 ngày và backup đã xác minh alert sau 26 giờ. Kiểm tra policy bằng
+`python scripts/validate_recovery_objectives.py`.
+
 Full-state backup phiên bản 2 chỉ chạy trong cửa sổ quiesce: timer dừng
 `biddingflow.service`, công cụ phải lấy được writer lease độc quyền, sau đó mới
 chụp SQLite, uploads và Word templates rồi khởi động lại ứng dụng. Nếu ứng dụng
@@ -37,12 +48,62 @@ Không tạo mốc thủ công nếu chưa chạy restore thật; script xác mi
 
 Các giới hạn Python/Windows Job Object này **không thay thế OS sandbox**. Trước production công khai, chạy document worker bằng principal/container riêng, chỉ mount job directory và template cần thiết ở chế độ tối thiểu, dùng filesystem ACL/read-only mounts, cấm network bằng firewall/network namespace và không cấp quyền đọc DB/uploads/source ngoài phạm vi công việc. Nếu chưa có ranh giới OS này, giữ release gate security High ở trạng thái đóng.
 
+## Deadline và retry cho mutation
+
+Read database và external I/O có deadline riêng. Sync write dùng
+`DATABASE_WRITE_TIMEOUT_SECONDS` (mặc định 30 giây) và production bắt buộc
+`clientMutationId`. Nếu nhận `DATABASE_WRITE_TIMEOUT`, client phải giữ nguyên hàng
+đợi và retry với đúng ID đó: transaction đang chạy có thể hoàn tất sau khi HTTP
+đã trả 503, còn bảng `sync_mutations` bảo đảm lần retry nhận lại kết quả đã commit
+thay vì ghi lần hai. Không tự sinh ID mới cho cùng một mutation khi retry.
+
 ## Database lock hoặc WAL tăng bất thường
 
 1. Kiểm tra chỉ có một process được quyền ghi và `BIDDING_SQLITE_SINGLE_WRITER=true`.
 2. Kiểm tra readiness, dung lượng disk, file `-wal`/`-shm` và request dài đang chạy.
 3. Không xóa sidecar khi process còn hoạt động. Dừng nhận traffic, dừng app rồi chạy backup/checkpoint có kiểm soát.
 4. Chạy `check_database.py`; nếu integrity không đạt, giữ nguyên bản lỗi để điều tra và restore bản backup đã xác minh.
+
+## PostgreSQL pool, lock, replication và disk
+
+1. Xác định đây là pool app hay giới hạn server: đối chiếu
+   `biddingflow_postgresql_pool_waiting`, acquire timeout,
+   `pg_stat_activity_count` và `pg_settings_max_connections`. Không tăng pool trước
+   khi biết query/transaction nào giữ connection.
+2. Kiểm tra transaction lâu, lock wait/deadlock, query plan và statement timeout.
+   Hủy query chỉ theo incident procedure; không terminate backend hàng loạt vì có
+   thể tạo rollback/IO spike.
+3. Nếu replication lag tăng, ngừng tác vụ đọc từ replica và không failover tự phát;
+   kiểm tra WAL generation, network, disk/IOPS, replay state và archive status.
+4. Nếu disk/IOPS áp lực, dừng batch/export không thiết yếu, giữ headroom cho WAL và
+   checkpoint. Không xóa WAL thủ công. Mở rộng storage hoặc restore/failover theo
+   quy trình nhà cung cấp.
+5. Sau sự cố, chạy lại query-plan gate, mutation idempotent, sync/audit consistency
+   và ghi peak connections, lock/deadlock, lag, disk cùng thời gian phục hồi.
+
+Prometheus scrape PostgreSQL qua `postgres_exporter` dùng role
+`bidding_backup_monitor`; secret đi qua `DATA_SOURCE_PASS_FILE`. Collector mặc định
+phải có database, locks, replication, stat_activity, stat_archiver,
+stat_database và WAL. Bật long-running-transactions/stat-statements chỉ sau khi đã
+đánh giá overhead và policy không lộ query chứa dữ liệu nhạy cảm. Nếu dùng managed
+provider, ánh xạ metric native sang cùng dashboard/alert contract.
+
+## PostgreSQL PITR hoặc failover
+
+1. Đóng hoặc drain mutation traffic; ghi timestamp/LSN sự cố và người quyết định.
+2. Xác minh backup base gần nhất, WAL/archive liên tục và retention bao phủ target
+   time. Restore vào môi trường tách biệt trước, không ghi đè primary lỗi.
+3. Chạy schema/readiness, row/tenant invariant, audit chain, sync cursor và mẫu
+   DOCX/Excel; đối chiếu file storage manifest riêng vì PITR database không tự phục
+   hồi uploads/template.
+4. Với failover, xác minh fencing primary cũ trước khi chuyển endpoint/DNS để tránh
+   split-brain. Restart pool theo từng instance và theo dõi reconnect storm.
+5. Chỉ mở mutation sau khi RPO/RTO, replication, backup age, audit và smoke đạt.
+   Giữ môi trường nguồn phục vụ điều tra theo retention; không xóa bằng chứng.
+
+Credential rotation và role matrix nằm tại
+`docs/POSTGRESQL_OPERATIONS.md`. Mọi failover/PITR/rotation phải ghi revision ứng
+dụng, schema version, secret version, owner, thời gian bắt đầu/kết thúc và kết quả.
 
 ## Mất mạng và WebSocket
 
@@ -94,3 +155,17 @@ Verifier chạy ngay sau startup và lặp theo `AUDIT_CHAIN_VERIFY_INTERVAL_SEC
 4. Chỉ phục hồi từ backup đã xác minh và mở lại mutation sau khi `valid=1`. Ghi incident ID trong hồ sơ vận hành, không ghi PII vào alert/log.
 
 Nếu đặt `AUDIT_CHECKPOINT_DIR`, ứng dụng kiểm tra chain hiện tại vẫn chứa hoặc nối tiếp checkpoint gần nhất trước khi tạo checkpoint mới; vì vậy rollback/truncation so với mốc local được phát hiện. Đặt `AUDIT_CHECKPOINT_HMAC_KEY` bằng secret manager. Thư mục local **không tự trở thành kho bất biến**: platform-oncall phải replicate từng file tên duy nhất sang object storage WORM/retention-lock ở tài khoản hoặc host tách biệt và giữ key HMAC ngoài database server. Nếu kẻ tấn công có thể đồng thời xóa database và checkpoint local, chỉ bản neo off-host bất biến mới cung cấp bằng chứng chống rollback.
+# Private source maps
+
+Build mặc định không sinh source map. Với release cần error tracking, CI phải đặt
+`APP_RELEASE_ID` bằng revision bất biến và `PRIVATE_SOURCE_MAP_DIR` trỏ tới vùng artifact
+riêng ngoài `dist`, rồi chạy `npm run build:secure`. Build sẽ dùng hidden source maps,
+chuyển toàn bộ `.map` sang `<PRIVATE_SOURCE_MAP_DIR>/<APP_RELEASE_ID>/` và tạo
+`source-map-manifest.json` có SHA-256. JavaScript công khai vẫn được minify nhưng không
+obfuscate trong chế độ này vì map của obfuscator không thể ghép chính xác với map nguồn
+của Rollup.
+
+CI phải upload đúng thư mục release này bằng CLI đã xác thực của error-tracking provider,
+kiểm tra release ID khớp backend/frontend, rồi xóa artifact runner theo retention policy.
+Không copy thư mục private map vào web root hoặc archive production. Trình đóng gói từ
+chối hậu tố `.map` để chống phát hành nhầm.

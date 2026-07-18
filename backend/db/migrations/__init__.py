@@ -8,6 +8,7 @@ from . import (
     m0005_selective_fts_updates,
     m0006_document_export_capabilities,
     m0007_audit_chain_single_successor,
+    m0008_package_pagination_index,
 )
 
 
@@ -19,4 +20,5 @@ MIGRATIONS = (
     m0005_selective_fts_updates,
     m0006_document_export_capabilities,
     m0007_audit_chain_single_successor,
+    m0008_package_pagination_index,
 )

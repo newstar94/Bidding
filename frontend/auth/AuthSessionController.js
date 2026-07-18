@@ -136,6 +136,11 @@ export function startBackgroundSessionChecker() {
           });
           const previousOrgId = getActiveOrganizationId();
           applyAccessContext(activeuser, data.user);
+          const nextUserId = String(data.user.id || "").trim();
+          if (activeuser.id !== nextUserId) {
+            activeuser.id = nextUserId;
+            hasChanges = true;
+          }
           const nextActiveRole = this.model.constructor.resolveAllowedActiveRole(activeuser, this.model.state.activerole);
           if (this.model.state.activerole !== nextActiveRole) {
             this.model.state.activerole = nextActiveRole;

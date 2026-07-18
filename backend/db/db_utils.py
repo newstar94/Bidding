@@ -791,6 +791,20 @@ def recalculate_tong_muc_dau_tu(cursor, organization_id=None, *, plan_ids=None):
 
 def khoi_tao_va_di_tru_he_thong():
     """Apply immutable, ordered migrations to a clean or already-versioned DB."""
+    if database.backend_name == "postgresql":
+        from backend.db.postgresql_migrations import initialize_postgresql_database
+        from backend.db.postgresql import PostgreSQLDatabase
+
+        migration_url = str(
+            os.environ.get("BIDDING_MIGRATION_DATABASE_URL", "")
+        ).strip()
+        if not migration_url or migration_url == database.dsn:
+            return initialize_postgresql_database(database)
+        migration_database = PostgreSQLDatabase(migration_url)
+        try:
+            return initialize_postgresql_database(migration_database)
+        finally:
+            migration_database.close()
     conn = None
     try:
         conn = database.get_connection()

@@ -21,6 +21,7 @@ import {
   setActiveOrganizationId
 } from "./workspaceState.js";
 import { apiFetch, configureApiClient } from "../shared/apiClient.js";
+import { resolveWorkflowScope, WORKFLOW_SCOPES } from "./workflowModuleScopes.js";
 export class BiddingController {
   constructor(model, view) {
     this.model = model;
@@ -278,23 +279,65 @@ export class BiddingController {
   async reconcileInitialRouteData() {
     return reconcileRouteDataAtStartup(this);
   }
-  ensureWorkflowModules() {
-    if (!this._workflowModulesPromise) {
-      this._workflowModulesPromise = Promise.all([
-        import("../packages/BiddingWorkflows.js"),
-        import("../partners/PartnerWorkflows.js")
-      ]).then(([bidding, partner]) => {
-        installPrototypeModules(BiddingController, [
-          { name: "bidding-workflows", module: bidding },
-          { name: "partner-workflows", module: partner },
-        ]);
-        this._workflowModulesReady = true;
-      }).catch((err) => {
-        this._workflowModulesPromise = null;
-        throw err;
+  isWorkflowScopeReady(request = "all") {
+    const scope = resolveWorkflowScope(request);
+    if (scope === null) return true;
+    const ready = this._workflowScopesReady || new Set();
+    return scope === "all"
+      ? WORKFLOW_SCOPES.every((name) => ready.has(name))
+      : ready.has(scope);
+  }
+  ensureWorkflowModules(request = "all") {
+    const resolvedScope = resolveWorkflowScope(request);
+    if (resolvedScope === null) return Promise.resolve();
+    const scopes = resolvedScope === "all" ? WORKFLOW_SCOPES : [resolvedScope];
+    this._workflowModulePromises = this._workflowModulePromises || new Map();
+    this._workflowScopesReady = this._workflowScopesReady || new Set();
+
+    const loadScope = (scope) => {
+      if (this._workflowScopesReady.has(scope)) return Promise.resolve();
+      if (this._workflowModulePromises.has(scope)) {
+        return this._workflowModulePromises.get(scope);
+      }
+      const loaders = {
+        plan: () => Promise.all([
+          import("../plans/KeHoachWorkflow.js"),
+          import("../shared/PartnerHelpers.js")
+        ]),
+        package: () => Promise.all([
+          import("../shared/BiddingCalculations.js"),
+          import("../plans/KeHoachWorkflow.js"),
+          import("../packages/GoiThauWorkflow.js"),
+          import("../packages/BidProcessWorkflow.js"),
+          import("../packages/BidEvaluationWorkflow.js"),
+          import("../shared/FormSubTables.js"),
+          import("../shared/PartnerHelpers.js")
+        ]),
+        partner: () => Promise.all([
+          import("../partners/PartnerWorkflows.js")
+        ])
+      };
+      const promise = loaders[scope]().then((modules) => {
+        installPrototypeModules(
+          BiddingController,
+          modules.map((module, index) => ({
+            name: `${scope}-workflow-${index + 1}`,
+            module
+          }))
+        );
+        this._workflowScopesReady.add(scope);
+        this._workflowModulesReady = WORKFLOW_SCOPES.every(
+          (name) => this._workflowScopesReady.has(name)
+        );
+      }).catch((error) => {
+        this._workflowModulePromises.delete(scope);
+        throw error;
       });
-    }
-    return this._workflowModulesPromise;
+      this._workflowModulePromises.set(scope, promise);
+      return promise;
+    };
+
+    return Promise.all(scopes.map(loadScope)).then(() => undefined);
   }
   getWorkflowDataKeys(methodName) {
     const dependencies = {
@@ -311,7 +354,7 @@ export class BiddingController {
   }
   ensureWorkflowReady(methodName) {
     return Promise.all([
-      this.ensureWorkflowModules(),
+      this.ensureWorkflowModules(methodName),
       this.ensureWorkflowData(methodName)
     ]);
   }
@@ -779,8 +822,8 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     const initialPath = window.location.pathname;
     const initialTabName = this.getTabNameForPath(initialPath) || (this.model.state.activerole === "super_admin" ? "superadmin-dashboard" : "dashboard");
     const routePreparationTasks = [this.view.ensureViewModules(initialTabName)];
-    if (["mothau", "danhgiahsdt", "goithau-detail"].includes(initialTabName) && !this._workflowModulesReady) {
-      routePreparationTasks.push(this.ensureWorkflowModules());
+    if (["mothau", "danhgiahsdt", "goithau-detail"].includes(initialTabName) && !this.isWorkflowScopeReady(initialTabName)) {
+      routePreparationTasks.push(this.ensureWorkflowModules(initialTabName));
     }
     if (!document.getElementById(`tab-${initialTabName}`) && this.lazyTabPartials?.[initialTabName]) {
       routePreparationTasks.push(this.ensureLazyTab(initialTabName));

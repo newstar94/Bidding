@@ -1,0 +1,25 @@
+{
+  "contractVersion": 1,
+  "server": {
+    "maxConnections": 100,
+    "superuserReservedConnections": 3,
+    "operationalReserveConnections": 10,
+    "maxCommittedUtilization": 0.7
+  },
+  "roles": {
+    "applicationConnectionLimit": 50,
+    "applicationHeadroomConnections": 5,
+    "migrationConnectionLimit": 2,
+    "monitoringConnectionLimit": 5
+  },
+  "deployment": {
+    "steadyApplicationInstances": 2,
+    "rollingSurgeInstances": 1,
+    "poolMaxPerApplicationInstance": 10,
+    "externalDatabaseWorkerProcesses": 0,
+    "poolMaxPerExternalWorker": 0,
+    "migrationConnections": 2,
+    "monitoringConnections": 5,
+    "emergencyOperatorConnections": 5
+  }
+}

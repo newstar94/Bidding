@@ -62,6 +62,7 @@ export function updateActiveUserProfileDisplay() {
     if (typeof appController?.renderWorkspaceSwitcher === "function") {
       appController.renderWorkspaceSwitcher();
     }
+    appController?.synchronizeModuleAccess?.();
     const activeRole = this.model.state.activerole || "employee";
     const sidebar = document.getElementById("sidebar");
     if (sidebar) sidebar.dataset.activeRole = activeRole;

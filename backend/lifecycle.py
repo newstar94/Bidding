@@ -154,6 +154,7 @@ async def application_lifespan(
     except Exception as exc:
         if writer_lease is not None:
             writer_lease.release()
+        database.close()
         log_error(exc, "startup_database_init")
         raise
 
@@ -176,6 +177,7 @@ async def application_lifespan(
         application.state.ready = False
         application.state.startup_complete = False
         writer_lease.release()
+        database.close()
         raise
 
     threading.Thread(
@@ -207,3 +209,4 @@ async def application_lifespan(
         application.state.startup_complete = False
         if writer_lease is not None:
             writer_lease.release()
+        database.close()

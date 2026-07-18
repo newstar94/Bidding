@@ -1,6 +1,7 @@
 """WebSocket connection registry for synchronization notifications."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 import json
 import os
 
@@ -328,7 +329,7 @@ def _schedule_local_broadcast(organization_id, message):
 
 
 def broadcast_websocket_event(organization_id, message):
-    """Publish through the SQLite outbox so every application worker receives the event."""
+    """Publish through the database outbox so every application worker receives the event."""
     try:
         sanitized_message = serialize_websocket_event(message)
     except ValueError as invalid_event_error:
@@ -429,9 +430,15 @@ async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
 
 
 def _cleanup_broker_events():
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     conn = database.get_connection()
     try:
-        conn.execute("DELETE FROM websocket_events WHERE created_at < datetime('now', '-1 day')")
+        conn.execute(
+            "DELETE FROM websocket_events WHERE created_at < ?",
+            (cutoff,),
+        )
         conn.commit()
     finally:
         conn.close()

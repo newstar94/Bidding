@@ -1,7 +1,6 @@
 import os
 import traceback
 import json
-import sqlite3
 import time
 import re
 import queue

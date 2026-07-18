@@ -5,20 +5,20 @@
 ## Yêu cầu hệ thống
 
 - Python theo phiên bản trong `.python-version`.
-- Node.js 24 khi chỉnh sửa frontend hoặc tạo gói phát hành.
+- Node.js 24 khi phát triển hoặc tạo gói phát hành.
 - HTTPS reverse proxy khi chạy production.
 - Volume bền vững và được mã hóa cho database, media và backup.
 
-## Cài đặt mã nguồn tối giản
+## Phát triển và kiểm thử
 
 ```bash
-python -m pip install --require-hashes -r requirements.txt
+python -m pip install --require-hashes -r requirements/dev.lock.txt
 npm ci
-npm run build:secure
+npm run check
+npm run test:e2e
 ```
 
-Repository đã được thu gọn cho vận hành production. Bộ kiểm thử, load test,
-CI và các công cụ audit không được triển khai cùng ứng dụng.
+API test luôn tạo database tạm riêng và không sử dụng database phát triển.
 
 ## Tạo gói production
 
@@ -46,6 +46,7 @@ Artifact mặc định được tạo tại `release/biddingflow-production.zip`
    - `APP_PUBLIC_URL=https://<ten-mien>`
    - `CORS_ORIGINS` và `ALLOWED_WS_ORIGINS` đúng bằng public URL
    - `BIDDING_DB_PATH` trỏ tới volume dữ liệu bền vững
+   - Hoặc `BIDDING_DATABASE_URL` trỏ tới PostgreSQL qua TLS; URL này được ưu tiên hơn SQLite
    - `DATA_AT_REST_ENCRYPTION_CONFIRMED=true` sau khi xác minh mã hóa volume
    - `SUPER_ADMIN_IP_ALLOWLIST` và `TRUSTED_PROXY_CIDRS` theo hạ tầng thực tế
 

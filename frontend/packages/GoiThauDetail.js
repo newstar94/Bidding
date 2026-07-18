@@ -39,7 +39,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
     )
   ) {
     try {
-      await appController.ensureWorkflowModules();
+      await appController.ensureWorkflowModules("goithau-detail");
     } catch (error) {
       console.error("Failed to load package workflow modules:", error);
       appController.view?.showToast?.(

@@ -1,0 +1,147 @@
+/* Responsive density */
+@media (max-width: 1180px) {
+  .dashboard-work-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .table-actions-bar {
+    align-items: stretch;
+  }
+
+  .table-actions-bar > *:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    min-height: 64px;
+  }
+
+  .content-viewport {
+    padding: var(--space-4);
+  }
+
+  .date-display,
+  .header-profile-container .profile-info {
+    display: none;
+  }
+
+  .table-actions-bar,
+  .search-filter-group {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-box,
+  .select-wrapper,
+  .select-wrapper select {
+    width: 100%;
+  }
+
+  .table-actions-bar > *:last-child,
+  .table-actions-bar > *:last-child .btn,
+  .table-actions-bar > *:last-child .btn-excel-action {
+    width: 100%;
+  }
+
+  .modal-overlay {
+    padding: 0;
+  }
+
+  .modal-card,
+  .modal-card.modal-lg,
+  .modal-card.modal-xl {
+    width: 100%;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .modal-body {
+    padding: var(--space-4);
+  }
+
+  .modal-footer {
+    padding: 10px 16px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .dashboard-work-grid .dashboard-card .card-header {
+    height: auto;
+    min-height: 64px;
+  }
+
+  .dashboard-work-grid .dashboard-table-body {
+    height: auto;
+    max-height: min(420px, 60dvh);
+  }
+
+  .dashboard-alert-copy em {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  .content-viewport {
+    padding: var(--space-3);
+  }
+
+  .dashboard-section-heading p {
+    font-size: var(--font-size-sm);
+  }
+
+  .dashboard-alert-card {
+    grid-template-columns: 38px minmax(0, 1fr) 16px;
+    min-height: 88px;
+    padding: var(--space-3);
+  }
+
+  .dashboard-alert-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+  }
+
+  .modal-footer .btn {
+    flex: 1 1 140px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (pointer: coarse), (max-width: 768px) {
+  .action-btn,
+  .pagination-btn,
+  .sort-icon-btn,
+  .flatpickr-grid-overlay .grid-nav-btn {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --line: var(--contrast-line);
+    --line-strong: var(--contrast-line-strong);
+    --ink-muted: var(--contrast-ink-muted);
+    --ink-subtle: var(--contrast-ink-subtle);
+  }
+}

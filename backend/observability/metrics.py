@@ -382,9 +382,16 @@ def refresh_operational_artifact_verification() -> dict[str, object]:
 
     from backend.shared.helpers import database
 
-    db_path = Path(database.db_path).resolve()
     backup_raw = str(os.environ.get("BIDDING_BACKUP_DIR", "")).strip()
-    backup_directory = Path(backup_raw).resolve() if backup_raw else db_path.parent / "backups"
+    db_path_value = getattr(database, "db_path", None)
+    if backup_raw:
+        backup_directory = Path(backup_raw).resolve()
+    elif db_path_value:
+        backup_directory = Path(db_path_value).resolve().parent / "backups"
+    else:
+        from backend.shared.paths import DATA_DIR
+
+        backup_directory = DATA_DIR / "backups"
     configured_state = str(os.environ.get("BIDDING_RESTORE_DRILL_STATE_FILE", "")).strip()
     state_path = (
         Path(configured_state).resolve()
@@ -460,15 +467,24 @@ def _filesystem_metrics() -> dict[str, Any]:
     from backend.shared.helpers import database
 
     now = time.time()
-    db_path = Path(database.db_path).resolve()
+    db_path_value = getattr(database, "db_path", None)
+    db_path = Path(db_path_value).resolve() if db_path_value else None
     backup_raw = str(os.environ.get("BIDDING_BACKUP_DIR", "")).strip()
-    backup_directory = Path(backup_raw).resolve() if backup_raw else db_path.parent / "backups"
+    if backup_raw:
+        backup_directory = Path(backup_raw).resolve()
+    elif db_path is not None:
+        backup_directory = db_path.parent / "backups"
+    else:
+        from backend.shared.paths import DATA_DIR
+
+        backup_directory = DATA_DIR / "backups"
     result: dict[str, Any] = {
-        "sqlite_database_bytes": db_path.stat().st_size if db_path.is_file() else 0,
-        "sqlite_wal_bytes": Path(f"{db_path}-wal").stat().st_size if Path(f"{db_path}-wal").is_file() else 0,
+        "sqlite_database_bytes": db_path.stat().st_size if db_path and db_path.is_file() else 0,
+        "sqlite_wal_bytes": Path(f"{db_path}-wal").stat().st_size if db_path and Path(f"{db_path}-wal").is_file() else 0,
         "disk": {},
     }
-    for volume, path in (("database", db_path.parent), ("backup", backup_directory)):
+    database_volume = db_path.parent if db_path else backup_directory.parent
+    for volume, path in (("database", database_volume), ("backup", backup_directory)):
         try:
             usage = shutil.disk_usage(path)
         except OSError:
@@ -517,6 +533,31 @@ def _pool_samples(lines: list[str]) -> None:
         _metric_header(lines, name, f"Cumulative worker-pool {field.replace('_', ' ')}.", "counter")
         for pool, stats in sorted(pools.items()):
             lines.append(_sample(name, getattr(stats, field, 0.0), {"pool": pool}))
+
+
+def _postgresql_pool_samples(lines: list[str]) -> None:
+    from backend.shared.helpers import database
+
+    if getattr(database, "backend_name", None) != "postgresql":
+        return
+    stats = database.pool_stats()
+    name = "biddingflow_postgresql_pool_connections"
+    _metric_header(lines, name, "PostgreSQL connections by current state.", "gauge")
+    for state in ("size", "available", "in_use"):
+        lines.append(_sample(name, stats[state], {"state": state}))
+    name = "biddingflow_postgresql_pool_waiting"
+    _metric_header(lines, name, "Requests currently waiting for a PostgreSQL connection.", "gauge")
+    lines.append(_sample(name, stats["waiting"]))
+    for field, description in (
+        ("acquire_count", "PostgreSQL connection acquisition attempts."),
+        ("acquire_timeouts", "PostgreSQL connection acquisition timeouts."),
+        ("acquire_wait_seconds", "Cumulative PostgreSQL connection acquisition wait."),
+        ("transaction_count", "PostgreSQL transactions observed by the adapter."),
+        ("transaction_seconds", "Cumulative PostgreSQL transaction duration."),
+    ):
+        metric_name = f"biddingflow_postgresql_pool_{field}_total"
+        _metric_header(lines, metric_name, description, "counter")
+        lines.append(_sample(metric_name, stats[field]))
 
 
 def render_prometheus(application: object | None = None) -> str:
@@ -583,6 +624,7 @@ def render_prometheus(application: object | None = None) -> str:
         lines.append(_sample("biddingflow_database_operation_duration_seconds_count", db_duration_count[lane], {"lane": lane}))
 
     _pool_samples(lines)
+    _postgresql_pool_samples(lines)
 
     _metric_header(lines, "biddingflow_document_worker_active", "Document subprocess jobs currently active.", "gauge")
     lines.append(_sample("biddingflow_document_worker_active", document_worker["active"]))

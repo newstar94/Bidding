@@ -1,9 +1,9 @@
 # ADR PG-0 — Quyết định database dựa trên capacity
 
-- Trạng thái: **Chờ số đo, chưa quyết định**
-- Ngày quyết định: chưa có
-- Người phê duyệt: chưa có
-- Evidence: chưa có; điền từ `CAPACITY_ENVELOPE_TEMPLATE.json` sau khi chạy staging/performance
+- Trạng thái: **Đã chọn PostgreSQL làm database production mục tiêu; capacity gate vẫn chờ staging**
+- Ngày quyết định kỹ thuật: 18/07/2026
+- Người yêu cầu: chủ dự án BiddingFlow
+- Evidence hiện có: `mixed-100.json` và `soak-100.json` đều hợp lệ; 6/6 regression test profile đạt. Đây là evidence định nghĩa workload, không phải kết quả chịu tải.
 
 ## Câu hỏi quyết định
 
@@ -26,7 +26,14 @@ BiddingFlow có thể tiếp tục production giới hạn bằng một SQLite i
 
 ## Kết quả
 
-Chưa có quyết định. Việc repository đã có load harness không chứng minh mức 100 concurrent users và không cho phép đánh dấu capacity gate là đạt. Sau mỗi thay đổi DB engine, pool/queue, ingress hoặc số instance phải tạo evidence mới và duyệt lại ADR này.
+Chọn phương án 2: triển khai PostgreSQL trước khi nhận workload mục tiêu 100 concurrent
+active users và trước khi chạy nhiều application instance. Quyết định này xuất phát từ
+yêu cầu vận hành đã chốt, không phải tuyên bố SQLite đã thất bại ở một phép đo cụ thể.
+
+Việc repository có load harness không chứng minh PostgreSQL đã đạt workload mục tiêu.
+Capacity gate, cấu hình tài nguyên và quyền mở traffic chỉ được phê duyệt sau mixed/soak
+test trên staging có metrics đầy đủ. Sau mỗi thay đổi DB engine, pool/queue, ingress hoặc
+số instance phải tạo evidence mới và duyệt lại ADR này.
 
 ## Bản ghi cần điền sau phép đo
 

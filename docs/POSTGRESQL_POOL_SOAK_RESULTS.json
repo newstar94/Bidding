@@ -1,0 +1,93 @@
+{
+  "contractVersion": 1,
+  "dataset": {
+    "plans": 200,
+    "packages": 1000
+  },
+  "workload": {
+    "operations": 20000,
+    "concurrency": 20,
+    "poolSizes": [
+      2,
+      10
+    ],
+    "writeEveryOperations": 5
+  },
+  "thresholds": {
+    "maxErrorRate": 0,
+    "maxAcquireTimeouts": 0,
+    "maxP95Ms": 750,
+    "maxP99Ms": 1500
+  },
+  "durationSeconds": 18.177,
+  "results": [
+    {
+      "poolSize": 2,
+      "operations": 20000,
+      "operationCounts": {
+        "pagination": 10667,
+        "dashboard": 5333,
+        "write": 4000
+      },
+      "durationSeconds": 8.475,
+      "throughputPerSecond": 2359.852,
+      "latencyMs": {
+        "mean": 8.459,
+        "p95": 9.075,
+        "p99": 10.129,
+        "max": 125.336
+      },
+      "errors": [],
+      "errorRate": 0.0,
+      "counterExpected": 4000,
+      "counterActual": 4000,
+      "pool": {
+        "size": 2,
+        "available": 2,
+        "in_use": 0,
+        "waiting": 0,
+        "acquire_count": 20001,
+        "acquire_timeouts": 0,
+        "acquire_wait_seconds": 153.2408434999561,
+        "transaction_count": 4000,
+        "transaction_seconds": 2.663700799912476
+      },
+      "poolQuiescenceMs": 0.016
+    },
+    {
+      "poolSize": 10,
+      "operations": 20000,
+      "operationCounts": {
+        "pagination": 10667,
+        "dashboard": 5333,
+        "write": 4000
+      },
+      "durationSeconds": 8.468,
+      "throughputPerSecond": 2361.887,
+      "latencyMs": {
+        "mean": 8.453,
+        "p95": 10.553,
+        "p99": 12.103,
+        "max": 125.068
+      },
+      "errors": [],
+      "errorRate": 0.0,
+      "counterExpected": 4000,
+      "counterActual": 4000,
+      "pool": {
+        "size": 10,
+        "available": 10,
+        "in_use": 0,
+        "waiting": 0,
+        "acquire_count": 20001,
+        "acquire_timeouts": 0,
+        "acquire_wait_seconds": 92.8834242004159,
+        "transaction_count": 4000,
+        "transaction_seconds": 15.670226400070533
+      },
+      "poolQuiescenceMs": 0.017
+    }
+  ],
+  "passed": true,
+  "failures": []
+}

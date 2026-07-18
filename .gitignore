@@ -68,6 +68,7 @@ pnpm-debug.log*
 .vite/
 dist/
 release/
+artifacts/private-source-maps/
 .pw-bidding-profile/
 
 # Temporary and local-only files

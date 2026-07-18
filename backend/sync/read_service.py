@@ -1,9 +1,10 @@
 """Full and delta synchronization read service."""
 
 import time
-import sqlite3
 
 from starlette.responses import JSONResponse
+
+from backend.db.errors import DATABASE_ERRORS
 
 from backend.shared.helpers import OrgPermissionError, _assert_safe_table, database, get_active_org, verify_session
 from backend.shared.access_policy import (
@@ -275,7 +276,7 @@ def _read_sync_data_blocking(request):
                     cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ?", (org_name,))
                 for row in cursor.fetchall():
                     permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
-        except sqlite3.Error as permission_read_error:
+        except DATABASE_ERRORS as permission_read_error:
             from backend.shared.logging_utils import log_error
             log_error(permission_read_error, "sync_read_permission_matrix", level="WARN")
 
@@ -451,7 +452,7 @@ def _read_sync_data_blocking(request):
             try:
                 conn.rollback()
                 conn.close()
-            except sqlite3.Error:
+            except DATABASE_ERRORS:
                 pass
         return error_response(
             request,
@@ -471,7 +472,7 @@ def _read_sync_data_blocking(request):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DATABASE_ERRORS:
                 pass
 
 async def read_single_record(request):
@@ -613,5 +614,5 @@ def _read_single_record_blocking(request):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DATABASE_ERRORS:
                 pass

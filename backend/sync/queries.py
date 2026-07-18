@@ -1,5 +1,7 @@
 import re
+import unicodedata
 
+from backend.db.postgresql_features import postgresql_search_expression
 from backend.sync.dashboard_summary import build_dashboard_summary
 from backend.sync.mapper import map_db_to_json
 
@@ -33,10 +35,42 @@ ALLOWED_ORPHAN_TABLES = {
 
 def build_fts_match_query(search_text):
     tokens = re.findall(r"[\w]+", str(search_text or ""), flags=re.UNICODE)
-    tokens = [token for token in tokens if token]
+    tokens = [token.casefold() for token in tokens if token]
     if not tokens:
         return ""
-    return " ".join(f"{token}*" for token in tokens[:8])
+    clauses = []
+    for token in tokens[:8]:
+        if token.startswith(("d", "đ")):
+            suffix = token[1:]
+            clauses.append(f"(d{suffix}* OR đ{suffix}*)")
+        else:
+            clauses.append(f"{token}*")
+    return " AND ".join(clauses)
+
+
+def _fold_vietnamese_search_token(token):
+    normalized = unicodedata.normalize("NFKD", str(token or "").casefold())
+    return "".join(
+        "d" if character == "đ" else character
+        for character in normalized
+        if not unicodedata.combining(character)
+    )
+
+
+def build_postgresql_search_filter(table_name, search_text):
+    tokens = re.findall(r"[\w]+", str(search_text or ""), flags=re.UNICODE)[:8]
+    if not tokens:
+        return "", []
+    expression = postgresql_search_expression(table_name)
+    clauses = [
+        f"{expression} ~ ?"
+        for _token in tokens
+    ]
+    parameters = [
+        rf"(^|[[:space:][:punct:]]){re.escape(_fold_vietnamese_search_token(token))}"
+        for token in tokens
+    ]
+    return "(" + " AND ".join(clauses) + ")", parameters
 
 
 def get_expert_relations_for_packages(cursor, gt_ids, organization_id=None):

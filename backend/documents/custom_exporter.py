@@ -1,7 +1,6 @@
 import os
 import re
 import json
-import sqlite3
 import zipfile
 import traceback
 from io import BytesIO

@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, resolve_runtime_path
+from backend.shared.helpers import database
+from backend.shared.database_io import run_database_write
+from backend.documents.distributed_admission import try_acquire_document_lease
 from backend.observability.metrics import (
     document_worker_acquired,
     document_worker_finished,
@@ -429,6 +432,26 @@ async def run_document_job_async(
         document_worker_rejected(0.0)
         raise DocumentWorkerBusyError(_BUSY_MESSAGE)
 
+    cluster_concurrency = _positive_int_env(
+        "DOCUMENT_WORKER_CLUSTER_MAX_CONCURRENCY", 4, 1, 64
+    )
+    effective_timeout = timeout_seconds or DEFAULT_TIMEOUT_SECONDS
+    try:
+        distributed_lease = await run_database_write(
+            try_acquire_document_lease,
+            database,
+            max_concurrency=cluster_concurrency,
+            ttl_seconds=int(effective_timeout) + 60,
+        )
+    except BaseException:
+        runtime.admission.release()
+        raise
+    if distributed_lease is None:
+        runtime.admission.release()
+        document_worker_wait_started()
+        document_worker_rejected(0.0)
+        raise DocumentWorkerBusyError(_BUSY_MESSAGE)
+
     try:
         concurrent_future = runtime.executor.submit(
             run_document_job,
@@ -438,9 +461,24 @@ async def run_document_job_async(
         )
     except BaseException:
         runtime.admission.release()
+        await run_database_write(distributed_lease.release)
         raise
 
-    concurrent_future.add_done_callback(lambda _future: runtime.admission.release())
+    loop = asyncio.get_running_loop()
+
+    def release_admission(_future):
+        runtime.admission.release()
+        if not distributed_lease.lease_id:
+            return
+        try:
+            release_future = asyncio.run_coroutine_threadsafe(
+                run_database_write(distributed_lease.release), loop
+            )
+            release_future.add_done_callback(lambda completed: completed.exception())
+        except RuntimeError:
+            distributed_lease.release()
+
+    concurrent_future.add_done_callback(release_admission)
     wrapped_future = asyncio.wrap_future(concurrent_future)
     return await asyncio.shield(wrapped_future)
 

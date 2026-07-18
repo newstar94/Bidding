@@ -846,7 +846,13 @@ export class BiddingModel {
     return effective;
   }
   hasPermission(empId, moduleName, permissionType) {
-    if (this.hasActiveEffectiveRole("manager")) {
+    const accountRoleSource = Array.isArray(this.state.activeuser?.dbRoles)
+      ? this.state.activeuser.dbRoles.join(",")
+      : this.state.activeuser?.dbRole || this.state.activeuser?.role || "";
+    if (
+      this.hasEffectiveRole(accountRoleSource, "manager")
+      || this.hasActiveEffectiveRole("manager")
+    ) {
       return true;
     }
     const matrix = this.state.permissionmatrix.find((m) => m.empId === empId);

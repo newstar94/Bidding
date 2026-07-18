@@ -32,6 +32,54 @@ Exit code là `0` khi profile hợp lệ và `2` khi cấu hình không hợp l�
 python scripts/validate_load_profile.py load/profiles/soak-100.json
 ```
 
+### PostgreSQL query-plan gate
+
+Query-plan gate chạy độc lập với network load test. Công cụ tạo một database scratch
+có tên ngẫu nhiên, bootstrap schema sạch, seed 20.000 kế hoạch/100.000 gói, chạy
+`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` rồi xóa database scratch trong `finally`.
+Database trong URL nguồn không bị seed hoặc thay đổi.
+
+```powershell
+$env:BIDDING_TEST_POSTGRESQL_URL = 'postgresql://benchmark_role@db.example.internal/postgres?sslmode=verify-full'
+npm run benchmark:postgresql
+```
+
+Ngân sách versioned nằm tại `load/postgresql-query-budgets.json`. Gate từ chối query
+vượt thời gian tối đa và bắt buộc pagination, delta sync, export dùng index. CI chạy
+gate này trong PostgreSQL 17 service và lưu JSON theo revision; không được tăng ngân
+sách chỉ để làm pipeline xanh. Kết quả local gần nhất nằm tại
+`docs/POSTGRESQL_BENCHMARK_RESULTS.json`.
+
+### PostgreSQL pool-matrix gate
+
+Pool gate tạo database scratch riêng, seed 200 kế hoạch/1.000 gói rồi chạy cùng
+600 thao tác hỗn hợp với concurrency 20 cho từng pool `2`, `5`, `10`. Mix gồm 320
+pagination read, 160 dashboard aggregate và 120 transaction ghi. Gate bắt buộc
+zero error/timeout, counter đủ 120 update, p95/p99 trong budget và pool trở về
+`in_use=0`, `waiting=0`, `available=size` trước deadline quiescence.
+
+```powershell
+$env:BIDDING_TEST_POSTGRESQL_URL = 'postgresql://benchmark_role@db.example.internal/postgres?sslmode=verify-full'
+npm run benchmark:postgresql-pools
+```
+
+Budget nằm tại `load/postgresql-pool-budgets.json`; kết quả local gần nhất nằm tại
+`docs/POSTGRESQL_POOL_BENCHMARK_RESULTS.json`. Kết quả hiện tại cho thấy pool 2
+không chậm hơn pool 5/10 tại dataset này, nên baseline vẫn giữ pool 10 vì connection
+budget cho phép, không tăng thêm để che truy vấn hoặc lock chậm. Đây là DB mixed-load
+gate; network k6 và soak dài trên staging vẫn là acceptance riêng.
+
+Connection/transaction soak dùng 20.000 thao tác cho mỗi pool 2 và 10 (40.000 tổng),
+giữ nguyên zero-error, lost-update và quiescence gate:
+
+```powershell
+npm run soak:postgresql-pools
+```
+
+Kết quả nằm tại `docs/POSTGRESQL_POOL_SOAK_RESULTS.json` và CI lưu bản gắn revision.
+Soak này chứng minh vòng đời pool/transaction, không thay cho k6 soak một giờ cần
+host metrics để quan sát RAM, WAL, cache và file descriptor.
+
 ## 2. Chuẩn bị dữ liệu staging
 
 Chỉ dùng bản sao dữ liệu không chứa dữ liệu cá nhân thật. Tạo service accounts theo đúng ma trận quyền cần đo. Mỗi session phải khác nhau; profile yêu cầu 100 cookie riêng để tránh tái sử dụng một phiên, nhưng số cookie này không đồng nghĩa 100 con người hoạt động. Không commit hai file dưới đây; toàn bộ `load/secrets/` đã được ignore.
@@ -43,6 +91,7 @@ Chỉ dùng bản sao dữ liệu không chứa dữ liệu cá nhân thật. T�
   "sessions": [
     {
       "cookie": "session_token=<STAGING_SESSION_TOKEN>",
+      "csrfToken": "<CSRF_TOKEN_CUNG_PHIEN>",
       "organizationId": "<STAGING_ORGANIZATION_ID>",
       "packageId": "<READABLE_STAGING_PACKAGE_ID>",
       "planId": "<READABLE_STAGING_PLAN_ID>"
@@ -64,7 +113,10 @@ Chỉ dùng bản sao dữ liệu không chứa dữ liệu cá nhân thật. T�
 }
 ```
 
-Nhân các entry bằng tài khoản/session staging riêng, không lặp token hoặc username. Profile mixed cần ít nhất 10 username để tránh một tài khoản làm sai kết quả rate-limit đăng nhập.
+Nhân các entry bằng tài khoản/session staging riêng, không lặp token hoặc username.
+`csrfToken` phải là giá trị cookie `csrf_token` của cùng browser session; harness tự
+gửi cả cookie và header `X-CSRF-Token` cho sync/upload. Profile mixed cần ít nhất
+10 username để tránh một tài khoản làm sai kết quả rate-limit đăng nhập.
 
 Chuẩn bị thêm:
 
@@ -124,6 +176,14 @@ Script không in base URL, cookie hay credential trong custom summary. Không b�
 - thời gian health phục hồi sau burst và tình trạng dữ liệu/sync sau test.
 
 Không nâng capacity envelope chỉ vì k6 chạy hết thời gian. Chỉ ghi nhận mức workload đã đạt khi exit code là `0`, `passed=true`, không mất dữ liệu/outbox, không có queue hoặc WAL tăng không hồi phục, và tài nguyên còn headroom đã thống nhất. `100 distinct sessions` chỉ là điều kiện cô lập phiên của phép thử; nó không phải bằng chứng độc lập cho `100 active humans`. Mỗi thay đổi pool size, instance count, DB engine hoặc cấu hình ingress phải tạo một kết quả mới thay vì ghi đè artifact cũ.
+
+Failure regression tự động nằm trong `tests/api/test_resource_limits.py`: slow
+request body không chặn liveness; upstream timeout trả mã gateway ổn định; SQLite
+writer bị giữ lock không chặn event loop; disk còn 10% được xuất thành metric và
+khớp alert ngưỡng 15%; hai vòng application lifecycle liên tiếp đều readiness đạt,
+chứng minh tài nguyên runtime/writer lease được nhả và lấy lại khi restart. Các test
+này phải đạt trước khi chạy soak; staging vẫn cần xác minh ingress và alert delivery
+thật theo cùng cấu hình.
 
 ## Hạn chế hiện tại
 

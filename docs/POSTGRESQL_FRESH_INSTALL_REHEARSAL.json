@@ -1,0 +1,22 @@
+{
+  "mode": "fresh-install-no-legacy-data",
+  "databaseNamePrefix": "bidding_rehearsal_",
+  "initialInstall": {
+    "schemaVersion": 1,
+    "tableCount": 46,
+    "userCount": 1,
+    "organizationCount": 1,
+    "applicationCanCreateSchemaObjects": false,
+    "durationSeconds": 0.744
+  },
+  "rollbackRecreate": {
+    "schemaVersion": 1,
+    "tableCount": 46,
+    "userCount": 1,
+    "organizationCount": 1,
+    "applicationCanCreateSchemaObjects": false,
+    "durationSeconds": 0.671
+  },
+  "passed": true,
+  "secretsPrinted": false
+}
