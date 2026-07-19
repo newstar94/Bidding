@@ -56,3 +56,17 @@ def test_uvicorn_test_server_flushes_subprocess_coverage(monkeypatch):
     uvicorn_test_server._flush_subprocess_coverage()
 
     assert calls == ["stop", "save"]
+
+
+def test_uvicorn_test_server_starts_exported_subprocess_coverage(monkeypatch):
+    calls = []
+    fake_coverage = SimpleNamespace(
+        Coverage=SimpleNamespace(current=lambda: None),
+        process_startup=lambda: calls.append("start"),
+    )
+    monkeypatch.setenv("COVERAGE_PROCESS_CONFIG", "serialized-config")
+    monkeypatch.setitem(sys.modules, "coverage", fake_coverage)
+
+    uvicorn_test_server._start_subprocess_coverage()
+
+    assert calls == ["start"]

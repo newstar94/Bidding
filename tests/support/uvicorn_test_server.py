@@ -23,6 +23,19 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+def _start_subprocess_coverage() -> None:
+    """Start coverage explicitly when the parent exported its configuration."""
+
+    if not os.environ.get("COVERAGE_PROCESS_CONFIG"):
+        return
+    try:
+        import coverage
+    except ImportError:
+        return
+    if coverage.Coverage.current() is None:
+        coverage.process_startup()
+
+
 def _flush_subprocess_coverage() -> None:
     """Persist coverage before a POSIX test server process exits.
 
@@ -44,6 +57,7 @@ def _flush_subprocess_coverage() -> None:
 
 
 def main() -> int:
+    _start_subprocess_coverage()
     parser = argparse.ArgumentParser()
     parser.add_argument("application")
     parser.add_argument("--host", default="127.0.0.1")
