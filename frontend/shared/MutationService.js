@@ -3,10 +3,17 @@ export async function persistAndSync(controller, tableKeys, { afterPersist } = {
   for (const key of keys) {
     await controller.model.persistData(key);
   }
-  if (typeof afterPersist === "function") {
+  const usesServerPagination = Boolean(controller.model?.useServerSidePagination);
+  if (!usesServerPagination && typeof afterPersist === "function") {
     await afterPersist();
   }
-  return typeof controller.autoSync === "function" ? controller.autoSync() : { ok: true };
+  const syncResult = typeof controller.autoSync === "function"
+    ? await controller.autoSync()
+    : { ok: true };
+  if (usesServerPagination && syncResult?.ok !== false && typeof afterPersist === "function") {
+    await afterPersist();
+  }
+  return syncResult;
 }
 
 export function applyStateMutations(model, { upserts = {}, deletions = {}, mutate } = {}) {

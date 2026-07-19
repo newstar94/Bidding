@@ -112,3 +112,13 @@ def test_personal_workspace_owner_is_not_filtered_by_employee_assignments():
         method = source[source.index(method_name):]
         method = method[:method.index("\n  }")]
         assert "this.isActivePersonalWorkspace()" in method
+
+
+def test_server_paginated_mutations_render_only_after_sync_confirmation():
+    source = _source("frontend/shared/MutationService.js")
+
+    pre_sync_render = source.index('if (!usesServerPagination && typeof afterPersist === "function")')
+    sync_call = source.index("await controller.autoSync()")
+    post_sync_render = source.index('if (usesServerPagination && syncResult?.ok !== false')
+
+    assert pre_sync_render < sync_call < post_sync_render
