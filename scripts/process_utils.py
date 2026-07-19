@@ -80,9 +80,23 @@ def terminate_process_tree(process: subprocess.Popen[object], timeout: float = 2
         return
 
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        # Let the Uvicorn supervisor stop workers and run interpreter exit
+        # hooks (including parallel coverage persistence) in order. Signalling
+        # the whole group at once can terminate the wrapper before children
+        # have flushed their state.
+        process.send_signal(signal.SIGINT)
         process.wait(timeout=timeout)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGKILL)
+        return
+    except (OSError, ProcessLookupError):
+        return
+    except subprocess.TimeoutExpired:
+        pass
+
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=5)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)

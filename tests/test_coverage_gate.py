@@ -4,6 +4,7 @@ import json
 import sys
 from types import SimpleNamespace
 
+from scripts import process_utils
 from scripts.check_coverage_thresholds import (
     required_critical_modules,
     validate_coverage,
@@ -81,3 +82,24 @@ def test_coverage_subprocess_command_is_explicit_and_consumes_marker():
     assert command[1:5] == ["-m", "coverage", "run", "--parallel-mode"]
     assert command[-2:] == ["--rcfile", str(uvicorn_test_server.ROOT / "pyproject.toml")]
     assert "COVERAGE_PROCESS_CONFIG" not in environment
+
+
+def test_posix_server_shutdown_is_graceful_before_group_kill(monkeypatch):
+    calls = []
+    process = SimpleNamespace(
+        pid=123,
+        poll=lambda: None,
+        send_signal=lambda value: calls.append(("signal", value)),
+        wait=lambda timeout: calls.append(("wait", timeout)),
+    )
+    monkeypatch.setattr(process_utils.os, "name", "posix")
+    monkeypatch.setattr(
+        process_utils.os,
+        "killpg",
+        lambda *_args: calls.append(("killpg",)),
+        raising=False,
+    )
+
+    process_utils.terminate_process_tree(process, timeout=7)
+
+    assert calls == [("signal", process_utils.signal.SIGINT), ("wait", 7)]
