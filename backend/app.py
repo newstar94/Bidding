@@ -773,6 +773,18 @@ routes = [
 
 if APP_DEBUG:
     routes.extend([
+        Mount(
+            "/node_modules/dompurify/dist",
+            app=SafeStaticFiles(
+                directory=os.path.join(
+                    project_root,
+                    "node_modules",
+                    "dompurify",
+                    "dist",
+                )
+            ),
+            name="dompurify-dev",
+        ),
         Mount("/frontend", app=SafeStaticFiles(directory=os.path.join(project_root, 'frontend')), name="frontend"),
         Mount("/views", app=StaticFiles(directory=os.path.join(project_root, 'views')), name="views"),
         Mount("/", app=StaticFiles(directory=os.path.join(project_root, 'views'), html=True), name="static")

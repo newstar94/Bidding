@@ -1,5 +1,5 @@
 import { classForRuntimeDeclarations } from "./runtimeStyles.js";
-import DOMPurify from "dompurify";
+import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 const trustedTypesApi = globalThis.trustedTypes;
 

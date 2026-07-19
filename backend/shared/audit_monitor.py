@@ -39,13 +39,39 @@ def _checkpoint_destination():
     return str(path) if path is not None else ""
 
 
-def _latest_checkpoint(destination):
+def _installation_checkpoint_destination(destination, installation_id):
+    directory = Path(destination).resolve()
+    normalized_installation_id = str(installation_id or "").strip()
+    if not normalized_installation_id:
+        raise RuntimeError("Database installation identity is unavailable.")
+    scoped_directory = (directory / normalized_installation_id).resolve()
+    if scoped_directory.parent != directory:
+        raise RuntimeError("Database installation identity is not path-safe.")
+    return scoped_directory
+
+
+def _latest_checkpoint(destination, installation_id=None):
     directory = Path(destination).resolve()
     if not directory.is_dir():
         return None
+    normalized_installation_id = str(installation_id or "").strip()
+    search_directories = [directory]
+    if normalized_installation_id:
+        scoped_directory = _installation_checkpoint_destination(
+            directory,
+            normalized_installation_id,
+        )
+        if scoped_directory.is_dir():
+            search_directories.insert(0, scoped_directory)
     candidates = []
-    with os.scandir(directory) as scanner:
-        for entry in itertools.islice(scanner, 10_000):
+    remaining_limit = 10_000
+    for candidate_directory in search_directories:
+        if remaining_limit <= 0:
+            break
+        with os.scandir(candidate_directory) as scanner:
+            entries = list(itertools.islice(scanner, remaining_limit))
+        remaining_limit -= len(entries)
+        for entry in entries:
             if (
                 entry.is_file(follow_symlinks=False)
                 and entry.name.startswith("audit-checkpoint-")
@@ -60,7 +86,14 @@ def _latest_checkpoint(destination):
         if path.stat().st_size > 64 * 1024:
             raise RuntimeError("Audit checkpoint exceeds the structural size limit.")
         checkpoint = json.loads(path.read_text(encoding="utf-8"))
-        if checkpoint.get("version") == 3:
+        if (
+            checkpoint.get("version") == 3
+            and (
+                not normalized_installation_id
+                or str(checkpoint.get("installationId") or "")
+                == normalized_installation_id
+            )
+        ):
             return checkpoint
     return None
 
@@ -84,9 +117,18 @@ def _inspect_database(
             ).fetchone()
             checkpoint_leader = bool(leader_row and leader_row[0])
             connection.commit()
+        cursor = connection.cursor()
+        installation_row = cursor.execute(
+            "SELECT installation_id FROM database_metadata WHERE id = 1"
+        ).fetchone()
+        installation_id = (
+            str(installation_row[0] or "").strip()
+            if installation_row
+            else ""
+        )
         checkpoint = (
-            _latest_checkpoint(checkpoint_destination)
-            if checkpoint_destination
+            _latest_checkpoint(checkpoint_destination, installation_id)
+            if checkpoint_destination and installation_id
             else None
         )
         if checkpoint is not None and export_checkpoint and checkpoint_leader:
@@ -108,7 +150,6 @@ def _inspect_database(
                 # Invalid timestamp is handled by checkpoint integrity/shape
                 # verification; never use it to suppress a replacement.
                 pass
-        cursor = connection.cursor()
         verification = (
             inspect_audit_chain_against_checkpoint(
                 cursor, checkpoint, hmac_key=hmac_key
@@ -134,7 +175,12 @@ def _inspect_database(
             # exporting the same cluster checkpoint concurrently.
             checkpoint_path = write_audit_checkpoint(
                 pending_checkpoint,
-                checkpoint_destination,
+                str(
+                    _installation_checkpoint_destination(
+                        checkpoint_destination,
+                        installation_id,
+                    )
+                ),
             )
         return verification, checkpoint_path
     finally:

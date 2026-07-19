@@ -308,7 +308,9 @@ def test_audit_checkpoint_export_has_one_cluster_leader(
         results = list(executor.map(lambda _index: export_once(), range(4)))
 
     assert sum(path is not None for _verification, path in results) == 1
-    assert len(list(destination.glob("audit-checkpoint-*.json"))) == 1
+    checkpoints = list(destination.rglob("audit-checkpoint-*.json"))
+    assert len(checkpoints) == 1
+    assert checkpoints[0].parent.parent == destination
 
 
 def test_async_document_submission_uses_durable_queue(
