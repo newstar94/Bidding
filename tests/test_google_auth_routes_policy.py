@@ -254,10 +254,19 @@ def _install_common(
         "validate_profile_fields",
         lambda name, email, picture: (str(name), str(email), str(picture)),
     )
-    monkeypatch.setattr(google_auth_routes, "create_session", lambda *args, **kwargs: "session")
+    monkeypatch.setattr(
+        google_auth_routes,
+        "replace_user_session",
+        lambda *args, **kwargs: "session",
+    )
     monkeypatch.setattr(
         google_auth_routes,
         "_session_cache_invalidate_by_user_id",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        google_auth_routes,
+        "disconnect_user_websockets",
         lambda *_args: None,
     )
     monkeypatch.setattr(
@@ -385,10 +394,16 @@ def test_existing_google_identity_logs_in_without_recreating_or_emailing(monkeyp
     connection = _Connection(cursor)
     _install_common(monkeypatch, connection=connection)
     sessions = []
+    disconnected = []
     monkeypatch.setattr(
         google_auth_routes,
-        "create_session",
+        "replace_user_session",
         lambda *args, **kwargs: sessions.append(kwargs),
+    )
+    monkeypatch.setattr(
+        google_auth_routes,
+        "disconnect_user_websockets",
+        disconnected.append,
     )
 
     response = asyncio.run(google_auth_routes.google_login_api(_request()))
@@ -401,6 +416,7 @@ def test_existing_google_identity_logs_in_without_recreating_or_emailing(monkeyp
     assert payload["active_org_id"] == "org-1"
     assert "session_token=" in response.headers["set-cookie"]
     assert sessions[0]["user_id"] == "user-1"
+    assert disconnected == ["user-1"]
     assert connection.commits == 1
     assert any("SET da_xac_minh = 1" in sql for sql, _ in cursor.calls)
 
@@ -538,7 +554,7 @@ def test_google_login_conflicts_and_unexpected_errors_are_rollback_safe(monkeypa
     )
     monkeypatch.setattr(
         google_auth_routes,
-        "create_session",
+        "replace_user_session",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             IntegrityError("unique conflict")
         ),
@@ -568,7 +584,7 @@ def test_google_login_conflicts_and_unexpected_errors_are_rollback_safe(monkeypa
 
     monkeypatch.setattr(
         google_auth_routes,
-        "create_session",
+        "replace_user_session",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             RuntimeError("database secret")
         ),

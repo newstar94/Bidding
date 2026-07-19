@@ -40,6 +40,7 @@ from backend.auth.session_store import (
     create_session,
     hash_session_token,
     load_session_user,
+    replace_user_session,
     revoke_session,
     revoke_user_sessions,
     session_invalid_reason,
@@ -201,7 +202,7 @@ def _commit_successful_login(
                 "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
                 (replacement_password_hash, user["id"]),
             )
-        create_session(
+        replace_user_session(
             cursor,
             user_id=user["id"],
             token=session_token,
@@ -419,6 +420,7 @@ async def login_api(request):
             )
         except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _database_lane_unavailable_response(request, write=True)
+        disconnect_user_websockets(user["id"])
         response = JSONResponse({
             "success": True,
             "id": user['id'],

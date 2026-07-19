@@ -416,6 +416,7 @@ def _create_indexes(cursor) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_thong_tin_mo_thau_active_business_key ON thong_tin_mo_thau (organization_id, goi_thau_id, nha_thau_id, ma_phan_lo) WHERE archived_at IS NULL",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions (user_id, revoked_at, absolute_expires_at)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_one_active_per_user ON auth_sessions (user_id) WHERE revoked_at IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions (idle_expires_at, absolute_expires_at, revoked_at)",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_idle_expiry ON auth_sessions (idle_expires_at) WHERE revoked_at IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_absolute_expiry ON auth_sessions (absolute_expires_at) WHERE revoked_at IS NULL",
@@ -809,6 +810,7 @@ def assert_schema_contract(cursor) -> None:
         "idx_goi_thau_moc_tien_do_status",
         "idx_pending_email_changes_expiry",
         "idx_document_export_capabilities_user",
+        "idx_auth_sessions_one_active_per_user",
         "idx_audit_log_single_successor",
     }
     actual_indexes = {

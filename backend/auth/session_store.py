@@ -1,4 +1,8 @@
-"""Persistent, revocable multi-device authentication sessions."""
+"""Persistent, revocable authentication sessions.
+
+Only one active session is allowed per account. Browser tabs share the same
+HTTP-only cookie, so they continue to use that single session together.
+"""
 
 from backend.db.db_helper import OperationalError
 import hashlib
@@ -33,6 +37,33 @@ def create_session(cursor, *, user_id, token, absolute_expires_at,
         ),
     )
     return session_id
+
+
+def replace_user_session(cursor, *, user_id, token, absolute_expires_at,
+                         idle_timeout_seconds, remember=False,
+                         device_info=None, now=None):
+    """Atomically revoke older sessions and create the account's only session.
+
+    Locking the account row serializes concurrent password and Google logins.
+    The database's partial unique index remains the final invariant guard.
+    """
+
+    current = int(time.time() if now is None else now)
+    cursor.execute(
+        "SELECT id FROM tai_khoan WHERE id = ? FOR UPDATE",
+        (user_id,),
+    )
+    revoke_user_sessions(cursor, user_id, now=current)
+    return create_session(
+        cursor,
+        user_id=user_id,
+        token=token,
+        absolute_expires_at=absolute_expires_at,
+        idle_timeout_seconds=idle_timeout_seconds,
+        remember=remember,
+        device_info=device_info,
+        now=current,
+    )
 
 
 def load_session_user(database, token):

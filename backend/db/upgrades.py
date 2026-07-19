@@ -54,12 +54,46 @@ def _upgrade_to_v3_reconcile_retired_mfa_schema(cursor, context):
     )
 
 
+def _upgrade_to_v4_enforce_single_active_session(cursor, context):
+    """Keep the newest session and enforce one active session per account."""
+
+    del context
+    cursor.execute(
+        """
+        WITH ranked_sessions AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY user_id
+                       ORDER BY created_at DESC, id DESC
+                   ) AS active_rank
+            FROM auth_sessions
+            WHERE revoked_at IS NULL
+        )
+        UPDATE auth_sessions AS sessions
+        SET revoked_at = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::BIGINT
+        FROM ranked_sessions AS ranked
+        WHERE sessions.id = ranked.id AND ranked.active_rank > 1
+        """
+    )
+    cursor.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS
+           idx_auth_sessions_one_active_per_user
+           ON auth_sessions (user_id)
+           WHERE revoked_at IS NULL"""
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
     DatabaseUpgrade(
         3,
         "reconcile_retired_mfa_schema",
         _upgrade_to_v3_reconcile_retired_mfa_schema,
+    ),
+    DatabaseUpgrade(
+        4,
+        "enforce_single_active_session",
+        _upgrade_to_v4_enforce_single_active_session,
     ),
 )
 

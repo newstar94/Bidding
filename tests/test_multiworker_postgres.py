@@ -138,6 +138,53 @@ def test_two_workers_share_sessions_and_database(multiworker_cluster) -> None:
         second.close()
 
 
+def test_new_login_revokes_previous_device_across_workers(
+    multiworker_cluster,
+) -> None:
+    first = httpx.Client(base_url=f"http://127.0.0.1:{PORTS[0]}", timeout=30)
+    second = httpx.Client(base_url=f"http://127.0.0.1:{PORTS[1]}", timeout=30)
+    try:
+        first.get("/")
+        first_login = first.post(
+            "/api/auth/login",
+            json={
+                "username": os.environ.get("ADMIN_USERNAME", "admin"),
+                "password": os.environ["ADMIN_PASSWORD"],
+                "remember": False,
+            },
+            headers={"X-CSRF-Token": first.cookies["csrf_token"]},
+        )
+        assert first_login.status_code == 200, first_login.text
+
+        second.get("/")
+        second_login = second.post(
+            "/api/auth/login",
+            json={
+                "username": os.environ.get("ADMIN_USERNAME", "admin"),
+                "password": os.environ["ADMIN_PASSWORD"],
+                "remember": False,
+            },
+            headers={"X-CSRF-Token": second.cookies["csrf_token"]},
+        )
+        assert second_login.status_code == 200, second_login.text
+
+        first_check = first.post(
+            "/api/auth/check-session",
+            headers={"X-CSRF-Token": first.cookies["csrf_token"]},
+        )
+        second_check = second.post(
+            "/api/auth/check-session",
+            headers={"X-CSRF-Token": second.cookies["csrf_token"]},
+        )
+        assert first_check.status_code == 200
+        assert first_check.json()["valid"] is False
+        assert second_check.status_code == 200
+        assert second_check.json()["valid"] is True
+    finally:
+        first.close()
+        second.close()
+
+
 def test_postgres_broker_delivers_between_workers(multiworker_cluster) -> None:
     first, second, login, session_token = _authenticated_clients()
     organization_id = login["active_org_id"]

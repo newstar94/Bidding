@@ -19,6 +19,7 @@ from backend.shared.helpers import (
     log_audit,
     _session_cache_invalidate_by_user_id,
 )
+from backend.sync.api import disconnect_user_websockets
 from backend.auth.auth_service import (
     get_client_ip,
     get_rate_limit_decision,
@@ -39,7 +40,7 @@ from backend.auth.identity import (
 )
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
-from backend.auth.session_store import create_session
+from backend.auth.session_store import replace_user_session
 from backend.auth.email_delivery_service import (
     create_email_delivery,
     deliver_email_once,
@@ -372,7 +373,7 @@ async def google_login_api(request):
             "login_time": datetime.now(timezone.utc).isoformat(),
             "method": "google",
         })
-        create_session(
+        replace_user_session(
             cursor,
             user_id=user["id"],
             token=session_token,
@@ -381,8 +382,6 @@ async def google_login_api(request):
             remember=False,
             device_info=device_info,
         )
-        _session_cache_invalidate_by_user_id(user["id"])
-
         active_org_hint = urllib.parse.unquote(
             (request.headers.get("X-Active-Org") or "").strip()
         ) or None
@@ -395,6 +394,8 @@ async def google_login_api(request):
         )
         clear_rate_limit_buckets(cursor, rate_key)
         conn.commit()
+        _session_cache_invalidate_by_user_id(user["id"])
+        disconnect_user_websockets(user["id"])
 
         if created_new_account and temporary_password and temporary_password_delivery_id:
             try:

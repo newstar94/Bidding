@@ -87,6 +87,45 @@ def test_session_token_hash_and_creation_bounds_idle_expiry(
     assert cursor.calls[0][1][-1] is None
 
 
+def test_replace_user_session_locks_account_revokes_old_and_creates_new(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = []
+    cursor = _Cursor()
+    monkeypatch.setattr(
+        session_store,
+        "revoke_user_sessions",
+        lambda target, user_id, **kwargs: events.append(
+            ("revoke", target, user_id, kwargs)
+        ),
+    )
+    monkeypatch.setattr(
+        session_store,
+        "create_session",
+        lambda target, **kwargs: events.append(("create", target, kwargs))
+        or "new-session",
+    )
+
+    session_id = session_store.replace_user_session(
+        cursor,
+        user_id="user-1",
+        token="new-token",
+        absolute_expires_at=1_000,
+        idle_timeout_seconds=300,
+        remember=True,
+        device_info="browser",
+        now=100,
+    )
+
+    assert session_id == "new-session"
+    assert "FOR UPDATE" in cursor.calls[0][0]
+    assert cursor.calls[0][1] == ("user-1",)
+    assert events[0] == ("revoke", cursor, "user-1", {"now": 100})
+    assert events[1][0] == "create"
+    assert events[1][2]["now"] == 100
+    assert events[1][2]["token"] == "new-token"
+
+
 def test_load_session_user_handles_empty_found_missing_and_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

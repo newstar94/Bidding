@@ -24,7 +24,11 @@ from backend.db.upgrades import DB_SCHEMA_VERSION
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.auth import auth_service
 from backend.auth import email_delivery_service
-from backend.auth.session_store import load_session_user
+from backend.auth.session_store import (
+    create_session,
+    load_session_user,
+    replace_user_session,
+)
 from backend.auth.email_utils import EmailDeliveryResult
 from backend.observability import metrics
 from backend.partners import partner_lookup_service
@@ -102,10 +106,60 @@ def test_session_lookup_and_cleanup_indexes_are_narrow(
         }
         assert {
             "auth_sessions_token_hash_key",
+            "idx_auth_sessions_one_active_per_user",
             "idx_auth_sessions_active_idle_expiry",
             "idx_auth_sessions_active_absolute_expiry",
             "idx_auth_sessions_revoked_cleanup",
         } <= indexes
+
+
+def test_replacing_session_revokes_previous_login_and_database_rejects_second_active(
+    postgres_database: PostgresDatabase,
+) -> None:
+    now = int(time.time())
+    with postgres_database.get_connection() as connection:
+        cursor = connection.cursor()
+        user_id = cursor.execute(
+            "SELECT id FROM tai_khoan WHERE username_norm = 'admin'"
+        ).fetchone()[0]
+        replace_user_session(
+            cursor,
+            user_id=user_id,
+            token="first-device-token",
+            absolute_expires_at=now + 3600,
+            idle_timeout_seconds=1800,
+            now=now,
+        )
+        connection.commit()
+
+        replace_user_session(
+            cursor,
+            user_id=user_id,
+            token="second-device-token",
+            absolute_expires_at=now + 3600,
+            idle_timeout_seconds=1800,
+            now=now + 1,
+        )
+        connection.commit()
+
+        sessions = cursor.execute(
+            """SELECT token_hash, revoked_at
+               FROM auth_sessions WHERE user_id = ? ORDER BY created_at, id""",
+            (user_id,),
+        ).fetchall()
+        assert len(sessions) == 2
+        assert sum(row[1] is None for row in sessions) == 1
+
+        with pytest.raises(psycopg.IntegrityError):
+            create_session(
+                cursor,
+                user_id=user_id,
+                token="forbidden-third-token",
+                absolute_expires_at=now + 3600,
+                idle_timeout_seconds=1800,
+                now=now + 2,
+            )
+        connection.rollback()
 
 
 def test_every_foreign_key_has_a_leading_index(

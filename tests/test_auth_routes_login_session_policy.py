@@ -193,7 +193,9 @@ def test_commit_successful_login_is_atomic(monkeypatch):
     events = []
     monkeypatch.setattr(auth_routes.database, "get_connection", lambda: connection)
     monkeypatch.setattr(
-        auth_routes, "create_session", lambda *args, **kwargs: events.append(("session", kwargs))
+        auth_routes,
+        "replace_user_session",
+        lambda *args, **kwargs: events.append(("session", kwargs)),
     )
     monkeypatch.setattr(
         auth_routes,
@@ -266,6 +268,7 @@ def _install_login_defaults(monkeypatch, *, data=None, user=None, verified=True)
     monkeypatch.setattr(auth_routes, "run_database_read", read)
     monkeypatch.setattr(auth_routes, "run_database_write", write)
     monkeypatch.setattr(auth_routes, "run_cpu_bound", cpu)
+    monkeypatch.setattr(auth_routes, "disconnect_user_websockets", lambda *_args: None)
     return payload
 
 
@@ -275,6 +278,12 @@ def test_login_success_sets_secure_session_without_device_alert(monkeypatch):
         data={"username": "owner", "password": "correct", "remember": True},
     )
     monkeypatch.setattr(auth_routes.uuid, "uuid4", lambda: "session-id")
+    disconnected = []
+    monkeypatch.setattr(
+        auth_routes,
+        "disconnect_user_websockets",
+        disconnected.append,
+    )
     response = asyncio.run(
         auth_routes.login_api(_Request(headers={"User-Agent": "X" * 300, "X-Active-Org": "org%2D1"}))
     )
@@ -284,6 +293,7 @@ def test_login_success_sets_secure_session_without_device_alert(monkeypatch):
     assert "mfa_enabled" not in payload
     assert "session_token=session-id" in response.headers["set-cookie"]
     assert response.background is None
+    assert disconnected == ["user-1"]
 
 
 @pytest.mark.parametrize(
