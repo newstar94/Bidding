@@ -48,8 +48,8 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 | Hạng mục | Kết quả hiện tại |
 |---|---|
 | Python compile | Đạt |
-| Test ứng dụng | 274 đạt, 1 bỏ qua có điều kiện với `pytest -q tests --cov=backend --cov-branch` |
-| Branch coverage backend | 40%; phép đo đã bao gồm các Uvicorn subprocess |
+| Test ứng dụng | 427 đạt, 1 bỏ qua có điều kiện với `pytest -q tests --cov=backend --cov-branch` |
+| Branch coverage backend | 51%; phép đo đã bao gồm các Uvicorn subprocess |
 | Secure frontend build | Đạt |
 | Production package | Đạt, tạo được `release/biddingflow-production.zip` |
 | `npm audit` | 0 lỗ hổng trong dependency npm |
@@ -132,9 +132,10 @@ ranh giới sandbox trên máy Linux staging tương đương production.
 
 ### 9.2. Coverage tối thiểu
 
-- Nâng branch coverage backend tổng thể từ baseline 40% lên tối thiểu 70%.
-- Nâng các endpoint route xác thực và các module sync còn lại lên tối thiểu
-  90% branch coverage; không hạ ngưỡng để làm release gate đạt giả tạo.
+- Nâng branch coverage backend tổng thể từ baseline 51% lên tối thiểu 70%.
+- Nâng `auth_routes`, `admin_user_routes`, `read_service`, `service`,
+  `websocket` và các module sync còn lại lên tối thiểu 90% branch coverage;
+  không hạ ngưỡng để làm release gate đạt giả tạo.
 
 ### 9.3. Ma trận kiểm thử bảo mật
 

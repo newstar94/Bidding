@@ -136,7 +136,7 @@ def _database_lane_unavailable_response(request, *, write: bool):
     response = error_response(
         request,
         "DATABASE_WRITE_QUEUE_FULL" if write else "DATABASE_READ_QUEUE_FULL",
-        "Há»‡ thá»‘ng Ä‘ang xá»­ lÃ½ nhiá»u yÃªu cáº§u dá»¯ liá»‡u. Vui lÃ²ng thá»­ láº¡i sau.",
+        "Hệ thống đang xử lý nhiều yêu cầu dữ liệu. Vui lòng thử lại sau.",
         status_code=503,
     )
     response.headers["Retry-After"] = "1"
@@ -146,7 +146,7 @@ def _database_lane_unavailable_response(request, *, write: bool):
 async def _get_rate_limit_decision_off_event_loop(*args, **kwargs):
     try:
         return await run_database_write(get_rate_limit_decision, *args, **kwargs)
-    except BlockingIOBusyError:
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
         return RateLimitDecision(
             False,
             int(kwargs.get("window_seconds", 60)),
@@ -364,7 +364,7 @@ async def login_api(request):
             ip_limit = await run_database_write(
                 get_rate_limit_decision, ip_rate_key, consume_attempt=True
             )
-        except BlockingIOBusyError:
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _database_lane_unavailable_response(request, write=True)
         if not ip_limit.allowed:
             return rate_limit_response("Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau.", ip_limit)
@@ -394,7 +394,7 @@ async def login_api(request):
                 if user_rate_key
                 else None
             )
-        except BlockingIOBusyError:
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _database_lane_unavailable_response(request, write=True)
         if user_limit and not user_limit.allowed:
             return rate_limit_response("Quá nhiều lần đăng nhập cho tài khoản này. Vui lòng thử lại sau.", user_limit)
@@ -483,7 +483,7 @@ async def login_api(request):
                 user_rate_key,
                 mfa_code,
             )
-        except BlockingIOBusyError:
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _database_lane_unavailable_response(request, write=True)
         except MfaChallengeFailed as exc:
             await record_failed_login()
@@ -1364,6 +1364,8 @@ async def change_password_api(request):
         response.set_cookie("session_token", new_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
         return response
     except Exception as e:
+        if conn:
+            conn.rollback()
         log_error(e, "change_password_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi đổi mật khẩu."}, status_code=500)
     finally:
@@ -1382,15 +1384,24 @@ async def logout_api(request):
             conn = database.get_connection()
             cursor = conn.cursor()
             user_id = revoke_session(cursor, token)
+            log_audit(
+                "auth.logout",
+                actor_user_id=user_id,
+                target_type="session",
+                request=request,
+                cursor=cursor,
+                required=True,
+            )
             conn.commit()
             if user_id:
                 disconnect_user_websockets(user_id)
-        log_audit(
-            "auth.logout",
-            actor_user_id=None,
-            target_type="session",
-            request=request
-        )
+        else:
+            log_audit(
+                "auth.logout",
+                actor_user_id=None,
+                target_type="session",
+                request=request,
+            )
         response = JSONResponse({"success": True})
         response.delete_cookie("session_token", path="/")
         response.delete_cookie("username", path="/")
@@ -1481,15 +1492,17 @@ async def privileged_reauth_api(request):
             cursor, request.cookies.get('session_token'), reauthenticated_at
         ):
             return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
-        clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
-        conn.commit()
-        _session_cache_invalidate_by_user_id(role_or_err.user_id)
         log_audit(
             "admin.privileged_reauth_succeeded" if is_super_admin else "security.password_reauth_succeeded",
             actor_user_id=role_or_err.user_id,
             target_type="session",
             request=request,
+            cursor=cursor,
+            required=True,
         )
+        clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
+        conn.commit()
+        _session_cache_invalidate_by_user_id(role_or_err.user_id)
         return JSONResponse({"success": True, "expires_in": PRIVILEGED_REAUTH_TTL_SECONDS})
     except Exception as exc:
         if conn:
@@ -1701,15 +1714,17 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
             'name': 'ho_ten',
         }
 
+        if field not in field_map:
+            return JSONResponse({"error": "Trường cập nhật không hợp lệ!"}, status_code=400)
+
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
-
-        if field not in field_map:
-            conn.close()
-            return JSONResponse({"error": "Trường cập nhật không hợp lệ!"}, status_code=400)
         db_field = field_map[field]
         cursor.execute(f"UPDATE tai_khoan SET {db_field} = ? WHERE id = ?", (value, user_id))
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
 
         log_audit(
             "admin.user_metadata_updated",
@@ -1722,14 +1737,12 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
             required=True,
         )
         conn.commit()
-        conn.close()
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật thông tin thành công!"})
     except IntegrityError as e:
         if conn:
             conn.rollback()
-            conn.close()
         conflict_code = identity_conflict_code(e)
         if conflict_code:
             return JSONResponse(conflict_payload(conflict_code), status_code=409)
@@ -1738,9 +1751,11 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
     except Exception as e:
         if conn:
             conn.rollback()
-            conn.close()
         log_error(e, "update_user_metadata_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật thông tin."}, status_code=500)
+    finally:
+        if conn:
+            conn.close()
 
 
 async def update_user_metadata_api(request):
@@ -1791,6 +1806,7 @@ async def update_user_metadata_api(request):
         return _database_lane_unavailable_response(request, write=True)
 
 def _list_system_packages_sync(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -1805,11 +1821,13 @@ def _list_system_packages_sync(request):
             package['price'] = money_json_value(package['price'])
             package['isLocked'] = package['status'] != 'active'
             packages.append(package)
-        conn.close()
         return JSONResponse(packages)
     except Exception as e:
         log_error(e, "list_system_packages_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi tải danh sách gói dịch vụ."}, status_code=500)
+    finally:
+        if conn:
+            conn.close()
 
 def _list_public_packages_sync(request):
     """Expose active commercial package metadata for the public landing page."""
@@ -1881,6 +1899,9 @@ def _update_system_package_sync(request, actor_user_id, pkg_id, name, price, quo
             SET ten_goi = ?, gia_ca = ?, han_muc_nhan_su = ?, mo_ta = ?, trang_thai = ?
             WHERE id = ?
         """, (name, price, quota, description, status, pkg_id))
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return JSONResponse({"error": "Gói dịch vụ không tồn tại."}, status_code=404)
         log_audit(
             "admin.system_package_updated",
             actor_user_id=actor_user_id,
@@ -1895,14 +1916,15 @@ def _update_system_package_sync(request, actor_user_id, pkg_id, name, price, quo
             required=True,
         )
         conn.commit()
-        conn.close()
         return JSONResponse({"success": True, "message": "Cập nhật gói dịch vụ thành công!"})
     except Exception as e:
         if conn:
             conn.rollback()
-            conn.close()
         log_error(e, "update_system_package_api")
         return JSONResponse({"error": "Đã xảy ra lỗi khi cập nhật gói dịch vụ."}, status_code=500)
+    finally:
+        if conn:
+            conn.close()
 
 
 async def update_system_package_api(request):
@@ -1968,12 +1990,14 @@ def _set_username_sync(request, role_or_err, new_username):
         cursor.execute("SELECT id, ten_dang_nhap, username_da_dat FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
         row = cursor.fetchone()
         if not row:
+            conn.rollback()
             return JSONResponse({"error": "Không tìm thấy tài khoản."}, status_code=404)
 
         user = dict(row)
 
 
         if user.get("username_da_dat") == 1 and user.get("ten_dang_nhap"):
+            conn.rollback()
             return JSONResponse(
                 {"error": "Tên đăng nhập đã được đặt trước đó và không thể thay đổi."},
                 status_code=400
@@ -1982,6 +2006,7 @@ def _set_username_sync(request, role_or_err, new_username):
 
         cursor.execute("SELECT 1 FROM tai_khoan WHERE username_norm = ? AND id != ?", (new_username, role_or_err.user_id))
         if cursor.fetchone():
+            conn.rollback()
             return JSONResponse(
                 {"error": "Tên đăng nhập này đã được sử dụng. Vui lòng chọn tên khác."},
                 status_code=409

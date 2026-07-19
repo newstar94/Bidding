@@ -342,7 +342,6 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
             augmented_batch_size = _sync_batch_size(data)
             if augmented_batch_size > batch_limit:
                 conn.rollback()
-                conn.close()
                 return error_response(
                     request,
                     "SYNC_BATCH_TOO_LARGE",
@@ -621,7 +620,6 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         if validation_errors:
             log_error(f"Validation errors during sync: {validation_errors}", "SyncAPI")
             conn.rollback()
-            conn.close()
             has_row_conflict = any(
                 error.get("code") == "ROW_VERSION_CONFLICT" for error in validation_errors
             )

@@ -497,8 +497,8 @@ export function setupAuth() {
       document.getElementById("register-username").focus();
       return;
     }
-    if (password.length < 15 || password.length > 256) {
-      errorDiv.textContent = "Mật khẩu phải có từ 15 đến 256 ký tự!";
+    if (password.length < 8 || password.length > 256) {
+      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự!";
       setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
@@ -683,8 +683,8 @@ export function setupAuth() {
       setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
-    if (newPassword.length < 15 || newPassword.length > 256) {
-      errorDiv.textContent = "Mật khẩu phải có từ 15 đến 256 ký tự.";
+    if (newPassword.length < 8 || newPassword.length > 256) {
+      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự.";
       setRuntimeStyle(errorDiv, "display", "block");
       return;
     }

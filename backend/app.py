@@ -772,17 +772,23 @@ routes = [
 ]
 
 if APP_DEBUG:
-    routes.extend([
-        Mount(
-            "/node_modules/dompurify/dist",
-            app=SafeStaticFiles(
-                directory=os.path.join(
-                    project_root,
-                    "node_modules",
-                    "dompurify",
-                    "dist",
-                )
+    async def dompurify_development_asset(_request):
+        return FileResponse(
+            os.path.join(
+                project_root,
+                "node_modules",
+                "dompurify",
+                "dist",
+                "purify.es.mjs",
             ),
+            media_type="text/javascript",
+        )
+
+    routes.extend([
+        Route(
+            "/node_modules/dompurify/dist/purify.es.mjs",
+            dompurify_development_asset,
+            methods=["GET"],
             name="dompurify-dev",
         ),
         Mount("/frontend", app=SafeStaticFiles(directory=os.path.join(project_root, 'frontend')), name="frontend"),

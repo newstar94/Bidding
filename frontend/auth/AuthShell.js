@@ -56,6 +56,11 @@ export async function bootstrapAuthShell(initialSession = { valid: false }) {
       window.alert(`${title}
 
 ${message}`);
+    },
+    async customPrompt(...args) {
+      const { BiddingView } = await import("../app/BiddingView.js");
+      const dialogView = new BiddingView(model);
+      return dialogView.customPrompt(...args);
     }
   };
   const controller = {

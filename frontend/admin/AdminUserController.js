@@ -931,8 +931,8 @@ export function setupRBACEvents() {
       const oldPassword = document.getElementById("profile-old-password").value;
       const newPassword = document.getElementById("profile-new-password").value;
       const confirmPassword = document.getElementById("profile-confirm-password").value;
-      if (newPassword.length < 15 || newPassword.length > 256) {
-        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới phải có từ 15 đến 256 ký tự!", "alert-triangle", document.getElementById("profile-new-password"));
+      if (newPassword.length < 8 || newPassword.length > 256) {
+        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới phải có từ 8 đến 256 ký tự!", "alert-triangle", document.getElementById("profile-new-password"));
         return;
       }
       if (newPassword !== confirmPassword) {

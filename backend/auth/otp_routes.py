@@ -335,7 +335,7 @@ async def resend_code_api(request):
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <h2 style="color: #2563eb; text-align: center;">Mã xác thực mới của bạn</h2>
-                <p>Xin chào <strong>{user['ho_ten']}</strong>,</p>
+                <p>Xin chào <strong>{html.escape(str(user.get('ho_ten') or 'bạn'))}</strong>,</p>
                 <p>Bạn đã yêu cầu gửi lại mã xác nhận email cho tài khoản BiddingFlow. Mã OTP mới là:</p>
                 <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 6px; margin: 20px 0;">
                     <span style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 4px;">{code}</span>

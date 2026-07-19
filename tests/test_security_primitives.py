@@ -177,8 +177,9 @@ def test_legacy_pbkdf2_password_is_verified_and_marked_for_upgrade():
     assert password_needs_rehash(encoded)
 
 
-def test_password_policy_requires_15_characters_and_blocks_common_values():
-    assert validate_new_password("a" * 14)[0] is False
+def test_password_policy_requires_8_characters_and_blocks_common_values():
+    assert validate_new_password("a" * 7)[0] is False
+    assert validate_new_password("a" * 8)[0] is True
     assert validate_new_password("Một mật khẩu đủ dài!")[0] is True
     assert validate_new_password("passwordpassword")[0] is False
 

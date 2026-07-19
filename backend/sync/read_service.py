@@ -413,7 +413,6 @@ def _read_sync_data_blocking(request):
 
 
         dashboard_summary = build_dashboard_summary(cursor, org_name, role_str, user_id) if include_dashboard_summary else None
-        conn.close()
 
         response_payload = {
             "chudautu": chudautu,
@@ -460,7 +459,6 @@ def _read_sync_data_blocking(request):
         if conn:
             try:
                 conn.rollback()
-                conn.close()
             except DatabaseError:
                 pass
         return error_response(

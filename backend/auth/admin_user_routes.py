@@ -53,6 +53,7 @@ def _database_lane_unavailable_response(request, *, write=False, timed_out=False
 
 
 def _list_users_sync(request):
+    conn = None
     try:
         is_valid, role_or_err = verify_session(request)
         if not is_valid:
@@ -64,7 +65,6 @@ def _list_users_sync(request):
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
         requester = cursor.fetchone()
         if not requester:
-            conn.close()
             return JSONResponse({"error": "Không tìm thấy thông tin tài khoản yêu cầu!"}, status_code=404)
 
         req_role = requester['vai_tro']
@@ -218,7 +218,6 @@ def _list_users_sync(request):
                     )
                 )
             users.append(u)
-        conn.close()
         return JSONResponse(users)
     except OrgPermissionError as e:
         return error_response(
@@ -230,6 +229,9 @@ def _list_users_sync(request):
     except Exception as e:
         log_error(e, "list_users_api")
         return JSONResponse({"error": "Đã xảy ra lỗi tải danh sách người dùng."}, status_code=500)
+    finally:
+        if conn:
+            conn.close()
 
 
 async def list_users_api(request):
@@ -589,10 +591,12 @@ def _delete_user_sync(request):
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
         target = cursor.fetchone()
         if not target:
+            conn.rollback()
             return JSONResponse({"error": "Người dùng không tồn tại."}, status_code=404)
         if str(target[0] or '').strip().lower() == 'super_admin':
             cursor.execute("SELECT count(*) FROM tai_khoan WHERE vai_tro = 'super_admin'")
             if int(cursor.fetchone()[0]) <= 1:
+                conn.rollback()
                 return JSONResponse({"error": "Không thể xóa quản trị viên nền tảng cuối cùng."}, status_code=409)
         cursor.execute(
             """
@@ -614,6 +618,7 @@ def _delete_user_sync(request):
             (user_id,),
         )
         if cursor.fetchone():
+            conn.rollback()
             return JSONResponse({"error": "Không thể xóa Quản lý cuối cùng của tổ chức."}, status_code=409)
         personal_scope = personal_scope_id(user_id)
         personal_content_tables = [
@@ -696,5 +701,5 @@ def _delete_user_sync(request):
 async def delete_user_api(request):
     try:
         return await run_database_write(_delete_user_sync, request)
-    except BlockingIOBusyError:
+    except (BlockingIOBusyError, BlockingIOTimeoutError):
         return _database_lane_unavailable_response(request, write=True)

@@ -2,7 +2,7 @@ import hashlib
 
 
 MAX_PASSWORD_LENGTH = 256
-MIN_PASSWORD_LENGTH = 15
+MIN_PASSWORD_LENGTH = 8
 
 # Offline denylist for the most common leaked/default passphrases, including
 # variants seen in Vietnamese deployments. Hashes avoid accidentally treating
