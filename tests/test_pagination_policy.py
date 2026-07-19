@@ -397,6 +397,32 @@ def test_employee_pagination_is_restricted_by_assignment(
 
 
 @pytest.mark.parametrize(
+    "table_key",
+    ("kehoach", "goithau", "hopdong", "thongtinmothau"),
+)
+def test_personal_workspace_pagination_does_not_require_assignments(
+    monkeypatch, table_key
+):
+    cursor, _ = _install_success_policy(monkeypatch, manager=False)
+    monkeypatch.setattr(
+        pagination,
+        "get_active_org",
+        lambda _request, _user_id, cursor=None: "personal:user-1",
+    )
+
+    response = pagination._paginate_records_blocking(
+        _request(table=table_key, pageSize="1")
+    )
+
+    assert response.status_code == 200
+    count_sql, count_params = next(
+        call for call in cursor.calls if "COUNT(*)" in call[0]
+    )
+    assert "phan_cong_nhan_su" not in count_sql
+    assert count_params[0] == "personal:user-1"
+
+
+@pytest.mark.parametrize(
     ("table_key", "expected_column"),
     [
         ("kehoach", "ma_ke_hoach"),

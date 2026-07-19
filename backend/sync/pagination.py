@@ -44,6 +44,7 @@ from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
+from backend.shared.workspace_scope import is_personal_scope_for_user
 
 
 def _urlsafe_b64encode(payload):
@@ -212,7 +213,10 @@ def _paginate_records_blocking(request):
         query_params = [org_name]
         if table_name in ARCHIVED_TABLES:
             query_parts.append("archived_at IS NULL")
-        if not is_organization_manager(cursor, role_str, user_id, org_name):
+        if (
+            not is_personal_scope_for_user(org_name, user_id)
+            and not is_organization_manager(cursor, role_str, user_id, org_name)
+        ):
             if table_name == "phan_cong_nhan_su":
                 query_parts.append("id_nhan_vien = ?")
                 query_params.append(user_id)
