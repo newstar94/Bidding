@@ -1,3 +1,4 @@
+from backend.db.db_helper import DatabaseError, IntegrityError
 import os
 import json
 import uuid
@@ -5,7 +6,6 @@ import time
 import urllib.request
 import urllib.error
 import urllib.parse
-import sqlite3
 import html
 import secrets
 from datetime import datetime, timezone
@@ -204,7 +204,7 @@ async def google_login_api(request):
             return JSONResponse({"error": str(exc), "code": exc.code}, status_code=400)
 
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
 
 
@@ -432,7 +432,7 @@ async def google_login_api(request):
         response.delete_cookie("username", path="/")
         return response
 
-    except sqlite3.IntegrityError as e:
+    except IntegrityError as e:
         if conn:
             conn.rollback()
         conflict_code = identity_conflict_code(e)
@@ -455,5 +455,5 @@ async def google_login_api(request):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass

@@ -3,7 +3,7 @@
 from decimal import Decimal, InvalidOperation
 
 
-MAX_SQLITE_INTEGER = 9_223_372_036_854_775_807
+MAX_SIGNED_64BIT_INTEGER = 9_223_372_036_854_775_807
 
 
 def parse_vnd_amount(value):
@@ -20,7 +20,7 @@ def parse_vnd_amount(value):
     if not amount.is_finite() or amount != amount.to_integral_value():
         return None
     integer = int(amount)
-    if integer < 0 or integer > MAX_SQLITE_INTEGER:
+    if integer < 0 or integer > MAX_SIGNED_64BIT_INTEGER:
         return None
     return integer
 

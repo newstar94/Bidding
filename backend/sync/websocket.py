@@ -24,6 +24,7 @@ from backend.shared.logging_utils import log_error
 
 active_connections = {}
 active_connections_by_ip = {}
+_BROKER_CHANNEL = "biddingflow_events"
 
 _WEBSOCKET_EVENT_FIELDS = {
     "db_changed": ("event",),
@@ -300,14 +301,18 @@ async def _broadcast_local(organization_id, message):
 def _store_broker_event(event_type, organization_id=None, user_id=None, payload=None):
     conn = database.get_connection()
     try:
-        conn.execute(
+        row = conn.execute(
             """
             INSERT INTO websocket_events (event_type, organization_id, user_id, payload_json)
             VALUES (?, ?, ?, ?)
+            RETURNING id
             """,
             (event_type, organization_id, user_id, json.dumps(payload) if payload is not None else None),
-        )
+        ).fetchone()
+        event_id = int(row[0])
+        conn.execute("SELECT pg_notify(?, ?)", (_BROKER_CHANNEL, str(event_id)))
         conn.commit()
+        return event_id
     finally:
         conn.close()
 
@@ -320,7 +325,7 @@ def _schedule_local_broadcast(organization_id, message):
 
 
 def broadcast_websocket_event(organization_id, message):
-    """Publish through the SQLite outbox so every application worker receives the event."""
+    """Publish through the PostgreSQL outbox so every worker receives the event."""
     try:
         sanitized_message = serialize_websocket_event(message)
     except ValueError as invalid_event_error:
@@ -392,38 +397,81 @@ def _latest_broker_event_id():
 
 
 async def run_websocket_event_broker(poll_interval=0.25, start_after_id=None):
-    """Fan out durable events to sockets owned by this process."""
+    """Fan out durable events using PostgreSQL LISTEN/NOTIFY with replay."""
+    del poll_interval
     last_event_id = (
         int(start_after_id)
         if start_after_id is not None
         else await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)
     )
+    listener = None
     cleanup_counter = 0
     while True:
         try:
+            if listener is None or listener.closed:
+                listener = await run_blocking_io(
+                    _open_broker_listener, timeout_seconds=10.0
+                )
             events = await run_blocking_io(_load_broker_events, last_event_id, timeout_seconds=5.0)
+            if not events:
+                await run_blocking_io(
+                    _wait_for_broker_signal,
+                    listener,
+                    timeout_seconds=35.0,
+                )
+                events = await run_blocking_io(
+                    _load_broker_events, last_event_id, timeout_seconds=5.0
+                )
         except asyncio.CancelledError:
+            if listener is not None:
+                await run_blocking_io(listener.close, timeout_seconds=2.0)
             raise
-        except Exception:
-            await asyncio.sleep(max(1.0, poll_interval))
+        except Exception as broker_error:
+            log_error(broker_error, "websocket_broker_listener", level="WARN")
+            if listener is not None:
+                try:
+                    listener.close()
+                except Exception:
+                    pass
+            listener = None
+            await asyncio.sleep(1.0)
             continue
         for event in events:
             await dispatch_websocket_broker_event(event)
             last_event_id = max(last_event_id, int(event["id"]))
         cleanup_counter += 1
-        if cleanup_counter >= 14_400:
+        if cleanup_counter >= 1_000:
             cleanup_counter = 0
             try:
                 await run_blocking_io(_cleanup_broker_events, timeout_seconds=10.0)
             except Exception as broker_cleanup_error:
                 log_error(broker_cleanup_error, "websocket_broker_cleanup", level="WARN")
-        await asyncio.sleep(poll_interval)
+
+
+def _open_broker_listener():
+    connection = database.listen_connection()
+    with connection.cursor() as cursor:
+        cursor.execute(f"LISTEN {_BROKER_CHANNEL}")
+    return connection
+
+
+def _wait_for_broker_signal(connection, timeout=30.0):
+    return next(connection.notifies(timeout=timeout, stop_after=1), None)
 
 
 def _cleanup_broker_events():
     conn = database.get_connection()
     try:
-        conn.execute("DELETE FROM websocket_events WHERE created_at < datetime('now', '-1 day')")
+        conn.execute("BEGIN")
+        leader = conn.execute(
+            "SELECT pg_try_advisory_xact_lock(hashtext('biddingflow-websocket-cleanup'))"
+        ).fetchone()
+        if not leader or not leader[0]:
+            conn.rollback()
+            return
+        conn.execute(
+            "DELETE FROM websocket_events WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day'"
+        )
         conn.commit()
     finally:
         conn.close()

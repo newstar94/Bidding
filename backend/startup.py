@@ -7,10 +7,7 @@ without starting the ASGI server or touching the configured application DB.
 import os
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import urlparse
-
-from backend.shared.paths import PROJECT_ROOT, resolve_runtime_path
 
 
 class StartupValidationError(RuntimeError):
@@ -26,80 +23,49 @@ REQUIRED_APPLICATION_TABLES = frozenset({
     "rate_limit_buckets",
 })
 
-_SYNC_DIRECTORY_MARKERS = ("onedrive", "dropbox", "google drive", "icloud")
-_SEPARATE_RUNTIME_PATHS = (
-    "AUDIT_CHECKPOINT_DIR",
-    "BIDDING_BACKUP_DIR",
-    "BIDDING_LOG_DIR",
-    "BIDDING_UPLOAD_DIR",
-    "BIDDING_WORD_TEMPLATE_DIR",
-    "DOCUMENT_WORKER_TEMP_DIR",
-)
-
-
-def _is_within(path, parent):
-    try:
-        Path(path).resolve().relative_to(Path(parent).resolve())
-        return True
-    except ValueError:
-        return False
-
-
-def _validate_production_sqlite_layout(database, environ):
-    raw_db_path = str(environ.get("BIDDING_DB_PATH", "")).strip()
-    if not raw_db_path or not Path(raw_db_path).is_absolute():
+def _validate_postgresql_configuration(database, environ, *, production):
+    raw_url = str(environ.get("DATABASE_URL", "")).strip()
+    if not raw_url:
+        raise StartupValidationError("DATABASE_URL is required for PostgreSQL.")
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in {"postgresql", "postgres"}:
+        raise StartupValidationError("DATABASE_URL must use postgresql://.")
+    if not parsed.hostname or not parsed.path.strip("/"):
         raise StartupValidationError(
-            "BIDDING_DB_PATH must be an absolute path on a local persistent volume in production."
+            "DATABASE_URL must include a PostgreSQL host and database name."
         )
-
-    db_path = Path(database.db_path).resolve()
-    lowered_db_path = str(db_path).casefold()
-    if any(marker in lowered_db_path for marker in _SYNC_DIRECTORY_MARKERS):
-        raise StartupValidationError(
-            "The production SQLite database cannot be stored in a file-sync directory."
-        )
-    if _is_within(db_path, PROJECT_ROOT):
-        raise StartupValidationError(
-            "The production SQLite database must be outside the application source directory."
-        )
-    if str(environ.get("BIDDING_SQLITE_SINGLE_WRITER", "")).strip().lower() != "true":
-        raise StartupValidationError(
-            "BIDDING_SQLITE_SINGLE_WRITER=true is required when production uses SQLite."
-        )
-
-    db_directory = db_path.parent
-    for variable in _SEPARATE_RUNTIME_PATHS:
-        raw_path = str(environ.get(variable, "")).strip()
-        if raw_path:
-            runtime_path = Path(raw_path).resolve()
-        else:
-            raw_data_root = str(environ.get("BIDDING_DATA_DIR", "")).strip()
-            if not raw_data_root or not Path(raw_data_root).is_absolute():
-                raise StartupValidationError(
-                    f"{variable} requires an explicit absolute override or an absolute BIDDING_DATA_DIR in production."
-                )
-            runtime_path = resolve_runtime_path(variable, environ=environ)
-        if not runtime_path.is_absolute():
-            raise StartupValidationError(
-                f"{variable} must resolve to an absolute path in production."
+    if parsed.password is None:
+        raise StartupValidationError("DATABASE_URL must include database credentials.")
+    if production:
+        query = {
+            key.casefold(): value.casefold()
+            for key, value in (
+                item.split("=", 1) if "=" in item else (item, "")
+                for item in parsed.query.split("&")
+                if item
             )
-        if _is_within(runtime_path, db_directory):
+        }
+        sslmode = str(
+            environ.get("DATABASE_SSLMODE", query.get("sslmode", ""))
+        ).strip().casefold()
+        if sslmode != "verify-full":
             raise StartupValidationError(
-                f"{variable} must be outside the SQLite database directory."
+                "PostgreSQL production connections require sslmode=verify-full."
             )
+    # Force URL validation on the configured database object without opening a
+    # second connection when tests supply an isolated environment mapping.
+    if environ is os.environ:
+        database.database_url
 
 
 def database_requires_admin_bootstrap(database):
     """Return True when the configured DB has no account to administer it."""
-    db_path = getattr(database, "db_path", None)
-    if not db_path or not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
-        return True
-
     conn = None
     try:
         conn = database.get_connection()
         table_exists = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tai_khoan'"
+            """SELECT 1 FROM information_schema.tables
+               WHERE table_schema = current_schema() AND table_name = 'tai_khoan'"""
         ).fetchone()
         if table_exists is None:
             return True
@@ -113,9 +79,10 @@ def validate_startup_configuration(database, environ=None):
     """Validate configuration that must exist before first-run initialization."""
     environ = os.environ if environ is None else environ
     app_env = str(environ.get("APP_ENV", "development")).strip().lower()
+    is_production = app_env in {"prod", "production"}
+    _validate_postgresql_configuration(database, environ, production=is_production)
     requires_bootstrap = database_requires_admin_bootstrap(database)
-    if app_env in {"prod", "production"}:
-        _validate_production_sqlite_layout(database, environ)
+    if is_production:
         audit_hmac_key = str(environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
         if len(audit_hmac_key.encode("utf-8")) < 32:
             raise StartupValidationError(
@@ -187,22 +154,19 @@ def validate_startup_configuration(database, environ=None):
 
 
 def verify_database_readiness(database, expected_schema_version):
-    """Verify schema, bootstrap invariants and write-lock availability.
-
-    ``BEGIN IMMEDIATE`` obtains SQLite's write reservation without changing
-    application data. The transaction is always rolled back.
-    """
+    """Verify PostgreSQL schema, constraints and bootstrap invariants."""
     conn = None
     transaction_started = False
     try:
         conn = database.get_connection()
-        if conn.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
-            raise StartupValidationError("SQLite foreign key enforcement is disabled.")
-
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         transaction_started = True
-
-        actual_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        version_row = conn.execute(
+            "SELECT schema_version FROM database_metadata WHERE id = 1"
+        ).fetchone()
+        if not version_row:
+            raise StartupValidationError("Database schema metadata is missing.")
+        actual_version = int(version_row[0])
         if actual_version != int(expected_schema_version):
             raise StartupValidationError(
                 f"Unexpected database schema version: {actual_version}."
@@ -211,7 +175,8 @@ def verify_database_readiness(database, expected_schema_version):
         existing_tables = {
             row[0]
             for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
+                """SELECT table_name FROM information_schema.tables
+                   WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'"""
             ).fetchall()
         }
         missing_tables = sorted(REQUIRED_APPLICATION_TABLES - existing_tables)
@@ -220,14 +185,14 @@ def verify_database_readiness(database, expected_schema_version):
                 "Required database tables are missing: " + ", ".join(missing_tables)
             )
 
-        quick_check = conn.execute("PRAGMA quick_check(1)").fetchone()
-        if quick_check is None or str(quick_check[0]).lower() != "ok":
-            raise StartupValidationError("SQLite quick_check did not return ok.")
-
-        foreign_key_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-        if foreign_key_violations:
+        invalid_foreign_keys = conn.execute(
+            """SELECT conname FROM pg_constraint
+               WHERE contype = 'f' AND NOT convalidated
+                 AND connamespace = current_schema()::regnamespace"""
+        ).fetchall()
+        if invalid_foreign_keys:
             raise StartupValidationError(
-                f"SQLite foreign_key_check found {len(foreign_key_violations)} violation(s)."
+                f"PostgreSQL has {len(invalid_foreign_keys)} unvalidated foreign key(s)."
             )
 
         bootstrap_admin = conn.execute(
@@ -258,7 +223,12 @@ def verify_database_responsive(database, expected_schema_version):
     conn = None
     try:
         conn = database.get_connection()
-        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        row = conn.execute(
+            "SELECT schema_version FROM database_metadata WHERE id = 1"
+        ).fetchone()
+        if not row:
+            raise StartupValidationError("Database schema metadata is unavailable.")
+        version = int(row[0])
         if version != int(expected_schema_version):
             raise StartupValidationError("Database schema version changed after startup.")
         if conn.execute("SELECT 1 FROM tai_khoan LIMIT 1").fetchone() is None:

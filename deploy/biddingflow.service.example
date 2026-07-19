@@ -1,5 +1,5 @@
 [Unit]
-Description=BiddingFlow ASGI service (single SQLite writer)
+Description=BiddingFlow ASGI service (PostgreSQL)
 After=network-online.target
 Wants=network-online.target
 
@@ -9,7 +9,7 @@ User=biddingflow
 Group=biddingflow
 WorkingDirectory=/opt/biddingflow
 EnvironmentFile=/etc/biddingflow/biddingflow.env
-ExecStart=/opt/biddingflow/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers --limit-concurrency 128 --backlog 256 --timeout-keep-alive 5 --timeout-graceful-shutdown 30 --ws-max-size 65536 --ws-max-queue 32
+ExecStart=/opt/biddingflow/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 4 --no-proxy-headers --limit-concurrency 256 --backlog 1024 --timeout-keep-alive 5 --timeout-graceful-shutdown 30 --ws-max-size 65536 --ws-max-queue 32
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

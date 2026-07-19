@@ -366,11 +366,11 @@ def run_partner_lookup_worker():
 
 
                     cursor.execute(
-                        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 0)",
+                        "INSERT INTO sync_metadata (organization_id, current_version) VALUES (?, 0) ON CONFLICT (organization_id) DO NOTHING",
                         (organization_id,)
                     )
                     cursor.execute(
-                        "UPDATE sync_metadata SET current_version = current_version + 1, updated_at = datetime('now') WHERE organization_id = ?",
+                        "UPDATE sync_metadata SET current_version = current_version + 1, updated_at = CURRENT_TIMESTAMP WHERE organization_id = ?",
                         (organization_id,)
                     )
                     cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))
@@ -386,7 +386,7 @@ def run_partner_lookup_worker():
                             ten_viet_tat = CASE WHEN ten_viet_tat IS NULL OR ten_viet_tat = '' THEN ? ELSE ten_viet_tat END,
                             ma_so_thue = CASE WHEN ? != '' THEN ? ELSE ma_so_thue END,
                             sync_version = ?,
-                            updated_at = datetime('now')
+                            updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     """, (new_name, new_address, new_address_raw, new_short_name, returned_tax_code, returned_tax_code, new_sync_ver, c_id))
 
@@ -395,7 +395,7 @@ def run_partner_lookup_worker():
                         UPDATE thong_tin_mo_thau
                         SET ten_nha_thau = ?,
                             sync_version = ?,
-                            updated_at = datetime('now')
+                            updated_at = CURRENT_TIMESTAMP
                         WHERE nha_thau_id = ?
                           AND (ten_nha_thau IS NULL OR ten_nha_thau = ''
                                OR ten_nha_thau = 'Nhà thầu (Chưa cập nhật thông tin)'

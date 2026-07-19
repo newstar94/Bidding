@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timezone
 from backend.shared.helpers import (
     database,
     clean_id,
@@ -11,6 +10,7 @@ from backend.documents.docx_context_policy import (
     project_docx_context,
 )
 from backend.sync.mapper import attach_child_rows, attach_child_rows_to_items, _enrich_opening_bid_contractor_versions
+from backend.shared.date_utils import vietnam_now
 
 def to_snake_case(s):
     import re
@@ -219,7 +219,7 @@ def build_plan_context(plan_id, user_id, org_name, capabilities=None):
         clear_competitive_quotation_appraisal(gt)
     conn.close()
 
-    now = datetime.now(timezone.utc).astimezone()
+    now = vietnam_now()
     unified_context = {
         'ke_hoach': plan,
         'user': user_data,
@@ -402,7 +402,7 @@ def build_report_context(
 
     conn.close()
 
-    now = datetime.now(timezone.utc).astimezone()
+    now = vietnam_now()
     unified_context = {
         'goi_thau': pkg,
         'goi_thau_versions': goi_thau_versions,

@@ -74,7 +74,7 @@ async def import_personal_experts_api(request):
     target_org = get_active_org(request, session.user_id)
     conn = database.get_connection()
     try:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
         if not is_business_organization(cursor, target_org):
             conn.rollback()
@@ -114,7 +114,7 @@ async def import_personal_experts_api(request):
                 if updates:
                     assignments = ", ".join(f"{field} = ?" for field in updates)
                     cursor.execute(
-                        f"UPDATE chuyen_gia SET {assignments}, sync_version = ?, updated_at = datetime('now') WHERE id = ? AND organization_id = ?",
+                        f"UPDATE chuyen_gia SET {assignments}, sync_version = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?",
                         (*updates.values(), sync_version, conflict["id"], target_org),
                     )
                 result["filled"] += 1

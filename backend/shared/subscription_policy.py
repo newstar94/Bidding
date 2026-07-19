@@ -4,6 +4,7 @@ import time
 
 from backend.auth.auth_helper import get_effective_roles
 from backend.shared.workspace_scope import is_personal_scope_for_user
+from backend.shared.date_utils import vietnam_date_from_epoch
 
 
 def _normalized_subscription(row, *, include_quota=False):
@@ -23,8 +24,8 @@ def _normalized_subscription(row, *, include_quota=False):
         "status": effective_status,
         "starts_at": starts_at,
         "expires_at": expires_at,
-        "start_date": time.strftime("%Y-%m-%d", time.gmtime(starts_at)) if starts_at else None,
-        "end_date": time.strftime("%Y-%m-%d", time.gmtime(expires_at)) if expires_at else None,
+        "start_date": vietnam_date_from_epoch(starts_at),
+        "end_date": vietnam_date_from_epoch(expires_at),
         "revision": int(row["revision"] or 0),
     }
     if include_quota:

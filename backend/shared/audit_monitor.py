@@ -52,10 +52,15 @@ def _latest_checkpoint(destination):
                 candidates.append((entry.name, Path(entry.path)))
     if not candidates:
         return None
-    path = max(candidates)[1]
-    if path.stat().st_size > 64 * 1024:
-        raise RuntimeError("Audit checkpoint exceeds the structural size limit.")
-    return json.loads(path.read_text(encoding="utf-8"))
+    # Only installation-bound checkpoints are trusted. Older formats lack the
+    # database installation identity and are deliberately outside this trust domain.
+    for _name, path in sorted(candidates, reverse=True):
+        if path.stat().st_size > 64 * 1024:
+            raise RuntimeError("Audit checkpoint exceeds the structural size limit.")
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        if checkpoint.get("version") == 3:
+            return checkpoint
+    return None
 
 
 def _inspect_database(

@@ -13,6 +13,7 @@ from backend.documents.docx_formula_service import (
     _diff_working_days,
     _load_holidays,
 )
+from backend.shared.date_utils import vietnam_today
 
 
 EVALUATION_REPORT_DELAY_DAYS = 7
@@ -255,7 +256,8 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
              AND gt.organization_id = kh.organization_id
              {package_access_sql}
             WHERE 1 = 1 {plan_visibility_sql}
-            GROUP BY kh.id
+            GROUP BY kh.id, kh.ma_ke_hoach, kh.ten_ke_hoach,
+                     kh.ngay_phe_duyet, kh.thoi_gian_dang_tai
         """, tuple(plan_status_params))
         for row in cursor.fetchall():
             package_count = int(row[5] or 0)
@@ -270,7 +272,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
 
             approval_date = _parse_iso_date(row[3])
             published_at = str(row[4] or "").strip()
-            business_days = _business_days_elapsed(approval_date, datetime.now().date())
+            business_days = _business_days_elapsed(approval_date, vietnam_today())
             if published_at or not approval_date or business_days < 3:
                 continue
             alert_key = "planPublishingOverdue" if business_days > 5 else "planPublishingWarning"
@@ -320,7 +322,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             SELECT *
             FROM ({latest_cte("goi_thau")}) latest_rows
             WHERE 1 = 1 {package_filter_sql}
-            ORDER BY COALESCE(updated_at, created_at, '') DESC, id DESC
+            ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
             LIMIT 4
         """, tuple(package_params))
         recent_packages = [map_db_to_json("goi_thau", dict(row)) for row in cursor.fetchall()]
@@ -332,19 +334,19 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
         """
         delayed_evaluation_condition = f"""
             vp.trang_thai IN ('OPENED', 'EVALUATING')
-            AND datetime(COALESCE(NULLIF(vp.thoi_gian_mo_thau, ''), NULLIF(vp.thoi_gian_dong_thau, '')))
-                <= datetime('now', 'localtime', '-{EVALUATION_REPORT_DELAY_DAYS} days')
+            AND COALESCE(vp.thoi_gian_mo_thau, vp.thoi_gian_dong_thau)
+                <= CURRENT_TIMESTAMP - INTERVAL '{EVALUATION_REPORT_DELAY_DAYS} days'
             AND NOT EXISTS (
                 SELECT 1 FROM vong_danh_gia vd
                 WHERE vd.organization_id = vp.organization_id
                   AND vd.goi_thau_id = vp.id
-                  AND (COALESCE(trim(vd.so_bao_cao), '') != '' OR COALESCE(trim(vd.ngay_bao_cao), '') != '')
+                  AND (COALESCE(trim(vd.so_bao_cao), '') <> '' OR vd.ngay_bao_cao IS NOT NULL)
             )
         """
         alert_conditions = {
-            "closingToday": "vp.trang_thai = 'INVITED' AND date(vp.thoi_gian_dong_thau) = date('now', 'localtime')",
-            "closingSoon": "vp.trang_thai = 'INVITED' AND datetime(vp.thoi_gian_dong_thau) > datetime('now', 'localtime') AND datetime(vp.thoi_gian_dong_thau) <= datetime('now', 'localtime', '+7 days') AND date(vp.thoi_gian_dong_thau) > date('now', 'localtime')",
-            "overdueOpening": "vp.trang_thai = 'INVITED' AND date(vp.thoi_gian_dong_thau) < date('now', 'localtime')",
+            "closingToday": "vp.trang_thai = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+            "closingSoon": "vp.trang_thai = 'INVITED' AND vp.thoi_gian_dong_thau > CURRENT_TIMESTAMP AND vp.thoi_gian_dong_thau <= CURRENT_TIMESTAMP + INTERVAL '7 days' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date > (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+            "overdueOpening": "vp.trang_thai = 'INVITED' AND (vp.thoi_gian_dong_thau AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
             "delayedEvaluation": delayed_evaluation_condition,
         }
         union_parts = [
@@ -380,7 +382,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
                         WHEN 'delayedEvaluation' THEN 3
                         ELSE 4
                      END,
-                     COALESCE(thoi_gian_dong_thau, thoi_gian_mo_thau, updated_at, created_at, '') ASC
+                     COALESCE(thoi_gian_dong_thau, thoi_gian_mo_thau, updated_at, created_at) ASC
             LIMIT 8
         """, tuple(package_params))
         for row in cursor.fetchall():
@@ -454,7 +456,7 @@ def build_dashboard_summary(cursor, organization_id, role_str, user_id):
             WHERE hd.trang_thai_hop_dong IN ('ACTIVE', 'SUSPENDED', 'COMPLETED')
               {contract_alert_filter_sql}
         """, tuple(contract_alert_params))
-        today = datetime.now().date()
+        today = vietnam_today()
         warning_limit = today + timedelta(days=CONTRACT_EXPIRY_WARNING_DAYS)
         for row in cursor.fetchall():
             deadline = _contract_expiry_date(_parse_iso_date(row[3]), row[4])

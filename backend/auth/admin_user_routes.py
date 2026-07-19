@@ -5,6 +5,7 @@ from starlette.responses import JSONResponse
 
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.date_utils import vietnam_date_from_epoch
 from backend.shared.helpers import (
     OrgPermissionError,
     _org_cache_invalidate_by_user_id,
@@ -180,8 +181,8 @@ def _list_users_sync(request):
                         "status": subscription_status,
                         "starts_at": starts_at,
                         "expires_at": expires_at,
-                        "start_date": time.strftime('%Y-%m-%d', time.gmtime(starts_at)) if starts_at else None,
-                        "end_date": time.strftime('%Y-%m-%d', time.gmtime(expires_at)) if expires_at else None,
+                        "start_date": vietnam_date_from_epoch(starts_at),
+                        "end_date": vietnam_date_from_epoch(expires_at),
                         "member_quota": int(row['member_quota'] or 0),
                         "member_count": int(row['member_count'] or 0),
                         "revision": int(row['revision'] or 0),
@@ -283,7 +284,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 normalized_capabilities[field] = 1 if value else 0
 
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
         target = cursor.execute(
             "SELECT vai_tro FROM tai_khoan WHERE id = ? LIMIT 1", (user_id,)
@@ -310,7 +311,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                     status_code=409,
                 )
         cursor.execute(
-            "UPDATE tai_khoan SET vai_tro = ?, updated_at = datetime('now') WHERE id = ?",
+            "UPDATE tai_khoan SET vai_tro = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (platform_role, user_id),
         )
 
@@ -343,7 +344,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                        starts_at = excluded.starts_at,
                        expires_at = excluded.expires_at,
                        revision = account_subscriptions.revision + 1,
-                       updated_at = datetime('now')""",
+                       updated_at = CURRENT_TIMESTAMP""",
                 (user_id, account_package_id, starts_at, expires_at),
             )
 
@@ -383,7 +384,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                     )
             cursor.execute(
                 """UPDATE thanh_vien_to_chuc
-                   SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now')
+                   SET vai_tro_trong_to_chuc = ?, updated_at = CURRENT_TIMESTAMP
                    WHERE user_id = ? AND organization_id = ?""",
                 (organization_role, user_id, organization_id),
             )
@@ -427,7 +428,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                            expires_at = excluded.expires_at,
                            member_quota = excluded.member_quota,
                            revision = organization_subscriptions.revision + 1,
-                           updated_at = datetime('now')""",
+                           updated_at = CURRENT_TIMESTAMP""",
                     (
                         organization_id, organization_package_id, org_starts_at,
                         org_expires_at, int(org_package[0]),
@@ -457,7 +458,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                            hopdong = excluded.hopdong,
                            thongtinmothau = excluded.thongtinmothau,
                            sync_version = excluded.sync_version,
-                           updated_at = datetime('now')""",
+                           updated_at = CURRENT_TIMESTAMP""",
                     (
                         permission_id, organization_id, user_id,
                         *(normalized_permissions[module] for module in _USER_PERMISSION_MODULES),
@@ -474,7 +475,7 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                            financial = excluded.financial,
                            identity = excluded.identity,
                            signature = excluded.signature,
-                           updated_at = datetime('now')""",
+                           updated_at = CURRENT_TIMESTAMP""",
                     (
                         organization_id,
                         user_id,
@@ -574,7 +575,7 @@ def _delete_user_sync(request):
             return JSONResponse({"error": "Không thể tự xóa tài khoản quản trị."}, status_code=409)
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute("BEGIN")
         cursor.execute("SELECT vai_tro FROM tai_khoan WHERE id = ?", (user_id,))
         target = cursor.fetchone()
         if not target:

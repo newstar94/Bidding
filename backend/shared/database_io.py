@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import sqlite3
 import time
 from typing import Any, Callable
 
 from backend.observability.metrics import record_database_operation
+from backend.db.db_helper import OperationalError
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOStats,
@@ -17,15 +17,13 @@ from backend.shared.async_io import (
 
 
 _read_pool = _BlockingIOPool(
-    workers=_bounded_env_int("DATABASE_READ_WORKERS", 4, 1, 16),
-    queue_size=_bounded_env_int("DATABASE_READ_QUEUE", 16, 0, 128),
+    workers=_bounded_env_int("DATABASE_READ_WORKERS", 8, 1, 16),
+    queue_size=_bounded_env_int("DATABASE_READ_QUEUE", 64, 0, 128),
 )
 
-# SQLite permits concurrent readers but only one writer. Keeping one worker here
-# prevents a herd of threads from blocking inside BEGIN IMMEDIATE/busy_timeout.
 _write_lane = _BlockingIOPool(
-    workers=1,
-    queue_size=_bounded_env_int("DATABASE_WRITE_QUEUE", 32, 0, 256),
+    workers=_bounded_env_int("DATABASE_WRITE_WORKERS", 4, 1, 16),
+    queue_size=_bounded_env_int("DATABASE_WRITE_QUEUE", 64, 0, 256),
 )
 
 
@@ -51,9 +49,9 @@ async def run_database_read(
     except BlockingIOTimeoutError:
         outcome = "timed_out"
         raise
-    except sqlite3.OperationalError as exc:
+    except OperationalError as exc:
         outcome = "error"
-        busy = any(marker in str(exc).casefold() for marker in ("busy", "locked"))
+        busy = getattr(exc, "sqlstate", None) in {"55P03", "57014"}
         raise
     except Exception:
         outcome = "error"
@@ -87,9 +85,9 @@ async def run_database_write(
     except BlockingIOBusyError:
         outcome = "rejected"
         raise
-    except sqlite3.OperationalError as exc:
+    except OperationalError as exc:
         outcome = "error"
-        busy = any(marker in str(exc).casefold() for marker in ("busy", "locked"))
+        busy = getattr(exc, "sqlstate", None) in {"55P03", "57014"}
         raise
     except Exception:
         outcome = "error"

@@ -1,7 +1,8 @@
 [Unit]
 Description=Create and verify a BiddingFlow full-state backup
-Documentation=file:/opt/biddingflow/scripts/full_state_backup.py
-After=local-fs.target
+Documentation=file:/opt/biddingflow/scripts/backup.py
+After=network-online.target
+Wants=network-online.target
 RequiresMountsFor=/var/lib/biddingflow /var/backups/biddingflow
 
 [Service]
@@ -10,11 +11,9 @@ User=biddingflow
 Group=biddingflow
 WorkingDirectory=/opt/biddingflow
 EnvironmentFile=/etc/biddingflow/biddingflow.env
-# Only the service-control commands run with elevated credentials. The actual
-# backup still runs as the dedicated `biddingflow` account.
-ExecStartPre=+/usr/bin/systemctl stop biddingflow.service
-ExecStart=/opt/biddingflow/.venv/bin/python /opt/biddingflow/scripts/full_state_backup.py create
-ExecStopPost=+/usr/bin/systemctl start biddingflow.service
+# pg_dump creates an online, transactionally consistent snapshot; web workers
+# remain available for the entire backup.
+ExecStart=/opt/biddingflow/.venv/bin/python /opt/biddingflow/scripts/backup.py create
 UMask=0077
 Nice=10
 IOSchedulingClass=best-effort
@@ -24,4 +23,4 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 ReadOnlyPaths=/var/lib/biddingflow/uploads /var/lib/biddingflow/word-templates
-ReadWritePaths=/var/lib/biddingflow/database /var/backups/biddingflow
+ReadWritePaths=/var/backups/biddingflow

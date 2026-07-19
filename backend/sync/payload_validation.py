@@ -1,13 +1,13 @@
 import json
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from backend.db.schema import MONEY_COLUMNS, SCHEMA_DINH_NGHIA
 from .mapper import json_key_for_column
 from .queries import TABLE_KEYS
-from backend.shared.date_utils import is_datetime_column, parse_datetime_value
+from backend.shared.date_utils import is_datetime_column, parse_datetime_value, vietnam_today
 from backend.shared.text_utils import safe_int
 from backend.shared.numeric_utils import parse_vnd_amount
 from backend.shared.domain_enums import (
@@ -533,7 +533,7 @@ def validate_sync_item(table_name, item, allowed_paper_status_names=None):
 
     if table_name in {"chu_dau_tu", "nha_thau"} and not str(item.get("ngayApDung") or "").strip():
         created_at = str(item.get("createdAt") or "").strip()
-        item["ngayApDung"] = created_at[:10] if parse_datetime_value(created_at) else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        item["ngayApDung"] = created_at[:10] if parse_datetime_value(created_at) else vietnam_today().isoformat()
 
     if table_name == "chu_dau_tu":
         if not str(item.get("tenChuDauTu") or "").strip():

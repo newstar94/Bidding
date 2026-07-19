@@ -59,29 +59,42 @@ def _purge_retained_rows(database):
     conn = None
     try:
         conn = database.get_connection()
+        conn.execute("BEGIN")
+        leader = conn.execute(
+            "SELECT pg_try_advisory_xact_lock(hashtext('biddingflow-retention-cleanup'))"
+        ).fetchone()
+        if not leader or not leader[0]:
+            conn.rollback()
+            return
         retention_days = max(1, int(os.environ.get("SYNC_TOMBSTONE_RETENTION_DAYS", "90")))
-        cutoff = f"-{retention_days} days"
         for organization_id, max_version in conn.execute(
             """SELECT organization_id, MAX(delete_version)
                FROM deleted_records
-               WHERE deleted_at < datetime('now', ?)
+               WHERE deleted_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 day')
                GROUP BY organization_id""",
-            (cutoff,),
+            (retention_days,),
         ).fetchall():
             conn.execute(
                 """UPDATE sync_metadata
-                   SET min_available_version = MAX(min_available_version, ?),
-                       updated_at = datetime('now')
-                   WHERE organization_id = ?""",
+                   SET min_available_version = GREATEST(min_available_version, %s),
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE organization_id = %s""",
                 (int(max_version or 0), organization_id),
             )
-        conn.execute("DELETE FROM deleted_records WHERE deleted_at < datetime('now', ?)", (cutoff,))
+        conn.execute(
+            "DELETE FROM deleted_records WHERE deleted_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 day')",
+            (retention_days,),
+        )
         mutation_days = max(1, int(os.environ.get("SYNC_MUTATION_RETENTION_DAYS", "30")))
-        conn.execute("DELETE FROM sync_mutations WHERE created_at < datetime('now', ?)", (f"-{mutation_days} days",))
+        conn.execute(
+            "DELETE FROM sync_mutations WHERE created_at < CURRENT_TIMESTAMP - (%s * INTERVAL '1 day')",
+            (mutation_days,),
+        )
         idempotency_days = max(1, int(os.environ.get("API_IDEMPOTENCY_RETENTION_DAYS", "7")))
         conn.execute("DELETE FROM api_idempotency WHERE created_at < ?", (int(time.time()) - idempotency_days * 86400,))
-        audit_days = max(30, int(os.environ.get("AUDIT_RETENTION_DAYS", "3650")))
-        conn.execute("DELETE FROM audit_log WHERE created_at < datetime('now', ?)", (f"-{audit_days} days",))
+        # Audit history is immutable. Retention requires a separately signed
+        # checkpoint/partition archival workflow and must never be a blind row
+        # delete from the application cleanup loop.
         conn.commit()
     except Exception as exc:
         log_error(exc, "retention_cleanup", level="WARN")
@@ -140,20 +153,22 @@ async def application_lifespan(
     audit_monitor_task = None
     artifact_monitor_task = None
     broker_task = None
-    writer_lease = None
     try:
         validate_startup(database)
-        writer_lease = database.acquire_writer_lease()
         validate_document_worker_configuration()
         cleanup_stale_document_jobs()
         if is_production:
             build_index_response()
-        initialize_database()
+        auto_migrate = str(
+            os.environ.get(
+                "DATABASE_AUTO_MIGRATE", "false" if is_production else "true"
+            )
+        ).strip().lower() in {"1", "true", "yes"}
+        if auto_migrate:
+            initialize_database()
         verify_database_readiness(database, schema_version)
         await verify_audit_chain_before_ready(database)
     except Exception as exc:
-        if writer_lease is not None:
-            writer_lease.release()
         log_error(exc, "startup_database_init")
         raise
 
@@ -175,7 +190,6 @@ async def application_lifespan(
                 await task
         application.state.ready = False
         application.state.startup_complete = False
-        writer_lease.release()
         raise
 
     threading.Thread(
@@ -205,5 +219,4 @@ async def application_lifespan(
                     await task
         application.state.ready = False
         application.state.startup_complete = False
-        if writer_lease is not None:
-            writer_lease.release()
+        database.close()

@@ -21,6 +21,7 @@ Environment variables
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import pathlib
@@ -28,6 +29,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, unquote, urlparse
 from uuid import uuid4
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -39,6 +41,64 @@ from backend.shared.paths import DATA_DIR, resolve_runtime_path
 _SNAPSHOT_PREFIX = "biddingflow-backup"
 _MANIFEST_FILENAME = "manifest.json"
 _MAX_MANIFEST_FILES = 500_000
+
+
+def _load_env() -> None:
+    path = ROOT / ".env"
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        if not line or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def _postgres_binary(name: str) -> str:
+    suffix = ".exe" if os.name == "nt" else ""
+    configured = os.environ.get("POSTGRESQL_BIN_DIR", "").strip()
+    candidates = []
+    if configured:
+        candidates.append(pathlib.Path(configured) / f"{name}{suffix}")
+    candidates.append(
+        ROOT / "data" / "tools" / "postgresql17" / "pgsql" / "bin" / f"{name}{suffix}"
+    )
+    discovered = shutil.which(name)
+    if discovered:
+        return discovered
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    raise RuntimeError(f"PostgreSQL utility is unavailable: {name}")
+
+
+def _postgres_process(database_url: str) -> tuple[dict[str, str], str]:
+    parsed = urlparse(database_url)
+    if parsed.scheme not in {"postgresql", "postgres"} or not parsed.hostname:
+        raise RuntimeError("DATABASE_URL must be a PostgreSQL URL.")
+    database_name = parsed.path.lstrip("/")
+    if not database_name:
+        raise RuntimeError("PostgreSQL URL must include a database name.")
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PGHOST": parsed.hostname,
+            "PGPORT": str(parsed.port or 5432),
+            "PGDATABASE": database_name,
+            "PGUSER": unquote(parsed.username or ""),
+            "PGPASSWORD": unquote(parsed.password or ""),
+        }
+    )
+    query = parse_qs(parsed.query)
+    for query_name, environment_name in (
+        ("sslmode", "PGSSLMODE"),
+        ("sslrootcert", "PGSSLROOTCERT"),
+        ("sslcert", "PGSSLCERT"),
+        ("sslkey", "PGSSLKEY"),
+    ):
+        if query.get(query_name):
+            environment[environment_name] = query[query_name][-1]
+    return environment, database_name
 
 
 def _require_env(name: str) -> str:
@@ -61,11 +121,20 @@ def _backup_database(database_url: str, destination: pathlib.Path) -> dict:
     """Run pg_dump and return metadata about the dump file."""
     dump_file = destination / "database" / "bidding.dump"
     dump_file.parent.mkdir(parents=True, exist_ok=True)
-    print(f"  Running pg_dump → {dump_file} ...")
+    print(f"  Running pg_dump -> {dump_file} ...")
+    environment, database_name = _postgres_process(database_url)
     result = subprocess.run(
-        ["pg_dump", "--format=custom", "--file", str(dump_file), database_url],
+        [
+            _postgres_binary("pg_dump"),
+            "--format=custom",
+            "--file",
+            str(dump_file),
+            "--dbname",
+            database_name,
+        ],
         capture_output=True,
         text=True,
+        env=environment,
     )
     if result.returncode != 0:
         print("ERROR: pg_dump failed:", file=sys.stderr)
@@ -190,19 +259,21 @@ def cmd_restore(args) -> int:
         print(f"ERROR: manifest.json not found in {snapshot_dir}", file=sys.stderr)
         return 1
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("format") != "biddingflow-pg-backup":
-        print("ERROR: Unsupported backup format (expected biddingflow-pg-backup).", file=sys.stderr)
+    try:
+        manifest = _verify_snapshot(snapshot_dir)
+    except Exception as exc:
+        print(f"ERROR: Backup verification failed: {exc}", file=sys.stderr)
         return 1
 
     dump_rel = manifest["database"]["relativePath"]
     dump_file = snapshot_dir / dump_rel
 
     print(f"Restoring database from {dump_file} ...")
+    environment, database_name = _postgres_process(database_url)
     result = subprocess.run(
-        ["pg_restore", "--clean", "--if-exists", "--no-owner",
-         f"--dbname={database_url}", str(dump_file)],
-        capture_output=True, text=True,
+        [_postgres_binary("pg_restore"), "--clean", "--if-exists", "--no-owner",
+         "--dbname", database_name, str(dump_file)],
+        capture_output=True, text=True, env=environment,
     )
     if result.returncode != 0:
         print("ERROR: pg_restore failed:", file=sys.stderr)
@@ -231,6 +302,143 @@ def cmd_restore(args) -> int:
         shutil.copy2(src, dst)
 
     print("Restore complete.")
+    return 0
+
+
+def _verify_snapshot(snapshot_dir: pathlib.Path) -> dict:
+    snapshot_dir = snapshot_dir.resolve()
+    manifest_path = snapshot_dir / _MANIFEST_FILENAME
+    if not manifest_path.is_file() or manifest_path.stat().st_size > 64 * 1024 * 1024:
+        raise RuntimeError("manifest.json is missing or too large")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("format") != "biddingflow-pg-backup" or manifest.get("version") != 1:
+        raise RuntimeError("unsupported backup format")
+    files = manifest.get("files")
+    if not isinstance(files, list) or len(files) > _MAX_MANIFEST_FILES:
+        raise RuntimeError("invalid backup file list")
+    if len(files) != int(manifest.get("fileCount", -1)):
+        raise RuntimeError("backup file count mismatch")
+    seen = set()
+    for item in files:
+        relative = pathlib.Path(str(item.get("relativePath") or ""))
+        candidate = (snapshot_dir / relative).resolve()
+        if candidate in seen or snapshot_dir not in candidate.parents:
+            raise RuntimeError("unsafe or duplicate backup path")
+        seen.add(candidate)
+        if not candidate.is_file():
+            raise RuntimeError(f"backup file is missing: {relative.as_posix()}")
+        if candidate.stat().st_size != int(item.get("sizeBytes", -1)):
+            raise RuntimeError(f"backup size mismatch: {relative.as_posix()}")
+        if not hmac.compare_digest(_sha256(candidate), str(item.get("sha256") or "")):
+            raise RuntimeError(f"backup checksum mismatch: {relative.as_posix()}")
+    return manifest
+
+
+def cmd_verify(args) -> int:
+    snapshot = pathlib.Path(args.snapshot).resolve()
+    try:
+        manifest = _verify_snapshot(snapshot)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    print(
+        json.dumps(
+            {
+                "snapshot": str(snapshot),
+                "createdAt": manifest.get("createdAt"),
+                "fileCount": manifest.get("fileCount"),
+                "verified": True,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def cmd_drill(args) -> int:
+    import psycopg
+
+    snapshot = pathlib.Path(args.snapshot).resolve()
+    try:
+        manifest = _verify_snapshot(snapshot)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    drill_url = _require_env("RESTORE_DRILL_DATABASE_URL")
+    primary_url = _require_env("DATABASE_URL")
+    primary = urlparse(primary_url)
+    drill = urlparse(drill_url)
+    if (primary.hostname, primary.port or 5432, primary.path) == (
+        drill.hostname,
+        drill.port or 5432,
+        drill.path,
+    ):
+        print("ERROR: Restore drill database must be isolated from production.", file=sys.stderr)
+        return 1
+    environment, database_name = _postgres_process(drill_url)
+    dump_file = snapshot / manifest["database"]["relativePath"]
+    result = subprocess.run(
+        [
+            _postgres_binary("pg_restore"),
+            "--clean",
+            "--if-exists",
+            "--no-owner",
+            "--dbname",
+            database_name,
+            str(dump_file),
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    if result.returncode:
+        print("ERROR: restore drill pg_restore failed.", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        return 1
+    with psycopg.connect(drill_url) as connection:
+        version = connection.execute(
+            "SELECT schema_version FROM database_metadata WHERE id = 1"
+        ).fetchone()
+        invalid_fks = connection.execute(
+            "SELECT count(*) FROM pg_constraint WHERE contype = 'f' AND NOT convalidated"
+        ).fetchone()[0]
+        if not version or invalid_fks:
+            print("ERROR: restored database failed schema verification.", file=sys.stderr)
+            return 1
+    hmac_key = _require_env("BIDDING_RESTORE_DRILL_HMAC_KEY")
+    if len(hmac_key.encode("utf-8")) < 32:
+        print("ERROR: BIDDING_RESTORE_DRILL_HMAC_KEY must contain at least 32 bytes.", file=sys.stderr)
+        return 1
+    recorded_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    payload = {
+        "format": "biddingflow-restore-drill",
+        "version": 1,
+        "recordedAt": recorded_at,
+        "snapshot": str(snapshot),
+        "databaseVerified": True,
+        "filesVerified": True,
+        "schemaVersion": int(version[0]),
+    }
+    material = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    payload["integrity"] = {
+        "algorithm": "HMAC-SHA256",
+        "hmacSha256": hmac.new(hmac_key.encode("utf-8"), material, hashlib.sha256).hexdigest(),
+    }
+    state_file = pathlib.Path(
+        os.environ.get("BIDDING_RESTORE_DRILL_STATE_FILE")
+        or snapshot.parent / "last-restore-drill.json"
+    ).resolve()
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    temporary = state_file.with_name(f".{state_file.name}.{uuid4().hex}.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(state_file)
+    print(json.dumps({"restoreDrill": "success", "recordedAt": recorded_at}, indent=2))
     return 0
 
 
@@ -274,11 +482,18 @@ def _build_parser():
     restore_p = sub.add_parser("restore", help="Restore from a backup directory")
     restore_p.add_argument("--snapshot", required=True, help="Path to the snapshot directory")
 
+    verify_p = sub.add_parser("verify", help="Verify manifest, size and checksums")
+    verify_p.add_argument("--snapshot", required=True)
+
+    drill_p = sub.add_parser("drill", help="Restore and verify in an isolated drill database")
+    drill_p.add_argument("--snapshot", required=True)
+
     sub.add_parser("list", help="List available backups")
     return parser
 
 
 def main(argv=None) -> int:
+    _load_env()
     parser = _build_parser()
     args = parser.parse_args(argv)
     if args.command == "create":
@@ -287,6 +502,10 @@ def main(argv=None) -> int:
         return cmd_restore(args)
     elif args.command == "list":
         return cmd_list(args)
+    elif args.command == "verify":
+        return cmd_verify(args)
+    elif args.command == "drill":
+        return cmd_drill(args)
     return 1
 
 

@@ -1,7 +1,6 @@
 import os
 import traceback
 import json
-import sqlite3
 import time
 import re
 import queue
@@ -324,7 +323,7 @@ def log_audit(
 ):
     """Record an audit event.
 
-    Supplying ``cursor`` binds the event to the caller's ``BEGIN IMMEDIATE``
+    Supplying ``cursor`` binds the event to the caller's ``BEGIN``
     transaction and requires the write to succeed.  Standalone calls retain
     the historical best-effort behaviour unless ``required=True`` is set.
     """
@@ -361,10 +360,6 @@ def log_audit(
         # loop. Security-sensitive mutations bind required audit to their own
         # transaction; best-effort standalone events get one bounded attempt.
         conn = _db.get_connection()
-        try:
-            conn.execute("PRAGMA busy_timeout = 1000")
-        except Exception:
-            pass
         return append_audit_row(conn, **event)
     except Exception as audit_err:
         log_error(audit_err, "audit_log", level="WARN")

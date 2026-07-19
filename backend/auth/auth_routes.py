@@ -1,10 +1,10 @@
+from backend.db.db_helper import DatabaseError, IntegrityError
 import os
 import sys
 import json
 import uuid
 import time
 import hashlib
-import sqlite3
 import urllib.parse
 import html
 from datetime import datetime, timezone
@@ -185,7 +185,7 @@ def _commit_successful_login(
 ):
     conn = database.get_connection()
     try:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
         if replacement_password_hash:
             cursor.execute(
@@ -732,7 +732,7 @@ async def update_profile_api(request):
                     status_code=403,
                 )
 
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor.execute(
             """SELECT id, ten_dang_nhap, mat_khau, ho_ten, email, email_norm,
                       COALESCE(anh_dai_dien, '') AS anh_dai_dien
@@ -866,7 +866,7 @@ async def update_profile_api(request):
                 code=email_change_code,
             )
         return JSONResponse(payload, background=background)
-    except sqlite3.IntegrityError as e:
+    except IntegrityError as e:
         if conn:
             conn.rollback()
         conflict_code = identity_conflict_code(e)
@@ -882,7 +882,7 @@ async def update_profile_api(request):
     finally:
         if conn:
             try: conn.close()
-            except sqlite3.Error: pass
+            except DatabaseError: pass
 
 async def verify_email_change_api(request):
     conn = None
@@ -973,7 +973,7 @@ async def verify_email_change_api(request):
         initial_change = dict(initial_change)
         now = int(time.time())
         if now >= int(initial_change["expires_at"]):
-            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("BEGIN")
             cursor.execute(
                 "DELETE FROM pending_email_changes WHERE user_id = ? AND otp_hash = ?",
                 (role_or_err.user_id, initial_change["otp_hash"]),
@@ -1015,7 +1015,7 @@ async def verify_email_change_api(request):
                 status_code=400,
             )
 
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor.execute(
             """SELECT change.user_id, change.current_email_norm,
                       change.pending_email, change.pending_email_norm,
@@ -1149,7 +1149,7 @@ async def verify_email_change_api(request):
         )
         response.delete_cookie("session_token", path="/")
         return response
-    except sqlite3.IntegrityError as exc:
+    except IntegrityError as exc:
         if conn:
             conn.rollback()
         conflict_code = identity_conflict_code(exc)
@@ -1165,7 +1165,7 @@ async def verify_email_change_api(request):
     finally:
         if conn:
             try: conn.close()
-            except sqlite3.Error: pass
+            except DatabaseError: pass
 
 
 async def change_password_api(request):
@@ -1220,7 +1220,7 @@ async def change_password_api(request):
         old_token = request.cookies.get('session_token')
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor.execute(
             "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
             (new_password_hash, user['id'])
@@ -1260,7 +1260,7 @@ async def change_password_api(request):
     finally:
         if conn:
             try: conn.close()
-            except sqlite3.Error: pass
+            except DatabaseError: pass
 
 async def logout_api(request):
     conn = None
@@ -1295,7 +1295,7 @@ async def logout_api(request):
     finally:
         if conn:
             try: conn.close()
-            except sqlite3.Error: pass
+            except DatabaseError: pass
 
 
 async def privileged_reauth_api(request):
@@ -1437,7 +1437,7 @@ async def update_user_role_api(request):
                 return JSONResponse({"error": controls_error}, status_code=403)
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute("BEGIN")
 
         if scope == "platform":
             if not actor_platform_admin:
@@ -1517,7 +1517,7 @@ async def update_user_role_api(request):
                     return JSONResponse({"error": "Không thể hạ quyền Quản lý cuối cùng."}, status_code=409)
 
             cursor.execute(
-                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = datetime('now') WHERE user_id = ? AND organization_id = ?",
+                "UPDATE thanh_vien_to_chuc SET vai_tro_trong_to_chuc = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND organization_id = ?",
                 (new_role, user_id, org_id),
             )
             audit_metadata = {"scope": "organization", "organization_id": org_id, "role": new_role}
@@ -1569,7 +1569,7 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
         }
 
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
 
         if field not in field_map:
@@ -1593,7 +1593,7 @@ def _update_user_metadata_sync(request, actor_user_id, user_id, field, value):
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         return JSONResponse({"success": True, "message": "Cập nhật thông tin thành công!"})
-    except sqlite3.IntegrityError as e:
+    except IntegrityError as e:
         if conn:
             conn.rollback()
             conn.close()
@@ -1741,7 +1741,7 @@ def _update_system_package_sync(request, actor_user_id, pkg_id, name, price, quo
     conn = None
     try:
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE goi_dich_vu
@@ -1828,7 +1828,7 @@ def _set_username_sync(request, role_or_err, new_username):
     conn = None
     try:
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
 
 
@@ -1856,7 +1856,7 @@ def _set_username_sync(request, role_or_err, new_username):
 
 
         cursor.execute(
-            "UPDATE tai_khoan SET ten_dang_nhap = ?, username_norm = ?, username_da_dat = 1, updated_at = datetime('now') WHERE id = ?",
+            "UPDATE tai_khoan SET ten_dang_nhap = ?, username_norm = ?, username_da_dat = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_username, new_username, role_or_err.user_id)
         )
         log_audit(
@@ -1874,7 +1874,7 @@ def _set_username_sync(request, role_or_err, new_username):
 
         return JSONResponse({"success": True, "username": new_username})
 
-    except sqlite3.IntegrityError as e:
+    except IntegrityError as e:
         if conn:
             conn.rollback()
         conflict_code = identity_conflict_code(e)
@@ -1891,7 +1891,7 @@ def _set_username_sync(request, role_or_err, new_username):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass
 
 

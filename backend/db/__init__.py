@@ -1,1 +1,1 @@
-"""SQLite connection, canonical schema, upgrades, and database identifiers."""
+"""PostgreSQL connection, canonical schema, upgrades, and database identifiers."""

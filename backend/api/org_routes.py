@@ -1,6 +1,6 @@
+from backend.db.db_helper import IntegrityError
 import json
 import re
-import sqlite3
 import time
 from starlette.responses import JSONResponse
 
@@ -24,7 +24,7 @@ from backend.shared.access_policy import (
 )
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.request_validation import read_json_object, validate_or_response
-from backend.shared.date_utils import utc_now_sql
+from backend.shared.date_utils import vietnam_date_from_epoch, vietnam_now_sql
 
 
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
@@ -46,11 +46,8 @@ def _subscription_payload(cursor, organization_id):
     if not row:
         return None
     result = dict(row)
-    result["start_date"] = time.strftime('%Y-%m-%d', time.gmtime(result["starts_at"]))
-    result["end_date"] = (
-        time.strftime('%Y-%m-%d', time.gmtime(result["expires_at"]))
-        if result["expires_at"] is not None else None
-    )
+    result["start_date"] = vietnam_date_from_epoch(result["starts_at"])
+    result["end_date"] = vietnam_date_from_epoch(result["expires_at"])
     return result
 
 
@@ -89,7 +86,7 @@ async def update_organization_subscription_api(request):
 
         operation = f"organization_subscription:{organization_id}:{action}"
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
         replay = cursor.execute(
             """
@@ -114,10 +111,10 @@ async def update_organization_subscription_api(request):
         changed = False
         if action == "lock":
             changed = current["status"] != "suspended"
-            cursor.execute("UPDATE to_chuc SET trang_thai = 'suspended', updated_at = datetime('now') WHERE id = ?", (organization_id,))
+            cursor.execute("UPDATE to_chuc SET trang_thai = 'suspended', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (organization_id,))
             cursor.execute(
                 """UPDATE organization_subscriptions
-                   SET status = 'suspended', revision = revision + ?, updated_at = datetime('now')
+                   SET status = 'suspended', revision = revision + ?, updated_at = CURRENT_TIMESTAMP
                    WHERE organization_id = ?""",
                 (1 if changed else 0, organization_id),
             )
@@ -139,10 +136,10 @@ async def update_organization_subscription_api(request):
                     status_code=409,
                 )
             changed = current["status"] != "active"
-            cursor.execute("UPDATE to_chuc SET trang_thai = 'active', updated_at = datetime('now') WHERE id = ?", (organization_id,))
+            cursor.execute("UPDATE to_chuc SET trang_thai = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (organization_id,))
             cursor.execute(
                 """UPDATE organization_subscriptions
-                   SET status = 'active', revision = revision + ?, updated_at = datetime('now')
+                   SET status = 'active', revision = revision + ?, updated_at = CURRENT_TIMESTAMP
                    WHERE organization_id = ?""",
                 (1 if changed else 0, organization_id),
             )
@@ -155,11 +152,11 @@ async def update_organization_subscription_api(request):
                     status_code=400,
                 )
             base = max(now, int(current["expires_at"] or now))
-            cursor.execute("UPDATE to_chuc SET trang_thai = 'active', updated_at = datetime('now') WHERE id = ?", (organization_id,))
+            cursor.execute("UPDATE to_chuc SET trang_thai = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (organization_id,))
             cursor.execute(
                 """UPDATE organization_subscriptions
                    SET status = 'active', expires_at = ?, revision = revision + 1,
-                       updated_at = datetime('now')
+                       updated_at = CURRENT_TIMESTAMP
                    WHERE organization_id = ?""",
                 (base + duration_days * 24 * 60 * 60, organization_id),
             )
@@ -180,7 +177,7 @@ async def update_organization_subscription_api(request):
             cursor.execute(
                 """UPDATE organization_subscriptions
                    SET package_id = ?, member_quota = ?, revision = revision + ?,
-                       updated_at = datetime('now')
+                       updated_at = CURRENT_TIMESTAMP
                    WHERE organization_id = ?""",
                 (package_id, int(package[0]), 1 if changed else 0, organization_id),
             )
@@ -265,7 +262,7 @@ async def add_user_to_org_api(request):
         org_id = get_active_org(request, role_or_err.user_id)
 
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
 
         if not is_business_organization(cursor, org_id):
@@ -292,7 +289,7 @@ async def add_user_to_org_api(request):
         if membership and membership['membership_status'] == 'active':
             cursor.execute(
                 """UPDATE thanh_vien_to_chuc
-                   SET ten_nhan_su = ?, so_dien_thoai = ?, updated_at = datetime('now')
+                   SET ten_nhan_su = ?, so_dien_thoai = ?, updated_at = CURRENT_TIMESTAMP
                    WHERE user_id = ? AND organization_id = ?""",
                 (employee_name, phone or None, user_id, org_id),
             )
@@ -372,7 +369,7 @@ async def add_user_to_org_api(request):
                 """UPDATE thanh_vien_to_chuc
                    SET vai_tro_trong_to_chuc = 'employee',
                        ten_nhan_su = ?, so_dien_thoai = ?, trang_thai_thanh_vien = 'active',
-                       left_at = NULL, left_by = NULL, updated_at = datetime('now')
+                       left_at = NULL, left_by = NULL, updated_at = CURRENT_TIMESTAMP
                    WHERE user_id = ? AND organization_id = ?""",
                 (employee_name, phone or None, user_id, org_id),
             )
@@ -416,7 +413,7 @@ async def add_user_to_org_api(request):
             "Không có quyền truy cập tổ chức này.",
             status_code=403,
         )
-    except sqlite3.IntegrityError as e:
+    except IntegrityError as e:
         if conn:
             conn.rollback()
         return log_and_error(
@@ -466,10 +463,10 @@ async def remove_user_from_org_api(request):
             return JSONResponse({"error": "Không thể tự gỡ chính mình khỏi tổ chức."}, status_code=400)
 
         org_id = get_active_org(request, role_or_err.user_id)
-        current_time = utc_now_sql()
+        current_time = vietnam_now_sql()
 
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
         if not is_business_organization(cursor, org_id):
             conn.close()
@@ -851,7 +848,7 @@ async def update_document_export_capabilities_api(request):
 
         organization_id = get_active_org(request, role_or_error.user_id)
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
         if not _can_manage_document_export_grants(
             cursor, str(role_or_error), role_or_error.user_id, organization_id
@@ -892,7 +889,7 @@ async def update_document_export_capabilities_api(request):
                    financial = excluded.financial,
                    identity = excluded.identity,
                    signature = excluded.signature,
-                   updated_at = datetime('now')""",
+                   updated_at = CURRENT_TIMESTAMP""",
             (organization_id, target_user_id, *values),
         )
         payload = _document_export_grant_payload(
@@ -929,7 +926,7 @@ async def update_document_export_capabilities_api(request):
             "Không có quyền truy cập tổ chức này.",
             status_code=403,
         )
-    except sqlite3.IntegrityError as exc:
+    except IntegrityError as exc:
         if conn:
             conn.rollback()
         return log_and_error(

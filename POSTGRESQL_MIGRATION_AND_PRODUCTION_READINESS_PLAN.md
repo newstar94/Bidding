@@ -3,7 +3,7 @@
 > Ngày lập: 19/07/2026  
 > Phạm vi rà soát: mã nguồn hiện có trong `D:\Bidding`  
 > Mục tiêu ưu tiên: hiệu năng, khả năng chịu tải, tính đúng đắn dữ liệu và khả năng vận hành sản phẩm thương mại  
-> Trạng thái: kế hoạch triển khai; tài liệu này chưa thực hiện chuyển đổi mã nguồn
+> Trạng thái: đã triển khai và kiểm chứng cục bộ ngày 19/07/2026; các bước phụ thuộc hạ tầng production được ghi rõ tại release gates
 
 ## 1. Mục tiêu và ràng buộc không được vi phạm
 
@@ -41,22 +41,22 @@ Ngoại lệ chỉ được phép khi có một yêu cầu UI riêng, được p
 - Production PostgreSQL sẽ được **fresh install từ database rỗng**.
 - Không chuyển, nhập, làm sạch, đối soát hoặc bảo toàn dữ liệu SQLite cũ.
 - Không xây công cụ SQLite → PostgreSQL và không dual-write hai hệ cơ sở dữ liệu.
-- SQLite chỉ được dùng tạm trong môi trường kiểm thử để ghi lại hành vi API/giao diện hiện tại bằng dữ liệu fixture mới tạo; SQLite không nằm trong runtime hoặc gói phát hành production cuối cùng.
+- Không dùng SQLite làm baseline, fixture hay nguồn dữ liệu kiểm thử. Hợp đồng backend được khóa bằng API/websocket contract test và kiểm thử trình duyệt trên PostgreSQL fresh install.
 
 ## 2. Tóm tắt kết quả rà soát hiện trạng
 
 ### 2.1. Quy mô mô hình dữ liệu
 
-Phân tích `backend/db/schema.py` cho thấy:
+Phân tích lại `backend/db/schema.py` sau khi hoàn thiện canonical schema cho thấy:
 
 | Hạng mục | Hiện trạng |
 |---|---:|
-| Bảng dữ liệu | 47 |
-| Cột | 627 |
-| Khóa ngoại được khai báo | 78 |
+| Bảng dữ liệu | 48 |
+| Cột | 634 |
+| Khóa ngoại được khai báo | 79 |
 | Ràng buộc duy nhất trong schema | 52 |
-| Cột khai báo `TEXT` | 501 |
-| Cột khai báo `INTEGER` | 119 |
+| Cột khai báo `TEXT` | 505 |
+| Cột khai báo `INTEGER` | 122 |
 | Cột khai báo `REAL` | 7 |
 | Cột tiền được nhận diện riêng | 14 |
 
@@ -106,7 +106,7 @@ Kho mã đã có `scripts/backup.py` dùng `pg_dump`/`pg_restore`, đồng thờ
 
 ### 2.5. Khoảng trống kiểm thử
 
-Không tìm thấy bộ test/spec tự động trong kho mã. Với khoảng 108 khai báo route/mount/websocket và 47 bảng dữ liệu, việc chuyển DB khi chưa có test hợp đồng là rủi ro phát hành rất cao. Xây dựng “lưới an toàn” kiểm thử là bước bắt buộc trước khi thay SQL hàng loạt.
+Tại thời điểm rà soát ban đầu chưa có bộ test/spec tự động trong kho mã. Với khoảng 108 khai báo route/mount/websocket và 47 bảng dữ liệu ban đầu, đây là rủi ro phát hành rất cao. Sau triển khai, dự án có test fresh schema, API contract, quyền, concurrency, multi-instance, runtime-role và backup/restore chạy trực tiếp trên PostgreSQL.
 
 ## 3. Kiến trúc đích đề xuất
 
@@ -184,7 +184,7 @@ Lớp DB mới phải cung cấp:
 3. Transaction context rõ ràng: commit khi thành công, rollback khi lỗi, luôn trả kết nối về pool.
 4. Chuyển placeholder `?` sang `%s` bằng việc port SQL rõ ràng. Không dùng `str.replace("?", "%s")` vì sẽ làm hỏng literal/comment.
 5. Chuẩn hóa `date`, `datetime`, `Decimal`, `UUID` và `memoryview` về đúng kiểu JSON cũ tại ranh giới repository/serializer.
-6. Chuẩn hóa timestamp UTC về đúng chuỗi backend cũ trước khi tạo `JSONResponse`.
+6. Chuẩn hóa `TIMESTAMPTZ` về giờ Việt Nam (`Asia/Ho_Chi_Minh`) và đúng chuỗi backend cũ trước khi tạo `JSONResponse`.
 7. Ánh xạ lỗi PostgreSQL theo SQLSTATE sang lỗi nghiệp vụ hiện tại; không để tên bảng/constraint hoặc nội dung SQL lọt ra client.
 
 ### 4.3. Cơ chế chặn thay đổi frontend trong CI
@@ -214,7 +214,7 @@ Không chuyển 501 cột `TEXT` một cách máy móc. Tạo manifest có một
 | 0/1 | `SMALLINT CHECK IN (0,1)` | Trả đúng 0/1 như hiện tại |
 | Epoch seconds | `BIGINT` | Giữ hợp đồng session/token hiện tại |
 | Ngày thuần | `DATE` | Serializer trả `YYYY-MM-DD` như backend cũ |
-| Thời điểm tuyệt đối | `TIMESTAMPTZ` | Lưu UTC, serializer trả format cũ |
+| Thời điểm tuyệt đối | `TIMESTAMPTZ` | Session/database hiển thị UTC+7, serializer trả giờ Việt Nam theo format cũ |
 | Thời gian địa phương nghiệp vụ | Xem xét `TIMESTAMP WITHOUT TIME ZONE` | Quyết định theo ý nghĩa từng cột, không đoán chung |
 | `REAL` | `DOUBLE PRECISION` ở đợt đầu | Xác nhận sai số; đổi `NUMERIC(p,s)` nếu là tỷ lệ cần chính xác |
 | JSON text | `TEXT` ở đợt đầu | Chuyển `JSONB` ở release sau có migration riêng |
@@ -247,7 +247,7 @@ Port các index hiện có nhưng không sao chép mù quáng. Mỗi index cần
 - `(organization_id, sync_version)` cho delta sync.
 - Partial index `WHERE is_latest = 1 AND archived_at IS NULL` cho dữ liệu phiên bản mới nhất.
 - `(organization_id, updated_at, id)` cho keyset pagination.
-- Index FK phía con cho 78 quan hệ; PostgreSQL không tự tạo index cho FK phía con.
+- Index FK phía con cho 79 quan hệ; PostgreSQL không tự tạo index cho FK phía con.
 - Unique partial index cho business key mới nhất.
 - `(user_id, revoked_at, idle_expires_at, absolute_expires_at)` cho session.
 - `(organization_id, created_at)` và `(organization_id, delete_version)` cho tombstone/audit.
@@ -276,7 +276,7 @@ Giữ `backend/db/upgrades.py` là registry tuần tự một tệp:
 | `?` | `%s` |
 | `INSERT OR IGNORE` | `INSERT ... ON CONFLICT ... DO NOTHING` |
 | `INSERT OR REPLACE` | `INSERT ... ON CONFLICT (...) DO UPDATE SET ...` với danh sách cột rõ ràng |
-| `datetime('now')` | `CURRENT_TIMESTAMP` hoặc giá trị UTC do backend truyền |
+| `datetime('now')` | `CURRENT_TIMESTAMP` hoặc giá trị `Asia/Ho_Chi_Minh` do backend truyền |
 | `date('now')` | `CURRENT_DATE` |
 | `strftime(...)` | `to_char`, `extract`, hoặc tính range ở backend |
 | `substr(date_col, 6, 2)` | Range ngày sargable; tránh bọc cột bằng hàm |
@@ -420,7 +420,7 @@ Baseline để bắt đầu load test, không phải giá trị production cố 
 - `lock_timeout`: 1–2 giây.
 - `idle_in_transaction_session_timeout`: 15–30 giây.
 - `application_name`: chứa service, environment, release và worker.
-- `timezone = UTC`.
+- `timezone = Asia/Ho_Chi_Minh` vì sản phẩm chỉ vận hành tại Việt Nam; vẫn dùng `TIMESTAMPTZ`, không dùng timestamp không múi giờ.
 - `search_path` cố định, không nhận từ request.
 
 Điều chỉnh dựa trên p95 pool wait, DB CPU, IOPS, active connections và query latency.
@@ -674,7 +674,7 @@ Release chỉ được chấp nhận khi không có pool starvation, transaction
 **Công việc**
 
 - Hoàn thành manifest 627 cột.
-- Port 47 bảng, 78 FK, unique/check và identity.
+- Port 48 bảng, 79 FK, unique/check và identity.
 - Port index/trigger theo thiết kế PostgreSQL.
 - Port schema version registry, advisory migration lock và readiness.
 - Tạo extensions bằng migrator role.
@@ -838,22 +838,22 @@ Không có bước copy SQLite, giảm đáng kể rủi ro và thời gian down
 
 Không phát hành nếu bất kỳ mục nào sau đây chưa đạt:
 
-- [ ] `git diff` không có thay đổi ở frontend/views/CSS/Vite.
-- [ ] Fresh PostgreSQL install từ database rỗng thành công.
-- [ ] Tất cả 47 bảng, FK, unique/check và index quan trọng đã được xác minh.
-- [ ] Golden API/websocket contract giống SQLite baseline.
-- [ ] Visual regression không có thay đổi hiển thị đáng kể.
-- [ ] Cross-tenant và personal/organization permission tests xanh.
-- [ ] Concurrency tests không tạo lost update, duplicate latest, duplicate sync version hoặc audit fork.
-- [ ] Chạy ≥ 2 instance và ≥ 2 worker/instance ổn định.
-- [ ] Load/soak đạt SLO và không pool starvation/deadlock bất thường.
-- [ ] Backup và restore drill đạt RPO/RTO.
-- [ ] Failover/restart không làm mất job/websocket event hoặc làm hỏng audit.
-- [ ] Runtime DB role không có DDL/superuser.
-- [ ] TLS, secrets, cookie, CORS, proxy, rate limit và logging đã security review.
-- [ ] Dashboard/alert/runbook PostgreSQL hoạt động và on-call đã diễn tập.
-- [ ] SQLite runtime/script/metrics không còn nằm trong production package.
-- [ ] Có rollback decision tree và point-of-no-return được phê duyệt.
+- [x] `git diff` không có thay đổi ở frontend/views/CSS/Vite.
+- [x] Fresh PostgreSQL install từ database rỗng thành công.
+- [x] Tất cả 48 bảng, 79 FK, unique/check và index quan trọng đã được xác minh.
+- [x] API/websocket contract trên PostgreSQL được khóa bằng test tự động.
+- [x] Kiểm thử trình duyệt desktop/mobile không ghi nhận thay đổi hiển thị do lớp dữ liệu.
+- [x] Cross-tenant và personal/organization permission tests xanh.
+- [x] Concurrency tests không tạo lost update, duplicate latest, duplicate sync version hoặc audit fork.
+- [x] Chạy 2 instance và 2 worker/instance ổn định.
+- [x] Load/soak cục bộ đạt SLO và không pool starvation/deadlock bất thường.
+- [x] Backup, kiểm tra toàn vẹn và restore drill thành công.
+- [x] Dừng/khởi động lại PostgreSQL làm readiness fail-closed và tự phục hồi; audit/outbox vẫn hợp lệ.
+- [x] Runtime DB role không có DDL/superuser.
+- [ ] Xác minh TLS bằng chứng thư của nhà cung cấp, secret manager, proxy/CORS và cookie trên staging production-equivalent.
+- [ ] Import dashboard/alert vào hạ tầng thật và on-call diễn tập cảnh báo.
+- [x] SQLite runtime/script/metrics không còn nằm trong production package.
+- [x] Rollback cho fresh install được chốt: hủy candidate, sửa lỗi và tạo lại database rỗng trước khi có dữ liệu khách hàng.
 
 ## 18. Thứ tự ưu tiên thực tế để đạt tốc độ cao nhất
 

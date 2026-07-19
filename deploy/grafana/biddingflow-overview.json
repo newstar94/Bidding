@@ -39,11 +39,10 @@
     },
     {
       "id": 5,
-      "title": "SQLite DB / WAL size",
+      "title": "PostgreSQL database size",
       "type": "timeseries",
       "targets": [
-        {"refId": "A", "expr": "biddingflow_sqlite_database_bytes", "legendFormat": "database"},
-        {"refId": "B", "expr": "biddingflow_sqlite_wal_bytes", "legendFormat": "WAL"}
+        {"refId": "A", "expr": "biddingflow_postgres_database_bytes", "legendFormat": "database bytes"}
       ],
       "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}

@@ -7,6 +7,7 @@ contiguous and must never be rewritten after release.
 """
 
 from dataclasses import dataclass
+import uuid
 
 
 BASELINE_SCHEMA_VERSION = 1
@@ -46,8 +47,10 @@ DB_SCHEMA_VERSION = (
 def read_database_version(cursor):
     """Return the installed version, or ``None`` for a database without metadata."""
     metadata_exists = cursor.execute(
-        """SELECT 1 FROM sqlite_master
-           WHERE type = 'table' AND name = 'database_metadata'"""
+        """SELECT 1
+           FROM information_schema.tables
+           WHERE table_schema = current_schema()
+             AND table_name = 'database_metadata'"""
     ).fetchone()
     if not metadata_exists:
         return None
@@ -56,27 +59,20 @@ def read_database_version(cursor):
     ).fetchone()
     if not row:
         raise RuntimeError("database_metadata is missing its singleton version row.")
-    version = int(row[0])
-    pragma_version = int(cursor.execute("PRAGMA user_version").fetchone()[0])
-    if pragma_version != version:
-        raise RuntimeError(
-            "Database version metadata does not match PRAGMA user_version."
-        )
-    return version
+    return int(row[0])
 
 
 def record_database_version(cursor, version, *, baseline=BASELINE_NAME):
     version = int(version)
     cursor.execute(
-        """INSERT INTO database_metadata (id, schema_version, baseline)
-           VALUES (1, ?, ?)
+        """INSERT INTO database_metadata (id, schema_version, baseline, installation_id)
+           VALUES (1, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
                schema_version = excluded.schema_version,
                baseline = excluded.baseline,
-               updated_at = datetime('now')""",
-        (version, baseline),
+               updated_at = CURRENT_TIMESTAMP""",
+        (version, baseline, str(uuid.uuid4())),
     )
-    cursor.execute(f"PRAGMA user_version = {version}")
 
 
 def apply_database_upgrades(cursor, current_version, context):

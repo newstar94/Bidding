@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import datetime
 
 from backend.shared.helpers import database
 from backend.documents.docx_context_policy import project_docx_context
+from backend.shared.date_utils import vietnam_now, vietnam_today
 
 
 TIMELINE_TEMPLATE_VERSION = 1
@@ -361,7 +362,7 @@ def build_timeline_context(package_id, user_id, organization_id):
                     item.get("ngay_du_kien")
                     and not item.get("ngay_thuc_te")
                     and item.get("trang_thai") not in {"DONE", "NOT_APPLICABLE"}
-                    and _date_only(item.get("ngay_du_kien")) < date.today().isoformat()
+                    and _date_only(item.get("ngay_du_kien")) < vietnam_today().isoformat()
                 ),
             })
             section_items.append(item)
@@ -375,7 +376,7 @@ def build_timeline_context(package_id, user_id, organization_id):
         "chu_dau_tu": investor,
         "to_chuc": organization,
         "timeline_sections": sections,
-        "generated_date": datetime.now().strftime("%d/%m/%Y"),
+        "generated_date": vietnam_now().strftime("%d/%m/%Y"),
         "planned_date_note": "Ngày màu đỏ là ngày dự kiến/chưa xác nhận.",
     }
     return project_docx_context("timeline", context)

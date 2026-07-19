@@ -32,7 +32,7 @@ def create_password_reset(database, username, email, requested_ip, now=None):
     current_time = int(time.time() if now is None else now)
     conn = database.get_connection()
     try:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         conn.execute(
             "DELETE FROM password_reset_tokens WHERE expires_at <= ? OR used_at IS NOT NULL",
             (current_time,),
@@ -101,7 +101,7 @@ def redeem_password_reset(
     current_time = int(time.time() if now is None else now)
     conn = database.get_connection()
     try:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         row = conn.execute(
             """
             SELECT id, user_id, expires_at, used_at

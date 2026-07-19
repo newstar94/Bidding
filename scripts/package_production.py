@@ -11,6 +11,9 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
+
+import psycopg
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -31,13 +34,9 @@ RUNTIME_FILES = (
     "holidays.json",
     "pyproject.toml",
     "requirements.txt",
-    "data/templates/words/mau_bao_cao_dau_thau.docx",
-    "data/templates/words/mau_hop_dong_lcnt.docx",
-    "data/templates/words/mau_timeline_goi_thau.docx",
-    "scripts/backup_database.py",
-    "scripts/check_database.py",
-    "scripts/full_state_backup.py",
-    "scripts/restore_database.py",
+    "scripts/backup.py",
+    "scripts/configure_database_roles.py",
+    "scripts/manage_database.py",
 )
 
 FORBIDDEN_PARTS = {
@@ -54,6 +53,17 @@ FORBIDDEN_PARTS = {
 FORBIDDEN_NAMES = {".env", "bidding.db", "bidding.db-shm", "bidding.db-wal"}
 FORBIDDEN_SUFFIXES = {".bak", ".db", ".log", ".pyc", ".tmp"}
 REPRODUCIBLE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
+def _load_env() -> None:
+    path = PROJECT_ROOT / ".env"
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        if not line or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def _relative(path: Path) -> Path:
@@ -148,13 +158,30 @@ def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
     """Boot the application from extracted bytes, not from the source tree."""
     with zipfile.ZipFile(archive_path) as archive:
         archive.extractall(extraction_root)
-    database_path = extraction_root / "runtime" / "smoke.db"
-    database_path.parent.mkdir()
+    database_url = (
+        os.environ.get("PACKAGE_SMOKE_DATABASE_URL")
+        or os.environ.get("API_TEST_DATABASE_URL")
+        or ""
+    ).strip()
+    parsed = urlparse(database_url)
+    if parsed.scheme not in {"postgresql", "postgres"} or not any(
+        marker in parsed.path.casefold() for marker in ("test", "smoke")
+    ):
+        raise RuntimeError(
+            "PACKAGE_SMOKE_DATABASE_URL must reference an isolated PostgreSQL test database."
+        )
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        connection.execute("CREATE SCHEMA public")
     environment = os.environ.copy()
     environment.update({
         "APP_ENV": "test",
+        "APP_DEBUG": "False",
         "ADMIN_PASSWORD": "Production-smoke-only-123!",  # pragma: allowlist secret
-        "BIDDING_DB_PATH": str(database_path.resolve()),
+        "DATABASE_URL": database_url,
+        "DATABASE_AUTO_MIGRATE": "true",
+        "APP_SECURE_COOKIES": "False",
+        "AUDIT_CHECKPOINT_DIR": "",
         "PYTHONPATH": str(extraction_root.resolve()),
     })
     smoke_code = """
@@ -182,6 +209,7 @@ assert session.status_code == 200 and session.json().get('valid') is False
 
 
 def main() -> int:
+    _load_env()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(

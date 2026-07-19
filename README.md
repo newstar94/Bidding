@@ -1,15 +1,15 @@
 # BiddingFlow
 
-Ứng dụng quản lý quy trình lựa chọn nhà thầu, gồm backend Starlette, SQLite và frontend ES modules được build bằng Vite.
+Ứng dụng quản lý quy trình lựa chọn nhà thầu, gồm backend Starlette, PostgreSQL và frontend ES modules được build bằng Vite.
 
-## Yêu cầu hệ thống
+## Yêu cầu
 
-- Python theo phiên bản trong `.python-version`.
-- Node.js 24 khi chỉnh sửa frontend hoặc tạo gói phát hành.
-- HTTPS reverse proxy khi chạy production.
-- Volume bền vững và được mã hóa cho database, media và backup.
+- Python theo `.python-version`.
+- PostgreSQL 17+.
+- Node.js 24 khi build frontend hoặc đóng gói phát hành.
+- HTTPS reverse proxy và volume mã hóa cho media/backup ở production.
 
-## Cài đặt mã nguồn tối giản
+## Cài đặt fresh
 
 ```bash
 python -m pip install --require-hashes -r requirements.txt
@@ -17,8 +17,48 @@ npm ci
 npm run build:secure
 ```
 
-Repository đã được thu gọn cho vận hành production. Bộ kiểm thử, load test,
-CI và các công cụ audit không được triển khai cùng ứng dụng.
+Tạo `.env` từ `.env.example`, cấu hình `DATABASE_URL` và tài khoản quản trị ban đầu. BiddingFlow chỉ hỗ trợ PostgreSQL; không có luồng nhập hay tương thích dữ liệu SQLite cũ.
+
+Khởi tạo schema bằng credential migrator:
+
+```bash
+python scripts/manage_database.py
+```
+
+Sau đó khởi động ứng dụng bằng runtime role không có quyền DDL:
+
+```bash
+python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 4
+```
+
+Chỉ chuyển traffic khi cả `/health/live` và `/health/ready` trả 200.
+
+## Phát triển cục bộ trên Windows
+
+Script sau dùng PostgreSQL 17 portable đã giải nén tại `data/tools/postgresql17/pgsql`, tạo các database dev/test riêng và không in credential:
+
+```powershell
+python scripts/setup_local_postgres.py
+python scripts/manage_database.py
+pytest -q tests
+```
+
+`--reset` chỉ dùng cho các database cục bộ dùng một lần:
+
+```powershell
+python scripts/setup_local_postgres.py --reset
+```
+
+## Backup và restore drill
+
+```bash
+python scripts/backup.py create
+python scripts/backup.py verify --snapshot <thu-muc-backup>
+python scripts/backup.py restore --snapshot <thu-muc-backup>
+python scripts/backup.py drill --snapshot <thu-muc-backup>
+```
+
+`drill` bắt buộc dùng `RESTORE_DRILL_DATABASE_URL` khác database chính và tạo marker HMAC để metrics vận hành xác minh. Công cụ truyền credential qua biến môi trường PostgreSQL, không đưa mật khẩu lên command line.
 
 ## Tạo gói production
 
@@ -26,46 +66,10 @@ CI và các công cụ audit không được triển khai cùng ứng dụng.
 npm run package:production
 ```
 
-Artifact mặc định được tạo tại `release/biddingflow-production.zip`. Archive sử dụng allowlist, không chứa `.env`, database, test, source frontend, cache hoặc dependency phát triển.
+Artifact mặc định là `release/biddingflow-production.zip`. Allowlist loại `.env`, dữ liệu runtime, test, source frontend và công cụ SQLite cũ. Mẫu systemd, Nginx, Prometheus và Grafana nằm trong `deploy/`.
 
-## Cấu hình production
+## Quy ước dữ liệu ngày giờ
 
-1. Giải nén archive vào thư mục ứng dụng chỉ đọc.
-2. Cài dependency runtime:
-
-   ```bash
-   python -m pip install --require-hashes -r requirements.txt
-   ```
-
-3. Tạo `.env` từ `.env.example` ở bên ngoài source control.
-4. Cấu hình tối thiểu:
-
-   - `APP_ENV=production`
-   - `APP_DEBUG=False`
-   - `APP_SECURE_COOKIES=True`
-   - `APP_PUBLIC_URL=https://<ten-mien>`
-   - `CORS_ORIGINS` và `ALLOWED_WS_ORIGINS` đúng bằng public URL
-   - `BIDDING_DB_PATH` trỏ tới volume dữ liệu bền vững
-   - `DATA_AT_REST_ENCRYPTION_CONFIRMED=true` sau khi xác minh mã hóa volume
-   - `SUPER_ADMIN_IP_ALLOWLIST` và `TRUSTED_PROXY_CIDRS` theo hạ tầng thực tế
-
-5. Với database mới, cấu hình `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_NAME`, `ADMIN_EMAIL` và `DEFAULT_ORG_NAME` để bootstrap lần đầu.
-6. Khởi động qua Uvicorn/systemd theo mẫu trong `deploy/`.
-7. Chỉ chuyển traffic khi `/health/ready` trả thành công.
-
-## Backup và kiểm tra database
-
-```bash
-python scripts/check_database.py --database <duong-dan-db>
-python scripts/backup_database.py --help
-python scripts/restore_database.py --help
-```
-
-Luôn diễn tập restore trên môi trường tách biệt trước khi phát hành. Không sao chép database phát triển để khởi tạo production.
-
-## Quy ước ngày giờ
-
-- Ngày lưu trong database: `YYYY-MM-DD`.
-- Thời điểm lưu trong database: `YYYY-MM-DD HH:mm:ss`.
-- Hiển thị tiếng Việt: ngày có hai chữ số; tháng `01`, `02` có số 0, tháng `3`–`12` không thêm số 0.
-- Thời điểm hiển thị: `HH:mm ngày dd/M/yyyy` theo quy tắc tháng trên.
+- Cột ngày dùng PostgreSQL `DATE`, hợp đồng API giữ chuỗi `YYYY-MM-DD`.
+- Cột thời điểm dùng `TIMESTAMPTZ`; database và mọi session SQL mặc định `Asia/Ho_Chi_Minh`, nên truy vấn/API hiển thị giờ Việt Nam theo chuỗi `YYYY-MM-DD HH:mm:ss`.
+- Việc hiển thị do frontend hiện có đảm nhiệm và không thay đổi trong quá trình chuyển database.

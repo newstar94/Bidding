@@ -18,8 +18,11 @@ data/logs/
 
 # Local runtime operations
 data/backups/
+data/backup-corruption-test-*/
 data/audit-checkpoints/
 data/document-worker-temp/
+data/postgresql*/
+data/tools/
 
 # Runtime images and user-specific Word templates
 data/templates/images/

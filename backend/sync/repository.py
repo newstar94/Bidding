@@ -16,7 +16,7 @@ DELETED_RECORD_UPSERT_SQL = """
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(organization_id, table_name, record_id) DO UPDATE SET
         deleted_at = excluded.deleted_at,
-        delete_version = MAX(COALESCE(deleted_records.delete_version, 0), COALESCE(excluded.delete_version, 0))
+        delete_version = GREATEST(COALESCE(deleted_records.delete_version, 0), COALESCE(excluded.delete_version, 0))
 """
 
 
@@ -34,16 +34,14 @@ def defer_version_latest_flag(table_name, row_data):
 
 def next_sync_version(cursor, organization_id):
     cursor.execute(
-        "INSERT OR IGNORE INTO sync_metadata (organization_id, current_version) VALUES (?, 0)",
+        "INSERT INTO sync_metadata (organization_id, current_version) VALUES (?, 0) ON CONFLICT (organization_id) DO NOTHING",
         (organization_id,),
     )
-    cursor.execute(
+    row = cursor.execute(
         "UPDATE sync_metadata SET current_version = current_version + 1, "
-        "updated_at = datetime('now') WHERE organization_id = ?",
+        "updated_at = CURRENT_TIMESTAMP WHERE organization_id = ? RETURNING current_version",
         (organization_id,),
-    )
-    cursor.execute("SELECT current_version FROM sync_metadata WHERE organization_id = ?", (organization_id,))
-    row = cursor.fetchone()
+    ).fetchone()
     return int(row[0] if row else 0)
 
 

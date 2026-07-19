@@ -1,6 +1,7 @@
 """Canonical account identity handling shared by every authentication flow."""
 
-import sqlite3
+from backend.db.db_helper import IntegrityError
+
 
 
 GOOGLE_ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
@@ -15,17 +16,20 @@ def normalize_email(value):
 
 
 def identity_conflict_code(error):
-    """Map SQLite uniqueness failures to a stable public field error code."""
-    if not isinstance(error, sqlite3.IntegrityError):
+    """Map PostgreSQL uniqueness failures to stable public error codes."""
+    if not isinstance(error, IntegrityError):
         return None
-    message = str(error).casefold()
-    if "username_norm" in message:
+    constraint = str(getattr(getattr(error, "diag", None), "constraint_name", "") or "").casefold()
+    message = f"{constraint} {error}".casefold()
+    if "tai_khoan_username_norm" in message or "username_norm" in message:
         return "USERNAME_ALREADY_EXISTS"
-    if "email_norm" in message and "dinh_danh_ngoai" not in message:
+    if "tai_khoan_email_norm" in message or (
+        "email_norm" in message and "dinh_danh_ngoai" not in message
+    ):
         return "EMAIL_ALREADY_EXISTS"
-    if "dinh_danh_ngoai.issuer" in message or "dinh_danh_ngoai.subject" in message:
+    if "dinh_danh_ngoai_pkey" in message or "issuer" in message and "subject" in message:
         return "EXTERNAL_IDENTITY_ALREADY_LINKED"
-    if "dinh_danh_ngoai.user_id" in message:
+    if "dinh_danh_ngoai_user_id_issuer" in message:
         return "EXTERNAL_PROVIDER_ALREADY_LINKED"
     return None
 

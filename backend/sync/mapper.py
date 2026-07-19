@@ -458,9 +458,14 @@ def _save_package_expert_relations(cursor, parent_id, item, organization_id, own
             ))
         if rows:
             cursor.executemany("""
-                INSERT OR REPLACE INTO goi_thau_chuyen_gia (
+                INSERT INTO goi_thau_chuyen_gia (
                     organization_id, owner_type, goi_thau_id, chuyen_gia_id, loai, chuc_vu, cong_viec
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (organization_id, goi_thau_id, chuyen_gia_id, loai)
+                DO UPDATE SET owner_type = EXCLUDED.owner_type,
+                              chuc_vu = EXCLUDED.chuc_vu,
+                              cong_viec = EXCLUDED.cong_viec,
+                              updated_at = CURRENT_TIMESTAMP
             """, rows)
 
 
@@ -660,7 +665,7 @@ def _save_member_children(cursor, child_table, parent_col, parent_id, item, orga
 
 
 def _save_opening_participant_registry(cursor, opening_id, item, organization_id, owner_type):
-    """Materialize bidder identities so SQLite can enforce scope uniqueness."""
+    """Materialize bidder identities so the database enforces scope uniqueness."""
     cursor.execute(
         "DELETE FROM nha_thau_tham_du_mo_thau WHERE organization_id = ? AND thong_tin_mo_thau_id = ?",
         (organization_id, opening_id),
@@ -788,7 +793,8 @@ def _select_children(cursor, table, parent_col, parent_ids, organization_id=None
 
 def _table_exists(cursor, table_name):
     return cursor.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        """SELECT 1 FROM information_schema.tables
+           WHERE table_schema = current_schema() AND table_name = ?""",
         (table_name,),
     ).fetchone() is not None
 

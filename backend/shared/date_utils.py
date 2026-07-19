@@ -1,4 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+VIETNAM_TIMEZONE_NAME = "Asia/Ho_Chi_Minh"
+VIETNAM_TIMEZONE = ZoneInfo(VIETNAM_TIMEZONE_NAME)
 
 
 DATETIME_COLUMNS = {
@@ -55,6 +60,23 @@ def normalize_date_value(value):
     return parsed.strftime("%Y-%m-%d")
 
 
-def utc_now_sql():
-    """Canonical persisted technical timestamp: UTC, second precision."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+def vietnam_now():
+    """Return the current timezone-aware Vietnam business time."""
+    return datetime.now(VIETNAM_TIMEZONE)
+
+
+def vietnam_today():
+    """Return the current business date in Vietnam."""
+    return vietnam_now().date()
+
+
+def vietnam_now_sql():
+    """Canonical SQL wall-clock timestamp in Asia/Ho_Chi_Minh."""
+    return vietnam_now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def vietnam_date_from_epoch(value):
+    """Format a Unix instant as its Vietnam business date."""
+    if value in (None, ""):
+        return None
+    return datetime.fromtimestamp(int(value), VIETNAM_TIMEZONE).strftime("%Y-%m-%d")

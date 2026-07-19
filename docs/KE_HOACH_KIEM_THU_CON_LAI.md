@@ -12,7 +12,7 @@
 | Google Login thực tế | Cho phép chính xác origin `http://127.0.0.1:8000`/domain production trong Google Cloud; đăng nhập thành công; người dùng hủy; tài khoản chưa đăng ký; callback hết hạn; đăng xuất rồi đăng ký tài khoản Google thứ hai; trình duyệt chặn popup | Không còn `GSI_LOGGER origin is not allowed`; không tạo phiên sai, không lộ thông tin xác thực, modal đặt username luôn dùng lại được, thông báo lỗi rõ ràng | Ảnh màn hình, HTTP status của iframe/callback và log đã che dữ liệu nhạy cảm |
 | Email OTP thực tế | Nhận mã; gửi lại; mã sai; mã hết hạn; dùng lại mã; giới hạn gửi và nhập sai | Chỉ mã mới nhất còn hiệu lực, giới hạn tốc độ hoạt động, email đến đúng người nhận | Thời gian gửi/nhận, mã phản hồi API, ảnh email đã che mã |
 | Ma trận quyền đầy đủ | Với từng phân hệ: `không quyền`, `chỉ xem`, `sửa`; kiểm tra thêm/sửa/xóa/nhập Excel/xem chi tiết | Giao diện ẩn hoặc khóa đúng thao tác và API vẫn từ chối mọi yêu cầu vượt quyền | Bảng kết quả theo vai trò và phân hệ |
-| Xung đột đồng thời | Hai người cùng sửa một bản ghi; sửa trong khi người khác xóa; hai thẻ cùng gửi mutation; mất mạng rồi kết nối lại | Không mất dữ liệu âm thầm; có cảnh báo xung đột; hàng đợi không gửi lặp vô hạn | Log hai phiên, dữ liệu cuối trong SQLite |
+| Xung đột đồng thời | Hai người cùng sửa một bản ghi; sửa trong khi người khác xóa; hai thẻ cùng gửi mutation; mất mạng rồi kết nối lại | Không mất dữ liệu âm thầm; có cảnh báo xung đột; không gửi lặp vô hạn | Log hai phiên, dữ liệu cuối trong PostgreSQL |
 | Sao lưu và khôi phục | Sao lưu khi hệ thống đang hoạt động; khôi phục sang máy mới; kiểm tra tệp hỏng; kiểm tra quyền truy cập tệp | Khôi phục đủ tài khoản, tổ chức, nghiệp vụ và tệp đính kèm; có lỗi rõ ràng với bản sao hỏng | Hash tệp sao lưu, biên bản khôi phục |
 | Nâng cấp cơ sở dữ liệu | Chạy hàm nâng cấp trong `backend/db/upgrades.py` trên bản sao dữ liệu production; chạy lại; khởi động bằng schema cũ/thiếu | Nâng cấp chạy một lần, không mất dữ liệu, có phương án quay lui | Bản sao trước/sau và kết quả kiểm tra số lượng bản ghi |
 
@@ -24,7 +24,7 @@
 | Tra cứu mã số thuế | Thành công; không tìm thấy; `404`; `429`; timeout; phản hồi sai cấu trúc; mất mạng | Form vẫn dùng được khi dịch vụ ngoài lỗi, không ghi đè dữ liệu người dùng và có thông báo phù hợp |
 | Word thực tế | Mẫu lớn; trường thiếu; bảng lặp; ảnh/chữ ký; Unicode; tên tệp dài; mở bằng các phiên bản Word phổ biến | Tệp xuất mở được, không hỏng bố cục nghiêm trọng và không chèn dữ liệu sai tổ chức |
 | Tệp đính kèm | Ảnh hợp lệ; sai định dạng; quá dung lượng; tệp giả phần mở rộng; tên tệp đặc biệt | Máy chủ kiểm tra lại loại và kích thước, không thực thi nội dung tải lên, URL chỉ truy cập đúng phạm vi |
-| Tải đồng thời | Nhiều người đăng nhập, phân trang, đồng bộ, nhập Excel và xuất Word cùng lúc | Không tăng lỗi `5xx`, không khóa SQLite kéo dài, thời gian phản hồi nằm trong ngưỡng đã thống nhất |
+| Tải đồng thời | Nhiều người đăng nhập, phân trang, đồng bộ, nhập Excel và xuất Word cùng lúc | Không tăng lỗi `5xx`, không cạn pool/lock PostgreSQL kéo dài, thời gian phản hồi nằm trong ngưỡng đã thống nhất |
 
 ## P2 — Tương thích và chất lượng vận hành
 

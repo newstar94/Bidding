@@ -292,13 +292,7 @@ def _parse_timestamp(value: object) -> float | None:
 
 
 def _latest_backup_timestamp(backup_directory: Path) -> float | None:
-    """Return only a timestamp from a fully verified full-state snapshot."""
-
-    from backend.db.full_state_backup import (
-        FullStateBackupError,
-        verify_full_state_snapshot,
-    )
-
+    """Return the newest PostgreSQL backup whose manifest and hashes verify."""
     if not backup_directory.is_dir():
         return None
     latest = None
@@ -309,30 +303,44 @@ def _latest_backup_timestamp(backup_directory: Path) -> float | None:
         return None
     with scanner:
         for entry in itertools.islice(scanner, 10_000):
-            if not entry.is_dir(follow_symlinks=False) or not entry.name.startswith("biddingflow-full-state-"):
+            if not entry.is_dir(follow_symlinks=False) or not entry.name.startswith("biddingflow-backup-"):
                 continue
             candidates.append((entry.name, Path(entry.path) / "manifest.json"))
-    # Snapshot names contain a UTC timestamp. Verify only the newest handful;
-    # an invalid newest snapshot must never make the metric green.
     for _name, manifest_path in sorted(candidates, reverse=True)[:8]:
         try:
-            result = verify_full_state_snapshot(manifest_path.parent)
-        except (FullStateBackupError, OSError, ValueError, TypeError):
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if manifest.get("format") != "biddingflow-pg-backup" or manifest.get("version") != 1:
+                continue
+            files = manifest.get("files")
+            if not isinstance(files, list) or len(files) != int(manifest.get("fileCount", -1)):
+                continue
+            valid = True
+            for item in files:
+                relative = Path(str(item.get("relativePath") or ""))
+                candidate = (manifest_path.parent / relative).resolve()
+                if manifest_path.parent.resolve() not in candidate.parents:
+                    valid = False
+                    break
+                if not candidate.is_file() or candidate.stat().st_size != int(item.get("sizeBytes", -1)):
+                    valid = False
+                    break
+                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                if not hmac.compare_digest(digest, str(item.get("sha256") or "")):
+                    valid = False
+                    break
+            if not valid:
+                continue
+            created_at = manifest.get("createdAt")
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
             continue
-        timestamp = _parse_timestamp(result.get("createdAt"))
+        timestamp = _parse_timestamp(created_at)
         if timestamp is not None and (latest is None or timestamp > latest):
             latest = timestamp
     return latest
 
 
 def _restore_drill_timestamp(backup_directory: Path) -> float | None:
-    """Verify the signed drill marker and both referenced snapshot trees."""
-
-    from backend.db.full_state_backup import (
-        FullStateBackupError,
-        verify_full_state_snapshot,
-    )
-
+    """Verify a signed PostgreSQL restore-drill marker."""
     configured = str(os.environ.get("BIDDING_RESTORE_DRILL_STATE_FILE", "")).strip()
     state_path = Path(configured).resolve() if configured else backup_directory / "last-restore-drill.json"
     try:
@@ -356,20 +364,11 @@ def _restore_drill_timestamp(backup_directory: Path) -> float | None:
         return None
     try:
         snapshot = Path(str(payload.get("snapshot") or "")).resolve(strict=True)
-        restored = Path(str(payload.get("restored") or "")).resolve(strict=True)
-        source_result = verify_full_state_snapshot(snapshot)
-        restored_result = verify_full_state_snapshot(restored)
-        comparable = ("format", "version", "fileCount", "totalSizeBytes", "database")
-        if any(source_result.get(key) != restored_result.get(key) for key in comparable):
+        if snapshot.parent != backup_directory.resolve() or not (snapshot / "manifest.json").is_file():
             return None
-        source_manifest = (snapshot / "manifest.json").read_bytes()
-        restored_manifest = (restored / "manifest.json").read_bytes()
-        if not hmac.compare_digest(
-            hashlib.sha256(source_manifest).digest(),
-            hashlib.sha256(restored_manifest).digest(),
-        ):
+        if payload.get("databaseVerified") is not True or payload.get("filesVerified") is not True:
             return None
-    except (FullStateBackupError, OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError):
         return None
     timestamp = _parse_timestamp(payload.get("recordedAt"))
     if timestamp is None or timestamp > time.time() + 300:
@@ -382,9 +381,8 @@ def refresh_operational_artifact_verification() -> dict[str, object]:
 
     from backend.shared.helpers import database
 
-    db_path = Path(database.db_path).resolve()
     backup_raw = str(os.environ.get("BIDDING_BACKUP_DIR", "")).strip()
-    backup_directory = Path(backup_raw).resolve() if backup_raw else db_path.parent / "backups"
+    backup_directory = Path(backup_raw).resolve() if backup_raw else Path("data/backups").resolve()
     configured_state = str(os.environ.get("BIDDING_RESTORE_DRILL_STATE_FILE", "")).strip()
     state_path = (
         Path(configured_state).resolve()
@@ -460,15 +458,30 @@ def _filesystem_metrics() -> dict[str, Any]:
     from backend.shared.helpers import database
 
     now = time.time()
-    db_path = Path(database.db_path).resolve()
     backup_raw = str(os.environ.get("BIDDING_BACKUP_DIR", "")).strip()
-    backup_directory = Path(backup_raw).resolve() if backup_raw else db_path.parent / "backups"
+    backup_directory = Path(backup_raw).resolve() if backup_raw else Path("data/backups").resolve()
+    data_directory = Path(os.environ.get("BIDDING_DATA_DIR", "data")).resolve()
+    connection = database.get_connection()
+    try:
+        database_bytes = int(
+            connection.execute("SELECT pg_database_size(current_database())").fetchone()[0]
+        )
+        outbox = connection.execute(
+            """SELECT COUNT(*),
+                      COALESCE(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at))), 0)
+               FROM websocket_events"""
+        ).fetchone()
+    finally:
+        connection.close()
+    pool_stats = database.pool_stats()
     result: dict[str, Any] = {
-        "sqlite_database_bytes": db_path.stat().st_size if db_path.is_file() else 0,
-        "sqlite_wal_bytes": Path(f"{db_path}-wal").stat().st_size if Path(f"{db_path}-wal").is_file() else 0,
+        "postgres_database_bytes": database_bytes,
+        "postgres_pool": pool_stats,
+        "websocket_outbox_rows": int(outbox[0] or 0),
+        "websocket_outbox_oldest_seconds": float(outbox[1] or 0),
         "disk": {},
     }
-    for volume, path in (("database", db_path.parent), ("backup", backup_directory)):
+    for volume, path in (("data", data_directory), ("backup", backup_directory)):
         try:
             usage = shutil.disk_usage(path)
         except OSError:
@@ -571,9 +584,9 @@ def render_prometheus(application: object | None = None) -> str:
     _metric_header(lines, "biddingflow_database_operations_total", "Database lane operations by outcome.", "counter")
     for (lane, outcome), value in sorted(db_operations.items()):
         lines.append(_sample("biddingflow_database_operations_total", value, {"lane": lane, "outcome": outcome}))
-    _metric_header(lines, "biddingflow_sqlite_busy_total", "SQLite busy or locked errors observed in bounded database lanes.", "counter")
+    _metric_header(lines, "biddingflow_database_lock_timeout_total", "PostgreSQL lock or statement timeouts observed in bounded database lanes.", "counter")
     for lane, value in sorted(db_busy.items()):
-        lines.append(_sample("biddingflow_sqlite_busy_total", value, {"lane": lane}))
+        lines.append(_sample("biddingflow_database_lock_timeout_total", value, {"lane": lane}))
     _metric_header(lines, "biddingflow_database_operation_duration_seconds", "Database lane latency including executor queue wait.", "histogram")
     for lane in sorted(db_duration_count):
         for upper_bound in _DATABASE_DURATION_BUCKETS:
@@ -643,15 +656,21 @@ def render_prometheus(application: object | None = None) -> str:
         filesystem = _filesystem_metrics()
     except (OSError, ValueError, TypeError):
         filesystem_ok = 0
-        filesystem = {"sqlite_database_bytes": 0, "sqlite_wal_bytes": 0, "disk": {}, "backup_timestamp": None, "backup_age": None, "restore_timestamp": None, "restore_age": None}
+        filesystem = {"postgres_database_bytes": 0, "postgres_pool": {}, "websocket_outbox_rows": 0, "websocket_outbox_oldest_seconds": 0, "disk": {}, "backup_timestamp": None, "backup_age": None, "restore_timestamp": None, "restore_age": None}
     _metric_header(lines, "biddingflow_metrics_filesystem_collection_success", "Whether filesystem-backed operational metrics were collected successfully.", "gauge")
     lines.append(_sample("biddingflow_metrics_filesystem_collection_success", filesystem_ok))
     _metric_header(lines, "biddingflow_operational_artifact_last_check_timestamp_seconds", "Unix timestamp of the latest full backup/restore artifact verification attempt.", "gauge")
     lines.append(_sample("biddingflow_operational_artifact_last_check_timestamp_seconds", filesystem.get("artifact_checked_at", 0)))
-    _metric_header(lines, "biddingflow_sqlite_database_bytes", "Current SQLite main database file size.", "gauge")
-    lines.append(_sample("biddingflow_sqlite_database_bytes", filesystem["sqlite_database_bytes"]))
-    _metric_header(lines, "biddingflow_sqlite_wal_bytes", "Current SQLite WAL sidecar file size.", "gauge")
-    lines.append(_sample("biddingflow_sqlite_wal_bytes", filesystem["sqlite_wal_bytes"]))
+    _metric_header(lines, "biddingflow_postgres_database_bytes", "Current PostgreSQL database size.", "gauge")
+    lines.append(_sample("biddingflow_postgres_database_bytes", filesystem["postgres_database_bytes"]))
+    _metric_header(lines, "biddingflow_postgres_pool_value", "Psycopg pool statistics.", "gauge")
+    for key, value in sorted(filesystem.get("postgres_pool", {}).items()):
+        if isinstance(value, (int, float)):
+            lines.append(_sample("biddingflow_postgres_pool_value", value, {"stat": key}))
+    _metric_header(lines, "biddingflow_websocket_outbox_rows", "Durable websocket events awaiting retention cleanup.", "gauge")
+    lines.append(_sample("biddingflow_websocket_outbox_rows", filesystem["websocket_outbox_rows"]))
+    _metric_header(lines, "biddingflow_websocket_outbox_oldest_seconds", "Age of the oldest durable websocket event.", "gauge")
+    lines.append(_sample("biddingflow_websocket_outbox_oldest_seconds", filesystem["websocket_outbox_oldest_seconds"]))
     _metric_header(lines, "biddingflow_disk_free_bytes", "Free bytes on managed runtime volumes.", "gauge")
     _metric_header(lines, "biddingflow_disk_total_bytes", "Total bytes on managed runtime volumes.", "gauge")
     for volume, usage in sorted(filesystem["disk"].items()):

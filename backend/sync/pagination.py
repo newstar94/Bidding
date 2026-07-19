@@ -1,8 +1,9 @@
 """Server-side pagination for synchronized entity tables."""
 
+from backend.db.db_helper import DatabaseError
+
 import base64
 import json
-import sqlite3
 
 from starlette.responses import JSONResponse
 
@@ -31,12 +32,11 @@ from backend.sync.mapper import (
     map_db_to_json,
 )
 from backend.sync.queries import (
-    FTS_SEARCH_TABLES,
     TABLE_KEYS,
-    build_fts_match_query,
     get_contract_package_ids as _get_contract_package_ids,
     get_expert_relations_for_packages as _get_expert_relations_for_packages,
 )
+from backend.db.postgres_schema import postgres_column_definition
 from backend.shared.domain_enums import enum_code
 from backend.sync.repository import ARCHIVED_TABLES, VERSIONED_TABLES
 from backend.shared.logging_utils import error_response, log_and_error
@@ -223,43 +223,31 @@ def _paginate_records_blocking(request):
                 query_params.append(org_name)
 
         def add_like_search_filter():
-            search_like = f"%{search}%"
+            columns = ()
             if table_name == "ke_hoach_lcnt":
-                query_parts.append("(ma_ke_hoach LIKE ? OR ten_ke_hoach LIKE ? OR ten_du_an_du_toan LIKE ?)")
-                query_params.extend([search_like, search_like, search_like])
+                columns = ("ma_ke_hoach", "ten_ke_hoach", "ten_du_an_du_toan")
             elif table_name == "goi_thau":
-                query_parts.append("(ma_goi_thau LIKE ? OR ten_goi_thau LIKE ?)")
-                query_params.extend([search_like, search_like])
+                columns = ("ma_goi_thau", "ten_goi_thau")
             elif table_name == "chu_dau_tu":
-                query_parts.append("(ma_chu_dau_tu LIKE ? OR ten_chu_dau_tu LIKE ? OR ten_viet_tat LIKE ? OR ma_so_thue LIKE ?)")
-                query_params.extend([search_like, search_like, search_like, search_like])
+                columns = ("ma_chu_dau_tu", "ten_chu_dau_tu", "ten_viet_tat", "ma_so_thue")
             elif table_name == "nha_thau":
-                query_parts.append("(ma_nha_thau LIKE ? OR ten_nha_thau LIKE ? OR ten_viet_tat LIKE ? OR ma_so_thue LIKE ?)")
-                query_params.extend([search_like, search_like, search_like, search_like])
+                columns = ("ma_nha_thau", "ten_nha_thau", "ten_viet_tat", "ma_so_thue")
             elif table_name == "chuyen_gia":
-                if can_view_sensitive_expert:
-                    query_parts.append("(ho_ten LIKE ? OR so_cccd LIKE ? OR so_chung_chi LIKE ?)")
-                    query_params.extend([search_like, search_like, search_like])
-                else:
-                    query_parts.append("(ho_ten LIKE ? OR so_chung_chi LIKE ?)")
-                    query_params.extend([search_like, search_like])
+                columns = (("ho_ten", "so_cccd", "so_chung_chi") if can_view_sensitive_expert else ("ho_ten", "so_chung_chi"))
             elif table_name == "hop_dong":
-                query_parts.append("(so_hop_dong LIKE ? OR ten_hop_dong LIKE ?)")
-                query_params.extend([search_like, search_like])
+                columns = ("so_hop_dong", "ten_hop_dong")
+            if columns:
+                expression = " || ' ' || ".join(
+                    f"COALESCE({column}, '')" for column in columns
+                )
+                query_parts.append(
+                    f"bf_unaccent(lower({expression})) LIKE '%' || bf_unaccent(lower(?)) || '%'"
+                )
+                query_params.append(search)
 
 
         if search:
-            fts_query = build_fts_match_query(search)
-            if table_name in FTS_SEARCH_TABLES and fts_query:
-                fts_table = f"fts_{table_name}"
-                cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (fts_table,))
-                if cursor.fetchone():
-                    query_parts.append(f"id IN (SELECT id FROM {fts_table} WHERE {fts_table} MATCH ? AND organization_id = ?)")
-                    query_params.extend([fts_query, org_name])
-                else:
-                    add_like_search_filter()
-            else:
-                add_like_search_filter()
+            add_like_search_filter()
 
 
         if table_name == "goi_thau":
@@ -295,20 +283,20 @@ def _paginate_records_blocking(request):
                 next_month = 1 if month_num == 12 else month_num + 1
                 query_parts.append(f"{date_column} >= ? AND {date_column} < ?")
                 query_params.extend([
-                    f"{year_num:04d}-{month_num:02d}-01 00:00:00",
-                    f"{next_year:04d}-{next_month:02d}-01 00:00:00",
+                    f"{year_num:04d}-{month_num:02d}-01",
+                    f"{next_year:04d}-{next_month:02d}-01",
                 ])
             elif year_num:
                 query_parts.append(f"{date_column} >= ? AND {date_column} < ?")
                 query_params.extend([
-                    f"{year_num:04d}-01-01 00:00:00",
-                    f"{year_num + 1:04d}-01-01 00:00:00",
+                    f"{year_num:04d}-01-01",
+                    f"{year_num + 1:04d}-01-01",
                 ])
             elif month_num and 1 <= month_num <= 12:
                 # Month-only filtering uses an indexed deterministic expression;
                 # year/month and year-only filters above remain sargable ranges.
-                query_parts.append(f"substr({date_column}, 6, 2) = ?")
-                query_params.append(f"{month_num:02d}")
+                query_parts.append(f"EXTRACT(MONTH FROM {date_column}) = ?")
+                query_params.append(month_num)
 
 
         where_clause = " AND ".join(query_parts)
@@ -349,8 +337,13 @@ def _paginate_records_blocking(request):
         cursor_mode = params.get("pagination", "").strip().lower() == "cursor"
         # Keyset mode is deliberately limited to textual keys. It preserves the
         # database's text collation and avoids changing numeric sort semantics.
-        column_declaration = str(valid_columns.get(sort_column, "TEXT")).upper()
-        cursor_mode = cursor_mode and (sort_column == "id" or "TEXT" in column_declaration)
+        column_declaration = postgres_column_definition(
+            table_name,
+            sort_column,
+            str(valid_columns.get(sort_column, "TEXT")),
+        ).upper()
+        is_text_sort = column_declaration.startswith("TEXT")
+        cursor_mode = cursor_mode and (sort_column == "id" or is_text_sort)
         item_query_parts = list(query_parts)
         item_query_params = list(query_params)
         decoded_cursor = None
@@ -369,7 +362,10 @@ def _paginate_records_blocking(request):
             )
             item_query_params.extend([cursor_value, cursor_value, cursor_id])
 
-        stable_sort_sql = f" ORDER BY COALESCE({sort_column}, '') {sort_order}"
+        sort_expression = (
+            f"COALESCE({sort_column}, '')" if is_text_sort else sort_column
+        )
+        stable_sort_sql = f" ORDER BY {sort_expression} {sort_order} NULLS LAST"
         if sort_column != "id":
             stable_sort_sql += f", id {sort_order}"
         item_where_clause = " AND ".join(item_query_parts)
@@ -522,5 +518,5 @@ def _paginate_records_blocking(request):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass

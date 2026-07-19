@@ -507,9 +507,10 @@ def ensure_default_word_mappings(cursor, organization_id):
         if not marker_exists:
             cursor.execute(
                 """
-                INSERT OR IGNORE INTO cau_hinh_bien_word (
+                INSERT INTO cau_hinh_bien_word (
                     id, organization_id, owner_type, ten_bien, source_table, source_column, mo_ta
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
                 """,
                 (
                     _stable_word_mapping_id(organization_id, mapping["ten_bien"]),
@@ -530,7 +531,7 @@ def ensure_default_word_mappings(cursor, organization_id):
             VALUES (?, ?)
             ON CONFLICT(organization_id) DO UPDATE SET
                 mappings_version = excluded.mappings_version,
-                updated_at = datetime('now')
+                updated_at = CURRENT_TIMESTAMP
             """,
             (organization_id, WORD_DEFAULT_MAPPINGS_VERSION),
         )

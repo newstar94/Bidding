@@ -1,9 +1,9 @@
+from backend.db.db_helper import DatabaseError, IntegrityError
 import time
 import secrets
 import hashlib
 import html
 import os
-import sqlite3
 from urllib.parse import quote
 from starlette.responses import JSONResponse
 from starlette.background import BackgroundTasks
@@ -144,7 +144,7 @@ async def register_api(request):
             return _password_work_unavailable_response()
 
         conn = database.get_connection()
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN")
         cursor = conn.cursor()
 
         cursor.execute("SELECT id FROM tai_khoan WHERE username_norm = ?", (username,))
@@ -192,7 +192,7 @@ async def register_api(request):
             {"success": True, "message": "Đăng ký thành công! Vui lòng kiểm tra email để lấy mã xác nhận kích hoạt tài khoản."},
             background=tasks
         )
-    except sqlite3.IntegrityError as e:
+    except IntegrityError as e:
         if conn:
             conn.rollback()
         conflict_code = identity_conflict_code(e)
@@ -208,7 +208,7 @@ async def register_api(request):
     finally:
         if conn:
             try: conn.close()
-            except sqlite3.Error: pass
+            except DatabaseError: pass
 
 async def verify_email_api(request):
     try:

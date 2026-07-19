@@ -42,7 +42,7 @@ def parse_sync_read_window(query_params) -> SyncReadWindow:
             since = "1970-01-01 00:00:00"
         else:
             try:
-                since = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                since = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
             except (ValueError, OverflowError, OSError):
                 since = "1970-01-01 00:00:00"
     else:

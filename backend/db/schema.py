@@ -25,6 +25,7 @@ SCHEMA_DINH_NGHIA = {
             "id": "INTEGER PRIMARY KEY CHECK(id = 1)",
             "schema_version": "INTEGER NOT NULL CHECK(schema_version > 0)",
             "baseline": "TEXT NOT NULL CHECK(baseline != '')",
+            "installation_id": "TEXT NOT NULL CHECK(installation_id != '')",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))",
             "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
         }
@@ -1056,9 +1057,20 @@ SCHEMA_DINH_NGHIA = {
             "UNIQUE(organization_id, assignment_id, ended_at)"
         ]
     },
+    "audit_chain_heads": {
+        "columns": {
+            "chain_id": "TEXT PRIMARY KEY CHECK(chain_id != '')",
+            "last_sequence": "INTEGER NOT NULL DEFAULT 0 CHECK(last_sequence >= 0)",
+            "last_log_id": "INTEGER",
+            "last_hash": "TEXT NOT NULL CHECK(length(last_hash) = 64)",
+            "updated_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        }
+    },
     "audit_log": {
         "columns": {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+            "chain_id": "TEXT NOT NULL CHECK(chain_id != '')",
+            "sequence": "INTEGER NOT NULL CHECK(sequence > 0)",
             "actor_user_id": "TEXT",
             "organization_id": "TEXT",
             "action": "TEXT NOT NULL",
@@ -1068,8 +1080,16 @@ SCHEMA_DINH_NGHIA = {
             "metadata_json": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime(\'now\'))",
             "previous_hash": "TEXT NOT NULL CHECK(length(previous_hash) = 64)",
-            "entry_hash": "TEXT NOT NULL UNIQUE CHECK(length(entry_hash) = 64)"
-        }
+            "entry_hash": "TEXT NOT NULL CHECK(length(entry_hash) = 64)"
+        },
+        "unique_constraints": [
+            "UNIQUE(chain_id, sequence)",
+            "UNIQUE(chain_id, previous_hash)",
+            "UNIQUE(chain_id, entry_hash)"
+        ],
+        "foreign_keys": [
+            "FOREIGN KEY (chain_id) REFERENCES audit_chain_heads(chain_id) ON DELETE RESTRICT"
+        ]
     }
 }
 
@@ -1116,7 +1136,7 @@ def _apply_tenant_constraints(schema):
     """Materialize tenant isolation in every clean-schema table.
 
     A globally unique ``id`` is not sufficient: child and parent must also carry
-    the same organization key so SQLite itself rejects cross-tenant links.
+    the same organization key so PostgreSQL itself rejects cross-tenant links.
     """
     tenant_tables = {
         table_name

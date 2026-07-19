@@ -2,7 +2,7 @@
 
 Development keeps backwards-compatible paths below the project directory.
 Production startup validation requires explicit absolute paths so mutable data
-can be mounted independently from source code and from the SQLite volume.
+can be mounted independently from source code and from the PostgreSQL volume.
 """
 
 import os

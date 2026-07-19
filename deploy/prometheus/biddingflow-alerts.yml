@@ -47,7 +47,7 @@ groups:
         labels: {severity: critical, owner: application-oncall}
         annotations:
           summary: "ASGI event-loop lag is above 500 ms"
-          runbook: "docs/RUNBOOK.md#database-lock-hoac-wal-tang-bat-thuong"
+          runbook: "docs/RUNBOOK.md#postgresql-pool-va-lock"
 
       - alert: BiddingFlowWorkerQueuePressure
         expr: |
@@ -74,13 +74,13 @@ groups:
           summary: "Document worker rejected queued exports/imports"
           runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
 
-      - alert: BiddingFlowSQLiteBusy
-        expr: increase(biddingflow_sqlite_busy_total[5m]) > 0
+      - alert: BiddingFlowPostgreSQLLockTimeout
+        expr: increase(biddingflow_database_lock_timeout_total[5m]) > 0
         for: 2m
         labels: {severity: warning, owner: database-oncall}
         annotations:
-          summary: "SQLite busy/locked errors are occurring"
-          runbook: "docs/RUNBOOK.md#database-lock-hoac-wal-tang-bat-thuong"
+          summary: "PostgreSQL lock or statement timeouts are occurring"
+          runbook: "docs/RUNBOOK.md#postgresql-pool-va-lock"
 
       - alert: BiddingFlowAuditChainInvalid
         expr: |
@@ -108,13 +108,13 @@ groups:
           summary: "Audit hash chain has not been checked for 15 minutes"
           runbook: "docs/RUNBOOK.md#audit-chain-khong-hop-le"
 
-      - alert: BiddingFlowWALTooLarge
-        expr: biddingflow_sqlite_wal_bytes > 536870912
+      - alert: BiddingFlowPostgreSQLPoolWaiting
+        expr: biddingflow_postgres_pool_value{stat="requests_waiting"} > 0
         for: 15m
         labels: {severity: warning, owner: database-oncall}
         annotations:
-          summary: "SQLite WAL is larger than 512 MiB"
-          runbook: "docs/RUNBOOK.md#database-lock-hoac-wal-tang-bat-thuong"
+          summary: "Requests are waiting for a PostgreSQL pool connection"
+          runbook: "docs/RUNBOOK.md#postgresql-pool-va-lock"
 
       - alert: BiddingFlowDiskSpaceLow
         expr: |
@@ -124,7 +124,7 @@ groups:
         labels: {severity: critical, owner: platform-oncall}
         annotations:
           summary: "Managed volume has less than 15% free space"
-          runbook: "docs/RUNBOOK.md#database-lock-hoac-wal-tang-bat-thuong"
+          runbook: "docs/RUNBOOK.md#postgresql-pool-va-lock"
 
       - alert: BiddingFlowBackupMissing
         expr: biddingflow_backup_available == 0

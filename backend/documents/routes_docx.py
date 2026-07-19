@@ -1,7 +1,7 @@
+from backend.db.db_helper import DatabaseError
 import os
 import re
 import shutil
-import sqlite3
 from io import BytesIO
 from urllib.parse import quote
 from starlette.responses import StreamingResponse, JSONResponse
@@ -778,7 +778,7 @@ async def list_word_mappings_api(request):
                 if conn.in_transaction:
                     conn.rollback()
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass
 
 async def save_word_mapping_api(request):
@@ -908,7 +908,7 @@ async def save_word_mapping_api(request):
                 if conn.in_transaction:
                     conn.rollback()
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass
 
 async def delete_word_mapping_api(request):
@@ -941,5 +941,5 @@ async def delete_word_mapping_api(request):
                 if conn.in_transaction:
                     conn.rollback()
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass

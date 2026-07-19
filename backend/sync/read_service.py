@@ -1,7 +1,8 @@
 """Full and delta synchronization read service."""
 
+from backend.db.db_helper import DatabaseError
+
 import time
-import sqlite3
 
 from starlette.responses import JSONResponse
 
@@ -13,7 +14,7 @@ from backend.shared.access_policy import (
     is_organization_manager,
 )
 from backend.shared.media_helper import public_image_path
-from backend.shared.date_utils import utc_now_sql
+from backend.shared.date_utils import vietnam_now_sql
 from backend.shared.sensitive_data import (
     resolve_sensitive_read_policy,
     serialize_sensitive_read_item,
@@ -92,10 +93,10 @@ def _read_sync_data_blocking(request):
         conn = database.get_connection()
         cursor = conn.cursor()
         # Pin every table, manifest and dashboard aggregate in this response to
-        # one SQLite read snapshot. Without an explicit transaction, concurrent
+        # one PostgreSQL read snapshot. Without an explicit transaction, concurrent
         # writes could make the cards disagree with the returned lists/cursor.
         cursor.execute("BEGIN")
-        current_time = utc_now_sql()
+        current_time = vietnam_now_sql()
 
 
         org_name = get_active_org(request, role_or_err.user_id)
@@ -275,7 +276,7 @@ def _read_sync_data_blocking(request):
                     cursor.execute("SELECT * FROM ma_tran_phan_quyen WHERE organization_id = ?", (org_name,))
                 for row in cursor.fetchall():
                     permissionmatrix.append(map_db_to_json("ma_tran_phan_quyen", dict(row)))
-        except sqlite3.Error as permission_read_error:
+        except DatabaseError as permission_read_error:
             from backend.shared.logging_utils import log_error
             log_error(permission_read_error, "sync_read_permission_matrix", level="WARN")
 
@@ -451,7 +452,7 @@ def _read_sync_data_blocking(request):
             try:
                 conn.rollback()
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass
         return error_response(
             request,
@@ -471,7 +472,7 @@ def _read_sync_data_blocking(request):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass
 
 async def read_single_record(request):
@@ -549,7 +550,7 @@ def _read_single_record_blocking(request):
               )
             ORDER BY is_latest DESC,
                      CAST(COALESCE(phien_ban, 0) AS INTEGER) DESC,
-                     COALESCE(updated_at, created_at, '') DESC
+                     COALESCE(updated_at, created_at) DESC
             LIMIT 1
         """, tuple([org_name] + lookup_candidates + lookup_candidates))
         row = cursor.fetchone()
@@ -613,5 +614,5 @@ def _read_single_record_blocking(request):
         if conn:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except DatabaseError:
                 pass
