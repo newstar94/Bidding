@@ -48,7 +48,7 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 | Hạng mục | Kết quả hiện tại |
 |---|---|
 | Python compile | Đạt |
-| Test ứng dụng | 750 đạt, 1 bỏ qua có điều kiện với `pytest -q tests --cov=backend --cov-branch` |
+| Test ứng dụng | 780 đạt, 1 bỏ qua có điều kiện với `pytest -q tests --cov=backend --cov-branch` trên PostgreSQL disposable |
 | Branch coverage backend | 72,72%; mọi module `backend/sync` đạt từ 92,12% đến 100% |
 | Secure frontend build | Đạt |
 | Production package | Đạt, tạo được `release/biddingflow-production.zip` |
