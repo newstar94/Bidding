@@ -73,24 +73,7 @@ SCHEMA_DINH_NGHIA = {
             "revoked_at": "INTEGER",
             "remember_me": "INTEGER NOT NULL DEFAULT 0 CHECK(remember_me IN (0,1))",
             "device_info": "TEXT",
-            "privileged_reauth_at": "INTEGER",
-            "mfa_verified_at": "INTEGER"
-        },
-        "foreign_keys": [
-            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
-        ]
-    },
-    "account_mfa": {
-        "columns": {
-            "user_id": "TEXT PRIMARY KEY",
-            "secret_ciphertext": "TEXT NOT NULL CHECK(secret_ciphertext != '')",
-            "enabled": "INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1))",
-            "last_counter": "INTEGER NOT NULL DEFAULT -1 CHECK(last_counter >= -1)",
-            "recovery_codes_json": "TEXT NOT NULL DEFAULT '[]'",
-            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
-            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)",
-            "enabled_at": "INTEGER",
-            "last_used_at": "INTEGER"
+            "privileged_reauth_at": "INTEGER"
         },
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"

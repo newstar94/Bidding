@@ -3,39 +3,9 @@
 from __future__ import annotations
 
 import html
-import hashlib
-import json
-import secrets
-import time
-
 from starlette.background import BackgroundTasks
 
 from backend.shared.helpers import gui_email
-
-
-def device_fingerprint(user_agent) -> str:
-    normalized = " ".join(str(user_agent or "").strip().casefold().split())
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def is_new_device(cursor, user_id, fingerprint) -> bool:
-    rows = cursor.execute(
-        """SELECT device_info FROM auth_sessions
-           WHERE user_id = ? AND revoked_at IS NULL
-             AND absolute_expires_at > ?""",
-        (user_id, int(time.time())),
-    ).fetchall()
-    for row in rows:
-        try:
-            stored = json.loads(row[0] or "{}")
-        except (TypeError, json.JSONDecodeError):
-            continue
-        stored_fingerprint = stored.get("fingerprint") or device_fingerprint(
-            stored.get("user_agent")
-        )
-        if secrets.compare_digest(str(stored_fingerprint), str(fingerprint)):
-            return False
-    return True
 
 
 def build_security_notification_tasks(

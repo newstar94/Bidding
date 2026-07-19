@@ -97,3 +97,18 @@ def test_runtime_style_assignment_is_idempotent():
     source = _source("frontend/shared/runtimeStyles.js")
 
     assert "if (previous === className) return value;" in source
+
+
+def test_personal_workspace_owner_is_not_filtered_by_employee_assignments():
+    source = _source("frontend/app/BiddingModel.js")
+
+    assert "isActivePersonalWorkspace()" in source
+    assert 'activeOrganizationId.startsWith("personal:")' in source
+    for method_name in (
+        "getFilteredKeHoach()",
+        "getFilteredGoiThau()",
+        "getFilteredHopDong()",
+    ):
+        method = source[source.index(method_name):]
+        method = method[:method.index("\n  }")]
+        assert "this.isActivePersonalWorkspace()" in method

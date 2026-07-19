@@ -40,12 +40,6 @@ from backend.auth.identity import (
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import create_session
-from backend.auth.mfa_service import is_mfa_enabled, is_mfa_required_for_role
-from backend.auth.security_notifications import (
-    build_security_notification_tasks,
-    device_fingerprint,
-    is_new_device,
-)
 from backend.auth.email_delivery_service import (
     create_email_delivery,
     deliver_email_once,
@@ -369,28 +363,11 @@ async def google_login_api(request):
             cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE id = ?", (user["id"],))
             user["da_xac_minh"] = 1
 
-        # The Google token is not a substitute for this application's second
-        # factor. Accounts that enabled MFA (or are covered by an explicitly
-        # configured mandatory policy) must use password + TOTP.
-        if is_mfa_required_for_role(user.get("vai_tro")) or is_mfa_enabled(cursor, user["id"]):
-            conn.rollback()
-            return JSONResponse(
-                {
-                    "error": "Tài khoản này phải đăng nhập bằng mật khẩu và mã xác thực.",
-                    "code": "MFA_PASSWORD_LOGIN_REQUIRED",
-                },
-                status_code=403,
-            )
-
-
         session_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         user_agent = request.headers.get("User-Agent", "")[:200]
-        fingerprint = device_fingerprint(user_agent)
-        new_device = is_new_device(cursor, user["id"], fingerprint)
         device_info = json.dumps({
             "user_agent": user_agent,
-            "fingerprint": fingerprint,
             "ip": get_client_ip(request),
             "login_time": datetime.now(timezone.utc).isoformat(),
             "method": "google",
@@ -445,18 +422,6 @@ async def google_login_api(request):
             request=request,
             metadata={"email": email},
         )
-        if new_device:
-            notification = build_security_notification_tasks(
-                email=user.get("email"),
-                display_name=user.get("ho_ten"),
-                subject="[BiddingFlow] Đăng nhập Google từ thiết bị mới",
-                message="Tài khoản của bạn vừa đăng nhập bằng Google từ một trình duyệt hoặc thiết bị chưa được ghi nhận.",
-            )
-            if notification:
-                if bg_tasks is None:
-                    bg_tasks = BackgroundTasks()
-                bg_tasks.tasks.extend(notification.tasks)
-
         needs_username = not user.get("ten_dang_nhap")
 
 

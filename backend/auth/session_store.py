@@ -1,8 +1,6 @@
 """Persistent, revocable multi-device authentication sessions."""
 
 from backend.db.db_helper import OperationalError
-from backend.auth.mfa_service import is_mfa_required_for_role
-
 import hashlib
 import time
 import uuid
@@ -16,7 +14,7 @@ def hash_session_token(token):
 
 def create_session(cursor, *, user_id, token, absolute_expires_at,
                    idle_timeout_seconds, remember=False, device_info=None,
-                   mfa_verified=False, now=None):
+                   now=None):
     current = int(time.time() if now is None else now)
     absolute = int(absolute_expires_at)
     idle_expiry = min(absolute, current + max(60, int(idle_timeout_seconds)))
@@ -26,13 +24,12 @@ def create_session(cursor, *, user_id, token, absolute_expires_at,
         INSERT INTO auth_sessions (
             id, user_id, token_hash, created_at, last_seen_at,
             idle_expires_at, absolute_expires_at, revoked_at,
-            remember_me, device_info, privileged_reauth_at, mfa_verified_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?)
+            remember_me, device_info, privileged_reauth_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)
         """,
         (
             session_id, user_id, hash_session_token(token), current, current,
             idle_expiry, absolute, 1 if remember else 0, device_info,
-            current if mfa_verified else None,
         ),
     )
     return session_id
@@ -61,11 +58,9 @@ def load_session_user(database, token):
                    sessions.last_seen_at, sessions.idle_expires_at,
                    sessions.absolute_expires_at, sessions.revoked_at,
                    sessions.remember_me, sessions.device_info,
-                   sessions.privileged_reauth_at, sessions.mfa_verified_at,
-                   COALESCE(mfa.enabled, 0) AS mfa_enabled
+                   sessions.privileged_reauth_at
             FROM auth_sessions AS sessions
             JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
-            LEFT JOIN account_mfa AS mfa ON mfa.user_id = accounts.id
             WHERE sessions.token_hash = ?
             LIMIT 1
             """,
@@ -88,7 +83,7 @@ def load_session_user(database, token):
         )
 
 
-def session_invalid_reason(user, now=None, allow_pending_mfa=False):
+def session_invalid_reason(user, now=None):
     if not user:
         return "user_not_found"
     current = int(time.time() if now is None else now)
@@ -98,12 +93,6 @@ def session_invalid_reason(user, now=None, allow_pending_mfa=False):
         return "token_expired"
     if current >= int(user.get("idle_expires_at") or 0):
         return "session_idle_expired"
-    if (
-        not allow_pending_mfa
-        and is_mfa_required_for_role(user.get("vai_tro"))
-        and not user.get("mfa_verified_at")
-    ):
-        return "mfa_verification_required"
     return None
 
 

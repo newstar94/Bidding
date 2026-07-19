@@ -254,13 +254,6 @@ def _install_common(
         "validate_profile_fields",
         lambda name, email, picture: (str(name), str(email), str(picture)),
     )
-    monkeypatch.setattr(google_auth_routes, "is_mfa_enabled", lambda *args: False)
-    monkeypatch.setattr(
-        google_auth_routes,
-        "device_fingerprint",
-        lambda user_agent: "fingerprint",
-    )
-    monkeypatch.setattr(google_auth_routes, "is_new_device", lambda *args: False)
     monkeypatch.setattr(google_auth_routes, "create_session", lambda *args, **kwargs: "session")
     monkeypatch.setattr(
         google_auth_routes,
@@ -283,11 +276,6 @@ def _install_common(
         google_auth_routes,
         "generate_suggested_username",
         lambda *args: "owner1",
-    )
-    monkeypatch.setattr(
-        google_auth_routes,
-        "build_security_notification_tasks",
-        lambda **kwargs: None,
     )
     monkeypatch.setattr(
         google_auth_routes, "log_audit", lambda *args, **kwargs: None
@@ -538,63 +526,6 @@ def test_password_cpu_queue_failure_rolls_back_new_account(monkeypatch):
     assert response.status_code == 503
     assert response.headers["retry-after"] == "1"
     assert connection.rollbacks == 1
-
-
-@pytest.mark.parametrize(
-    ("policy_required", "mfa_enabled", "expected_status"),
-    [
-        (True, False, 403),
-        (False, True, 403),
-        (False, False, 200),
-    ],
-)
-def test_google_login_requires_password_flow_for_mfa_accounts(
-    monkeypatch, policy_required, mfa_enabled, expected_status
-):
-    user = _user(vai_tro="super_admin" if policy_required else "user")
-    cursor = _GoogleCursor(identity_user=user)
-    connection = _Connection(cursor)
-    _install_common(monkeypatch, connection=connection)
-    monkeypatch.setattr(
-        google_auth_routes,
-        "is_mfa_enabled",
-        lambda *args: mfa_enabled,
-    )
-    monkeypatch.setattr(
-        google_auth_routes,
-        "is_mfa_required_for_role",
-        lambda *args: policy_required,
-    )
-
-    response = asyncio.run(google_auth_routes.google_login_api(_request()))
-
-    assert response.status_code == expected_status
-    if expected_status == 403:
-        assert _body(response)["code"] == "MFA_PASSWORD_LOGIN_REQUIRED"
-        assert connection.rollbacks == 1
-    else:
-        assert _body(response)["success"] is True
-        assert connection.commits == 1
-
-
-def test_new_device_notification_is_added_without_exposing_identity(monkeypatch):
-    cursor = _GoogleCursor(identity_user=_user())
-    connection = _Connection(cursor)
-    _install_common(monkeypatch, connection=connection)
-    monkeypatch.setattr(google_auth_routes, "is_new_device", lambda *args: True)
-    notification = google_auth_routes.BackgroundTasks()
-    notification.add_task(lambda: None)
-    monkeypatch.setattr(
-        google_auth_routes,
-        "build_security_notification_tasks",
-        lambda **kwargs: notification,
-    )
-
-    response = asyncio.run(google_auth_routes.google_login_api(_request()))
-
-    assert response.status_code == 200
-    assert response.background is not None
-    assert len(response.background.tasks) >= 2
 
 
 def test_google_login_conflicts_and_unexpected_errors_are_rollback_safe(monkeypatch):

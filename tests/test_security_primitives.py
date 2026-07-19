@@ -20,7 +20,6 @@ from backend.auth.auth_helper import (
     verify_super_admin_controls,
     verify_password,
 )
-from backend.auth.mfa_service import MfaConfigurationError, validate_mfa_configuration
 from backend.auth.password_policy import validate_new_password
 from backend.auth.profile_validation import validate_profile_fields
 from backend.http_middleware import (
@@ -108,7 +107,6 @@ def test_production_secrets_must_be_independently_rotatable():
                 "@db.example.test/biddingflow"
             ),
             "SMTP_PASSWORD": "smtp-secret",
-            "MFA_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii"),
             "EMAIL_OUTBOX_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii"),
         }
     )
@@ -184,48 +182,24 @@ def test_password_policy_requires_8_characters_and_blocks_common_values():
     assert validate_new_password("passwordpassword")[0] is False
 
 
-def test_super_admin_controls_make_mfa_optional_by_default_and_enforce_policy(
-    monkeypatch,
-):
+def test_super_admin_controls_require_recent_reauthentication(monkeypatch):
     request = SimpleNamespace(
         method="POST",
         client=SimpleNamespace(host="127.0.0.1"),
         headers={},
     )
-    user_without_mfa = {
-        "mfa_enabled": 0,
-        "mfa_verified_at": None,
+    user = {
         "privileged_reauth_at": int(time.time()),
     }
-    monkeypatch.delenv("REQUIRE_SUPER_ADMIN_MFA", raising=False)
-    allowed, message = verify_super_admin_controls(request, user_without_mfa)
+    allowed, message = verify_super_admin_controls(request, user)
     assert allowed
     assert message is None
-
-    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "true")
-    allowed, message = verify_super_admin_controls(request, user_without_mfa)
-    assert not allowed
-    assert "MFA" in message
 
     allowed, message = verify_super_admin_controls(
-        request,
-        {
-            "mfa_enabled": 1,
-            "mfa_verified_at": int(time.time()),
-            "privileged_reauth_at": int(time.time()),
-        },
+        request, {"privileged_reauth_at": 0}
     )
-    assert allowed
-    assert message is None
-
-
-def test_production_mfa_key_validation_is_fail_closed():
-    validate_mfa_configuration(
-        {"MFA_ENCRYPTION_KEY": Fernet.generate_key().decode("ascii")},
-        required=True,
-    )
-    with pytest.raises(MfaConfigurationError):
-        validate_mfa_configuration({"MFA_ENCRYPTION_KEY": "invalid"}, required=True)
+    assert not allowed
+    assert "xác thực lại" in message
 
 
 def test_csp_enforces_explicit_trusted_types_policy_without_default_policy():

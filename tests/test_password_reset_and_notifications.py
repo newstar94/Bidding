@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import deque
-import json
 
 import pytest
 
@@ -207,41 +206,6 @@ def test_reset_redemption_rolls_back_unexpected_error() -> None:
             _Database(connection), "token", "password", now=100
         )
     assert connection.rolled_back and connection.closed
-
-
-class _NotificationCursor:
-    def __init__(self, rows):
-        self.rows = rows
-
-    def execute(self, *_args, **_kwargs):
-        return self
-
-    def fetchall(self):
-        return self.rows
-
-
-def test_device_fingerprint_and_new_device_detection() -> None:
-    fingerprint = notifications.device_fingerprint(" Browser   Agent ")
-    assert fingerprint == notifications.device_fingerprint("browser agent")
-    assert not notifications.is_new_device(
-        _NotificationCursor(
-            [(json.dumps({"fingerprint": fingerprint}),)]
-        ),
-        "user",
-        fingerprint,
-    )
-    assert not notifications.is_new_device(
-        _NotificationCursor(
-            [(json.dumps({"user_agent": "browser agent"}),)]
-        ),
-        "user",
-        fingerprint,
-    )
-    assert notifications.is_new_device(
-        _NotificationCursor([("not-json",), (None,)]),
-        "user",
-        fingerprint,
-    )
 
 
 def test_security_notification_escapes_untrusted_content() -> None:

@@ -20,16 +20,11 @@ from backend.db.postgres_schema import (
     assert_schema_contract,
     initialize_postgres_database,
 )
+from backend.db.upgrades import DB_SCHEMA_VERSION
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.auth import auth_service
 from backend.auth import email_delivery_service
 from backend.auth.session_store import load_session_user
-from backend.auth.mfa_service import (
-    begin_mfa_enrollment,
-    confirm_mfa_enrollment,
-    consume_mfa_code,
-    current_totp_code,
-)
 from backend.auth.email_utils import EmailDeliveryResult
 from backend.observability import metrics
 from backend.partners import partner_lookup_service
@@ -83,7 +78,7 @@ def test_fresh_schema_contract(postgres_database: PostgresDatabase) -> None:
         assert table_count == len(SCHEMA_DINH_NGHIA)
         assert cursor.execute(
             "SELECT schema_version FROM database_metadata WHERE id = 1"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == DB_SCHEMA_VERSION
 
 
 def test_session_lookup_and_cleanup_indexes_are_narrow(
@@ -447,56 +442,7 @@ def test_sql_and_api_timestamps_use_vietnam_timezone(
 
 
 def test_initialization_is_idempotent(postgres_database: PostgresDatabase) -> None:
-    assert initialize_postgres_database(postgres_database) == 1
-
-
-def test_mfa_secret_is_encrypted_and_codes_are_one_use(
-    postgres_database: PostgresDatabase, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("MFA_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
-    user_id = "user-mfa-core-test"
-    now = int(time.time())
-    with postgres_database.get_connection() as connection:
-        cursor = connection.cursor()
-        cursor.execute(
-            """INSERT INTO tai_khoan (
-                   id, ten_dang_nhap, username_norm, mat_khau, ho_ten,
-                   vai_tro, email, email_norm, da_xac_minh
-               ) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, 1)""",
-            (
-                user_id,
-                "mfa_core_test",
-                "mfa_core_test",
-                "not-used-in-this-test",
-                "MFA Core",
-                "mfa-core@example.test",
-                "mfa-core@example.test",
-            ),
-        )
-        setup = begin_mfa_enrollment(
-            cursor, user_id=user_id, account_label="mfa-core@example.test"
-        )
-        stored = cursor.execute(
-            "SELECT secret_ciphertext FROM account_mfa WHERE user_id = ?",
-            (user_id,),
-        ).fetchone()[0]
-        assert setup["secret"] not in stored
-
-        first_code = current_totp_code(setup["secret"], now=now)
-        recovery_codes = confirm_mfa_enrollment(
-            cursor, user_id=user_id, code=first_code, now=now
-        )
-        assert len(recovery_codes) == 10
-        assert not consume_mfa_code(
-            cursor, user_id=user_id, code=first_code, now=now
-        )
-        assert consume_mfa_code(
-            cursor, user_id=user_id, code=recovery_codes[0], now=now
-        )
-        assert not consume_mfa_code(
-            cursor, user_id=user_id, code=recovery_codes[0], now=now
-        )
-        connection.commit()
+    assert initialize_postgres_database(postgres_database) == DB_SCHEMA_VERSION
 
 
 def test_transaction_rollback(postgres_database: PostgresDatabase) -> None:

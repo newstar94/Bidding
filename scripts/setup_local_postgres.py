@@ -445,12 +445,6 @@ def main() -> None:
                 )
             ).decode("ascii"),
         )
-    if not values.get("MFA_ENCRYPTION_KEY", ""):
-        _replace_env_value(
-            lines,
-            "MFA_ENCRYPTION_KEY",
-            Fernet.generate_key().decode("ascii"),
-        )
     if not values.get("EMAIL_OUTBOX_ENCRYPTION_KEY", ""):
         _replace_env_value(
             lines,

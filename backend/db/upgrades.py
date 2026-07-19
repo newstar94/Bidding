@@ -1,6 +1,7 @@
 """Single-file registry for database upgrades after the clean schema baseline.
 
-Fresh installations are created directly from ``backend.db.schema`` at version 1.
+Fresh installations are created directly from ``backend.db.schema`` at the
+latest registered version without replaying historical upgrades.
 When a future release changes persisted data, add one upgrade function here and
 append a ``DatabaseUpgrade`` entry to ``UPGRADES``. Upgrade versions must remain
 contiguous and must never be rewritten after release.
@@ -28,15 +29,19 @@ class DatabaseUpgradeContext:
     assert_foreign_key_integrity: object
 
 
-# Example for a future schema change:
-#
-# def _upgrade_to_v2(cursor, context):
-#     cursor.execute("ALTER TABLE ...")
-#
-# UPGRADES = (
-#     DatabaseUpgrade(2, "describe_change", _upgrade_to_v2),
-# )
-UPGRADES = ()
+def _upgrade_to_v2_remove_mfa(cursor, context):
+    """Remove persisted state belonging to the retired MFA feature."""
+
+    del context
+    cursor.execute("DROP TABLE IF EXISTS account_mfa")
+    cursor.execute(
+        "ALTER TABLE auth_sessions DROP COLUMN IF EXISTS mfa_verified_at"
+    )
+
+
+UPGRADES = (
+    DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
+)
 
 
 DB_SCHEMA_VERSION = (

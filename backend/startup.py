@@ -16,7 +16,6 @@ from backend.auth.email_delivery_service import (
     EmailOutboxConfigurationError,
     validate_email_outbox_configuration,
 )
-from backend.auth.mfa_service import MfaConfigurationError, validate_mfa_configuration
 
 
 class StartupValidationError(RuntimeError):
@@ -33,7 +32,6 @@ REQUIRED_APPLICATION_TABLES = frozenset({
     "rate_limit_buckets",
     "partner_lookup_cache",
     "partner_upstream_health",
-    "account_mfa",
 })
 
 
@@ -124,7 +122,6 @@ def validate_secret_separation(environ=None) -> None:
         "SMTP_PASSWORD",
         "GOOGLE_CLIENT_SECRET",
         "AUDIT_CHECKPOINT_HMAC_KEY",
-        "MFA_ENCRYPTION_KEY",
         "EMAIL_OUTBOX_ENCRYPTION_KEY",
     ):
         value = str(environ.get(name, "")).strip()
@@ -428,10 +425,6 @@ def validate_startup_configuration(database, environ=None):
             raise StartupValidationError(
                 "Invalid production SMTP configuration: " + "; ".join(smtp_errors)
             )
-        try:
-            validate_mfa_configuration(environ, required=True)
-        except MfaConfigurationError as exc:
-            raise StartupValidationError(str(exc)) from exc
         try:
             validate_email_outbox_configuration(environ, required=True)
         except EmailOutboxConfigurationError as exc:

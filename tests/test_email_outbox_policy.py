@@ -63,18 +63,13 @@ def encryption_key(monkeypatch: pytest.MonkeyPatch) -> str:
     return key
 
 
-def test_outbox_key_configuration_fallback_and_production_requirements(
+def test_outbox_key_configuration_and_production_requirements(
     encryption_key: str,
 ) -> None:
     assert outbox._configured_key(
         {"EMAIL_OUTBOX_ENCRYPTION_KEY": encryption_key}
     ) == encryption_key
-    assert outbox._configured_key(
-        {"APP_ENV": "development", "MFA_ENCRYPTION_KEY": encryption_key}
-    ) == encryption_key
-    assert outbox._configured_key(
-        {"APP_ENV": "production", "MFA_ENCRYPTION_KEY": encryption_key}
-    ) == ""
+    assert outbox._configured_key({}) == ""
 
     outbox.validate_email_outbox_configuration(
         {"EMAIL_OUTBOX_ENCRYPTION_KEY": encryption_key}, required=True
@@ -85,11 +80,6 @@ def test_outbox_key_configuration_fallback_and_production_requirements(
     with pytest.raises(outbox.EmailOutboxConfigurationError):
         outbox.validate_email_outbox_configuration(
             {"EMAIL_OUTBOX_ENCRYPTION_KEY": "invalid"}, required=True
-        )
-    with pytest.raises(outbox.EmailOutboxConfigurationError):
-        outbox.validate_email_outbox_configuration(
-            {"APP_ENV": "production", "MFA_ENCRYPTION_KEY": encryption_key},
-            required=True,
         )
 
 
@@ -105,7 +95,6 @@ def test_outbox_authenticated_encryption_and_recipient_hash(
     with pytest.raises(outbox.EmailOutboxPayloadError):
         outbox._decrypt("tampered")
     monkeypatch.delenv("EMAIL_OUTBOX_ENCRYPTION_KEY")
-    monkeypatch.delenv("MFA_ENCRYPTION_KEY", raising=False)
     with pytest.raises(outbox.EmailOutboxConfigurationError):
         outbox._fernet()
 

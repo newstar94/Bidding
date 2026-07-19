@@ -7,7 +7,6 @@ from starlette.responses import JSONResponse
 
 from backend.auth import auth_routes
 from backend.auth.auth_service import RateLimitDecision
-from backend.auth.mfa_service import MfaConfigurationError
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 
 
@@ -151,15 +150,8 @@ def test_small_database_loaders_close_connections(monkeypatch):
     ))
     connection = _Connection(cursor)
     monkeypatch.setattr(auth_routes.database, "get_connection", lambda: connection)
-    monkeypatch.setattr(
-        auth_routes, "get_mfa_status", lambda _cursor, user_id, role: {"id": user_id, "role": role}
-    )
     assert auth_routes._load_login_user("owner") == {"id": "user-1"}
-    assert auth_routes._load_login_mfa_status("user-1", "user") == {
-        "id": "user-1",
-        "role": "user",
-    }
-    assert connection.closed == 2
+    assert connection.closed == 1
 
 
 @pytest.mark.parametrize("error_type", [BlockingIOBusyError, BlockingIOTimeoutError])
@@ -195,17 +187,11 @@ def test_rate_limit_helper_dispatches_to_database_lane(monkeypatch):
     ) is expected
 
 
-def test_commit_successful_login_is_atomic_and_marks_new_device(monkeypatch):
-    def handler(sql, _params):
-        if sql.startswith("SELECT enabled FROM account_mfa"):
-            return ((0,), [])
-        return (None, [])
-
-    cursor = _Cursor(handler)
+def test_commit_successful_login_is_atomic(monkeypatch):
+    cursor = _Cursor()
     connection = _Connection(cursor)
     events = []
     monkeypatch.setattr(auth_routes.database, "get_connection", lambda: connection)
-    monkeypatch.setattr(auth_routes, "is_new_device", lambda *_args: True)
     monkeypatch.setattr(
         auth_routes, "create_session", lambda *args, **kwargs: events.append(("session", kwargs))
     )
@@ -226,7 +212,7 @@ def test_commit_successful_login_is_atomic_and_marks_new_device(monkeypatch):
         lambda user_id: events.append(("invalidate", user_id)),
     )
 
-    access, new_device = auth_routes._commit_successful_login(
+    access = auth_routes._commit_successful_login(
         _user(),
         "replacement-hash",
         "token",
@@ -237,58 +223,19 @@ def test_commit_successful_login_is_atomic_and_marks_new_device(monkeypatch):
         _Request(),
         "ip-key",
         "user-key",
-        "",
     )
     assert access["active_org_id"] == "org-1"
-    assert new_device is True
     assert connection.commits == 1
     assert connection.rollbacks == 0
     assert connection.closed == 1
     assert any(sql.startswith("UPDATE tai_khoan SET mat_khau") for sql, _ in cursor.calls)
     session = next(value for key, value in events if key == "session")
-    assert session["mfa_verified"] is False
+    assert "mfa_verified" not in session
 
 
-@pytest.mark.parametrize("code, consumed", [("", False), ("bad", False)])
-def test_commit_successful_login_rejects_missing_or_invalid_mfa(monkeypatch, code, consumed):
-    cursor = _Cursor(lambda sql, _params: (((1,), []) if sql.startswith("SELECT enabled") else (None, [])))
-    connection = _Connection(cursor)
-    monkeypatch.setattr(auth_routes.database, "get_connection", lambda: connection)
-    monkeypatch.setattr(auth_routes, "consume_mfa_code", lambda *_args, **_kwargs: consumed)
-    with pytest.raises(auth_routes.MfaChallengeFailed):
-        auth_routes._commit_successful_login(
-            _user(), None, "token", 9999, False, "{}", None, _Request(), "ip", "user", code
-        )
-    assert connection.rollbacks == 1
-    assert connection.closed == 1
-
-
-def test_commit_successful_login_consumes_valid_mfa(monkeypatch):
-    cursor = _Cursor(lambda sql, _params: (((1,), []) if sql.startswith("SELECT enabled") else (None, [])))
-    connection = _Connection(cursor)
-    monkeypatch.setattr(auth_routes.database, "get_connection", lambda: connection)
-    monkeypatch.setattr(auth_routes, "consume_mfa_code", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(auth_routes, "is_new_device", lambda *_args: False)
-    monkeypatch.setattr(auth_routes, "create_session", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        auth_routes,
-        "build_user_access_payload",
-        lambda *_args: {"active_org_id": None},
-    )
-    monkeypatch.setattr(auth_routes, "log_audit", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(auth_routes, "clear_rate_limit_buckets", lambda *_args: None)
-    monkeypatch.setattr(auth_routes, "_session_cache_invalidate_by_user_id", lambda *_args: None)
-    _, is_new = auth_routes._commit_successful_login(
-        _user(), None, "token", 9999, False, "{}", None, _Request(), "ip", "user", "123456"
-    )
-    assert is_new is False
-    assert connection.commits == 1
-
-
-def _install_login_defaults(monkeypatch, *, data=None, user=None, mfa=None, verified=True, new_device=False):
+def _install_login_defaults(monkeypatch, *, data=None, user=None, verified=True):
     payload = data or {"username": "owner", "password": "correct", "remember": False}
     loaded_user = _user() if user is None else user
-    mfa_status = {"enabled": False, "required": False} if mfa is None else mfa
 
     monkeypatch.setattr(auth_routes, "get_client_ip", lambda _request: "203.0.113.9")
 
@@ -300,20 +247,17 @@ def _install_login_defaults(monkeypatch, *, data=None, user=None, mfa=None, veri
     monkeypatch.setattr(auth_routes, "normalize_username", lambda value: str(value or "").strip())
     monkeypatch.setattr(auth_routes, "validate_password_input", lambda value: bool(value))
     monkeypatch.setattr(auth_routes, "_record_failed_login", lambda *_args: None)
-    monkeypatch.setattr(auth_routes, "device_fingerprint", lambda _value: "fingerprint")
 
     async def read(function, *args, **_kwargs):
         if function is auth_routes._load_login_user:
             return loaded_user
-        if function is auth_routes._load_login_mfa_status:
-            return mfa_status
         raise AssertionError(function)
 
     async def write(function, *args, **_kwargs):
         if function is auth_routes.get_rate_limit_decision:
             return RateLimitDecision(True, 0, 4)
         if function is auth_routes._commit_successful_login:
-            return ({"role": "employee", "active_org_id": None}, new_device)
+            return {"role": "employee", "active_org_id": None}
         raise AssertionError(function)
 
     async def cpu(*_args, **_kwargs):
@@ -325,38 +269,21 @@ def _install_login_defaults(monkeypatch, *, data=None, user=None, mfa=None, veri
     return payload
 
 
-def test_login_success_sets_secure_session_and_new_device_notification(monkeypatch):
+def test_login_success_sets_secure_session_without_device_alert(monkeypatch):
     _install_login_defaults(
         monkeypatch,
         data={"username": "owner", "password": "correct", "remember": True},
-        mfa={"enabled": False, "required": True},
-        new_device=True,
     )
     monkeypatch.setattr(auth_routes.uuid, "uuid4", lambda: "session-id")
-    monkeypatch.setattr(
-        auth_routes,
-        "build_security_notification_tasks",
-        lambda **kwargs: auth_routes.BackgroundTasks(),
-    )
     response = asyncio.run(
         auth_routes.login_api(_Request(headers={"User-Agent": "X" * 300, "X-Active-Org": "org%2D1"}))
     )
     payload = _body(response)
     assert response.status_code == 200
-    assert payload["mfa_enrollment_required"] is True
-    assert payload["mfa_enabled"] is False
+    assert "mfa_enrollment_required" not in payload
+    assert "mfa_enabled" not in payload
     assert "session_token=session-id" in response.headers["set-cookie"]
-    assert response.background is not None
-
-
-def test_login_returns_mfa_challenge_before_creating_session(monkeypatch):
-    _install_login_defaults(
-        monkeypatch, mfa={"enabled": True, "required": True}
-    )
-    response = asyncio.run(auth_routes.login_api(_Request()))
-    assert response.status_code == 202
-    assert _body(response)["mfa_required"] is True
-    assert response.headers["Cache-Control"] == "no-store"
+    assert response.background is None
 
 
 @pytest.mark.parametrize(
@@ -370,8 +297,6 @@ def test_login_returns_mfa_challenge_before_creating_session(monkeypatch):
         ("missing-user", 400),
         ("bad-password", 400),
         ("unverified", 400),
-        ("mfa-failed", 400),
-        ("mfa-config", 503),
     ],
 )
 def test_login_rejects_invalid_or_unsafe_states(monkeypatch, mode, expected_status):
@@ -393,7 +318,7 @@ def test_login_rejects_invalid_or_unsafe_states(monkeypatch, mode, expected_stat
         async def missing(function, *_args, **_kwargs):
             if function is auth_routes._load_login_user:
                 return None
-            return {"enabled": False, "required": False}
+            raise AssertionError(function)
         monkeypatch.setattr(auth_routes, "run_database_read", missing)
     elif mode == "bad-password":
         async def bad(*_args, **_kwargs):
@@ -403,9 +328,9 @@ def test_login_rejects_invalid_or_unsafe_states(monkeypatch, mode, expected_stat
         async def unverified(function, *_args, **_kwargs):
             if function is auth_routes._load_login_user:
                 return _user(da_xac_minh=0)
-            return {"enabled": False, "required": False}
+            raise AssertionError(function)
         monkeypatch.setattr(auth_routes, "run_database_read", unverified)
-    elif mode in {"ip-limit", "user-limit", "mfa-failed", "mfa-config"}:
+    elif mode in {"ip-limit", "user-limit"}:
         calls = 0
         async def write(function, *_args, **_kwargs):
             nonlocal calls
@@ -415,22 +340,16 @@ def test_login_rejects_invalid_or_unsafe_states(monkeypatch, mode, expected_stat
                     mode == "user-limit" and calls == 2
                 )
                 return RateLimitDecision(allowed, 9, 0)
-            if mode == "mfa-failed":
-                raise auth_routes.MfaChallengeFailed("bad mfa")
-            if mode == "mfa-config":
-                raise MfaConfigurationError("bad key")
-            return ({"active_org_id": None}, False)
+            return {"active_org_id": None}
         monkeypatch.setattr(auth_routes, "run_database_write", write)
 
     response = asyncio.run(auth_routes.login_api(_Request()))
     assert response.status_code == expected_status
     if mode == "unverified":
         assert _body(response)["unverified"] is True
-    if mode == "mfa-failed":
-        assert response.headers["Cache-Control"] == "no-store"
 
 
-@pytest.mark.parametrize("stage", ["ip", "user", "read-user", "cpu", "read-mfa", "commit"])
+@pytest.mark.parametrize("stage", ["ip", "user", "read-user", "cpu", "commit"])
 @pytest.mark.parametrize("error_type", [BlockingIOBusyError, BlockingIOTimeoutError])
 def test_login_handles_all_bounded_executor_backpressure(monkeypatch, stage, error_type):
     _install_login_defaults(monkeypatch)
@@ -447,14 +366,14 @@ def test_login_handles_all_bounded_executor_backpressure(monkeypatch, stage, err
             return RateLimitDecision(True, 0, 3)
         if stage == "commit":
             raise error_type("busy")
-        return ({"active_org_id": None}, False)
+        return {"active_org_id": None}
 
     async def read(function, *_args, **_kwargs):
         if stage == "read-user" and function is auth_routes._load_login_user:
             raise error_type("busy")
-        if stage == "read-mfa" and function is auth_routes._load_login_mfa_status:
-            raise error_type("busy")
-        return _user() if function is auth_routes._load_login_user else {"enabled": False, "required": False}
+        if function is auth_routes._load_login_user:
+            return _user()
+        raise AssertionError(function)
 
     async def cpu(*_args, **_kwargs):
         if stage == "cpu":
@@ -605,4 +524,3 @@ def test_active_org_hint_decodes_header_and_database_error_messages_are_utf8():
     response = auth_routes._database_lane_unavailable_response(_Request(), write=False)
     assert "Hệ thống đang xử lý" in _body(response)["message"]
     assert response.headers["Retry-After"] == "1"
-

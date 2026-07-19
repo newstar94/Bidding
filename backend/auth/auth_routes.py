@@ -53,16 +53,7 @@ from backend.auth.identity import (
     normalize_username,
 )
 from backend.auth.password_policy import validate_new_password, validate_password_input
-from backend.auth.mfa_service import (
-    MfaConfigurationError,
-    consume_mfa_code,
-    get_mfa_status,
-)
-from backend.auth.security_notifications import (
-    build_security_notification_tasks,
-    device_fingerprint,
-    is_new_device,
-)
+from backend.auth.security_notifications import build_security_notification_tasks
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.shared.logging_utils import error_response
@@ -171,18 +162,6 @@ def _load_login_user(username):
         conn.close()
 
 
-def _load_login_mfa_status(user_id, role):
-    conn = database.get_connection()
-    try:
-        return get_mfa_status(conn.cursor(), user_id, role)
-    finally:
-        conn.close()
-
-
-class MfaChallengeFailed(ValueError):
-    pass
-
-
 def _record_failed_login(ip_rate_key, user_rate_key, request):
     del request
     log_structured_event(
@@ -212,38 +191,16 @@ def _commit_successful_login(
     request,
     ip_rate_key,
     user_rate_key,
-    mfa_code,
 ):
     conn = database.get_connection()
     try:
         conn.execute("BEGIN")
         cursor = conn.cursor()
-        locked_mfa = cursor.execute(
-            "SELECT enabled FROM account_mfa WHERE user_id = ? FOR UPDATE",
-            (user["id"],),
-        ).fetchone()
-        current_mfa_enabled = bool(locked_mfa and locked_mfa[0])
-        if current_mfa_enabled:
-            if not mfa_code or not consume_mfa_code(
-                cursor, user_id=user["id"], code=mfa_code
-            ):
-                raise MfaChallengeFailed(
-                    "Mã xác thực không đúng, đã hết hạn hoặc đã được sử dụng."
-                )
         if replacement_password_hash:
             cursor.execute(
                 "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
                 (replacement_password_hash, user["id"]),
             )
-        try:
-            parsed_device_info = json.loads(device_info or "{}")
-        except (TypeError, json.JSONDecodeError):
-            parsed_device_info = {}
-        new_device = is_new_device(
-            cursor,
-            user["id"],
-            parsed_device_info.get("fingerprint") or device_fingerprint(""),
-        )
         create_session(
             cursor,
             user_id=user["id"],
@@ -252,7 +209,6 @@ def _commit_successful_login(
             idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
             remember=remember,
             device_info=device_info,
-            mfa_verified=current_mfa_enabled,
         )
         access_payload = build_user_access_payload(
             cursor,
@@ -275,7 +231,7 @@ def _commit_successful_login(
         clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
         _session_cache_invalidate_by_user_id(user["id"])
-        return access_payload, new_device
+        return access_payload
     except Exception:
         conn.rollback()
         raise
@@ -377,7 +333,6 @@ async def login_api(request):
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 320},
             "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
             "remember": {"type": "boolean"},
-            "mfa_code": {"type": "string", "max_length": 32},
         })
         if invalid:
             return invalid
@@ -439,38 +394,17 @@ async def login_api(request):
                 "username": user['ten_dang_nhap']
             }, status_code=400)
 
-        try:
-            mfa_status = await run_database_read(
-                _load_login_mfa_status,
-                user["id"],
-                user["vai_tro"],
-                timeout_seconds=5.0,
-            )
-        except (BlockingIOBusyError, BlockingIOTimeoutError):
-            return _database_lane_unavailable_response(request, write=False)
-        mfa_code = str(data.get("mfa_code") or "").strip()
-        if mfa_status["enabled"] and not mfa_code:
-            return JSONResponse(
-                {
-                    "mfa_required": True,
-                    "message": "Nhập mã từ ứng dụng xác thực hoặc mã khôi phục.",
-                },
-                status_code=202,
-                headers={"Cache-Control": "no-store"},
-            )
-
         session_token = str(uuid.uuid4())
         expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
         token_expiry = int(time.time() + expiry_hours * 3600)
         user_agent = request.headers.get("User-Agent", "")[:200]
         device_info = json.dumps({
             "user_agent": user_agent,
-            "fingerprint": device_fingerprint(user_agent),
             "ip": ip,
             "login_time": datetime.now(timezone.utc).isoformat()
         })
         try:
-            access_payload, new_device = await run_database_write(
+            access_payload = await run_database_write(
                 _commit_successful_login,
                 user,
                 replacement_password_hash,
@@ -482,33 +416,9 @@ async def login_api(request):
                 request,
                 ip_rate_key,
                 user_rate_key,
-                mfa_code,
             )
         except (BlockingIOBusyError, BlockingIOTimeoutError):
             return _database_lane_unavailable_response(request, write=True)
-        except MfaChallengeFailed as exc:
-            await record_failed_login()
-            return JSONResponse(
-                {"error": str(exc), "mfa_required": True},
-                status_code=400,
-                headers={"Cache-Control": "no-store"},
-            )
-        except MfaConfigurationError:
-            return JSONResponse(
-                {"error": "Không thể xác minh MFA do cấu hình bảo mật không hợp lệ."},
-                status_code=503,
-            )
-
-        notification_tasks = (
-            build_security_notification_tasks(
-                email=user.get("email"),
-                display_name=user.get("ho_ten"),
-                subject="[BiddingFlow] Đăng nhập từ thiết bị mới",
-                message="Tài khoản của bạn vừa đăng nhập từ một trình duyệt hoặc thiết bị chưa được ghi nhận.",
-            )
-            if new_device
-            else None
-        )
         response = JSONResponse({
             "success": True,
             "id": user['id'],
@@ -517,12 +427,8 @@ async def login_api(request):
             **access_payload,
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
-            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
-            ,"mfa_enrollment_required": bool(
-                mfa_status["required"] and not mfa_status["enabled"]
-            )
-            ,"mfa_enabled": bool(mfa_status["enabled"])
-        }, background=notification_tasks)
+            "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS,
+        })
 
 
 
@@ -1320,14 +1226,6 @@ async def change_password_api(request):
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
 
         old_token = request.cookies.get('session_token')
-        current_mfa_session = (
-            cursor.execute(
-                "SELECT mfa_verified_at FROM auth_sessions WHERE token_hash = ?",
-                (hash_session_token(old_token),),
-            ).fetchone()
-            if old_token
-            else None
-        )
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         conn.execute("BEGIN")
@@ -1344,7 +1242,6 @@ async def change_password_api(request):
             idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
             remember=False,
             device_info=None,
-            mfa_verified=bool(current_mfa_session and current_mfa_session[0]),
         )
         log_audit(
             "auth.password_changed",

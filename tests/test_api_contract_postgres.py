@@ -15,7 +15,6 @@ import psycopg
 import pytest
 
 from backend.auth.auth_helper import hash_password
-from backend.auth.mfa_service import current_totp_code
 from scripts.process_utils import popen_group_options, terminate_process_tree
 
 
@@ -23,8 +22,6 @@ ROOT = Path(__file__).resolve().parents[1]
 API_PORT = 18080
 BASE_URL = f"http://127.0.0.1:{API_PORT}"
 API_ADMIN_PASSWORD = "API admin password 2026!"
-_ADMIN_MFA_SECRET = ""
-_ADMIN_MFA_RECOVERY_CODES: list[str] = []
 
 
 def _wait_for_server(process: subprocess.Popen[bytes]) -> None:
@@ -116,42 +113,13 @@ def _headers(client: httpx.Client, organization_id: str | None = None) -> dict[s
 
 
 def _login(client: httpx.Client, username: str, password: str, active_org: str | None = None):
-    global _ADMIN_MFA_SECRET, _ADMIN_MFA_RECOVERY_CODES
     response = client.post(
         "/api/auth/login",
         json={"username": username, "password": password, "remember": False},
         headers=_headers(client, active_org),
     )
-    if response.status_code == 202 and response.json().get("mfa_required"):
-        assert _ADMIN_MFA_RECOVERY_CODES
-        response = client.post(
-            "/api/auth/login",
-            json={
-                "username": username,
-                "password": password,
-                "remember": False,
-                "mfa_code": _ADMIN_MFA_RECOVERY_CODES.pop(),
-            },
-            headers=_headers(client, active_org),
-        )
     assert response.status_code == 200, response.text
     payload = response.json()
-    if payload.get("mfa_enrollment_required"):
-        setup = client.post(
-            "/api/auth/mfa/setup",
-            json={"password": password},
-            headers=_headers(client),
-        )
-        assert setup.status_code == 200, setup.text
-        _ADMIN_MFA_SECRET = setup.json()["secret"]
-        confirm = client.post(
-            "/api/auth/mfa/confirm",
-            json={"code": current_totp_code(_ADMIN_MFA_SECRET)},
-            headers=_headers(client),
-        )
-        assert confirm.status_code == 200, confirm.text
-        _ADMIN_MFA_RECOVERY_CODES = list(confirm.json()["recovery_codes"])
-        assert len(_ADMIN_MFA_RECOVERY_CODES) == 10
     return payload
 
 

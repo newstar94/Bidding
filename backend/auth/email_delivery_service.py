@@ -40,18 +40,7 @@ def _recipient_hash(recipient: str) -> str:
 
 def _configured_key(environ=None) -> str:
     environ = os.environ if environ is None else environ
-    dedicated = str(environ.get("EMAIL_OUTBOX_ENCRYPTION_KEY", "")).strip()
-    if dedicated:
-        return dedicated
-    # Development/test installs may reuse the already protected MFA key so a
-    # fresh install remains convenient. Production validation rejects this
-    # fallback and requires an independently rotatable outbox key.
-    if str(environ.get("APP_ENV", "development")).strip().lower() not in {
-        "prod",
-        "production",
-    }:
-        return str(environ.get("MFA_ENCRYPTION_KEY", "")).strip()
-    return ""
+    return str(environ.get("EMAIL_OUTBOX_ENCRYPTION_KEY", "")).strip()
 
 
 def validate_email_outbox_configuration(environ=None, *, required=False) -> None:

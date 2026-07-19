@@ -34,7 +34,7 @@ _secret_patterns = (
             r"(?i)[\"']?\b(session_token|csrf_token|access_token|refresh_token|"
             r"password|temporary_password|mat_khau|otp|otp_code|verification_code|"
             r"reset_token|credential|google_credential|client_secret|smtp_password|"
-            r"database_url|connection_string|mfa_secret|encryption_key)\b"
+            r"database_url|connection_string|encryption_key)\b"
             r"[\"']?\s*[:=]\s*[\"']?[^\s,;\]}\"']+"
         ),
         "[REDACTED_SECRET]",

@@ -223,7 +223,7 @@ server {
         proxy_send_timeout 30s;
     }
 
-    location ~ ^/api/auth/(register|verify|resend-code|forgot-password|reset-password|verify-email-change|mfa/(setup|confirm|disable))$ {
+    location ~ ^/api/auth/(register|verify|resend-code|forgot-password|reset-password|verify-email-change)$ {
         client_max_body_size 1m;
         limit_req zone=biddingflow_otp burst=5 nodelay;
         proxy_pass http://biddingflow_backend;

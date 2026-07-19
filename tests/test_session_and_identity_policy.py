@@ -64,7 +64,6 @@ def test_session_token_hash_and_creation_bounds_idle_expiry(
         idle_timeout_seconds=10,
         remember=True,
         device_info="browser",
-        mfa_verified=True,
         now=100,
     )
     assert session_id == "session-id"
@@ -73,7 +72,7 @@ def test_session_token_hash_and_creation_bounds_idle_expiry(
     assert parameters[1] == "user-1"
     assert parameters[2] == session_store.hash_session_token("secret-token")
     assert parameters[5] == 160
-    assert parameters[-1] == 100
+    assert parameters[-1] == "browser"
 
     cursor = _Cursor()
     session_store.create_session(
@@ -146,19 +145,6 @@ def test_load_session_user_handles_empty_found_missing_and_error(
 )
 def test_session_invalid_reason(user, now: int, reason: str | None) -> None:
     assert session_store.session_invalid_reason(user, now) == reason
-
-
-def test_pending_mandatory_mfa_session_is_restricted(monkeypatch) -> None:
-    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "true")
-    user = {
-        "revoked_at": None,
-        "absolute_expires_at": 200,
-        "idle_expires_at": 150,
-        "vai_tro": "super_admin",
-        "mfa_verified_at": None,
-    }
-    assert session_store.session_invalid_reason(user, 100) == "mfa_verification_required"
-    assert session_store.session_invalid_reason(user, 100, True) is None
 
 
 def test_touch_session_commits_and_updates_local_state() -> None:

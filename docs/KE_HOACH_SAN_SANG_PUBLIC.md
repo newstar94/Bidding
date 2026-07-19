@@ -104,7 +104,7 @@ ranh giới sandbox trên máy Linux staging tương đương production.
 - Nạp secret production bằng secret manager hoặc file environment quyền `0600`
   ngoài thư mục ứng dụng.
 - Cấp giá trị độc lập cho runtime DB, migrator DB, backup, SMTP, Google OAuth,
-  email/MFA encryption và audit; thiết lập lịch rotate tối đa 90 ngày cùng quy
+  email-outbox encryption và audit; thiết lập lịch rotate tối đa 90 ngày cùng quy
   trình revoke khẩn cấp.
 
 ### 8.3. Backup và phục hồi
@@ -233,7 +233,7 @@ Chỉ cần một điều kiện trên chưa đạt thì trạng thái vẫn là
 
 ### Đợt 2 — Authentication và tenant hardening
 
-1. Argon2id/chính sách mật khẩu/MFA.
+1. Argon2id, chính sách mật khẩu và quản lý phiên có thể thu hồi.
 2. Runtime DB role và tenant test.
 3. Trusted Types/XSS/media fail-closed.
 4. Host/proxy hardening.

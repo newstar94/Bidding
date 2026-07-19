@@ -807,8 +807,22 @@ export class BiddingModel {
     );
     return effective;
   }
+  isActivePersonalWorkspace() {
+    const activeUser = this.state.activeuser;
+    const activeOrganizationId = String(activeUser?.activeOrganizationId || "").trim();
+    if (activeOrganizationId.startsWith("personal:")) {
+      return true;
+    }
+    const organizations = Array.isArray(activeUser?.organizations)
+      ? activeUser.organizations
+      : [];
+    return organizations.some((organization) => (
+      String(organization?.id || "").trim() === activeOrganizationId
+      && String(organization?.scope_type || "").trim().toLowerCase() === "personal"
+    ));
+  }
   hasPermission(empId, moduleName, permissionType) {
-    if (this.hasActiveEffectiveRole("manager")) {
+    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager")) {
       return true;
     }
     const matrix = this.state.permissionmatrix.find((m) => m.empId === empId);
@@ -821,7 +835,7 @@ export class BiddingModel {
     return perm === "view" || perm === "edit";
   }
   isAssigned(empId, targetId, type) {
-    if (this.hasActiveEffectiveRole("manager")) {
+    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager")) {
       return true;
     }
     const cleanEmpId = String(empId).replace(/^(emp-|user-|sa-|mgr-)+/, "");
@@ -833,7 +847,7 @@ export class BiddingModel {
   // Filter plans, packages, contracts for the active employee
   getFilteredKeHoach() {
     const allPlans = this.getLatestPlans();
-    if (this.hasActiveEffectiveRole("manager")) {
+    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager")) {
       return allPlans;
     }
     const empId = this.state.activeuser?.id;
@@ -852,7 +866,7 @@ export class BiddingModel {
   }
   getFilteredGoiThau() {
     const allPackages = this.getLatestPackages();
-    if (this.hasActiveEffectiveRole("manager")) {
+    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager")) {
       return allPackages;
     }
     const empId = this.state.activeuser?.id;
@@ -863,7 +877,7 @@ export class BiddingModel {
   }
   getFilteredHopDong() {
     const allContracts = this.getLatestContracts();
-    if (this.hasActiveEffectiveRole("manager")) {
+    if (this.isActivePersonalWorkspace() || this.hasActiveEffectiveRole("manager")) {
       return allContracts;
     }
     const empId = this.state.activeuser?.id;

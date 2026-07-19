@@ -66,10 +66,6 @@ _BIGINT_COLUMNS = frozenset(
         "absolute_expires_at",
         "revoked_at",
         "privileged_reauth_at",
-        "mfa_verified_at",
-        "last_counter",
-        "enabled_at",
-        "last_used_at",
     }
 )
 
@@ -424,7 +420,6 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_idle_expiry ON auth_sessions (idle_expires_at) WHERE revoked_at IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_absolute_expiry ON auth_sessions (absolute_expires_at) WHERE revoked_at IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_revoked_cleanup ON auth_sessions (revoked_at) WHERE revoked_at IS NOT NULL",
-        "CREATE INDEX IF NOT EXISTS idx_account_mfa_enabled ON account_mfa (enabled, user_id)",
         "CREATE INDEX IF NOT EXISTS idx_dinh_danh_ngoai_user ON dinh_danh_ngoai (user_id)",
         "CREATE INDEX IF NOT EXISTS idx_password_reset_user_active ON password_reset_tokens (user_id, used_at, expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at)",

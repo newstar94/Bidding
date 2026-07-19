@@ -384,12 +384,6 @@ from backend.auth.auth_routes import (
 )
 from backend.auth.auth_routes import build_session_bootstrap
 from backend.auth.google_auth_routes import google_login_api
-from backend.auth.mfa_routes import (
-    mfa_confirm_api,
-    mfa_disable_api,
-    mfa_setup_api,
-    mfa_status_api,
-)
 from backend.sync.api import (
     sync_websocket_endpoint,
     sync_api,
@@ -694,10 +688,6 @@ routes = [
     Route("/api/auth/verify-email-change", verify_email_change_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
     Route("/api/auth/privileged-reauth", privileged_reauth_api, methods=["POST"]),
-    Route("/api/auth/mfa/status", mfa_status_api, methods=["GET"]),
-    Route("/api/auth/mfa/setup", mfa_setup_api, methods=["POST"]),
-    Route("/api/auth/mfa/confirm", mfa_confirm_api, methods=["POST"]),
-    Route("/api/auth/mfa/disable", mfa_disable_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
     Route("/api/auth/users/access-settings", update_user_access_settings_api, methods=["PUT"]),
 

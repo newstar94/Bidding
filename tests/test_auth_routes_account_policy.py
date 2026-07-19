@@ -984,7 +984,7 @@ def test_update_user_role_rejects_auth_json_schema_controls_and_malformed_role(m
     _install_json(monkeypatch, {"user_id": "u", "role": "user", "scope": "platform"})
     monkeypatch.setattr(auth_routes, "get_effective_roles", lambda _value: {"super_admin"})
     monkeypatch.setattr(auth_routes, "_load_user_by_session_token", lambda _token: {})
-    monkeypatch.setattr(auth_routes, "verify_super_admin_controls", lambda *_args, **_kwargs: (False, "mfa"))
+    monkeypatch.setattr(auth_routes, "verify_super_admin_controls", lambda *_args, **_kwargs: (False, "denied"))
     assert asyncio.run(auth_routes.update_user_role_api(_Request())).status_code == 403
 
 
