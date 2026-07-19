@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 import { registerCommandArgs } from "../../shared/commandArgs.js";
 
@@ -70,7 +71,7 @@ export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMo
       { label: `Nội dung trả lời ${required}` }
     ]
   });
-  container.innerHTML = `
+  container.innerHTML = trustedHTML(`
     ${summaryHtml}
     ${extensionCard}
     ${requestCard}
@@ -83,5 +84,5 @@ export function renderInvitationPanel(container, pkg, { summaryHtml = "", editMo
         <i data-lucide="${editMode ? "save" : "edit-3"}"></i> ${editMode ? "Lưu thông tin mời thầu" : "Chỉnh sửa"}
       </button>
     </div>
-  `;
+  `);
 }

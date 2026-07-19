@@ -37,6 +37,8 @@ RUNTIME_FILES = (
     "scripts/backup.py",
     "scripts/configure_database_roles.py",
     "scripts/manage_database.py",
+    "scripts/benchmark_password_hash.py",
+    "scripts/verify_document_sandbox.py",
 )
 
 FORBIDDEN_PARTS = {

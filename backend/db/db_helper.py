@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from contextlib import AbstractContextManager
 from datetime import date, datetime
 from decimal import Decimal
@@ -27,6 +28,28 @@ from backend.shared.date_utils import VIETNAM_TIMEZONE, VIETNAM_TIMEZONE_NAME
 DatabaseError = psycopg.Error
 IntegrityError = psycopg.IntegrityError
 OperationalError = psycopg.OperationalError
+
+
+def _record_postgres_timing(
+    phase: str,
+    duration_seconds: float,
+    *,
+    outcome: str = "ok",
+) -> None:
+    """Lazy import avoids coupling the database primitive to metrics startup."""
+
+    try:
+        from backend.observability.metrics import record_database_phase
+
+        record_database_phase(
+            "postgres",
+            phase,
+            duration_seconds,
+            outcome=outcome,
+        )
+    except Exception:
+        # Metrics must remain fail-open and never affect a transaction.
+        pass
 
 
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -148,18 +171,42 @@ class PostgresCursor:
         self._cursor = cursor
 
     def execute(self, statement: Any, parameters: Sequence[Any] | Mapping[str, Any] | None = None):
+        started_at = time.perf_counter()
+        outcome = "ok"
         if isinstance(statement, str):
             statement = _convert_qmark_parameters(statement)
-        if parameters is None:
-            self._cursor.execute(statement)
-        else:
-            self._cursor.execute(statement, parameters)
+        try:
+            if parameters is None:
+                self._cursor.execute(statement)
+            else:
+                self._cursor.execute(statement, parameters)
+        except Exception:
+            outcome = "error"
+            raise
+        finally:
+            _record_postgres_timing(
+                "query",
+                time.perf_counter() - started_at,
+                outcome=outcome,
+            )
         return self
 
     def executemany(self, statement: Any, parameters_seq: Iterable[Sequence[Any]]):
+        started_at = time.perf_counter()
+        outcome = "ok"
         if isinstance(statement, str):
             statement = _convert_qmark_parameters(statement)
-        self._cursor.executemany(statement, parameters_seq)
+        try:
+            self._cursor.executemany(statement, parameters_seq)
+        except Exception:
+            outcome = "error"
+            raise
+        finally:
+            _record_postgres_timing(
+                "executemany",
+                time.perf_counter() - started_at,
+                outcome=outcome,
+            )
         return self
 
     def fetchone(self):
@@ -357,10 +404,19 @@ class PostgresDatabase:
     def get_connection(self) -> PostgresConnection:
         self.open(wait=True)
         assert self._pool is not None
+        started_at = time.perf_counter()
+        outcome = "ok"
         try:
             connection = self._pool.getconn()
         except PoolTimeout as exc:
+            outcome = "timeout"
             raise OperationalError("PostgreSQL connection pool is exhausted.") from exc
+        finally:
+            _record_postgres_timing(
+                "connection_acquire",
+                time.perf_counter() - started_at,
+                outcome=outcome,
+            )
         return PostgresConnection(self._pool, connection)
 
     def listen_connection(self) -> psycopg.Connection[Any]:

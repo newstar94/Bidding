@@ -21,10 +21,7 @@ const CHUYEN_GIA_FORM_FIELDS = {
 };
 
 const safeExpertImageSrc = (value) => {
-  const src = String(value || "").trim();
-  if (/^\/images\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) return src;
-  if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
-  return "";
+  return safeImageSrc(value);
 };
 export async function deleteChuyenGia(id) {
   if (this.model.state.activerole === "employee") {

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from backend.db.db_helper import DatabaseError
 
 
@@ -16,6 +18,7 @@ from backend.shared.helpers import (
     verify_session,
 )
 from backend.shared.logging_utils import error_response, log_and_error
+from backend.observability.metrics import record_database_phase
 from backend.sync.repository import get_current_sync_version
 
 
@@ -74,10 +77,18 @@ def _read_current_sync_version(request):
         connection = database.get_connection()
         cursor = connection.cursor()
         sync_version = get_current_sync_version(cursor, organization_id)
-        return JSONResponse(
-            {"syncVersion": sync_version},
-            headers={"Cache-Control": "private, no-store"},
-        )
+        json_started_at = time.perf_counter()
+        try:
+            return JSONResponse(
+                {"syncVersion": sync_version},
+                headers={"Cache-Control": "private, no-store"},
+            )
+        finally:
+            record_database_phase(
+                "sync",
+                "json_serialize",
+                time.perf_counter() - json_started_at,
+            )
     except OrgPermissionError:
         return error_response(
             request,

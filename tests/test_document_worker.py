@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import zipfile
 from io import BytesIO
 
@@ -16,9 +20,14 @@ from backend.documents.document_ipc import (
 )
 from backend.documents.document_worker import (
     DocumentWorkerInputError,
+    DocumentWorkerTimeoutError,
     run_document_job,
 )
 from backend.documents.document_sandbox import build_bwrap_command
+from backend.documents.seccomp_policy import (
+    _DENIED_SYSCALLS,
+    seccomp_library_name,
+)
 from backend.shared.paths import PROJECT_ROOT
 
 
@@ -176,5 +185,73 @@ def test_bwrap_command_mounts_backend_not_project_secrets(tmp_path: Path) -> Non
     assert (str((PROJECT_ROOT / "backend").resolve()), str((PROJECT_ROOT / "backend").resolve())) in mounts
     assert (str(PROJECT_ROOT.resolve()), str(PROJECT_ROOT.resolve())) not in mounts
     assert (str(job_dir), str(job_dir)) in mounts
-    assert "--unshare-all" in command
+    assert "--unshare-user" in command
+    assert "--unshare-net" in command
+    assert "--unshare-pid" in command
+    assert "--disable-userns" in command
+    assert command[command.index("--uid") + 1] == "65534"
+    assert command[command.index("--gid") + 1] == "65534"
     assert "--clearenv" in command
+
+
+def test_document_timeout_kills_worker_and_cleans_job_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker_root = tmp_path / "worker-jobs"
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(worker_root))
+    monkeypatch.setenv("APP_ENV", "test")
+
+    with pytest.raises(DocumentWorkerTimeoutError):
+        run_document_job(
+            "test_delay",
+            {"seconds": 3},
+            timeout_seconds=1,
+        )
+    assert not worker_root.exists() or not any(worker_root.iterdir())
+    assert run_document_job(
+        "validate_ooxml",
+        {"content": _minimal_xlsx(), "kind": "xlsx"},
+        timeout_seconds=15,
+    ) is True
+
+
+def test_seccomp_policy_denies_network_process_and_kernel_escape_syscalls() -> None:
+    required = {
+        "clone",
+        "clone3",
+        "fork",
+        "vfork",
+        "execve",
+        "execveat",
+        "socket",
+        "socketpair",
+        "connect",
+        "mount",
+        "ptrace",
+        "unshare",
+        "setns",
+    }
+    assert required <= set(_DENIED_SYSCALLS)
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not shutil.which("bwrap") or not seccomp_library_name(),
+    reason="Real Bubblewrap/seccomp probe requires a Linux staging runner.",
+)
+def test_real_linux_document_sandbox_probe(tmp_path: Path) -> None:
+    environment = os.environ.copy()
+    environment["DOCUMENT_WORKER_TEMP_DIR"] = str(tmp_path / "worker-jobs")
+    completed = subprocess.run(
+        [sys.executable, "scripts/verify_document_sandbox.py"],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr.decode(
+        "utf-8", errors="replace"
+    )

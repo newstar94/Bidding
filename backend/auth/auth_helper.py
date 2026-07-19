@@ -8,22 +8,41 @@ from backend.db.db_helper import database
 from backend.shared.client_ip import get_client_ip, is_client_ip_allowed
 from backend.auth.roles import effective_access_roles, normalize_platform_role
 from backend.auth.session_store import load_session_user, session_invalid_reason, touch_session
+from argon2 import PasswordHasher, Type
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 ROLE_HIERARCHY = {
     'super_admin': effective_access_roles('super_admin'),
     'user': ['user'],
 }
 
-PASSWORD_HASH_ITERATIONS = int(os.environ.get("PASSWORD_HASH_ITERATIONS", "310000"))
+ARGON2_TIME_COST = max(2, min(6, int(os.environ.get("ARGON2_TIME_COST", "3"))))
+ARGON2_MEMORY_COST_KIB = max(
+    19_456, min(262_144, int(os.environ.get("ARGON2_MEMORY_COST_KIB", "65536")))
+)
+ARGON2_PARALLELISM = max(
+    1, min(4, int(os.environ.get("ARGON2_PARALLELISM", "2")))
+)
+_PASSWORD_HASHER = PasswordHasher(
+    time_cost=ARGON2_TIME_COST,
+    memory_cost=ARGON2_MEMORY_COST_KIB,
+    parallelism=ARGON2_PARALLELISM,
+    hash_len=32,
+    salt_len=16,
+    type=Type.ID,
+)
 PRIVILEGED_REAUTH_TTL_SECONDS = max(
     60,
     int(os.environ.get("PRIVILEGED_REAUTH_TTL_SECONDS", "600")),
 )
 PRIVILEGED_REAUTH_REQUIRED = "Cần xác thực lại mật khẩu để thực hiện thao tác quản trị nhạy cảm."
 SUPER_ADMIN_NETWORK_DENIED = "Truy cập bị từ chối: mạng hiện tại không được phép dùng quyền quản trị tối cao."
+SUPER_ADMIN_MFA_REQUIRED = (
+    "Super Admin phải bật và xác minh MFA trước khi dùng chức năng quản trị."
+)
 
 SESSION_ACTIVITY_TOUCH_SECONDS = max(
-    30, int(os.environ.get("SESSION_ACTIVITY_TOUCH_SECONDS", "60"))
+    60, int(os.environ.get("SESSION_ACTIVITY_TOUCH_SECONDS", "300"))
 )
 SESSION_IDLE_TIMEOUT_SECONDS = max(
     60, int(os.environ.get("SESSION_INACTIVITY_TIMEOUT_HOURS", "10")) * 3600
@@ -35,22 +54,33 @@ def get_effective_roles(role_str):
     return set(ROLE_HIERARCHY[platform_role])
 
 def hash_password(password: str, salt: str = None) -> str:
-    if salt is None:
-        salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), PASSWORD_HASH_ITERATIONS)
-    return f"pbkdf2_sha256${PASSWORD_HASH_ITERATIONS}${salt}${pwd_hash.hex()}"
+    """Hash all new credentials with Argon2id and a library-generated salt."""
+    del salt
+    if not isinstance(password, str):
+        raise TypeError("Password must be a string.")
+    return _PASSWORD_HASHER.hash(password)
 
 def verify_password(stored_password: str, provided_password: str) -> bool:
     try:
         if not stored_password:
             return False
 
+        if stored_password.startswith("$argon2id$"):
+            try:
+                return bool(_PASSWORD_HASHER.verify(stored_password, provided_password))
+            except (VerifyMismatchError, VerificationError, InvalidHashError):
+                return False
+
+        # Transitional verification only. A successful login is immediately
+        # rehashed by the caller using Argon2id.
         if stored_password.startswith("pbkdf2_sha256$"):
             parts = stored_password.split("$", 3)
             if len(parts) != 4:
                 return False
             _, iterations_raw, salt, stored_hash = parts
             iterations = int(iterations_raw)
+            if not 100_000 <= iterations <= 10_000_000:
+                return False
             pwd_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt.encode('utf-8'), iterations)
             return secrets.compare_digest(stored_hash, pwd_hash.hex())
 
@@ -63,12 +93,8 @@ def password_needs_rehash(stored_password: str) -> bool:
         if not stored_password:
             return True
 
-        if stored_password.startswith("pbkdf2_sha256$"):
-            parts = stored_password.split("$", 3)
-            if len(parts) != 4:
-                return True
-            iterations = int(parts[1])
-            return iterations < PASSWORD_HASH_ITERATIONS
+        if stored_password.startswith("$argon2id$"):
+            return _PASSWORD_HASHER.check_needs_rehash(stored_password)
 
         return True
     except Exception:
@@ -132,6 +158,8 @@ def verify_super_admin_controls(request, user, *, require_reauth=None):
     """Apply network allowlisting and recent password step-up after authentication."""
     if not is_client_ip_allowed(get_client_ip(request)):
         return False, SUPER_ADMIN_NETWORK_DENIED
+    if not bool(user.get("mfa_enabled")) or not user.get("mfa_verified_at"):
+        return False, SUPER_ADMIN_MFA_REQUIRED
     unsafe_method = str(getattr(request, "method", "GET") or "GET").upper() not in {
         "GET", "HEAD", "OPTIONS"
     }
@@ -143,6 +171,19 @@ def verify_super_admin_controls(request, user, *, require_reauth=None):
             reauthenticated_at = 0
         if reauthenticated_at <= 0 or time.time() - reauthenticated_at > PRIVILEGED_REAUTH_TTL_SECONDS:
             return False, PRIVILEGED_REAUTH_REQUIRED
+    return True, None
+
+
+def verify_recent_reauthentication(user):
+    try:
+        reauthenticated_at = int(user.get("privileged_reauth_at") or 0)
+    except (AttributeError, TypeError, ValueError):
+        reauthenticated_at = 0
+    if (
+        reauthenticated_at <= 0
+        or time.time() - reauthenticated_at > PRIVILEGED_REAUTH_TTL_SECONDS
+    ):
+        return False, PRIVILEGED_REAUTH_REQUIRED
     return True, None
 
 def verify_session(request, required_role=None):

@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import sys
 
+from backend.documents.seccomp_policy import seccomp_library_name
 from backend.shared.paths import PROJECT_ROOT
 
 
@@ -27,6 +28,20 @@ def _directory_creation_args(paths: list[Path]) -> list[str]:
                 arguments.extend(["--dir", str(current)])
                 created.add(current)
     return arguments
+
+
+def _sandbox_identity(environment: dict[str, str]) -> tuple[str, str]:
+    values = []
+    for name in ("DOCUMENT_WORKER_SANDBOX_UID", "DOCUMENT_WORKER_SANDBOX_GID"):
+        raw_value = str(environment.get(name, "65534")).strip()
+        try:
+            value = int(raw_value)
+        except ValueError as exc:
+            raise RuntimeError(f"{name} must be an integer.") from exc
+        if not 1 <= value <= 2_147_483_647:
+            raise RuntimeError(f"{name} must be a non-root numeric identity.")
+        values.append(str(value))
+    return values[0], values[1]
 
 
 def build_bwrap_command(
@@ -52,13 +67,24 @@ def build_bwrap_command(
             read_only_roots.append(candidate)
     if not backend_source.is_dir():
         raise RuntimeError("Document worker backend source is missing.")
+    sandbox_uid, sandbox_gid = _sandbox_identity(environment)
 
     mount_destinations = [root for root in read_only_roots] + [backend_source, job_dir]
     arguments = [
         executable,
         "--die-with-parent",
         "--new-session",
-        "--unshare-all",
+        "--unshare-user",
+        "--unshare-ipc",
+        "--unshare-pid",
+        "--unshare-net",
+        "--unshare-uts",
+        "--unshare-cgroup-try",
+        "--disable-userns",
+        "--uid",
+        sandbox_uid,
+        "--gid",
+        sandbox_gid,
         "--cap-drop",
         "ALL",
         "--clearenv",
@@ -100,6 +126,9 @@ def validate_document_sandbox_configuration(environ=None) -> None:
         executable = str(environment.get("DOCUMENT_WORKER_SANDBOX_EXECUTABLE", "")).strip() or shutil.which("bwrap")
         if not executable or not Path(executable).is_file():
             raise RuntimeError("Production document workers require an installed Bubblewrap executable.")
+        _sandbox_identity(dict(environment))
+        if not seccomp_library_name():
+            raise RuntimeError("Production document workers require libseccomp.")
     elif os.name == "nt":
         if mode != "windows_job":
             raise RuntimeError("Production Windows document workers require DOCUMENT_WORKER_SANDBOX=windows_job.")

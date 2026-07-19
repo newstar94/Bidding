@@ -42,13 +42,13 @@ def _ensure_login_role(cursor, role: str, password: str) -> None:
     ).fetchone()
     if exists:
         cursor.execute(
-            sql.SQL("ALTER ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {}").format(
+            sql.SQL("ALTER ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD {}").format(
                 sql.Identifier(role), sql.Literal(password)
             )
         )
     else:
         cursor.execute(
-            sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {}").format(
+            sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD {}").format(
                 sql.Identifier(role), sql.Literal(password)
             )
         )
@@ -78,6 +78,21 @@ def main() -> int:
         )
         cursor.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
         cursor.execute(
+            sql.SQL("REVOKE CREATE, TEMP ON DATABASE {} FROM PUBLIC").format(
+                sql.Identifier(database_name)
+            )
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON DATABASE {} FROM {}").format(
+                sql.Identifier(database_name), sql.Identifier(runtime_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON SCHEMA public FROM {}").format(
+                sql.Identifier(runtime_role)
+            )
+        )
+        cursor.execute(
             sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}").format(
                 sql.Identifier(database_name),
                 sql.Identifier(runtime_role),
@@ -97,6 +112,11 @@ def main() -> int:
         cursor.execute(
             sql.SQL("GRANT CREATE ON SCHEMA public TO {}").format(
                 sql.Identifier(migrator_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("ALTER ROLE {} IN DATABASE {} SET search_path TO public").format(
+                sql.Identifier(runtime_role), sql.Identifier(database_name)
             )
         )
 
@@ -141,12 +161,35 @@ def main() -> int:
             )
 
         cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {}").format(
+                sql.Identifier(runtime_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM {}").format(
+                sql.Identifier(runtime_role)
+            )
+        )
+        cursor.execute(
+            "REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC"
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
+                sql.Identifier(runtime_role)
+            )
+        )
+        cursor.execute(
             sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {}").format(
                 sql.Identifier(runtime_role)
             )
         )
         cursor.execute(
             sql.SQL("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO {}").format(
+                sql.Identifier(runtime_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO {}").format(
                 sql.Identifier(runtime_role)
             )
         )
@@ -160,6 +203,32 @@ def main() -> int:
                 sql.Identifier(migrator_role), sql.Identifier(runtime_role)
             )
         )
+        cursor.execute(
+            sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC").format(
+                sql.Identifier(migrator_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO {}").format(
+                sql.Identifier(migrator_role), sql.Identifier(runtime_role)
+            )
+        )
+        memberships = cursor.execute(
+            """
+            SELECT parent.rolname
+            FROM pg_auth_members AS memberships
+            JOIN pg_roles AS parent ON parent.oid = memberships.roleid
+            JOIN pg_roles AS member ON member.oid = memberships.member
+            WHERE member.rolname = %s
+            ORDER BY parent.rolname
+            """,
+            (runtime_role,),
+        ).fetchall()
+        if memberships:
+            raise RuntimeError(
+                "Runtime role inherits other PostgreSQL roles; revoke memberships first: "
+                + ", ".join(row[0] for row in memberships)
+            )
     print("PostgreSQL migrator/runtime roles configured successfully.")
     return 0
 

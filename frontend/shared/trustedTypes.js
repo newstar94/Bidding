@@ -1,4 +1,5 @@
 import { classForRuntimeDeclarations } from "./runtimeStyles.js";
+import DOMPurify from "dompurify";
 
 const trustedTypesApi = globalThis.trustedTypes;
 
@@ -42,18 +43,37 @@ export function assertSafeScriptURL(value) {
   throw new TypeError("Unapproved script URL rejected by the application Trusted Types policy");
 }
 
-// The application already enforces escaping at every dynamic interpolation via
-// static checks. A single default policy makes every remaining framework/vendor
-// HTML sink auditable and allows CSP Trusted Types enforcement today.
+export function assertSafeStyleURL(value) {
+  const source = String(value ?? "");
+  if (/^\/(?:frontend|vendor)\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]+\.css(?:\?[A-Za-z0-9._~!$&'()*+,;=:@/%?-]*)?$/.test(source)) {
+    return source;
+  }
+  throw new TypeError("Unapproved stylesheet URL rejected by the application security policy");
+}
+
 const TRUSTED_POLICY_CACHE_KEY = "__BF_TRUSTED_HTML_POLICY__";
 
-// The default policy also protects legacy framework sinks that cannot yet pass
-// TrustedHTML explicitly. Cache it on the window because an embedded app shell
-// can evaluate the secure production entry more than once in the same document.
-const createTrustedHtmlPolicy = () => trustedTypesApi?.createPolicy?.("default", {
+function sanitizeHTML(value) {
+  const migrated = migrateStyleAttributes(assertSafeHTML(value));
+  if (!DOMPurify.isSupported) {
+    throw new TypeError("HTML sanitizer is unavailable in this browser");
+  }
+  return DOMPurify.sanitize(migrated, {
+    RETURN_TRUSTED_TYPE: false,
+    USE_PROFILES: { html: true, svg: true, svgFilters: true },
+    FORBID_TAGS: ["script", "iframe", "object", "embed", "base", "meta"],
+    FORBID_ATTR: ["style", "srcdoc", "formaction"],
+    ALLOW_UNKNOWN_PROTOCOLS: false,
+    SANITIZE_DOM: true
+  });
+}
+
+// Every first-party sink explicitly calls trustedHTML. There is intentionally no
+// default policy: a newly introduced raw sink fails closed under CSP.
+const createTrustedHtmlPolicy = () => trustedTypesApi?.createPolicy?.("biddingflow-html", {
   createHTML(value) {
     if (typeof value !== "string") throw new TypeError("Trusted HTML input must be a string");
-    return migrateStyleAttributes(assertSafeHTML(value));
+    return sanitizeHTML(value);
   },
   createScriptURL(value) {
     return assertSafeScriptURL(value);
@@ -74,11 +94,20 @@ if (trustedHtmlPolicy && !globalThis[TRUSTED_POLICY_CACHE_KEY]) {
 }
 
 export function trustedHTML(value) {
-  const source = assertSafeHTML(value);
-  return trustedHtmlPolicy ? trustedHtmlPolicy.createHTML(source) : migrateStyleAttributes(source);
+  const source = String(value ?? "");
+  return trustedHtmlPolicy ? trustedHtmlPolicy.createHTML(source) : sanitizeHTML(source);
 }
 
 export function trustedScriptURL(value) {
   const source = assertSafeScriptURL(value);
   return trustedHtmlPolicy ? trustedHtmlPolicy.createScriptURL(source) : source;
+}
+
+if (!globalThis.__BF_TRUSTED_HTML__) {
+  Object.defineProperty(globalThis, "__BF_TRUSTED_HTML__", {
+    configurable: false,
+    enumerable: false,
+    value: trustedHTML,
+    writable: false
+  });
 }

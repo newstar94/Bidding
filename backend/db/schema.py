@@ -73,7 +73,24 @@ SCHEMA_DINH_NGHIA = {
             "revoked_at": "INTEGER",
             "remember_me": "INTEGER NOT NULL DEFAULT 0 CHECK(remember_me IN (0,1))",
             "device_info": "TEXT",
-            "privileged_reauth_at": "INTEGER"
+            "privileged_reauth_at": "INTEGER",
+            "mfa_verified_at": "INTEGER"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
+    "account_mfa": {
+        "columns": {
+            "user_id": "TEXT PRIMARY KEY",
+            "secret_ciphertext": "TEXT NOT NULL CHECK(secret_ciphertext != '')",
+            "enabled": "INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1))",
+            "last_counter": "INTEGER NOT NULL DEFAULT -1 CHECK(last_counter >= -1)",
+            "recovery_codes_json": "TEXT NOT NULL DEFAULT '[]'",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)",
+            "enabled_at": "INTEGER",
+            "last_used_at": "INTEGER"
         },
         "foreign_keys": [
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
@@ -113,10 +130,16 @@ SCHEMA_DINH_NGHIA = {
             "user_id": "TEXT NOT NULL",
             "purpose": "TEXT NOT NULL CHECK(purpose IN ('google_temporary_password'))",
             "recipient_hash": "TEXT NOT NULL CHECK(recipient_hash != '')",
+            "recipient_ciphertext": "TEXT",
+            "subject_ciphertext": "TEXT",
+            "body_ciphertext": "TEXT",
+            "sensitive_content": "INTEGER NOT NULL DEFAULT 1 CHECK(sensitive_content IN (0,1))",
             "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'sending', 'retry', 'sent', 'failed'))",
             "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
             "last_error_code": "TEXT",
             "next_attempt_at": "INTEGER",
+            "locked_at": "INTEGER",
+            "locked_by": "TEXT",
             "accepted_at": "INTEGER",
             "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
             "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
@@ -151,6 +174,27 @@ SCHEMA_DINH_NGHIA = {
             "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
         }
     },
+    "partner_enrichment_jobs": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "organization_id": "TEXT NOT NULL CHECK(organization_id != '')",
+            "contractor_id": "TEXT NOT NULL CHECK(contractor_id != '')",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'retry', 'completed', 'failed'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "INTEGER NOT NULL CHECK(available_at > 0)",
+            "locked_at": "INTEGER",
+            "locked_by": "TEXT",
+            "last_error_code": "TEXT",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
+        },
+        "unique_constraints": [
+            "UNIQUE(organization_id, contractor_id)"
+        ],
+        "foreign_keys": [
+            "FOREIGN KEY (organization_id, contractor_id) REFERENCES nha_thau(organization_id, id) ON DELETE CASCADE"
+        ]
+    },
     "websocket_events": {
         "columns": {
             "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
@@ -159,6 +203,38 @@ SCHEMA_DINH_NGHIA = {
             "user_id": "TEXT",
             "payload_json": "TEXT",
             "created_at": "TEXT NOT NULL DEFAULT (datetime('now'))"
+        }
+    },
+    "websocket_connection_leases": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "user_id": "TEXT",
+            "organization_id": "TEXT",
+            "client_ip_hash": "TEXT NOT NULL CHECK(client_ip_hash != '')",
+            "worker_id": "TEXT NOT NULL CHECK(worker_id != '')",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > 0)",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
+    "document_jobs": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "operation": "TEXT NOT NULL CHECK(operation != '')",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'retry', 'completed', 'failed'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "available_at": "INTEGER NOT NULL CHECK(available_at > 0)",
+            "locked_at": "INTEGER",
+            "locked_by": "TEXT",
+            "last_error_code": "TEXT",
+            "last_error_message": "TEXT",
+            "completed_at": "INTEGER",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > 0)",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
         }
     },
     "chu_dau_tu": {
@@ -1212,7 +1288,20 @@ def _apply_tenant_constraints(schema):
 
         table_spec["foreign_keys"] = list(dict.fromkeys(upgraded_foreign_keys))
 
-        if "id" in columns:
+        composite_tenant_id = (
+            str(columns.get("id", "")).startswith("TEXT")
+            and "NOT NULL" in str(columns.get("organization_id", "")).upper()
+        )
+        if composite_tenant_id:
+            table_spec["primary_keys"] = ["organization_id", "id"]
+            unique_constraints = [
+                constraint
+                for constraint in table_spec.get("unique_constraints", [])
+                if constraint.replace(" ", "").upper()
+                != "UNIQUE(ORGANIZATION_ID,ID)"
+            ]
+            table_spec["unique_constraints"] = unique_constraints
+        elif "id" in columns:
             tenant_unique = "UNIQUE(organization_id, id)"
             unique_constraints = list(table_spec.get("unique_constraints", []))
             if tenant_unique not in unique_constraints:

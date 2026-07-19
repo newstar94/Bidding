@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { authFetchDownload, escapeHtml, safeAttr } from "../../shared/view_helpers.js";
 import { bindCurrencyElement, formatPartnerIdentityCode } from "../../app/domUtils.js";
@@ -339,7 +340,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           is1G2T2
         });
         const { allBids, isDirectOrSpecial } = approvalPanel;
-        contentWrapper.innerHTML = approvalPanel.html;
+        contentWrapper.innerHTML = trustedHTML(approvalPanel.html);
         const rads = contentWrapper.querySelectorAll('input[name="result-danh-gia-nang-luc"]');
         const dgContainer = contentWrapper.querySelector("#container-date-bao-cao-danh-gia");
         rads.forEach((rad) => {
@@ -574,7 +575,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           const ntType = bidData.loaiNhaThau || "Độc lập";
           const tr = document.createElement("tr");
           tr.setAttribute("data-cdtrug-id", rowId);
-          tr.innerHTML = `
+          tr.innerHTML = trustedHTML(`
                         ${hasPhanLo ? `
                             <td><select class="form-control cdtrug-ma-phan-lo bf-s-1c5ec6d115">
                                 <option value="">-- Chọn --</option>${lotOptions}
@@ -599,7 +600,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                                 <i data-lucide="trash-2" class="bf-s-641778be2c"></i>
                             </button>
                         </td>
-                    `;
+                    `);
           const inpGia = tr.querySelector(".cdtrug-gia-du-thau");
           const inpTL = tr.querySelector(".cdtrug-ty-le-giam-gia");
           const inpGSG = tr.querySelector(".cdtrug-gia-sau-giam-gia");
@@ -1013,7 +1014,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
           tr._thanhVienLienDanh = [];
           tr._leadMemberName = "";
           tr._jointVentureViewData = { members: [], leadName: "", leadCode: "", leadContractorVersionId: "" };
-          tr.innerHTML = `
+          tr.innerHTML = trustedHTML(`
                         ${lotCells}
                         <td>
                             <select class="form-control row-loai-nha-thau bf-s-3f107fe5ee">
@@ -1045,7 +1046,7 @@ export function renderAwardResultDetailsPanel(view, { contentWrapper, gt, id, is
                         <td class="bf-s-63dbf5319a">
                             <button type="button" class="action-btn btn-delete row-remove-bidder bf-s-2e8164f9a4" aria-label="Xóa nhà thầu"><i data-lucide="trash-2" class="bf-s-3e32597019"></i></button>
                         </td>
-                    `;
+                    `);
           tbody.appendChild(tr);
           if (window.lucide) {
             window.lucide.createIcons();

@@ -74,6 +74,28 @@ groups:
           summary: "Document worker rejected queued exports/imports"
           runbook: "docs/RUNBOOK.md#metrics-slo-va-canh-bao"
 
+      - alert: BiddingFlowPartnerUpstreamDegraded
+        expr: |
+          sum by (upstream) (
+            increase(biddingflow_partner_upstream_requests_total{
+              outcome=~"timeout|error|circuit_open"
+            }[10m])
+          ) >= 5
+        for: 5m
+        labels: {severity: warning, owner: application-oncall}
+        annotations:
+          summary: "A partner lookup upstream is degraded"
+          runbook: "docs/RUNBOOK.md#tra-cuu-doi-tac-bi-gian-doan"
+
+      - alert: BiddingFlowPartnerLookupSaturated
+        expr: |
+          increase(biddingflow_partner_lookup_requests_total{outcome="busy"}[10m]) > 0
+        for: 2m
+        labels: {severity: warning, owner: application-oncall}
+        annotations:
+          summary: "Partner lookup concurrency is saturated"
+          runbook: "docs/RUNBOOK.md#tra-cuu-doi-tac-bi-gian-doan"
+
       - alert: BiddingFlowPostgreSQLLockTimeout
         expr: increase(biddingflow_database_lock_timeout_total[5m]) > 0
         for: 2m

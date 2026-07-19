@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { installAdminModule } from "../app/adminModuleLoader.js";
 import { applyAccessContext, selectActiveOrganization } from "./accessContext.js";
@@ -88,11 +89,11 @@ export function setupGoogleSignIn() {
     const descEl = modalOverlay.querySelector("[data-username-modal-desc]");
     if (descEl) {
       if (accountLinked) {
-        descEl.innerHTML = 'Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>';
+        descEl.innerHTML = trustedHTML('Đây là tài khoản cũ của bạn (Email + Mật khẩu) đã được tự động liên kết với Google. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Lưu ý: Tên này không thể thay đổi sau khi đặt.</span>');
       } else {
-        descEl.innerHTML = temporaryPasswordSent
+        descEl.innerHTML = trustedHTML(temporaryPasswordSent
           ? 'Tài khoản Google mới đã được tạo. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.<br><span class="bf-s-df017f976f">Mật khẩu tạm đã được gửi tới email Google của bạn. Hãy đổi mật khẩu sau lần đăng nhập đầu tiên.</span>'
-          : 'Tài khoản Google của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.';
+          : 'Tài khoản Google của bạn đã sẵn sàng. Vui lòng đặt <strong>tên đăng nhập</strong> để hoàn tất.');
       }
     }
     setRuntimeStyle(modalOverlay, "display", "flex");

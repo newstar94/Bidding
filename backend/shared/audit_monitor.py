@@ -7,6 +7,7 @@ import itertools
 import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.observability.metrics import (
@@ -14,10 +15,11 @@ from backend.observability.metrics import (
     record_audit_checkpoint,
 )
 from backend.shared.audit_chain import (
-    export_audit_checkpoint,
+    build_audit_checkpoint,
     inspect_audit_chain,
     inspect_audit_chain_against_checkpoint,
     set_audit_chain_health,
+    write_audit_checkpoint,
 )
 from backend.shared.database_io import run_database_read
 from backend.shared.logging_utils import log_structured_event
@@ -68,16 +70,45 @@ def _inspect_database(
     checkpoint_destination=None,
     hmac_key=None,
     export_checkpoint=False,
+    checkpoint_min_age_seconds=0,
 ):
     connection = None
+    checkpoint = None
+    pending_checkpoint = None
+    checkpoint_leader = False
     try:
         connection = database.get_connection()
-        cursor = connection.cursor()
+        if checkpoint_destination and export_checkpoint:
+            leader_row = connection.execute(
+                "SELECT pg_try_advisory_lock(hashtext('biddingflow-audit-checkpoint-export'))"
+            ).fetchone()
+            checkpoint_leader = bool(leader_row and leader_row[0])
+            connection.commit()
         checkpoint = (
             _latest_checkpoint(checkpoint_destination)
             if checkpoint_destination
             else None
         )
+        if checkpoint is not None and export_checkpoint and checkpoint_leader:
+            try:
+                created_at = datetime.fromisoformat(
+                    str(checkpoint.get("createdAt") or "").replace(
+                        "Z",
+                        "+00:00",
+                    )
+                )
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                age_seconds = (
+                    datetime.now(timezone.utc) - created_at.astimezone(timezone.utc)
+                ).total_seconds()
+                if age_seconds < max(0.0, float(checkpoint_min_age_seconds)):
+                    export_checkpoint = False
+            except (TypeError, ValueError):
+                # Invalid timestamp is handled by checkpoint integrity/shape
+                # verification; never use it to suppress a replacement.
+                pass
+        cursor = connection.cursor()
         verification = (
             inspect_audit_chain_against_checkpoint(
                 cursor, checkpoint, hmac_key=hmac_key
@@ -85,16 +116,37 @@ def _inspect_database(
             if checkpoint is not None
             else inspect_audit_chain(cursor)
         )
-        checkpoint_path = None
-        if verification.valid and checkpoint_destination and export_checkpoint:
-            checkpoint_path = export_audit_checkpoint(
+        if (
+            verification.valid
+            and checkpoint_destination
+            and export_checkpoint
+            and checkpoint_leader
+        ):
+            pending_checkpoint = build_audit_checkpoint(
                 cursor,
-                checkpoint_destination,
                 hmac_key=hmac_key,
+            )
+        connection.commit()
+        checkpoint_path = None
+        if pending_checkpoint is not None:
+            # The DB transaction is closed before filesystem I/O. The
+            # session-level advisory lock still prevents another worker from
+            # exporting the same cluster checkpoint concurrently.
+            checkpoint_path = write_audit_checkpoint(
+                pending_checkpoint,
+                checkpoint_destination,
             )
         return verification, checkpoint_path
     finally:
         if connection is not None:
+            if checkpoint_leader:
+                try:
+                    connection.execute(
+                        "SELECT pg_advisory_unlock(hashtext('biddingflow-audit-checkpoint-export'))"
+                    )
+                    connection.commit()
+                except Exception:
+                    connection.rollback()
             connection.close()
 
 
@@ -123,6 +175,7 @@ async def monitor_audit_chain(database, application=None):
                 checkpoint_destination or None,
                 hmac_key or None,
                 checkpoint_due,
+                checkpoint_interval,
                 timeout_seconds=min(60.0, max(5.0, interval / 2)),
             )
             record_audit_chain_verification(
@@ -182,6 +235,12 @@ async def verify_audit_chain_before_ready(database):
             checkpoint_destination or None,
             hmac_key or None,
             bool(checkpoint_destination),
+            _bounded_seconds(
+                "AUDIT_CHECKPOINT_INTERVAL_SECONDS",
+                86_400,
+                30,
+                31 * 86_400,
+            ),
             timeout_seconds=60.0,
         )
     except Exception:

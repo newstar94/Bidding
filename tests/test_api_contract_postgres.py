@@ -14,12 +14,16 @@ import psycopg
 import pytest
 
 from backend.auth.auth_helper import hash_password
+from backend.auth.mfa_service import current_totp_code
 from scripts.process_utils import popen_group_options, terminate_process_tree
 
 
 ROOT = Path(__file__).resolve().parents[1]
 API_PORT = 18080
 BASE_URL = f"http://127.0.0.1:{API_PORT}"
+API_ADMIN_PASSWORD = "API admin password 2026!"
+_ADMIN_MFA_SECRET = ""
+_ADMIN_MFA_RECOVERY_CODES: list[str] = []
 
 
 def _wait_for_server(process: subprocess.Popen[bytes]) -> None:
@@ -61,6 +65,7 @@ def api_server(api_database_url: str):
             "ENABLE_PARTNER_LOOKUP_WORKER": "false",
             "BACKGROUND_STARTUP_DELAY_SECONDS": "0",
             "AUDIT_CHECKPOINT_DIR": "",
+            "ADMIN_PASSWORD": API_ADMIN_PASSWORD,
         }
     )
     process = subprocess.Popen(
@@ -105,24 +110,65 @@ def _headers(client: httpx.Client, organization_id: str | None = None) -> dict[s
 
 
 def _login(client: httpx.Client, username: str, password: str, active_org: str | None = None):
+    global _ADMIN_MFA_SECRET, _ADMIN_MFA_RECOVERY_CODES
     response = client.post(
         "/api/auth/login",
         json={"username": username, "password": password, "remember": False},
         headers=_headers(client, active_org),
     )
+    if response.status_code == 202 and response.json().get("mfa_required"):
+        assert _ADMIN_MFA_RECOVERY_CODES
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "username": username,
+                "password": password,
+                "remember": False,
+                "mfa_code": _ADMIN_MFA_RECOVERY_CODES.pop(),
+            },
+            headers=_headers(client, active_org),
+        )
     assert response.status_code == 200, response.text
-    return response.json()
+    payload = response.json()
+    if payload.get("mfa_enrollment_required"):
+        setup = client.post(
+            "/api/auth/mfa/setup",
+            json={"password": password},
+            headers=_headers(client),
+        )
+        assert setup.status_code == 200, setup.text
+        _ADMIN_MFA_SECRET = setup.json()["secret"]
+        confirm = client.post(
+            "/api/auth/mfa/confirm",
+            json={"code": current_totp_code(_ADMIN_MFA_SECRET)},
+            headers=_headers(client),
+        )
+        assert confirm.status_code == 200, confirm.text
+        _ADMIN_MFA_RECOVERY_CODES = list(confirm.json()["recovery_codes"])
+        assert len(_ADMIN_MFA_RECOVERY_CODES) == 10
+    return payload
 
 
 def test_health_and_authentication_contract(api_server) -> None:
     assert httpx.get(f"{BASE_URL}/health/live").status_code == 200
     assert httpx.get(f"{BASE_URL}/health/ready").json() == {"status": "ready"}
+    invalid_host = httpx.get(
+        f"{BASE_URL}/",
+        headers={"Host": "attacker.example"},
+        timeout=10,
+    )
+    assert invalid_host.status_code == 400
     with _client() as client:
         assert client.get("/api/get-all-data").status_code == 403
+        lookup_without_session = client.get(
+            "/api/lookup-tax-code?code=0100109106"
+        )
+        assert lookup_without_session.status_code == 401
+        assert lookup_without_session.json()["code"] == "AUTHENTICATION_REQUIRED"
         login = _login(
             client,
             os.environ.get("ADMIN_USERNAME", "admin"),
-            os.environ["ADMIN_PASSWORD"],
+            API_ADMIN_PASSWORD,
         )
         assert login["platform_role"] == "super_admin"
         assert login["active_org_id"]
@@ -130,6 +176,19 @@ def test_health_and_authentication_contract(api_server) -> None:
             not str(item.get("id", "")).startswith("personal:")
             for item in login["organizations"]
         )
+        invalid_lookup_responses = [
+            client.get(
+                "/api/lookup-tax-code?code=0100109106&role=INVALID",
+                headers=_headers(client, login["active_org_id"]),
+            )
+            for _ in range(8)
+        ]
+        assert all(response.status_code == 400 for response in invalid_lookup_responses)
+        user_limited_lookup = client.get(
+            "/api/lookup-tax-code?code=0100109106&role=INVALID",
+            headers=_headers(client, login["active_org_id"]),
+        )
+        assert user_limited_lookup.status_code == 429
         initial_data = client.get(
             "/api/get-all-data?include_summary=1",
             headers=_headers(client, login["active_org_id"]),
@@ -189,9 +248,50 @@ def test_personal_and_organization_membership_lifecycle(
             admin = _login(
                 admin_client,
                 os.environ.get("ADMIN_USERNAME", "admin"),
-                os.environ["ADMIN_PASSWORD"],
+                API_ADMIN_PASSWORD,
             )
             organization_id = admin["active_org_id"]
+            cross_tenant_read = admin_client.get(
+                "/api/record",
+                params={"table": "chudautu", "id": record_id},
+                headers=_headers(admin_client, organization_id),
+            )
+            assert cross_tenant_read.status_code == 404
+            cross_tenant_page = admin_client.get(
+                "/api/paginate",
+                params={"table": "chudautu", "page": 1, "pageSize": 200},
+                headers=_headers(admin_client, organization_id),
+            )
+            assert cross_tenant_page.status_code == 200, cross_tenant_page.text
+            assert record_id not in {
+                str(item.get("id") or "")
+                for item in cross_tenant_page.json().get("items", [])
+            }
+            collision_create = admin_client.post(
+                "/api/sync",
+                json={
+                    "clientMutationId": uuid4().hex,
+                    "chudautu": [
+                        {
+                            "id": record_id,
+                            "tenChuDauTu": "Organization-scoped collision",
+                            "ngayApDung": "2026-07-19",
+                        }
+                    ],
+                },
+                headers=_headers(admin_client, organization_id),
+            )
+            assert collision_create.status_code == 200, collision_create.text
+            personal_record_after_collision = user_client.get(
+                "/api/record",
+                params={"table": "chudautu", "id": record_id},
+                headers=_headers(user_client, personal_scope),
+            )
+            assert personal_record_after_collision.status_code == 200
+            assert (
+                personal_record_after_collision.json()["item"]["tenChuDauTu"]
+                == "Personal API test"
+            )
             add_response = admin_client.post(
                 "/api/auth/users/add-to-org",
                 json={
@@ -246,6 +346,17 @@ def test_personal_and_organization_membership_lifecycle(
             (user_id,),
         ).fetchone()
         assert membership[0] == "left"
+        tenant_rows = connection.execute(
+            """SELECT organization_id, ten_chu_dau_tu
+               FROM chu_dau_tu
+               WHERE id = %s
+               ORDER BY organization_id""",
+            (record_id,),
+        ).fetchall()
+        assert sorted(row[1] for row in tenant_rows) == [
+            "Organization-scoped collision",
+            "Personal API test",
+        ]
 
 
 def test_csrf_and_payload_limits_fail_closed(api_server) -> None:
@@ -253,7 +364,7 @@ def test_csrf_and_payload_limits_fail_closed(api_server) -> None:
         login = _login(
             client,
             os.environ.get("ADMIN_USERNAME", "admin"),
-            os.environ["ADMIN_PASSWORD"],
+            API_ADMIN_PASSWORD,
         )
         missing_csrf = client.post(
             "/api/sync", json={"clientMutationId": uuid4().hex}

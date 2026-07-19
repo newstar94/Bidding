@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { getAppController } from "../app/controllerRef.js";
 import { appendExportSnapshotVersion } from "../shared/exportSnapshot.js";
 import { getJson } from "../shared/apiClient.js";
@@ -235,9 +236,9 @@ function renderPlanOptions(view) {
   const plans = selectableTimelinePlans(view)
     .sort((left, right) => String(left.maKeHoach || "").localeCompare(String(right.maKeHoach || ""), "vi"));
   const current = select.value;
-  select.innerHTML = `<option value="">Chọn kế hoạch</option>${plans.map((plan) => (
+  select.innerHTML = trustedHTML(`<option value="">Chọn kế hoạch</option>${plans.map((plan) => (
     `<option value="${safeAttr(plan.id)}" data-search="${safeAttr(`${plan.maKeHoach || ""} ${plan.tenKeHoach || plan.tenDuAnDuToan || ""}`)}">${escapeHtml(plan.maKeHoach || "--")} — ${escapeHtml(plan.tenKeHoach || plan.tenDuAnDuToan || "")}</option>`
-  )).join("")}`;
+  )).join("")}`);
   select.value = plans.some((plan) => String(plan.id) === current) ? current : "";
   makeTimelineSelectSearchable(select, "Tìm kế hoạch theo mã hoặc tên");
 }
@@ -250,9 +251,9 @@ function renderPackageOptions(view, records, search = "") {
   const hasPlan = Boolean(element("timeline-plan-select")?.value);
   const selectedId = state.package?.id || select.value;
   select.disabled = !hasPlan;
-  select.innerHTML = `<option value="">${hasPlan ? "Chọn gói thầu" : "Chọn kế hoạch trước"}</option>${records.map((pkg) => (
+  select.innerHTML = trustedHTML(`<option value="">${hasPlan ? "Chọn gói thầu" : "Chọn kế hoạch trước"}</option>${records.map((pkg) => (
     `<option value="${safeAttr(pkg.id)}" data-search="${safeAttr(`${pkg.maGoiThau || ""} ${pkg.tenGoiThau || ""}`)}">${escapeHtml(pkg.maGoiThau || "--")} — ${escapeHtml(pkg.tenGoiThau || "")}</option>`
-  )).join("")}`;
+  )).join("")}`);
   select.value = records.some((pkg) => String(pkg.id) === String(selectedId)) ? selectedId : "";
   const searchPlaceholder = hasPlan ? "Tìm gói thầu theo mã hoặc tên" : "Chọn kế hoạch trước";
   const searchInput = makeTimelineSelectSearchable(select, searchPlaceholder);
@@ -313,9 +314,9 @@ function renderVersionOptions(pkg) {
     ? [...pkg.allVersions]
     : pkg ? [{ id: pkg.id, phienBan: pkg.phienBan || "00" }] : [];
   versions.sort((left, right) => Number(right.phienBan || 0) - Number(left.phienBan || 0));
-  select.innerHTML = versions.map((version) => (
+  select.innerHTML = trustedHTML(versions.map((version) => (
     `<option value="${safeAttr(version.id)}">Phiên bản ${escapeHtml(version.phienBan || "00")}</option>`
-  )).join("") || `<option value="">--</option>`;
+  )).join("") || `<option value="">--</option>`);
   select.value = pkg?.id || "";
   select.disabled = versions.length <= 1;
 }
@@ -392,7 +393,7 @@ function renderTimelineTable(view) {
   });
   if (!html.length) html.push(`<tr><td colspan="7" class="timeline-no-results">Không có mốc phù hợp với bộ lọc.</td></tr>`);
   tbody.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
-  tbody.innerHTML = html.join("");
+  tbody.innerHTML = trustedHTML(html.join(""));
   view.initFlatpickr(tbody);
   view.createIconsScoped(element("timeline-table-wrap"));
 }
@@ -658,7 +659,7 @@ export function resetPackageTimeline() {
   }
   const packageSelect = element("timeline-package-select");
   if (packageSelect) {
-    packageSelect.innerHTML = `<option value="">Chọn kế hoạch trước</option>`;
+    packageSelect.innerHTML = trustedHTML(`<option value="">Chọn kế hoạch trước</option>`);
     packageSelect.disabled = true;
     makeTimelineSelectSearchable(packageSelect, "Chọn kế hoạch trước");
     syncTimelineSelectValue(packageSelect, "");
@@ -668,7 +669,7 @@ export function resetPackageTimeline() {
   if (statusFilter) statusFilter.value = "";
   const tbody = element("timeline-table-body");
   tbody?.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
-  if (tbody) tbody.innerHTML = "";
+  if (tbody) tbody.innerHTML = trustedHTML("");
   setHidden("timeline-empty", false);
   setHidden("timeline-loading", true);
   setHidden("timeline-error", true);

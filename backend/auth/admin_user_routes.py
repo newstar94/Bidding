@@ -25,6 +25,7 @@ from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.db.id_utils import generate_record_id
 from backend.shared.request_validation import read_json_object
 from backend.sync.repository import next_sync_version
+from backend.auth.security_notifications import build_security_notification_tasks
 
 
 _USER_PERMISSION_MODULES = (
@@ -287,7 +288,8 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
         conn.execute("BEGIN")
         cursor = conn.cursor()
         target = cursor.execute(
-            "SELECT vai_tro FROM tai_khoan WHERE id = ? LIMIT 1", (user_id,)
+            "SELECT vai_tro, email, ho_ten FROM tai_khoan WHERE id = ? LIMIT 1",
+            (user_id,),
         ).fetchone()
         if not target:
             conn.rollback()
@@ -523,7 +525,15 @@ def _update_user_access_settings_sync(request, actor_user_id, data):
                 organization_id,
                 {"event": "user_access_settings_changed"},
             )
-        return JSONResponse({"success": True, "message": "Đã lưu thiết lập quyền và gói dịch vụ."})
+        return JSONResponse(
+            {"success": True, "message": "Đã lưu thiết lập quyền và gói dịch vụ."},
+            background=build_security_notification_tasks(
+                email=target[1],
+                display_name=target[2],
+                subject="[BiddingFlow] Thiết lập quyền hoặc gói đã thay đổi",
+                message="Vai trò, gói dịch vụ hoặc quyền tùy chỉnh của tài khoản vừa được quản trị viên cập nhật.",
+            ),
+        )
     except Exception as exc:
         if conn:
             conn.rollback()

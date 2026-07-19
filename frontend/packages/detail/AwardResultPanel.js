@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 
 export function renderAwardedResultPanel(container, {
@@ -14,7 +15,7 @@ export function renderAwardedResultPanel(container, {
 } = {}) {
   if (!container) return;
   const showAppraisal = pkg?.hinhThucLuaChon !== "Chào hàng cạnh tranh";
-  container.innerHTML = `
+  container.innerHTML = trustedHTML(`
     <div class="card award-result-card">
       <div class="award-result-header">
         <div class="award-result-heading">
@@ -40,7 +41,7 @@ export function renderAwardedResultPanel(container, {
       <table class="data-table table-full-width"><thead>${tableHeaderHtml}</thead><tbody>${bidderRowsHtml}</tbody></table>
     </div>
     ${isEditable ? '<div class="workflow-action-row with-top-space"><button class="btn btn-primary action-strong" id="btn-edit-result-bottom"><i data-lucide="edit"></i> Sửa kết quả</button></div>' : ""}
-  `;
+  `);
 }
 
 export function bindAwardResultPanel(container, {
@@ -58,7 +59,7 @@ export function bindAwardResultPanel(container, {
   exportButton.onclick = async () => {
     const originalHtml = exportButton.innerHTML;
     exportButton.disabled = true;
-    exportButton.innerHTML = '<i data-lucide="loader-2" class="animate-spin icon-md"></i> Đang xuất...';
+    exportButton.innerHTML = trustedHTML('<i data-lucide="loader-2" class="animate-spin icon-md"></i> Đang xuất...');
     refreshIcons?.();
     try {
       await onExport?.();
@@ -66,7 +67,7 @@ export function bindAwardResultPanel(container, {
       await onExportError?.(error);
     } finally {
       exportButton.disabled = false;
-      exportButton.innerHTML = originalHtml;
+      exportButton.innerHTML = trustedHTML(originalHtml);
       refreshIcons?.();
     }
   };

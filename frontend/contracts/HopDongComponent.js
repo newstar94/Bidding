@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatDate, formatCurrency, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
@@ -334,7 +335,7 @@ export function renderContractVersionDetails(versionId) {
     `;
   const contentEl = document.getElementById("fullpage-hopdong-content");
   if (contentEl) {
-    contentEl.innerHTML = html;
+    contentEl.innerHTML = trustedHTML(html);
     const innerSelect = document.getElementById("fullpage-hd-version-select");
     if (innerSelect) {
       innerSelect.onchange = (e) => {

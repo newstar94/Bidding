@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 
 export function renderEvaluationPanel(container, pkg, {
@@ -24,7 +25,7 @@ export function renderEvaluationPanel(container, pkg, {
       <span id="quytrinh2-warning-msg" class="evaluation-warning bf-s-65d1f1c3d7"></span>
     </div>
   ` : "";
-  container.innerHTML = `
+  container.innerHTML = trustedHTML(`
     <select id="danhgiahsdt-goithau-select" class="bf-s-6aa34d7432"><option value="${packageId}" selected>${packageName}</option></select>
     <div id="danhgiahsdt-goithau-summary" class="bf-s-6aa34d7432"></div>
     <div id="danhgiahsdt-container" class="bf-s-6aa34d7432">
@@ -68,5 +69,5 @@ export function renderEvaluationPanel(container, pkg, {
       </div>
     </div>
     <div id="danhgiahsdt-empty-state" class="bf-s-6aa34d7432"></div>
-  `;
+  `);
 }

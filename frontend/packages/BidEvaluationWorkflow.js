@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { executeAppCommand } from "../app/commandBus.js";
 import { setJvData } from "./jvDataStore.js";
@@ -14,7 +15,7 @@ export function renderDanhGiaHsdtPanel() {
     if (g.id === selectedVal) return true;
     return g.trangThai === "Đang chấm thầu" || g.trangThai === "Đã có kết quả";
   });
-  select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join("");
+  select.innerHTML = trustedHTML('<option value="">-- Chọn Gói thầu (Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join(""));
   if (selectedVal && targetPackages.some((g) => g.id === selectedVal)) {
     select.value = selectedVal;
   } else {
@@ -343,7 +344,7 @@ export function renderDanhGiaHsdtPanel() {
           setVisible(saveBtn, false);
         } else {
           setVisible(saveBtn, true, "");
-          saveBtn.innerHTML = '<i data-lucide="edit"></i> Chỉnh sửa';
+          saveBtn.innerHTML = trustedHTML('<i data-lucide="edit"></i> Chỉnh sửa');
           saveBtn.className = "btn btn-primary";
           saveBtn.onclick = () => {
             this.view._editingState = this.view._editingState || {};
@@ -353,7 +354,7 @@ export function renderDanhGiaHsdtPanel() {
         }
       } else {
         setVisible(saveBtn, true, "");
-        saveBtn.innerHTML = '<i data-lucide="save"></i> Lưu thông tin đánh giá';
+        saveBtn.innerHTML = trustedHTML('<i data-lucide="save"></i> Lưu thông tin đánh giá');
         saveBtn.className = "btn btn-primary";
         saveBtn.onclick = () => this.saveDanhGiaHsdt();
       }
@@ -378,15 +379,15 @@ export function renderDanhGiaHsdtPanel() {
     const listCvTraloi = this.view.getActiveElement("list-cv-traloi");
     const listCvGuicdt = this.view.getActiveElement("list-cv-guicdt");
     if (listCvLamro) {
-      listCvLamro.innerHTML = "";
+      listCvLamro.innerHTML = trustedHTML("");
       (activeMeta.cvLamRo || []).forEach((item) => addLetterRow("list-cv-lamro", item, isReadOnly));
     }
     if (listCvTraloi) {
-      listCvTraloi.innerHTML = "";
+      listCvTraloi.innerHTML = trustedHTML("");
       (activeMeta.cvTraLoi || []).forEach((item) => addLetterRow("list-cv-traloi", item, isReadOnly));
     }
     if (listCvGuicdt) {
-      listCvGuicdt.innerHTML = "";
+      listCvGuicdt.innerHTML = trustedHTML("");
       (activeMeta.cvGuiCdt || []).forEach((item) => addLetterRow("list-cv-guicdt", item, isReadOnly));
     }
     const isTuVan = gt.linhVuc === "Tư vấn";
@@ -565,7 +566,7 @@ export function renderDanhGiaHsdtPanel() {
                 </tr>
             `;
     }
-    thead.innerHTML = theadHtml;
+    thead.innerHTML = trustedHTML(theadHtml);
     const updateAllRankings = () => {
       const rows = tbody.querySelectorAll("tr[data-bid-id]");
       const currentBids = [];
@@ -718,7 +719,7 @@ export function renderDanhGiaHsdtPanel() {
         }
       });
     };
-    tbody.innerHTML = "";
+    tbody.innerHTML = trustedHTML("");
     let bids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gtId));
     if (is1G2T && this.currentDanhGiaTab === "financial") {
       bids = bids.filter((b) => {
@@ -746,7 +747,7 @@ export function renderDanhGiaHsdtPanel() {
       });
     }
     if (bids.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="15" class="bf-s-7fa1ce09fc"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>`;
+      tbody.innerHTML = trustedHTML(`<tr><td colspan="15" class="bf-s-7fa1ce09fc"><small>Không tìm thấy danh sách nhà thầu mở thầu. Vui lòng nhập thông tin mở thầu trước.</small></td></tr>`);
     } else {
       let previousAllFailed = true;
       bids.forEach((bid) => {
@@ -940,7 +941,7 @@ export function renderDanhGiaHsdtPanel() {
                         `;
           }
         }
-        tr.innerHTML = cellHtml;
+        tr.innerHTML = trustedHTML(cellHtml);
         this.updateRowConclusion(tr, bid.danhGiaKetLuan, isReadOnly);
         if (!isReadOnly && !is1G2T && gt.quyTrinhDanhGia === "quytrinh2") {
           const conclusionCell = tr.querySelector(".mt-ketluan-cell");

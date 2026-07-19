@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getJvData } from "../packages/jvDataStore.js";
 import { safeImageSrc } from "../shared/view_helpers.js";
@@ -109,7 +110,7 @@ export class BiddingController {
       this._lazyPartialPromises.set(key, (async () => {
         const html = this._lazyPartialHtmlCache.get(key) || await this.preloadLazyPartial(kind, id);
         const template = document.createElement("template");
-        template.innerHTML = html.trim();
+        template.innerHTML = trustedHTML(html.trim());
         const root = document.getElementById(isTab ? "lazy-tab-root" : "lazy-modal-root") || document.querySelector(isTab ? ".content-viewport" : "body");
         root.appendChild(template.content);
         this.view.elements.navButtons = document.querySelectorAll(".nav-btn");
@@ -727,7 +728,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
     banner.id = "offline-indicator-banner";
     banner.className = "offline-banner";
     banner.hidden = true;
-    banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
+    banner.innerHTML = trustedHTML(`<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`);
     document.body.appendChild(banner);
     if (window.lucide) {
       window.lucide.createIcons({ root: banner });
@@ -737,7 +738,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
         banner.classList.remove("visible");
         banner.hidden = true;
       } else {
-        banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
+        banner.innerHTML = trustedHTML(`<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`);
         if (window.lucide) {
           window.lucide.createIcons({ root: banner });
         }
@@ -958,7 +959,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       const origHTML = btn ? btn.innerHTML : "";
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="animate-spin bf-s-641778be2c"></i>';
+        btn.innerHTML = trustedHTML('<i data-lucide="loader-2" class="animate-spin bf-s-641778be2c"></i>');
         lucide.createIcons({ root: btn });
       }
       try {
@@ -983,7 +984,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = origHTML;
+          btn.innerHTML = trustedHTML(origHTML);
           lucide.createIcons({ root: btn });
         }
       }
@@ -1049,7 +1050,7 @@ Nhấn Xác nhận để tải lại hệ thống.`, "log-out");
                     </button>
                 </div>
             `;
-      container.innerHTML = html;
+      container.innerHTML = trustedHTML(html);
       lucide.createIcons({ root: container });
     };
     const handlePageChange = (containerId, pageNum) => {

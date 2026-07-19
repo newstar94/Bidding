@@ -129,7 +129,6 @@ def _paginate_records_blocking(request):
             return JSONResponse({"error": "Tham số phân trang không hợp lệ"}, status_code=400)
         search = params.get("search", "").strip().lower()
 
-        org_name = get_active_org(request, role_or_err.user_id)
         media_session_token = str(
             getattr(request, "cookies", {}).get("session_token", "")
         )
@@ -137,6 +136,11 @@ def _paginate_records_blocking(request):
         user_id = role_or_err.user_id
         conn = database.get_connection()
         cursor = conn.cursor()
+        org_name = get_active_org(
+            request,
+            role_or_err.user_id,
+            cursor=cursor,
+        )
         if not can_read_table(cursor, role_str, user_id, org_name, table_key, table_name):
             conn.close()
             return JSONResponse({"items": [], "totalItems": 0})
@@ -299,12 +303,6 @@ def _paginate_records_blocking(request):
                 query_params.append(month_num)
 
 
-        where_clause = " AND ".join(query_parts)
-        count_sql = f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}"
-        cursor.execute(count_sql, tuple(query_params))
-        total_items = cursor.fetchone()[0]
-
-
         sort_by = params.get("sortBy", "").strip()
         sort_order = params.get("sortOrder", "asc").strip().upper()
         if sort_order not in ["ASC", "DESC"]:
@@ -344,6 +342,19 @@ def _paginate_records_blocking(request):
         ).upper()
         is_text_sort = column_declaration.startswith("TEXT")
         cursor_mode = cursor_mode and (sort_column == "id" or is_text_sort)
+        where_clause = " AND ".join(query_parts)
+        include_total = (
+            not cursor_mode
+            or params.get("includeTotal", "").strip().lower()
+            in {"1", "true", "yes"}
+        )
+        total_items = None
+        if include_total:
+            count_sql = (
+                f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}"
+            )
+            cursor.execute(count_sql, tuple(query_params))
+            total_items = cursor.fetchone()[0]
         item_query_parts = list(query_parts)
         item_query_params = list(query_params)
         decoded_cursor = None

@@ -66,6 +66,10 @@ _BIGINT_COLUMNS = frozenset(
         "absolute_expires_at",
         "revoked_at",
         "privileged_reauth_at",
+        "mfa_verified_at",
+        "last_counter",
+        "enabled_at",
+        "last_used_at",
     }
 )
 
@@ -337,6 +341,19 @@ def _create_indexes(cursor) -> None:
             f"ON {table_name} (organization_id, COALESCE(NULLIF(id_goc, ''), id)) "
             "WHERE is_latest = 1"
         )
+    for table_name, sort_column in (
+        ("chu_dau_tu", "ten_chu_dau_tu"),
+        ("ke_hoach_lcnt", "ma_ke_hoach"),
+        ("goi_thau", "ma_goi_thau"),
+        ("nha_thau", "ten_nha_thau"),
+        ("chuyen_gia", "ho_ten"),
+        ("hop_dong", "ten_hop_dong"),
+    ):
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table_name}_default_page "
+            f"ON {table_name} (organization_id, (COALESCE({sort_column}, '')), id) "
+            "WHERE is_latest = 1 AND archived_at IS NULL"
+        )
     cursor.execute(
         """CREATE UNIQUE INDEX IF NOT EXISTS idx_goi_thau_unique_plan_snapshot_version
            ON goi_thau (
@@ -404,14 +421,27 @@ def _create_indexes(cursor) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_phan_cong_owner_target ON phan_cong_nhan_su (organization_id, id_muc_tieu, loai_doi_tuong)",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions (user_id, revoked_at, absolute_expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions (idle_expires_at, absolute_expires_at, revoked_at)",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_idle_expiry ON auth_sessions (idle_expires_at) WHERE revoked_at IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_absolute_expiry ON auth_sessions (absolute_expires_at) WHERE revoked_at IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_revoked_cleanup ON auth_sessions (revoked_at) WHERE revoked_at IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_account_mfa_enabled ON account_mfa (enabled, user_id)",
         "CREATE INDEX IF NOT EXISTS idx_dinh_danh_ngoai_user ON dinh_danh_ngoai (user_id)",
         "CREATE INDEX IF NOT EXISTS idx_password_reset_user_active ON password_reset_tokens (user_id, used_at, expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_email_delivery_user_purpose ON email_delivery_status (user_id, purpose, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_email_delivery_retry ON email_delivery_status (status, next_attempt_at)",
+        "CREATE INDEX IF NOT EXISTS idx_email_delivery_stale ON email_delivery_status (locked_at) WHERE status = 'sending'",
         "CREATE INDEX IF NOT EXISTS idx_rate_limit_expires ON rate_limit_buckets (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_partner_lookup_cache_expiry ON partner_lookup_cache (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_partner_upstream_open ON partner_upstream_health (opened_until, probe_locked_until)",
+        "CREATE INDEX IF NOT EXISTS idx_partner_enrichment_claim ON partner_enrichment_jobs (status, available_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_partner_enrichment_stale ON partner_enrichment_jobs (locked_at) WHERE status = 'processing'",
+        "CREATE INDEX IF NOT EXISTS idx_websocket_leases_expiry ON websocket_connection_leases (expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_websocket_leases_user ON websocket_connection_leases (user_id, expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_websocket_leases_ip ON websocket_connection_leases (client_ip_hash, expires_at)",
+        "CREATE INDEX IF NOT EXISTS idx_document_jobs_claim ON document_jobs (status, available_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_document_jobs_stale ON document_jobs (locked_at) WHERE status = 'processing'",
+        "CREATE INDEX IF NOT EXISTS idx_document_jobs_expiry ON document_jobs (expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_thanh_vien_to_chuc_to_chuc ON thanh_vien_to_chuc (organization_id, user_id)",
         "CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_status_expiry ON organization_subscriptions (status, expires_at)",
         "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_status_expiry ON account_subscriptions (status, expires_at)",
@@ -420,10 +450,29 @@ def _create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_delete_version ON deleted_records (organization_id, delete_version)",
         "CREATE INDEX IF NOT EXISTS idx_deleted_records_owner_table ON deleted_records (organization_id, table_name)",
         "CREATE INDEX IF NOT EXISTS idx_sync_mutations_owner_created ON sync_mutations (organization_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_sync_mutations_actor ON sync_mutations (actor_user_id)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_owner_created ON audit_log (organization_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created ON audit_log (actor_user_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_action_created ON audit_log (action, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_record_edit_ownership_user ON record_edit_ownership (organization_id, user_id, table_name)",
+        "CREATE INDEX IF NOT EXISTS idx_record_edit_ownership_by_user ON record_edit_ownership (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_account_subscriptions_package ON account_subscriptions (package_id)",
+        "CREATE INDEX IF NOT EXISTS idx_organization_subscriptions_package ON organization_subscriptions (package_id)",
+        "CREATE INDEX IF NOT EXISTS idx_goi_thau_rebid_parent ON goi_thau (organization_id, rebid_from_package_id)",
+        "CREATE INDEX IF NOT EXISTS idx_goi_thau_phan_lo_winner ON goi_thau_phan_lo (organization_id, nha_thau_trung_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_hop_dong_chu_dau_tu_thanh_ly ON hop_dong (organization_id, chu_dau_tu_thanh_ly_id)",
+        "CREATE INDEX IF NOT EXISTS idx_hop_dong_nha_thau_thanh_ly ON hop_dong (organization_id, nha_thau_thanh_ly_id)",
+        "CREATE INDEX IF NOT EXISTS idx_hop_dong_trang_thai_ho_so ON hop_dong (organization_id, trang_thai_ho_so)",
+        "CREATE INDEX IF NOT EXISTS idx_ke_hoach_chu_dau_tu ON ke_hoach_lcnt (organization_id, chu_dau_tu_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ket_qua_goi_thau_opening ON ket_qua_danh_gia_nha_thau (organization_id, goi_thau_id, thong_tin_mo_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ket_qua_nguoi_cham ON ket_qua_danh_gia_nha_thau (nguoi_cham_id)",
+        "CREATE INDEX IF NOT EXISTS idx_nha_thau_lien_danh_member ON nha_thau_lien_danh_thanh_vien (organization_id, thanh_vien_nha_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_root ON nha_thau_tham_du_mo_thau (organization_id, nha_thau_goc_id)",
+        "CREATE INDEX IF NOT EXISTS idx_nha_thau_tham_du_version ON nha_thau_tham_du_mo_thau (organization_id, nha_thau_phien_ban_id)",
+        "CREATE INDEX IF NOT EXISTS idx_phan_cong_nhan_su_employee ON phan_cong_nhan_su (id_nhan_vien)",
+        "CREATE INDEX IF NOT EXISTS idx_mo_thau_lien_danh_member ON thong_tin_mo_thau_lien_danh_thanh_vien (organization_id, thanh_vien_nha_thau_id)",
+        "CREATE INDEX IF NOT EXISTS idx_vong_danh_gia_nguoi_cham ON vong_danh_gia (nguoi_cham_id)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_package ON goi_thau_moc_tien_do (organization_id, goi_thau_id, sort_order, ma_moc)",
         "CREATE INDEX IF NOT EXISTS idx_goi_thau_moc_tien_do_status ON goi_thau_moc_tien_do (organization_id, trang_thai, ngay_du_kien)",
         "CREATE INDEX IF NOT EXISTS idx_pending_email_changes_expiry ON pending_email_changes (expires_at)",

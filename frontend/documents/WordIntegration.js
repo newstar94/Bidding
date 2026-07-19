@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
@@ -40,9 +41,9 @@ export function setupWordTemplatesEvents() {
       { value: "computed", label: "Biến kết quả" },
       { value: "custom_lists", label: "Danh sách" }
     ];
-    dictionarySelect.innerHTML = groups.map(
+    dictionarySelect.innerHTML = trustedHTML(groups.map(
       (group) => `<option value="${group.value}">${group.label}</option>`
-    ).join("");
+    ).join(""));
     const nextGroup = groups.some((group) => group.value === targetGroup) ? targetGroup : groups[0].value;
     dictionarySelect.value = nextGroup;
     if (shouldRender) {
@@ -463,7 +464,7 @@ export function setupWordTemplatesEvents() {
     const mapping = getMappingByVariableName(variableName);
     if (!mapping) {
       setRuntimeStyle(box, "display", "none");
-      box.innerHTML = "";
+      box.innerHTML = trustedHTML("");
       return;
     }
     const type = inferFormulaVariableType(mapping);
@@ -471,10 +472,10 @@ export function setupWordTemplatesEvents() {
       { label: "Chèn biến", formula: "__var__" },
       ...formulaSuggestionSets[type] || formulaSuggestionSets.text
     ];
-    box.innerHTML = suggestions.map((item) => {
+    box.innerHTML = trustedHTML(suggestions.map((item) => {
       const formula = item.formula.replaceAll("__var__", variableName);
       return `<button type="button" class="btn btn-outline btn-sm btn-wmc-suggestion bf-s-3db7f6addb" data-formula="${escapeHtml(formula)}">${escapeHtml(item.label)}</button>`;
-    }).join("");
+    }).join(""));
     setRuntimeStyle(box, "display", "flex");
   };
   const validateAndSuggestFormulaVariable = async () => {
@@ -538,12 +539,12 @@ export function setupWordTemplatesEvents() {
     const match = mappings.find((m) => m.sourceTable === table && m.sourceColumn === column);
     setRuntimeStyle(statusDiv, "display", "block");
     if (match) {
-      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success bf-s-4c501bdee8">Đã có {${escapeHtml(match.tenBien)}}</span>`;
+      statusDiv.innerHTML = trustedHTML(`Trạng thái ánh xạ: <span class="badge badge-success bf-s-4c501bdee8">Đã có {${escapeHtml(match.tenBien)}}</span>`);
       if (inputVar && !document.getElementById("wm-id").value) {
         inputVar.value = match.tenBien;
       }
     } else {
-      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-warning bf-s-9019e5a08b">Chưa có</span>`;
+      statusDiv.innerHTML = trustedHTML(`Trạng thái ánh xạ: <span class="badge badge-warning bf-s-9019e5a08b">Chưa có</span>`);
     }
   };
   const checkExistingListMapping = () => {
@@ -559,18 +560,18 @@ export function setupWordTemplatesEvents() {
     const match = mappings.find((m) => m.sourceTable === table && (!m.sourceColumn || m.sourceColumn === "*"));
     setRuntimeStyle(statusDiv, "display", "block");
     if (match) {
-      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-success bf-s-4c501bdee8">Đã có {#${escapeHtml(match.tenBien)}}</span>`;
+      statusDiv.innerHTML = trustedHTML(`Trạng thái ánh xạ: <span class="badge badge-success bf-s-4c501bdee8">Đã có {#${escapeHtml(match.tenBien)}}</span>`);
       if (inputVar && !document.getElementById("wml-id").value) {
         inputVar.value = match.tenBien;
       }
     } else {
-      statusDiv.innerHTML = `Trạng thái ánh xạ: <span class="badge badge-warning bf-s-9019e5a08b">Chưa có</span>`;
+      statusDiv.innerHTML = trustedHTML(`Trạng thái ánh xạ: <span class="badge badge-warning bf-s-9019e5a08b">Chưa có</span>`);
     }
   };
   if (tableSelect && columnSelect) {
     tableSelect.addEventListener("change", (e) => {
       const table = e.target.value;
-      columnSelect.innerHTML = '<option value="">-- Chọn cột --</option>';
+      columnSelect.innerHTML = trustedHTML('<option value="">-- Chọn cột --</option>');
       if (table && MAPPING_COLUMNS[table]) {
         columnSelect.disabled = false;
         MAPPING_COLUMNS[table].forEach((col) => {
@@ -618,7 +619,7 @@ export function setupWordTemplatesEvents() {
       if (statusDiv) setRuntimeStyle(statusDiv, "display", "none");
       const submitBtn = formWm.querySelector('button[type="submit"]');
       if (submitBtn) {
-        submitBtn.innerHTML = '<i data-lucide="save" class="bf-s-58050124fc"></i> Lưu biến';
+        submitBtn.innerHTML = trustedHTML('<i data-lucide="save" class="bf-s-58050124fc"></i> Lưu biến');
         lucide.createIcons({ root: submitBtn });
       }
       if (this.view && this.view.renderWordMappingsTable) {
@@ -636,7 +637,7 @@ export function setupWordTemplatesEvents() {
       if (statusDiv) setRuntimeStyle(statusDiv, "display", "none");
       const submitBtn = formWml.querySelector('button[type="submit"]');
       if (submitBtn) {
-        submitBtn.innerHTML = '<i data-lucide="save" class="bf-s-58050124fc"></i> Lưu danh sách';
+        submitBtn.innerHTML = trustedHTML('<i data-lucide="save" class="bf-s-58050124fc"></i> Lưu danh sách');
         lucide.createIcons({ root: submitBtn });
       }
       if (this.view && this.view.renderWordMappingsTable) {
@@ -656,7 +657,7 @@ export function setupWordTemplatesEvents() {
       renderFormulaSuggestions("");
       const submitBtn = formWmc.querySelector('button[type="submit"]');
       if (submitBtn) {
-        submitBtn.innerHTML = '<i data-lucide="save" class="bf-s-58050124fc"></i> Lưu biến';
+        submitBtn.innerHTML = trustedHTML('<i data-lucide="save" class="bf-s-58050124fc"></i> Lưu biến');
         lucide.createIcons({ root: submitBtn });
       }
       if (this.view && this.view.renderWordMappingsTable) {
@@ -900,7 +901,7 @@ export function setupWordTemplatesEvents() {
       if (this.setWordDictionaryGroup) this.setWordDictionaryGroup("computed", false);
       const submitBtn2 = formWmc.querySelector('button[type="submit"]');
       if (submitBtn2) {
-        submitBtn2.innerHTML = '<i data-lucide="save" class="bf-s-58050124fc"></i> Cập nhật';
+        submitBtn2.innerHTML = trustedHTML('<i data-lucide="save" class="bf-s-58050124fc"></i> Cập nhật');
         lucide.createIcons({ root: submitBtn2 });
       }
       return;
@@ -913,7 +914,7 @@ export function setupWordTemplatesEvents() {
       if (cancelWmlBtn) setRuntimeStyle(cancelWmlBtn, "display", "inline-block");
       const submitBtn2 = formWml.querySelector('button[type="submit"]');
       if (submitBtn2) {
-        submitBtn2.innerHTML = '<i data-lucide="save" class="bf-s-58050124fc"></i> Cập nhật';
+        submitBtn2.innerHTML = trustedHTML('<i data-lucide="save" class="bf-s-58050124fc"></i> Cập nhật');
         lucide.createIcons({ root: submitBtn2 });
       }
       return;
@@ -927,7 +928,7 @@ export function setupWordTemplatesEvents() {
     if (cancelWmBtn) setRuntimeStyle(cancelWmBtn, "display", "inline-block");
     const submitBtn = formWm.querySelector('button[type="submit"]');
     if (submitBtn) {
-      submitBtn.innerHTML = '<i data-lucide="save" class="bf-s-58050124fc"></i> Cập nhật';
+      submitBtn.innerHTML = trustedHTML('<i data-lucide="save" class="bf-s-58050124fc"></i> Cập nhật');
       lucide.createIcons({ root: submitBtn });
     }
   };
@@ -970,11 +971,11 @@ export function setupCopyVariableEvents() {
             const btn2 = document.querySelector(`.btn-copy-var[data-copy="${text}"]`);
             if (btn2) {
               const orig = btn2.innerHTML;
-              btn2.innerHTML = '<i data-lucide="check" class="bf-s-641778be2c"></i> Đã sao chép!';
+              btn2.innerHTML = trustedHTML('<i data-lucide="check" class="bf-s-641778be2c"></i> Đã sao chép!');
               setRuntimeStyle(btn2, "color", "var(--success)");
               lucide.createIcons({ root: btn2 });
               setTimeout(() => {
-                btn2.innerHTML = orig;
+                btn2.innerHTML = trustedHTML(orig);
                 setRuntimeStyle(btn2, "color", "");
                 lucide.createIcons({ root: btn2 });
               }, 1500);
@@ -1024,7 +1025,7 @@ export async function loadWordMappings() {
     this.model.state.wordMappings = [];
     const tbody = document.getElementById("dictionary-table-body");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Không tải được danh sách biến Word: ${escapeHtml(err.message || err)}</td></tr>`;
+      tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Không tải được danh sách biến Word: ${escapeHtml(err.message || err)}</td></tr>`);
     }
   }
 }

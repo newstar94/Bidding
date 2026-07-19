@@ -43,6 +43,13 @@ class _FileSource:
     materialize_as: str
 
 
+def _operation_allowed(operation: object) -> bool:
+    return operation in ALLOWED_OPERATIONS or (
+        operation == "test_delay"
+        and os.environ.get("APP_ENV", "").strip().casefold() == "test"
+    )
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -169,7 +176,7 @@ def _json_tree(value: Any, job_dir: Path, state: dict[str, int], *, depth: int =
 
 
 def write_job_manifest(path: Path, operation: str, payload: dict[str, Any], *, image_root: Path) -> None:
-    if operation not in ALLOWED_OPERATIONS or not isinstance(payload, dict):
+    if not _operation_allowed(operation) or not isinstance(payload, dict):
         raise DocumentIpcError("Tác vụ tài liệu không được hỗ trợ.")
     prepared = dict(payload)
     if "content_path" in prepared:
@@ -244,7 +251,11 @@ def read_job_manifest(path: Path, job_dir: Path) -> tuple[str, dict[str, Any]]:
     manifest = _read_json(path)
     if set(manifest) != {"format", "version", "operation", "payload"}:
         raise DocumentIpcError("Schema manifest tác vụ không hợp lệ.")
-    if manifest["format"] != JOB_FORMAT or manifest["version"] != IPC_VERSION or manifest["operation"] not in ALLOWED_OPERATIONS:
+    if (
+        manifest["format"] != JOB_FORMAT
+        or manifest["version"] != IPC_VERSION
+        or not _operation_allowed(manifest["operation"])
+    ):
         raise DocumentIpcError("Phiên bản hoặc tác vụ IPC không hợp lệ.")
     payload = _materialize(manifest["payload"], job_dir)
     if not isinstance(payload, dict):

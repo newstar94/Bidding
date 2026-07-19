@@ -5,7 +5,10 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from backend.observability.metrics import record_database_operation
+from backend.observability.metrics import (
+    record_database_operation,
+    record_database_phase,
+)
 from backend.db.db_helper import OperationalError
 from backend.shared.async_io import (
     BlockingIOBusyError,
@@ -27,6 +30,14 @@ _write_lane = _BlockingIOPool(
 )
 
 
+def _record_executor_timing(lane: str):
+    def record(queue_wait_seconds: float, execution_seconds: float) -> None:
+        record_database_phase(lane, "executor_queue", queue_wait_seconds)
+        record_database_phase(lane, "executor_execution", execution_seconds)
+
+    return record
+
+
 async def run_database_read(
     function: Callable[..., Any],
     *args: Any,
@@ -41,6 +52,7 @@ async def run_database_read(
             function,
             *args,
             timeout_seconds=timeout_seconds,
+            timing_callback=_record_executor_timing("read"),
             **kwargs,
         )
     except BlockingIOBusyError:
@@ -80,6 +92,7 @@ async def run_database_write(
             function,
             *args,
             timeout_seconds=None,
+            timing_callback=_record_executor_timing("write"),
             **kwargs,
         )
     except BlockingIOBusyError:

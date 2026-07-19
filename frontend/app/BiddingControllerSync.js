@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { applyServerSnapshot } from "./syncMergeUtils.js";
 import { APP_DEBUG } from "./appConfig.js";
 import {
@@ -718,7 +719,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
     const banner = document.getElementById("offline-indicator-banner");
     if (banner) {
       banner.hidden = false;
-      banner.innerHTML = `<i data-lucide="alert-triangle"></i> Lỗi đồng bộ. Máy chủ không phản hồi.`;
+      banner.innerHTML = trustedHTML(`<i data-lucide="alert-triangle"></i> Lỗi đồng bộ. Máy chủ không phản hồi.`);
       if (window.lucide) {
         window.lucide.createIcons({ root: banner });
       }
@@ -729,7 +730,7 @@ export async function forceSyncData(isBackground = false, forceFull = false, rou
           banner.hidden = true;
         } else {
           banner.hidden = false;
-          banner.innerHTML = `<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`;
+          banner.innerHTML = trustedHTML(`<i data-lucide="wifi-off"></i> Mất kết nối internet. Bạn đang làm việc offline.`);
           if (window.lucide) {
             window.lucide.createIcons({ root: banner });
           }

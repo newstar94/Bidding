@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { getRuntimeStyle, setRuntimeStyle } from "../shared/runtimeStyles.js";
 import * as SystemUser from "../admin/SystemUserView.js";
 import { escapeHtml, initCustomSelect, syncCustomSelectDisabled } from "../shared/view_helpers.js";
@@ -287,7 +288,7 @@ export class BiddingView {
         const icon = document.createElement("span");
         icon.className = "sort-icon-btn";
         icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML = svgUnsorted;
+        icon.innerHTML = trustedHTML(svgUnsorted);
         sortContainer.append(label, icon);
         th.replaceChildren(sortContainer);
         th.addEventListener("click", (e) => {
@@ -302,7 +303,7 @@ export class BiddingView {
                 otherTh.setAttribute("aria-sort", "none");
                 const otherIcon = otherTh.querySelector(".sort-icon-btn");
                 if (otherIcon) {
-                  otherIcon.innerHTML = svgUnsorted;
+                  otherIcon.innerHTML = trustedHTML(svgUnsorted);
                   otherIcon.classList.remove("active");
                   setRuntimeStyle(otherIcon, "opacity", "");
                   setRuntimeStyle(otherIcon, "color", "");
@@ -314,7 +315,7 @@ export class BiddingView {
             th.setAttribute("aria-sort", currentOrder === "asc" ? "ascending" : "descending");
             const iconBtn = th.querySelector(".sort-icon-btn");
             if (iconBtn) {
-              iconBtn.innerHTML = currentOrder === "asc" ? svgAsc : svgDesc;
+              iconBtn.innerHTML = trustedHTML(currentOrder === "asc" ? svgAsc : svgDesc);
               iconBtn.classList.add("active");
               setRuntimeStyle(iconBtn, "opacity", "");
               setRuntimeStyle(iconBtn, "color", "");
@@ -365,14 +366,14 @@ export class BiddingView {
         if (iconBtn) {
           if (currentSort.field === field) {
             th.setAttribute("aria-sort", currentSort.order === "asc" ? "ascending" : "descending");
-            iconBtn.innerHTML = currentSort.order === "asc" ? svgAsc : svgDesc;
+            iconBtn.innerHTML = trustedHTML(currentSort.order === "asc" ? svgAsc : svgDesc);
             iconBtn.classList.add("active");
             setRuntimeStyle(iconBtn, "opacity", "");
             setRuntimeStyle(iconBtn, "color", "");
             setRuntimeStyle(iconBtn, "fontWeight", "");
           } else {
             th.setAttribute("aria-sort", "none");
-            iconBtn.innerHTML = svgUnsorted;
+            iconBtn.innerHTML = trustedHTML(svgUnsorted);
             iconBtn.classList.remove("active");
             setRuntimeStyle(iconBtn, "opacity", "");
             setRuntimeStyle(iconBtn, "color", "");
@@ -456,12 +457,12 @@ export class BiddingView {
         if (prevMonth) setRuntimeStyle(prevMonth, "display", "none");
         if (nextMonth) setRuntimeStyle(nextMonth, "display", "none");
         setRuntimeStyle(gridOverlay, "display", "block");
-        gridOverlay.innerHTML = "";
+        gridOverlay.innerHTML = trustedHTML("");
         if (type === "month") {
           gridOverlay.className = "flatpickr-grid-overlay flatpickr-month-grid-mode";
           const header = document.createElement("div");
           header.className = "grid-header";
-          header.innerHTML = `<span class="grid-title">Chọn Tháng</span>`;
+          header.innerHTML = trustedHTML(`<span class="grid-title">Chọn Tháng</span>`);
           gridOverlay.appendChild(header);
           const grid = document.createElement("div");
           grid.className = "flatpickr-month-grid";
@@ -485,7 +486,7 @@ export class BiddingView {
           const prevBtn = document.createElement("button");
           prevBtn.type = "button";
           prevBtn.className = "grid-nav-btn";
-          prevBtn.innerHTML = "&larr;";
+          prevBtn.innerHTML = trustedHTML("&larr;");
           prevBtn.onclick = (e) => {
             e.stopPropagation();
             instance.currentYear -= 10;
@@ -497,7 +498,7 @@ export class BiddingView {
           const nextBtn = document.createElement("button");
           nextBtn.type = "button";
           nextBtn.className = "grid-nav-btn";
-          nextBtn.innerHTML = "&rarr;";
+          nextBtn.innerHTML = trustedHTML("&rarr;");
           nextBtn.onclick = (e) => {
             e.stopPropagation();
             instance.currentYear += 10;
@@ -760,7 +761,7 @@ export class BiddingView {
         setRuntimeStyle(cardEl, "maxWidth", originalCardMaxWidth);
         setRuntimeStyle(buttonContainer, "flexDirection", originalFlexDirection);
         setRuntimeStyle(buttonContainer, "gap", originalGap);
-        buttonContainer.innerHTML = originalButtonsHtml;
+        buttonContainer.innerHTML = trustedHTML(originalButtonsHtml);
       };
       opt1Btn.addEventListener("click", onOpt1);
       opt2Btn.addEventListener("click", onOpt2);
@@ -901,7 +902,7 @@ export class BiddingView {
     }[type] || '<i data-lucide="info"></i>';
     const iconWrap = document.createElement("div");
     iconWrap.className = "bf-toast-icon";
-    iconWrap.innerHTML = iconSvg;
+    iconWrap.innerHTML = trustedHTML(iconSvg);
     const content = document.createElement("div");
     content.className = "bf-toast-content";
     const titleNode = document.createElement("div");
@@ -927,7 +928,7 @@ export class BiddingView {
     closeButton.className = "bf-toast-close";
     closeButton.type = "button";
     closeButton.setAttribute("aria-label", "Dismiss toast");
-    closeButton.innerHTML = '<i data-lucide="x"></i>';
+    closeButton.innerHTML = trustedHTML('<i data-lucide="x"></i>');
     toast.append(iconWrap, content, closeButton);
     container.appendChild(toast);
     if (window.lucide) {
@@ -1267,17 +1268,17 @@ export class BiddingView {
         applyDialogTone(modal, "alert-circle");
         if (window.lucide) window.lucide.createIcons({ root: iconContainer });
       }
-      buttonsContainer.innerHTML = `
+      buttonsContainer.innerHTML = trustedHTML(`
                 <button type="button" class="btn btn-outline bf-s-f6af272ae6" id="btn-conflict-server">Dùng bản Server</button>
                 <button type="button" class="btn btn-outline bf-s-f6af272ae6" id="btn-conflict-local">Dùng bản Local</button>
                 <button type="button" class="btn btn-primary bf-s-f6af272ae6" id="btn-conflict-new">Tạo bản mới</button>
-            `;
+            `);
       const cleanUp = (result) => {
         modal.classList.remove("active");
-        buttonsContainer.innerHTML = `
+        buttonsContainer.innerHTML = trustedHTML(`
                     <button type="button" class="btn btn-outline bf-s-649f9eeb60" id="btn-dialog-cancel">Hủy</button>
                     <button type="button" class="btn btn-primary bf-s-649f9eeb60" id="btn-dialog-ok">Xác nhận</button>
-                `;
+                `);
         if (closeBtn) setRuntimeStyle(closeBtn, "display", "block");
         resolve(result);
       };

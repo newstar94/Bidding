@@ -49,10 +49,17 @@ _database_busy: Counter[str] = Counter()
 _database_duration_count: Counter[str] = Counter()
 _database_duration_sum: Counter[str] = Counter()
 _database_duration_buckets: Counter[tuple[str, float]] = Counter()
+_database_phase_count: Counter[tuple[str, str, str]] = Counter()
+_database_phase_sum: Counter[tuple[str, str, str]] = Counter()
+_database_phase_buckets: Counter[tuple[str, str, str, float]] = Counter()
+_database_phase_max: Counter[tuple[str, str, str]] = Counter()
 
 _document_worker = Counter()
 _document_worker_queue_wait_seconds = 0.0
 _document_worker_duration_seconds = 0.0
+
+_partner_lookup_requests = Counter()
+_partner_upstreams = Counter()
 
 _websocket = Counter()
 _recent_websocket_users: OrderedDict[str, float] = OrderedDict()
@@ -137,6 +144,29 @@ def record_database_operation(
                 _database_duration_buckets[(lane_label, upper_bound)] += 1
 
 
+def record_database_phase(
+    scope: object,
+    phase: object,
+    duration_seconds: float,
+    *,
+    outcome: object = "ok",
+) -> None:
+    """Record a bounded internal latency phase without query text or tenant labels."""
+
+    scope_label = _safe_label(scope, "unknown")
+    phase_label = _safe_label(phase, "unknown")
+    outcome_label = _safe_label(outcome, "error")
+    duration = max(0.0, float(duration_seconds))
+    key = (scope_label, phase_label, outcome_label)
+    with _lock:
+        _database_phase_count[key] += 1
+        _database_phase_sum[key] += duration
+        _database_phase_max[key] = max(_database_phase_max[key], duration)
+        for upper_bound in _DATABASE_DURATION_BUCKETS:
+            if duration <= upper_bound:
+                _database_phase_buckets[(*key, upper_bound)] += 1
+
+
 def document_worker_wait_started() -> None:
     with _lock:
         _document_worker["submitted"] += 1
@@ -168,6 +198,42 @@ def document_worker_finished(outcome: object, duration_seconds: float) -> None:
         _document_worker["active"] = max(0, _document_worker["active"] - 1)
         _document_worker[outcome_label] += 1
         _document_worker_duration_seconds += max(0.0, float(duration_seconds))
+
+
+def record_partner_lookup(outcome: object) -> None:
+    """Record a bounded aggregate; tenant attribution stays in structured logs."""
+    outcome_label = _safe_label(outcome, "error")
+    if outcome_label not in {
+        "found",
+        "not_found",
+        "invalid",
+        "unauthorized",
+        "forbidden",
+        "rate_limited",
+        "busy",
+        "upstream_error",
+        "error",
+    }:
+        outcome_label = "error"
+    with _lock:
+        _partner_lookup_requests[outcome_label] += 1
+
+
+def record_partner_upstream(upstream: object, outcome: object) -> None:
+    upstream_label = _safe_label(upstream, "unknown")
+    outcome_label = _safe_label(outcome, "error")
+    if upstream_label not in {"muasamcong", "vietqr", "escodata"}:
+        upstream_label = "unknown"
+    if outcome_label not in {
+        "found",
+        "not_found",
+        "timeout",
+        "error",
+        "circuit_open",
+    }:
+        outcome_label = "error"
+    with _lock:
+        _partner_upstreams[(upstream_label, outcome_label)] += 1
 
 
 def websocket_attempted() -> None:
@@ -546,9 +612,15 @@ def render_prometheus(application: object | None = None) -> str:
         db_duration_count = _database_duration_count.copy()
         db_duration_sum = _database_duration_sum.copy()
         db_duration_buckets = _database_duration_buckets.copy()
+        db_phase_count = _database_phase_count.copy()
+        db_phase_sum = _database_phase_sum.copy()
+        db_phase_buckets = _database_phase_buckets.copy()
+        db_phase_max = _database_phase_max.copy()
         document_worker = _document_worker.copy()
         document_wait_seconds = _document_worker_queue_wait_seconds
         document_duration_seconds = _document_worker_duration_seconds
+        partner_lookup_requests = _partner_lookup_requests.copy()
+        partner_upstreams = _partner_upstreams.copy()
         websocket = _websocket.copy()
         runtime_log_drop_count = _runtime_log_dropped
         audit_chain_checks = _audit_chain_checks.copy()
@@ -564,6 +636,8 @@ def render_prometheus(application: object | None = None) -> str:
     lines: list[str] = []
     _metric_header(lines, "biddingflow_process_start_time_seconds", "Unix time when this process started.", "gauge")
     lines.append(_sample("biddingflow_process_start_time_seconds", _PROCESS_STARTED_AT))
+    _metric_header(lines, "biddingflow_process_id", "Operating-system process identifier for per-worker diagnostics.", "gauge")
+    lines.append(_sample("biddingflow_process_id", os.getpid()))
     _metric_header(lines, "biddingflow_http_active_requests", "HTTP requests currently executing.", "gauge")
     lines.append(_sample("biddingflow_http_active_requests", active_http))
     _metric_header(lines, "biddingflow_http_requests_total", "Completed HTTP requests by code-owned endpoint and status.", "counter")
@@ -595,6 +669,36 @@ def render_prometheus(application: object | None = None) -> str:
         lines.append(_sample("biddingflow_database_operation_duration_seconds_sum", db_duration_sum[lane], {"lane": lane}))
         lines.append(_sample("biddingflow_database_operation_duration_seconds_count", db_duration_count[lane], {"lane": lane}))
 
+    _metric_header(lines, "biddingflow_database_phase_duration_seconds", "Internal database-path latency by bounded phase.", "histogram")
+    for scope, phase, outcome in sorted(db_phase_count):
+        labels = {"scope": scope, "phase": phase, "outcome": outcome}
+        for upper_bound in _DATABASE_DURATION_BUCKETS:
+            lines.append(_sample(
+                "biddingflow_database_phase_duration_seconds_bucket",
+                db_phase_buckets[(scope, phase, outcome, upper_bound)],
+                {**labels, "le": str(upper_bound)},
+            ))
+        lines.append(_sample(
+            "biddingflow_database_phase_duration_seconds_bucket",
+            db_phase_count[(scope, phase, outcome)],
+            {**labels, "le": "+Inf"},
+        ))
+        lines.append(_sample(
+            "biddingflow_database_phase_duration_seconds_sum",
+            db_phase_sum[(scope, phase, outcome)],
+            labels,
+        ))
+        lines.append(_sample(
+            "biddingflow_database_phase_duration_seconds_count",
+            db_phase_count[(scope, phase, outcome)],
+            labels,
+        ))
+        lines.append(_sample(
+            "biddingflow_database_phase_duration_seconds_max",
+            db_phase_max[(scope, phase, outcome)],
+            labels,
+        ))
+
     _pool_samples(lines)
 
     _metric_header(lines, "biddingflow_document_worker_active", "Document subprocess jobs currently active.", "gauge")
@@ -609,6 +713,13 @@ def render_prometheus(application: object | None = None) -> str:
     lines.append(_sample("biddingflow_document_worker_queue_wait_seconds_total", document_wait_seconds))
     _metric_header(lines, "biddingflow_document_worker_duration_seconds_total", "Cumulative active document-worker job time.", "counter")
     lines.append(_sample("biddingflow_document_worker_duration_seconds_total", document_duration_seconds))
+
+    _metric_header(lines, "biddingflow_partner_lookup_requests_total", "Partner lookup requests by bounded outcome; tenant attribution is emitted in structured logs.", "counter")
+    for outcome, value in sorted(partner_lookup_requests.items()):
+        lines.append(_sample("biddingflow_partner_lookup_requests_total", value, {"outcome": outcome}))
+    _metric_header(lines, "biddingflow_partner_upstream_requests_total", "Partner upstream attempts by provider and bounded outcome.", "counter")
+    for (upstream, outcome), value in sorted(partner_upstreams.items()):
+        lines.append(_sample("biddingflow_partner_upstream_requests_total", value, {"upstream": upstream, "outcome": outcome}))
 
     _metric_header(lines, "biddingflow_websocket_active_connections", "Authenticated WebSocket connections currently open.", "gauge")
     lines.append(_sample("biddingflow_websocket_active_connections", websocket["active"]))
@@ -800,6 +911,8 @@ def _reset_metrics_for_tests() -> None:
         _document_worker.clear()
         _document_worker_queue_wait_seconds = 0.0
         _document_worker_duration_seconds = 0.0
+        _partner_lookup_requests.clear()
+        _partner_upstreams.clear()
         _websocket.clear()
         _recent_websocket_users.clear()
         _runtime_log_dropped = 0

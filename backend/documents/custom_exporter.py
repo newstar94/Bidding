@@ -881,10 +881,11 @@ def convert_images_in_context(doc, data, allowed_image_fields=None):
         image_stream = optimize_image_for_docx(filepath, max_w)
         return data_ref, k, image_stream, width_hint
 
-    futures = {_IMAGE_THREAD_POOL.submit(_process_one, t): t for t in tasks}
-    for future in as_completed(futures):
+    # Rendering runs in a process-creation-denied sandbox. Process images
+    # sequentially so the worker never needs to clone threads/processes.
+    for task in tasks:
         try:
-            data_ref, k, image_stream, width_hint = future.result()
+            data_ref, k, image_stream, width_hint = _process_one(task)
             width_val = usable_width if width_hint == 'full' else Inches(1.5)
             data_ref[k] = InlineImage(doc, image_stream, width=width_val)
         except Exception as img_ex:

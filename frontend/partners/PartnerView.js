@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { renderChuDauTuTable, showChuDauTuDetails, renderChuDauTuVersionDetails } from "./ChuDauTuComponent.js";
 import { renderNhaThauTable, showNhaThauDetails, renderNhaThauVersionDetails } from "./NhaThauComponent.js";
 import { renderChuyenGiaTable, showChuyenGiaDetails } from "../experts/ChuyenGiaComponent.js";
@@ -21,10 +22,10 @@ export function renderBieumauTab(templatesList = []) {
   const tbody = document.getElementById("word-templates-tbody");
   if (!tbody) return;
   if (templatesList.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Đang tải biểu mẫu...</td></tr>`;
+    tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted">Đang tải biểu mẫu...</td></tr>`);
     return;
   }
-  tbody.innerHTML = templatesList.map((tpl) => {
+  tbody.innerHTML = trustedHTML(templatesList.map((tpl) => {
     const safeFilename = safeAttr(tpl.filename);
     const isAvailable = tpl.is_available !== false;
     const activeBadge = !isAvailable
@@ -44,7 +45,7 @@ export function renderBieumauTab(templatesList = []) {
                 <td class="text-right">${actionButton}</td>
             </tr>
         `;
-  }).join("");
+  }).join(""));
   lucide.createIcons({ root: tbody });
 }
 export function renderDictionary(group) {
@@ -481,10 +482,10 @@ export function renderDictionary(group) {
     variables = variables.filter((v) => v.sourceColumn === filterColumn);
   }
   if (variables.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Chưa có biến nào trong nhóm này.</td></tr>`;
+    tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted bf-s-3edb22cde1">Chưa có biến nào trong nhóm này.</td></tr>`);
     return;
   }
-  tbody.innerHTML = variables.map((v) => {
+  tbody.innerHTML = trustedHTML(variables.map((v) => {
     let codeHTML = "";
     let actionHTML = "";
     const safeVariableName = escapeHtml(v.tenBien || "");
@@ -567,7 +568,7 @@ export function renderDictionary(group) {
                 <td class="text-right">${actionHTML}</td>
             </tr>
         `;
-  }).join("");
+  }).join(""));
   lucide.createIcons({ root: tbody });
 }
 export function renderWordMappingsTable(mappingsList = []) {

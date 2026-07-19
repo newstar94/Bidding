@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
@@ -34,7 +35,7 @@ export function renderExcelPreview(rows, importType) {
     modal = document.createElement("div");
     modal.id = "modal-excel-preview";
     modal.className = "modal-overlay";
-    modal.innerHTML = `
+    modal.innerHTML = trustedHTML(`
             <style>
                 .excel-preview-input {
                     width: 100%;
@@ -83,7 +84,7 @@ export function renderExcelPreview(rows, importType) {
                     <button type="button" class="btn btn-primary bf-s-65d1f1c3d7" id="btn-save-excel-import">Lưu dữ liệu</button>
                 </div>
             </div>
-        `;
+        `);
     document.body.appendChild(modal);
     const saveBtn = modal.querySelector("#btn-save-excel-import");
     if (saveBtn) {
@@ -98,7 +99,7 @@ export function renderExcelPreview(rows, importType) {
   if (!previewContainer || !tableBody || !tableHeader) return;
   modal.classList.add("active");
   if (rows.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="5" class="bf-s-ed899dffb6">Không tìm thấy dữ liệu hợp lệ trong file Excel</td></tr>`;
+    tableBody.innerHTML = trustedHTML(`<tr><td colspan="5" class="bf-s-ed899dffb6">Không tìm thấy dữ liệu hợp lệ trong file Excel</td></tr>`);
     setRuntimeStyle(previewContainer, "display", "block");
     return;
   }
@@ -187,8 +188,8 @@ export function renderExcelPreview(rows, importType) {
     headerHtml += `<th style="text-align: ${align} !important;">${escapeHtml(label)}</th>`;
   });
   headerHtml += '<th class="bf-s-c84c3abe48">Thông tin kiểm tra</th></tr>';
-  tableHeader.innerHTML = headerHtml;
-  tableBody.innerHTML = rows.map((r, rowIndex) => {
+  tableHeader.innerHTML = trustedHTML(headerHtml);
+  tableBody.innerHTML = trustedHTML(rows.map((r, rowIndex) => {
     const rowErrors = [];
     const fieldErrorMap = {};
     const isDuplicateRow = (r._valid === false || r._valid === "false") && (r._comment && (r._comment.includes("trùng lặp") || r._comment.includes("tồn tại")));
@@ -251,7 +252,7 @@ export function renderExcelPreview(rows, importType) {
     });
     rowHtml += `<td class="bf-s-0c5104285b">${statusHtml}</td></tr>`;
     return rowHtml;
-  }).join("");
+  }).join(""));
   tableBody.onchange = (e) => {
     const input = e.target.closest("input.excel-preview-input");
     if (!input) return;
@@ -330,7 +331,7 @@ export function renderExcelPreview(rows, importType) {
         }
         const statusTd = rowTr.querySelector("td:last-child");
         if (statusTd) {
-          statusTd.innerHTML = rData._valid ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>' : `<span class="badge badge-danger" title="${escapeAttribute(rData._comment)}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`;
+          statusTd.innerHTML = trustedHTML(rData._valid ? '<span class="badge badge-success"><i data-lucide="check"></i> Hợp lệ</span>' : `<span class="badge badge-danger" title="${escapeAttribute(rData._comment)}"><i data-lucide="alert-circle"></i> Lỗi dữ liệu</span>`);
           if (window.lucide) {
             window.lucide.createIcons({ root: statusTd });
           }
@@ -399,20 +400,20 @@ export function populatePhathanhHsmtForm(gt, model) {
       setRuntimeStyle(baodamContainer, "display", "none");
       baodamInput.removeAttribute("required");
       setRuntimeStyle(phanloBaodamContainer, "display", "none");
-      phanloBaodamTbody.innerHTML = "";
+      phanloBaodamTbody.innerHTML = trustedHTML("");
     } else {
       if (isPhanLo) {
         setRuntimeStyle(baodamContainer, "display", "none");
         baodamInput.removeAttribute("required");
         setRuntimeStyle(phanloBaodamContainer, "display", "block");
-        phanloBaodamTbody.innerHTML = "";
+        phanloBaodamTbody.innerHTML = trustedHTML("");
         const list = gt.phanLoList || [];
         list.forEach((item) => {
           const tr = document.createElement("tr");
           tr.setAttribute("data-id", item.id);
           const baoDamVal = item.baoDamDuThau || "";
           const giaTriVal = item.giaTriPhanLo || 0;
-          tr.innerHTML = `
+          tr.innerHTML = trustedHTML(`
                         <td class="bf-s-36242379f4">
                             <input type="text" class="phathanh-pl-code-input bf-s-f94af44de1" value="${escapeAttribute(item.maPhanLo || "")}" placeholder="Mã...">
                         </td>
@@ -428,7 +429,7 @@ export function populatePhathanhHsmtForm(gt, model) {
                         <td class="bf-s-36242379f4">
                              <input type="text" class="phathanh-pl-duration-input bf-s-f94af44de1" value="${escapeAttribute(item.thoiGianThucHien || "")}" placeholder="Thời gian...">
                         </td>
-                    `;
+                    `);
           phanloBaodamTbody.appendChild(tr);
           bindCurrencyElement(tr.querySelector(".phathanh-pl-price-input"), (value) => model.formatVND(model.parseVND(value)));
           bindCurrencyElement(tr.querySelector(".phathanh-pl-baodam-input"), (value) => model.formatVND(model.parseVND(value)));
@@ -439,7 +440,7 @@ export function populatePhathanhHsmtForm(gt, model) {
         baodamInput.setAttribute("required", "true");
         baodamInput.value = gt.giaTriDamBaoDuThau ? model.formatVND(gt.giaTriDamBaoDuThau) : "";
         setRuntimeStyle(phanloBaodamContainer, "display", "none");
-        phanloBaodamTbody.innerHTML = "";
+        phanloBaodamTbody.innerHTML = trustedHTML("");
       }
     }
   }

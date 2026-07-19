@@ -62,9 +62,7 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 Ứng dụng ở trạng thái **No-Go** cho tới khi hoàn thành toàn bộ P0 sau:
 
 1. Document worker không trao đổi kết quả bằng pickle và có ranh giới sandbox thực tế.
-2. Bài thử tải mục tiêu không còn timeout và không sụt thông lượng bất thường khi tăng concurrency.
-3. Runtime PostgreSQL production được xác nhận không phải superuser và không có quyền DDL.
-4. Backup production thử phục hồi thành công trên một database sạch.
+2. Backup production thử phục hồi thành công trên một database sạch.
 
 ## 5. Giai đoạn P0 — Khắc phục blocker bảo mật
 
@@ -92,100 +90,7 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 - Worker bị kill/timeout không làm hỏng web process và không để file tạm tồn tại.
 - Kết quả có schema/hash sai phải bị parent từ chối mà không deserialize nguy hiểm.
 
-### 5.2. Khóa API tra cứu doanh nghiệp
-
-1. Bắt buộc session hợp lệ cho `/api/lookup-tax-code` nếu tính năng chỉ dùng trong ứng dụng.
-2. Rate limit theo user và IP, thấp hơn mức hiện tại.
-3. Cache kết quả dương và âm trong thời gian phù hợp.
-4. Có circuit breaker, outbound concurrency limit và timeout riêng cho từng upstream.
-5. Không retry đồng loạt; dùng exponential backoff có jitter.
-6. Theo dõi tỷ lệ timeout, lỗi upstream và số request theo tenant.
-
-## 6. Giai đoạn P1 — Củng cố ứng dụng và PostgreSQL
-
-### 6.1. Mật khẩu và tài khoản
-
-1. Đổi mật khẩu mới sang Argon2id; giữ verify PBKDF2 cũ và rehash khi đăng nhập.
-2. Nếu tiếp tục dùng PBKDF2-HMAC-SHA256, dùng tối thiểu 600.000 vòng và benchmark CPU trước triển khai.
-3. Mật khẩu một yếu tố tối thiểu 15 ký tự; tối đa ít nhất 64 ký tự.
-4. Thêm blocklist mật khẩu phổ biến/rò rỉ; không yêu cầu quy tắc ký tự phức tạp cứng nhắc.
-5. Thêm MFA cho Super Admin và khuyến nghị MFA cho manager.
-6. Giữ step-up authentication cho thao tác nhạy cảm; bổ sung re-auth cho đổi email, gói, role và quyền tùy chỉnh.
-7. Thông báo bảo mật khi đổi email, mật khẩu, role, gói hoặc đăng nhập thiết bị mới.
-
-### 6.2. XSS và Trusted Types
-
-1. Loại bỏ default Trusted Types policy tự động chấp nhận mọi sink.
-2. Dùng policy tường minh và sanitizer đã được duy trì, hoặc tạo DOM bằng `textContent`/API DOM.
-3. Kiểm kê toàn bộ `innerHTML`, `outerHTML`, `insertAdjacentHTML`, template string và URL sink.
-4. Bật ESLint rule chống unsanitized DOM và chặn build khi vi phạm.
-5. Thêm test payload vào tên người dùng, tên tổ chức, dữ liệu gói thầu, nội dung import Excel và dữ liệu upstream.
-6. Giữ CSP `require-trusted-types-for 'script'` ở chế độ enforce.
-
-### 6.3. Ảnh và file media
-
-1. `save_base64_image` phải fail-closed; không trả lại nguyên payload khi decode/Pillow/lưu file thất bại.
-2. Giới hạn cả số byte, số pixel, chiều rộng/cao và compression ratio.
-3. Re-encode ảnh hợp lệ trước khi lưu; không tin MIME hoặc extension từ client.
-4. Không lưu base64 lớn trong PostgreSQL; dùng object storage hoặc filesystem được quản lý.
-5. Quét file độc hại nếu cho phép loại file ngoài ảnh/OOXML.
-
-### 6.4. Runtime database role
-
-1. Production startup truy vấn `pg_roles` và ACL để xác nhận runtime role:
-   - không phải superuser;
-   - không có `CREATEDB`, `CREATEROLE`, replication hoặc bypass RLS;
-   - không có quyền tạo/alter/drop schema và table;
-   - chỉ có CRUD/sequence/function cần thiết.
-2. Migrator role chỉ tồn tại trong migration job, không đưa vào environment của web service.
-3. PostgreSQL chỉ nghe private network; bắt buộc `sslmode=verify-full`.
-4. Cân nhắc Row-Level Security cho bảng tenant với transaction-local tenant context.
-5. Thêm test thiếu `organization_id` và test cố đọc ID thuộc tenant khác trên mọi repository/API.
-
-### 6.5. Host header và proxy trust
-
-1. Thêm allowlist hostname trong ứng dụng hoặc `TrustedHostMiddleware`.
-2. Nginx có default server trả `444` cho hostname không được cấu hình.
-3. Chỉ tin `X-Forwarded-*` từ CIDR reverse proxy đã khai báo.
-4. Không dùng Host header chưa xác minh để tạo URL reset, OAuth redirect hoặc link email.
-
 ## 7. Giai đoạn P1 — Hiệu năng và khả năng chịu tải
-
-### 7.1. Tìm nguyên nhân timeout tại 32 concurrent
-
-Đo riêng các đoạn sau bằng histogram và trace ID:
-
-- chờ admission queue;
-- chờ DB read/write executor;
-- chờ lấy connection PostgreSQL;
-- thời gian query;
-- lock wait/statement timeout;
-- session lookup;
-- organization/entitlement lookup;
-- serialization JSON;
-- WebSocket broker/outbox;
-- background audit và document worker.
-
-Không tăng pool/worker mù quáng trước khi có số liệu. Mỗi thay đổi phải chạy lại cùng workload và so sánh p50/p95/p99, throughput, error rate, DB CPU, connection count và lock wait.
-
-### 7.2. Tối ưu session và authorization
-
-1. Không `SELECT accounts.*`; chỉ đọc các trường cần cho quyết định xác thực.
-2. Đảm bảo index duy nhất trên `auth_sessions.token_hash` và index phục vụ session expiry/revocation cleanup.
-3. Tách trạng thái session revocation khỏi hồ sơ tài khoản lớn.
-4. Nếu dùng cache phân tán, cache phải có revision và cơ chế revoke; không hy sinh hiệu lực thu hồi quyền để lấy tốc độ.
-5. Batch hoặc giảm tần suất cập nhật `last_seen_at`, tránh ghi nóng mỗi request.
-
-### 7.3. PostgreSQL và query
-
-1. Bật `pg_stat_statements` trên staging/production.
-2. Lấy top query theo total time, mean time, calls, rows và temporary bytes.
-3. Dùng `EXPLAIN (ANALYZE, BUFFERS)` với dữ liệu có kích thước gần production.
-4. Kiểm tra index theo `organization_id`, trạng thái active, `sync_version`, `updated_at`, khóa sort và foreign key.
-5. Tránh `COUNT(*)` không cần thiết trên mọi lần phân trang; ưu tiên keyset pagination.
-6. Tránh `%keyword%` trên bảng lớn; dùng PostgreSQL full-text/trigram index khi phù hợp.
-7. Giới hạn transaction ghi; không gọi network hoặc xử lý file trong transaction.
-8. Theo dõi autovacuum, table/index bloat, dead tuple và WAL growth.
 
 ### 7.4. Pool, worker và job nền
 
@@ -364,7 +269,6 @@ Chỉ cần một điều kiện trên chưa đạt thì trạng thái vẫn là
 ### Đợt 1 — Blocker bảo mật
 
 1. Document worker IPC/sandbox.
-2. Bảo vệ partner lookup.
 
 ### Đợt 2 — Authentication và tenant hardening
 

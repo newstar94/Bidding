@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { escapeHtml, formatDateOnly, safeImageSrc } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
 import { clearVirtualTable, renderVirtualTable } from "../shared/virtualTable.js";
@@ -180,7 +181,7 @@ export function showChuyenGiaDetails(id) {
             </div>
         </div>
     `;
-  document.getElementById("detail-chuyengia-content").innerHTML = html;
+  document.getElementById("detail-chuyengia-content").innerHTML = trustedHTML(html);
   this.openModal("modal-detail-chuyengia");
   lucide.createIcons({ root: document.getElementById("detail-chuyengia-content") });
 }

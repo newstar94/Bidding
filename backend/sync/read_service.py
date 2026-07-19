@@ -38,6 +38,7 @@ from backend.sync.payload_validation import get_package_field_policy
 from backend.shared.logging_utils import error_response, log_and_error
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
+from backend.observability.metrics import record_database_phase
 
 
 def _database_read_unavailable(request, code, message):
@@ -99,7 +100,7 @@ def _read_sync_data_blocking(request):
         current_time = vietnam_now_sql()
 
 
-        org_name = get_active_org(request, role_or_err.user_id)
+        org_name = get_active_org(request, role_or_err.user_id, cursor=cursor)
         media_session_token = str(
             getattr(request, "cookies", {}).get("session_token", "")
         )
@@ -444,7 +445,15 @@ def _read_sync_data_blocking(request):
             response_payload["deletions"] = [
                 item for item in response_payload["deletions"] if item.get("table") in requested_keys
             ]
-        response = JSONResponse(response_payload)
+        json_started_at = time.perf_counter()
+        try:
+            response = JSONResponse(response_payload)
+        finally:
+            record_database_phase(
+                "sync",
+                "json_serialize",
+                time.perf_counter() - json_started_at,
+            )
         response.headers["Server-Timing"] = f"sync-read;dur={(time.perf_counter() - started_at) * 1000:.1f}"
         return response
     except OrgPermissionError as e:

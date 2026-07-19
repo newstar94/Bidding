@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, formatCurrency, formatDate, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
@@ -418,7 +419,7 @@ export async function renderPlanVersionDetails(versionId) {
             </div>
         </div>
     `;
-  document.getElementById("fullpage-kehoach-content").innerHTML = html;
+  document.getElementById("fullpage-kehoach-content").innerHTML = trustedHTML(html);
   const innerSelect = document.getElementById("fullpage-kh-version-select");
   if (innerSelect) {
     innerSelect.onchange = (e) => {

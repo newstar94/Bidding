@@ -1,6 +1,7 @@
 from backend.db.db_helper import DatabaseError, IntegrityError
 import json
 import re
+import time
 import traceback
 
 from starlette.responses import JSONResponse
@@ -24,6 +25,7 @@ from backend.shared.helpers import (
 from backend.shared.access_policy import OWNERSHIP_SCOPED_TABLES, authorize_record_write
 from backend.shared.client_ip import get_client_ip
 from backend.shared.logging_utils import error_response, get_request_id
+from backend.observability.metrics import record_database_phase
 from backend.auth.auth_helper import (
     PRIVILEGED_REAUTH_REQUIRED,
     PRIVILEGED_REAUTH_TTL_SECONDS,
@@ -37,8 +39,9 @@ from backend.shared.date_utils import (
 from backend.shared.domain_enums import enum_code
 from backend.db.id_utils import generate_record_id
 from backend.shared.media_helper import (
+    delete_managed_image_files,
+    find_unreferenced_image_paths,
     normalize_managed_image_path,
-    remove_unreferenced_image_files,
 )
 from backend.sync.mapper import (
     canonicalize_payload_item,
@@ -147,6 +150,48 @@ async def process_sync_request(request, broadcast_callback=None):
         return response
 
 
+def _persist_incoming_images(data, newly_written_images):
+    """Decode/re-encode image payloads before opening the write transaction."""
+
+    image_columns = {
+        "chuyen_gia": {
+            "anh_chung_chi": "cert",
+            "anh_chu_ky": "sig",
+        },
+        "nha_thau": {
+            "anh_dau": "stamp",
+        },
+    }
+    for _payload_key, table_name, items in iter_sync_table_payloads(data):
+        if table_name not in image_columns:
+            continue
+        for original_item in items:
+            if not isinstance(original_item, dict):
+                continue
+            item = canonicalize_payload_item(table_name, original_item)
+            record_id = clean_id(item.get("id"))
+            for column_name, suffix in image_columns[table_name].items():
+                json_key = json_key_for_column(table_name, column_name)
+                value = get_payload_value(table_name, item, column_name)
+                if not (
+                    isinstance(value, str)
+                    and value.startswith("data:image")
+                ):
+                    continue
+                subfolder = (
+                    "chuyen_gia"
+                    if table_name == "chuyen_gia"
+                    else "nha_thau"
+                )
+                managed_path = save_base64_image(
+                    value,
+                    subfolder,
+                    f"{record_id}_{suffix}",
+                )
+                original_item[json_key] = managed_path
+                newly_written_images.add(managed_path)
+
+
 def _process_sync_request_blocking(request, data, broadcast_callback=None):
     """
     [POST] /api/sync
@@ -166,18 +211,69 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
             log_sync_error(f"Xác thực thất bại khi đồng bộ: {role_or_err}")
             return JSONResponse({"error": role_or_err}, status_code=403)
 
+        role_str = str(role_or_err)
+        user_id = role_or_err.user_id
+        client_mutation_id = (data.get("clientMutationId") or "").strip()
+        if client_mutation_id:
+            client_mutation_id = client_mutation_id[:128]
+
+        authorization_conn = database.get_connection()
+        try:
+            authorization_cursor = authorization_conn.cursor()
+            org_name = get_active_org(
+                request,
+                user_id,
+                cursor=authorization_cursor,
+            )
+            owner_type = get_owner_type(authorization_cursor, org_name)
+            if owner_type == "personal" and not is_personal_scope_for_user(
+                org_name,
+                user_id,
+            ):
+                raise OrgPermissionError(
+                    "Không gian cá nhân không thuộc tài khoản hiện tại."
+                )
+            if owner_type not in {"personal", "organization"}:
+                raise OrgPermissionError("Không thể xác định phạm vi dữ liệu.")
+            if client_mutation_id:
+                existing_mutation = authorization_cursor.execute(
+                    """
+                    SELECT response_json
+                    FROM sync_mutations
+                    WHERE organization_id = ?
+                      AND actor_user_id = ?
+                      AND client_mutation_id = ?
+                    """,
+                    (org_name, user_id, client_mutation_id),
+                ).fetchone()
+                if existing_mutation:
+                    try:
+                        return JSONResponse(
+                            json.loads(existing_mutation[0] or "{}")
+                        )
+                    except (json.JSONDecodeError, TypeError):
+                        return JSONResponse({"status": "success"})
+        finally:
+            authorization_conn.close()
+
+        _persist_incoming_images(data, newly_written_images)
+
         conn = database.get_connection()
         conn.execute("BEGIN")
         cursor = conn.cursor()
 
-        org_name = get_active_org(request, role_or_err.user_id)
-        role_str = str(role_or_err)
-        user_id = role_or_err.user_id
+        transaction_org_name = get_active_org(
+            request,
+            user_id,
+            cursor=cursor,
+        )
+        if transaction_org_name != org_name:
+            raise OrgPermissionError(
+                "Phạm vi dữ liệu đã thay đổi trong khi xử lý yêu cầu."
+            )
         owner_type = get_owner_type(cursor, org_name)
         current_time = vietnam_now_sql()
-        client_mutation_id = (data.get("clientMutationId") or "").strip()
         if client_mutation_id:
-            client_mutation_id = client_mutation_id[:128]
             cursor.execute(
                 "SELECT response_json FROM sync_mutations WHERE organization_id = ? AND actor_user_id = ? AND client_mutation_id = ?",
                 (org_name, user_id, client_mutation_id)
@@ -672,15 +768,44 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                                             previous_image = normalize_managed_image_path(previous_row[0])
 
                                 is_new_image_data = isinstance(val, str) and val.startswith("data:image")
-                                if is_expert_image and val:
-                                    ext_suffix = "cert" if col == "anh_chung_chi" else "sig"
-                                    expert_id = clean_id(item.get('id'))
-                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/images/") else val
-                                    val = save_base64_image(normalized_image, "chuyen_gia", f"{expert_id}_{ext_suffix}")
-                                elif is_contractor_image and val:
-                                    contractor_id = clean_id(item.get('id'))
-                                    normalized_image = val[1:] if isinstance(val, str) and val.startswith("/images/") else val
-                                    val = save_base64_image(normalized_image, "nha_thau", f"{contractor_id}_stamp")
+                                allowed_existing_images = {
+                                    previous_image
+                                } if previous_image else set()
+                                proposed_existing_image = normalize_managed_image_path(val)
+                                if proposed_existing_image in newly_written_images:
+                                    allowed_existing_images.add(
+                                        proposed_existing_image
+                                    )
+                                if proposed_existing_image and proposed_existing_image not in allowed_existing_images:
+                                    cursor.execute(
+                                        f"SELECT 1 FROM {table_name} "
+                                        f"WHERE organization_id = ? AND {col} = ? LIMIT 1",
+                                        (org_name, proposed_existing_image),
+                                    )
+                                    if cursor.fetchone():
+                                        allowed_existing_images.add(proposed_existing_image)
+                                if (is_expert_image or is_contractor_image) and val:
+                                    if is_new_image_data:
+                                        raise ValueError(
+                                            "Ảnh phải được xử lý trước transaction."
+                                        )
+                                    expected_prefix = (
+                                        "images/chuyen_gia/"
+                                        if is_expert_image
+                                        else "images/nha_thau/"
+                                    )
+                                    if (
+                                        not proposed_existing_image
+                                        or not proposed_existing_image.startswith(
+                                            expected_prefix
+                                        )
+                                        or proposed_existing_image
+                                        not in allowed_existing_images
+                                    ):
+                                        raise ValueError(
+                                            "Ảnh không thuộc bản ghi hoặc tổ chức này."
+                                        )
+                                    val = proposed_existing_image
 
                                 if is_expert_image or is_contractor_image:
                                     current_image = normalize_managed_image_path(val)
@@ -918,10 +1043,12 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         transaction_committed = True
 
         try:
-            remove_unreferenced_image_files(
+            unreferenced_images = find_unreferenced_image_paths(
                 cursor,
                 image_cleanup_candidates | newly_written_images,
             )
+            conn.commit()
+            delete_managed_image_files(unreferenced_images)
         except Exception as cleanup_error:
             log_sync_error(f"Không thể dọn ảnh không còn tham chiếu: {cleanup_error}")
 
@@ -931,10 +1058,25 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
         if isinstance(data.get("nhathau"), list) and data.get("nhathau"):
             try:
                 from backend.partners.partner_lookup_service import request_partner_enrichment
-                request_partner_enrichment()
+                request_partner_enrichment(
+                    org_name,
+                    [
+                        get_clean_id("nha_thau", item.get("id"))
+                        for item in data.get("nhathau", [])
+                        if isinstance(item, dict) and item.get("id")
+                    ],
+                )
             except Exception as enrichment_error:
                 log_sync_error(f"Không thể kích hoạt bổ sung thông tin nhà thầu: {enrichment_error}")
-        return JSONResponse(response_data)
+        json_started_at = time.perf_counter()
+        try:
+            return JSONResponse(response_data)
+        finally:
+            record_database_phase(
+                "sync",
+                "json_serialize",
+                time.perf_counter() - json_started_at,
+            )
     except OrgPermissionError as e:
         if conn:
             try:
@@ -963,14 +1105,22 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                 pass
         if not transaction_committed and newly_written_images:
             cleanup_conn = None
+            unreferenced_images = []
             try:
                 cleanup_conn = database.get_connection()
-                remove_unreferenced_image_files(
+                unreferenced_images = find_unreferenced_image_paths(
                     cleanup_conn.cursor(),
                     newly_written_images,
                 )
+                cleanup_conn.commit()
             except Exception as cleanup_error:
                 log_sync_error(f"Không thể dọn ảnh sau khi rollback: {cleanup_error}")
             finally:
                 if cleanup_conn:
                     cleanup_conn.close()
+            try:
+                delete_managed_image_files(unreferenced_images)
+            except Exception as cleanup_error:
+                log_sync_error(
+                    f"Không thể xóa file ảnh sau khi rollback: {cleanup_error}"
+                )

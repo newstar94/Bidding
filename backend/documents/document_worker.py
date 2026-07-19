@@ -12,14 +12,17 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, resolve_runtime_path
 from backend.documents.document_ipc import (
     DocumentIpcError,
+    read_job_manifest,
     read_result,
     write_job_manifest,
+    write_result,
 )
 from backend.documents.document_sandbox import (
     sandbox_worker_command,
@@ -118,6 +121,8 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
         "DOCUMENT_WORKER_MAX_MEMORY_MB",
         "DOCUMENT_WORKER_MAX_OUTPUT_MB",
         "DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP",
+        "DOCUMENT_WORKER_SANDBOX_GID",
+        "DOCUMENT_WORKER_SANDBOX_UID",
         "DOCUMENT_WORKER_UID",
         "EXCEL_MAX_IMPORT_ROWS",
         "PATH",
@@ -403,6 +408,315 @@ def run_document_job(
             pass
 
 
+_DOCUMENT_QUEUE_WORKER_ID = f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
+
+
+def _document_queue_database():
+    # Lazy import avoids constructing the application database while tooling
+    # imports the isolated document runner.
+    from backend.shared.helpers import database
+
+    return database
+
+
+def _document_job_dir(job_id: str) -> Path:
+    candidate = str(job_id or "")
+    if len(candidate) != 32 or any(character not in "0123456789abcdef" for character in candidate):
+        raise DocumentWorkerError("Mã tác vụ tài liệu không hợp lệ.")
+    root = resolve_runtime_path("DOCUMENT_WORKER_TEMP_DIR").resolve()
+    path = (root / f"job-{candidate}").resolve()
+    if path.parent != root:
+        raise DocumentWorkerError("Đường dẫn tác vụ tài liệu không hợp lệ.")
+    return path
+
+
+def _enqueue_durable_document_job(
+    operation: str,
+    payload: dict[str, Any],
+    *,
+    database=None,
+) -> str:
+    database = database or _document_queue_database()
+    job_id = uuid.uuid4().hex
+    job_dir = _document_job_dir(job_id)
+    job_dir.parent.mkdir(parents=True, exist_ok=True)
+    job_dir.mkdir(mode=0o700)
+    try:
+        write_job_manifest(
+            job_dir / "input.json",
+            operation,
+            payload,
+            image_root=IMAGE_DIR,
+        )
+        now = int(time.time())
+        retention_seconds = _positive_int_env(
+            "DOCUMENT_JOB_RETENTION_SECONDS",
+            3_600,
+            300,
+            86_400,
+        )
+        connection = database.get_connection()
+        try:
+            connection.execute(
+                """INSERT INTO document_jobs (
+                       id, operation, status, attempt_count, available_at,
+                       expires_at, created_at, updated_at
+                   ) VALUES (?, ?, 'pending', 0, ?, ?, ?, ?)""",
+                (
+                    job_id,
+                    operation,
+                    now,
+                    now + retention_seconds,
+                    now,
+                    now,
+                ),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return job_id
+    except Exception:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
+
+
+def _claim_durable_document_job(database, job_id: str | None = None):
+    now = int(time.time())
+    stale_seconds = _positive_int_env(
+        "DOCUMENT_JOB_STALE_SECONDS",
+        240,
+        60,
+        900,
+    )
+    max_attempts = _positive_int_env(
+        "DOCUMENT_JOB_MAX_ATTEMPTS",
+        2,
+        1,
+        5,
+    )
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        row = connection.execute(
+            """SELECT id, operation, attempt_count
+               FROM document_jobs
+               WHERE (CAST(? AS TEXT) IS NULL OR id = ?)
+                 AND attempt_count < ?
+                 AND expires_at > ?
+                 AND (
+                       (status IN ('pending', 'retry') AND available_at <= ?)
+                    OR (status = 'processing' AND locked_at <= ?)
+                 )
+               ORDER BY available_at, created_at, id
+               FOR UPDATE SKIP LOCKED
+               LIMIT 1""",
+            (
+                job_id,
+                job_id,
+                max_attempts,
+                now,
+                now,
+                now - stale_seconds,
+            ),
+        ).fetchone()
+        if row is None:
+            connection.commit()
+            return None
+        lock_token = f"{_DOCUMENT_QUEUE_WORKER_ID}:{uuid.uuid4().hex}"
+        attempt_count = int(row["attempt_count"] or 0) + 1
+        connection.execute(
+            """UPDATE document_jobs
+               SET status = 'processing', attempt_count = ?, locked_at = ?,
+                   locked_by = ?, updated_at = ?
+               WHERE id = ?""",
+            (attempt_count, now, lock_token, now, row["id"]),
+        )
+        connection.commit()
+        claimed = dict(row)
+        claimed["attempt_count"] = attempt_count
+        claimed["lock_token"] = lock_token
+        return claimed
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _finish_durable_document_job(database, claimed, error: Exception | None = None) -> None:
+    now = int(time.time())
+    attempts = int(claimed["attempt_count"])
+    max_attempts = _positive_int_env(
+        "DOCUMENT_JOB_MAX_ATTEMPTS",
+        2,
+        1,
+        5,
+    )
+    if error is None:
+        status = "completed"
+        available_at = now
+        error_code = None
+        error_message = None
+        completed_at = now
+    else:
+        retryable = not isinstance(error, DocumentWorkerInputError)
+        status = "retry" if retryable and attempts < max_attempts else "failed"
+        available_at = now + min(30, 2 ** attempts) if status == "retry" else now
+        error_code = error.__class__.__name__[:96]
+        if isinstance(error, (DocumentWorkerInputError, DocumentWorkerError)):
+            error_message = str(error)[:500]
+        else:
+            error_message = "Tác vụ tài liệu không thành công."
+        completed_at = now if status == "failed" else None
+    connection = database.get_connection()
+    try:
+        connection.execute(
+            """UPDATE document_jobs
+               SET status = ?, available_at = ?, locked_at = NULL,
+                   locked_by = NULL, last_error_code = ?,
+                   last_error_message = ?, completed_at = ?, updated_at = ?
+               WHERE id = ? AND status = 'processing' AND locked_by = ?""",
+            (
+                status,
+                available_at,
+                error_code,
+                error_message,
+                completed_at,
+                now,
+                claimed["id"],
+                claimed["lock_token"],
+            ),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _process_claimed_document_job(database, claimed) -> None:
+    job_dir = _document_job_dir(claimed["id"])
+    try:
+        operation, payload = read_job_manifest(job_dir / "input.json", job_dir)
+        if operation != claimed["operation"]:
+            raise DocumentWorkerInputError("Loại tác vụ tài liệu không khớp.")
+        result = run_document_job(operation, payload)
+        result_path = job_dir / "result.json"
+        if result_path.exists():
+            result_path.unlink()
+        binary_result = job_dir / "result.bin"
+        if binary_result.exists():
+            binary_result.unlink()
+        write_result(result_path, result=result)
+        _finish_durable_document_job(database, claimed)
+    except Exception as error:
+        for result_file in (job_dir / "result.json", job_dir / "result.bin"):
+            try:
+                result_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+        _finish_durable_document_job(database, claimed, error)
+
+
+def process_next_durable_document_job(database=None) -> bool:
+    database = database or _document_queue_database()
+    claimed = _claim_durable_document_job(database)
+    if claimed is None:
+        return False
+    _process_claimed_document_job(database, claimed)
+    return True
+
+
+def _consume_durable_document_result(
+    job_id: str,
+    *,
+    database=None,
+    timeout_seconds: float | None = None,
+) -> Any:
+    database = database or _document_queue_database()
+    per_attempt = timeout_seconds or _bounded_float_env(
+        "DOCUMENT_WORKER_TIMEOUT_SECONDS",
+        DEFAULT_TIMEOUT_SECONDS,
+        1.0,
+        180.0,
+    )
+    max_attempts = _positive_int_env("DOCUMENT_JOB_MAX_ATTEMPTS", 2, 1, 5)
+    deadline = time.monotonic() + min(900.0, max(15.0, per_attempt * max_attempts + 30.0))
+    job_dir = _document_job_dir(job_id)
+    while time.monotonic() < deadline:
+        claimed = _claim_durable_document_job(database, job_id)
+        if claimed is not None:
+            _process_claimed_document_job(database, claimed)
+
+        connection = database.get_connection()
+        try:
+            row = connection.execute(
+                """SELECT status, last_error_code, last_error_message
+                   FROM document_jobs WHERE id = ?""",
+                (job_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            raise DocumentWorkerError("Tác vụ tài liệu không còn tồn tại.")
+        if row["status"] == "completed":
+            result = _read_result(job_dir / "result.json", job_dir)
+            connection = database.get_connection()
+            try:
+                deleted = connection.execute(
+                    "DELETE FROM document_jobs WHERE id = ? AND status = 'completed'",
+                    (job_id,),
+                )
+                deleted_count = int(deleted.rowcount or 0)
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            finally:
+                connection.close()
+            if deleted_count == 1:
+                shutil.rmtree(job_dir, ignore_errors=True)
+            return result
+        if row["status"] == "failed":
+            message = str(
+                row["last_error_message"]
+                or "Tác vụ tài liệu không thành công."
+            )
+            if row["last_error_code"] == "DocumentWorkerInputError":
+                raise DocumentWorkerInputError(message)
+            raise DocumentWorkerError(message)
+        time.sleep(0.05)
+    raise DocumentWorkerTimeoutError(
+        "Tác vụ tài liệu vượt quá thời gian chờ cho phép."
+    )
+
+
+async def run_durable_document_queue_worker(database) -> None:
+    """Recover queued/orphaned document jobs after a web-worker restart."""
+
+    while True:
+        try:
+            processed = await asyncio.to_thread(
+                process_next_durable_document_job,
+                database,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            processed = False
+        idle_poll_seconds = _bounded_float_env(
+            "DOCUMENT_JOB_POLL_SECONDS",
+            5.0,
+            1.0,
+            30.0,
+        )
+        await asyncio.sleep(0.1 if processed else idle_poll_seconds)
+
+
 async def run_document_job_async(
     operation: str,
     payload: dict[str, Any],
@@ -441,10 +755,10 @@ async def run_document_job_async(
         raise DocumentWorkerBusyError(_BUSY_MESSAGE)
 
     try:
+        job_id = _enqueue_durable_document_job(operation, payload)
         concurrent_future = runtime.executor.submit(
-            run_document_job,
-            operation,
-            payload,
+            _consume_durable_document_result,
+            job_id,
             timeout_seconds=timeout_seconds,
         )
     except BaseException:
@@ -474,12 +788,60 @@ def cleanup_stale_document_jobs(max_age_seconds: int = 3_600) -> int:
     return removed
 
 
+def purge_expired_durable_document_jobs(database) -> int:
+    """Delete terminal/expired queue metadata, then remove its dedicated files."""
+
+    now = int(time.time())
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        rows = connection.execute(
+            """SELECT id FROM document_jobs
+               WHERE expires_at <= ?
+                 AND (
+                       status IN ('completed', 'failed')
+                    OR (status IN ('pending', 'retry') AND updated_at <= ?)
+                    OR (status = 'processing' AND locked_at <= ?)
+                 )
+               FOR UPDATE SKIP LOCKED""",
+            (now, now - 300, now - 900),
+        ).fetchall()
+        job_ids = [str(row["id"]) for row in rows]
+        if job_ids:
+            connection.executemany(
+                "DELETE FROM document_jobs WHERE id = ?",
+                [(job_id,) for job_id in job_ids],
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    for job_id in job_ids:
+        shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+    return len(job_ids)
+
+
 def validate_document_worker_configuration() -> None:
     """Fail startup when production would run document parsers with admin rights."""
 
     validate_document_sandbox_configuration()
     if os.environ.get("APP_ENV", "development").lower() not in {"prod", "production"}:
         return
+    if (
+        _positive_int_env("APP_INSTANCE_COUNT", 1, 1, 1_000) > 1
+        and os.environ.get(
+            "DOCUMENT_WORKER_SHARED_STORAGE_CONFIRMED",
+            "",
+        ).strip().lower()
+        != "true"
+    ):
+        raise RuntimeError(
+            "Multiple instances require a dedicated shared, encrypted "
+            "DOCUMENT_WORKER_TEMP_DIR and "
+            "DOCUMENT_WORKER_SHARED_STORAGE_CONFIRMED=true."
+        )
     require_drop = os.environ.get(
         "DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP", "false"
     ).lower() == "true"

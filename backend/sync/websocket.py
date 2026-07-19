@@ -1,14 +1,17 @@
 """WebSocket connection registry for synchronization notifications."""
 
 import asyncio
+import hashlib
 import json
 import os
+import time
+import uuid
 
 from starlette.websockets import WebSocketDisconnect
 
 from backend.shared.helpers import database
 from backend.shared.async_io import run_blocking_io
-from backend.shared.database_io import run_database_read
+from backend.shared.database_io import run_database_read, run_database_write
 from backend.shared.origin_policy import is_websocket_origin_allowed
 from backend.shared.client_ip import get_client_ip
 from backend.auth.session_store import load_session_user, session_invalid_reason
@@ -25,6 +28,8 @@ from backend.shared.logging_utils import log_error
 active_connections = {}
 active_connections_by_ip = {}
 _BROKER_CHANNEL = "biddingflow_events"
+_WORKER_ID = f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
+_WEBSOCKET_LEASE_SECONDS = 120
 
 _WEBSOCKET_EVENT_FIELDS = {
     "db_changed": ("event",),
@@ -77,6 +82,155 @@ def _release_ip_connection(client_ip, websocket):
     sockets.discard(websocket)
     if not sockets:
         active_connections_by_ip.pop(client_ip, None)
+
+
+def _client_ip_hash(client_ip):
+    return hashlib.sha256(
+        f"biddingflow-websocket-ip:{client_ip}".encode("utf-8")
+    ).hexdigest()
+
+
+def _acquire_cluster_ip_lease(
+    lease_id,
+    client_ip_hash,
+    ip_limit,
+):
+    now = int(time.time())
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('biddingflow-websocket-quota'))"
+        )
+        connection.execute(
+            "DELETE FROM websocket_connection_leases WHERE expires_at <= ?",
+            (now,),
+        )
+        current = connection.execute(
+            """
+            SELECT count(*)
+            FROM websocket_connection_leases
+            WHERE client_ip_hash = ? AND expires_at > ?
+            """,
+            (client_ip_hash, now),
+        ).fetchone()[0]
+        if int(current or 0) >= int(ip_limit):
+            connection.rollback()
+            return False
+        connection.execute(
+            """
+            INSERT INTO websocket_connection_leases (
+                id, user_id, organization_id, client_ip_hash,
+                worker_id, expires_at, created_at, updated_at
+            ) VALUES (?, NULL, NULL, ?, ?, ?, ?, ?)
+            """,
+            (
+                lease_id,
+                client_ip_hash,
+                _WORKER_ID,
+                now + _WEBSOCKET_LEASE_SECONDS,
+                now,
+                now,
+            ),
+        )
+        connection.commit()
+        return True
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _attach_cluster_user_lease(
+    lease_id,
+    user_id,
+    organization_id,
+    user_limit,
+):
+    now = int(time.time())
+    connection = database.get_connection()
+    try:
+        connection.execute("BEGIN")
+        connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('biddingflow-websocket-quota'))"
+        )
+        connection.execute(
+            "DELETE FROM websocket_connection_leases WHERE expires_at <= ?",
+            (now,),
+        )
+        current = connection.execute(
+            """
+            SELECT count(*)
+            FROM websocket_connection_leases
+            WHERE user_id = ? AND expires_at > ? AND id <> ?
+            """,
+            (user_id, now, lease_id),
+        ).fetchone()[0]
+        if int(current or 0) >= int(user_limit):
+            connection.rollback()
+            return False
+        updated = connection.execute(
+            """
+            UPDATE websocket_connection_leases
+            SET user_id = ?, organization_id = ?,
+                expires_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                user_id,
+                organization_id,
+                now + _WEBSOCKET_LEASE_SECONDS,
+                now,
+                lease_id,
+            ),
+        )
+        if updated.rowcount != 1:
+            connection.rollback()
+            return False
+        connection.commit()
+        return True
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _renew_cluster_lease(lease_id):
+    now = int(time.time())
+    connection = database.get_connection()
+    try:
+        updated = connection.execute(
+            """
+            UPDATE websocket_connection_leases
+            SET expires_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (now + _WEBSOCKET_LEASE_SECONDS, now, lease_id),
+        )
+        connection.commit()
+        return updated.rowcount == 1
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def _release_cluster_lease(lease_id):
+    connection = database.get_connection()
+    try:
+        connection.execute(
+            "DELETE FROM websocket_connection_leases WHERE id = ?",
+            (lease_id,),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def serialize_websocket_event(message):
@@ -156,7 +310,35 @@ async def sync_websocket_endpoint(websocket):
     organization_id = None
     user_id = None
     metrics_connected = False
+    lease_id = uuid.uuid4().hex
+    cluster_lease_acquired = False
     try:
+        ip_limit = _positive_int_env(
+            "WEBSOCKET_MAX_CONNECTIONS_PER_IP",
+            10,
+            maximum=1_000,
+        )
+        try:
+            cluster_lease_acquired = await run_database_write(
+                _acquire_cluster_ip_lease,
+                lease_id,
+                _client_ip_hash(client_ip),
+                ip_limit,
+            )
+        except Exception as lease_error:
+            log_error(
+                lease_error,
+                "websocket_cluster_ip_quota",
+                level="WARN",
+            )
+            websocket_rejected("cluster_quota_unavailable")
+            await websocket.close(code=1013)
+            return
+        if not cluster_lease_acquired:
+            websocket_rejected("cluster_ip_limit")
+            await websocket.close(code=4429)
+            return
+
         await websocket.accept()
         data = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
         if not _websocket_frame_is_allowed(data):
@@ -202,6 +384,27 @@ async def sync_websocket_endpoint(websocket):
             websocket_rejected("user_limit")
             await websocket.close(code=4429)
             return
+        try:
+            user_lease_attached = await run_database_write(
+                _attach_cluster_user_lease,
+                lease_id,
+                user_id,
+                organization_id,
+                user_limit,
+            )
+        except Exception as lease_error:
+            log_error(
+                lease_error,
+                "websocket_cluster_user_quota",
+                level="WARN",
+            )
+            websocket_rejected("cluster_quota_unavailable")
+            await websocket.close(code=1013)
+            return
+        if not user_lease_attached:
+            websocket_rejected("cluster_user_limit")
+            await websocket.close(code=4429)
+            return
 
         if organization_id not in active_connections:
             active_connections[organization_id] = set()
@@ -215,9 +418,28 @@ async def sync_websocket_endpoint(websocket):
         _PING_INTERVAL = 55.0
         _PONG_TIMEOUT = 15.0
         _waiting_pong = False
+        _last_lease_renew = _time.time()
 
         while True:
             _now = _time.time()
+            if _now - _last_lease_renew >= 60:
+                try:
+                    renewed = await run_database_write(
+                        _renew_cluster_lease,
+                        lease_id,
+                    )
+                except Exception as lease_error:
+                    log_error(
+                        lease_error,
+                        "websocket_cluster_lease_renew",
+                        level="WARN",
+                    )
+                    renewed = False
+                if not renewed:
+                    websocket_rejected("cluster_lease_lost")
+                    await websocket.close(code=1013)
+                    return
+                _last_lease_renew = _now
 
             if _now - _last_auth_check >= _AUTH_CHECK_INTERVAL:
                 _last_auth_check = _now
@@ -280,6 +502,20 @@ async def sync_websocket_endpoint(websocket):
             active_connections[organization_id].discard(websocket)
             if not active_connections[organization_id]:
                 del active_connections[organization_id]
+        if cluster_lease_acquired:
+            try:
+                await run_database_write(
+                    _release_cluster_lease,
+                    lease_id,
+                )
+            except Exception as lease_error:
+                # The short lease expires automatically after a worker crash or
+                # database outage; cleanup must not mask disconnect handling.
+                log_error(
+                    lease_error,
+                    "websocket_cluster_lease_release",
+                    level="WARN",
+                )
 
 async def _broadcast_local(organization_id, message):
     if organization_id not in active_connections:

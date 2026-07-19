@@ -5,10 +5,10 @@ import secrets
 from urllib.parse import urlparse
 
 from starlette.datastructures import MutableHeaders
-from starlette.requests import Request
+from starlette.requests import HTTPConnection, Request
 from starlette.responses import JSONResponse, Response
 
-from backend.shared.client_ip import is_request_secure
+from backend.shared.client_ip import is_request_secure, is_trusted_proxy_peer
 from backend.shared.logging_utils import error_response
 from backend.shared.origin_policy import get_allowed_websocket_origins
 
@@ -32,6 +32,52 @@ def _connect_sources():
         "https://oauth2.googleapis.com",
     ]
     return " ".join(dict.fromkeys(value for value in values if value))
+
+
+class ProxyHeaderTrustMiddleware:
+    """Remove proxy metadata unless the direct socket peer is explicitly trusted."""
+
+    _PROXY_HEADERS = {
+        b"forwarded",
+        b"x-forwarded-for",
+        b"x-forwarded-host",
+        b"x-forwarded-port",
+        b"x-forwarded-prefix",
+        b"x-forwarded-proto",
+        b"x-real-ip",
+    }
+    _NEVER_PROPAGATE = {
+        b"forwarded",
+        b"x-forwarded-host",
+        b"x-forwarded-port",
+        b"x-forwarded-prefix",
+    }
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in {"http", "websocket"}:
+            await self.app(scope, receive, send)
+            return
+        # HTTPConnection accepts both HTTP and WebSocket ASGI scopes.  Request
+        # asserts an HTTP-only scope and would turn every WebSocket handshake
+        # into a 500 response before it reached the endpoint.
+        trusted_peer = is_trusted_proxy_peer(HTTPConnection(scope))
+        sanitized_headers = []
+        for name, value in scope.get("headers", ()):
+            lower_name = name.lower()
+            if lower_name in self._NEVER_PROPAGATE:
+                continue
+            if lower_name in self._PROXY_HEADERS and not trusted_peer:
+                continue
+            if lower_name == b"x-forwarded-proto":
+                proto = value.decode("latin-1").strip().lower()
+                if proto not in {"http", "https"}:
+                    continue
+                value = proto.encode("ascii")
+            sanitized_headers.append((name, value))
+        await self.app({**scope, "headers": sanitized_headers}, receive, send)
 
 
 class ResponseIntegrityMiddleware:
@@ -126,7 +172,7 @@ class SecurityHeadersMiddleware:
                 "font-src 'self' https://fonts.gstatic.com; "
                 "frame-src 'self' https://accounts.google.com; "
                 "worker-src 'self'; base-uri 'self'; object-src 'none'; "
-                "require-trusted-types-for 'script'; trusted-types default goog#html 'allow-duplicates';"
+                "require-trusted-types-for 'script'; trusted-types biddingflow-html goog#html 'allow-duplicates';"
             )
             if "Content-Security-Policy-Report-Only" in headers:
                 del headers["Content-Security-Policy-Report-Only"]

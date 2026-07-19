@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { renderEvaluationLockNotice } from "./detail/EvaluationConclusion.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -14,7 +15,7 @@ export function addEvaluationLetterRow({ view, model, containerId, letter = { so
   setRuntimeStyle(div, "marginBottom", "6px");
   const ngayFormattedDisplay = letter.ngayCv ? model.formatDate(letter.ngayCv) : "";
   const ngayFormattedInput = letter.ngayCv ? model.formatForDateInput(letter.ngayCv) : "";
-  div.innerHTML = readOnly ? `
+  div.innerHTML = trustedHTML(readOnly ? `
         <div class="bf-s-6aa064f9ce">${escapeHtml(letter.soCv || "--")}</div>
         <div class="bf-s-4a866e47a9">${escapeHtml(ngayFormattedDisplay || "--")}</div>
         <div></div>
@@ -22,13 +23,13 @@ export function addEvaluationLetterRow({ view, model, containerId, letter = { so
         <input type="text" class="form-control letter-so-cv bf-s-6621c14642" placeholder="Số công văn" value="${escapeHtml(letter.soCv || "")}" required>
         <input type="date" class="form-control letter-ngay-cv bf-s-6621c14642" value="${escapeHtml(ngayFormattedInput)}" required>
         <button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="remove-closest" data-selector=".letter-row">&times;</button>
-    `;
+    `);
   container.appendChild(div);
 }
 export function renderEvaluationSummary({ container, gt, tenCdt, tenKhStr, model, is1G2T, isReadOnly, currentTab }) {
   if (!container) return;
   setRuntimeStyle(container, "display", "block");
-  container.innerHTML = `
+  container.innerHTML = trustedHTML(`
         <div class="bf-s-5d398becec">Thông số Gói thầu</div>
         <div class="bf-s-5219e35258">
             <div>• <strong>Chủ đầu tư:</strong> <span class="text-dark fw-bold">${escapeHtml(tenCdt)}</span></div>
@@ -47,5 +48,5 @@ export function renderEvaluationSummary({ container, gt, tenCdt, tenKhStr, model
             ${is1G2T ? `<div>• <strong>Thời gian mở E-HSĐXTC:</strong> ${gt.thoiGianMoEhsdxtc ? model.formatDateWithTime(gt.thoiGianMoEhsdxtc) : "Chưa mở"}</div>` : ""}
         </div>
         ${isReadOnly ? renderEvaluationLockNotice({ isTwoEnvelope: is1G2T, stage: currentTab }) : ""}
-    `;
+    `);
 }

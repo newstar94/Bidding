@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { normalizeOrganizations } from "./accessContext.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -38,7 +39,7 @@ export function renderWorkspaceSwitcher() {
 
   if (!orgSwitchList) return;
 
-  orgSwitchList.innerHTML = workspaces.map((workspace) => {
+  orgSwitchList.innerHTML = trustedHTML(workspaces.map((workspace) => {
     const isActive = workspace.id === activeWorkspaceId;
     const initials = workspace.scope_type === "personal"
       ? '<i data-lucide="user" aria-hidden="true"></i>'
@@ -60,7 +61,7 @@ export function renderWorkspaceSwitcher() {
         ${isActive ? '<i data-lucide="check" class="bf-s-2238b82015" aria-hidden="true"></i>' : ""}
       </button>
     `;
-  }).join("");
+  }).join(""));
 
   window.lucide?.createIcons?.({ root: orgSwitchList });
 

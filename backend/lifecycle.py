@@ -8,9 +8,14 @@ import time
 from contextlib import asynccontextmanager
 
 from backend.auth.auth_helper import _session_cache_cleanup
-from backend.auth.email_delivery_service import fail_stale_email_deliveries
+from backend.auth.email_delivery_service import (
+    fail_stale_email_deliveries,
+    run_email_delivery_worker,
+)
 from backend.documents.document_worker import (
     cleanup_stale_document_jobs,
+    purge_expired_durable_document_jobs,
+    run_durable_document_queue_worker,
     validate_document_worker_configuration,
 )
 from backend.observability.metrics import monitor_operational_artifacts
@@ -21,7 +26,11 @@ from backend.shared.audit_monitor import (
 )
 from backend.shared.helpers import _org_cache_cleanup
 from backend.shared.logging_utils import log_error
-from backend.startup import validate_startup_configuration, verify_database_readiness
+from backend.startup import (
+    validate_startup_configuration,
+    verify_database_readiness,
+    verify_database_runtime_role,
+)
 
 
 async def _monitor_event_loop(application):
@@ -101,11 +110,37 @@ def _purge_retained_rows(database):
             "DELETE FROM partner_lookup_cache WHERE expires_at <= ?",
             (int(time.time()),),
         )
+        partner_job_retention_days = max(
+            1,
+            int(os.environ.get("PARTNER_JOB_RETENTION_DAYS", "30")),
+        )
+        conn.execute(
+            """
+            DELETE FROM partner_enrichment_jobs
+            WHERE status IN ('completed', 'failed') AND updated_at <= ?
+            """,
+            (int(time.time()) - partner_job_retention_days * 86400,),
+        )
+        session_retention_days = max(
+            1,
+            int(os.environ.get("SESSION_RETENTION_DAYS", "30")),
+        )
+        session_cutoff = int(time.time()) - session_retention_days * 86400
+        conn.execute(
+            """
+            DELETE FROM auth_sessions
+            WHERE (revoked_at IS NOT NULL AND revoked_at <= ?)
+               OR absolute_expires_at <= ?
+               OR idle_expires_at <= ?
+            """,
+            (session_cutoff, session_cutoff, session_cutoff),
+        )
         # Audit history is immutable. Retention requires a separately signed
         # checkpoint/partition archival workflow and must never be a blind row
         # delete from the application cleanup loop.
         conn.commit()
         fail_stale_email_deliveries(database)
+        purge_expired_durable_document_jobs(database)
     except Exception as exc:
         log_error(exc, "retention_cleanup", level="WARN")
     finally:
@@ -154,6 +189,7 @@ async def application_lifespan(
     image_dir,
     background_startup_delay_seconds,
     enable_image_cache_prewarm,
+    enable_partner_lookup_worker,
     validate_startup=validate_startup_configuration,
 ):
     application.state.ready = False
@@ -163,6 +199,8 @@ async def application_lifespan(
     audit_monitor_task = None
     artifact_monitor_task = None
     broker_task = None
+    email_delivery_task = None
+    document_queue_task = None
     try:
         validate_startup(database)
         validate_document_worker_configuration()
@@ -177,6 +215,13 @@ async def application_lifespan(
         if auto_migrate:
             initialize_database()
         verify_database_readiness(database, schema_version)
+        if is_production:
+            verify_database_runtime_role(
+                database,
+                expected_role=str(
+                    os.environ.get("DATABASE_RUNTIME_ROLE", "")
+                ).strip(),
+            )
         await verify_audit_chain_before_ready(database)
     except Exception as exc:
         log_error(exc, "startup_database_init")
@@ -189,12 +234,22 @@ async def application_lifespan(
         monitor_audit_chain(database, application=application)
     )
     artifact_monitor_task = asyncio.create_task(monitor_operational_artifacts())
+    email_delivery_task = asyncio.create_task(run_email_delivery_worker(database))
+    document_queue_task = asyncio.create_task(
+        run_durable_document_queue_worker(database)
+    )
     try:
         from backend.sync.websocket import _latest_broker_event_id, run_websocket_event_broker
         broker_cursor = await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)
         broker_task = asyncio.create_task(run_websocket_event_broker(start_after_id=broker_cursor))
     except Exception:
-        for task in (monitor_task, audit_monitor_task, artifact_monitor_task):
+        for task in (
+            monitor_task,
+            audit_monitor_task,
+            artifact_monitor_task,
+            email_delivery_task,
+            document_queue_task,
+        ):
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
@@ -214,6 +269,12 @@ async def application_lifespan(
         daemon=True,
         name="cache-retention-cleanup",
     ).start()
+    if enable_partner_lookup_worker:
+        from backend.partners.partner_lookup_service import (
+            start_partner_background_service,
+        )
+
+        start_partner_background_service()
     try:
         yield
     finally:
@@ -222,6 +283,8 @@ async def application_lifespan(
             audit_monitor_task,
             artifact_monitor_task,
             broker_task,
+            email_delivery_task,
+            document_queue_task,
         ):
             if task is not None:
                 task.cancel()

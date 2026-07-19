@@ -11,13 +11,16 @@ from __future__ import annotations
 import os
 import argparse
 import secrets
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
+from cryptography.fernet import Fernet
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 ENV_FILE = ROOT / ".env"
 PG_ROOT = ROOT / "data" / "tools" / "postgresql17" / "pgsql"
 DATA_DIR = ROOT / "data" / "postgresql17-data"
@@ -62,6 +65,19 @@ def _run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedP
     )
 
 
+def _run_pg_ctl(*args: str) -> None:
+    """Run pg_ctl without captured pipes inherited by the detached postmaster."""
+
+    subprocess.run(
+        args,
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=60,
+    )
+
+
 def _replace_env_value(lines: list[str], key: str, value: str) -> None:
     replacement = f"{key}={value}"
     for index, line in enumerate(lines):
@@ -81,9 +97,27 @@ def main() -> None:
     args = parser.parse_args()
     print("Reading local environment...", flush=True)
     lines, values = _read_env()
-    password = values.get("ADMIN_PASSWORD", "")
+    cluster_exists = (DATA_DIR / "PG_VERSION").exists()
+    configured_postgres_password = values.get(
+        "POSTGRES_LOCAL_ADMIN_PASSWORD", ""
+    )
+    legacy_admin_url = values.get("DATABASE_ADMIN_URL", "")
+    legacy_url_password = (
+        urlparse(legacy_admin_url).password
+        if legacy_admin_url
+        else ""
+    )
+    password = (
+        configured_postgres_password
+        or legacy_url_password
+        or values.get("ADMIN_PASSWORD", "")
+    )
     if not password:
-        raise SystemExit("ADMIN_PASSWORD must be set in .env")
+        if cluster_exists:
+            raise SystemExit(
+                "POSTGRES_LOCAL_ADMIN_PASSWORD or a valid DATABASE_ADMIN_URL must be set in .env"
+            )
+        password = secrets.token_urlsafe(32)
 
     bin_dir = PG_ROOT / "bin"
     initdb = bin_dir / "initdb.exe"
@@ -91,7 +125,7 @@ def main() -> None:
         raise SystemExit(f"PostgreSQL binaries are missing: {initdb}")
 
     DATA_DIR.parent.mkdir(parents=True, exist_ok=True)
-    if not (DATA_DIR / "PG_VERSION").exists():
+    if not cluster_exists:
         print("Initializing PostgreSQL cluster...", flush=True)
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", dir=DATA_DIR.parent, delete=False
@@ -120,7 +154,7 @@ def main() -> None:
     )
     if status.returncode != 0:
         print("Starting PostgreSQL...", flush=True)
-        _run(
+        _run_pg_ctl(
             str(bin_dir / "pg_ctl.exe"),
             "-D",
             str(DATA_DIR),
@@ -133,7 +167,88 @@ def main() -> None:
 
     child_env = os.environ.copy()
     child_env["PGPASSWORD"] = password
+    settings_psql = (
+        str(bin_dir / "psql.exe"),
+        "-h",
+        "127.0.0.1",
+        "-p",
+        str(PORT),
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+        "-v",
+        "ON_ERROR_STOP=1",
+    )
+    preloaded = _run(
+        *settings_psql,
+        "-tAc",
+        "SHOW shared_preload_libraries",
+        env=child_env,
+    ).stdout.strip()
+    _run(
+        *settings_psql,
+        "-c",
+        "ALTER SYSTEM SET track_io_timing = 'on'",
+        env=child_env,
+    )
+    _run(
+        *settings_psql,
+        "-c",
+        "ALTER SYSTEM SET track_wal_io_timing = 'on'",
+        env=child_env,
+    )
+    if "pg_stat_statements" not in {
+        item.strip() for item in preloaded.split(",") if item.strip()
+    }:
+        print("Enabling local PostgreSQL performance diagnostics...", flush=True)
+        _run(
+            *settings_psql,
+            "-c",
+            "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements'",
+            env=child_env,
+        )
+        _run_pg_ctl(
+            str(bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(DATA_DIR),
+            "-m",
+            "fast",
+            "-o",
+            f"-p {PORT} -h 127.0.0.1",
+            "restart",
+        )
+    else:
+        _run(*settings_psql, "-c", "SELECT pg_reload_conf()", env=child_env)
     if args.reset:
+        if (
+            not configured_postgres_password
+            or len(configured_postgres_password) < 24
+        ):
+            import psycopg
+            from psycopg import sql
+
+            rotated_postgres_password = secrets.token_urlsafe(32)
+            with psycopg.connect(
+                host="127.0.0.1",
+                port=PORT,
+                dbname="postgres",
+                user="postgres",
+                password=password,
+                autocommit=True,
+            ) as connection:
+                connection.execute(
+                    sql.SQL("ALTER ROLE {} PASSWORD {}").format(
+                        sql.Identifier("postgres"),
+                        sql.Literal(rotated_postgres_password),
+                    )
+                )
+            password = rotated_postgres_password
+            child_env["PGPASSWORD"] = password
+            print(
+                "Rotated the local PostgreSQL admin credential in the ignored .env file.",
+                flush=True,
+            )
         print("Resetting development database...", flush=True)
         common_psql = (
             str(bin_dir / "psql.exe"),
@@ -214,6 +329,22 @@ def main() -> None:
             f'ALTER DATABASE "{database_name}" SET timezone TO \'{VIETNAM_TIMEZONE}\'',
             env=child_env,
         )
+        _run(
+            str(bin_dir / "psql.exe"),
+            "-h",
+            "127.0.0.1",
+            "-p",
+            str(PORT),
+            "-U",
+            "postgres",
+            "-d",
+            database_name,
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            "CREATE EXTENSION IF NOT EXISTS pg_stat_statements",
+            env=child_env,
+        )
 
     database_url = (
         f"postgresql://postgres:{quote(password, safe='')}@127.0.0.1:"
@@ -221,6 +352,7 @@ def main() -> None:
     )
     _replace_env_value(lines, "DATABASE_URL", database_url)
     _replace_env_value(lines, "DATABASE_ADMIN_URL", database_url)
+    _replace_env_value(lines, "POSTGRES_LOCAL_ADMIN_PASSWORD", password)
     runtime_password = values.get("DATABASE_RUNTIME_PASSWORD") or secrets.token_urlsafe(32)
     migrator_password = values.get("DATABASE_MIGRATOR_PASSWORD") or secrets.token_urlsafe(32)
     _replace_env_value(lines, "DATABASE_RUNTIME_ROLE", "biddingflow_app")
@@ -257,14 +389,62 @@ def main() -> None:
         f"/{DATABASE}?", f"/{LOAD_TEST_DATABASE}?"
     )
     _replace_env_value(lines, "LOAD_TEST_DATABASE_URL", load_test_url)
+    _replace_env_value(lines, "PERFORMANCE_DATABASE_URL", load_test_url)
+    if args.reset:
+        from backend.auth.password_policy import validate_new_password
+
+        admin_password = values.get("ADMIN_PASSWORD", "")
+        password_valid, _password_error = validate_new_password(admin_password)
+        if not password_valid:
+            generated_admin_password = secrets.token_urlsafe(32) + "Aa1!"
+            _replace_env_value(
+                lines,
+                "ADMIN_PASSWORD",
+                generated_admin_password,
+            )
+            values["ADMIN_PASSWORD"] = generated_admin_password
+            print(
+                "Rotated invalid bootstrap ADMIN_PASSWORD in the ignored .env file.",
+                flush=True,
+            )
     if len(values.get("BIDDING_RESTORE_DRILL_HMAC_KEY", "").encode("utf-8")) < 32:
         _replace_env_value(
             lines,
             "BIDDING_RESTORE_DRILL_HMAC_KEY",
             secrets.token_urlsafe(48),
         )
+    if not values.get("MFA_ENCRYPTION_KEY", ""):
+        _replace_env_value(
+            lines,
+            "MFA_ENCRYPTION_KEY",
+            Fernet.generate_key().decode("ascii"),
+        )
+    if not values.get("EMAIL_OUTBOX_ENCRYPTION_KEY", ""):
+        _replace_env_value(
+            lines,
+            "EMAIL_OUTBOX_ENCRYPTION_KEY",
+            Fernet.generate_key().decode("ascii"),
+        )
     print("Updating ignored .env configuration...", flush=True)
     ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Bootstrap least-privilege roles before schema creation, initialize with
+    # the migrator identity, then reapply ownership/default grants. This makes
+    # one fresh-install command sufficient even when the cluster has never
+    # contained application roles or tables.
+    print("Configuring database roles...", flush=True)
+    _run(
+        sys.executable,
+        str(ROOT / "scripts" / "configure_database_roles.py"),
+    )
+    print("Initializing application schema...", flush=True)
+    _run(
+        sys.executable,
+        str(ROOT / "scripts" / "manage_database.py"),
+    )
+    _run(
+        sys.executable,
+        str(ROOT / "scripts" / "configure_database_roles.py"),
+    )
     print(f"PostgreSQL is ready on 127.0.0.1:{PORT}/{DATABASE}.")
 
 

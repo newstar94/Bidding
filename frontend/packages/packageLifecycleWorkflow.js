@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { deleteAllPackageVersions, deleteLatestPackageVersion, getPackageDeleteContext } from "./packageDeleteHelpers.js";
 import { persistAndSync } from "../shared/MutationService.js";
 
@@ -10,7 +11,7 @@ export function openPackageWizardStep() {
   this.editGoiThau(null);
   const titleEl = document.getElementById("modal-goithau-title");
   if (titleEl) {
-    titleEl.innerHTML = `Thêm Gói thầu <span class="bf-s-e5cb2683fc">(Gói thầu số ${this.packageWizard.currentCount} trên tổng số ${this.packageWizard.totalCount})</span>`;
+    titleEl.innerHTML = trustedHTML(`Thêm Gói thầu <span class="bf-s-e5cb2683fc">(Gói thầu số ${this.packageWizard.currentCount} trên tổng số ${this.packageWizard.totalCount})</span>`);
   }
   const planSelect = document.getElementById("gt-kehoachid");
   if (planSelect) {

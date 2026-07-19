@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { bindCurrencyElement } from "../app/domUtils.js";
@@ -104,7 +105,7 @@ export async function editKeHoach(id) {
   form.querySelectorAll(".form-group").forEach((fg) => fg.classList.remove("invalid"));
   const cdtSelect = document.getElementById("kh-chudautuid");
   const latestCDTs = this.model.getLatestChuDauTu() || [];
-  cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
+  cdtSelect.innerHTML = trustedHTML('<option value="">-- Chọn Chủ đầu tư --</option>' + latestCDTs.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu)}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>');
   // The plan modal is lazy-loaded, so this select does not exist when the
   // application's one-time conditional handlers are registered.
   cdtSelect.onchange = (event) => {
@@ -451,12 +452,12 @@ export async function openPlanBreakdownModal(planId) {
   const kh = this.model.state.kehoach.find((k) => k.id === planId);
   if (!kh) return;
   document.getElementById("breakdown-plan-id").value = planId;
-  document.getElementById("breakdown-modal-subtitle").innerHTML = `
+  document.getElementById("breakdown-modal-subtitle").innerHTML = trustedHTML(`
         <strong>Kế hoạch:</strong> ${escapeHtml(kh.tenKeHoach)} <span class="badge badge-info bf-s-9d5367afed">${escapeHtml(this.model.getVersionLabel(kh.phienBan))}</span><br>
         <span class="bf-s-d922053a79"><strong>Mã:</strong> ${escapeHtml(this.model.getPlanBaseCode(kh.maKeHoach) || "(Chưa có)")} | <span id="breakdown-total-display"></span></span>
-    `;
+    `);
   const tbody1 = document.getElementById("tbody-breakdown-dathuchien");
-  tbody1.innerHTML = "";
+  tbody1.innerHTML = trustedHTML("");
   const list1 = kh.cvDaThucHienList || [];
   if (list1.length === 0) {
     this.addBreakdownRow("dathuchien");
@@ -464,7 +465,7 @@ export async function openPlanBreakdownModal(planId) {
     list1.forEach((item) => this.addBreakdownRow("dathuchien", item));
   }
   const tbody2 = document.getElementById("tbody-breakdown-khongapdung");
-  tbody2.innerHTML = "";
+  tbody2.innerHTML = trustedHTML("");
   const list2 = kh.cvKhongApDungList || [];
   if (list2.length === 0) {
     this.addBreakdownRow("khongapdung");
@@ -472,7 +473,7 @@ export async function openPlanBreakdownModal(planId) {
     list2.forEach((item) => this.addBreakdownRow("khongapdung", item));
   }
   const tbody3 = document.getElementById("tbody-breakdown-chuadudieuKien");
-  tbody3.innerHTML = "";
+  tbody3.innerHTML = trustedHTML("");
   const list3 = kh.cvChuaDuDieuKienList || [];
   if (list3.length === 0) {
     this.addBreakdownRow("chuadudieuKien");
@@ -542,10 +543,10 @@ export function renderBreakdownPackagesList(planId) {
   if (!tbody) return;
   const pkgs = this.model.getLatestPackagesForPlan(planId);
   if (pkgs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="bf-s-058d4c8b3d"><small>Chưa có gói thầu nào được tạo cho kế hoạch này.</small></td></tr>`;
+    tbody.innerHTML = trustedHTML(`<tr><td colspan="6" class="bf-s-058d4c8b3d"><small>Chưa có gói thầu nào được tạo cho kế hoạch này.</small></td></tr>`);
     return;
   }
-  tbody.innerHTML = pkgs.map((gt) => {
+  tbody.innerHTML = trustedHTML(pkgs.map((gt) => {
     const hinhThuc = gt.hinhThucLuaChon || "--";
     const getStatusBadge = this.view?.getStatusBadge || this.getStatusBadge;
     const trangThaiBadge = typeof getStatusBadge === "function"
@@ -563,7 +564,7 @@ export function renderBreakdownPackagesList(planId) {
                 </td>
             </tr>
         `;
-  }).join("");
+  }).join(""));
 }
 export function addBreakdownRow(type, data = null) {
   const tbody = document.getElementById(`tbody-breakdown-${type}`);
@@ -572,26 +573,26 @@ export function addBreakdownRow(type, data = null) {
   const row = document.createElement("tr");
   setRuntimeStyle(row, "borderBottom", "1px solid var(--border-color)");
   if (type === "dathuchien") {
-    row.innerHTML = `
+    row.innerHTML = trustedHTML(`
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-unit bf-s-fa7eceb10a" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-doc bf-s-fa7eceb10a" value="${escapeHtml(data?.vanBanPheDuyet || "")}" placeholder="Văn bản phê duyệt..."></td>
             <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"dathuchien"]'>&times;</button></td>
-        `;
+        `);
   } else if (type === "khongapdung") {
-    row.innerHTML = `
+    row.innerHTML = trustedHTML(`
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-unit bf-s-fa7eceb10a" value="${escapeHtml(data?.donViThucHien || "")}" placeholder="Đơn vị thực hiện..."></td>
             <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"khongapdung"]'>&times;</button></td>
-        `;
+        `);
   } else if (type === "chuadudieuKien") {
-    row.innerHTML = `
+    row.innerHTML = trustedHTML(`
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-name bf-s-fa7eceb10a" required value="${escapeHtml(data?.tenCongViec || "")}" placeholder="Nhập tên phần công việc..."></td>
             <td class="bf-s-8befdbbc51"><input type="text" class="breakdown-value text-right bf-s-3f7d24416d" value="${data?.giaTri ? this.model.formatVND(data.giaTri) : ""}" placeholder="Nhập giá trị..."></td>
             <td class="bf-s-4f08020cfe"><button type="button" class="btn-delete-row bf-s-84f95aa87c" data-bf-action="call" data-fn="removeBreakdownRow" data-args='[null,"chuadudieuKien"]'>&times;</button></td>
-        `;
+        `);
   }
   const priceInput = row.querySelector(".breakdown-value");
   if (priceInput) {
@@ -637,7 +638,7 @@ export function updateBreakdownTotal(planId) {
   const labelTitle = isProject ? "Tổng mức đầu tư" : "Tổng dự toán";
   const totalSpan = document.getElementById("breakdown-total-display");
   if (totalSpan) {
-    totalSpan.innerHTML = `<strong>${labelTitle}:</strong> <span class="text-blue bf-s-9ffafcc45f">${this.model.formatCurrency(kh.tongMucDauTu)}</span>`;
+    totalSpan.innerHTML = trustedHTML(`<strong>${labelTitle}:</strong> <span class="text-blue bf-s-9ffafcc45f">${this.model.formatCurrency(kh.tongMucDauTu)}</span>`);
   }
 }
 export function recalculatePlanTotal(planId) {

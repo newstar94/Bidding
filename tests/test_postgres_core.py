@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import inspect
 import os
+import threading
+import time
 from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
+from cryptography.fernet import Fernet
 
 from backend.db.db_helper import PostgresDatabase, _convert_qmark_parameters
 from backend.db.postgres_schema import (
@@ -17,9 +22,25 @@ from backend.db.postgres_schema import (
 from backend.db.schema import SCHEMA_DINH_NGHIA
 from backend.auth import auth_service
 from backend.auth import email_delivery_service
+from backend.auth.session_store import load_session_user
+from backend.auth.mfa_service import (
+    begin_mfa_enrollment,
+    confirm_mfa_enrollment,
+    consume_mfa_code,
+    current_totp_code,
+)
 from backend.auth.email_utils import EmailDeliveryResult
+from backend.observability import metrics
+from backend.partners import partner_lookup_service
+from backend.documents import document_worker
 from backend.shared.audit_chain import insert_audit_row, inspect_audit_chain
+from backend.shared.audit_monitor import _inspect_database
 from backend.sync.repository import next_sync_version
+from backend.sync.websocket import (
+    _acquire_cluster_ip_lease,
+    _attach_cluster_user_lease,
+    _release_cluster_lease,
+)
 from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME, vietnam_now
 
 
@@ -28,6 +49,8 @@ def postgres_database() -> PostgresDatabase:
     database_url = os.environ.get("TEST_DATABASE_URL", "").strip()
     if not database_url:
         pytest.skip("TEST_DATABASE_URL is not configured")
+    original_admin_password = os.environ.get("ADMIN_PASSWORD")
+    os.environ["ADMIN_PASSWORD"] = "Test admin password 2026!"
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
         connection.execute("CREATE SCHEMA public")
@@ -35,6 +58,10 @@ def postgres_database() -> PostgresDatabase:
     initialize_postgres_database(database)
     yield database
     database.close()
+    if original_admin_password is None:
+        os.environ.pop("ADMIN_PASSWORD", None)
+    else:
+        os.environ["ADMIN_PASSWORD"] = original_admin_password
 
 
 def test_qmark_conversion_preserves_literals_and_comments() -> None:
@@ -56,6 +83,342 @@ def test_fresh_schema_contract(postgres_database: PostgresDatabase) -> None:
         assert cursor.execute(
             "SELECT schema_version FROM database_metadata WHERE id = 1"
         ).fetchone()[0] == 1
+
+
+def test_session_lookup_and_cleanup_indexes_are_narrow(
+    postgres_database: PostgresDatabase,
+) -> None:
+    source = inspect.getsource(load_session_user).lower()
+    assert "accounts.*" not in source
+
+    with postgres_database.get_connection() as connection:
+        cursor = connection.cursor()
+        indexes = {
+            row[0]
+            for row in cursor.execute(
+                """
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = current_schema()
+                  AND tablename = 'auth_sessions'
+                """
+            ).fetchall()
+        }
+        assert {
+            "auth_sessions_token_hash_key",
+            "idx_auth_sessions_active_idle_expiry",
+            "idx_auth_sessions_active_absolute_expiry",
+            "idx_auth_sessions_revoked_cleanup",
+        } <= indexes
+
+
+def test_every_foreign_key_has_a_leading_index(
+    postgres_database: PostgresDatabase,
+) -> None:
+    with postgres_database.get_connection() as connection:
+        missing = connection.execute(
+            """
+            SELECT conrelid::regclass::text, conname
+            FROM pg_constraint AS constraints
+            WHERE constraints.contype = 'f'
+              AND constraints.connamespace = current_schema()::regnamespace
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_index AS indexes
+                  WHERE indexes.indrelid = constraints.conrelid
+                    AND indexes.indisvalid
+                    AND (indexes.indkey::smallint[])[
+                        0:cardinality(constraints.conkey) - 1
+                    ] = constraints.conkey
+              )
+            ORDER BY 1, 2
+            """
+        ).fetchall()
+    assert missing == []
+
+
+def test_websocket_quota_is_enforced_in_postgres_across_workers(
+    postgres_database: PostgresDatabase,
+    monkeypatch,
+) -> None:
+    from backend.sync import websocket
+
+    monkeypatch.setattr(websocket, "database", postgres_database)
+    with postgres_database.get_connection() as connection:
+        user_id = connection.execute(
+            "SELECT id FROM tai_khoan ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+        organization_id = connection.execute(
+            "SELECT id FROM to_chuc ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+
+    assert _acquire_cluster_ip_lease("ws-lease-1", "ip-hash-a", 2)
+    assert _acquire_cluster_ip_lease("ws-lease-2", "ip-hash-a", 2)
+    assert not _acquire_cluster_ip_lease("ws-lease-3", "ip-hash-a", 2)
+    assert _attach_cluster_user_lease(
+        "ws-lease-1",
+        user_id,
+        organization_id,
+        1,
+    )
+    assert not _attach_cluster_user_lease(
+        "ws-lease-2",
+        user_id,
+        organization_id,
+        1,
+    )
+    _release_cluster_lease("ws-lease-1")
+    assert _attach_cluster_user_lease(
+        "ws-lease-2",
+        user_id,
+        organization_id,
+        1,
+    )
+    _release_cluster_lease("ws-lease-2")
+
+
+def test_partner_enrichment_jobs_are_durable_claimed_and_dead_lettered(
+    postgres_database: PostgresDatabase,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        partner_lookup_service,
+        "database",
+        postgres_database,
+    )
+    with postgres_database.get_connection() as connection:
+        organization_id = connection.execute(
+            "SELECT id FROM to_chuc ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+        for suffix in ("a", "b"):
+            connection.execute(
+                """
+                INSERT INTO nha_thau (
+                    id, organization_id, owner_type, ngay_ap_dung,
+                    ten_nha_thau, ma_nha_thau
+                ) VALUES (?, ?, 'organization', '2026-07-19', ?, ?)
+                """,
+                (
+                    f"durable-partner-{suffix}",
+                    organization_id,
+                    "Nhà thầu (Chưa cập nhật thông tin)",
+                    f"ORG-{suffix}",
+                ),
+            )
+        connection.commit()
+
+    assert partner_lookup_service._enqueue_partner_enrichment_jobs(
+        organization_id,
+        ["durable-partner-a", "durable-partner-b"],
+    ) == 2
+    first = partner_lookup_service._claim_partner_enrichment_job()
+    second = partner_lookup_service._claim_partner_enrichment_job()
+    assert first and second
+    assert first["id"] != second["id"]
+    assert partner_lookup_service._claim_partner_enrichment_job() is None
+
+    monkeypatch.setenv("PARTNER_ENRICHMENT_MAX_ATTEMPTS", "1")
+    partner_lookup_service._finish_partner_enrichment_job(
+        first,
+        error=RuntimeError("upstream unavailable"),
+    )
+    partner_lookup_service._finish_partner_enrichment_job(second)
+    with postgres_database.get_connection() as connection:
+        statuses = {
+            row["contractor_id"]: row["status"]
+            for row in connection.execute(
+                """
+                SELECT contractor_id, status
+                FROM partner_enrichment_jobs
+                WHERE organization_id = ?
+                """,
+                (organization_id,),
+            ).fetchall()
+        }
+    assert statuses[first["contractor_id"]] == "failed"
+    assert statuses[second["contractor_id"]] == "completed"
+
+
+def test_document_job_survives_stale_worker_claim(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv(
+        "DOCUMENT_WORKER_TEMP_DIR",
+        str(tmp_path / "durable-document-jobs"),
+    )
+    monkeypatch.setenv("DOCUMENT_JOB_MAX_ATTEMPTS", "3")
+    job_id = document_worker._enqueue_durable_document_job(
+        "test_delay",
+        {"seconds": 0},
+        database=postgres_database,
+    )
+    abandoned = document_worker._claim_durable_document_job(
+        postgres_database,
+        job_id,
+    )
+    assert abandoned and abandoned["attempt_count"] == 1
+    with postgres_database.get_connection() as connection:
+        connection.execute(
+            "UPDATE document_jobs SET locked_at = ? WHERE id = ?",
+            (int(time.time()) - 1_000, job_id),
+        )
+        connection.commit()
+
+    recovered = document_worker._claim_durable_document_job(
+        postgres_database,
+        job_id,
+    )
+    assert recovered and recovered["attempt_count"] == 2
+    document_worker._process_claimed_document_job(
+        postgres_database,
+        recovered,
+    )
+    assert document_worker._consume_durable_document_result(
+        job_id,
+        database=postgres_database,
+        timeout_seconds=5,
+    ) is True
+    with postgres_database.get_connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM document_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone() is None
+
+
+def test_audit_checkpoint_export_has_one_cluster_leader(
+    postgres_database: PostgresDatabase,
+    tmp_path,
+) -> None:
+    destination = tmp_path / "audit-checkpoints"
+    destination.mkdir()
+
+    def export_once():
+        return _inspect_database(
+            postgres_database,
+            str(destination),
+            "test-audit-hmac-key-" + ("x" * 32),
+            True,
+            3_600,
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(lambda _index: export_once(), range(4)))
+
+    assert sum(path is not None for _verification, path in results) == 1
+    assert len(list(destination.glob("audit-checkpoint-*.json"))) == 1
+
+
+def test_async_document_submission_uses_durable_queue(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv(
+        "DOCUMENT_WORKER_TEMP_DIR",
+        str(tmp_path / "async-document-jobs"),
+    )
+    monkeypatch.setattr(
+        document_worker,
+        "_document_queue_database",
+        lambda: postgres_database,
+    )
+    assert asyncio.run(
+        document_worker.run_document_job_async(
+            "test_delay",
+            {"seconds": 0},
+            timeout_seconds=5,
+        )
+    ) is True
+
+
+def test_all_tenant_entity_keys_and_organization_columns_are_database_enforced(
+    postgres_database: PostgresDatabase,
+) -> None:
+    expected_composite_tables = {
+        table_name
+        for table_name, table_spec in SCHEMA_DINH_NGHIA.items()
+        if table_spec.get("primary_keys") == ["organization_id", "id"]
+    }
+    assert expected_composite_tables
+    with postgres_database.get_connection() as connection:
+        cursor = connection.cursor()
+        primary_key_rows = cursor.execute(
+            """
+            SELECT tables.table_name, columns.column_name
+            FROM information_schema.table_constraints AS tables
+            JOIN information_schema.key_column_usage AS columns
+              ON columns.constraint_schema = tables.constraint_schema
+             AND columns.constraint_name = tables.constraint_name
+            WHERE tables.table_schema = current_schema()
+              AND tables.constraint_type = 'PRIMARY KEY'
+            ORDER BY tables.table_name, columns.ordinal_position
+            """
+        ).fetchall()
+        primary_keys = {}
+        for table_name, column_name in primary_key_rows:
+            primary_keys.setdefault(table_name, []).append(column_name)
+        for table_name in expected_composite_tables:
+            assert primary_keys[table_name] == ["organization_id", "id"]
+
+        nullable_tenant_columns = cursor.execute(
+            """
+            SELECT table_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND column_name = 'organization_id'
+              AND table_name = ANY(?)
+              AND is_nullable <> 'NO'
+            """,
+            (sorted(expected_composite_tables),),
+        ).fetchall()
+        assert nullable_tenant_columns == []
+
+        with pytest.raises(psycopg.IntegrityError):
+            cursor.execute(
+                """INSERT INTO chu_dau_tu (id, owner_type, ten_chu_dau_tu)
+                   VALUES (?, 'personal', ?)""",
+                ("tenant-missing-org", "Must be rejected"),
+            )
+        connection.rollback()
+
+        shared_id = "tenant-collision-core"
+        cursor.executemany(
+            "INSERT INTO to_chuc (id, ten_to_chuc) VALUES (?, ?)",
+            [
+                ("tenant-core-a", "Tenant Core A"),
+                ("tenant-core-b", "Tenant Core B"),
+            ],
+        )
+        cursor.executemany(
+            """INSERT INTO chu_dau_tu
+               (organization_id, id, owner_type, ten_chu_dau_tu)
+               VALUES (?, ?, 'organization', ?)""",
+            [
+                ("tenant-core-a", shared_id, "Tenant A"),
+                ("tenant-core-b", shared_id, "Tenant B"),
+            ],
+        )
+        rows = cursor.execute(
+            """SELECT organization_id, ten_chu_dau_tu
+               FROM chu_dau_tu
+               WHERE id = ?
+               ORDER BY organization_id""",
+            (shared_id,),
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("tenant-core-a", "Tenant A"),
+            ("tenant-core-b", "Tenant B"),
+        ]
+        cursor.execute("DELETE FROM chu_dau_tu WHERE id = ?", (shared_id,))
+        cursor.execute(
+            "DELETE FROM to_chuc WHERE id IN (?, ?)",
+            ("tenant-core-a", "tenant-core-b"),
+        )
+        connection.commit()
 
 
 def test_sql_and_api_timestamps_use_vietnam_timezone(
@@ -82,6 +445,55 @@ def test_sql_and_api_timestamps_use_vietnam_timezone(
 
 def test_initialization_is_idempotent(postgres_database: PostgresDatabase) -> None:
     assert initialize_postgres_database(postgres_database) == 1
+
+
+def test_mfa_secret_is_encrypted_and_codes_are_one_use(
+    postgres_database: PostgresDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MFA_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    user_id = "user-mfa-core-test"
+    now = int(time.time())
+    with postgres_database.get_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """INSERT INTO tai_khoan (
+                   id, ten_dang_nhap, username_norm, mat_khau, ho_ten,
+                   vai_tro, email, email_norm, da_xac_minh
+               ) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, 1)""",
+            (
+                user_id,
+                "mfa_core_test",
+                "mfa_core_test",
+                "not-used-in-this-test",
+                "MFA Core",
+                "mfa-core@example.test",
+                "mfa-core@example.test",
+            ),
+        )
+        setup = begin_mfa_enrollment(
+            cursor, user_id=user_id, account_label="mfa-core@example.test"
+        )
+        stored = cursor.execute(
+            "SELECT secret_ciphertext FROM account_mfa WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()[0]
+        assert setup["secret"] not in stored
+
+        first_code = current_totp_code(setup["secret"], now=now)
+        recovery_codes = confirm_mfa_enrollment(
+            cursor, user_id=user_id, code=first_code, now=now
+        )
+        assert len(recovery_codes) == 10
+        assert not consume_mfa_code(
+            cursor, user_id=user_id, code=first_code, now=now
+        )
+        assert consume_mfa_code(
+            cursor, user_id=user_id, code=recovery_codes[0], now=now
+        )
+        assert not consume_mfa_code(
+            cursor, user_id=user_id, code=recovery_codes[0], now=now
+        )
+        connection.commit()
 
 
 def test_transaction_rollback(postgres_database: PostgresDatabase) -> None:
@@ -182,10 +594,190 @@ def test_rate_limit_reservation_is_atomic_under_concurrency(
         assert row[0] == 6
 
 
+def test_partner_lookup_caches_positive_and_negative_results(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(partner_lookup_service, "database", postgres_database)
+    with postgres_database.get_connection() as connection:
+        connection.execute("DELETE FROM partner_lookup_cache")
+        connection.execute("DELETE FROM partner_upstream_health")
+
+    calls = {"muasamcong": 0, "vietqr": 0, "escodata": 0}
+
+    def no_muasamcong(*_args, **_kwargs):
+        calls["muasamcong"] += 1
+        return None
+
+    def vietqr_result(_tax_code):
+        calls["vietqr"] += 1
+        return {"name": "Cached business", "source": "VietQR"}
+
+    def no_escodata(_tax_code):
+        calls["escodata"] += 1
+        return None
+
+    monkeypatch.setattr(partner_lookup_service, "fetch_muasamcong_info", no_muasamcong)
+    monkeypatch.setattr(partner_lookup_service, "fetch_vietqr_info", vietqr_result)
+    monkeypatch.setattr(partner_lookup_service, "fetch_escodata_info", no_escodata)
+
+    first = partner_lookup_service.lookup_partner_info("0100109106")
+    second = partner_lookup_service.lookup_partner_info("0100109106")
+    assert first == second
+    assert first["name"] == "Cached business"
+    assert calls == {"muasamcong": 1, "vietqr": 1, "escodata": 0}
+
+    with postgres_database.get_connection() as connection:
+        connection.execute("DELETE FROM partner_lookup_cache")
+    calls.update({"muasamcong": 0, "vietqr": 0, "escodata": 0})
+
+    def no_vietqr(_tax_code):
+        calls["vietqr"] += 1
+        return None
+
+    monkeypatch.setattr(partner_lookup_service, "fetch_vietqr_info", no_vietqr)
+
+    assert partner_lookup_service.lookup_partner_info("0100109107") is None
+    assert partner_lookup_service.lookup_partner_info("0100109107") is None
+    assert calls == {"muasamcong": 1, "vietqr": 1, "escodata": 1}
+
+    with postgres_database.get_connection() as connection:
+        rows = connection.execute(
+            "SELECT found, result_json FROM partner_lookup_cache ORDER BY cache_key"
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["found"] == 0
+    assert rows[0]["result_json"] is None
+
+
+def test_partner_lookup_circuit_breaker_opens_after_failures(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(partner_lookup_service, "database", postgres_database)
+    monkeypatch.setenv("PARTNER_UPSTREAM_MAX_ATTEMPTS", "1")
+    with postgres_database.get_connection() as connection:
+        connection.execute("DELETE FROM partner_upstream_health")
+
+    calls = 0
+
+    def unavailable():
+        nonlocal calls
+        calls += 1
+        try:
+            raise TimeoutError("simulated timeout")
+        except TimeoutError as error:
+            raise partner_lookup_service.PartnerUpstreamError(
+                "upstream unavailable"
+            ) from error
+
+    for _ in range(3):
+        assert partner_lookup_service._call_upstream(
+            "vietqr", unavailable
+        ) == (False, None)
+    assert partner_lookup_service._call_upstream(
+        "vietqr", unavailable
+    ) == (False, None)
+    assert calls == 3
+
+    with postgres_database.get_connection() as connection:
+        health = connection.execute(
+            """SELECT failure_count, opened_until
+               FROM partner_upstream_health WHERE upstream = 'vietqr'"""
+        ).fetchone()
+    assert health["failure_count"] == 3
+    assert health["opened_until"] > int(datetime.now().timestamp())
+
+
+def test_partner_lookup_metrics_have_bounded_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metrics._reset_metrics_for_tests()
+    metrics.record_partner_lookup("found")
+    metrics.record_partner_upstream("vietqr", "timeout")
+    monkeypatch.setattr(
+        metrics,
+        "_filesystem_metrics",
+        lambda: {
+            "postgres_database_bytes": 0,
+            "postgres_pool": {},
+            "websocket_outbox_rows": 0,
+            "websocket_outbox_oldest_seconds": 0,
+            "disk": {},
+            "backup_timestamp": None,
+            "backup_age": None,
+            "restore_timestamp": None,
+            "restore_age": None,
+            "artifact_checked_at": 0,
+        },
+    )
+    rendered = metrics.render_prometheus()
+    assert (
+        'biddingflow_partner_lookup_requests_total{outcome="found"} 1'
+        in rendered
+    )
+    assert (
+        'biddingflow_partner_upstream_requests_total{outcome="timeout",upstream="vietqr"} 1'
+        in rendered
+    )
+
+
+def test_partner_lookup_bounds_concurrent_outbound_requests(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(partner_lookup_service, "database", postgres_database)
+    monkeypatch.setattr(
+        partner_lookup_service, "_outbound_slots", threading.BoundedSemaphore(2)
+    )
+    monkeypatch.setenv("PARTNER_LOOKUP_SLOT_TIMEOUT_SECONDS", "3")
+    monkeypatch.setenv("PARTNER_UPSTREAM_MAX_ATTEMPTS", "1")
+    with postgres_database.get_connection() as connection:
+        connection.execute("DELETE FROM partner_lookup_cache")
+        connection.execute("DELETE FROM partner_upstream_health")
+
+    counter_lock = threading.Lock()
+    active = 0
+    max_active = 0
+
+    def delayed_result(tax_code, org_code, role_name):
+        nonlocal active, max_active
+        with counter_lock:
+            active += 1
+            max_active = max(max_active, active)
+        try:
+            time.sleep(0.05)
+            return {
+                "name": f"Business {tax_code}",
+                "source": "MuaSamCong",
+                "org_code": org_code,
+                "role": role_name,
+            }
+        finally:
+            with counter_lock:
+                active -= 1
+
+    monkeypatch.setattr(
+        partner_lookup_service, "fetch_muasamcong_info", delayed_result
+    )
+    tax_codes = [f"01001091{index:02d}" for index in range(8)]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(
+            executor.map(partner_lookup_service.lookup_partner_info, tax_codes)
+        )
+
+    assert all(result and result["source"] == "MuaSamCong" for result in results)
+    assert max_active == 2
+
+
 def test_email_delivery_retries_and_marks_provider_acceptance(
     postgres_database: PostgresDatabase,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(
+        "EMAIL_OUTBOX_ENCRYPTION_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
     user_id = "user-email-delivery-test"
     with postgres_database.get_connection() as connection:
         connection.execute(
@@ -201,6 +793,8 @@ def test_email_delivery_retries_and_marks_provider_acceptance(
             user_id=user_id,
             purpose="google_temporary_password",
             recipient="delivery@example.test",
+            subject="Subject",
+            html_body="sensitive temporary password",
         )
 
     results = iter([
@@ -214,21 +808,17 @@ def test_email_delivery_retries_and_marks_provider_acceptance(
     assert not email_delivery_service.deliver_email_once(
         postgres_database,
         delivery_id,
-        "delivery@example.test",
-        "Subject",
-        "sensitive temporary password",
     )
     assert email_delivery_service.retry_email_delivery(
         postgres_database,
         delivery_id,
-        "delivery@example.test",
-        "Subject",
-        "sensitive temporary password",
     )
 
     with postgres_database.get_connection() as connection:
         row = connection.execute(
-            "SELECT status, attempt_count, accepted_at FROM email_delivery_status WHERE id = ?",
+            """SELECT status, attempt_count, accepted_at,
+                      recipient_ciphertext, subject_ciphertext, body_ciphertext
+               FROM email_delivery_status WHERE id = ?""",
             (delivery_id,),
         ).fetchone()
         columns = {
@@ -241,6 +831,9 @@ def test_email_delivery_retries_and_marks_provider_acceptance(
     assert row["status"] == "sent"
     assert row["attempt_count"] == 2
     assert row["accepted_at"] is not None
+    assert "delivery@example.test" not in row["recipient_ciphertext"]
+    assert "Subject" not in row["subject_ciphertext"]
+    assert "sensitive temporary password" not in row["body_ciphertext"]
     assert not {"recipient", "subject", "body", "password", "token"}.intersection(columns)
 
 

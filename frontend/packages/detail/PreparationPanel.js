@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 import { registerCommandArgs } from "../../shared/commandArgs.js";
 
@@ -26,9 +27,9 @@ export function renderPreparationActionPanel(container, pkg) {
       Gói thầu này đã hoàn thành bước chuẩn bị và đã phát hành hồ sơ mời thầu (Trạng thái hiện tại: <strong class="text-primary">${status}</strong>). Bạn có thể chuyển sang các tab tiếp theo để xem/nhập thông tin mở thầu và chấm thầu.
     </p>
   `;
-  container.innerHTML = `
+  container.innerHTML = trustedHTML(`
     <div class="package-panel-empty">
       ${content}
     </div>
-  `;
+  `);
 }

@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, initCustomSelect, safeAttr } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
@@ -207,7 +208,7 @@ export function renderChuDauTuVersionDetails(versionId) {
     `;
   const contentEl = document.getElementById("fullpage-chudautu-content");
   if (contentEl) {
-    contentEl.innerHTML = html;
+    contentEl.innerHTML = trustedHTML(html);
     const innerSelect = document.getElementById("fullpage-cdt-version-select");
     if (innerSelect) {
       if (allRelated.length >= 2) {

@@ -40,10 +40,15 @@ from backend.auth.identity import (
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import create_session
+from backend.auth.mfa_service import is_mfa_enabled
+from backend.auth.security_notifications import (
+    build_security_notification_tasks,
+    device_fingerprint,
+    is_new_device,
+)
 from backend.auth.email_delivery_service import (
     create_email_delivery,
     deliver_email_once,
-    retry_email_delivery,
 )
 from backend.shared.async_io import (
     BlockingIOBusyError,
@@ -116,6 +121,33 @@ def _add_background_audit(bg_tasks, action, **kwargs):
         bg_tasks = BackgroundTasks()
     bg_tasks.add_task(log_audit, action, **kwargs)
     return bg_tasks
+
+
+def _temporary_password_email(display_name, email, temporary_password):
+    safe_name = html.escape(str(display_name or "bạn"))
+    safe_email = html.escape(str(email))
+    safe_password = html.escape(str(temporary_password))
+    subject = "[BiddingFlow] Mật khẩu tạm cho tài khoản Google"
+    body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <h2 style="color: #4057d6; text-align: center;">Tài khoản BiddingFlow đã được tạo</h2>
+            <p>Xin chào <strong>{safe_name}</strong>,</p>
+            <p>Bạn vừa tạo tài khoản BiddingFlow bằng Google với email <strong>{safe_email}</strong>.</p>
+            <p>Mật khẩu tạm của bạn:</p>
+            <div style="margin: 20px 0; padding: 16px; border-radius: 8px; background: #f1f5f9; text-align: center;">
+                <code style="font-size: 20px; font-weight: 700; letter-spacing: 1px; color: #0f172a;">{safe_password}</code>
+            </div>
+            <p>Sau khi đặt tên đăng nhập trong ứng dụng, bạn có thể dùng tên đăng nhập và mật khẩu này để đăng nhập. Hãy đổi mật khẩu ngay sau lần đăng nhập đầu tiên.</p>
+            <p style="font-size: 14px; color: #64748b;">Nếu bạn không thực hiện thao tác này, hãy đổi mật khẩu và liên hệ quản trị viên.</p>
+            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+            <p style="font-size: 12px; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
+        </div>
+    </body>
+    </html>
+    """
+    return subject, body
 
 
 async def google_login_api(request):
@@ -303,11 +335,18 @@ async def google_login_api(request):
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
             created_new_account = True
+            email_subject, email_body = _temporary_password_email(
+                user.get("ho_ten"),
+                email,
+                temporary_password,
+            )
             temporary_password_delivery_id = create_email_delivery(
                 cursor,
                 user_id=new_id,
                 purpose="google_temporary_password",
                 recipient=email,
+                subject=email_subject,
+                html_body=email_body,
             )
             pending_audits.append((
                 "auth.google_auto_register",
@@ -325,11 +364,28 @@ async def google_login_api(request):
             cursor.execute("UPDATE tai_khoan SET da_xac_minh = 1 WHERE id = ?", (user["id"],))
             user["da_xac_minh"] = 1
 
+        # The Google token is not a substitute for this application's second
+        # factor. Accounts protected by MFA, and every Super Admin account,
+        # must use the password + TOTP login flow.
+        if user.get("vai_tro") == "super_admin" or is_mfa_enabled(cursor, user["id"]):
+            conn.rollback()
+            return JSONResponse(
+                {
+                    "error": "Tài khoản này phải đăng nhập bằng mật khẩu và mã xác thực.",
+                    "code": "MFA_PASSWORD_LOGIN_REQUIRED",
+                },
+                status_code=403,
+            )
+
 
         session_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
+        user_agent = request.headers.get("User-Agent", "")[:200]
+        fingerprint = device_fingerprint(user_agent)
+        new_device = is_new_device(cursor, user["id"], fingerprint)
         device_info = json.dumps({
-            "user_agent": request.headers.get("User-Agent", "")[:200],
+            "user_agent": user_agent,
+            "fingerprint": fingerprint,
             "ip": get_client_ip(request),
             "login_time": datetime.now(timezone.utc).isoformat(),
             "method": "google",
@@ -359,60 +415,17 @@ async def google_login_api(request):
         conn.commit()
 
         if created_new_account and temporary_password and temporary_password_delivery_id:
-            safe_name = html.escape(str(user.get("ho_ten") or "bạn"))
-            safe_email = html.escape(email)
-            safe_password = html.escape(temporary_password)
-            subject = "[BiddingFlow] Mật khẩu tạm cho tài khoản Google"
-            email_body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
-                <div style="max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
-                    <h2 style="color: #4057d6; text-align: center;">Tài khoản BiddingFlow đã được tạo</h2>
-                    <p>Xin chào <strong>{safe_name}</strong>,</p>
-                    <p>Bạn vừa tạo tài khoản BiddingFlow bằng Google với email <strong>{safe_email}</strong>.</p>
-                    <p>Mật khẩu tạm của bạn:</p>
-                    <div style="margin: 20px 0; padding: 16px; border-radius: 8px; background: #f1f5f9; text-align: center;">
-                        <code style="font-size: 20px; font-weight: 700; letter-spacing: 1px; color: #0f172a;">{safe_password}</code>
-                    </div>
-                    <p>Sau khi đặt tên đăng nhập trong ứng dụng, bạn có thể dùng tên đăng nhập và mật khẩu này để đăng nhập. Hãy đổi mật khẩu ngay sau lần đăng nhập đầu tiên.</p>
-                    <p style="font-size: 14px; color: #64748b;">Nếu bạn không thực hiện thao tác này, hãy đổi mật khẩu và liên hệ quản trị viên.</p>
-                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-                    <p style="font-size: 12px; color: #94a3b8; text-align: center;">Hệ thống Đấu Thầu BiddingFlow</p>
-                </div>
-            </body>
-            </html>
-            """
-            delivery_timed_out = False
             try:
                 temporary_password_sent = await run_blocking_io(
                     deliver_email_once,
                     database,
                     temporary_password_delivery_id,
-                    email,
-                    subject,
-                    email_body,
-                    sensitive_content=True,
                     timeout_seconds=15,
                 )
             except BlockingIOBusyError:
                 temporary_password_sent = False
             except BlockingIOTimeoutError:
-                # The bounded worker may still finish and persist provider
-                # acceptance. Do not start a duplicate delivery concurrently.
-                delivery_timed_out = True
                 temporary_password_sent = False
-
-            if not temporary_password_sent and not delivery_timed_out:
-                bg_tasks = BackgroundTasks()
-                bg_tasks.add_task(
-                    retry_email_delivery,
-                    database,
-                    temporary_password_delivery_id,
-                    email,
-                    subject,
-                    email_body,
-                    sensitive_content=True,
-                )
 
         for audit_action, audit_kwargs in pending_audits:
             bg_tasks = _add_background_audit(bg_tasks, audit_action, **audit_kwargs)
@@ -427,6 +440,17 @@ async def google_login_api(request):
             request=request,
             metadata={"email": email},
         )
+        if new_device:
+            notification = build_security_notification_tasks(
+                email=user.get("email"),
+                display_name=user.get("ho_ten"),
+                subject="[BiddingFlow] Đăng nhập Google từ thiết bị mới",
+                message="Tài khoản của bạn vừa đăng nhập bằng Google từ một trình duyệt hoặc thiết bị chưa được ghi nhận.",
+            )
+            if notification:
+                if bg_tasks is None:
+                    bg_tasks = BackgroundTasks()
+                bg_tasks.tasks.extend(notification.tasks)
 
         needs_username = not user.get("ten_dang_nhap")
 

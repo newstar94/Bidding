@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml } from "../shared/view_helpers.js";
@@ -47,10 +48,10 @@ export function openMoThauJVManager(tr) {
   setRuntimeStyle(card, "margin", "20px auto");
   const header = document.createElement("div");
   header.className = "modal-header";
-  header.innerHTML = `
+  header.innerHTML = trustedHTML(`
         <h3>Thành viên liên danh</h3>
         <button class="modal-close" id="btn-close-mothau-jv">&times;</button>
-    `;
+    `);
   const body = document.createElement("div");
   body.className = "modal-body";
   setRuntimeStyle(body, "padding", "20px");
@@ -60,7 +61,7 @@ export function openMoThauJVManager(tr) {
     ? tr._leadMemberName || resolveLeadMemberName(foundLeadNt, leadCode)
     : resolveLeadMemberName(foundLeadNt, leadCode);
   const displayLeadCode = formatPartnerIdentityCode(leadCode, "Chưa nhập");
-  body.innerHTML = `
+  body.innerHTML = trustedHTML(`
         <div class="bf-s-8df25cd500">
             <div class="bf-s-7f07b6bbca">Thành viên đứng đầu liên danh</div>
             <div class="bf-s-16fbb6e0cf">
@@ -85,13 +86,13 @@ export function openMoThauJVManager(tr) {
         <div id="mothau-jv-members-list" class="bf-s-fa71b8d74c">
             <!-- Member inputs dynamic list -->
         </div>
-    `;
+    `);
   const footer = document.createElement("div");
   footer.className = "modal-footer";
-  footer.innerHTML = `
+  footer.innerHTML = trustedHTML(`
         <button type="button" class="btn btn-outline" id="btn-cancel-mothau-jv">Hủy</button>
         <button type="button" class="btn btn-primary" id="btn-save-mothau-jv">Xác nhận</button>
-    `;
+    `);
   card.appendChild(header);
   card.appendChild(body);
   card.appendChild(footer);
@@ -163,7 +164,7 @@ export function openMoThauJVManager(tr) {
     setRuntimeStyle(rowDiv, "border", "1px solid var(--border-color)");
     setRuntimeStyle(rowDiv, "borderRadius", "var(--radius-sm)");
     setRuntimeStyle(rowDiv, "background", "var(--bg-nested, rgba(0,0,0,0.02))");
-    rowDiv.innerHTML = `
+    rowDiv.innerHTML = trustedHTML(`
             <div class="form-group bf-s-4bbf3df076">
                 <input type="text" class="jv-input-mst bf-s-810c9fe5d1" required placeholder="Mã số thuế / Mã nhà thầu" value="${escapeHtml(member.maNhaThau || member.maSoThue || "")}">
             </div>
@@ -171,7 +172,7 @@ export function openMoThauJVManager(tr) {
                 <input type="text" class="jv-input-ten bf-s-810c9fe5d1" required placeholder="Tên nhà thầu thành viên" value="${escapeHtml(member.tenNhaThau || "")}">
             </div>
             <button type="button" class="action-btn btn-delete btn-remove-jv-row bf-s-f499e07949" aria-label="Xóa thành viên liên danh"><i data-lucide="trash-2" class="bf-s-58050124fc"></i></button>
-        `;
+        `);
     rowDiv.querySelector(".btn-remove-jv-row").onclick = () => {
       rowDiv.remove();
     };
@@ -322,7 +323,7 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
   setRuntimeStyle(card, "margin", "20px auto");
   const header = document.createElement("div");
   header.className = "modal-header";
-  header.innerHTML = renderJointVentureModalHeader();
+  header.innerHTML = trustedHTML(renderJointVentureModalHeader());
   const body = document.createElement("div");
   body.className = "modal-body";
   setRuntimeStyle(body, "padding", "20px");
@@ -365,10 +366,10 @@ export function openMoThauJVViewModal(members, leadName, leadCode, leadContracto
             `;
     }).join("");
   }
-  body.innerHTML = renderJointVentureModalBody({ leadCodeHtml, leadNameHtml, membersHtml });
+  body.innerHTML = trustedHTML(renderJointVentureModalBody({ leadCodeHtml, leadNameHtml, membersHtml }));
   const footer = document.createElement("div");
   footer.className = "modal-footer";
-  footer.innerHTML = renderJointVentureModalFooter();
+  footer.innerHTML = trustedHTML(renderJointVentureModalFooter());
   card.appendChild(header);
   card.appendChild(body);
   card.appendChild(footer);

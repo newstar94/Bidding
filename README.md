@@ -31,7 +31,54 @@ Sau đó khởi động ứng dụng bằng runtime role không có quyền DDL:
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 4
 ```
 
+Ở production, web worker chỉ được nhận `DATABASE_URL` của runtime role. Không đưa
+`MIGRATOR_DATABASE_URL`, `DATABASE_ADMIN_URL` hay mật khẩu migrator/admin vào
+environment của dịch vụ web. `DATABASE_AUTO_MIGRATE=false`,
+`DATABASE_RUNTIME_ROLE` phải khớp username trong URL và
+`DATABASE_PRIVATE_NETWORK_CONFIRMED=true` chỉ được đặt sau khi PostgreSQL đã bị
+giới hạn vào private network. Startup sẽ truy vấn `pg_roles`, ownership và ACL;
+dịch vụ từ chối chạy nếu role có `SUPERUSER`, `CREATEDB`, `CREATEROLE`,
+replication, `BYPASSRLS`, role membership, quyền `CREATE/TEMP`, ownership DDL
+hoặc quyền bảng ngoài CRUD.
+
 Chỉ chuyển traffic khi cả `/health/live` và `/health/ready` trả 200.
+
+## Mật khẩu và MFA
+
+- Mật khẩu mới dùng Argon2id, tối thiểu 15 và tối đa 256 ký tự; mật khẩu PBKDF2 cũ chỉ được giữ để nâng cấp tự động ở lần đăng nhập thành công tiếp theo.
+- `MFA_ENCRYPTION_KEY` là khóa Fernet 32 byte dùng mã hóa bí mật TOTP. Lưu khóa trong secret manager; không commit và không đổi khóa nếu chưa có quy trình giải mã/mã hóa lại các bí mật đang tồn tại.
+- Super Admin bắt buộc thiết lập MFA ở lần đăng nhập đầu tiên. Tài khoản quản lý được khuyến nghị bật MFA trong trang **Thông tin tài khoản cá nhân**. Mã khôi phục chỉ hiển thị một lần và mỗi mã chỉ dùng một lần.
+- Tài khoản đã bật MFA phải dùng luồng mật khẩu + TOTP/mã khôi phục; Google Sign-In không được dùng để bỏ qua yếu tố thứ hai.
+
+Trước khi triển khai lên một loại máy chủ mới, chạy benchmark với đúng cấu hình production:
+
+```bash
+python scripts/benchmark_password_hash.py
+```
+
+Mốc kiểm tra mặc định yêu cầu p50 không thấp hơn 30 ms và p95 không vượt 1.000 ms. Trên máy phát triển dùng để triển khai thay đổi này, Argon2id 64 MiB, 3 vòng, parallelism 2 đo 5 mẫu với p50 khoảng 87 ms/hash và 81 ms/verify.
+
+## Sandbox tài liệu trên Linux production
+
+Mọi tác vụ DOCX/XLSX chạy trong Bubblewrap với mount root rỗng, namespace user/PID/network riêng, UID/GID sandbox không phải root và policy seccomp chặn socket, child process, `exec`, mount, tracing. Cài `bubblewrap` và `libseccomp` từ kho gói của hệ điều hành, sau đó cấu hình:
+
+```text
+APP_ENV=production
+DOCUMENT_WORKER_SANDBOX=bwrap
+DOCUMENT_WORKER_SANDBOX_EXECUTABLE=/usr/bin/bwrap
+DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP=true
+DOCUMENT_WORKER_SANDBOX_UID=65534
+DOCUMENT_WORKER_SANDBOX_GID=65534
+DOCUMENT_WORKER_TEMP_DIR=/var/tmp/biddingflow-document-worker
+```
+
+Tài khoản chạy web service phải là tài khoản không có quyền quản trị. Trước khi khởi động hoặc nhận traffic, bắt buộc chạy probe thật trên chính host:
+
+```bash
+python scripts/verify_document_sandbox.py
+```
+
+Probe phải xác nhận không mở được socket mạng/Unix, không tạo được child process, không thấy `.env`/`DATABASE_URL`, không còn capability và đang dùng UID sandbox. Mẫu [systemd](deploy/biddingflow.service.example) đã đặt probe ở `ExecStartPre`; probe thất bại thì dịch vụ không được khởi động.
 
 ## Phát triển cục bộ trên Windows
 
@@ -48,6 +95,11 @@ pytest -q tests
 ```powershell
 python scripts/setup_local_postgres.py --reset
 ```
+
+Khi reset, script giữ hai bí mật tách biệt trong `.env` bị Git ignore:
+`ADMIN_PASSWORD` cho tài khoản Super Admin của ứng dụng và
+`POSTGRES_LOCAL_ADMIN_PASSWORD` cho superuser PostgreSQL local. Secret không đạt
+policy sẽ được xoay tự động nhưng không được in ra console.
 
 ## Xem dữ liệu PostgreSQL bằng DBeaver
 
@@ -71,7 +123,7 @@ Sau khi cài DBeaver:
    Port:     55432
    Database: biddingflow_dev
    Username: postgres
-   Password: lấy từ DATABASE_URL trong file .env
+   Password: lấy từ POSTGRES_LOCAL_ADMIN_PASSWORD trong file .env
    ```
 
 3. Chọn **Test Connection** rồi **Finish**. DBeaver có thể đề nghị tải PostgreSQL JDBC driver trong lần kết nối đầu tiên.

@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, initCustomSelect, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
 import { loadPaginatedRecords, paginateRecords, sortRecords } from "../shared/tableDataUtils.js";
@@ -304,7 +305,7 @@ export function renderNhaThauVersionDetails(versionId) {
     `;
   const contentEl = document.getElementById("fullpage-nhathau-content");
   if (contentEl) {
-    contentEl.innerHTML = html;
+    contentEl.innerHTML = trustedHTML(html);
     const innerSelect = document.getElementById("fullpage-nt-version-select");
     if (innerSelect) {
       if (allRelated.length >= 2) {

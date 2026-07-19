@@ -7,8 +7,10 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
+import threading
 import time
 
 import httpx
@@ -20,6 +22,35 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.load_test import _load_env, run_benchmark
 from scripts.process_utils import popen_group_options, terminate_process_tree
+
+
+_SAMPLE_RE = re.compile(
+    r'^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(?P<labels>[^}]*)\})?\s+(?P<value>\S+)$'
+)
+_LABEL_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"')
+_DATABASE_COUNTER_FIELDS = (
+    "xact_commit",
+    "xact_rollback",
+    "blks_read",
+    "blks_hit",
+    "tup_returned",
+    "tup_fetched",
+    "tup_inserted",
+    "tup_updated",
+    "tup_deleted",
+    "temp_files",
+    "temp_bytes",
+    "deadlocks",
+    "blk_read_time",
+    "blk_write_time",
+    "session_time",
+    "active_time",
+    "idle_in_transaction_time",
+    "sessions",
+    "sessions_abandoned",
+    "sessions_fatal",
+    "sessions_killed",
+)
 
 
 def _wait_ready(process: subprocess.Popen, url: str) -> None:
@@ -34,6 +65,204 @@ def _wait_ready(process: subprocess.Popen, url: str) -> None:
             pass
         time.sleep(0.1)
     raise RuntimeError("Load-test stack did not become ready")
+
+
+def _parse_samples(payload: str) -> dict[tuple[str, tuple[tuple[str, str], ...]], float]:
+    samples: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
+    for line in payload.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        match = _SAMPLE_RE.match(line)
+        if match is None:
+            continue
+        labels = tuple(sorted(_LABEL_RE.findall(match.group("labels") or "")))
+        try:
+            value = float(match.group("value"))
+        except ValueError:
+            continue
+        samples[(match.group("name"), labels)] = value
+    return samples
+
+
+async def _collect_worker_metrics(base_url: str, expected_workers: int) -> list[dict]:
+    """Sample each process at least once without requiring multiprocess Prometheus."""
+
+    snapshots: dict[str, dict] = {}
+    async with httpx.AsyncClient(
+        timeout=5,
+        limits=httpx.Limits(
+            max_connections=max(8, expected_workers * 8),
+            max_keepalive_connections=0,
+        ),
+    ) as client:
+        for _ in range(4):
+            responses = await asyncio.gather(*[
+                client.get(
+                    f"{base_url}/metrics",
+                    headers={"Connection": "close"},
+                )
+                for _ in range(max(8, expected_workers * 8))
+            ])
+            for response in responses:
+                response.raise_for_status()
+                samples = _parse_samples(response.text)
+                process_id = samples.get(("biddingflow_process_id", ()))
+                process_start = samples.get(
+                    ("biddingflow_process_start_time_seconds", ())
+                )
+                identity = process_id if process_id is not None else process_start
+                if identity is not None:
+                    snapshots.setdefault(str(identity), samples)
+            if len(snapshots) >= expected_workers:
+                break
+    return list(snapshots.values())
+
+
+def _summarize_database_phases(snapshots: list[dict]) -> dict[str, dict]:
+    aggregates: dict[tuple[str, str, str], dict[str, float]] = {}
+    prefix = "biddingflow_database_phase_duration_seconds_"
+    for samples in snapshots:
+        for (name, raw_labels), value in samples.items():
+            if name not in {f"{prefix}count", f"{prefix}sum"}:
+                continue
+            labels = dict(raw_labels)
+            key = (
+                labels.get("scope", "unknown"),
+                labels.get("phase", "unknown"),
+                labels.get("outcome", "unknown"),
+            )
+            field = "count" if name.endswith("_count") else "sum"
+            aggregates.setdefault(key, {"count": 0.0, "sum": 0.0})[field] += value
+        for (name, raw_labels), value in samples.items():
+            if name != f"{prefix}max":
+                continue
+            labels = dict(raw_labels)
+            key = (
+                labels.get("scope", "unknown"),
+                labels.get("phase", "unknown"),
+                labels.get("outcome", "unknown"),
+            )
+            aggregate = aggregates.setdefault(
+                key,
+                {"count": 0.0, "sum": 0.0},
+            )
+            aggregate["max"] = max(aggregate.get("max", 0.0), value)
+
+    result: dict[str, dict] = {}
+    for (scope, phase, outcome), values in sorted(aggregates.items()):
+        count = values["count"]
+        result[f"{scope}.{phase}.{outcome}"] = {
+            "count": int(count),
+            "meanMs": round(values["sum"] * 1000 / count, 3) if count else 0.0,
+            "maxMs": round(values.get("max", 0.0) * 1000, 3),
+            "totalSeconds": round(values["sum"], 3),
+        }
+    return result
+
+
+def _database_counter_snapshot(database_url: str) -> dict[str, float]:
+    columns = ", ".join(_DATABASE_COUNTER_FIELDS)
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        row = connection.execute(
+            f"""
+            SELECT {columns}
+            FROM pg_stat_database
+            WHERE datname = current_database()
+            """
+        ).fetchone()
+    return {
+        field: float(row[index] or 0)
+        for index, field in enumerate(_DATABASE_COUNTER_FIELDS)
+    }
+
+
+class _PostgresSampler:
+    def __init__(self, database_url: str):
+        self.database_url = database_url
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(
+            target=self._run,
+            name="load-postgres-sampler",
+            daemon=True,
+        )
+        self.samples = 0
+        self.max_connections = 0
+        self.max_active = 0
+        self.max_lock_waiting = 0
+        self.max_locks = 0
+        self.max_ungranted_locks = 0
+        self.error: str | None = None
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def stop(self) -> dict[str, int | str | None]:
+        self.stop_event.set()
+        self.thread.join(timeout=5)
+        return {
+            "samples": self.samples,
+            "maxConnections": self.max_connections,
+            "maxActiveConnections": self.max_active,
+            "maxLockWaitingConnections": self.max_lock_waiting,
+            "maxLocks": self.max_locks,
+            "maxUngrantedLocks": self.max_ungranted_locks,
+            "samplerError": self.error,
+        }
+
+    def _run(self) -> None:
+        try:
+            with psycopg.connect(
+                self.database_url,
+                autocommit=True,
+                application_name="biddingflow-load-sampler",
+            ) as connection:
+                while not self.stop_event.is_set():
+                    activity = connection.execute(
+                        """
+                        SELECT count(*),
+                               count(*) FILTER (WHERE state = 'active'),
+                               count(*) FILTER (
+                                   WHERE state = 'active'
+                                     AND wait_event_type = 'Lock'
+                               )
+                        FROM pg_stat_activity
+                        WHERE datname = current_database()
+                        """
+                    ).fetchone()
+                    locks = connection.execute(
+                        """
+                        SELECT count(*),
+                               count(*) FILTER (WHERE NOT locks.granted)
+                        FROM pg_locks AS locks
+                        JOIN pg_database AS databases
+                          ON databases.oid = locks.database
+                        WHERE databases.datname = current_database()
+                        """
+                    ).fetchone()
+                    self.samples += 1
+                    self.max_connections = max(
+                        self.max_connections,
+                        int(activity[0] or 0),
+                    )
+                    self.max_active = max(
+                        self.max_active,
+                        int(activity[1] or 0),
+                    )
+                    self.max_lock_waiting = max(
+                        self.max_lock_waiting,
+                        int(activity[2] or 0),
+                    )
+                    self.max_locks = max(
+                        self.max_locks,
+                        int(locks[0] or 0),
+                    )
+                    self.max_ungranted_locks = max(
+                        self.max_ungranted_locks,
+                        int(locks[1] or 0),
+                    )
+                    self.stop_event.wait(0.1)
+        except Exception as exc:
+            self.error = exc.__class__.__name__
 
 
 def main() -> int:
@@ -101,10 +330,33 @@ def main() -> int:
         )
         try:
             _wait_ready(process, base_url)
+            database_before = _database_counter_snapshot(database_url)
+            postgres_sampler = _PostgresSampler(database_url)
+            postgres_sampler.start()
             result = asyncio.run(
                 run_benchmark(base_url, args.concurrency, args.duration)
             )
+            result["postgresConcurrency"] = postgres_sampler.stop()
+            database_after = _database_counter_snapshot(database_url)
+            result["postgresCounters"] = {
+                field: round(database_after[field] - database_before[field], 3)
+                for field in _DATABASE_COUNTER_FIELDS
+            }
             result["workers"] = args.workers
+            metric_snapshots = asyncio.run(
+                _collect_worker_metrics(
+                    base_url,
+                    max(1, min(16, args.workers)),
+                )
+            )
+            result["observedWorkerMetrics"] = len(metric_snapshots)
+            result["databasePhases"] = _summarize_database_phases(
+                metric_snapshots
+            )
+            (log_directory / "load-rehearsal-result.json").write_text(
+                json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 1 if result["errors"] else 0
         finally:

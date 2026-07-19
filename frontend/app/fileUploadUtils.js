@@ -16,7 +16,7 @@ export function bindImageUploadPreview(config) {
   fileInput.__bfImageUploadBound = true;
   const handleFile = (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type)) {
       alertInvalid?.();
       return;
     }

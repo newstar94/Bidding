@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { normalizeOrganizationName, normalizePersonName, normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { collectFormValues, resetFormState, setFormValues } from "../shared/FormBinder.js";
 import { setValidationError } from "../shared/FormValidation.js";
@@ -83,7 +84,7 @@ export function createPartnerLookupHandlers({ form, config, root = document, app
     setValue(root, config.address.provinceSelectId, "");
     const ward = control(root, config.address.wardSelectId);
     if (ward) {
-      ward.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
+      ward.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
       ward.disabled = true;
     }
     if (form) form.dataset.diaChiGoc = "";

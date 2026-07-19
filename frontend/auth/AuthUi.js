@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { showInitLoader } from "./authRuntimeState.js";
 
@@ -36,13 +37,13 @@ export function showGoogleAuthPending({
       "backdrop-filter:blur(8px)",
       "-webkit-backdrop-filter:blur(8px)"
     ].join(";"));
-    pending.innerHTML = `
+    pending.innerHTML = trustedHTML(`
             <div class="bf-s-c439060eb8">
                 <div class="bf-s-41cbab3292"></div>
                 <div class="bf-s-b0e7843cfa" data-google-auth-pending-title></div>
                 <div class="bf-s-513ea906bd" data-google-auth-pending-detail></div>
             </div>
-        `;
+        `);
     document.body.appendChild(pending);
   }
   const titleElement = pending.querySelector("[data-google-auth-pending-title]");

@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 ﻿import { normalizePersonName } from "../app/domUtils.js";
 const BASIC_IMPORT_TYPES = /* @__PURE__ */ new Set(["plan", "kehoach", "package", "goithau", "chudautu", "nhathau", "chuyengia", "hopdong"]);
 const BUSINESS_IMPORT_TYPES = /* @__PURE__ */ new Set(["mothau", "danhgiahsdt", "ketquaqd", "opening_fin"]);
@@ -361,7 +362,7 @@ async function saveOpeningImport(controller, validRows) {
   const goiThau = controller.model.state.goithau.find((g) => g.id === gtId);
   if (goiThau) {
     const tbody = document.getElementById("mothau-table-tbody");
-    if (tbody) tbody.innerHTML = "";
+    if (tbody) tbody.innerHTML = trustedHTML("");
     const caseType = getOpeningCaseType(goiThau);
     const newBids = controller.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gtId));
     if (newBids.length === 0) {

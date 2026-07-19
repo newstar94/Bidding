@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../../shared/runtimeStyles.js";
 import { savePackagePreparation } from "../packagePreparation.js";
 import { escapeHtml, safeAttr } from "../../shared/view_helpers.js";
@@ -8,7 +9,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
         const cdtObj = khObj ? view.model.state.chudautu.find((c) => c.id === khObj.chuDauTuId) : null;
         const tenCdtStr = cdtObj ? cdtObj.tenChuDauTu : "Không rõ";
         const tenKhStr = khObj ? khObj.tenKeHoach : "Không rõ";
-        contentWrapper.innerHTML = `
+        contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-95f6f7a8cf">
                         <!-- Cột 1: Thông tin chung -->
                         <div class="card package-info-card">
@@ -275,7 +276,7 @@ export function renderPreparationDetailsPanel(view, { contentWrapper, gt, id, is
                             </div>
                         ` : ""}
                     `}
-                `;
+                `);
         lucide.createIcons();
         const btnEditBottom = document.getElementById("btn-edit-goithau-bottom");
         if (btnEditBottom) {

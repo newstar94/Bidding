@@ -407,10 +407,11 @@ def verify_audit_checkpoint(checkpoint, *, hmac_key=None):
     )
 
 
-def export_audit_checkpoint(cursor, destination, *, hmac_key=None):
-    """Atomically export a uniquely named checkpoint for off-host anchoring."""
+def write_audit_checkpoint(checkpoint, destination):
+    """Atomically persist a checkpoint after the database transaction is closed."""
 
-    checkpoint = build_audit_checkpoint(cursor, hmac_key=hmac_key)
+    if not isinstance(checkpoint, dict):
+        raise ValueError("Audit checkpoint payload is invalid.")
     directory = Path(destination).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -441,3 +442,10 @@ def export_audit_checkpoint(cursor, destination, *, hmac_key=None):
             pass
         raise
     return final_path
+
+
+def export_audit_checkpoint(cursor, destination, *, hmac_key=None):
+    """Compatibility wrapper for callers that already manage transaction scope."""
+
+    checkpoint = build_audit_checkpoint(cursor, hmac_key=hmac_key)
+    return write_audit_checkpoint(checkpoint, destination)

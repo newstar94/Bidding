@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { apiFetch } from "../shared/apiClient.js";
 
 export function setupInlineExcelControls(controller) {
@@ -45,19 +46,19 @@ function handleInlineExcelUpload(controller, file, type) {
   const tbody = document.getElementById(`${type}-tbody`);
   if (!tbody) return;
   const originalHTML = tbody.innerHTML;
-  tbody.innerHTML = `<tr><td colspan="${type === "phanlo" ? 5 : 6}" class="bf-s-d6ce8fac83">
+  tbody.innerHTML = trustedHTML(`<tr><td colspan="${type === "phanlo" ? 5 : 6}" class="bf-s-d6ce8fac83">
         Đang tải dữ liệu và phân tích file Excel...
-    </td></tr>`;
+    </td></tr>`);
   apiFetch("/api/import-excel", {
     method: "POST",
     body: fd
   }).then((res) => res.json()).then((data) => {
     if (data.success) {
-      tbody.innerHTML = "";
+      tbody.innerHTML = trustedHTML("");
       const validRows = data.rows.filter((r) => r._valid);
       if (validRows.length === 0) {
         controller.view.customAlert("Không có dữ liệu", "Không tìm thấy dòng dữ liệu hợp lệ nào trong tệp Excel!", "alert-triangle");
-        tbody.innerHTML = originalHTML;
+        tbody.innerHTML = trustedHTML(originalHTML);
         return;
       }
       validRows.forEach((row) => {
@@ -72,10 +73,10 @@ function handleInlineExcelUpload(controller, file, type) {
       controller.view.customAlert("Nhập thành công", `Đã nhập thành công ${validRows.length} dòng dữ liệu từ Excel vào bảng!`, "check-circle");
     } else {
       controller.view.customAlert("Lỗi phân tích", "Lỗi phân tích Excel: " + (data.error || "Không rõ nguyên nhân"), "x-circle");
-      tbody.innerHTML = originalHTML;
+      tbody.innerHTML = trustedHTML(originalHTML);
     }
   }).catch((err) => {
     controller.view.customAlert("Lỗi kết nối", "Lỗi kết nối: " + err.message, "x-circle");
-    tbody.innerHTML = originalHTML;
+    tbody.innerHTML = trustedHTML(originalHTML);
   });
 }

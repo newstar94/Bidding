@@ -95,6 +95,7 @@ class _BlockingIOPool:
         function: Callable[..., Any],
         *args: Any,
         timeout_seconds: float | None,
+        timing_callback: Callable[[float, float], None] | None = None,
         **kwargs: Any,
     ) -> Any:
         if not self._slots.acquire(blocking=False):
@@ -107,13 +108,21 @@ class _BlockingIOPool:
 
         def execute():
             worker_started_at = time.perf_counter()
+            queue_wait_seconds = worker_started_at - submitted_at
             try:
                 return function(*args, **kwargs)
             finally:
+                execution_seconds = time.perf_counter() - worker_started_at
                 self._mark_worker_timing(
-                    worker_started_at - submitted_at,
-                    time.perf_counter() - worker_started_at,
+                    queue_wait_seconds,
+                    execution_seconds,
                 )
+                if timing_callback is not None:
+                    try:
+                        timing_callback(queue_wait_seconds, execution_seconds)
+                    except Exception:
+                        # Observability must never change the outcome of the work.
+                        pass
 
         try:
             future = self._executor.submit(execute)

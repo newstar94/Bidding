@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { bindCurrencyElement, bindCurrencyInput, debounce, onAll, onById } from "./domUtils.js";
 import { bindImageUploadPreview } from "./fileUploadUtils.js";
@@ -461,7 +462,7 @@ export function setupActionListeners() {
                 `;
       }
     }
-    gtPhuongPhapDanhGiaSelect.innerHTML = optionsHtml;
+    gtPhuongPhapDanhGiaSelect.innerHTML = trustedHTML(optionsHtml);
     const validOptions = Array.from(gtPhuongPhapDanhGiaSelect.options).map((o) => o.value);
     if (!forceDefault && currentVal && validOptions.includes(currentVal)) {
       gtPhuongPhapDanhGiaSelect.value = currentVal;
@@ -866,11 +867,11 @@ export function updatePackageFieldsVisibility(isReadOnly = false) {
     const label = formGroup?.querySelector("label");
     if (trangThai === "Chuẩn bị") {
       setRequired(maInput, false);
-      if (label) label.innerHTML = "Mã thông báo mời thầu";
+      if (label) label.innerHTML = trustedHTML("Mã thông báo mời thầu");
     } else {
       setRequired(maInput, true);
       if (label && !label.querySelector(".required")) {
-        label.innerHTML = 'Mã thông báo mời thầu <span class="required">*</span>';
+        label.innerHTML = trustedHTML('Mã thông báo mời thầu <span class="required">*</span>');
       }
     }
   }
@@ -1008,9 +1009,9 @@ export function updateAwardedContractorUI(defaultDataList = null) {
           };
         }
       });
-      tbody.innerHTML = "";
+      tbody.innerHTML = trustedHTML("");
       if (phanLoList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="bf-s-45a963221a">Vui lòng thêm danh sách phần lô ở trên trước.</td></tr>`;
+        tbody.innerHTML = trustedHTML(`<tr><td colspan="5" class="bf-s-45a963221a">Vui lòng thêm danh sách phần lô ở trên trước.</td></tr>`);
         return;
       }
       const goiThauId = document.getElementById("form-goithau-id")?.value;
@@ -1048,7 +1049,7 @@ export function updateAwardedContractorUI(defaultDataList = null) {
         const giaTri = matchedData?.giaTrungThau ? this.model.formatVND(matchedData.giaTrungThau) : "";
         const tgGoiThau = matchedData?.thoiGianGoiThau || "";
         const tgHopDong = matchedData?.thoiGianHopDong || "";
-        row.innerHTML = `
+        row.innerHTML = trustedHTML(`
                     <td class="bf-s-9595fa5530">${escapeHtml(pl.tenPhanLo)}</td>
                     <td>
                         <select class="awarded-pl-nhathau bf-s-80504d4030" required>
@@ -1065,7 +1066,7 @@ export function updateAwardedContractorUI(defaultDataList = null) {
                     <td>
                         <input type="text" class="awarded-pl-tghopdong bf-s-80504d4030" required value="${escapeHtml(tgHopDong)}" placeholder="Ví dụ: 90 ngày">
                     </td>
-                `;
+                `);
         const sel = row.querySelector(".awarded-pl-nhathau");
         if (sel) sel.value = selectedNt;
         const giaInput = row.querySelector(".awarded-pl-gia");

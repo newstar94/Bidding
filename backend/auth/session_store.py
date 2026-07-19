@@ -6,13 +6,16 @@ import hashlib
 import time
 import uuid
 
+from backend.observability.metrics import record_database_phase
+
 
 def hash_session_token(token):
     return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
 
 
 def create_session(cursor, *, user_id, token, absolute_expires_at,
-                   idle_timeout_seconds, remember=False, device_info=None, now=None):
+                   idle_timeout_seconds, remember=False, device_info=None,
+                   mfa_verified=False, now=None):
     current = int(time.time() if now is None else now)
     absolute = int(absolute_expires_at)
     idle_expiry = min(absolute, current + max(60, int(idle_timeout_seconds)))
@@ -22,12 +25,13 @@ def create_session(cursor, *, user_id, token, absolute_expires_at,
         INSERT INTO auth_sessions (
             id, user_id, token_hash, created_at, last_seen_at,
             idle_expires_at, absolute_expires_at, revoked_at,
-            remember_me, device_info, privileged_reauth_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)
+            remember_me, device_info, privileged_reauth_at, mfa_verified_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?)
         """,
         (
             session_id, user_id, hash_session_token(token), current, current,
             idle_expiry, absolute, 1 if remember else 0, device_info,
+            current if mfa_verified else None,
         ),
     )
     return session_id
@@ -37,28 +41,50 @@ def load_session_user(database, token):
     raw_token = str(token or "").strip()
     if not raw_token:
         return None
+    started_at = time.perf_counter()
+    outcome = "ok"
     conn = database.get_connection()
     try:
         row = conn.execute(
             """
-            SELECT accounts.*, sessions.id AS session_id,
+            SELECT accounts.id, accounts.ten_dang_nhap, accounts.mat_khau,
+                   accounts.ho_ten, accounts.vai_tro, accounts.email,
+                   accounts.anh_dai_dien,
+                   EXISTS (
+                       SELECT 1
+                       FROM dinh_danh_ngoai AS identities
+                       WHERE identities.user_id = accounts.id
+                   ) AS has_external_identity,
+                   sessions.id AS session_id,
                    sessions.created_at AS session_created_at,
                    sessions.last_seen_at, sessions.idle_expires_at,
                    sessions.absolute_expires_at, sessions.revoked_at,
                    sessions.remember_me, sessions.device_info,
-                   sessions.privileged_reauth_at
+                   sessions.privileged_reauth_at, sessions.mfa_verified_at,
+                   COALESCE(mfa.enabled, 0) AS mfa_enabled
             FROM auth_sessions AS sessions
             JOIN tai_khoan AS accounts ON accounts.id = sessions.user_id
+            LEFT JOIN account_mfa AS mfa ON mfa.user_id = accounts.id
             WHERE sessions.token_hash = ?
             LIMIT 1
             """,
             (hash_session_token(raw_token),),
         ).fetchone()
         if not row:
+            outcome = "not_found"
             return None
         return dict(row)
+    except Exception:
+        outcome = "error"
+        raise
     finally:
         conn.close()
+        record_database_phase(
+            "auth",
+            "session_lookup",
+            time.perf_counter() - started_at,
+            outcome=outcome,
+        )
 
 
 def session_invalid_reason(user, now=None):

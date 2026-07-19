@@ -10,6 +10,11 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from backend.auth.email_utils import smtp_configuration_errors
+from backend.auth.email_delivery_service import (
+    EmailOutboxConfigurationError,
+    validate_email_outbox_configuration,
+)
+from backend.auth.mfa_service import MfaConfigurationError, validate_mfa_configuration
 
 
 class StartupValidationError(RuntimeError):
@@ -26,7 +31,263 @@ REQUIRED_APPLICATION_TABLES = frozenset({
     "rate_limit_buckets",
     "partner_lookup_cache",
     "partner_upstream_health",
+    "account_mfa",
 })
+
+
+def _bounded_configuration_int(
+    environ,
+    name,
+    default,
+    minimum,
+    maximum,
+):
+    try:
+        value = int(str(environ.get(name, default)).strip())
+    except (TypeError, ValueError) as exc:
+        raise StartupValidationError(f"{name} must be an integer.") from exc
+    if value < minimum or value > maximum:
+        raise StartupValidationError(
+            f"{name} must be between {minimum} and {maximum}."
+        )
+    return value
+
+
+def calculate_database_connection_budget(environ=None):
+    """Return the declared cluster-wide PostgreSQL connection budget."""
+
+    environ = os.environ if environ is None else environ
+    instances = _bounded_configuration_int(
+        environ, "APP_INSTANCE_COUNT", 1, 1, 1_000
+    )
+    workers = _bounded_configuration_int(
+        environ, "UVICORN_WORKERS", 1, 1, 64
+    )
+    pool_max = _bounded_configuration_int(
+        environ, "DATABASE_POOL_MAX_SIZE", 8, 1, 64
+    )
+    dedicated = _bounded_configuration_int(
+        environ,
+        "DATABASE_DEDICATED_CONNECTIONS_PER_WORKER",
+        1,
+        0,
+        8,
+    )
+    reserved = _bounded_configuration_int(
+        environ, "DATABASE_RESERVED_CONNECTIONS", 20, 5, 10_000
+    )
+    application = instances * workers * (pool_max + dedicated)
+    return {
+        "instances": instances,
+        "workers": workers,
+        "pool_max": pool_max,
+        "dedicated_per_worker": dedicated,
+        "application": application,
+        "reserved": reserved,
+        "total": application + reserved,
+    }
+
+
+def validate_database_connection_budget(
+    max_connections,
+    environ=None,
+):
+    budget = calculate_database_connection_budget(environ)
+    try:
+        server_max = int(max_connections)
+    except (TypeError, ValueError) as exc:
+        raise StartupValidationError(
+            "Cannot read PostgreSQL max_connections."
+        ) from exc
+    if budget["total"] >= server_max:
+        raise StartupValidationError(
+            "Declared PostgreSQL connection budget is unsafe: "
+            f"application={budget['application']}, "
+            f"reserved={budget['reserved']}, max_connections={server_max}."
+        )
+    return budget
+
+
+def _runtime_role_snapshot(connection):
+    role = connection.execute(
+        """
+        SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+               rolreplication, rolbypassrls
+        FROM pg_roles
+        WHERE rolname = current_user
+        """
+    ).fetchone()
+    memberships = connection.execute(
+        """
+        SELECT parent.rolname
+        FROM pg_auth_members AS memberships
+        JOIN pg_roles AS parent ON parent.oid = memberships.roleid
+        JOIN pg_roles AS member ON member.oid = memberships.member
+        WHERE member.rolname = current_user
+        ORDER BY parent.rolname
+        """
+    ).fetchall()
+    privilege_row = connection.execute(
+        """
+        SELECT current_user,
+               current_database(),
+               current_schema(),
+               current_schemas(false),
+               has_database_privilege(current_user, current_database(), 'CREATE'),
+               has_database_privilege(current_user, current_database(), 'TEMP'),
+               has_schema_privilege(current_user, current_schema(), 'CREATE')
+        """
+    ).fetchone()
+    owned_objects = connection.execute(
+        """
+        SELECT object_type, object_name
+        FROM (
+            SELECT 'database' AS object_type, datname AS object_name
+            FROM pg_database
+            WHERE datname = current_database()
+              AND pg_has_role(current_user, datdba, 'MEMBER')
+            UNION ALL
+            SELECT 'schema', nspname
+            FROM pg_namespace
+            WHERE nspname = current_schema()
+              AND pg_has_role(current_user, nspowner, 'MEMBER')
+            UNION ALL
+            SELECT CASE c.relkind
+                       WHEN 'S' THEN 'sequence'
+                       WHEN 'v' THEN 'view'
+                       WHEN 'm' THEN 'materialized_view'
+                       ELSE 'table'
+                   END,
+                   c.relname
+            FROM pg_class AS c
+            JOIN pg_namespace AS n ON n.oid = c.relnamespace
+            WHERE n.nspname = current_schema()
+              AND c.relkind IN ('r', 'p', 'S', 'v', 'm')
+              AND pg_has_role(current_user, c.relowner, 'MEMBER')
+            UNION ALL
+            SELECT 'function', p.oid::regprocedure::text
+            FROM pg_proc AS p
+            JOIN pg_namespace AS n ON n.oid = p.pronamespace
+            WHERE n.nspname = current_schema()
+              AND pg_has_role(current_user, p.proowner, 'MEMBER')
+        ) AS owned
+        ORDER BY object_type, object_name
+        """
+    ).fetchall()
+    disallowed_grants = connection.execute(
+        """
+        SELECT table_schema, table_name, privilege_type
+        FROM information_schema.role_table_grants
+        WHERE grantee = current_user
+          AND (
+              table_schema <> current_schema()
+              OR privilege_type NOT IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+          )
+        ORDER BY table_schema, table_name, privilege_type
+        """
+    ).fetchall()
+    missing_crud = connection.execute(
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = current_schema()
+          AND table_type = 'BASE TABLE'
+          AND (
+              NOT has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'SELECT')
+              OR NOT has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'INSERT')
+              OR NOT has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'UPDATE')
+              OR NOT has_table_privilege(current_user, quote_ident(table_schema) || '.' || quote_ident(table_name), 'DELETE')
+          )
+        ORDER BY table_name
+        """
+    ).fetchall()
+    return {
+        "role": tuple(role) if role else None,
+        "memberships": [row[0] for row in memberships],
+        "identity": tuple(privilege_row) if privilege_row else None,
+        "owned_objects": [tuple(row) for row in owned_objects],
+        "disallowed_grants": [tuple(row) for row in disallowed_grants],
+        "missing_crud": [row[0] for row in missing_crud],
+    }
+
+
+def validate_runtime_role_snapshot(snapshot, *, expected_role=""):
+    """Reject a PostgreSQL runtime identity that can escape application CRUD."""
+    role = snapshot.get("role")
+    identity = snapshot.get("identity")
+    if not role or not identity:
+        raise StartupValidationError("Cannot inspect the PostgreSQL runtime role.")
+    role_name, can_login, superuser, create_db, create_role, replication, bypass_rls = role
+    if expected_role and role_name != expected_role:
+        raise StartupValidationError(
+            f"DATABASE_URL authenticates as {role_name!r}, not DATABASE_RUNTIME_ROLE."
+        )
+    if not can_login:
+        raise StartupValidationError("PostgreSQL runtime role must be a LOGIN role.")
+    elevated = [
+        name
+        for name, enabled in (
+            ("SUPERUSER", superuser),
+            ("CREATEDB", create_db),
+            ("CREATEROLE", create_role),
+            ("REPLICATION", replication),
+            ("BYPASSRLS", bypass_rls),
+        )
+        if enabled
+    ]
+    if elevated:
+        raise StartupValidationError(
+            "PostgreSQL runtime role has forbidden attributes: " + ", ".join(elevated)
+        )
+    if snapshot.get("memberships"):
+        raise StartupValidationError(
+            "PostgreSQL runtime role must not inherit other roles: "
+            + ", ".join(snapshot["memberships"])
+        )
+    _current_user, _database, current_schema, search_path, db_create, db_temp, schema_create = identity
+    if current_schema != "public" or list(search_path or []) != ["public"]:
+        raise StartupValidationError(
+            "PostgreSQL runtime search_path must resolve only to the public schema."
+        )
+    if db_create or db_temp or schema_create:
+        raise StartupValidationError(
+            "PostgreSQL runtime role must not have database/schema CREATE or TEMP privileges."
+        )
+    if snapshot.get("owned_objects"):
+        details = ", ".join(
+            f"{kind}:{name}" for kind, name in snapshot["owned_objects"][:8]
+        )
+        raise StartupValidationError(
+            "PostgreSQL runtime role owns DDL-capable objects: " + details
+        )
+    if snapshot.get("disallowed_grants"):
+        raise StartupValidationError(
+            "PostgreSQL runtime role has table grants outside the CRUD allow-list."
+        )
+    if snapshot.get("missing_crud"):
+        raise StartupValidationError(
+            "PostgreSQL runtime role lacks required CRUD grants on: "
+            + ", ".join(snapshot["missing_crud"][:12])
+        )
+
+
+def verify_database_runtime_role(database, *, expected_role=""):
+    connection = None
+    try:
+        connection = database.get_connection()
+        snapshot = _runtime_role_snapshot(connection)
+        validate_runtime_role_snapshot(snapshot, expected_role=expected_role)
+        max_connections = connection.execute(
+            "SHOW max_connections"
+        ).fetchone()[0]
+        validate_database_connection_budget(
+            max_connections,
+            os.environ,
+        )
+    finally:
+        if connection is not None:
+            connection.close()
+
 
 def _validate_postgresql_configuration(database, environ, *, production):
     raw_url = str(environ.get("DATABASE_URL", "")).strip()
@@ -56,6 +317,38 @@ def _validate_postgresql_configuration(database, environ, *, production):
         if sslmode != "verify-full":
             raise StartupValidationError(
                 "PostgreSQL production connections require sslmode=verify-full."
+            )
+        if str(environ.get("DATABASE_AUTO_MIGRATE", "")).strip().lower() not in {
+            "false",
+            "0",
+            "no",
+        }:
+            raise StartupValidationError(
+                "DATABASE_AUTO_MIGRATE=false is required in production."
+            )
+        if str(environ.get("DATABASE_PRIVATE_NETWORK_CONFIRMED", "")).strip().lower() != "true":
+            raise StartupValidationError(
+                "DATABASE_PRIVATE_NETWORK_CONFIRMED=true is required after restricting PostgreSQL to a private network."
+            )
+        forbidden_database_secrets = [
+            name
+            for name in (
+                "DATABASE_ADMIN_URL",
+                "MIGRATOR_DATABASE_URL",
+                "DATABASE_MIGRATOR_PASSWORD",
+                "DATABASE_ADMIN_PASSWORD",
+            )
+            if str(environ.get(name, "")).strip()
+        ]
+        if forbidden_database_secrets:
+            raise StartupValidationError(
+                "Web workers must not receive migrator/admin database credentials: "
+                + ", ".join(forbidden_database_secrets)
+            )
+        expected_role = str(environ.get("DATABASE_RUNTIME_ROLE", "")).strip()
+        if expected_role and parsed.username != expected_role:
+            raise StartupValidationError(
+                "DATABASE_URL username must match DATABASE_RUNTIME_ROLE."
             )
     # Force URL validation on the configured database object without opening a
     # second connection when tests supply an isolated environment mapping.
@@ -93,6 +386,14 @@ def validate_startup_configuration(database, environ=None):
             raise StartupValidationError(
                 "Invalid production SMTP configuration: " + "; ".join(smtp_errors)
             )
+        try:
+            validate_mfa_configuration(environ, required=True)
+        except MfaConfigurationError as exc:
+            raise StartupValidationError(str(exc)) from exc
+        try:
+            validate_email_outbox_configuration(environ, required=True)
+        except EmailOutboxConfigurationError as exc:
+            raise StartupValidationError(str(exc)) from exc
         audit_hmac_key = str(environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
         if len(audit_hmac_key.encode("utf-8")) < 32:
             raise StartupValidationError(

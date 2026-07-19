@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml, safeAttr, renderEmptyRow } from "../shared/view_helpers.js";
 import { normalizeOrganizations } from "../auth/accessContext.js";
@@ -370,19 +371,19 @@ function buildServerDashboardData(summary) {
 function renderMetricBreakdown(containerId, counts, formatter = (value) => String(value)) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  container.innerHTML = Object.entries(counts || {}).map(([status, value], index) => `
+  container.innerHTML = trustedHTML(Object.entries(counts || {}).map(([status, value], index) => `
     <div class="dashboard-metric-row">
       <span><i class="dashboard-status-dot status-tone-${index % 6}"></i>${escapeHtml(status)}</span>
       <strong>${escapeHtml(formatter(value))}</strong>
     </div>
-  `).join("");
+  `).join(""));
 }
 
 function renderContractSummary(counts, values) {
   const container = document.getElementById("contract-summary-breakdown");
   if (!container) return;
   const statuses = [...new Set([...Object.keys(counts || {}), ...Object.keys(values || {})])];
-  container.innerHTML = statuses.map((status, index) => {
+  container.innerHTML = trustedHTML(statuses.map((status, index) => {
     const count = Number(counts?.[status] || 0);
     const formattedValue = compactCurrency(values?.[status] || 0);
     return `
@@ -391,7 +392,7 @@ function renderContractSummary(counts, values) {
         <span class="dashboard-contract-values"><strong>${count} HĐ</strong><em>${escapeHtml(formattedValue)}</em></span>
       </div>
     `;
-  }).join("");
+  }).join(""));
 }
 
 function renderPackageDonut(statusCounts) {
@@ -401,7 +402,7 @@ function renderPackageDonut(statusCounts) {
   const gradientParts = [];
   const legend = document.getElementById("status-legend-list");
   if (legend) {
-    legend.innerHTML = PACKAGE_STATUS_ORDER.map((status, index) => {
+    legend.innerHTML = trustedHTML(PACKAGE_STATUS_ORDER.map((status, index) => {
       const count = Number(statusCounts[status] || 0);
       const percent = total ? count / total * 100 : 0;
       if (count > 0) {
@@ -409,7 +410,7 @@ function renderPackageDonut(statusCounts) {
         accumulated += percent;
       }
       return `<div class="legend-item"><div class="legend-info"><span class="legend-dot status-tone-${index % 6}"></span><span>${escapeHtml(status)}</span></div><span class="legend-val">${count} (${percent.toFixed(0)}%)</span></div>`;
-    }).join("");
+    }).join(""));
   }
   const donut = document.querySelector("#tab-dashboard .status-donut-chart");
   if (donut) setRuntimeStyle(donut, "background", gradientParts.length ? `conic-gradient(${gradientParts.join(", ")})` : "var(--neutral-soft)");
@@ -428,10 +429,10 @@ function renderDashboardAlerts(alerts) {
   const tbody = document.getElementById("dashboard-action-items");
   if (!tbody) return;
   if (!items.length) {
-    tbody.innerHTML = renderEmptyRow(4, "Không có công việc khẩn cấp", "circle-check-big");
+    tbody.innerHTML = trustedHTML(renderEmptyRow(4, "Không có công việc khẩn cấp", "circle-check-big"));
     return;
   }
-  tbody.innerHTML = items.map((item) => {
+  tbody.innerHTML = trustedHTML(items.map((item) => {
     const meta = ALERT_META[item.alertKey] || ALERT_META.closingSoon;
     const targetType = item.targetType === "plan" ? "plan" : item.targetType === "contract" ? "contract" : "package";
     const targetMeta = {
@@ -447,24 +448,24 @@ function renderDashboardAlerts(alerts) {
         <td><button type="button" class="btn btn-outline btn-sm" data-bf-action="${targetMeta.action}" data-id="${safeAttr(item.id)}" aria-label="Xử lý ${safeAttr(targetMeta.label)} ${safeAttr(targetMeta.code || targetMeta.name)}">Xử lý</button></td>
       </tr>
     `;
-  }).join("");
+  }).join(""));
 }
 
 function renderRecentPackages(view, packages) {
   const tbody = document.querySelector("#recent-packages-table tbody");
   if (!tbody) return;
   if (!packages.length) {
-    tbody.innerHTML = renderEmptyRow(4, "Chưa có gói thầu nào", "inbox");
+    tbody.innerHTML = trustedHTML(renderEmptyRow(4, "Chưa có gói thầu nào", "inbox"));
     return;
   }
-  tbody.innerHTML = packages.map((pkg) => `
+  tbody.innerHTML = trustedHTML(packages.map((pkg) => `
     <tr>
       <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="text-blue fw-bold link-hover"><span class="detail-code">${escapeHtml(pkg.maGoiThau || "")}</span></a></td>
       <td><a href="#" data-bf-action="show-package" data-id="${safeAttr(pkg.id)}" class="view-package-link">${escapeHtml(pkg.tenGoiThau || "")}</a></td>
       <td>${view.model.formatCurrency(pkg.giaGoiThau || 0)}</td>
       <td>${view.getStatusBadge(pkg.trangThai)}</td>
     </tr>
-  `).join("");
+  `).join(""));
 }
 
 function renderDashboardSnapshot(view, data) {
@@ -519,9 +520,9 @@ export function renderSuperAdminDashboard() {
     if (orgListContainer) {
       const list = summary.organizations;
       if (list.length === 0) {
-        orgListContainer.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Chưa có tổ chức nào đăng ký thầu</td></tr>`;
+        orgListContainer.innerHTML = trustedHTML(`<tr><td colspan="7" class="text-center text-muted">Chưa có tổ chức nào đăng ký thầu</td></tr>`);
       } else {
-        orgListContainer.innerHTML = list.map((org) => {
+        orgListContainer.innerHTML = trustedHTML(list.map((org) => {
           const pkgName = org.package_id === "diamond" ? "Gói Kim Cương" : org.package_id === "gold" ? "Gói Vàng" : org.package_id === "silver" ? "Gói Bạc" : "Chưa đăng ký";
           const pkgClass = org.package_id === "diamond" ? "badge-primary" : org.package_id === "gold" ? "badge-warning" : org.package_id === "silver" ? "badge-success" : "badge-neutral";
           return `
@@ -539,7 +540,7 @@ export function renderSuperAdminDashboard() {
                                 </td>
                             </tr>
                         `;
-        }).join("");
+        }).join(""));
       }
     }
     this.createIconsScoped(document.getElementById("tab-superadmin-dashboard"));

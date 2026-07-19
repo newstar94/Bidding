@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { normalizeVietnamTaxCode } from "../app/domUtils.js";
 import { bindPartnerTaxCodeLookup, findStoredPartnerLookupData } from "./partnerTaxLookup.js";
@@ -19,10 +20,7 @@ import {
 } from "./PartnerFormController.js";
 const todayYmd = getCurrentDateYmd;
 const safeStampSrc = (value) => {
-  const src = String(value || "").trim();
-  if (/^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) return src;
-  if (/^\/images\/nha_thau\/[a-z0-9._-]+$/i.test(src)) return src;
-  return "";
+  return safeImageSrc(value);
 };
 const setNhaThauStampPreview = (value, isReadOnly = false, cacheKey = "") => {
   const uploadZone = document.getElementById("nt-upload-zone-dau");
@@ -248,7 +246,7 @@ export async function handleNhaThauSubmit(e) {
   if (contractModal && contractModal.classList.contains("active")) {
     const ntSelect = document.getElementById("hd-nhathauid");
     if (ntSelect) {
-      ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
+      ntSelect.innerHTML = trustedHTML('<option value="">-- Chọn Nhà thầu --</option>' + this.model.getLatestNhaThau().map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>');
       ntSelect.value = data.id;
       ntSelect.dispatchEvent(new Event("change", { bubbles: true }));
     }

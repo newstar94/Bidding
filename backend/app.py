@@ -41,6 +41,7 @@ from starlette.responses import JSONResponse, HTMLResponse, Response, FileRespon
 from starlette.requests import Request
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
@@ -385,6 +386,12 @@ from backend.auth.auth_routes import (
 )
 from backend.auth.auth_routes import build_session_bootstrap
 from backend.auth.google_auth_routes import google_login_api
+from backend.auth.mfa_routes import (
+    mfa_confirm_api,
+    mfa_disable_api,
+    mfa_setup_api,
+    mfa_status_api,
+)
 from backend.sync.api import (
     sync_websocket_endpoint,
     sync_api,
@@ -689,6 +696,10 @@ routes = [
     Route("/api/auth/verify-email-change", verify_email_change_api, methods=["POST"]),
     Route("/api/auth/change-password", change_password_api, methods=["POST"]),
     Route("/api/auth/privileged-reauth", privileged_reauth_api, methods=["POST"]),
+    Route("/api/auth/mfa/status", mfa_status_api, methods=["GET"]),
+    Route("/api/auth/mfa/setup", mfa_setup_api, methods=["POST"]),
+    Route("/api/auth/mfa/confirm", mfa_confirm_api, methods=["POST"]),
+    Route("/api/auth/mfa/disable", mfa_disable_api, methods=["POST"]),
     Route("/api/auth/users", list_users_api, methods=["GET"]),
     Route("/api/auth/users/access-settings", update_user_access_settings_api, methods=["PUT"]),
 
@@ -773,6 +784,9 @@ else:
 
 cors_origins_str = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000")
 cors_origins = _split_env_list(cors_origins_str) or ["http://127.0.0.1:8000"]
+allowed_hosts = _split_env_list(
+    os.environ.get("ALLOWED_HOSTS", "127.0.0.1,localhost,testserver")
+)
 
 if IS_PRODUCTION:
     super_admin_allowlist = _split_env_list(os.environ.get("SUPER_ADMIN_IP_ALLOWLIST", ""))
@@ -803,17 +817,30 @@ if IS_PRODUCTION:
         raise RuntimeError("Production CORS_ORIGINS must contain only APP_PUBLIC_URL (same-origin deployment).")
     if set(ALLOWED_WS_ORIGINS) != {APP_PUBLIC_URL}:
         raise RuntimeError("Production ALLOWED_WS_ORIGINS must contain only APP_PUBLIC_URL.")
+    public_hostname = str(urlparse(APP_PUBLIC_URL).hostname or "").casefold()
+    normalized_allowed_hosts = {host.casefold() for host in allowed_hosts}
+    if (
+        not public_hostname
+        or normalized_allowed_hosts != {public_hostname}
+        or any("*" in host or ":" in host or "/" in host for host in allowed_hosts)
+    ):
+        raise RuntimeError(
+            "Production ALLOWED_HOSTS must contain only the hostname from APP_PUBLIC_URL."
+        )
 
 
 from backend.http_middleware import (
     BodySizeLimitMiddleware,
     CSRFMiddleware,
+    ProxyHeaderTrustMiddleware,
     ResponseIntegrityMiddleware,
     SecurityHeadersMiddleware,
 )
 
 middleware = [
     Middleware(ResponseIntegrityMiddleware),
+    Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts, www_redirect=False),
+    Middleware(ProxyHeaderTrustMiddleware),
     Middleware(CORSMiddleware,
                allow_origins=cors_origins,
                allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -849,6 +876,7 @@ async def lifespan(application):
         image_dir=IMAGE_DIR,
         background_startup_delay_seconds=BACKGROUND_STARTUP_DELAY_SECONDS,
         enable_image_cache_prewarm=ENABLE_IMAGE_CACHE_PREWARM,
+        enable_partner_lookup_worker=ENABLE_PARTNER_LOOKUP_WORKER,
         validate_startup=validate_startup_configuration,
     ):
         yield

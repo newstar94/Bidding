@@ -41,11 +41,24 @@ from backend.shared.request_validation import read_json_object, validate_or_resp
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_write
+from backend.shared.database_io import run_database_read
+from backend.auth.security_notifications import build_security_notification_tasks
 
 
 PASSWORD_RESET_REQUEST_MESSAGE = (
     "Nếu thông tin phù hợp với một tài khoản, chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu qua email."
 )
+
+
+def _load_security_recipient(user_id):
+    conn = database.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT email, ho_ten FROM tai_khoan WHERE id = ?", (user_id,)
+        ).fetchone()
+        return tuple(row) if row else None
+    finally:
+        conn.close()
 
 
 async def _rate_limit_decision(*args, **kwargs):
@@ -490,10 +503,19 @@ async def reset_password_api(request):
             target_id=user_id,
             request=request,
         )
-        return JSONResponse({
-            "success": True,
-            "message": "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.",
-        })
+        recipient = await run_database_read(_load_security_recipient, user_id)
+        return JSONResponse(
+            {
+                "success": True,
+                "message": "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.",
+            },
+            background=build_security_notification_tasks(
+                email=recipient[0] if recipient else None,
+                display_name=recipient[1] if recipient else None,
+                subject="[BiddingFlow] Mật khẩu đã được đặt lại",
+                message="Mật khẩu tài khoản vừa được đặt lại bằng liên kết khôi phục và mọi phiên cũ đã bị thu hồi.",
+            ),
+        )
     except Exception as e:
         log_error(e, "reset_password_api")
         return JSONResponse({"error": "Đã xảy ra lỗi. Vui lòng thử lại sau."}, status_code=500)

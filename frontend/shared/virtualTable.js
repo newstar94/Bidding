@@ -1,3 +1,4 @@
+import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
 const virtualStates = /* @__PURE__ */ new WeakMap();
 export function clearVirtualTable(tbody) {
@@ -16,13 +17,13 @@ export function renderVirtualTable(tbody, rows, renderRow, options = {}) {
   const onRender = options.onRender || (() => {
   });
   if (!Array.isArray(rows) || rows.length <= threshold) {
-    tbody.innerHTML = (rows || []).map(renderRow).join("");
+    tbody.innerHTML = trustedHTML((rows || []).map(renderRow).join(""));
     onRender();
     return false;
   }
   const container = tbody.closest(".table-container") || tbody.parentElement;
   if (!container) {
-    tbody.innerHTML = rows.map(renderRow).join("");
+    tbody.innerHTML = trustedHTML(rows.map(renderRow).join(""));
     onRender();
     return false;
   }
@@ -41,7 +42,7 @@ export function renderVirtualTable(tbody, rows, renderRow, options = {}) {
     const bottomHeight = Math.max(0, (rows.length - end) * rowHeight);
     const topSpacer = topHeight > 0 ? `<tr aria-hidden="true" class="virtual-spacer"><td colspan="${colSpan}" style="height:${topHeight}px; padding:0; border:0;"></td></tr>` : "";
     const bottomSpacer = bottomHeight > 0 ? `<tr aria-hidden="true" class="virtual-spacer"><td colspan="${colSpan}" style="height:${bottomHeight}px; padding:0; border:0;"></td></tr>` : "";
-    tbody.innerHTML = topSpacer + rows.slice(start, end).map(renderRow).join("") + bottomSpacer;
+    tbody.innerHTML = trustedHTML(topSpacer + rows.slice(start, end).map(renderRow).join("") + bottomSpacer);
     onRender();
   };
   const onScroll = () => {

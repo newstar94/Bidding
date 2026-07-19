@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 
 export function renderOpeningPanel(container, pkg, { isDirectOrSpecial = false } = {}) {
@@ -7,7 +8,7 @@ export function renderOpeningPanel(container, pkg, { isDirectOrSpecial = false }
   const title = isDirectOrSpecial ? "Danh sách Nhà thầu" : "Danh sách Nhà thầu tham dự &amp; Nộp hồ sơ";
   const addLabel = isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ";
   const saveLabel = isDirectOrSpecial ? "Lưu thông tin" : "Lưu thông tin mở thầu";
-  container.innerHTML = `
+  container.innerHTML = trustedHTML(`
     <select id="mothau-goithau-select" class="is-hidden"><option value="${packageId}" selected>${packageName}</option></select>
     <div id="mothau-goithau-summary" class="is-hidden"></div>
     <div id="mothau-bid-container" class="is-hidden">
@@ -30,5 +31,5 @@ export function renderOpeningPanel(container, pkg, { isDirectOrSpecial = false }
       </div>
     </div>
     <div id="mothau-empty-state" class="is-hidden"></div>
-  `;
+  `);
 }

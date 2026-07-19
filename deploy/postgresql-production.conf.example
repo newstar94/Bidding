@@ -1,0 +1,27 @@
+# Merge these values into postgresql.conf (or the managed-service parameter
+# group), then restart PostgreSQL before creating pg_stat_statements.
+shared_preload_libraries = 'pg_stat_statements'
+compute_query_id = on
+pg_stat_statements.max = 10000
+pg_stat_statements.track = top
+pg_stat_statements.track_utility = off
+
+# Required for useful I/O diagnostics. Measure the small timing overhead on the
+# target service tier before rollout.
+track_io_timing = on
+track_wal_io_timing = on
+track_activity_query_size = 4096
+
+# Surface contention without logging normal SQL parameters.
+log_lock_waits = on
+deadlock_timeout = '1s'
+log_temp_files = 65536
+
+# Conservative SaaS defaults; tune per table after observing write volume and
+# dead-tuple growth on staging.
+autovacuum = on
+autovacuum_max_workers = 5
+autovacuum_naptime = '30s'
+autovacuum_vacuum_scale_factor = 0.05
+autovacuum_analyze_scale_factor = 0.025
+autovacuum_vacuum_cost_limit = 2000

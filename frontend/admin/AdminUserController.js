@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { bindCurrencyElement } from "../app/domUtils.js";
 import { businessOrganizations, normalizeOrganizations, organizationEmployeeProfile } from "../auth/accessContext.js";
@@ -159,10 +160,10 @@ function populateAccessPackageSelect(controller, select, selectedValue) {
 
 function populatePermissionSelect(select, value) {
   if (!select) return;
-  select.innerHTML = `
+  select.innerHTML = trustedHTML(`
     <option value="">Không truy cập</option>
     <option value="view">Chỉ xem</option>
-    <option value="edit">Thêm / Sửa / Xóa</option>`;
+    <option value="edit">Thêm / Sửa / Xóa</option>`);
   select.value = value || "view";
 }
 
@@ -518,7 +519,7 @@ export function setupRBACEvents() {
       }
       formHsg.reset();
       document.getElementById("form-hosogiay-id").value = "";
-      document.getElementById("btn-save-hosogiay").innerHTML = '<i data-lucide="plus"></i> Thêm trạng thái';
+      document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
       lucide.createIcons();
       this.view.renderManagerHoSoGiayPanel();
       await this.view.customAlert("Thành công", "Trạng thái hồ sơ giấy đã được cập nhật thành công!", "check-circle");
@@ -930,8 +931,8 @@ export function setupRBACEvents() {
       const oldPassword = document.getElementById("profile-old-password").value;
       const newPassword = document.getElementById("profile-new-password").value;
       const confirmPassword = document.getElementById("profile-confirm-password").value;
-      if (newPassword.length < 8 || newPassword.length > 256) {
-        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới phải có từ 8 đến 256 ký tự!", "alert-triangle", document.getElementById("profile-new-password"));
+      if (newPassword.length < 15 || newPassword.length > 256) {
+        await this.view.customAlert("Lỗi mật khẩu", "Mật khẩu mới phải có từ 15 đến 256 ký tự!", "alert-triangle", document.getElementById("profile-new-password"));
         return;
       }
       if (newPassword !== confirmPassword) {
@@ -970,6 +971,124 @@ export function setupRBACEvents() {
         await this.view.customAlert("Lỗi hệ thống", "Lỗi kết nối máy chủ: " + err.message, "alert-triangle");
       }
     });
+  }
+  const mfaStatusEl = document.getElementById("profile-mfa-status");
+  const mfaButton = document.getElementById("btn-profile-mfa");
+  const mfaActionLabel = document.getElementById("profile-mfa-action-label");
+  let profileMfaState = null;
+  const refreshProfileMfa = async () => {
+    if (!mfaStatusEl || !mfaButton) return;
+    try {
+      const response = await apiFetch("/api/auth/mfa/status");
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Không thể đọc trạng thái MFA.");
+      profileMfaState = payload;
+      if (payload.enabled) {
+        mfaStatusEl.textContent = payload.required
+          ? "MFA đang bật và là bắt buộc đối với Super Admin."
+          : "MFA đang bật cho tài khoản này.";
+        mfaActionLabel.textContent = payload.required ? "MFA bắt buộc" : "Tắt MFA";
+        mfaButton.disabled = Boolean(payload.required);
+      } else {
+        mfaStatusEl.textContent = payload.required
+          ? "Super Admin phải bật MFA."
+          : (payload.recommended
+            ? "Nên bật MFA để bảo vệ tài khoản quản lý."
+            : "Bạn có thể bật MFA để tăng bảo mật tài khoản.");
+        mfaActionLabel.textContent = "Thiết lập MFA";
+        mfaButton.disabled = false;
+      }
+    } catch (error) {
+      mfaStatusEl.textContent = error.message;
+      mfaButton.disabled = true;
+    }
+  };
+  if (mfaButton) {
+    bindAdminEvent(mfaButton, "click", "profile-mfa", async () => {
+      if (!profileMfaState) return;
+      if (profileMfaState.enabled) {
+        const password = await this.view.customPrompt(
+          "Tắt MFA",
+          "Nhập mật khẩu hiện tại.",
+          "",
+          "Mật khẩu hiện tại",
+          false,
+          (value) => value ? "" : "Vui lòng nhập mật khẩu.",
+          "password"
+        );
+        if (!password) return;
+        const code = await this.view.customPrompt(
+          "Tắt MFA",
+          "Nhập mã xác thực hoặc mã khôi phục.",
+          "",
+          "Mã xác thực",
+          false,
+          (value) => String(value || "").trim().length >= 6 ? "" : "Vui lòng nhập mã.",
+          "text"
+        );
+        if (!code) return;
+        const response = await apiFetch("/api/auth/mfa/disable", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password, code: String(code).trim() })
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          await this.view.customAlert("Không thể tắt MFA", payload.error, "alert-triangle");
+          return;
+        }
+        await this.view.customAlert("MFA đã tắt", "Tất cả phiên đăng nhập đã bị thu hồi.", "check-circle");
+        showLoginAfterSecurityChange(this);
+        return;
+      }
+      const password = await this.view.customPrompt(
+        "Thiết lập MFA",
+        "Nhập mật khẩu hiện tại để tiếp tục.",
+        "",
+        "Mật khẩu hiện tại",
+        false,
+        (value) => value ? "" : "Vui lòng nhập mật khẩu.",
+        "password"
+      );
+      if (!password) return;
+      const setupResponse = await apiFetch("/api/auth/mfa/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      const setupPayload = await setupResponse.json();
+      if (!setupResponse.ok) {
+        await this.view.customAlert("Không thể thiết lập MFA", setupPayload.error, "alert-triangle");
+        return;
+      }
+      const code = await this.view.customPrompt(
+        "Xác nhận MFA",
+        `Thêm khóa ${setupPayload.secret} vào ứng dụng xác thực, rồi nhập mã 6 số.`,
+        "",
+        "Mã 6 số",
+        false,
+        (value) => /^\d{6}$/.test(String(value || "").trim()) ? "" : "Mã phải gồm đúng 6 chữ số.",
+        "text"
+      );
+      if (!code) return;
+      const confirmResponse = await apiFetch("/api/auth/mfa/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: String(code).trim() })
+      });
+      const confirmPayload = await confirmResponse.json();
+      if (!confirmResponse.ok) {
+        await this.view.customAlert("Không thể xác nhận MFA", confirmPayload.error, "alert-triangle");
+        return;
+      }
+      await this.view.customAlert(
+        "Lưu mã khôi phục",
+        `Mỗi mã chỉ dùng một lần: ${confirmPayload.recovery_codes.join(", ")}`,
+        "shield-check"
+      );
+      await refreshProfileMfa();
+    });
+    refreshProfileMfa();
   }
 }
 export function editEmployee(id) {
@@ -1050,7 +1169,7 @@ export async function reAddEmployee(id, actionButton = null) {
   if (actionButton) {
     actionButton.disabled = true;
     actionButton.setAttribute("aria-busy", "true");
-    actionButton.innerHTML = '<i class="anim-spin" data-lucide="loader-circle" aria-hidden="true"></i>';
+    actionButton.innerHTML = trustedHTML('<i class="anim-spin" data-lucide="loader-circle" aria-hidden="true"></i>');
     lucide.createIcons({ root: actionButton });
   }
   try {
@@ -1092,7 +1211,7 @@ export async function reAddEmployee(id, actionButton = null) {
     if (actionButton?.isConnected) {
       actionButton.disabled = false;
       actionButton.removeAttribute("aria-busy");
-      actionButton.innerHTML = originalButtonHtml;
+      actionButton.innerHTML = trustedHTML(originalButtonHtml);
       lucide.createIcons({ root: actionButton });
     }
   }
@@ -1130,7 +1249,7 @@ export function editHoSoGiayStatus(id) {
   document.getElementById("form-hosogiay-id").value = status.id;
   document.getElementById("hsg-name").value = status.name;
   document.getElementById("hsg-color").value = status.color;
-  document.getElementById("btn-save-hosogiay").innerHTML = '<i data-lucide="save"></i> Cập nhật trạng thái';
+  document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="save"></i> Cập nhật trạng thái');
   lucide.createIcons();
 }
 export async function deleteHoSoGiayStatus(id) {
@@ -1149,7 +1268,7 @@ export async function deleteHoSoGiayStatus(id) {
   if (editingId === id) {
     document.getElementById("form-manager-hosogiay").reset();
     document.getElementById("form-hosogiay-id").value = "";
-    document.getElementById("btn-save-hosogiay").innerHTML = '<i data-lucide="plus"></i> Thêm trạng thái';
+    document.getElementById("btn-save-hosogiay").innerHTML = trustedHTML('<i data-lucide="plus"></i> Thêm trạng thái');
   }
   this.view.renderManagerHoSoGiayPanel();
   const syncResult = await this.autoSync();

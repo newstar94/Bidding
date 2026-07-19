@@ -1,3 +1,4 @@
+import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
 import { apiFetch } from "./apiClient.js";
 
@@ -237,7 +238,7 @@ export async function applyRawAddressToAddressControls(rawAddress, { detailInput
   if (wardSelect && (parsed.provinceCode || parsed.wardName)) {
     if (parsed.provinceCode) {
       const wards = await ensureVietnamWards(parsed.provinceCode);
-      wardSelect.innerHTML = renderWardOptions(wards);
+      wardSelect.innerHTML = trustedHTML(renderWardOptions(wards));
     }
     wardSelect.disabled = false;
     selectAddressOption(wardSelect, parsed.wardCode, parsed.wardName, "legacy-ward");
@@ -249,15 +250,15 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
   const tinhSelect = document.getElementById(tinhSelectId);
   const xaSelect = document.getElementById(xaSelectId);
   if (!tinhSelect || !xaSelect) return;
-  xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
+  xaSelect.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
   xaSelect.disabled = true;
   tinhSelect.disabled = isDisabled;
   const provinces = await ensureVietnamProvinces();
   if (!provinces.length) {
-    tinhSelect.innerHTML = '<option value="">Không thể tải danh sách tỉnh thành</option>';
+    tinhSelect.innerHTML = trustedHTML('<option value="">Không thể tải danh sách tỉnh thành</option>');
     return;
   }
-  tinhSelect.innerHTML = '<option value="">-- Chọn Tỉnh/Thành phố --</option>' + provinces.map((p) => `<option value="${p.code}" data-name="${escapeOptionText(p.name)}">${escapeOptionText(p.name)}</option>`).join("");
+  tinhSelect.innerHTML = trustedHTML('<option value="">-- Chọn Tỉnh/Thành phố --</option>' + provinces.map((p) => `<option value="${p.code}" data-name="${escapeOptionText(p.name)}">${escapeOptionText(p.name)}</option>`).join(""));
   if (currentTinhName) {
     const foundProvince = provinces.find((p) => p.name === currentTinhName);
     if (foundProvince) {
@@ -268,20 +269,20 @@ export async function initAddressDropdowns(tinhSelectId, xaSelectId, currentTinh
   }
   const loadWards = async (provinceCode, selectWardName = "") => {
     if (!provinceCode) {
-      xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
+      xaSelect.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
       xaSelect.disabled = true;
       return;
     }
     if (String(provinceCode).startsWith("legacy-province:")) {
-      xaSelect.innerHTML = '<option value="">-- Chọn Xã/Phường --</option>';
+      xaSelect.innerHTML = trustedHTML('<option value="">-- Chọn Xã/Phường --</option>');
       xaSelect.disabled = isDisabled;
       selectAddressOption(xaSelect, "", selectWardName, "legacy-ward");
       return;
     }
-    xaSelect.innerHTML = '<option value="">Đang tải...</option>';
+    xaSelect.innerHTML = trustedHTML('<option value="">Đang tải...</option>');
     xaSelect.disabled = true;
     const wards = await ensureVietnamWards(provinceCode);
-    xaSelect.innerHTML = renderWardOptions(wards);
+    xaSelect.innerHTML = trustedHTML(renderWardOptions(wards));
     xaSelect.disabled = isDisabled;
     if (selectWardName) {
       const foundWard = wards.find((w) => w.name === selectWardName);
@@ -322,7 +323,7 @@ export function makeSearchableSelect(select, placeholder) {
   input.disabled = select.disabled;
   const arrow = document.createElement("div");
   arrow.className = "custom-select-arrow";
-  arrow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down bf-s-bd877e16c3"><path d="m6 9 6 6 6-6"/></svg>`;
+  arrow.innerHTML = trustedHTML(`<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down bf-s-bd877e16c3"><path d="m6 9 6 6 6-6"/></svg>`);
   const optionsList = document.createElement("ul");
   optionsList.className = "custom-select-options";
   optionsList.setAttribute("data-parent", select.id);
@@ -467,7 +468,7 @@ function refreshCustomOptions(select, wrapper) {
   const optionsList = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`) || wrapper.querySelector(".custom-select-options");
   if (!optionsList) return;
   input.disabled = select.disabled;
-  optionsList.innerHTML = "";
+  optionsList.innerHTML = trustedHTML("");
   const options = Array.from(select.options);
   options.forEach((opt) => {
     const li = document.createElement("li");

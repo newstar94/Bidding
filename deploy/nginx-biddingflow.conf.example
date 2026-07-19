@@ -15,11 +15,27 @@ upstream biddingflow_backend {
 }
 
 server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+    ssl_certificate /etc/letsencrypt/live/bidding.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bidding.example.com/privkey.pem;
+    return 444;
+}
+
+server {
     listen 80;
     listen [::]:80;
     server_name bidding.example.com;
 
-    return 301 https://$host$request_uri;
+    return 301 https://bidding.example.com$request_uri;
 }
 
 server {
@@ -54,7 +70,7 @@ server {
         deny all;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -66,7 +82,7 @@ server {
     location /dist/assets/ {
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -82,7 +98,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -96,7 +112,7 @@ server {
         limit_req zone=biddingflow_sync burst=4 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -111,7 +127,7 @@ server {
         limit_req zone=biddingflow_document burst=2 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -126,7 +142,7 @@ server {
         limit_req zone=biddingflow_document burst=2 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -141,7 +157,7 @@ server {
         limit_req zone=biddingflow_auth burst=5 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -156,7 +172,7 @@ server {
         limit_req zone=biddingflow_document burst=2 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -171,7 +187,7 @@ server {
         limit_req zone=biddingflow_api burst=40 nodelay;
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -184,7 +200,7 @@ server {
     location / {
         proxy_pass http://biddingflow_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $server_name;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;

@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { bindCurrencyElement, debounce, formatPartnerIdentityCode } from "../app/domUtils.js";
@@ -50,7 +51,7 @@ export function renderMoThauPanel() {
     }
     return true;
   });
-  select.innerHTML = '<option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join("");
+  select.innerHTML = trustedHTML('<option value="">-- Chọn Gói thầu (Đang mời thầu / Đã mở thầu / Đang chấm thầu / Đã có kết quả) --</option>' + targetPackages.map((g) => `<option value="${escapeHtml(g.id)}" data-search="${escapeHtml(`${g.maGoiThau || ""} ${g.tenGoiThau || ""}`)}">${escapeHtml(g.tenGoiThau)} (${escapeHtml(g.maGoiThau || "Chưa có mã")})</option>`).join(""));
   if (selectedVal && targetPackages.some((g) => g.id === selectedVal)) {
     select.value = selectedVal;
   } else {
@@ -117,7 +118,7 @@ export function renderMoThauPanel() {
     const downloadExcelBtnTop = document.getElementById("btn-mothau-download-excel");
     if (addBidBtn2) {
       setRuntimeStyle(addBidBtn2, "display", isEditable ? "" : "none");
-      addBidBtn2.innerHTML = `<i data-lucide="plus"></i> ${isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ"}`;
+      addBidBtn2.innerHTML = trustedHTML(`<i data-lucide="plus"></i> ${isDirectOrSpecial ? "Thêm nhà thầu" : "Thêm Nhà thầu nộp hồ sơ"}`);
     }
     if (importExcelBtnTop) setRuntimeStyle(importExcelBtnTop, "display", isEditable ? "" : "none");
     if (downloadExcelBtnTop) setRuntimeStyle(downloadExcelBtnTop, "display", isEditable ? "" : "none");
@@ -127,7 +128,7 @@ export function renderMoThauPanel() {
           setRuntimeStyle(saveBtn2, "display", "none");
         } else {
           setRuntimeStyle(saveBtn2, "display", "");
-          saveBtn2.innerHTML = '<i data-lucide="edit"></i> Chỉnh sửa';
+          saveBtn2.innerHTML = trustedHTML('<i data-lucide="edit"></i> Chỉnh sửa');
           saveBtn2.className = "btn btn-primary";
           saveBtn2.onclick = () => {
             this.view._editingState = this.view._editingState || {};
@@ -137,7 +138,7 @@ export function renderMoThauPanel() {
         }
       } else {
         setRuntimeStyle(saveBtn2, "display", "");
-        saveBtn2.innerHTML = `<i data-lucide="save"></i> ${isDirectOrSpecial ? "Lưu thông tin" : "Lưu thông tin mở thầu"}`;
+        saveBtn2.innerHTML = trustedHTML(`<i data-lucide="save"></i> ${isDirectOrSpecial ? "Lưu thông tin" : "Lưu thông tin mở thầu"}`);
         saveBtn2.className = "btn btn-primary";
         saveBtn2.onclick = () => this.saveThongTinMoThau();
       }
@@ -249,8 +250,8 @@ export function renderMoThauPanel() {
                 </tr>
             `;
     }
-    thead.innerHTML = theadHtml;
-    tbody.innerHTML = "";
+    thead.innerHTML = trustedHTML(theadHtml);
+    tbody.innerHTML = trustedHTML("");
     const bids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(gtId));
     bids.sort((a, b) => {
       const codeA = String(a.maPhanLo || "").toLowerCase();
@@ -546,7 +547,7 @@ export function addMoThauRow(caseType, gt, bidData = {}, readOnly = false) {
             <td class="bf-s-63dbf5319a"><button type="button" class="action-btn btn-delete mt-remove-row" aria-label="Xóa nhà thầu khỏi danh sách"><i data-lucide="trash-2"></i></button></td>
         `;
   }
-  tr.innerHTML = cellHtml;
+  tr.innerHTML = trustedHTML(cellHtml);
   const rowLotSelect = tr.querySelector(".mt-ma-phan-lo");
   if (rowLotSelect) {
     if (bidData.maPhanLo) rowLotSelect.value = bidData.maPhanLo;

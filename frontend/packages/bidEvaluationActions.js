@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { escapeHtml } from "../shared/view_helpers.js";
 import { validateRequiredEvaluationReportFields } from "./bidEvaluationValidation.js";
@@ -80,20 +81,20 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
   if (isReadOnly) {
     const finalConclusion = savedKetLuan || conclusion;
     if (finalConclusion === "Đạt" || finalConclusion === "Đạt (Xếp hạng 1)" || finalConclusion.startsWith("Đạt")) {
-      cell.innerHTML = `<span class="badge badge-success bf-s-c6fa01b3f1">Đạt</span>`;
+      cell.innerHTML = trustedHTML(`<span class="badge badge-success bf-s-c6fa01b3f1">Đạt</span>`);
     } else if (finalConclusion && finalConclusion.startsWith("Không đạt")) {
-      cell.innerHTML = `<span class="badge badge-danger bf-s-fc8cc31ae8">${escapeHtml(finalConclusion)}</span>`;
+      cell.innerHTML = trustedHTML(`<span class="badge badge-danger bf-s-fc8cc31ae8">${escapeHtml(finalConclusion)}</span>`);
     } else {
-      cell.innerHTML = `<span>${escapeHtml(finalConclusion || "--")}</span>`;
+      cell.innerHTML = trustedHTML(`<span>${escapeHtml(finalConclusion || "--")}</span>`);
     }
   } else {
     if (status === "fixed_pass") {
       if (cell.textContent.trim() !== "Đạt" || !cell.querySelector(".badge-success")) {
-        cell.innerHTML = `<span class="badge badge-success bf-s-a9d5133cd4">Đạt</span>`;
+        cell.innerHTML = trustedHTML(`<span class="badge badge-success bf-s-a9d5133cd4">Đạt</span>`);
       }
     } else if (status === "fixed_fail") {
       if (cell.textContent.trim() !== conclusion || !cell.querySelector(".badge-danger")) {
-        cell.innerHTML = `<span class="badge badge-danger bf-s-18dd987272">${escapeHtml(conclusion)}</span>`;
+        cell.innerHTML = trustedHTML(`<span class="badge badge-danger bf-s-18dd987272">${escapeHtml(conclusion)}</span>`);
       }
     } else if (status === "user_select") {
       const existingSelect = cell.querySelector(".mt-dg-ketluan");
@@ -102,17 +103,17 @@ export function updateRowConclusion(tr, savedKetLuan = null, isReadOnly = false)
           existingSelect.value = conclusion;
         }
       } else {
-        cell.innerHTML = `
+        cell.innerHTML = trustedHTML(`
                     <select class="form-control mt-dg-ketluan bf-s-9bdb7b6b47">
                         <option value="">-- Chọn --</option>
                         <option value="Đạt" ${conclusion === "Đạt" ? "selected" : ""}>Đạt</option>
                         <option value="Không đạt" ${conclusion === "Không đạt" ? "selected" : ""}>Không đạt</option>
                     </select>
-                `;
+                `);
       }
     } else {
       if (cell.textContent.trim() !== "Chờ đánh giá") {
-        cell.innerHTML = `<span class="bf-s-77eff41817">Chờ đánh giá</span>`;
+        cell.innerHTML = trustedHTML(`<span class="bf-s-77eff41817">Chờ đánh giá</span>`);
       }
     }
   }

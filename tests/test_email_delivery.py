@@ -46,6 +46,8 @@ def test_production_startup_rejects_missing_smtp(monkeypatch: pytest.MonkeyPatch
     environment = {
         "APP_ENV": "production",
         "DATABASE_URL": "postgresql://app:secret@db.example.test/biddingflow?sslmode=verify-full",
+        "DATABASE_AUTO_MIGRATE": "false",
+        "DATABASE_PRIVATE_NETWORK_CONFIRMED": "true",
     }
     with pytest.raises(startup.StartupValidationError, match="SMTP"):
         startup.validate_startup_configuration(object(), environment)

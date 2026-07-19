@@ -3,6 +3,7 @@ import json
 import re
 import time
 from starlette.responses import JSONResponse
+from backend.auth.security_notifications import build_security_notification_batch
 
 from backend.shared.helpers import (
     database,
@@ -202,6 +203,15 @@ async def update_organization_subscription_api(request):
             "SELECT user_id FROM thanh_vien_to_chuc WHERE organization_id = ?",
             (organization_id,),
         ).fetchall()]
+        manager_recipients = cursor.execute(
+            """SELECT accounts.email, accounts.ho_ten
+               FROM thanh_vien_to_chuc AS memberships
+               JOIN tai_khoan AS accounts ON accounts.id = memberships.user_id
+               WHERE memberships.organization_id = ?
+                 AND lower(trim(memberships.vai_tro_trong_to_chuc)) = 'manager'
+                 AND COALESCE(memberships.trang_thai_thanh_vien, 'active') = 'active'""",
+            (organization_id,),
+        ).fetchall()
         log_audit(
             f"organization.subscription_{action}",
             actor_user_id=role_or_err.user_id,
@@ -221,7 +231,14 @@ async def update_organization_subscription_api(request):
             if action == 'lock':
                 disconnect_user_websockets(user_id)
         broadcast_websocket_event(organization_id, {"event": "organization_subscription_changed"})
-        return JSONResponse(response_payload)
+        return JSONResponse(
+            response_payload,
+            background=build_security_notification_batch(
+                manager_recipients,
+                subject="[BiddingFlow] Gói dịch vụ tổ chức đã thay đổi",
+                message=f"Trạng thái hoặc gói dịch vụ của tổ chức vừa được cập nhật ({action}).",
+            ),
+        )
     except Exception as exc:
         if conn:
             conn.rollback()

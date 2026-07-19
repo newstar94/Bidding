@@ -34,6 +34,7 @@ from backend.auth.auth_helper import (
     PRIVILEGED_REAUTH_TTL_SECONDS,
     SESSION_ACTIVITY_TOUCH_SECONDS,
     verify_super_admin_controls,
+    verify_recent_reauthentication,
 )
 from backend.auth.session_store import (
     create_session,
@@ -51,6 +52,16 @@ from backend.auth.identity import (
     normalize_username,
 )
 from backend.auth.password_policy import validate_new_password, validate_password_input
+from backend.auth.mfa_service import (
+    MfaConfigurationError,
+    consume_mfa_code,
+    get_mfa_status,
+)
+from backend.auth.security_notifications import (
+    build_security_notification_tasks,
+    device_fingerprint,
+    is_new_device,
+)
 from backend.shared.numeric_utils import money_json_value, parse_vnd_amount
 from backend.sync.api import broadcast_websocket_event, disconnect_user_websockets
 from backend.shared.logging_utils import error_response
@@ -59,6 +70,7 @@ from backend.shared.access_policy import is_business_organization
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import run_cpu_bound
 from backend.shared.database_io import run_database_read, run_database_write
+from backend.shared.logging_utils import log_structured_event
 
 
 from backend.auth.auth_service import (
@@ -147,7 +159,10 @@ def _load_login_user(username):
     conn = database.get_connection()
     try:
         row = conn.execute(
-            "SELECT * FROM tai_khoan WHERE username_norm = ? OR email_norm = ?",
+            """SELECT id, ten_dang_nhap, mat_khau, ho_ten, vai_tro, email,
+                      anh_dai_dien, da_xac_minh
+               FROM tai_khoan
+               WHERE username_norm = ? OR email_norm = ?""",
             (username, username),
         ).fetchone()
         return dict(row) if row else None
@@ -155,12 +170,33 @@ def _load_login_user(username):
         conn.close()
 
 
+def _load_login_mfa_status(user_id, role):
+    conn = database.get_connection()
+    try:
+        return get_mfa_status(conn.cursor(), user_id, role)
+    finally:
+        conn.close()
+
+
+class MfaChallengeFailed(ValueError):
+    pass
+
+
 def _record_failed_login(ip_rate_key, user_rate_key, request):
-    del ip_rate_key, user_rate_key
-    log_audit(
+    del request
+    log_structured_event(
         "auth.login_failed",
-        request=request,
-        metadata={"reason": "invalid_credentials"},
+        level="WARN",
+        fields={
+            "reason": "invalid_credentials",
+            "ipBucket": hashlib.sha256(
+                str(ip_rate_key).encode("utf-8")
+            ).hexdigest()[:16],
+            "accountBucket": hashlib.sha256(
+                str(user_rate_key or "").encode("utf-8")
+            ).hexdigest()[:16],
+        },
+        nonblocking=True,
     )
 
 
@@ -175,16 +211,38 @@ def _commit_successful_login(
     request,
     ip_rate_key,
     user_rate_key,
+    mfa_code,
 ):
     conn = database.get_connection()
     try:
         conn.execute("BEGIN")
         cursor = conn.cursor()
+        locked_mfa = cursor.execute(
+            "SELECT enabled FROM account_mfa WHERE user_id = ? FOR UPDATE",
+            (user["id"],),
+        ).fetchone()
+        current_mfa_enabled = bool(locked_mfa and locked_mfa[0])
+        if current_mfa_enabled:
+            if not mfa_code or not consume_mfa_code(
+                cursor, user_id=user["id"], code=mfa_code
+            ):
+                raise MfaChallengeFailed(
+                    "Mã xác thực không đúng, đã hết hạn hoặc đã được sử dụng."
+                )
         if replacement_password_hash:
             cursor.execute(
                 "UPDATE tai_khoan SET mat_khau = ? WHERE id = ?",
                 (replacement_password_hash, user["id"]),
             )
+        try:
+            parsed_device_info = json.loads(device_info or "{}")
+        except (TypeError, json.JSONDecodeError):
+            parsed_device_info = {}
+        new_device = is_new_device(
+            cursor,
+            user["id"],
+            parsed_device_info.get("fingerprint") or device_fingerprint(""),
+        )
         create_session(
             cursor,
             user_id=user["id"],
@@ -193,6 +251,7 @@ def _commit_successful_login(
             idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
             remember=remember,
             device_info=device_info,
+            mfa_verified=current_mfa_enabled,
         )
         access_payload = build_user_access_payload(
             cursor,
@@ -215,7 +274,7 @@ def _commit_successful_login(
         clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
         _session_cache_invalidate_by_user_id(user["id"])
-        return access_payload
+        return access_payload, new_device
     except Exception:
         conn.rollback()
         raise
@@ -317,6 +376,7 @@ async def login_api(request):
             "username": {"type": "string", "required": True, "min_length": 1, "max_length": 320},
             "password": {"type": "string", "required": True, "min_length": 1, "max_length": 256},
             "remember": {"type": "boolean"},
+            "mfa_code": {"type": "string", "max_length": 32},
         })
         if invalid:
             return invalid
@@ -340,14 +400,7 @@ async def login_api(request):
             return rate_limit_response("Quá nhiều lần đăng nhập cho tài khoản này. Vui lòng thử lại sau.", user_limit)
 
         async def record_failed_login():
-            try:
-                await run_database_write(
-                    _record_failed_login, ip_rate_key, user_rate_key, request
-                )
-            except BlockingIOBusyError:
-                # The authentication result remains fail-closed. Saturation is
-                # already exported by the bounded database-lane metrics.
-                pass
+            _record_failed_login(ip_rate_key, user_rate_key, request)
 
         if not username or not validate_password_input(password):
             await record_failed_login()
@@ -385,16 +438,38 @@ async def login_api(request):
                 "username": user['ten_dang_nhap']
             }, status_code=400)
 
+        try:
+            mfa_status = await run_database_read(
+                _load_login_mfa_status,
+                user["id"],
+                user["vai_tro"],
+                timeout_seconds=5.0,
+            )
+        except (BlockingIOBusyError, BlockingIOTimeoutError):
+            return _database_lane_unavailable_response(request, write=False)
+        mfa_code = str(data.get("mfa_code") or "").strip()
+        if mfa_status["enabled"] and not mfa_code:
+            return JSONResponse(
+                {
+                    "mfa_required": True,
+                    "message": "Nhập mã từ ứng dụng xác thực hoặc mã khôi phục.",
+                },
+                status_code=202,
+                headers={"Cache-Control": "no-store"},
+            )
+
         session_token = str(uuid.uuid4())
         expiry_hours = SESSION_REMEMBER_EXPIRY_HOURS if remember else SESSION_EXPIRY_HOURS
         token_expiry = int(time.time() + expiry_hours * 3600)
+        user_agent = request.headers.get("User-Agent", "")[:200]
         device_info = json.dumps({
-            "user_agent": request.headers.get("User-Agent", "")[:200],
+            "user_agent": user_agent,
+            "fingerprint": device_fingerprint(user_agent),
             "ip": ip,
             "login_time": datetime.now(timezone.utc).isoformat()
         })
         try:
-            access_payload = await run_database_write(
+            access_payload, new_device = await run_database_write(
                 _commit_successful_login,
                 user,
                 replacement_password_hash,
@@ -406,10 +481,33 @@ async def login_api(request):
                 request,
                 ip_rate_key,
                 user_rate_key,
+                mfa_code,
             )
         except BlockingIOBusyError:
             return _database_lane_unavailable_response(request, write=True)
+        except MfaChallengeFailed as exc:
+            await record_failed_login()
+            return JSONResponse(
+                {"error": str(exc), "mfa_required": True},
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
+        except MfaConfigurationError:
+            return JSONResponse(
+                {"error": "Không thể xác minh MFA do cấu hình bảo mật không hợp lệ."},
+                status_code=503,
+            )
 
+        notification_tasks = (
+            build_security_notification_tasks(
+                email=user.get("email"),
+                display_name=user.get("ho_ten"),
+                subject="[BiddingFlow] Đăng nhập từ thiết bị mới",
+                message="Tài khoản của bạn vừa đăng nhập từ một trình duyệt hoặc thiết bị chưa được ghi nhận.",
+            )
+            if new_device
+            else None
+        )
         response = JSONResponse({
             "success": True,
             "id": user['id'],
@@ -419,7 +517,11 @@ async def login_api(request):
             "email": user['email'],
             "avatar": user.get('anh_dai_dien'),
             "inactivity_timeout_hours": SESSION_INACTIVITY_TIMEOUT_HOURS
-        })
+            ,"mfa_enrollment_required": bool(
+                mfa_status["required"] and not mfa_status["enabled"]
+            )
+            ,"mfa_enabled": bool(mfa_status["enabled"])
+        }, background=notification_tasks)
 
 
 
@@ -608,7 +710,7 @@ async def update_profile_api(request):
         invalid = validate_or_response(request, data, {
             "name": {"type": "string", "required": True, "max_length": 200},
             "email": {"type": "string", "required": True, "max_length": 320},
-            "avatar": {"type": "string", "max_length": 8_000_000},
+            "avatar": {"type": "string", "max_length": 1_000_000},
             "password": {"type": "string", "min_length": 1, "max_length": 256},
         })
         if invalid:
@@ -1192,7 +1294,10 @@ async def change_password_api(request):
 
         conn = database.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT mat_khau, id FROM tai_khoan WHERE id = ?", (role_or_err.user_id,))
+        cursor.execute(
+            "SELECT mat_khau, id, email, ho_ten FROM tai_khoan WHERE id = ?",
+            (role_or_err.user_id,),
+        )
         row = cursor.fetchone()
 
         if not row:
@@ -1244,10 +1349,18 @@ async def change_password_api(request):
         if old_token:
             _session_cache_invalidate(old_token)
         disconnect_user_websockets(user['id'])
-        response = JSONResponse({
-            "success": True,
-            "message": "Thay đổi mật khẩu thành công! Các phiên đăng nhập trên thiết bị khác đã bị đăng xuất."
-        })
+        response = JSONResponse(
+            {
+                "success": True,
+                "message": "Thay đổi mật khẩu thành công! Các phiên đăng nhập trên thiết bị khác đã bị đăng xuất."
+            },
+            background=build_security_notification_tasks(
+                email=user.get("email"),
+                display_name=user.get("ho_ten"),
+                subject="[BiddingFlow] Mật khẩu đã được thay đổi",
+                message="Mật khẩu tài khoản vừa được thay đổi và các phiên đăng nhập cũ đã bị thu hồi.",
+            ),
+        )
         response.set_cookie("session_token", new_token, httponly=True, secure=_SECURE_COOKIES, samesite="lax", path="/")
         return response
     except Exception as e:
@@ -1334,9 +1447,12 @@ async def privileged_reauth_api(request):
             return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
         is_super_admin = "super_admin" in get_effective_roles(row["vai_tro"])
         if is_super_admin:
+            session_user = _load_user_by_session_token(
+                request.cookies.get("session_token")
+            ) or {}
             controls_valid, controls_error = verify_super_admin_controls(
                 request,
-                dict(row),
+                session_user,
                 require_reauth=False,
             )
             if not controls_valid:
@@ -1423,16 +1539,27 @@ async def update_user_role_api(request):
             return JSONResponse({"error": "Mỗi phạm vi chỉ được có một vai trò."}, status_code=400)
 
         actor_platform_admin = "super_admin" in get_effective_roles(str(role_or_err))
+        actor_session = _load_user_by_session_token(
+            request.cookies.get("session_token")
+        ) or {}
         if actor_platform_admin:
             controls_valid, controls_error = verify_super_admin_controls(
                 request,
-                _load_user_by_session_token(request.cookies.get("session_token")) or {},
+                actor_session,
             )
             if not controls_valid:
                 return JSONResponse({"error": controls_error}, status_code=403)
+        else:
+            reauth_valid, reauth_error = verify_recent_reauthentication(actor_session)
+            if not reauth_valid:
+                return JSONResponse({"error": reauth_error}, status_code=403)
         conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute("BEGIN")
+        target_account = cursor.execute(
+            "SELECT email, ho_ten FROM tai_khoan WHERE id = ?",
+            (user_id,),
+        ).fetchone()
 
         if scope == "platform":
             if not actor_platform_admin:
@@ -1536,7 +1663,18 @@ async def update_user_role_api(request):
         _session_cache_invalidate_by_user_id(user_id)
         _org_cache_invalidate_by_user_id(user_id)
         disconnect_user_websockets(user_id)
-        return JSONResponse({"success": True, "message": "Cập nhật vai trò thành công!"})
+        notification_tasks = None
+        if target_account:
+            notification_tasks = build_security_notification_tasks(
+                email=target_account[0],
+                display_name=target_account[1],
+                subject="[BiddingFlow] Quyền tài khoản đã được thay đổi",
+                message=f"Vai trò của bạn trong phạm vi {scope} vừa được đổi thành {new_role}.",
+            )
+        return JSONResponse(
+            {"success": True, "message": "Cập nhật vai trò thành công!"},
+            background=notification_tasks,
+        )
     except OrgPermissionError as e:
         if conn:
             conn.rollback()

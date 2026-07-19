@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { authFetchDownload, escapeHtml, initCustomSelect } from "../shared/view_helpers.js";
 import { getAppController } from "../app/controllerRef.js";
@@ -120,7 +121,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   const badgeEl = document.getElementById("detail-workflow-status-badge");
   const titleEl = document.getElementById("detail-workflow-title");
   if (codeEl) codeEl.innerText = gt.maGoiThau || "Gói thầu";
-  if (badgeEl) badgeEl.innerHTML = this.getStatusBadge(gt.trangThai);
+  if (badgeEl) badgeEl.innerHTML = trustedHTML(this.getStatusBadge(gt.trangThai));
   if (titleEl) titleEl.innerText = gt.tenGoiThau || "Chưa nhập tên";
   const actionsEl = document.getElementById("detail-workflow-actions");
   if (actionsEl) {
@@ -160,11 +161,11 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
     const relatedGts = Object.values(verMap);
     relatedGts.sort((a, b) => parseInt(a.phienBan || 0) - parseInt(b.phienBan || 0));
     const separator = document.getElementById("detail-workflow-version-separator");
-    verSelect.innerHTML = relatedGts.map((g) => {
+    verSelect.innerHTML = trustedHTML(relatedGts.map((g) => {
       const label = g.phienBan || "00";
       const isSelected = (g.phienBan || "00") === (gt.phienBan || "00");
       return `<option value="${g.id}" ${isSelected ? "selected" : ""}>${label}</option>`;
-    }).join("");
+    }).join(""));
     if (separator) setRuntimeStyle(separator, "display", "inline-block");
     setRuntimeStyle(verSelect, "display", "inline-block");
     if (relatedGts.length >= 2) {
@@ -187,7 +188,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
   });
   const contentWrapper = document.getElementById("detail-workflow-content-wrapper");
   if (!contentWrapper) return;
-  contentWrapper.innerHTML = "";
+  contentWrapper.innerHTML = trustedHTML("");
   switch (this._currentWorkflowTab) {
     case "preparation":
       renderPreparationDetailsPanel(this, { contentWrapper, gt, id, isEditable, appController });
@@ -211,7 +212,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
             formatCurrency: (value) => this.model.formatCurrency(value),
             formatDateTime: (value) => this.model.formatDateWithTime(value)
           });
-          contentWrapper.innerHTML = `
+          contentWrapper.innerHTML = trustedHTML(`
                     ${packageSummaryHtml}
 
                     <div class="bf-s-4cee5cb79b">
@@ -226,7 +227,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                             <i data-lucide="send"></i> Phát hành HSMT & Mời thầu
                         </button>
                     </div>
-                `;
+                `);
           lucide.createIcons();
         } else if (gt.trangThai === "Đang mời thầu" && !isDirectOrSpecial) {
           const khObj = this.model.getLatestPlan(gt.keHoachId);
@@ -334,13 +335,13 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
         return !isNaN(parseFloat(clean)) && isFinite(clean);
       }) || ["Kết hợp giữa kỹ thuật và giá", "Giá cố định", "Dựa trên kỹ thuật"].includes(gt.phuongPhapDanhGia);
       if (!isTechEvalSaved) {
-        contentWrapper.innerHTML = `
+        contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-71ff99332d">
                         <i data-lucide="shield-alert" class="bf-s-106d10c68d"></i>
                         <h4 class="bf-s-01dd0d67e8">Chưa có Nhà thầu đạt kỹ thuật</h4>
                         <p class="bf-s-85ddf1c3bf">Vui lòng hoàn thành và Lưu Báo cáo đánh giá E-HSĐXKT trước.</p>
                     </div>
-                `;
+                `);
       } else {
         const khObj = this.model.getLatestPlan(gt.keHoachId);
         const cdtObj = khObj ? this.model.state.chudautu.find((c) => c.id === khObj.chuDauTuId) : null;
@@ -377,7 +378,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
         const isReadOnly = isCompleted && !isEditingThisStep || gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu";
         const canEdit = isReadOnly && isCompleted && !isFinOpened && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu";
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
-        contentWrapper.innerHTML = `
+        contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-8bd3eb473c">
                         <div class="bf-s-5d398becec">Thông số Gói thầu</div>
                         <div class="bf-s-13b5590e90">
@@ -473,7 +474,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                              <button class="btn btn-primary bf-s-b69e3fa20a" id="btn-edit-qualified-decision"><i data-lucide="edit-3"></i> Chỉnh sửa</button>
                          ` : ""}
                      </div>
-                 `;
+                 `);
         if (typeof this.initFlatpickr === "function") {
           this.initFlatpickr(contentWrapper);
         }
@@ -577,13 +578,13 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
         return !isNaN(parseFloat(clean)) && isFinite(clean);
       }) || ["Kết hợp giữa kỹ thuật và giá", "Giá cố định", "Dựa trên kỹ thuật"].includes(gt.phuongPhapDanhGia);
       if (qualifiedBidsForOpening2.length === 0) {
-        contentWrapper.innerHTML = `
+        contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-71ff99332d">
                         <i data-lucide="lock" class="bf-s-5141e22887"></i>
                         <h4 class="bf-s-01dd0d67e8">Chưa mở túi hồ sơ Đề xuất Tài chính</h4>
                         <p class="bf-s-85ddf1c3bf">Vui lòng hoàn thành Đánh giá kỹ thuật để xác định danh sách nhà thầu đủ điều kiện mở túi HSĐXTC.</p>
                     </div>
-                `;
+                `);
       } else {
         const isFinOpeningSaved2 = qualifiedBidsForOpening2.some((b) => b.giaDuThau && b.giaDuThau > 0);
         const isCompleted = isFinOpeningSaved2;
@@ -601,7 +602,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
         const isReadOnly = isCompleted && !isEditingThisStep || gt.trangThai === "Đã có kết quả" || gt.trangThai === "Hủy thầu" || isFinEvalSaved2;
         const canEdit = !isFinEvalSaved2 && gt.trangThai !== "Đã có kết quả" && gt.trangThai !== "Hủy thầu";
         const isDirectOrSpecial = gt.hinhThucLuaChon === "Chỉ định thầu rút gọn" || gt.hinhThucLuaChon === "Lựa chọn nhà thầu trong trường hợp đặc biệt";
-        contentWrapper.innerHTML = `
+        contentWrapper.innerHTML = trustedHTML(`
                     <div class="bf-s-175e7e1f51">
                         <h4 class="bf-s-ff3bca23d8">
                             Biên bản mở hồ sơ đề xuất tài chính (E-HSĐXTC)
@@ -658,7 +659,7 @@ export async function showPackageDetails(id, isSwitchingVersion = false) {
                       canEdit,
                       hasTechnicalScore: hasTechScore
                     })}
-                `;
+                `);
         if (!isReadOnly) {
           const rows = bindFinancialOpeningRows(contentWrapper, {
             parseVND: (value) => this.model.parseVND(value),

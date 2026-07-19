@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
 import { selectPartnerVersionForDate } from "../partners/contractorVersionBinding.js";
@@ -95,16 +96,16 @@ export async function editHopDong(id) {
     const cdtSelect = document.getElementById("hd-chudautuid");
     document.getElementById("hd-chudautu-version-select").dataset.manualOverride = "";
     const chudautuList = this.model.getLatestChuDauTu();
-    cdtSelect.innerHTML = '<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>';
+    cdtSelect.innerHTML = trustedHTML('<option value="">-- Chọn Chủ đầu tư --</option>' + chudautuList.map((c) => `<option value="${escapeHtml(c.id)}" data-search="${escapeHtml(`${c.maChuDauTu || ""} ${c.tenChuDauTu || ""}`)}">${escapeHtml(c.tenChuDauTu || "")}</option>`).join("") + '<option value="__NEW_INVESTOR__" class="bf-s-5762556293">+ Thêm chủ đầu tư mới</option>');
     this.makeSearchableSelect(cdtSelect, "Tìm kiếm Chủ đầu tư...");
     const ntSelect = document.getElementById("hd-nhathauid");
     document.getElementById("hd-nhathau-version-select").dataset.manualOverride = "";
     const nhathauList = this.model.getLatestNhaThau();
-    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>';
+    ntSelect.innerHTML = trustedHTML('<option value="">-- Chọn Nhà thầu --</option>' + nhathauList.map((n) => `<option value="${escapeHtml(n.id)}" data-search="${escapeHtml(`${n.maNhaThau || ""} ${n.tenNhaThau || ""}`)}">${escapeHtml(n.tenNhaThau || "")}</option>`).join("") + '<option value="__NEW_CONTRACTOR__" class="bf-s-5762556293">+ Thêm nhà thầu mới</option>');
     this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu...");
     const khSelect = document.getElementById("hd-kehoachid");
     const planList = typeof this.model.getLatestPlans === "function" ? this.model.getLatestPlans() : Array.isArray(this.model.state.kehoach) ? this.model.state.kehoach : [];
-    khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${escapeHtml(kh.id)}" data-search="${escapeHtml(`${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}`)}">${escapeHtml(kh.tenKeHoach || "")}</option>`).join("");
+    khSelect.innerHTML = trustedHTML('<option value="">-- Chọn Kế hoạch LCNT --</option>' + planList.map((kh) => `<option value="${escapeHtml(kh.id)}" data-search="${escapeHtml(`${kh.maKeHoach || ""} ${kh.tenKeHoach || ""}`)}">${escapeHtml(kh.tenKeHoach || "")}</option>`).join(""));
     this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch...");
     const getPlanVersionIds = (selectedPlanId) => {
       if (!selectedPlanId) return [];
@@ -117,7 +118,7 @@ export async function editHopDong(id) {
       const planVersionIds = getPlanVersionIds(selectedPlanId);
       const gtContainer = document.getElementById("hd-goithau-list");
       if (!selectedPlanId) {
-        gtContainer.innerHTML = '<p class="text-muted bf-s-64c2770c2f">Vui lòng chọn Kế hoạch LCNT để hiển thị gói thầu</p>';
+        gtContainer.innerHTML = trustedHTML('<p class="text-muted bf-s-64c2770c2f">Vui lòng chọn Kế hoạch LCNT để hiển thị gói thầu</p>');
         return;
       }
       const goithauList = typeof this.model.getLatestPackages === "function" ? this.model.getLatestPackages() : Array.isArray(this.model.state.goithau) ? this.model.state.goithau : [];
@@ -130,14 +131,14 @@ export async function editHopDong(id) {
           (!selectedContractorId || String(g.nhaThauTrungThauId || "") === String(selectedContractorId));
       });
       if (filteredGoithau.length === 0) {
-        gtContainer.innerHTML = '<p class="text-muted bf-s-64c2770c2f">Không có gói thầu đủ điều kiện lập hợp đồng</p>';
+        gtContainer.innerHTML = trustedHTML('<p class="text-muted bf-s-64c2770c2f">Không có gói thầu đủ điều kiện lập hợp đồng</p>');
       } else {
-        gtContainer.innerHTML = filteredGoithau.map((g) => `
+        gtContainer.innerHTML = trustedHTML(filteredGoithau.map((g) => `
                     <label class="checkbox-item bf-s-64d00981be">
                          <input type="checkbox" name="hd-goithau-checkbox" value="${escapeHtml(g.id)}" ${checkedIds.includes(g.id) ? "checked" : ""}>
                          <span><strong>${escapeHtml(g.maGoiThau || "")}</strong> - ${escapeHtml(g.tenGoiThau || "")}</span>
                     </label>
-                `).join("");
+                `).join(""));
       }
     };
     khSelect.onchange = (e) => {
@@ -169,25 +170,25 @@ export async function editHopDong(id) {
       const versions = this.model.state.chudautu.filter((c) => c.rootId === rootId || c.id === rootId);
       versions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (versionSelect && versionGroup) {
-        versionSelect.innerHTML = versions.map((v) => {
+        versionSelect.innerHTML = trustedHTML(versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
           const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
           return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
-        }).join("");
+        }).join(""));
         setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
           if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
           const selectedVerCdt = this.model.state.chudautu.find((c) => c.id === e.target.value);
           if (selectedVerCdt && confirmContainer && confirmInfo) {
             setRuntimeStyle(confirmContainer, "display", "block");
-            confirmInfo.innerHTML = `
+            confirmInfo.innerHTML = trustedHTML(`
                             <strong>Mã:</strong> ${escapeHtml(formatPartnerIdentityCode(selectedVerCdt.maChuDauTu, "--"))}<br>
                             <strong>Tên:</strong> ${escapeHtml(selectedVerCdt.tenChuDauTu || "--")}<br>
                             <strong>MST:</strong> ${escapeHtml(selectedVerCdt.maSoThue || "--")}<br>
                             <strong>Người ký:</strong> ${escapeHtml(selectedVerCdt.danhXung || "Ông")} ${escapeHtml(selectedVerCdt.daiDienCdt || "--")} (${escapeHtml(selectedVerCdt.chucVuDaiDien || "--")})<br>
                             <strong>Địa chỉ:</strong> ${escapeHtml((selectedVerCdt.diaChi || "").replace(/\s*\|\s*/g, ", "))}<br>
                             <strong>Tài khoản:</strong> ${escapeHtml(selectedVerCdt.soTaiKhoan || "--")} tại ${escapeHtml(selectedVerCdt.noiMoTaiKhoan || "--")}
-                        `;
+                        `);
           }
         };
         versionSelect.value = selectVersionId || selectedCdtId;
@@ -219,11 +220,11 @@ export async function editHopDong(id) {
       const versions = this.model.state.nhathau.filter((n) => n.rootId === rootId || n.id === rootId);
       versions.sort((a, b) => parseInt(b.phienBan || 0) - parseInt(a.phienBan || 0));
       if (versionSelect && versionGroup) {
-        versionSelect.innerHTML = versions.map((v) => {
+        versionSelect.innerHTML = trustedHTML(versions.map((v) => {
           const label = this.model.getVersionLabel(v.phienBan || "00");
           const effectiveDate = v.ngayApDung ? this.model.formatDate(v.ngayApDung) : "--";
           return `<option value="${escapeHtml(v.id)}">${escapeHtml(label)} · áp dụng ${escapeHtml(effectiveDate)}</option>`;
-        }).join("");
+        }).join(""));
         setRuntimeStyle(versionGroup, "display", "flex");
         versionSelect.onchange = (e) => {
           if (e.isTrusted) versionSelect.dataset.manualOverride = "1";
@@ -249,7 +250,7 @@ export async function editHopDong(id) {
                                 ${memberDetails}
                             </div>`;
             }
-            confirmInfo.innerHTML = detailsHtml;
+            confirmInfo.innerHTML = trustedHTML(detailsHtml);
           }
         };
         versionSelect.value = selectVersionId || selectedNtId;
@@ -298,7 +299,7 @@ export async function editHopDong(id) {
         const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
         return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${e.name} ${roleLabel} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(e.name)} — ${escapeHtml(roleLabel)}${e.email ? ` (${escapeHtml(e.email)})` : ""}</option>`;
       }).join("");
-      empDropdown.innerHTML = '<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml;
+      empDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml);
       restoreHdEmpValue();
     };
     if (!this.model.state.employees || this.model.state.employees.length === 0) {
@@ -325,7 +326,7 @@ export async function editHopDong(id) {
     if (statusSelect) {
       // The sync endpoint already scopes this collection to the active organization.
       const orgStatuses = Array.isArray(this.model.state.custompaperstatuses) ? this.model.state.custompaperstatuses : [];
-      statusSelect.innerHTML = '<option value="">-- Chọn Trạng thái --</option>' + orgStatuses.map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join("");
+      statusSelect.innerHTML = trustedHTML('<option value="">-- Chọn Trạng thái --</option>' + orgStatuses.map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join(""));
     }
     if (id) {
       captureModalReturnState(this.model.state.activetab || "hopdong", this.model.state.activeaction || null);

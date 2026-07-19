@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 ﻿import { validateExtensionRows } from "./packageValidation.js";
 import { captureModalReturnState, hasModalReturnState, updateModalReturnAction } from "../app/modalReturnState.js";
@@ -20,7 +21,7 @@ export async function editGoiThau(id, isReadOnly = false) {
   resetPackageFormEditableState(form);
   setPackageSubTableActionsVisible(true);
   const khSelect = document.getElementById("gt-kehoachid");
-  khSelect.innerHTML = '<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${escapeHtml(k.id)}" data-search="${escapeHtml(`${k.maKeHoach || ""} ${k.tenKeHoach || ""}`)}">${escapeHtml(k.tenKeHoach)}</option>`).join("");
+  khSelect.innerHTML = trustedHTML('<option value="">-- Chọn Kế hoạch --</option>' + this.model.getLatestPlans().map((k) => `<option value="${escapeHtml(k.id)}" data-search="${escapeHtml(`${k.maKeHoach || ""} ${k.tenKeHoach || ""}`)}">${escapeHtml(k.tenKeHoach)}</option>`).join(""));
   khSelect.disabled = false;
   this.makeSearchableSelect(khSelect, "Tìm kiếm Kế hoạch LCNT...");
   const ntSelect = document.getElementById("gt-nhathautrungthauid");
@@ -29,9 +30,9 @@ export async function editGoiThau(id, isReadOnly = false) {
     filteredBids = this.model.state.thongtinmothau.filter((b) => String(b.goiThauId) === String(id));
   }
   if (filteredBids.length > 0) {
-    ntSelect.innerHTML = '<option value="">-- Chọn Nhà thầu trúng thầu --</option>' + filteredBids.map((b) => `<option value="${escapeHtml(b.nhaThauId)}" data-search="${escapeHtml(`${b.maNhaThau || ""} ${b.tenNhaThau || ""}`)}">${escapeHtml(b.tenNhaThau)}</option>`).join("");
+    ntSelect.innerHTML = trustedHTML('<option value="">-- Chọn Nhà thầu trúng thầu --</option>' + filteredBids.map((b) => `<option value="${escapeHtml(b.nhaThauId)}" data-search="${escapeHtml(`${b.maNhaThau || ""} ${b.tenNhaThau || ""}`)}">${escapeHtml(b.tenNhaThau)}</option>`).join(""));
   } else {
-    ntSelect.innerHTML = '<option value="">-- (Chưa có nhà thầu tham gia mở thầu) --</option>';
+    ntSelect.innerHTML = trustedHTML('<option value="">-- (Chưa có nhà thầu tham gia mở thầu) --</option>');
   }
   this.makeSearchableSelect(ntSelect, "Tìm kiếm Nhà thầu trúng thầu...");
   const roleLabelMap = { super_admin: "Super Admin / Quản lý / Chuyên viên", manager: "Quản lý / Chuyên viên", employee: "Chuyên viên" };
@@ -66,7 +67,7 @@ export async function editGoiThau(id, isReadOnly = false) {
       const extraSearch = matchedExpert ? `${matchedExpert.soCCCD || ""} ${matchedExpert.soChungChi || ""}` : "";
       return `<option value="${escapeHtml(e.id)}" data-search="${escapeHtml(`${e.name} ${roleLabel} ${e.email || ""} ${extraSearch}`)}">${escapeHtml(e.name)} — ${escapeHtml(roleLabel)}${e.email ? ` (${escapeHtml(e.email)})` : ""}</option>`;
     }).join("");
-    empDropdown.innerHTML = '<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml;
+    empDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optHtml);
     restoreEmpValue();
   };
   if (!this.model.state.employees || this.model.state.employees.length === 0) {
@@ -90,7 +91,7 @@ export async function editGoiThau(id, isReadOnly = false) {
     _populateEmpDropdown();
   }
   const toChuyenGiaTbody = document.getElementById("to-chuyengia-tbody");
-  toChuyenGiaTbody.innerHTML = this.model.state.chuyengia.map((cg) => `
+  toChuyenGiaTbody.innerHTML = trustedHTML(this.model.state.chuyengia.map((cg) => `
         <tr data-expert-id="${escapeHtml(cg.id)}">
             <td class="bf-s-0c5104285b">
                 <input type="checkbox" name="tochuyengia-select" value="${escapeHtml(cg.id)}" class="bf-s-e3145ce1fc">
@@ -106,9 +107,9 @@ export async function editGoiThau(id, isReadOnly = false) {
                 <input type="text" name="tochuyengia-congviec" placeholder="Nhập công việc..." disabled class="bf-s-ee9dcf138f">
             </td>
         </tr>
-    `).join("");
+    `).join(""));
   const toThamDinhTbody = document.getElementById("to-thamdinh-tbody");
-  toThamDinhTbody.innerHTML = this.model.state.chuyengia.map((cg) => `
+  toThamDinhTbody.innerHTML = trustedHTML(this.model.state.chuyengia.map((cg) => `
         <tr data-expert-id="${escapeHtml(cg.id)}">
             <td class="bf-s-0c5104285b">
                 <input type="checkbox" name="tothamdinh-select" value="${escapeHtml(cg.id)}" class="bf-s-e3145ce1fc">
@@ -124,7 +125,7 @@ export async function editGoiThau(id, isReadOnly = false) {
                 <input type="text" name="tothamdinh-congviec" placeholder="Nhập công việc..." disabled class="bf-s-ee9dcf138f">
             </td>
         </tr>
-    `).join("");
+    `).join(""));
   const setupCheckboxListeners = (tbodyId, selectName, roleName, jobName, otherTbodyId) => {
     const tbody = document.getElementById(tbodyId);
     const checkboxes = tbody.querySelectorAll(`input[name="${selectName}"]`);

@@ -1,3 +1,4 @@
+import { trustedHTML } from "../shared/trustedTypes.js";
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { getAppController } from "../app/controllerRef.js";
 import { escapeHtml as escapeHTML, formatDateOnly, safeAttr, safeImageSrc } from "../shared/view_helpers.js";
@@ -156,16 +157,16 @@ export function populateNhanVienPhuTrachDropdowns() {
     return `<option value="${escapeHTML(e.id)}">${escapeHTML(e.name)} — ${escapeHTML(roleLabel)}${e.email ? " (" + escapeHTML(e.email) + ")" : ""}</option>`;
   }).join("");
   if (gtDropdown) {
-    gtDropdown.innerHTML = '<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optionsHtml;
+    gtDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optionsHtml);
   }
   if (hdDropdown) {
-    hdDropdown.innerHTML = '<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optionsHtml;
+    hdDropdown.innerHTML = trustedHTML('<option value="">-- Chọn Chuyên viên phụ trách --</option>' + optionsHtml);
   }
 }
 export function renderSuperAdminPanel() {
   const pricingGrid = document.getElementById("sa-pricing-grid");
   if (pricingGrid && this.model.state.systempackages) {
-    pricingGrid.innerHTML = this.model.state.systempackages.map((pkg) => {
+    pricingGrid.innerHTML = trustedHTML(this.model.state.systempackages.map((pkg) => {
       const badgeLabel = pkg.id === "silver" ? "Silver" : pkg.id === "gold" ? "Bán chạy" : "Diamond";
       const badgeClass = pkg.id === "gold" ? "badge-popular" : "";
       const cardClass = pkg.id === "silver" ? "silver-card" : pkg.id === "gold" ? "gold-card popular" : "diamond-card";
@@ -196,7 +197,7 @@ export function renderSuperAdminPanel() {
                     </div>
                 </div>
             `;
-    }).join("");
+    }).join(""));
   }
   apiFetch("/api/auth/users").then((r) => r.ok ? r.json() : []).then((users) => {
     const orgMap = {};
@@ -254,7 +255,7 @@ export function renderSuperAdminPanel() {
     if (empsEl) empsEl.textContent = `${this.model.state.employees.length} Nhân sự`;
     const tbody = document.getElementById("sa-organizations-tbody");
     if (tbody) {
-      tbody.innerHTML = this.model.state.organizations.map((org) => {
+      tbody.innerHTML = trustedHTML(this.model.state.organizations.map((org) => {
         const pkg = this.model.state.systempackages.find((p) => p.id === org.packageId);
         const pkgLabel = pkg ? `<span class="badge ${org.packageId === "diamond" ? "badge-warning" : org.packageId === "gold" ? "badge-info" : "badge-neutral"}">${escapeHTML(pkg.name)}</span>` : "--";
         const statusBadge = org.status === "Hoạt động" ? '<span class="badge badge-success"><i data-lucide="check-circle"></i> Hoạt động</span>' : '<span class="badge badge-danger"><i data-lucide="lock"></i> Đã khóa</span>';
@@ -278,7 +279,7 @@ export function renderSuperAdminPanel() {
                             </td>
                         </tr>
                     `;
-      }).join("");
+      }).join(""));
     }
     lucide.createIcons();
   });
@@ -374,14 +375,14 @@ export function renderManagerNhanVienPanel() {
         </td>
       </tr>`;
     }).join("");
-    tbody.innerHTML = activeRows + formerRows || `
+    tbody.innerHTML = trustedHTML(activeRows + formerRows || `
       <tr>
         <td colspan="6" class="text-center text-muted">Chưa có nhân viên trong danh sách.</td>
-      </tr>`;
+      </tr>`);
   }
   const matrixTbody = document.getElementById("manager-matrix-tbody");
   if (matrixTbody) {
-    matrixTbody.innerHTML = orgEmployees.map((emp) => {
+    matrixTbody.innerHTML = trustedHTML(orgEmployees.map((emp) => {
       const matrix = this.model.state.permissionmatrix.find((m) => m.empId === emp.id) || {
         kehoach: "view",
         goithau: "view",
@@ -412,7 +413,7 @@ export function renderManagerNhanVienPanel() {
                     ${getCellHtml("chuyengia")}
                 </tr>
             `;
-    }).join("");
+    }).join(""));
   }
   lucide.createIcons();
 }
@@ -424,9 +425,9 @@ export function renderManagerHoSoGiayPanel() {
   const tbody = document.getElementById("manager-hosogiay-tbody");
   if (tbody) {
     if (orgStatuses.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Chưa cấu hình trạng thái hồ sơ giấy nào.</td></tr>`;
+      tbody.innerHTML = trustedHTML(`<tr><td colspan="3" class="text-center text-muted">Chưa cấu hình trạng thái hồ sơ giấy nào.</td></tr>`);
     } else {
-      tbody.innerHTML = orgStatuses.map((status) => {
+      tbody.innerHTML = trustedHTML(orgStatuses.map((status) => {
         const safeName = escapeHTML(status.name);
         const safeColor = /^#[0-9a-fA-F]{6}$/.test(String(status.color || "")) ? status.color : "#64748b";
         const editArgsKey = registerCommandArgs([String(status.id || "")]);
@@ -443,7 +444,7 @@ export function renderManagerHoSoGiayPanel() {
                     </td>
                 </tr>
             `;
-      }).join("");
+      }).join(""));
     }
   }
   lucide.createIcons();
@@ -498,7 +499,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
   const tbody = document.getElementById("sa-users-tbody");
   if (!tbody) return;
   if (!usersList || usersList.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Không có người dùng nào.</td></tr>`;
+    tbody.innerHTML = trustedHTML(`<tr><td colspan="7" class="text-center text-muted">Không có người dùng nào.</td></tr>`);
     return;
   }
   const calculateRemainingDays = (endDateStr) => {
@@ -536,7 +537,7 @@ export function renderSystemUsersTable(usersList, currentUsername) {
     };
     return map[pkgId] || '<span class="text-muted bf-s-51a7b72acc">Chưa chọn gói</span>';
   };
-  tbody.innerHTML = usersList.map((user) => {
+  tbody.innerHTML = trustedHTML(usersList.map((user) => {
     const subscription = normalizeOrganizations(user).find((organization) => organization.status === "active")?.subscription
       || normalizeOrganizations(user)[0]?.subscription
       || {};
@@ -561,6 +562,6 @@ export function renderSystemUsersTable(usersList, currentUsername) {
                 </td>
             </tr>
         `;
-  }).join("");
+  }).join(""));
   lucide.createIcons();
 }

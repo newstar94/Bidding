@@ -1,3 +1,4 @@
+import { trustedHTML } from "../../shared/trustedTypes.js";
 import { escapeHtml } from "../../shared/view_helpers.js";
 
 function parseMetadata(value) {
@@ -12,7 +13,7 @@ export function renderCancellationPanel(container, { pkg, formatDate, initDatePi
   const details = parseMetadata(pkg.danhGiaHsdtMetadata).cancelDetails || {};
   const isCanceled = pkg.trangThai === "Hủy thầu";
   const disabled = isCanceled ? "disabled" : "";
-  container.innerHTML = `
+  container.innerHTML = trustedHTML(`
     <div class="card package-cancellation-panel">
       <h4 class="package-cancellation-title"><i data-lucide="x-circle"></i> Quyết định Hủy thầu</h4>
       <div class="package-cancellation-form">
@@ -23,7 +24,7 @@ export function renderCancellationPanel(container, { pkg, formatDate, initDatePi
         <div class="form-group"><label>Lý do hủy thầu <span class="text-danger">*</span></label><textarea id="cancel-reason" class="form-control" rows="5" placeholder="Nhập lý do hủy thầu..." ${disabled}>${escapeHtml(details.lyDoHuyThau || "")}</textarea></div>
         ${isCanceled ? "" : '<div><button id="btn-save-cancel-details" class="btn btn-primary"><i data-lucide="check"></i> Xác nhận hủy thầu</button></div>'}
       </div>
-    </div>`;
+    </div>`);
   initDatePicker?.(container);
   const button = container.querySelector("#btn-save-cancel-details");
   if (button) button.onclick = () => onSave?.({

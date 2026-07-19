@@ -10,6 +10,8 @@ import httpx
 import psycopg
 import pytest
 
+from backend.db.db_helper import PostgresDatabase
+from backend.startup import verify_database_runtime_role
 from scripts.process_utils import popen_group_options, terminate_process_tree
 
 
@@ -36,6 +38,21 @@ def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> Non
     database_url = os.environ.get("RUNTIME_DATABASE_URL", "").strip()
     if not database_url:
         pytest.skip("RUNTIME_DATABASE_URL is not configured")
+    runtime_database = PostgresDatabase(database_url)
+    try:
+        verify_database_runtime_role(
+            runtime_database,
+            expected_role=os.environ.get(
+                "DATABASE_RUNTIME_ROLE", "biddingflow_app"
+            ),
+        )
+    finally:
+        runtime_database.close()
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("CREATE TABLE runtime_role_escape_probe(id integer)")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("CREATE TEMP TABLE runtime_temp_escape_probe(id integer)")
     environment = os.environ.copy()
     environment.update(
         {

@@ -1,3 +1,4 @@
+import { trustedHTML } from "./trustedTypes.js";
 import { setRuntimeStyle } from "./runtimeStyles.js";
 export { getAuthDownloadUrl, authFetchDownload } from "./workflow_helpers.js";
 import { formatCurrency as formatVndCurrency, formatDate as formatDisplayDate, formatDateOnly as formatDisplayDateOnly } from "./formatters.js";
@@ -36,11 +37,51 @@ export function renderEmptyRow(colspan, message, icon = "inbox") {
 }
 export function safeImageSrc(value, cacheKey = "") {
   const src = String(value || "").trim();
-  if (/^\/images\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(src)) {
-    const token = String(cacheKey || "").trim();
-    return token ? `${src}?v=${encodeURIComponent(token)}` : src;
+  if (src.startsWith("/images/")) {
+    try {
+      const parsed = new URL(src, window.location.origin);
+      if (
+        parsed.origin !== window.location.origin
+        || !/^\/images\/(?:chuyen_gia|nha_thau)\/[A-Za-z0-9_.-]+\.(?:png|jpg|webp)$/i.test(parsed.pathname)
+      ) {
+        return "";
+      }
+      const keys = [...new Set(parsed.searchParams.keys())];
+      const hasSignedQuery = ["expires", "org", "sig"].every((key) => parsed.searchParams.has(key));
+      if (hasSignedQuery) {
+        if (
+          keys.length !== 3
+          || [...parsed.searchParams.keys()].length !== 3
+          || !/^\d{9,12}$/.test(parsed.searchParams.get("expires") || "")
+          || !/^[A-Za-z0-9._:-]{1,160}$/.test(parsed.searchParams.get("org") || "")
+          || !/^[a-f0-9]{64}$/i.test(parsed.searchParams.get("sig") || "")
+        ) {
+          return "";
+        }
+        return `${parsed.pathname}${parsed.search}`;
+      }
+      if (keys.length > 0) return "";
+      const token = String(cacheKey || "").trim();
+      return token ? `${parsed.pathname}?v=${encodeURIComponent(token)}` : parsed.pathname;
+    } catch (_) {
+      return "";
+    }
   }
-  if (/^https:\/\/lh3\.googleusercontent\.com\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]+$/.test(src)) return src;
+  if (src.startsWith("https://")) {
+    try {
+      const parsed = new URL(src);
+      if (
+        parsed.protocol === "https:"
+        && parsed.hostname === "lh3.googleusercontent.com"
+        && !parsed.username
+        && !parsed.password
+      ) {
+        return parsed.href;
+      }
+    } catch (_) {
+      return "";
+    }
+  }
   if (/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
   return "";
 }
@@ -107,7 +148,7 @@ export function initCustomSelect(selectId) {
     wrapper.setAttribute("data-target", selectId);
     setRuntimeStyle(wrapper, "position", "relative");
     select.parentNode.insertBefore(wrapper, select.nextSibling);
-    wrapper.innerHTML = `
+    wrapper.innerHTML = trustedHTML(`
             <div class="custom-select-trigger">
                 <span>${safeTriggerText}</span>
                 ${isVersionSelect ? "" : `
@@ -121,7 +162,7 @@ export function initCustomSelect(selectId) {
                     <li data-value="${escapeHtml(opt.value)}" class="custom-option-item ${opt.selected ? "selected" : ""}" style="padding: ${isVersionSelect ? "4px 14px" : "8px 14px"}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${escapeHtml(opt.text)}</li>
                 `).join("")}
             </ul>
-        `;
+        `);
     if (select.disabled) {
       wrapper.classList.add("disabled");
     }
@@ -162,9 +203,9 @@ export function initCustomSelect(selectId) {
     wrapper.classList.toggle("disabled", !!select.disabled);
     const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector(".custom-select-options");
     if (optionsList) {
-      optionsList.innerHTML = options.map((opt) => `
+      optionsList.innerHTML = trustedHTML(options.map((opt) => `
                 <li data-value="${escapeHtml(opt.value)}" class="custom-option-item ${opt.selected ? "selected" : ""}" style="padding: ${isVersionSelect ? "4px 14px" : "8px 14px"}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${escapeHtml(opt.text)}</li>
-            `).join("");
+            `).join(""));
     }
     const activeSelectedOption = select.options[select.selectedIndex] || select.options[0] || { text: "", value: "" };
     let activeTriggerText = activeSelectedOption.text.trim();

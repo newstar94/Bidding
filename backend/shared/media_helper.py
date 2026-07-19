@@ -1,11 +1,15 @@
 import os
 import base64
+import binascii
 import glob
 import hashlib
 import hmac
+import io
 import re
+import tempfile
 import time
 import urllib.parse
+import warnings
 
 from backend.shared.paths import IMAGE_DIR
 from backend.shared.logging_utils import log_error
@@ -13,6 +17,10 @@ from backend.shared.logging_utils import log_error
 
 _load_image_cache: dict = {}
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_IMAGE_DIMENSION = 8_192
+MAX_IMAGE_PIXELS = 20_000_000
+MAX_IMAGE_DECODE_RATIO = 256
+IMAGE_RATIO_DENOMINATOR_FLOOR = 64 * 1024
 ALLOWED_IMAGE_SUBFOLDERS = {"chuyen_gia", "nha_thau"}
 ALLOWED_IMAGE_MIME_TO_EXT = {
     "image/png": "png",
@@ -102,8 +110,20 @@ def protected_image_signature_is_valid(
 
 def normalize_managed_image_path(value: str) -> str:
     """Return the canonical DB path for an application-managed image."""
-    path = str(value or "").strip().lstrip("/")
-    return path if path.startswith("images/") else ""
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return ""
+    parsed = urllib.parse.urlsplit(raw_value)
+    if parsed.scheme or parsed.netloc:
+        return ""
+    path = urllib.parse.unquote(parsed.path).lstrip("/")
+    if not re.fullmatch(
+        r"images/(?:chuyen_gia|nha_thau)/[A-Za-z0-9_.-]+\.(?:png|jpg|webp)",
+        path,
+        re.IGNORECASE,
+    ):
+        return ""
+    return path
 
 
 def _managed_image_file(value: str) -> str:
@@ -119,18 +139,18 @@ def _managed_image_file(value: str) -> str:
     return file_path
 
 
-def remove_unreferenced_image_files(cursor, candidates) -> list[str]:
-    """Delete managed images only after no DB version references them.
+def find_unreferenced_image_paths(cursor, candidates) -> list[str]:
+    """Return managed paths that no database version references.
 
     The lookup deliberately spans every owner and every version. This keeps an
     older file whenever a historical contractor/expert version still uses it.
     """
-    removed = []
     managed_paths = {
         path
         for path in (normalize_managed_image_path(value) for value in candidates or [])
         if path
     }
+    unreferenced = []
     for managed_path in managed_paths:
         cursor.execute(
             """
@@ -147,7 +167,15 @@ def remove_unreferenced_image_files(cursor, candidates) -> list[str]:
         row = cursor.fetchone()
         if row and bool(row[0]):
             continue
+        unreferenced.append(managed_path)
+    return unreferenced
 
+
+def delete_managed_image_files(managed_paths) -> list[str]:
+    """Delete already-authorized managed paths without holding a DB transaction."""
+
+    removed = []
+    for managed_path in managed_paths or ():
         file_path = _managed_image_file(managed_path)
         if not file_path:
             continue
@@ -172,82 +200,207 @@ def remove_unreferenced_image_files(cursor, candidates) -> list[str]:
             _load_image_cache.pop(key, None)
     return removed
 
-def save_base64_image(base64_str: str, subfolder: str, filename_prefix: str) -> str:
+
+def remove_unreferenced_image_files(cursor, candidates) -> list[str]:
+    """Compatibility wrapper; new transaction code should use the split phases."""
+
+    return delete_managed_image_files(
+        find_unreferenced_image_paths(cursor, candidates)
+    )
+
+def _decode_and_validate_image(
+    base64_str: str,
+    *,
+    max_bytes: int = MAX_IMAGE_UPLOAD_BYTES,
+    max_dimension: int = MAX_IMAGE_DIMENSION,
+    max_pixels: int = MAX_IMAGE_PIXELS,
+    max_decode_ratio: int = MAX_IMAGE_DECODE_RATIO,
+):
+    if not isinstance(base64_str, str):
+        raise ValueError("Dữ liệu ảnh phải là chuỗi")
+    match = re.fullmatch(
+        r"data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)",
+        base64_str.strip(),
+        re.IGNORECASE,
+    )
+    if not match:
+        raise ValueError("Ảnh phải dùng data URL PNG, JPEG hoặc WebP hợp lệ")
+    mime = match.group(1).lower()
+    encoded = match.group(2)
+    if len(encoded) > ((max_bytes + 2) // 3) * 4 + 4:
+        raise ValueError("Dung lượng ảnh vượt quá giới hạn cho phép")
+    try:
+        file_data = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Dữ liệu base64 của ảnh không hợp lệ") from exc
+    if not file_data or len(file_data) > max_bytes:
+        raise ValueError("Dung lượng ảnh vượt quá giới hạn cho phép")
+
+    from PIL import Image, ImageOps
+
+    expected_format = {
+        "image/png": "PNG",
+        "image/jpeg": "JPEG",
+        "image/webp": "WEBP",
+    }[mime]
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(file_data)) as probe:
+                width, height = probe.size
+                actual_format = str(probe.format or "").upper()
+                frame_count = int(getattr(probe, "n_frames", 1) or 1)
+                bands = max(1, len(probe.getbands()))
+                if actual_format != expected_format:
+                    raise ValueError("Nội dung ảnh không khớp MIME đã khai báo")
+                if frame_count != 1:
+                    raise ValueError("Không chấp nhận ảnh động hoặc ảnh nhiều khung")
+                if width < 1 or height < 1:
+                    raise ValueError("Kích thước ảnh không hợp lệ")
+                if width > max_dimension or height > max_dimension:
+                    raise ValueError("Chiều rộng hoặc chiều cao ảnh vượt quá giới hạn")
+                pixels = width * height
+                if pixels > max_pixels:
+                    raise ValueError("Tổng số pixel ảnh vượt quá giới hạn")
+                decoded_bytes = pixels * bands
+                denominator = max(len(file_data), IMAGE_RATIO_DENOMINATOR_FLOOR)
+                if decoded_bytes / denominator > max_decode_ratio:
+                    raise ValueError("Tỷ lệ giải nén ảnh vượt quá giới hạn")
+                probe.verify()
+            with Image.open(io.BytesIO(file_data)) as decoded:
+                decoded.load()
+                image = ImageOps.exif_transpose(decoded).copy()
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError("Nội dung ảnh không hợp lệ") from exc
+    return mime, ALLOWED_IMAGE_MIME_TO_EXT[mime], image
+
+
+def _prepare_image_for_output(image, save_format: str, max_size: int):
+    from PIL import Image
+
+    if image.width > max_size or image.height > max_size:
+        image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    has_alpha = "A" in image.getbands() or (
+        image.mode == "P" and "transparency" in image.info
+    )
+    if save_format == "JPEG":
+        if image.mode != "RGB":
+            background = Image.new("RGB", image.size, "white")
+            if has_alpha:
+                rgba = image.convert("RGBA")
+                background.paste(rgba, mask=rgba.getchannel("A"))
+            else:
+                background.paste(image.convert("RGB"))
+            image = background
+    elif save_format in {"PNG", "WEBP"}:
+        image = image.convert("RGBA" if has_alpha else "RGB")
+    return image
+
+
+def _save_kwargs(save_format: str) -> dict:
+    if save_format == "JPEG":
+        return {"quality": 85, "optimize": True, "progressive": True}
+    if save_format == "PNG":
+        return {"optimize": True, "compress_level": 9}
+    return {"quality": 85, "method": 6}
+
+
+def reencode_base64_image(
+    base64_str: str,
+    *,
+    max_input_bytes: int,
+    max_size: int,
+    output_format: str = "JPEG",
+) -> str:
+    """Validate and re-encode a small image before retaining it as a data URL."""
+    _mime, _ext, image = _decode_and_validate_image(
+        base64_str,
+        max_bytes=max_input_bytes,
+        max_dimension=min(MAX_IMAGE_DIMENSION, max_size * 16),
+        max_pixels=min(MAX_IMAGE_PIXELS, max_size * max_size * 64),
+    )
+    save_format = str(output_format or "JPEG").upper()
+    if save_format not in {"JPEG", "PNG", "WEBP"}:
+        raise ValueError("Định dạng ảnh đầu ra không hợp lệ")
+    image = _prepare_image_for_output(image, save_format, max_size)
+    output = io.BytesIO()
+    image.save(output, format=save_format, **_save_kwargs(save_format))
+    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+    mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}[save_format]
+    return f"data:{mime};base64,{encoded}"
+
+
+def save_base64_image(
+    base64_str: str,
+    subfolder: str,
+    filename_prefix: str,
+    *,
+    allowed_existing_paths=(),
+) -> str:
     if not base64_str:
         return ""
-    if not isinstance(base64_str, str):
-        return base64_str
-    if len(base64_str) > 7000000:
-        raise ValueError("Dung lượng ảnh vượt quá giới hạn 5MB cho phép!")
-    if not (base64_str.startswith("data:image") or len(base64_str) > 100):
-        return base64_str
     if subfolder not in ALLOWED_IMAGE_SUBFOLDERS:
         raise ValueError("Thư mục lưu ảnh không hợp lệ")
 
-    header = ""
-    data_str = base64_str
-    if base64_str.startswith("data:image"):
-        try:
-            parts = base64_str.split(";base64,")
-            header = parts[0]
-            data_str = parts[1]
-        except Exception:
-            return base64_str
+    existing_path = normalize_managed_image_path(base64_str)
+    if existing_path:
+        expected_prefix = f"images/{subfolder}/"
+        if not existing_path.startswith(expected_prefix):
+            raise ValueError("Ảnh hiện tại không thuộc đúng phạm vi lưu trữ")
+        allowed = {
+            normalize_managed_image_path(path)
+            for path in (allowed_existing_paths or ())
+        }
+        if existing_path not in allowed:
+            raise ValueError("Ảnh hiện tại không thuộc bản ghi hoặc tổ chức này")
+        return existing_path
 
-    mime = header.replace("data:", "").lower() if header else "image/png"
-    ext = ALLOWED_IMAGE_MIME_TO_EXT.get(mime)
-    if not ext:
-        raise ValueError("Chỉ cho phép ảnh PNG, JPG hoặc WebP")
-
+    temporary_path = ""
     try:
+        _mime, ext, image = _decode_and_validate_image(base64_str)
         images_root = os.path.realpath(IMAGE_DIR)
         image_dir = os.path.realpath(os.path.join(images_root, subfolder))
         if not image_dir.startswith(images_root + os.sep):
             raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
         os.makedirs(image_dir, exist_ok=True)
 
-        file_data = base64.b64decode(data_str, validate=True)
-        if len(file_data) > MAX_IMAGE_UPLOAD_BYTES:
-            raise ValueError("Dung lượng ảnh vượt quá giới hạn 5MB cho phép!")
         filename = f"{_safe_file_part(filename_prefix, 'image')}.{ext}"
         filepath = os.path.realpath(os.path.join(image_dir, filename))
         if not filepath.startswith(image_dir + os.sep):
             raise ValueError("Đường dẫn lưu ảnh không hợp lệ")
 
-        try:
-            from PIL import Image
-            import io
-
-            img = Image.open(io.BytesIO(file_data))
-            img.verify()
-            img = Image.open(io.BytesIO(file_data))
-            max_size = 1200
-            if "sig" in filename_prefix or "stamp" in filename_prefix:
-                max_size = 600
-
-            if img.width > max_size or img.height > max_size:
-                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-
-            save_format = "PNG" if ext == "png" else ("JPEG" if ext in ["jpg", "jpeg"] else "WEBP")
-            save_kwargs = {}
-            if save_format == "JPEG":
-                save_kwargs["quality"] = 85
-                save_kwargs["optimize"] = True
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-            elif save_format == "PNG":
-                save_kwargs["optimize"] = True
-            elif save_format == "WEBP":
-                save_kwargs["quality"] = 85
-
-            img.save(filepath, format=save_format, **save_kwargs)
-        except Exception as pil_err:
-            raise ValueError("Nội dung ảnh không hợp lệ") from pil_err
-
+        max_size = 600 if ("sig" in filename_prefix or "stamp" in filename_prefix) else 1_200
+        save_format = {"png": "PNG", "jpg": "JPEG", "webp": "WEBP"}[ext]
+        image = _prepare_image_for_output(image, save_format, max_size)
+        with tempfile.NamedTemporaryFile(
+            mode="w+b",
+            suffix=f".{ext}",
+            prefix=".upload-",
+            dir=image_dir,
+            delete=False,
+        ) as temporary:
+            temporary_path = temporary.name
+            image.save(temporary, format=save_format, **_save_kwargs(save_format))
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        if os.path.getsize(temporary_path) > MAX_IMAGE_UPLOAD_BYTES:
+            raise ValueError("Ảnh sau xử lý vẫn vượt quá giới hạn dung lượng")
+        os.replace(temporary_path, filepath)
+        temporary_path = ""
         return f"images/{subfolder}/{filename}"
-    except Exception as e:
-        log_error(e, "Media.SaveImage")
-        return base64_str
+    except ValueError:
+        raise
+    except Exception as exc:
+        log_error(exc, "Media.SaveImage")
+        raise ValueError("Không thể xử lý và lưu ảnh an toàn") from exc
+    finally:
+        if temporary_path:
+            try:
+                os.remove(temporary_path)
+            except OSError:
+                pass
 
 def load_base64_image(db_value: str) -> str:
     if not db_value or not isinstance(db_value, str):

@@ -4,15 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint:security": "eslint frontend && node scripts/check_trusted_types_policy.mjs",
     "audit:vendor": "python scripts/audit_vendor_assets.py && node scripts/check_sheetjs_vendor.cjs && node scripts/check_excel_archive_guard.mjs",
-    "build": "npm run audit:vendor && vite build --mode secure",
+    "build": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "build:plain": "vite build --mode production",
-    "build:secure": "npm run audit:vendor && vite build --mode secure",
+    "build:secure": "npm run lint:security && npm run audit:vendor && vite build --mode secure",
     "package:production": "npm run build:secure && python scripts/package_production.py"
   },
   "devDependencies": {
     "esbuild": "0.28.1",
+    "eslint": "10.7.0",
     "javascript-obfuscator": "5.4.3",
     "vite": "8.1.4"
+  },
+  "dependencies": {
+    "dompurify": "3.4.12"
   }
 }

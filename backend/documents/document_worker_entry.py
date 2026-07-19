@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.documents.document_ipc import read_job_manifest, write_result
+from backend.documents.seccomp_policy import apply_document_seccomp
 
 
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
@@ -94,6 +95,15 @@ def _payload_content(payload):
 
 
 def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
+    if (
+        operation == "test_delay"
+        and os.environ.get("APP_ENV", "").strip().casefold() == "test"
+    ):
+        import time
+
+        time.sleep(min(10.0, max(0.0, float(payload.get("seconds", 0)))))
+        return True
+
     if operation == "validate_docx":
         from backend.documents.archive_validation import validate_ooxml_archive
         from backend.documents.template_security import validate_docx_template_statements
@@ -208,6 +218,9 @@ def main() -> int:
         _apply_resource_limits()
         _drop_privileges()
         _disable_network()
+        apply_document_seccomp(
+            required=os.environ.get("APP_ENV", "").lower() in {"prod", "production"}
+        )
         operation, payload = read_job_manifest(input_path, input_path.parent.resolve())
         result = _run_operation(operation, payload)
         write_result(result_path, result=result)

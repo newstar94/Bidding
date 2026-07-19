@@ -1,14 +1,13 @@
-import base64
-import binascii
 import re
 from urllib.parse import urlparse
+
+from backend.shared.media_helper import reencode_base64_image
 
 
 MAX_PROFILE_NAME_LENGTH = 100
 MAX_PROFILE_EMAIL_LENGTH = 254
 MAX_AVATAR_BYTES = 512 * 1024
 _EMAIL_RE = re.compile(r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$", re.IGNORECASE)
-_DATA_IMAGE_RE = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$")
 
 
 class ProfileValidationError(ValueError):
@@ -44,25 +43,24 @@ def _validate_avatar(value):
             return avatar
         raise ProfileValidationError("Đường dẫn ảnh đại diện quá dài.", "INVALID_PROFILE_AVATAR")
 
-    match = _DATA_IMAGE_RE.fullmatch(avatar)
-    if not match:
-        raise ProfileValidationError("Ảnh đại diện phải là PNG, JPEG hoặc WebP hợp lệ.", "INVALID_PROFILE_AVATAR")
-    mime_type, encoded = match.groups()
     try:
-        raw = base64.b64decode(encoded, validate=True)
-    except (binascii.Error, ValueError):
-        raise ProfileValidationError("Dữ liệu ảnh đại diện không hợp lệ.", "INVALID_PROFILE_AVATAR") from None
-    if not raw or len(raw) > MAX_AVATAR_BYTES:
-        raise ProfileValidationError("Ảnh đại diện không được vượt quá 512 KB.", "PROFILE_AVATAR_TOO_LARGE")
-
-    signatures_are_valid = (
-        mime_type == "png" and raw.startswith(b"\x89PNG\r\n\x1a\n")
-        or mime_type == "jpeg" and raw.startswith(b"\xff\xd8\xff")
-        or mime_type == "webp" and raw.startswith(b"RIFF") and raw[8:12] == b"WEBP"
-    )
-    if not signatures_are_valid:
-        raise ProfileValidationError("Nội dung ảnh không khớp định dạng đã khai báo.", "INVALID_PROFILE_AVATAR")
-    return avatar
+        return reencode_base64_image(
+            avatar,
+            max_input_bytes=MAX_AVATAR_BYTES,
+            max_size=256,
+            output_format="JPEG",
+        )
+    except ValueError as exc:
+        message = str(exc)
+        code = (
+            "PROFILE_AVATAR_TOO_LARGE"
+            if "dung lượng" in message.lower()
+            else "INVALID_PROFILE_AVATAR"
+        )
+        raise ProfileValidationError(
+            "Ảnh đại diện phải là PNG, JPEG hoặc WebP hợp lệ và không vượt quá 512 KB.",
+            code,
+        ) from None
 
 
 def validate_profile_fields(name, email, avatar):

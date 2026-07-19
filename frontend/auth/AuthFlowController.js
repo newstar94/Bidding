@@ -325,12 +325,35 @@ export function setupAuth() {
     setRuntimeStyle(errorDiv, "display", "none");
     const remember = document.getElementById("login-remember")?.checked || false;
     try {
-      const res = await apiFetch("/api/auth/login", {
+      let res = await apiFetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password, remember })
       });
-      const data = await res.json();
+      let data = await res.json();
+      if (res.status === 202 && data.mfa_required) {
+        const mfaCode = await this.view.customPrompt(
+          "Xác thực hai lớp",
+          data.message || "Nhập mã 6 số từ ứng dụng xác thực hoặc mã khôi phục.",
+          "",
+          "Mã xác thực",
+          false,
+          (value) => String(value || "").trim().length >= 6 ? "" : "Vui lòng nhập mã xác thực.",
+          "text"
+        );
+        if (!mfaCode) return;
+        res = await apiFetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            password,
+            remember,
+            mfa_code: String(mfaCode).trim()
+          })
+        });
+        data = await res.json();
+      }
       if (!res.ok) {
         errorDiv.textContent = data.error || "Đăng nhập không thành công!";
         setRuntimeStyle(errorDiv, "display", "block");
@@ -343,6 +366,54 @@ export function setupAuth() {
           }, 2e3);
         }
         return;
+      }
+      if (data.mfa_enrollment_required) {
+        const setupResponse = await apiFetch("/api/auth/mfa/setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password })
+        });
+        const setupData = await setupResponse.json();
+        if (!setupResponse.ok) {
+          await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+          errorDiv.textContent = setupData.error || "Không thể thiết lập MFA bắt buộc.";
+          setRuntimeStyle(errorDiv, "display", "block");
+          return;
+        }
+        const enrollmentCode = await this.view.customPrompt(
+          "Thiết lập MFA bắt buộc",
+          `Thêm tài khoản vào ứng dụng xác thực bằng khóa: ${setupData.secret}. Sau đó nhập mã 6 số để hoàn tất.`,
+          "",
+          "Mã 6 số",
+          false,
+          (value) => /^\d{6}$/.test(String(value || "").trim()) ? "" : "Mã phải gồm đúng 6 chữ số.",
+          "text"
+        );
+        if (!enrollmentCode) {
+          await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+          errorDiv.textContent = "Super Admin phải hoàn tất MFA trước khi đăng nhập.";
+          setRuntimeStyle(errorDiv, "display", "block");
+          return;
+        }
+        const confirmResponse = await apiFetch("/api/auth/mfa/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: String(enrollmentCode).trim() })
+        });
+        const confirmData = await confirmResponse.json();
+        if (!confirmResponse.ok) {
+          await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+          errorDiv.textContent = confirmData.error || "Không thể xác nhận MFA.";
+          setRuntimeStyle(errorDiv, "display", "block");
+          return;
+        }
+        await this.view.customAlert(
+          "Lưu mã khôi phục",
+          `Hãy lưu các mã này ở nơi an toàn. Mỗi mã chỉ dùng một lần: ${confirmData.recovery_codes.join(", ")}`,
+          "shield-check"
+        );
+        data.mfa_enabled = true;
+        data.mfa_enrollment_required = false;
       }
       setAuthSessionActive(true);
       sessionStorage.setItem("bf_username", data.username);
@@ -426,8 +497,8 @@ export function setupAuth() {
       document.getElementById("register-username").focus();
       return;
     }
-    if (password.length < 8 || password.length > 256) {
-      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự!";
+    if (password.length < 15 || password.length > 256) {
+      errorDiv.textContent = "Mật khẩu phải có từ 15 đến 256 ký tự!";
       setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
@@ -612,8 +683,8 @@ export function setupAuth() {
       setRuntimeStyle(errorDiv, "display", "block");
       return;
     }
-    if (newPassword.length < 8 || newPassword.length > 256) {
-      errorDiv.textContent = "Mật khẩu phải có từ 8 đến 256 ký tự.";
+    if (newPassword.length < 15 || newPassword.length > 256) {
+      errorDiv.textContent = "Mật khẩu phải có từ 15 đến 256 ký tự.";
       setRuntimeStyle(errorDiv, "display", "block");
       return;
     }

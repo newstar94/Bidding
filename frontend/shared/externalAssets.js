@@ -1,4 +1,4 @@
-import { trustedScriptURL } from "./trustedTypes.js";
+import { assertSafeStyleURL, trustedScriptURL } from "./trustedTypes.js";
 
 const SCRIPT_LOADERS = /* @__PURE__ */ new Map();
 const STYLE_LOADERS = /* @__PURE__ */ new Map();
@@ -30,21 +30,22 @@ export function ensureXlsxLoaded() {
   return loadScriptOnce("/vendor/xlsx/xlsx.full.min.js?v=0.20.3", "XLSX");
 }
 export function loadStyleOnce(href) {
-  if (document.querySelector(`link[href="${href}"]`)) {
+  const safeHref = assertSafeStyleURL(href);
+  if (document.querySelector(`link[href="${safeHref}"]`)) {
     return Promise.resolve(true);
   }
-  if (STYLE_LOADERS.has(href)) {
-    return STYLE_LOADERS.get(href);
+  if (STYLE_LOADERS.has(safeHref)) {
+    return STYLE_LOADERS.get(safeHref);
   }
   const promise = new Promise((resolve, reject) => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = href;
+    link.href = safeHref;
     link.onload = () => resolve(true);
     link.onerror = () => reject(new Error(`Không thể tải stylesheet: ${href}`));
     document.head.appendChild(link);
   });
-  STYLE_LOADERS.set(href, promise);
+  STYLE_LOADERS.set(safeHref, promise);
   return promise;
 }
 export async function ensureFlatpickrLoaded() {
