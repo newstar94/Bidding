@@ -422,12 +422,12 @@ export async function saveExcelImport() {
   await this.closeModal("modal-excel-preview", { restoreRoute: false });
   const summary = `Đã xử lý ${count} dòng: thêm mới ${createdCount}, cập nhật ${updatedCount}, bỏ qua ${invalidCount}.`;
   if (syncResult?.ok) {
-    this.view.showToast("Nhập dữ liệu thành công", summary, "success");
+    this.view.showToast("Thành công", summary, "success");
   } else if (syncResult?.error && !syncResult?.status && !syncResult?.validation && !syncResult?.conflict) {
     this.view.showToast(
-      "Đã lưu trên thiết bị",
-      `${summary} Dữ liệu đang chờ kết nối để đồng bộ với máy chủ.`,
-      "warning"
+      "Thất bại",
+      "Không thể hoàn tất nhập dữ liệu. Vui lòng kiểm tra kết nối và thử lại.",
+      "error"
     );
   }
 }

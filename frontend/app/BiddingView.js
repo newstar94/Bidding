@@ -9,6 +9,7 @@ import { installPrototypeModules } from "./moduleRegistry.js";
 import { executeAppCommand } from "./commandBus.js";
 import { getAppController } from "./controllerRef.js";
 import { renderPackageStatusBadge } from "../shared/statusBadges.js";
+import { normalizeToastFeedback } from "../shared/toastFeedback.js";
 
 export function toastDeduplicationKey(title, message, type) {
   return JSON.stringify([String(type || "info"), String(title || ""), String(message || "")]);
@@ -891,6 +892,7 @@ export class BiddingView {
       else if (type === "warning") title = "Cảnh báo";
       else title = "Thông báo";
     }
+    ({ title, message, type } = normalizeToastFeedback(message, type));
     let container = document.getElementById("toast-container");
     if (!container) {
       container = document.createElement("div");
@@ -968,7 +970,7 @@ export class BiddingView {
   customAlert(title, message, iconName = "info", focusTarget = null) {
     const isSuccess = title === "Thành công" || title && title.toLowerCase().includes("thành công") || title === "Chúc mừng" || title === "Hoàn thành" || iconName === "check-circle";
     if (isSuccess) {
-      this.showToast(title || "Thành công", message, "success");
+      this.showToast("Thành công", message, "success");
       return new Promise((resolve) => {
         setTimeout(() => resolve(true), 1800);
       });

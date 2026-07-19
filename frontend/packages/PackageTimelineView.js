@@ -309,7 +309,7 @@ async function loadPackageOptions(view, search = timelineState(view).packageQuer
     if (!isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) return;
     if (error?.name !== "AbortError") {
       updateLiveStatus("Không thể tải danh sách gói thầu.");
-      view.showToast("Timeline", error?.message || "Không thể tải danh sách gói thầu.", "error");
+      view.showToast("Thất bại", "Không thể tải danh sách gói thầu. Vui lòng thử lại.", "error");
     }
   } finally {
     if (isCurrentTimelineRequest(view, state, "optionsRequestVersion", requestVersion)) {
@@ -522,7 +522,7 @@ function updateRowFromControl(view, control) {
     ? normalizeTimelineDate(control.value)
     : control.value;
   if (nextValue === null) {
-    view.showToast("Thời gian không hợp lệ", "Vui lòng nhập ngày theo định dạng dd/MM/yyyy.", "error");
+    view.showToast("Thất bại", "Ngày không hợp lệ. Vui lòng nhập theo định dạng dd/MM/yyyy.", "error");
     renderTimelineTable(view);
     return;
   }
@@ -550,10 +550,10 @@ async function saveTimeline(view) {
     if (typeof controller?.forceSyncData === "function") await controller.forceSyncData(false, false, true);
     state.dirty = false;
     const applicableCount = state.rows.filter((row) => row.isApplicable !== false).length;
-    view.showToast("Đã lưu timeline", `Đã lưu ${applicableCount} mốc áp dụng của gói thầu.`, "success");
-    updateLiveStatus("Timeline đã được lưu và đồng bộ.");
+    view.showToast("Thành công", `Đã lưu ${applicableCount} mốc áp dụng của gói thầu.`, "success");
+    updateLiveStatus("Timeline đã được lưu.");
   } catch (error) {
-    view.showToast("Không thể lưu timeline", error?.message || "Vui lòng thử lại.", "error");
+    view.showToast("Thất bại", "Không thể lưu timeline. Vui lòng thử lại.", "error");
   } finally {
     setActionAvailability(state);
   }
@@ -563,7 +563,7 @@ async function exportTimeline(view) {
   const state = timelineState(view);
   if (!state.package) return;
   if (!state.wordExportEnabled) {
-    view.showToast("Chức năng cần gói trả phí", "Phạm vi đang làm việc chưa có quyền xuất Word.", "warning");
+    view.showToast("Cảnh báo", "Gói dịch vụ hiện tại chưa hỗ trợ xuất Word.", "warning");
     return;
   }
   const button = element("timeline-export-word");
@@ -575,9 +575,9 @@ async function exportTimeline(view) {
     const url = appendExportSnapshotVersion(`/api/export-timeline/${encodeURIComponent(state.package.id)}`, snapshotVersion);
     const code = String(state.package.maGoiThau || "LCNT").replace(/[^A-Za-z0-9_-]+/g, "_");
     await authFetchDownload(url, `Timeline_goi_thau_${code}.docx`);
-    view.showToast("Xuất Word thành công", "Checklist timeline đã được tải xuống.", "success");
+    view.showToast("Thành công", "Đã tải xuống checklist timeline.", "success");
   } catch (error) {
-    view.showToast("Không thể xuất Word", error?.message || "Vui lòng thử lại.", "error");
+    view.showToast("Thất bại", "Không thể xuất tệp Word. Vui lòng thử lại.", "error");
   } finally {
     setActionAvailability(state);
   }
@@ -590,7 +590,7 @@ async function copyPreviousTimeline(view) {
   const currentIndex = versions.findIndex((version) => String(version.id) === String(pkg?.id));
   const previous = currentIndex >= 0 ? versions[currentIndex + 1] : null;
   if (!previous) {
-    view.showToast("Timeline", "Không tìm thấy phiên bản trước.", "info");
+    view.showToast("Cảnh báo", "Không có phiên bản trước để sao chép.", "warning");
     return;
   }
   const confirmed = await view.customConfirm(

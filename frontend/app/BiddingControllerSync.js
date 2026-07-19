@@ -272,10 +272,10 @@ function showSyncErrorReport(controller, errors, rejectedCount = 0) {
   }
   if (controller.view && typeof controller.view.showToast === "function") {
     controller.view.showToast(
-      "Lỗi đồng bộ",
+      "Thất bại",
       rejectedCount > 0
-        ? `${rejectedCount} bản ghi vi phạm quy tắc không được máy chủ chấp nhận. Bấm để xem chi tiết.`
-        : `${errors.length} bản ghi chưa hợp lệ. Bấm để xem chi tiết trong hộp thoại.`,
+        ? `${rejectedCount} bản ghi chưa hợp lệ. Bấm để xem chi tiết.`
+        : `${errors.length} bản ghi chưa hợp lệ. Bấm để xem chi tiết.`,
       "error",
       {
         actionLabel: "Xem lỗi",
@@ -421,8 +421,8 @@ export function autoSync() {
         }
         if (this.view && typeof this.view.showToast === "function") {
           this.view.showToast(
-            "Xung đột đồng bộ",
-            "Thay đổi không được lưu vì dữ liệu trên máy chủ đã thay đổi. Ứng dụng đang tải lại bản mới nhất.",
+            "Cảnh báo",
+            "Dữ liệu đã thay đổi trong lúc bạn thao tác. Ứng dụng đang tải lại dữ liệu mới nhất; vui lòng kiểm tra và lưu lại.",
             "warning"
           );
         }
@@ -499,7 +499,7 @@ export function autoSync() {
       } else {
         console.error("[Sync Error]", data.error || data.message || "Đồng bộ thất bại");
         if (this.view && typeof this.view.showToast === "function") {
-          this.view.showToast("Lỗi đồng bộ", data.error || data.message || "Đồng bộ thất bại", "error");
+          this.view.showToast("Thất bại", "Không thể lưu thay đổi. Vui lòng thử lại.", "error");
         }
       }
       const syncMessage = validationErrors.length > 0
@@ -567,8 +567,8 @@ export function autoSync() {
       const affected = data.deleteImpacts.reduce((total, impact) => total + Number(impact?.totalCount || 0), 0);
       const archived = data.deleteImpacts.filter((impact) => impact?.action === "archived").length;
       this.view.showToast(
-        "Đã xác nhận trên máy chủ",
-        `${archived ? `${archived} mục được lưu trữ; ` : ""}${affected} bản ghi bị ảnh hưởng. Chi tiết đã được ghi vào nhật ký kiểm toán.`,
+        "Thành công",
+        `${archived ? `${archived} mục đã được lưu trữ; ` : ""}${affected} bản ghi liên quan đã được cập nhật.`,
         "success"
       );
     }
