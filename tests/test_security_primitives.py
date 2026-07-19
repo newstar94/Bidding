@@ -29,6 +29,7 @@ from backend.http_middleware import (
 from backend.shared.logging_utils import redact_log_value
 from backend.startup import (
     StartupValidationError,
+    _validate_postgresql_configuration,
     calculate_database_connection_budget,
     validate_database_connection_budget,
     validate_runtime_role_snapshot,
@@ -85,6 +86,35 @@ def test_database_connection_budget_is_cluster_wide_and_fail_closed():
     assert validate_database_connection_budget(100, environment) == budget
     with pytest.raises(StartupValidationError, match="budget"):
         validate_database_connection_budget(92, environment)
+
+
+@pytest.mark.parametrize(
+    "forbidden_name",
+    [
+        "DOCUMENT_WORKER_DATABASE_URL",
+        "DATABASE_DOCUMENT_WORKER_PASSWORD",
+    ],
+)
+def test_production_web_process_rejects_document_worker_credentials(
+    forbidden_name,
+):
+    environment = {
+        "DATABASE_URL": (
+            "postgresql://biddingflow_app:runtime-secret@db.internal/"
+            "biddingflow?sslmode=verify-full"
+        ),
+        "DATABASE_RUNTIME_ROLE": "biddingflow_app",
+        "DATABASE_AUTO_MIGRATE": "false",
+        "DATABASE_PRIVATE_NETWORK_CONFIRMED": "true",
+        forbidden_name: "must-not-reach-web",
+    }
+
+    with pytest.raises(StartupValidationError, match=forbidden_name):
+        _validate_postgresql_configuration(
+            object(),
+            environment,
+            production=True,
+        )
 
 
 def test_production_secrets_must_be_independently_rotatable():

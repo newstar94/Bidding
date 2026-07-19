@@ -7,6 +7,7 @@ import concurrent.futures
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -83,6 +84,37 @@ class _AsyncWorkerRuntime:
 
 
 _async_runtime: _AsyncWorkerRuntime | None = None
+
+
+def document_worker_execution_mode(environ=None) -> str:
+    """Return the queue execution boundary selected for this process."""
+
+    environment = os.environ if environ is None else environ
+    production = str(environment.get("APP_ENV", "development")).strip().casefold() in {
+        "prod",
+        "production",
+    }
+    raw_mode = str(environment.get("DOCUMENT_WORKER_EXECUTION_MODE", "")).strip().casefold()
+    if not raw_mode:
+        if production:
+            raise RuntimeError(
+                "DOCUMENT_WORKER_EXECUTION_MODE=external is required in production."
+            )
+        return "embedded"
+    if raw_mode not in {"embedded", "external"}:
+        raise RuntimeError(
+            "DOCUMENT_WORKER_EXECUTION_MODE must be embedded or external."
+        )
+    if production and raw_mode != "external":
+        raise RuntimeError(
+            "Production web processes cannot execute document jobs; configure "
+            "DOCUMENT_WORKER_EXECUTION_MODE=external."
+        )
+    return raw_mode
+
+
+def external_document_worker_enabled(environ=None) -> bool:
+    return document_worker_execution_mode(environ) == "external"
 
 
 def _positive_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -319,6 +351,7 @@ def run_document_job(
     payload: dict[str, Any],
     *,
     timeout_seconds: float | None = None,
+    image_root: Path | None = None,
 ) -> Any:
     """Run one allowlisted operation outside the web process and return its result."""
 
@@ -349,7 +382,12 @@ def run_document_job(
             input_path = job_dir / "input.json"
             result_path = job_dir / "result.json"
             try:
-                write_job_manifest(input_path, operation, payload, image_root=IMAGE_DIR)
+                write_job_manifest(
+                    input_path,
+                    operation,
+                    payload,
+                    image_root=Path(image_root or IMAGE_DIR).resolve(),
+                )
             except (DocumentIpcError, OSError) as exc:
                 raise DocumentWorkerInputError(str(exc)) from exc
             _prepare_privilege_drop(job_dir)
@@ -417,6 +455,7 @@ def run_document_job(
 
 
 _DOCUMENT_QUEUE_WORKER_ID = f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
+_DOCUMENT_QUEUE_ADMISSION_LOCK = 4_242_260_715
 
 
 def _document_queue_database():
@@ -438,6 +477,103 @@ def _document_job_dir(job_id: str) -> Path:
     return path
 
 
+def _external_queue_capacity() -> int:
+    concurrency = _positive_int_env(
+        "DOCUMENT_WORKER_MAX_CONCURRENCY", 2, 1, 8
+    )
+    queue_size = _positive_int_env("DOCUMENT_WORKER_QUEUE_SIZE", 2, 0, 32)
+    instances = _positive_int_env("DOCUMENT_WORKER_INSTANCE_COUNT", 1, 1, 64)
+    return instances * (concurrency + queue_size)
+
+
+def _external_worker_shared_gid() -> int:
+    if os.name != "posix" or not hasattr(os, "chown"):
+        raise RuntimeError(
+            "External document workers require POSIX ownership enforcement."
+        )
+    raw_gid = os.environ.get("DOCUMENT_WORKER_SHARED_GID", "").strip()
+    try:
+        shared_gid = int(raw_gid)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "DOCUMENT_WORKER_SHARED_GID must identify the dedicated shared group."
+        ) from exc
+    if shared_gid <= 0:
+        raise RuntimeError("DOCUMENT_WORKER_SHARED_GID must be greater than zero.")
+    return shared_gid
+
+
+def _prepare_external_job_permissions(job_dir: Path) -> None:
+    """Grant only the dedicated document-worker group access to one job."""
+
+    if not external_document_worker_enabled():
+        return
+    shared_gid = _external_worker_shared_gid()
+
+    def apply_permissions(target: Path) -> None:
+        target_stat = target.lstat()
+        if stat.S_ISLNK(target_stat.st_mode):
+            raise RuntimeError(
+                "Document-worker exchange paths cannot contain symbolic links."
+            )
+        expected_mode = 0o770 if stat.S_ISDIR(target_stat.st_mode) else 0o660
+        if target_stat.st_gid != shared_gid:
+            os.chown(target, -1, shared_gid)
+            target_stat = target.lstat()
+        if stat.S_IMODE(target_stat.st_mode) != expected_mode:
+            os.chmod(target, expected_mode)
+
+    targets = [job_dir.parent, job_dir, *job_dir.rglob("*")]
+    for target in targets:
+        apply_permissions(target)
+
+
+def _external_shared_root(*, provision: bool) -> Path:
+    """Provision or verify the web/worker exchange directory."""
+
+    shared_root = resolve_runtime_path("DOCUMENT_WORKER_TEMP_DIR").resolve()
+    shared_gid = _external_worker_shared_gid()
+    if provision:
+        shared_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        root_stat = shared_root.lstat()
+        if stat.S_ISLNK(root_stat.st_mode):
+            raise RuntimeError(
+                "DOCUMENT_WORKER_TEMP_DIR cannot be a symbolic link."
+            )
+        if root_stat.st_gid != shared_gid:
+            os.chown(shared_root, -1, shared_gid)
+            root_stat = shared_root.lstat()
+        if stat.S_IMODE(root_stat.st_mode) != 0o770:
+            os.chmod(shared_root, 0o770)
+    try:
+        root_stat = shared_root.lstat()
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "DOCUMENT_WORKER_TEMP_DIR must be provisioned before starting the worker."
+        ) from exc
+    if not stat.S_ISDIR(root_stat.st_mode) or stat.S_ISLNK(root_stat.st_mode):
+        raise RuntimeError(
+            "DOCUMENT_WORKER_TEMP_DIR must be a real directory, not a symbolic link."
+        )
+    if root_stat.st_gid != shared_gid or stat.S_IMODE(root_stat.st_mode) != 0o770:
+        raise RuntimeError(
+            "DOCUMENT_WORKER_TEMP_DIR must use the dedicated shared GID and mode 0770."
+        )
+    if not os.access(shared_root, os.R_OK | os.W_OK | os.X_OK):
+        raise RuntimeError(
+            "The current service account cannot access DOCUMENT_WORKER_TEMP_DIR."
+        )
+    return shared_root
+
+
+def validate_external_document_worker_shared_root() -> Path:
+    """Verify the pre-provisioned exchange directory without changing ownership."""
+
+    if not external_document_worker_enabled():
+        raise RuntimeError("External document-worker mode is not enabled.")
+    return _external_shared_root(provision=False)
+
+
 def _enqueue_durable_document_job(
     operation: str,
     payload: dict[str, Any],
@@ -447,7 +583,7 @@ def _enqueue_durable_document_job(
     database = database or _document_queue_database()
     job_id = uuid.uuid4().hex
     job_dir = _document_job_dir(job_id)
-    job_dir.parent.mkdir(parents=True, exist_ok=True)
+    job_dir.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     job_dir.mkdir(mode=0o700)
     try:
         write_job_manifest(
@@ -456,6 +592,7 @@ def _enqueue_durable_document_job(
             payload,
             image_root=IMAGE_DIR,
         )
+        _prepare_external_job_permissions(job_dir)
         now = int(time.time())
         retention_seconds = _positive_int_env(
             "DOCUMENT_JOB_RETENTION_SECONDS",
@@ -465,6 +602,24 @@ def _enqueue_durable_document_job(
         )
         connection = database.get_connection()
         try:
+            if external_document_worker_enabled():
+                # Serialize admission across all ASGI workers. Per-process
+                # semaphores alone cannot cap a shared PostgreSQL queue.
+                connection.execute(
+                    "SELECT pg_advisory_xact_lock(?)",
+                    (_DOCUMENT_QUEUE_ADMISSION_LOCK,),
+                )
+                active_jobs = int(
+                    connection.execute(
+                        """SELECT COUNT(*) FROM document_jobs
+                           WHERE status IN ('pending', 'processing', 'retry')
+                             AND expires_at > ?""",
+                        (now,),
+                    ).fetchone()[0]
+                    or 0
+                )
+                if active_jobs >= _external_queue_capacity():
+                    raise DocumentWorkerBusyError(_BUSY_MESSAGE)
             connection.execute(
                 """INSERT INTO document_jobs (
                        id, operation, status, attempt_count, available_at,
@@ -646,7 +801,11 @@ def _process_claimed_document_job(database, claimed) -> None:
         operation, payload = read_job_manifest(job_dir / "input.json", job_dir)
         if operation != claimed["operation"]:
             raise DocumentWorkerInputError("Loại tác vụ tài liệu không khớp.")
-        result = run_document_job(operation, payload)
+        result = run_document_job(
+            operation,
+            payload,
+            image_root=job_dir / "assets" / "images",
+        )
         result_path = job_dir / "result.json"
         if result_path.exists():
             result_path.unlink()
@@ -654,6 +813,7 @@ def _process_claimed_document_job(database, claimed) -> None:
         if binary_result.exists():
             binary_result.unlink()
         write_result(result_path, result=result)
+        _prepare_external_job_permissions(job_dir)
         _finish_durable_document_job(database, claimed)
     except Exception as error:
         for result_file in (job_dir / "result.json", job_dir / "result.bin"):
@@ -694,10 +854,12 @@ def _consume_durable_document_result(
     max_attempts = _positive_int_env("DOCUMENT_JOB_MAX_ATTEMPTS", 2, 1, 5)
     deadline = time.monotonic() + min(900.0, max(15.0, per_attempt * max_attempts + 30.0))
     job_dir = _document_job_dir(job_id)
+    external_worker = external_document_worker_enabled()
     while time.monotonic() < deadline:
-        claimed = _claim_durable_document_job(database, job_id)
-        if claimed is not None:
-            _process_claimed_document_job(database, claimed)
+        if not external_worker:
+            claimed = _claim_durable_document_job(database, job_id)
+            if claimed is not None:
+                _process_claimed_document_job(database, claimed)
 
         connection = database.get_connection()
         try:
@@ -841,6 +1003,60 @@ def cleanup_stale_document_jobs(max_age_seconds: int = 3_600) -> int:
     return removed
 
 
+def cleanup_orphaned_durable_document_jobs(
+    database,
+    *,
+    min_age_seconds: int = 300,
+) -> int:
+    """Remove old exchange directories that have no durable queue record.
+
+    A web process can be killed after creating the directory but before its DB
+    transaction commits.  In external mode, age alone is insufficient because
+    another host may still be processing the job.  The durable row is therefore
+    authoritative and only row-less, old, real directories are removed.
+    """
+
+    root = resolve_runtime_path("DOCUMENT_WORKER_TEMP_DIR")
+    if not root.exists():
+        return 0
+    cutoff = time.time() - max(60, int(min_age_seconds))
+    candidates: list[tuple[str, Path]] = []
+    for child in root.glob("job-*"):
+        try:
+            child_stat = child.lstat()
+            job_id = child.name.removeprefix("job-")
+            if (
+                stat.S_ISDIR(child_stat.st_mode)
+                and not stat.S_ISLNK(child_stat.st_mode)
+                and len(job_id) == 32
+                and all(character in "0123456789abcdef" for character in job_id)
+                and child_stat.st_mtime < cutoff
+            ):
+                candidates.append((job_id, child))
+        except OSError:
+            continue
+    if not candidates:
+        return 0
+    connection = database.get_connection()
+    try:
+        durable_ids = {
+            str(row["id"])
+            for row in connection.execute("SELECT id FROM document_jobs").fetchall()
+        }
+    finally:
+        connection.close()
+    removed = 0
+    for job_id, child in candidates:
+        if job_id in durable_ids:
+            continue
+        try:
+            shutil.rmtree(child)
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def purge_expired_durable_document_jobs(database) -> int:
     """Delete terminal/expired queue metadata, then remove its dedicated files."""
 
@@ -879,9 +1095,34 @@ def purge_expired_durable_document_jobs(database) -> int:
 def validate_document_worker_configuration() -> None:
     """Fail startup when production would run document parsers with admin rights."""
 
-    validate_document_sandbox_configuration()
-    if os.environ.get("APP_ENV", "development").lower() not in {"prod", "production"}:
+    mode = document_worker_execution_mode()
+    production = os.environ.get("APP_ENV", "development").lower() in {
+        "prod",
+        "production",
+    }
+    if mode == "embedded":
+        validate_document_sandbox_configuration()
+    if not production:
         return
+    if os.name != "posix":
+        raise RuntimeError(
+            "Production external document workers currently require a POSIX host."
+        )
+    required_external = (
+        "DOCUMENT_WORKER_SERVICE_ACCOUNT_CONFIRMED",
+        "DOCUMENT_WORKER_SHARED_STORAGE_CONFIRMED",
+    )
+    missing_external = [
+        name
+        for name in required_external
+        if os.environ.get(name, "").strip().casefold() != "true"
+    ]
+    if missing_external:
+        raise RuntimeError(
+            "Missing production external document-worker configuration: "
+            + ", ".join(missing_external)
+        )
+    _external_shared_root(provision=True)
     if (
         _positive_int_env("APP_INSTANCE_COUNT", 1, 1, 1_000) > 1
         and os.environ.get(

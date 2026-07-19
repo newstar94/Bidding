@@ -1,15 +1,17 @@
 [Unit]
 Description=BiddingFlow ASGI service (PostgreSQL)
-After=network-online.target
+After=network-online.target biddingflow-migrate.service biddingflow-document-worker.service
 Wants=network-online.target
+Requires=biddingflow-migrate.service
+BindsTo=biddingflow-document-worker.service
 
 [Service]
 Type=simple
 User=biddingflow
 Group=biddingflow
+SupplementaryGroups=biddingflow-documents
 WorkingDirectory=/opt/biddingflow
 EnvironmentFile=/etc/biddingflow/biddingflow.env
-ExecStartPre=/opt/biddingflow/.venv/bin/python scripts/verify_document_sandbox.py
 ExecStart=/opt/biddingflow/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers ${UVICORN_WORKERS} --no-proxy-headers --limit-concurrency 256 --backlog 1024 --timeout-keep-alive 5 --timeout-graceful-shutdown 30 --ws-max-size 65536 --ws-max-queue 32
 Restart=on-failure
 RestartSec=5
@@ -33,7 +35,7 @@ ProcSubset=pid
 RemoveIPC=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/biddingflow /var/log/biddingflow /var/backups/biddingflow /var/tmp/biddingflow-document-worker
+ReadWritePaths=/var/lib/biddingflow /var/lib/biddingflow-document-jobs /var/log/biddingflow /var/backups/biddingflow
 UMask=0077
 
 [Install]

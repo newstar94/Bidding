@@ -85,7 +85,27 @@ Mốc kiểm tra mặc định yêu cầu p50 không thấp hơn 30 ms và p95 k
 
 ## Sandbox tài liệu trên Linux production
 
-Mọi tác vụ DOCX/XLSX chạy trong Bubblewrap với mount root rỗng, namespace user/PID/network riêng, UID/GID sandbox không phải root và policy seccomp chặn socket, child process, `exec`, mount, tracing. Cài `bubblewrap` và `libseccomp` từ kho gói của hệ điều hành, sau đó cấu hình:
+Production không xử lý DOCX/XLSX trong tiến trình ASGI. Web chỉ ghi manifest JSON vào hàng đợi; dịch vụ `biddingflow-document-worker` dùng tài khoản hệ điều hành và PostgreSQL riêng để nhận job. Mỗi parser tiếp tục chạy trong Bubblewrap với mount root rỗng, namespace user/PID/network riêng, thư mục thực thi `0700`, UID/GID sandbox không phải root và seccomp chặn socket, child process, `exec`, mount, tracing.
+
+Tạo hai tài khoản dịch vụ và một nhóm trao đổi riêng. Web chỉ là thành viên phụ của nhóm; worker không được gia nhập nhóm chính của web:
+
+```bash
+sudo groupadd --system biddingflow
+sudo useradd --system --gid biddingflow --home-dir /nonexistent --shell /usr/sbin/nologin biddingflow
+sudo groupadd --system biddingflow-documents
+sudo useradd --system --gid biddingflow-documents --home-dir /nonexistent --shell /usr/sbin/nologin biddingflow-document-worker
+sudo usermod --append --groups biddingflow-documents biddingflow
+getent group biddingflow-documents
+```
+
+Ghi GID số trả về vào `DOCUMENT_WORKER_SHARED_GID` của cả hai environment. Thư mục trao đổi giữa hai dịch vụ là `0770`; nó không phải thư mục parser. Cài cấu hình tmpfiles để ownership không phụ thuộc umask hay lần khởi động trước:
+
+```bash
+sudo install -o root -g root -m 0644 deploy/biddingflow-tmpfiles.conf.example /etc/tmpfiles.d/biddingflow.conf
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/biddingflow.conf
+```
+
+Cài `bubblewrap`, `libseccomp` và nạp profile AppArmor đi kèm. Profile chỉ cho Bubblewrap tạo user namespace; parser vẫn không còn capability và chịu seccomp:
 
 Trên Ubuntu 24.04, cài và nạp profile AppArmor đi kèm trước khi khởi động dịch vụ. Profile chỉ cho Bubblewrap tạo user namespace; worker cuối cùng vẫn bắt buộc không còn capability và chịu policy seccomp:
 
@@ -94,23 +114,26 @@ sudo install -o root -g root -m 0644 deploy/apparmor-biddingflow-bwrap /etc/appa
 sudo apparmor_parser --replace /etc/apparmor.d/biddingflow-bwrap
 ```
 
-```text
-APP_ENV=production
-DOCUMENT_WORKER_SANDBOX=bwrap
-DOCUMENT_WORKER_SANDBOX_EXECUTABLE=/usr/bin/bwrap
-DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP=true
-DOCUMENT_WORKER_SANDBOX_UID=65534
-DOCUMENT_WORKER_SANDBOX_GID=65534
-DOCUMENT_WORKER_TEMP_DIR=/var/tmp/biddingflow-document-worker
-```
+Tạo hai file environment tách biệt:
 
-Tài khoản chạy web service phải là tài khoản không có quyền quản trị. Trước khi khởi động hoặc nhận traffic, bắt buộc chạy probe thật trên chính host:
+- `/etc/biddingflow/biddingflow.env` cho web: có `DATABASE_URL` runtime, `DOCUMENT_WORKER_EXECUTION_MODE=external`, đường dẫn/GID dùng chung và hai attestation; tuyệt đối không có `DOCUMENT_WORKER_DATABASE_URL` hoặc mật khẩu role worker.
+- `/etc/biddingflow/document-worker.env` theo [mẫu worker](deploy/biddingflow-document-worker.env.example): chỉ chứa URL PostgreSQL `sslmode=verify-full` của `biddingflow_document_worker`, danh tính service và cấu hình sandbox; không chứa SMTP, OAuth, audit key, runtime/admin/migrator/backup credential hoặc biến mật khẩu worker tách rời.
+
+Đặt cả hai file environment là `root:root` mode `0600`. Chỉ chuyển hai attestation sang `true` sau khi tài khoản, volume mã hóa, GID và unit đã được kiểm tra thực tế. Thư mục release `/opt/biddingflow` không được chứa `.env`; runner sẽ từ chối khởi động nếu phát hiện file này.
+
+Role `biddingflow_document_worker` chỉ có `SELECT, UPDATE` trên `document_jobs`, không được đọc bảng tài khoản/nghiệp vụ, không được `INSERT`, `DELETE`, tạo bảng tạm hay kế thừa role khác. Cấp role bằng `scripts/configure_database_roles.py` trong bước provisioning, chạy migration, rồi chạy script cấp role lần nữa để ACL của schema mới được áp dụng.
+
+Install và bật ba unit. Web `BindsTo` worker nên fail closed nếu dịch vụ tài liệu dừng:
 
 ```bash
-python scripts/verify_document_sandbox.py
+sudo install -o root -g root -m 0644 deploy/biddingflow-migrate.service.example /etc/systemd/system/biddingflow-migrate.service
+sudo install -o root -g root -m 0644 deploy/biddingflow-document-worker.service.example /etc/systemd/system/biddingflow-document-worker.service
+sudo install -o root -g root -m 0644 deploy/biddingflow.service.example /etc/systemd/system/biddingflow.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now biddingflow.service
 ```
 
-Probe phải xác nhận không mở được socket mạng/Unix, không tạo được child process, không thấy `.env`/`DATABASE_URL`, không còn capability và đang dùng UID sandbox. Mẫu [systemd](deploy/biddingflow.service.example) đã đặt probe ở `ExecStartPre`; probe thất bại thì dịch vụ không được khởi động.
+Probe trong `ExecStartPre` của [unit worker](deploy/biddingflow-document-worker.service.example) phải xác nhận parser không mở được socket mạng/Unix, không tạo được child process, không thấy `.env`/DB credential, không còn capability và dùng UID sandbox. Unit daemon chỉ cho egress tới loopback/RFC1918/ULA để kết nối PostgreSQL private; chính parser luôn có network namespace rỗng. Probe hoặc kiểm tra DB role thất bại thì worker không khởi động và web cũng không nhận traffic.
 
 ## Phát triển cục bộ trên Windows
 

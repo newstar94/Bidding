@@ -60,11 +60,19 @@ def main() -> int:
     runtime_role = _role_name("DATABASE_RUNTIME_ROLE", "biddingflow_app")
     migrator_role = _role_name("DATABASE_MIGRATOR_ROLE", "biddingflow_migrator")
     backup_role = _role_name("DATABASE_BACKUP_ROLE", "biddingflow_backup")
+    document_worker_role = _role_name(
+        "DATABASE_DOCUMENT_WORKER_ROLE", "biddingflow_document_worker"
+    )
     runtime_password = os.environ.get("DATABASE_RUNTIME_PASSWORD", "")
     migrator_password = os.environ.get("DATABASE_MIGRATOR_PASSWORD", "")
     backup_password = os.environ.get("DATABASE_BACKUP_PASSWORD", "")
-    if len({runtime_role, migrator_role, backup_role}) != 3:
-        raise RuntimeError("Runtime, migrator and backup roles must be different.")
+    document_worker_password = os.environ.get(
+        "DATABASE_DOCUMENT_WORKER_PASSWORD", ""
+    )
+    if len({runtime_role, migrator_role, backup_role, document_worker_role}) != 4:
+        raise RuntimeError(
+            "Runtime, migrator, backup and document-worker roles must be different."
+        )
 
     from backend.db.schema import SCHEMA_DINH_NGHIA
 
@@ -73,6 +81,9 @@ def main() -> int:
         _ensure_login_role(cursor, runtime_role, runtime_password)
         _ensure_login_role(cursor, migrator_role, migrator_password)
         _ensure_login_role(cursor, backup_role, backup_password)
+        _ensure_login_role(
+            cursor, document_worker_role, document_worker_password
+        )
         database_name = cursor.execute("SELECT current_database()").fetchone()[0]
         cursor.execute(
             sql.SQL("ALTER DATABASE {} SET timezone TO {}").format(
@@ -96,6 +107,11 @@ def main() -> int:
             )
         )
         cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON DATABASE {} FROM {}").format(
+                sql.Identifier(database_name), sql.Identifier(document_worker_role)
+            )
+        )
+        cursor.execute(
             sql.SQL("REVOKE ALL PRIVILEGES ON SCHEMA public FROM {}").format(
                 sql.Identifier(runtime_role)
             )
@@ -106,11 +122,17 @@ def main() -> int:
             )
         )
         cursor.execute(
-            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}, {}").format(
+            sql.SQL("REVOKE ALL PRIVILEGES ON SCHEMA public FROM {}").format(
+                sql.Identifier(document_worker_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}, {}, {}").format(
                 sql.Identifier(database_name),
                 sql.Identifier(runtime_role),
                 sql.Identifier(migrator_role),
                 sql.Identifier(backup_role),
+                sql.Identifier(document_worker_role),
             )
         )
         cursor.execute(
@@ -119,10 +141,11 @@ def main() -> int:
             )
         )
         cursor.execute(
-            sql.SQL("GRANT USAGE ON SCHEMA public TO {}, {}, {}").format(
+            sql.SQL("GRANT USAGE ON SCHEMA public TO {}, {}, {}, {}").format(
                 sql.Identifier(runtime_role),
                 sql.Identifier(migrator_role),
                 sql.Identifier(backup_role),
+                sql.Identifier(document_worker_role),
             )
         )
         cursor.execute(
@@ -133,6 +156,11 @@ def main() -> int:
         cursor.execute(
             sql.SQL("ALTER ROLE {} IN DATABASE {} SET search_path TO public").format(
                 sql.Identifier(runtime_role), sql.Identifier(database_name)
+            )
+        )
+        cursor.execute(
+            sql.SQL("ALTER ROLE {} IN DATABASE {} SET search_path TO public").format(
+                sql.Identifier(document_worker_role), sql.Identifier(database_name)
             )
         )
 
@@ -187,6 +215,17 @@ def main() -> int:
             )
         )
         cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {}").format(
+                sql.Identifier(document_worker_role)
+            )
+        )
+        # Extensions such as pg_stat_statements can grant SELECT to PUBLIC on
+        # views created in the public schema.  Revoke the ambient grant before
+        # applying the explicit per-role allow-lists below.
+        cursor.execute(
+            "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC"
+        )
+        cursor.execute(
             sql.SQL("REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM {}").format(
                 sql.Identifier(runtime_role)
             )
@@ -197,11 +236,24 @@ def main() -> int:
             )
         )
         cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM {}").format(
+                sql.Identifier(document_worker_role)
+            )
+        )
+        cursor.execute(
+            "REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC"
+        )
+        cursor.execute(
             "REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC"
         )
         cursor.execute(
             sql.SQL("REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
                 sql.Identifier(runtime_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
+                sql.Identifier(document_worker_role)
             )
         )
         cursor.execute(
@@ -224,6 +276,12 @@ def main() -> int:
                 sql.Identifier(backup_role)
             )
         )
+        if "document_jobs" in existing_tables:
+            cursor.execute(
+                sql.SQL(
+                    "GRANT SELECT, UPDATE ON TABLE public.document_jobs TO {}"
+                ).format(sql.Identifier(document_worker_role))
+            )
         cursor.execute(
             sql.SQL("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO {}").format(
                 sql.Identifier(runtime_role)
@@ -255,6 +313,16 @@ def main() -> int:
             )
         )
         cursor.execute(
+            sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC").format(
+                sql.Identifier(migrator_role)
+            )
+        )
+        cursor.execute(
+            sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC").format(
+                sql.Identifier(migrator_role)
+            )
+        )
+        cursor.execute(
             sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO {}").format(
                 sql.Identifier(migrator_role), sql.Identifier(runtime_role)
             )
@@ -265,17 +333,19 @@ def main() -> int:
             FROM pg_auth_members AS memberships
             JOIN pg_roles AS parent ON parent.oid = memberships.roleid
             JOIN pg_roles AS member ON member.oid = memberships.member
-            WHERE member.rolname IN (%s, %s)
+            WHERE member.rolname IN (%s, %s, %s)
             ORDER BY member.rolname, parent.rolname
             """,
-            (runtime_role, backup_role),
+            (runtime_role, backup_role, document_worker_role),
         ).fetchall()
         if memberships:
             raise RuntimeError(
-                "Runtime/backup role inherits PostgreSQL roles; revoke memberships first: "
+                "Runtime/backup/document-worker role inherits PostgreSQL roles; revoke memberships first: "
                 + ", ".join(f"{row[0]}->{row[1]}" for row in memberships)
             )
-    print("PostgreSQL migrator/runtime roles configured successfully.")
+    print(
+        "PostgreSQL migrator/runtime/backup/document-worker roles configured successfully."
+    )
     return 0
 
 

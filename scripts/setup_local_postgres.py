@@ -359,12 +359,26 @@ def main() -> None:
     runtime_password = values.get("DATABASE_RUNTIME_PASSWORD") or secrets.token_urlsafe(32)
     migrator_password = values.get("DATABASE_MIGRATOR_PASSWORD") or secrets.token_urlsafe(32)
     backup_password = values.get("DATABASE_BACKUP_PASSWORD") or secrets.token_urlsafe(32)
+    document_worker_password = (
+        values.get("DATABASE_DOCUMENT_WORKER_PASSWORD")
+        or secrets.token_urlsafe(32)
+    )
     _replace_env_value(lines, "DATABASE_RUNTIME_ROLE", "biddingflow_app")
     _replace_env_value(lines, "DATABASE_MIGRATOR_ROLE", "biddingflow_migrator")
     _replace_env_value(lines, "DATABASE_BACKUP_ROLE", "biddingflow_backup")
+    _replace_env_value(
+        lines,
+        "DATABASE_DOCUMENT_WORKER_ROLE",
+        "biddingflow_document_worker",
+    )
     _replace_env_value(lines, "DATABASE_RUNTIME_PASSWORD", runtime_password)
     _replace_env_value(lines, "DATABASE_MIGRATOR_PASSWORD", migrator_password)
     _replace_env_value(lines, "DATABASE_BACKUP_PASSWORD", backup_password)
+    _replace_env_value(
+        lines,
+        "DATABASE_DOCUMENT_WORKER_PASSWORD",
+        document_worker_password,
+    )
     runtime_url = (
         f"postgresql://biddingflow_app:{quote(runtime_password, safe='')}@127.0.0.1:"
         f"{PORT}/{DATABASE}?sslmode=disable"
@@ -377,9 +391,19 @@ def main() -> None:
         f"postgresql://biddingflow_backup:{quote(backup_password, safe='')}@127.0.0.1:"
         f"{PORT}/{DATABASE}?sslmode=disable"
     )
+    document_worker_url = (
+        "postgresql://biddingflow_document_worker:"
+        f"{quote(document_worker_password, safe='')}@127.0.0.1:"
+        f"{PORT}/{DATABASE}?sslmode=disable"
+    )
     _replace_env_value(lines, "RUNTIME_DATABASE_URL", runtime_url)
     _replace_env_value(lines, "MIGRATOR_DATABASE_URL", migrator_url)
     _replace_env_value(lines, "BACKUP_DATABASE_URL", backup_url)
+    _replace_env_value(
+        lines,
+        "DOCUMENT_WORKER_DATABASE_URL",
+        document_worker_url,
+    )
     test_database_url = database_url.replace(f"/{DATABASE}?", f"/{TEST_DATABASE}?")
     _replace_env_value(lines, "TEST_DATABASE_URL", test_database_url)
     api_test_database_url = database_url.replace(

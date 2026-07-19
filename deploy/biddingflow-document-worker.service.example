@@ -1,0 +1,60 @@
+[Unit]
+Description=BiddingFlow isolated document queue worker
+Requires=biddingflow-migrate.service
+After=network-online.target biddingflow-migrate.service
+Before=biddingflow.service
+PartOf=biddingflow.service
+
+[Service]
+Type=simple
+User=biddingflow-document-worker
+Group=biddingflow-documents
+WorkingDirectory=/opt/biddingflow
+EnvironmentFile=/etc/biddingflow/document-worker.env
+ExecStartPre=/opt/biddingflow/.venv/bin/python scripts/verify_document_sandbox.py
+ExecStart=/opt/biddingflow/.venv/bin/python scripts/run_document_worker.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+KillMode=control-group
+UMask=0007
+
+# The daemon may reach only loopback/private PostgreSQL. Every parser child is
+# additionally placed in Bubblewrap's network namespace with no interfaces.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=10.0.0.0/8
+IPAddressAllow=172.16.0.0/12
+IPAddressAllow=192.168.0.0/16
+IPAddressAllow=fd00::/8
+
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectSystem=strict
+ProtectHome=true
+RemoveIPC=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/biddingflow-document-jobs
+
+CPUQuota=200%
+MemoryMax=2G
+TasksMax=64
+LimitNOFILE=512
+LimitFSIZE=134217728
+
+[Install]
+WantedBy=multi-user.target

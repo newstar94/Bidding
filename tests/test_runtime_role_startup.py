@@ -13,6 +13,7 @@ import pytest
 from backend.auth.auth_helper import hash_password
 from backend.db.db_helper import PostgresDatabase
 from backend.startup import verify_database_runtime_role
+from scripts.run_document_worker import _validate_database_boundary
 from scripts.process_utils import (
     coverage_python_prefix,
     popen_group_options,
@@ -161,6 +162,44 @@ def test_backup_role_is_read_only_and_cannot_create_objects() -> None:
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             connection.execute(
                 "CREATE TEMP TABLE backup_temp_escape_probe(id integer)"
+            )
+
+
+def test_document_worker_role_is_limited_to_queue_claim_and_finish() -> None:
+    database_url = os.environ.get("DOCUMENT_WORKER_DATABASE_URL", "").strip()
+    if not database_url:
+        pytest.skip("DOCUMENT_WORKER_DATABASE_URL is not configured")
+
+    database = PostgresDatabase(database_url)
+    try:
+        assert _validate_database_boundary(database) == os.environ.get(
+            "DATABASE_DOCUMENT_WORKER_ROLE",
+            "biddingflow_document_worker",
+        )
+    finally:
+        database.close()
+
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute(
+            "UPDATE document_jobs SET updated_at = updated_at WHERE false"
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("SELECT id FROM tai_khoan LIMIT 1")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                """INSERT INTO document_jobs (
+                       id, operation, status, attempt_count, available_at,
+                       expires_at, created_at, updated_at
+                   ) VALUES ('worker-escape', 'validate_ooxml', 'pending', 0,
+                             1, 2, 1, 1)"""
+            )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("DELETE FROM document_jobs WHERE false")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("CREATE TABLE worker_role_escape_probe(id integer)")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                "CREATE TEMP TABLE worker_temp_escape_probe(id integer)"
             )
 
 

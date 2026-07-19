@@ -39,8 +39,28 @@ def _upgrade_to_v2_remove_mfa(cursor, context):
     )
 
 
+def _upgrade_to_v3_reconcile_retired_mfa_schema(cursor, context):
+    """Repair installations that recorded v2 before MFA cleanup completed.
+
+    Released upgrade versions are immutable.  A database can therefore report
+    v2 while still carrying the retired objects.  Repeating this idempotent
+    cleanup in v3 repairs that state while preserving strict drift detection.
+    """
+
+    del context
+    cursor.execute("DROP TABLE IF EXISTS account_mfa")
+    cursor.execute(
+        "ALTER TABLE auth_sessions DROP COLUMN IF EXISTS mfa_verified_at"
+    )
+
+
 UPGRADES = (
     DatabaseUpgrade(2, "remove_mfa", _upgrade_to_v2_remove_mfa),
+    DatabaseUpgrade(
+        3,
+        "reconcile_retired_mfa_schema",
+        _upgrade_to_v3_reconcile_retired_mfa_schema,
+    ),
 )
 
 

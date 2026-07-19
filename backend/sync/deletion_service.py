@@ -21,6 +21,12 @@ from backend.sync.queries import TABLE_KEYS
 from backend.sync.repository import DELETED_RECORD_UPSERT_SQL, VERSIONED_TABLES
 
 
+def _is_actor_personal_scope(organization_id, actor_user_id):
+    """Return True only for the actor's own implicit personal workspace."""
+
+    return str(organization_id or "").strip() == f"personal:{str(actor_user_id or '').strip()}"
+
+
 def apply_sync_deletions(
     cursor,
     deletions,
@@ -99,7 +105,10 @@ def apply_sync_deletions(
             })
             continue
         impact = build_delete_impact(cursor, organization_id, table_name, record_id)
-        if table_name in HIGH_IMPACT_DELETE_TABLES:
+        if (
+            table_name in HIGH_IMPACT_DELETE_TABLES
+            and not _is_actor_personal_scope(organization_id, actor_user_id)
+        ):
             if not is_organization_manager(
                 cursor, actor_role, actor_user_id, organization_id
             ):

@@ -11,6 +11,7 @@ from io import BytesIO
 
 import pytest
 
+from backend.documents import document_worker
 from backend.documents.document_ipc import (
     DocumentIpcError,
     read_job_manifest,
@@ -19,8 +20,14 @@ from backend.documents.document_ipc import (
     write_result,
 )
 from backend.documents.document_worker import (
+    DocumentWorkerBusyError,
     DocumentWorkerInputError,
     DocumentWorkerTimeoutError,
+    _consume_durable_document_result,
+    _enqueue_durable_document_job,
+    _prepare_external_job_permissions,
+    cleanup_orphaned_durable_document_jobs,
+    document_worker_execution_mode,
     _worker_environment,
     run_document_job,
 )
@@ -33,6 +40,10 @@ from backend.documents.seccomp_policy import (
     seccomp_library_name,
 )
 from backend.shared.paths import PROJECT_ROOT
+from scripts.run_document_worker import (
+    _validate_document_worker_database_url,
+    _validate_worker_secret_boundary,
+)
 
 
 def _minimal_xlsx(extra_entries=None, *, content_types=None) -> bytes:
@@ -133,6 +144,314 @@ def test_document_subprocess_rejects_malformed_archive(tmp_path: Path, monkeypat
             {"content": b"not-an-xlsx", "kind": "xlsx"},
             timeout_seconds=15,
         )
+
+
+def test_production_requires_external_document_worker_mode() -> None:
+    with pytest.raises(RuntimeError, match="external"):
+        document_worker_execution_mode({"APP_ENV": "production"})
+    with pytest.raises(RuntimeError, match="cannot execute"):
+        document_worker_execution_mode(
+            {
+                "APP_ENV": "production",
+                "DOCUMENT_WORKER_EXECUTION_MODE": "embedded",
+            }
+        )
+    assert document_worker_execution_mode(
+        {
+            "APP_ENV": "production",
+            "DOCUMENT_WORKER_EXECUTION_MODE": "external",
+        }
+    ) == "external"
+    assert document_worker_execution_mode({"APP_ENV": "test"}) == "embedded"
+
+
+def test_external_web_consumer_never_claims_or_executes_job(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Connection:
+        def execute(self, _statement, _parameters=()):
+            return self
+
+        def fetchone(self):
+            return {
+                "status": "completed",
+                "last_error_code": None,
+                "last_error_message": None,
+            }
+
+        def close(self):
+            return None
+
+    class _Database:
+        def get_connection(self):
+            return _Connection()
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DOCUMENT_WORKER_EXECUTION_MODE", "external")
+    monkeypatch.setattr(
+        document_worker,
+        "_document_job_dir",
+        lambda _job_id: tmp_path,
+    )
+    monkeypatch.setattr(
+        document_worker,
+        "_claim_durable_document_job",
+        lambda *_args, **_kwargs: pytest.fail("web process claimed an external job"),
+    )
+    monkeypatch.setattr(document_worker, "_read_result", lambda *_args: b"result")
+    monkeypatch.setattr(
+        document_worker,
+        "_delete_terminal_document_job",
+        lambda *_args, **_kwargs: True,
+    )
+
+    assert _consume_durable_document_result(
+        "a" * 32,
+        database=_Database(),
+        timeout_seconds=1,
+    ) == b"result"
+
+
+def test_external_queue_admission_is_cluster_wide_and_cleans_rejected_job(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Result:
+        def __init__(self, value=0):
+            self.value = value
+
+        def fetchone(self):
+            return (self.value,)
+
+    class _Connection:
+        def __init__(self):
+            self.calls = []
+            self.rolled_back = False
+
+        def execute(self, statement, parameters=()):
+            self.calls.append((" ".join(statement.split()), tuple(parameters)))
+            if "COUNT(*) FROM document_jobs" in statement:
+                return _Result(1)
+            return _Result()
+
+        def commit(self):
+            pytest.fail("a rejected queue admission must not commit")
+
+        def rollback(self):
+            self.rolled_back = True
+
+        def close(self):
+            return None
+
+    connection = _Connection()
+
+    class _Database:
+        def get_connection(self):
+            return connection
+
+    worker_root = tmp_path / "exchange"
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DOCUMENT_WORKER_EXECUTION_MODE", "external")
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(worker_root))
+    monkeypatch.setenv("DOCUMENT_WORKER_MAX_CONCURRENCY", "1")
+    monkeypatch.setenv("DOCUMENT_WORKER_QUEUE_SIZE", "0")
+    monkeypatch.setenv("DOCUMENT_WORKER_INSTANCE_COUNT", "1")
+    monkeypatch.setattr(
+        document_worker,
+        "_prepare_external_job_permissions",
+        lambda _job_dir: None,
+    )
+
+    with pytest.raises(DocumentWorkerBusyError):
+        _enqueue_durable_document_job(
+            "validate_ooxml",
+            {"content": _minimal_xlsx(), "kind": "xlsx"},
+            database=_Database(),
+        )
+
+    assert connection.rolled_back is True
+    assert any("pg_advisory_xact_lock" in sql for sql, _ in connection.calls)
+    assert not list(worker_root.glob("job-*"))
+
+
+def test_external_startup_removes_only_old_rowless_job_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    durable_id = "c" * 32
+    orphan_id = "d" * 32
+    worker_root = tmp_path / "exchange"
+    durable_dir = worker_root / f"job-{durable_id}"
+    orphan_dir = worker_root / f"job-{orphan_id}"
+    invalid_dir = worker_root / "job-not-a-valid-id"
+    for directory in (durable_dir, orphan_dir, invalid_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+        os.utime(directory, (1, 1))
+
+    class _Result:
+        def fetchall(self):
+            return [{"id": durable_id}]
+
+    class _Connection:
+        def execute(self, statement):
+            assert "SELECT id FROM document_jobs" in statement
+            return _Result()
+
+        def close(self):
+            return None
+
+    class _Database:
+        def get_connection(self):
+            return _Connection()
+
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(worker_root))
+
+    assert cleanup_orphaned_durable_document_jobs(
+        _Database(),
+        min_age_seconds=60,
+    ) == 1
+    assert durable_dir.is_dir()
+    assert not orphan_dir.exists()
+    assert invalid_dir.is_dir()
+
+
+def test_external_worker_uses_only_job_scoped_image_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_id = "b" * 32
+    job_dir = tmp_path / f"job-{job_id}"
+    job_dir.mkdir()
+    write_job_manifest(
+        job_dir / "input.json",
+        "validate_ooxml",
+        {"content": _minimal_xlsx(), "kind": "xlsx"},
+        image_root=tmp_path / "images",
+    )
+    captured = {}
+    monkeypatch.setattr(document_worker, "_document_job_dir", lambda _job_id: job_dir)
+    monkeypatch.setattr(
+        document_worker,
+        "run_document_job",
+        lambda operation, payload, **kwargs: captured.update(
+            operation=operation,
+            payload=payload,
+            image_root=kwargs.get("image_root"),
+        ) or True,
+    )
+    monkeypatch.setattr(
+        document_worker,
+        "_finish_durable_document_job",
+        lambda *_args, **_kwargs: "completed",
+    )
+    monkeypatch.setattr(
+        document_worker,
+        "_prepare_external_job_permissions",
+        lambda _job_dir: None,
+    )
+
+    document_worker._process_claimed_document_job(
+        object(),
+        {
+            "id": job_id,
+            "operation": "validate_ooxml",
+            "attempt_count": 1,
+            "lock_token": "lock",
+        },
+    )
+
+    assert captured["image_root"] == job_dir / "assets" / "images"
+    assert (job_dir / "result.json").is_file()
+
+
+def test_external_exchange_permissions_are_group_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_dir = tmp_path / "job"
+    nested = job_dir / "assets"
+    nested.mkdir(parents=True)
+    payload = nested / "input.bin"
+    payload.write_bytes(b"data")
+    job_dir.chmod(0o700)
+    nested.chmod(0o700)
+    payload.chmod(0o600)
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DOCUMENT_WORKER_EXECUTION_MODE", "external")
+    monkeypatch.setattr(document_worker, "_external_worker_shared_gid", lambda: 987)
+    monkeypatch.setattr(
+        document_worker.os,
+        "chown",
+        lambda *_args: None,
+        raising=False,
+    )
+    chmod_calls = []
+    monkeypatch.setattr(
+        document_worker.os,
+        "chmod",
+        lambda target, mode: chmod_calls.append((Path(target), mode)),
+    )
+
+    _prepare_external_job_permissions(job_dir)
+
+    assert (job_dir, 0o770) in chmod_calls
+    assert (nested, 0o770) in chmod_calls
+    assert (payload, 0o660) in chmod_calls
+
+
+def test_worker_database_url_and_secret_boundary_fail_closed() -> None:
+    safe_environment = {
+        "DATABASE_DOCUMENT_WORKER_ROLE": "biddingflow_document_worker",
+    }
+    _validate_document_worker_database_url(
+        "postgresql://biddingflow_document_worker:secret@db.internal/biddingflow?sslmode=verify-full",
+        safe_environment,
+    )
+    with pytest.raises(RuntimeError, match="verify-full"):
+        _validate_document_worker_database_url(
+            "postgresql://biddingflow_document_worker:secret@db.internal/biddingflow?sslmode=require",
+            safe_environment,
+        )
+    with pytest.raises(RuntimeError, match="DATABASE_DOCUMENT_WORKER_ROLE"):
+        _validate_document_worker_database_url(
+            "postgresql://biddingflow_app:secret@db.internal/biddingflow?sslmode=verify-full",
+            safe_environment,
+        )
+    _validate_worker_secret_boundary({"PATH": "/usr/bin"})
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        _validate_worker_secret_boundary({"DATABASE_URL": "postgresql://secret"})
+
+
+def test_systemd_units_keep_web_and_document_worker_boundaries_separate() -> None:
+    worker_unit = (
+        PROJECT_ROOT / "deploy" / "biddingflow-document-worker.service.example"
+    ).read_text(encoding="utf-8")
+    web_unit = (
+        PROJECT_ROOT / "deploy" / "biddingflow.service.example"
+    ).read_text(encoding="utf-8")
+    worker_environment = (
+        PROJECT_ROOT / "deploy" / "biddingflow-document-worker.env.example"
+    ).read_text(encoding="utf-8")
+
+    assert "User=biddingflow-document-worker" in worker_unit
+    assert "Group=biddingflow-documents" in worker_unit
+    assert "EnvironmentFile=/etc/biddingflow/document-worker.env" in worker_unit
+    assert "ExecStartPre=/opt/biddingflow/.venv/bin/python scripts/verify_document_sandbox.py" in worker_unit
+    assert "IPAddressDeny=any" in worker_unit
+    assert "ReadWritePaths=/var/lib/biddingflow-document-jobs" in worker_unit
+    assert "ReadWritePaths=/var/lib/biddingflow " not in worker_unit
+    assert "User=biddingflow\n" in web_unit
+    assert "SupplementaryGroups=biddingflow-documents" in web_unit
+    assert "BindsTo=biddingflow-document-worker.service" in web_unit
+    assert "DOCUMENT_WORKER_DATABASE_URL=" in worker_environment
+    worker_environment_keys = {
+        line.split("=", 1)[0]
+        for line in worker_environment.splitlines()
+        if line and not line.startswith("#") and "=" in line
+    }
+    assert "DATABASE_URL" not in worker_environment_keys
+    assert "SMTP_PASSWORD" not in worker_environment_keys
 
 
 @pytest.mark.parametrize(

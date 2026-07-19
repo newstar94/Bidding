@@ -312,6 +312,41 @@ def test_deletion_enforces_record_and_elevated_permissions(
     assert result["privilegedError"]["code"] == "PRIVILEGED_REAUTH_REQUIRED"
 
 
+def test_personal_owner_can_delete_own_high_impact_aggregate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = {"id": "record-1", "row_version": 1}
+    harness = _DeletionHarness(
+        monkeypatch,
+        record,
+        manager=False,
+        reauthenticated=False,
+    ).install()
+    result = _apply(
+        _DeletionCursor(record),
+        [{"table": "goithau", "id": "record-1", "expectedVersion": 1}],
+        organization_id="personal:user-1",
+        actor_role="employee",
+    )
+    assert result["errors"] == []
+    assert result["privilegedError"] is None
+    assert result["impacts"][0]["action"] == "deleted"
+
+
+def test_personal_scope_must_belong_to_actor_for_elevated_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = {"id": "record-1", "row_version": 1}
+    _DeletionHarness(monkeypatch, record, manager=False).install()
+    result = _apply(
+        _DeletionCursor(record),
+        [{"table": "goithau", "id": "record-1", "expectedVersion": 1}],
+        organization_id="personal:another-user",
+        actor_role="employee",
+    )
+    assert result["errors"][0]["code"] == "DELETE_ELEVATED_PERMISSION_REQUIRED"
+
+
 def test_deletion_archives_referenced_record_and_tracks_version_family(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

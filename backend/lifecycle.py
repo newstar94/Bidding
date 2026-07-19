@@ -13,7 +13,9 @@ from backend.auth.email_delivery_service import (
     run_email_delivery_worker,
 )
 from backend.documents.document_worker import (
+    cleanup_orphaned_durable_document_jobs,
     cleanup_stale_document_jobs,
+    external_document_worker_enabled,
     purge_expired_durable_document_jobs,
     run_durable_document_queue_worker,
     validate_document_worker_configuration,
@@ -204,7 +206,10 @@ async def application_lifespan(
     try:
         validate_startup(database)
         validate_document_worker_configuration()
-        cleanup_stale_document_jobs()
+        if external_document_worker_enabled():
+            cleanup_orphaned_durable_document_jobs(database)
+        else:
+            cleanup_stale_document_jobs()
         if is_production:
             build_index_response()
         auto_migrate = str(
@@ -235,9 +240,10 @@ async def application_lifespan(
     )
     artifact_monitor_task = asyncio.create_task(monitor_operational_artifacts())
     email_delivery_task = asyncio.create_task(run_email_delivery_worker(database))
-    document_queue_task = asyncio.create_task(
-        run_durable_document_queue_worker(database)
-    )
+    if not external_document_worker_enabled():
+        document_queue_task = asyncio.create_task(
+            run_durable_document_queue_worker(database)
+        )
     try:
         from backend.sync.websocket import _latest_broker_event_id, run_websocket_event_broker
         broker_cursor = await run_blocking_io(_latest_broker_event_id, timeout_seconds=5.0)

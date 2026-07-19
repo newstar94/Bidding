@@ -374,13 +374,15 @@ def _validate_postgresql_configuration(database, environ, *, production):
                 "DATABASE_ADMIN_PASSWORD",
                 "BACKUP_DATABASE_URL",
                 "DATABASE_BACKUP_PASSWORD",
+                "DOCUMENT_WORKER_DATABASE_URL",
+                "DATABASE_DOCUMENT_WORKER_PASSWORD",
                 "BIDDING_RESTORE_DRILL_PRIVATE_KEY",
             )
             if str(environ.get(name, "")).strip()
         ]
         if forbidden_database_secrets:
             raise StartupValidationError(
-                "Web workers must not receive migrator/admin database credentials: "
+                "Web workers must receive only the runtime database credential: "
                 + ", ".join(forbidden_database_secrets)
             )
         expected_role = str(environ.get("DATABASE_RUNTIME_ROLE", "")).strip()
