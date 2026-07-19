@@ -28,6 +28,7 @@ from backend.documents.document_sandbox import (
     sandbox_worker_command,
     validate_document_sandbox_configuration,
 )
+from backend.documents.seccomp_policy import seccomp_library_name
 from backend.observability.metrics import (
     document_worker_acquired,
     document_worker_finished,
@@ -121,6 +122,7 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
         "DOCUMENT_WORKER_MAX_MEMORY_MB",
         "DOCUMENT_WORKER_MAX_OUTPUT_MB",
         "DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP",
+        "DOCUMENT_WORKER_SECCOMP_LIBRARY",
         "DOCUMENT_WORKER_SANDBOX_GID",
         "DOCUMENT_WORKER_SANDBOX_UID",
         "DOCUMENT_WORKER_UID",
@@ -161,6 +163,9 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
     if os.name == "posix" and hasattr(os, "geteuid"):
         environment["DOCUMENT_WORKER_PARENT_UID"] = str(os.geteuid())
         environment["DOCUMENT_WORKER_PARENT_GID"] = str(os.getegid())
+        library_name = seccomp_library_name()
+        if library_name:
+            environment["DOCUMENT_WORKER_SECCOMP_LIBRARY"] = library_name
     return environment
 
 

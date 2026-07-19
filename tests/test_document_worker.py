@@ -21,6 +21,7 @@ from backend.documents.document_ipc import (
 from backend.documents.document_worker import (
     DocumentWorkerInputError,
     DocumentWorkerTimeoutError,
+    _worker_environment,
     run_document_job,
 )
 from backend.documents.document_sandbox import (
@@ -281,6 +282,17 @@ def test_seccomp_policy_denies_network_process_and_kernel_escape_syscalls() -> N
         "setns",
     }
     assert required <= set(_DENIED_SYSCALLS)
+
+
+def test_worker_resolves_seccomp_before_entering_minimal_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DOCUMENT_WORKER_SECCOMP_LIBRARY", "libseccomp.so.2")
+
+    environment = _worker_environment(tmp_path)
+
+    assert environment["DOCUMENT_WORKER_SECCOMP_LIBRARY"] == "libseccomp.so.2"
 
 
 def test_ubuntu_ci_uses_targeted_bwrap_user_namespace_profile() -> None:

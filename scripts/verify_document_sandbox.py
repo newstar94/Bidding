@@ -21,6 +21,7 @@ from backend.documents.document_sandbox import (
     build_bwrap_command,
     validate_document_sandbox_configuration,
 )
+from backend.documents.seccomp_policy import seccomp_library_name
 from backend.shared.paths import PROJECT_ROOT
 
 
@@ -43,6 +44,10 @@ def main() -> int:
     if not executable:
         print("Bubblewrap is not installed.", file=sys.stderr)
         return 2
+    library_name = seccomp_library_name()
+    if not library_name:
+        print("libseccomp is not installed.", file=sys.stderr)
+        return 2
 
     temp_root = Path(
         environment.get("DOCUMENT_WORKER_TEMP_DIR", "/var/tmp/biddingflow-document-worker")
@@ -61,6 +66,7 @@ def main() -> int:
             "DOCUMENT_WORKER_PARENT_GID": str(os.getegid()),
             "DOCUMENT_WORKER_PARENT_UID": str(os.geteuid()),
             "DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP": "true",
+            "DOCUMENT_WORKER_SECCOMP_LIBRARY": library_name,
             "DOCUMENT_WORKER_SANDBOX_UID": environment["DOCUMENT_WORKER_SANDBOX_UID"],
             "DOCUMENT_WORKER_SANDBOX_GID": environment["DOCUMENT_WORKER_SANDBOX_GID"],
             "PATH": environment.get("PATH", "/usr/bin:/bin"),

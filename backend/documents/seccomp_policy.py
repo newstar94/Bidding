@@ -57,6 +57,11 @@ _DENIED_SYSCALLS = (
 def seccomp_library_name() -> str | None:
     if os.name != "posix":
         return None
+    configured = str(
+        os.environ.get("DOCUMENT_WORKER_SECCOMP_LIBRARY", "")
+    ).strip()
+    if configured:
+        return configured
     return find_library("seccomp")
 
 
