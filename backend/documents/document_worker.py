@@ -158,6 +158,9 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
             "TMP": str(job_dir),
         }
     )
+    if os.name == "posix" and hasattr(os, "geteuid"):
+        environment["DOCUMENT_WORKER_PARENT_UID"] = str(os.geteuid())
+        environment["DOCUMENT_WORKER_PARENT_GID"] = str(os.getegid())
     return environment
 
 
@@ -546,7 +549,11 @@ def _claim_durable_document_job(database, job_id: str | None = None):
         connection.close()
 
 
-def _finish_durable_document_job(database, claimed, error: Exception | None = None) -> None:
+def _finish_durable_document_job(
+    database,
+    claimed,
+    error: Exception | None = None,
+) -> str:
     now = int(time.time())
     attempts = int(claimed["attempt_count"])
     max_attempts = _positive_int_env(
@@ -596,6 +603,36 @@ def _finish_durable_document_job(database, claimed, error: Exception | None = No
         raise
     finally:
         connection.close()
+    return status
+
+
+def _delete_terminal_document_job(
+    database,
+    job_id: str,
+    *,
+    expected_status: str,
+) -> bool:
+    """Atomically retire terminal metadata before removing its private files."""
+
+    if expected_status not in {"completed", "failed"}:
+        raise ValueError("Only terminal document jobs can be deleted.")
+    connection = database.get_connection()
+    try:
+        deleted = connection.execute(
+            "DELETE FROM document_jobs WHERE id = ? AND status = ?",
+            (job_id, expected_status),
+        )
+        deleted_count = int(deleted.rowcount or 0)
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    if deleted_count == 1:
+        shutil.rmtree(_document_job_dir(job_id), ignore_errors=True)
+        return True
+    return False
 
 
 def _process_claimed_document_job(database, claimed) -> None:
@@ -619,7 +656,12 @@ def _process_claimed_document_job(database, claimed) -> None:
                 result_file.unlink(missing_ok=True)
             except OSError:
                 pass
-        _finish_durable_document_job(database, claimed, error)
+        status = _finish_durable_document_job(database, claimed, error)
+        # Retried jobs still need their immutable input sidecars. Once the
+        # final attempt fails, however, no parser output is useful and keeping
+        # attacker-controlled files until the retention sweep is unnecessary.
+        if status == "failed":
+            shutil.rmtree(job_dir, ignore_errors=True)
 
 
 def process_next_durable_document_job(database=None) -> bool:
@@ -664,29 +706,35 @@ def _consume_durable_document_result(
         if row is None:
             raise DocumentWorkerError("Tác vụ tài liệu không còn tồn tại.")
         if row["status"] == "completed":
-            result = _read_result(job_dir / "result.json", job_dir)
-            connection = database.get_connection()
             try:
-                deleted = connection.execute(
-                    "DELETE FROM document_jobs WHERE id = ? AND status = 'completed'",
-                    (job_id,),
-                )
-                deleted_count = int(deleted.rowcount or 0)
-                connection.commit()
+                result = _read_result(job_dir / "result.json", job_dir)
             except Exception:
-                connection.rollback()
+                # A malformed/hash-mismatched result is terminal and must not
+                # leave untrusted sidecars behind after the parent rejects it.
+                _delete_terminal_document_job(
+                    database,
+                    job_id,
+                    expected_status="completed",
+                )
                 raise
-            finally:
-                connection.close()
-            if deleted_count == 1:
-                shutil.rmtree(job_dir, ignore_errors=True)
+            _delete_terminal_document_job(
+                database,
+                job_id,
+                expected_status="completed",
+            )
             return result
         if row["status"] == "failed":
             message = str(
                 row["last_error_message"]
                 or "Tác vụ tài liệu không thành công."
             )
-            if row["last_error_code"] == "DocumentWorkerInputError":
+            error_code = str(row["last_error_code"] or "")
+            _delete_terminal_document_job(
+                database,
+                job_id,
+                expected_status="failed",
+            )
+            if error_code == "DocumentWorkerInputError":
                 raise DocumentWorkerInputError(message)
             raise DocumentWorkerError(message)
         time.sleep(0.05)

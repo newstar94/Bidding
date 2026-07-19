@@ -49,6 +49,15 @@ def main() -> int:
     _drop_privileges()
     apply_document_seccomp(required=True)
 
+    parent_uid = int(os.environ.get("DOCUMENT_WORKER_PARENT_UID", "-1"))
+    parent_gid = int(os.environ.get("DOCUMENT_WORKER_PARENT_GID", "-1"))
+    secret_names = {
+        "BACKUP_DATABASE_URL",
+        "DATABASE_URL",
+        "MIGRATOR_DATABASE_URL",
+        "RUNTIME_DATABASE_URL",
+    }
+
     checks = {
         "network_socket_blocked": _blocked(
             lambda: socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -68,12 +77,27 @@ def main() -> int:
         "project_env_hidden": _blocked(
             lambda: (PROJECT_ROOT / ".env").read_bytes()
         ),
-        "database_secret_absent": not os.environ.get("DATABASE_URL"),
+        "project_backup_hidden": not (PROJECT_ROOT / "backups").exists(),
+        "database_socket_hidden": not Path(
+            "/var/run/postgresql/.s.PGSQL.5432"
+        ).exists(),
+        "database_secrets_absent": not any(
+            os.environ.get(name) for name in secret_names
+        ),
         "capabilities_empty": _effective_capabilities_are_empty(),
         "sandbox_uid_isolated": (
             not hasattr(os, "geteuid")
             or os.geteuid()
             == int(os.environ.get("DOCUMENT_WORKER_SANDBOX_UID", "65534"))
+        ),
+        "sandbox_identity_differs_from_web": (
+            not hasattr(os, "geteuid")
+            or (
+                parent_uid >= 0
+                and parent_gid >= 0
+                and os.geteuid() != parent_uid
+                and os.getegid() != parent_gid
+            )
         ),
     }
     result_path.write_text(

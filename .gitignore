@@ -50,6 +50,7 @@ scratch/
 .coverage
 .coverage.*
 coverage.xml
+coverage.json
 htmlcov/
 .nyc_output/
 coverage/

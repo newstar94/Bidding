@@ -284,6 +284,105 @@ def test_document_job_survives_stale_worker_claim(
         ).fetchone() is None
 
 
+def test_failed_document_job_retires_private_files_after_error_is_consumed(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv(
+        "DOCUMENT_WORKER_TEMP_DIR",
+        str(tmp_path / "failed-document-jobs"),
+    )
+    monkeypatch.setenv("DOCUMENT_JOB_MAX_ATTEMPTS", "1")
+    job_id = document_worker._enqueue_durable_document_job(
+        "validate_ooxml",
+        {"content": b"not-an-ooxml-archive", "kind": "xlsx"},
+        database=postgres_database,
+    )
+    job_dir = document_worker._document_job_dir(job_id)
+    if os.name == "posix":
+        assert job_dir.stat().st_mode & 0o777 == 0o700
+        assert all(
+            path.stat().st_mode & 0o777 == 0o600
+            for path in job_dir.iterdir()
+        )
+
+    claimed = document_worker._claim_durable_document_job(
+        postgres_database,
+        job_id,
+    )
+    assert claimed is not None
+    document_worker._process_claimed_document_job(
+        postgres_database,
+        claimed,
+    )
+    assert not job_dir.exists()
+    with postgres_database.get_connection() as connection:
+        assert connection.execute(
+            "SELECT status FROM document_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()["status"] == "failed"
+
+    with pytest.raises(document_worker.DocumentWorkerInputError):
+        document_worker._consume_durable_document_result(
+            job_id,
+            database=postgres_database,
+            timeout_seconds=5,
+        )
+    with postgres_database.get_connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM document_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone() is None
+
+
+def test_tampered_completed_document_result_is_rejected_and_cleaned(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv(
+        "DOCUMENT_WORKER_TEMP_DIR",
+        str(tmp_path / "tampered-document-jobs"),
+    )
+    job_id = document_worker._enqueue_durable_document_job(
+        "test_delay",
+        {"seconds": 0},
+        database=postgres_database,
+    )
+    claimed = document_worker._claim_durable_document_job(
+        postgres_database,
+        job_id,
+    )
+    assert claimed is not None
+    document_worker._process_claimed_document_job(
+        postgres_database,
+        claimed,
+    )
+    job_dir = document_worker._document_job_dir(job_id)
+    result_path = job_dir / "result.json"
+    result_path.write_text(
+        '{"format":"biddingflow-document-result","version":1,'
+        '"ok":true,"result":true,"unexpected":true}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(document_worker.DocumentWorkerError):
+        document_worker._consume_durable_document_result(
+            job_id,
+            database=postgres_database,
+            timeout_seconds=5,
+        )
+    assert not job_dir.exists()
+    with postgres_database.get_connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM document_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone() is None
+
+
 def test_audit_checkpoint_export_has_one_cluster_leader(
     postgres_database: PostgresDatabase,
     tmp_path,

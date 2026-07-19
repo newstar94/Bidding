@@ -23,7 +23,10 @@ from backend.documents.document_worker import (
     DocumentWorkerTimeoutError,
     run_document_job,
 )
-from backend.documents.document_sandbox import build_bwrap_command
+from backend.documents.document_sandbox import (
+    _validate_distinct_sandbox_identity,
+    build_bwrap_command,
+)
 from backend.documents.seccomp_policy import (
     _DENIED_SYSCALLS,
     seccomp_library_name,
@@ -192,6 +195,30 @@ def test_bwrap_command_mounts_backend_not_project_secrets(tmp_path: Path) -> Non
     assert command[command.index("--uid") + 1] == "65534"
     assert command[command.index("--gid") + 1] == "65534"
     assert "--clearenv" in command
+
+
+def test_document_sandbox_identity_must_differ_from_web_service() -> None:
+    environment = {
+        "DOCUMENT_WORKER_SANDBOX_UID": "65534",
+        "DOCUMENT_WORKER_SANDBOX_GID": "65533",
+    }
+    assert _validate_distinct_sandbox_identity(
+        environment,
+        parent_uid=1000,
+        parent_gid=1000,
+    ) == ("65534", "65533")
+    with pytest.raises(RuntimeError, match="UID"):
+        _validate_distinct_sandbox_identity(
+            environment,
+            parent_uid=65534,
+            parent_gid=1000,
+        )
+    with pytest.raises(RuntimeError, match="GID"):
+        _validate_distinct_sandbox_identity(
+            environment,
+            parent_uid=1000,
+            parent_gid=65533,
+        )
 
 
 def test_document_timeout_kills_worker_and_cleans_job_directory(

@@ -77,6 +77,7 @@ def _write_bytes(path: Path, content: bytes) -> None:
         raise DocumentIpcError("Tệp nhị phân IPC vượt quá giới hạn.")
     with path.open("xb") as handle:
         handle.write(content)
+    path.chmod(0o600)
 
 
 def _copy_source(source: Path, destination: Path) -> None:
@@ -88,6 +89,7 @@ def _copy_source(source: Path, destination: Path) -> None:
         raise DocumentIpcError("Nguồn tệp IPC vượt quá giới hạn.")
     with resolved.open("rb") as source_handle, destination.open("xb") as destination_handle:
         shutil.copyfileobj(source_handle, destination_handle, length=1024 * 1024)
+    destination.chmod(0o600)
 
 
 def _copy_referenced_images(context: Any, job_dir: Path, image_root: Path) -> int:
@@ -199,6 +201,7 @@ def write_job_manifest(path: Path, operation: str, payload: dict[str, Any], *, i
         raise DocumentIpcError("Dữ liệu đầu vào của tác vụ quá lớn.")
     with path.open("xb") as handle:
         handle.write(encoded)
+    path.chmod(0o600)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -287,6 +290,7 @@ def write_result(path: Path, *, result: Any = None, error_type: str | None = Non
     temporary = path.with_suffix(".tmp")
     with temporary.open("xb") as handle:
         handle.write(encoded)
+    temporary.chmod(0o600)
     os.replace(temporary, path)
 
 

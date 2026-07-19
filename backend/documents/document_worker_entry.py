@@ -62,6 +62,19 @@ def _drop_privileges() -> None:
             os.setuid(int(uid_raw))
         if require_drop and hasattr(os, "geteuid") and os.geteuid() == 0:
             raise RuntimeError("Worker vẫn đang chạy bằng tài khoản root.")
+        if os.environ.get("APP_ENV", "").lower() in {"prod", "production"}:
+            expected_uid = int(os.environ["DOCUMENT_WORKER_SANDBOX_UID"])
+            expected_gid = int(os.environ["DOCUMENT_WORKER_SANDBOX_GID"])
+            parent_uid = int(os.environ["DOCUMENT_WORKER_PARENT_UID"])
+            parent_gid = int(os.environ["DOCUMENT_WORKER_PARENT_GID"])
+            if os.geteuid() != expected_uid or os.getegid() != expected_gid:
+                raise RuntimeError(
+                    "Worker không chạy bằng UID/GID sandbox đã cấu hình."
+                )
+            if os.geteuid() == parent_uid or os.getegid() == parent_gid:
+                raise RuntimeError(
+                    "Worker phải dùng UID/GID khác dịch vụ web."
+                )
     elif require_drop:
         # Windows cannot change the token safely from Python. The service must
         # itself run under a dedicated non-administrator account.

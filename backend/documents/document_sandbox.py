@@ -44,6 +44,26 @@ def _sandbox_identity(environment: dict[str, str]) -> tuple[str, str]:
     return values[0], values[1]
 
 
+def _validate_distinct_sandbox_identity(
+    environment: dict[str, str],
+    *,
+    parent_uid: int,
+    parent_gid: int,
+) -> tuple[str, str]:
+    """Require a document identity distinct from the web service identity."""
+
+    sandbox_uid, sandbox_gid = _sandbox_identity(environment)
+    if int(sandbox_uid) == int(parent_uid):
+        raise RuntimeError(
+            "DOCUMENT_WORKER_SANDBOX_UID must differ from the web service UID."
+        )
+    if int(sandbox_gid) == int(parent_gid):
+        raise RuntimeError(
+            "DOCUMENT_WORKER_SANDBOX_GID must differ from the web service GID."
+        )
+    return sandbox_uid, sandbox_gid
+
+
 def build_bwrap_command(
     command: list[str],
     job_dir: Path,
@@ -126,7 +146,11 @@ def validate_document_sandbox_configuration(environ=None) -> None:
         executable = str(environment.get("DOCUMENT_WORKER_SANDBOX_EXECUTABLE", "")).strip() or shutil.which("bwrap")
         if not executable or not Path(executable).is_file():
             raise RuntimeError("Production document workers require an installed Bubblewrap executable.")
-        _sandbox_identity(dict(environment))
+        _validate_distinct_sandbox_identity(
+            dict(environment),
+            parent_uid=os.geteuid(),
+            parent_gid=os.getegid(),
+        )
         if not seccomp_library_name():
             raise RuntimeError("Production document workers require libseccomp.")
     elif os.name == "nt":

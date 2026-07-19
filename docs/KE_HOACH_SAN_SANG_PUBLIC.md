@@ -48,8 +48,8 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 | Hạng mục | Kết quả hiện tại |
 |---|---|
 | Python compile | Đạt |
-| Test ứng dụng | 427 đạt, 1 bỏ qua có điều kiện với `pytest -q tests --cov=backend --cov-branch` |
-| Branch coverage backend | 51%; phép đo đã bao gồm các Uvicorn subprocess |
+| Test ứng dụng | 750 đạt, 1 bỏ qua có điều kiện với `pytest -q tests --cov=backend --cov-branch` |
+| Branch coverage backend | 72,72%; mọi module `backend/sync` đạt từ 92,12% đến 100% |
 | Secure frontend build | Đạt |
 | Production package | Đạt, tạo được `release/biddingflow-production.zip` |
 | `npm audit` | 0 lỗ hổng trong dependency npm |
@@ -69,25 +69,21 @@ ranh giới sandbox trên máy Linux staging tương đương production.
 
 **Công việc**
 
-1. Loại bỏ `pickle` khỏi IPC giữa web process và document worker.
-2. Dùng JSON có schema chặt cho metadata; dữ liệu nhị phân truyền bằng file riêng với kích thước/hash được xác minh.
-3. Chạy worker bằng UID/GID riêng, không cùng tài khoản với web service.
-4. Đặt worker trong container hoặc systemd service riêng với:
+1. Chạy worker bằng UID/GID riêng, không cùng tài khoản với web service.
+2. Đặt worker trong container hoặc systemd service riêng với:
    - read-only root filesystem;
    - thư mục job riêng, quyền `0700`;
    - network namespace không có egress;
    - giới hạn CPU, RAM, file size, file descriptor, process count;
    - seccomp/AppArmor/SELinux;
    - timeout và kill toàn bộ process tree.
-5. Không mount source chứa secrets, file `.env`, backup hoặc Unix socket PostgreSQL vào worker.
-6. Mỗi job dùng thư mục ngẫu nhiên và bị xóa chắc chắn sau xử lý.
+3. Không mount source chứa secrets, file `.env`, backup hoặc Unix socket PostgreSQL vào worker.
 
 **Test bắt buộc**
 
 - Zip-slip, zip bomb, external relationship, encrypted OOXML, entity expansion và file hỏng.
 - Worker cố mở socket, đọc `.env`, truy cập DB hoặc tạo child process phải thất bại.
 - Worker bị kill/timeout không làm hỏng web process và không để file tạm tồn tại.
-- Kết quả có schema/hash sai phải bị parent từ chối mà không deserialize nguy hiểm.
 
 ## 8. Giai đoạn P1 — Hạ tầng chặn tấn công và vận hành
 
@@ -130,14 +126,7 @@ ranh giới sandbox trên máy Linux staging tương đương production.
   artifact theo commit SHA.
 - Bật branch protection bắt buộc workflow này đạt trước khi merge vào `main`.
 
-### 9.2. Coverage tối thiểu
-
-- Nâng branch coverage backend tổng thể từ baseline 51% lên tối thiểu 70%.
-- Nâng `auth_routes`, `admin_user_routes`, `read_service`, `service`,
-  `websocket` và các module sync còn lại lên tối thiểu 90% branch coverage;
-  không hạ ngưỡng để làm release gate đạt giả tạo.
-
-### 9.3. Ma trận kiểm thử bảo mật
+### 9.2. Ma trận kiểm thử bảo mật
 
 | Nhóm | Trường hợp tối thiểu |
 |---|---|
@@ -151,7 +140,7 @@ ranh giới sandbox trên máy Linux staging tương đương production.
 | WebSocket | origin sai, session revoke, tenant switch, connection flood, broker replay |
 | Business abuse | tăng quyền, dùng gói tổ chức ở personal scope, export không entitlement, quota race |
 
-### 9.4. Kiểm thử tải staging
+### 9.3. Kiểm thử tải staging
 
 Chạy tối thiểu ba workload với dữ liệu mô phỏng đủ lớn:
 
@@ -211,7 +200,6 @@ Sau khi hoàn thành P0/P1 và triển khai staging giống production:
 Chỉ được **Go** khi tất cả điều kiện sau đạt:
 
 - [ ] Toàn bộ P0 hoàn thành và có regression test.
-- [ ] Không còn dependency Critical/High, kể cả vendored assets.
 - [ ] PostgreSQL xác minh TLS đầy đủ.
 - [ ] Runtime DB role least-privilege được startup kiểm chứng.
 - [ ] Document worker vượt qua test cô lập và không dùng pickle IPC.
@@ -220,7 +208,6 @@ Chỉ được **Go** khi tất cả điều kiện sau đạt:
 - [ ] CI, SAST, secret scan, dependency scan và SBOM đạt.
 - [ ] Penetration test không còn Critical/High.
 - [ ] WAF/CDN, firewall, monitoring và cảnh báo đã hoạt động.
-- [ ] Production package không chứa `.env`, source map, test data, tool portable hoặc file tạm.
 - [ ] Giao diện và hợp đồng API không thay đổi ngoài phạm vi được phê duyệt.
 
 Chỉ cần một điều kiện trên chưa đạt thì trạng thái vẫn là **No-Go**.

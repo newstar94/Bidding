@@ -51,6 +51,8 @@ def main() -> int:
             "DOCUMENT_WORKER_JOB_DIR": str(job_dir),
             "DOCUMENT_WORKER_MAX_MEMORY_MB": "256",
             "DOCUMENT_WORKER_MAX_OUTPUT_MB": "8",
+            "DOCUMENT_WORKER_PARENT_GID": str(os.getegid()),
+            "DOCUMENT_WORKER_PARENT_UID": str(os.geteuid()),
             "DOCUMENT_WORKER_REQUIRE_PRIVILEGE_DROP": "true",
             "DOCUMENT_WORKER_SANDBOX_UID": environment["DOCUMENT_WORKER_SANDBOX_UID"],
             "DOCUMENT_WORKER_SANDBOX_GID": environment["DOCUMENT_WORKER_SANDBOX_GID"],

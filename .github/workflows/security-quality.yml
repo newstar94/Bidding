@@ -66,7 +66,6 @@ jobs:
       DATABASE_BACKUP_PASSWORD: ci-test-backup-password
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: CI-admin-password-2026-Strong!
-      MFA_ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
       EMAIL_OUTBOX_ENCRYPTION_KEY: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
       AUDIT_CHECKPOINT_HMAC_KEY: ci-audit-checkpoint-key-that-is-over-32-bytes
       AUDIT_CHECKPOINT_DIR: ""
@@ -117,8 +116,13 @@ jobs:
           python scripts/scan_tracked_secrets.py
           bandit -r backend scripts -x tests -lll -q
 
-      - name: Run PostgreSQL application tests
-        run: pytest -q tests
+      - name: Verify real Linux document sandbox boundary
+        run: python scripts/verify_document_sandbox.py
+
+      - name: Run PostgreSQL application tests and enforce coverage
+        run: |
+          pytest -q tests --cov=backend --cov-branch --cov-report=term --cov-report=json:coverage.json
+          python scripts/check_coverage_thresholds.py coverage.json
 
       - name: Build secure frontend and audit dependencies
         run: |
@@ -134,6 +138,7 @@ jobs:
       - name: Generate CycloneDX evidence and checksums
         run: |
           mkdir -p release/evidence
+          cp coverage.json release/evidence/backend-coverage.json
           cyclonedx-py requirements requirements.txt --pyproject pyproject.toml --output-reproducible --output-file release/evidence/python-sbom.cdx.json
           node scripts/generate_npm_sbom.mjs
           python scripts/generate_vendor_sbom.py
