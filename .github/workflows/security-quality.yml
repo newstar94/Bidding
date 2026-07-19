@@ -107,6 +107,7 @@ jobs:
         run: |
           for database in biddingflow_test biddingflow_api_test biddingflow_multiworker_test biddingflow_restore_drill biddingflow_package_smoke; do
             psql postgresql://postgres:ci-test-postgres-password@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE ${database}"
+            psql postgresql://postgres:ci-test-postgres-password@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 -c "ALTER DATABASE ${database} SET timezone TO 'Asia/Ho_Chi_Minh'"
           done
           python scripts/configure_database_roles.py
           python scripts/manage_database.py
