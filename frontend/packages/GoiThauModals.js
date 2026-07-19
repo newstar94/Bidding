@@ -36,34 +36,6 @@ export function renderExcelPreview(rows, importType) {
     modal.id = "modal-excel-preview";
     modal.className = "modal-overlay";
     modal.innerHTML = trustedHTML(`
-            <style>
-                .excel-preview-input {
-                    width: 100%;
-                    border: 1px solid var(--border-color);
-                    background-color: var(--bg-app);
-                    color: var(--text-main);
-                    font-size: 0.82rem;
-                    font-family: var(--font-primary);
-                    font-weight: 600;
-                    padding: 6px 10px;
-                    border-radius: 6px;
-                    outline: none;
-                    box-sizing: border-box;
-                    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-                }
-                .excel-preview-input:focus {
-                    border-color: var(--primary);
-                    box-shadow: 0 0 0 3px var(--primary-soft);
-                    background-color: var(--bg-card);
-                }
-                .excel-preview-input.is-invalid {
-                    border-color: #ef4444 !important;
-                    background-color: rgba(239, 68, 68, 0.05) !important;
-                }
-                .excel-preview-input.is-invalid:focus {
-                    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2) !important;
-                }
-            </style>
             <div class="modal-card bf-s-5447c39f9a">
                 <div class="modal-header bf-s-d5564bfe2a">
                     <h3 class="bf-s-de52e3be99">Xem trước dữ liệu nhập từ Excel</h3>
@@ -181,11 +153,8 @@ export function renderExcelPreview(rows, importType) {
   let headerHtml = "<tr>";
   keys.forEach((k) => {
     const label = labelMap[k] || k;
-    let align = "left";
-    if (["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao"].includes(k)) {
-      align = "right";
-    }
-    headerHtml += `<th style="text-align: ${align} !important;">${escapeHtml(label)}</th>`;
+    const isNumericColumn = ["tongMucDauTu", "giaGoiThau", "giaTri", "giaTriPhanLo", "giaTrungThau", "giaDuThau", "giaSauGiamGia", "giaTriDamBao"].includes(k);
+    headerHtml += `<th class="excel-preview-column ${isNumericColumn ? "excel-preview-column--numeric" : ""}">${escapeHtml(label)}</th>`;
   });
   headerHtml += '<th class="bf-s-c84c3abe48">Thông tin kiểm tra</th></tr>';
   tableHeader.innerHTML = trustedHTML(headerHtml);
@@ -218,7 +187,6 @@ export function renderExcelPreview(rows, importType) {
     keys.forEach((k) => {
       let val = r[k];
       let align = "left";
-      let style = "";
       let inputType = "text";
       let inputClass = "excel-preview-input";
       const dateKeys = ["ngayPheDuyet", "ngayQuyetDinh", "ngayKy", "ngayQdChiDinh", "ngayTrinhDuToan", "ngayPheDuyetDuToan", "ngayCapCCCD", "ngayCapChungChi"];
@@ -227,7 +195,7 @@ export function renderExcelPreview(rows, importType) {
       if (numberKeys.includes(k)) {
         inputType = "number";
         align = "right";
-        style = "font-weight:700; color:var(--primary);";
+        inputClass += " excel-preview-input--numeric";
         val = val !== void 0 && val !== null && val !== "" ? parseFloat(String(val).replace(/[^0-9.-]/g, "")) : "";
       } else if (dateKeys.includes(k)) {
         inputType = "text";
@@ -242,12 +210,14 @@ export function renderExcelPreview(rows, importType) {
         if (matchedNt) val = matchedNt.tenNhaThau;
       }
       if (k === "maKeHoach" || k === "maGoiThau" || k === "maChuDauTu" || k === "maNhaThau" || k === "soHopDong" || k === "soChungChi" || k === "maDinhDanh") {
-        style = "font-weight:700;";
+        inputClass += " excel-preview-input--emphasized";
       }
       const errorText = fieldErrorMap[k];
-      rowHtml += `<td style="text-align: ${align} !important; ${style}; padding: 4px; vertical-align: top;">
-                <input type="${inputType}" class="${inputClass} ${errorText ? "is-invalid" : ""}" data-key="${escapeAttribute(k)}" value="${escapeAttribute(val !== void 0 && val !== null && val !== "" ? val : "")}" style="text-align: ${align};">
-                ${errorText ? `<div class="invalid-feedback bf-s-1fd4829323">${escapeHtml(errorText)}</div>` : ""}
+      const label = labelMap[k] || k;
+      const feedbackId = `excel-preview-error-${rowIndex}-${k.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      rowHtml += `<td class="excel-preview-cell ${align === "right" ? "excel-preview-cell--numeric" : ""}">
+                <input type="${inputType}" class="${inputClass} ${errorText ? "is-invalid" : ""}" data-key="${escapeAttribute(k)}" value="${escapeAttribute(val !== void 0 && val !== null && val !== "" ? val : "")}" aria-label="${escapeAttribute(`${label}, dòng ${rowIndex + 1}`)}" aria-invalid="${errorText ? "true" : "false"}" ${errorText ? `aria-describedby="${escapeAttribute(feedbackId)}"` : ""}>
+                ${errorText ? `<div id="${escapeAttribute(feedbackId)}" class="invalid-feedback excel-preview-feedback bf-s-1fd4829323">${escapeHtml(errorText)}</div>` : ""}
             </td>`;
     });
     rowHtml += `<td class="bf-s-0c5104285b">${statusHtml}</td></tr>`;
@@ -312,17 +282,18 @@ export function renderExcelPreview(rows, importType) {
           if (err) {
             rErrors.push(err);
             inp.classList.add("is-invalid");
+            inp.setAttribute("aria-invalid", "true");
             const feedback = document.createElement("div");
-            feedback.className = "invalid-feedback";
-            setRuntimeStyle(feedback, "color", "#ef4444");
-            setRuntimeStyle(feedback, "fontSize", "0.7rem");
-            setRuntimeStyle(feedback, "marginTop", "2px");
-            setRuntimeStyle(feedback, "textAlign", "left");
-            setRuntimeStyle(feedback, "fontWeight", "500");
+            const feedbackId = `excel-preview-error-${rIndex}-${k.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+            feedback.id = feedbackId;
+            feedback.className = "invalid-feedback excel-preview-feedback";
             feedback.innerText = err;
+            inp.setAttribute("aria-describedby", feedbackId);
             td.appendChild(feedback);
           } else {
             inp.classList.remove("is-invalid");
+            inp.setAttribute("aria-invalid", "false");
+            inp.removeAttribute("aria-describedby");
           }
         });
         if (rErrors.length > 0) {

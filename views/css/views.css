@@ -1404,6 +1404,100 @@ table th {
 .excel-preview-row-invalid td {
   color: var(--danger) !important;
 }
+
+/* Excel import preview is rendered at runtime, so its presentation must live in
+   a static stylesheet to remain available under the application's CSP. */
+#modal-excel-preview .data-table th.excel-preview-column,
+#modal-excel-preview .data-table td.excel-preview-cell {
+  min-width: 220px;
+  text-align: left !important;
+}
+
+#modal-excel-preview .data-table th.excel-preview-column--numeric,
+#modal-excel-preview .data-table td.excel-preview-cell--numeric {
+  text-align: right !important;
+}
+
+#modal-excel-preview .data-table td.excel-preview-cell {
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
+#modal-excel-preview .excel-preview-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  background: var(--surface);
+  font-family: var(--font-primary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.35;
+  caret-color: var(--brand);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+#modal-excel-preview .excel-preview-input:hover:not(:disabled):not(:read-only) {
+  border-color: var(--brand);
+}
+
+#modal-excel-preview .excel-preview-input:focus,
+#modal-excel-preview .excel-preview-input:focus-visible {
+  border-color: var(--brand);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+#modal-excel-preview .excel-preview-input--numeric {
+  color: var(--brand-strong);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#modal-excel-preview .excel-preview-input--emphasized {
+  font-weight: 700;
+}
+
+#modal-excel-preview .excel-preview-input.is-invalid,
+#modal-excel-preview .excel-preview-input[aria-invalid="true"] {
+  border-color: var(--danger);
+  color: var(--danger-hover);
+  background: var(--danger-soft);
+}
+
+#modal-excel-preview .excel-preview-input.is-invalid:focus,
+#modal-excel-preview .excel-preview-input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+#modal-excel-preview .excel-preview-input:disabled,
+#modal-excel-preview .excel-preview-input:read-only {
+  border-color: var(--line);
+  color: var(--ink-subtle);
+  background: var(--surface-subtle);
+  cursor: not-allowed;
+}
+
+#modal-excel-preview .excel-preview-feedback {
+  max-width: 100%;
+  margin-top: 5px;
+  color: var(--danger);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
 .phanlo-header {
   display: flex;
   align-items: center;
@@ -2632,7 +2726,7 @@ table th {
 }
 
 .timeline-control-panel {
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -2732,6 +2826,153 @@ table th {
 .timeline-filters select,
 .timeline-table select {
   padding: 0 var(--space-3);
+}
+
+.timeline-page .bf-combobox-native {
+  display: none !important;
+}
+
+.timeline-page .bf-combobox {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  z-index: 5;
+}
+
+.timeline-page .bf-combobox.open {
+  z-index: 40;
+}
+
+.timeline-page .bf-combobox-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 46px 0 var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+  text-overflow: ellipsis;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.timeline-page .bf-combobox:not(.is-searchable) .bf-combobox-input {
+  cursor: pointer;
+}
+
+.timeline-page .bf-combobox-input::placeholder {
+  color: var(--ink-muted);
+  opacity: 1;
+}
+
+.timeline-page .bf-combobox-input:hover:not(:disabled) {
+  border-color: var(--brand);
+}
+
+.timeline-page .bf-combobox-input:focus {
+  border-color: var(--brand);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.timeline-page .bf-combobox-input:disabled {
+  color: var(--ink-muted);
+  background: var(--surface-subtle);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.timeline-page .bf-combobox-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  color: var(--ink-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.timeline-page .bf-combobox-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.timeline-page .bf-combobox-chevron {
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--transition-fast);
+}
+
+.timeline-page .bf-combobox.open .bf-combobox-chevron {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.timeline-page .bf-combobox-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  max-height: 260px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  list-style: none;
+}
+
+.timeline-page .bf-combobox-list[hidden] {
+  display: none;
+}
+
+.timeline-page .bf-combobox-option,
+.timeline-page .bf-combobox-empty {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.timeline-page .bf-combobox-option {
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.timeline-page .bf-combobox-option:hover,
+.timeline-page .bf-combobox-option.highlighted {
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+}
+
+.timeline-page .bf-combobox-option.selected {
+  color: var(--surface);
+  background: var(--brand);
+  font-weight: 700;
+}
+
+.timeline-page .bf-combobox-empty {
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-page .bf-combobox-input,
+  .timeline-page .bf-combobox-chevron,
+  .timeline-page .bf-combobox-option {
+    transition: none;
+  }
 }
 
 .timeline-field .search-box {

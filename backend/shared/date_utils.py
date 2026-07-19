@@ -46,6 +46,8 @@ def parse_datetime_value(value):
 
 
 def normalize_datetime_value(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
     parsed = parse_datetime_value(value)
     if not parsed:
         return value
@@ -54,6 +56,8 @@ def normalize_datetime_value(value):
 
 def normalize_date_value(value):
     """Canonical persisted business date without a synthetic midnight."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
     parsed = parse_datetime_value(value)
     if not parsed:
         return value

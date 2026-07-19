@@ -39,9 +39,10 @@ def test_icon_rendering_skips_already_rendered_svg_trees():
     assert "if (!hasPendingIcon) return;" in source
 
 
-def test_timeline_controls_do_not_install_custom_select_observers():
+def test_timeline_searchable_comboboxes_do_not_install_mutation_observers():
     template = _source("views/tabs/tab_goithau_timeline.html")
     timeline = _source("frontend/packages/PackageTimelineView.js")
+    combobox = _source("frontend/shared/accessibleCombobox.js")
 
     for control_id in (
         "timeline-plan-select",
@@ -51,7 +52,20 @@ def test_timeline_controls_do_not_install_custom_select_observers():
     ):
         control_markup = template[template.index(f'id="{control_id}"'):]
         assert 'data-no-custom="true"' in control_markup.split(">", 1)[0]
-    assert 'import { makeSearchableSelect }' not in timeline
+    assert 'import { initAccessibleCombobox }' in timeline
+    assert "MutationObserver" not in combobox
+    assert 'role", "combobox"' in combobox
+    assert 'role", "listbox"' in combobox
+    assert 'event.key === "ArrowDown"' in combobox
+    assert 'event.key === "Escape"' in combobox
+
+
+def test_timeline_hides_completed_plans_and_debounces_package_search():
+    timeline = _source("frontend/packages/PackageTimelineView.js")
+
+    assert 'timelinePlanProgressStatus(plan.id, packages) !== "Hoàn thành"' in timeline
+    assert "state.packageSearchTimer = setTimeout" in timeline
+    assert "loadPackageOptions(view, query), 300" in timeline
 
 
 def test_runtime_style_assignment_is_idempotent():

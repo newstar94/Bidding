@@ -5,6 +5,7 @@ import { getJson } from "../shared/apiClient.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
+import { initAccessibleCombobox } from "../shared/accessibleCombobox.js";
 import {
   applyTimelineApplicability,
   applyAutomaticTimelineSources,
@@ -165,24 +166,46 @@ function findContracts(view, packageRecord) {
   ));
 }
 
-function prepareTimelineNativeSelect(select, label) {
+function prepareTimelineSelect(select, label, refreshOptions = {}) {
   if (!select) return null;
   select.setAttribute("data-no-custom", "true");
   select.setAttribute("aria-label", label);
+  select.__bfAccessibleCombobox?.refresh(refreshOptions);
   return select;
 }
 
 function syncTimelineSelectValue(select, value) {
   if (!select) return;
   select.value = String(value || "");
-  const wrapper = select.parentNode?.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"]`);
-  const input = wrapper?.querySelector(".custom-select-search");
-  const selectedOption = select.options[select.selectedIndex];
-  if (input) input.value = selectedOption?.value ? selectedOption.text : "";
-  const options = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`)
-    || wrapper?.querySelector(".custom-select-options");
-  options?.querySelectorAll("li").forEach((item) => {
-    item.classList.toggle("selected", item.dataset.value === select.value);
+  select.__bfAccessibleCombobox?.refresh();
+}
+
+function initTimelineComboboxes(view) {
+  initAccessibleCombobox(element("timeline-plan-select"), {
+    placeholder: "Tìm theo mã hoặc tên kế hoạch",
+    noResultsText: "Không có kế hoạch chưa hoàn thành phù hợp"
+  });
+  initAccessibleCombobox(element("timeline-package-select"), {
+    placeholder: "Chọn kế hoạch trước",
+    noResultsText: "Không tìm thấy gói thầu phù hợp",
+    onQuery: (rawQuery) => {
+      const state = timelineState(view);
+      const query = String(rawQuery || "").trim();
+      state.packageQuery = query;
+      clearTimeout(state.packageSearchTimer);
+      state.packageSearchTimer = setTimeout(() => loadPackageOptions(view, query), 300);
+    }
+  });
+  initAccessibleCombobox(element("timeline-version-select"), {
+    searchable: false,
+    placeholder: "--",
+    noResultsText: "Không có phiên bản khác"
+  });
+  initAccessibleCombobox(element("timeline-status-filter"), {
+    searchable: false,
+    includeEmptyOption: true,
+    placeholder: "Tất cả trạng thái",
+    noResultsText: "Không có trạng thái"
   });
 }
 
@@ -235,7 +258,7 @@ function renderPlanOptions(view) {
     `<option value="${safeAttr(plan.id)}" data-search="${safeAttr(`${plan.maKeHoach || ""} ${plan.tenKeHoach || plan.tenDuAnDuToan || ""}`)}">${escapeHtml(plan.maKeHoach || "--")} — ${escapeHtml(plan.tenKeHoach || plan.tenDuAnDuToan || "")}</option>`
   )).join("")}`);
   select.value = plans.some((plan) => String(plan.id) === current) ? current : "";
-  prepareTimelineNativeSelect(select, "Chọn kế hoạch theo mã hoặc tên");
+  prepareTimelineSelect(select, "Chọn kế hoạch theo mã hoặc tên");
 }
 
 function renderPackageOptions(view, records, search = "") {
@@ -250,7 +273,13 @@ function renderPackageOptions(view, records, search = "") {
     `<option value="${safeAttr(pkg.id)}" data-search="${safeAttr(`${pkg.maGoiThau || ""} ${pkg.tenGoiThau || ""}`)}">${escapeHtml(pkg.maGoiThau || "--")} — ${escapeHtml(pkg.tenGoiThau || "")}</option>`
   )).join("")}`);
   select.value = records.some((pkg) => String(pkg.id) === String(selectedId)) ? selectedId : "";
-  prepareTimelineNativeSelect(select, hasPlan ? "Chọn gói thầu theo mã hoặc tên" : "Chọn kế hoạch trước");
+  const placeholder = hasPlan ? "Tìm theo mã hoặc tên gói thầu" : "Chọn kế hoạch trước";
+  select.__bfAccessibleCombobox?.configure({ placeholder });
+  prepareTimelineSelect(
+    select,
+    hasPlan ? "Chọn gói thầu theo mã hoặc tên" : "Chọn kế hoạch trước",
+    { query: search, preserveQuery: Boolean(search), keepOpen: Boolean(search) }
+  );
 }
 
 async function loadPackageOptions(view, search = timelineState(view).packageQuery) {
@@ -301,6 +330,7 @@ function renderVersionOptions(pkg) {
   )).join("") || `<option value="">--</option>`);
   select.value = pkg?.id || "";
   select.disabled = versions.length <= 1;
+  prepareTimelineSelect(select, "Chọn phiên bản timeline");
 }
 
 function statusOptions(current) {
@@ -585,6 +615,7 @@ async function copyPreviousTimeline(view) {
 function bindTimelineEvents(view, pane) {
   if (pane.dataset.eventsBound === "true") return;
   pane.dataset.eventsBound = "true";
+  initTimelineComboboxes(view);
   element("timeline-plan-select")?.addEventListener("change", async () => {
     const state = timelineState(view);
     state.packageQuery = "";
@@ -654,12 +685,16 @@ export function resetPackageTimeline() {
   if (packageSelect) {
     packageSelect.innerHTML = trustedHTML(`<option value="">Chọn kế hoạch trước</option>`);
     packageSelect.disabled = true;
-    prepareTimelineNativeSelect(packageSelect, "Chọn kế hoạch trước");
+    packageSelect.__bfAccessibleCombobox?.configure({ placeholder: "Chọn kế hoạch trước" });
+    prepareTimelineSelect(packageSelect, "Chọn kế hoạch trước");
     syncTimelineSelectValue(packageSelect, "");
   }
   renderVersionOptions(null);
   const statusFilter = element("timeline-status-filter");
-  if (statusFilter) statusFilter.value = "";
+  if (statusFilter) {
+    statusFilter.value = "";
+    statusFilter.__bfAccessibleCombobox?.refresh();
+  }
   const tbody = element("timeline-table-body");
   tbody?.querySelectorAll("input.flatpickr-date").forEach((input) => input._flatpickr?.destroy());
   if (tbody) tbody.innerHTML = trustedHTML("");

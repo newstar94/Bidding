@@ -669,6 +669,7 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                 previous_record = stored_records_by_table.get(table_name, {}).get(
                     str(incoming_record_id)
                 )
+                cursor.execute("SAVEPOINT sync_item")
                 try:
                     db_row_data = {}
                     for col in columns:
@@ -891,6 +892,8 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                                 "currentVersion": latest_record.get("row_version") if latest_record else None,
                                 "serverRecord": map_db_to_json(table_name, latest_record) if latest_record else None,
                             })
+                            cursor.execute("ROLLBACK TO SAVEPOINT sync_item")
+                            cursor.execute("RELEASE SAVEPOINT sync_item")
                             continue
                     else:
                         db_row_data["row_version"] = 1
@@ -948,9 +951,29 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                                     )
                     track_affected_record(table_name, previous_record)
                     track_affected_record(table_name, db_row_data)
+                    cursor.execute("RELEASE SAVEPOINT sync_item")
                 except Exception as item_err:
-                    err_str = str(item_err)
                     item_id = get_clean_id(table_name, item.get('id'))
+
+                    try:
+                        cursor.execute("ROLLBACK TO SAVEPOINT sync_item")
+                        cursor.execute("RELEASE SAVEPOINT sync_item")
+                    except DatabaseError as savepoint_error:
+                        error = {
+                            "table": table_name,
+                            "id": item.get("id"),
+                            "message": str(item_err),
+                        }
+                        log_sync_error(
+                            f"Không thể phục hồi transaction sau lỗi bản ghi {item_id}: "
+                            f"{savepoint_error}"
+                        )
+                        return rollback_sync_response(
+                            conn,
+                            [error],
+                            "Không thể đồng bộ vì có bản ghi không hợp lệ.",
+                            status_code=400,
+                        )
 
                     if (
                         isinstance(item_err, IntegrityError)
@@ -958,13 +981,17 @@ def _process_sync_request_blocking(request, data, broadcast_callback=None):
                         and item_id
                         and table_name in ALLOWED_ORPHAN_TABLES
                     ):
+                        cursor.execute("SAVEPOINT sync_orphan_cleanup")
                         try:
                             cursor.execute(
                                 DELETED_RECORD_UPSERT_SQL,
                                 (table_name, item_id, org_name, current_time, batch_sync_version)
                             )
                             orphaned_ids.append({"table": table_name, "id": item_id})
+                            cursor.execute("RELEASE SAVEPOINT sync_orphan_cleanup")
                         except DatabaseError as orphan_cleanup_error:
+                            cursor.execute("ROLLBACK TO SAVEPOINT sync_orphan_cleanup")
+                            cursor.execute("RELEASE SAVEPOINT sync_orphan_cleanup")
                             log_sync_error(f"Không thể đánh dấu bản ghi mồ côi {item_id}: {orphan_cleanup_error}")
                     else:
                         log_sync_error(f"Lỗi đồng bộ bản ghi trong bảng {table_name} (ID: {item.get('id')}): {item_err}\n{traceback.format_exc()}")

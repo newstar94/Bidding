@@ -552,6 +552,10 @@ def test_sync_deletion_privileged_error_and_item_errors_roll_back(monkeypatch):
     response = service._process_sync_request_blocking(_Request(), {"goithau": [{"id": "gt-orphan"}]})
     assert response.status_code == 200
     assert _body(response)["orphanedIds"] == [{"table": "goi_thau", "id": "gt-orphan"}]
+    orphan_sql = [sql for sql, _params in tx2._cursor.calls]
+    assert "ROLLBACK TO SAVEPOINT sync_item" in orphan_sql
+    assert "SAVEPOINT sync_orphan_cleanup" in orphan_sql
+    assert "RELEASE SAVEPOINT sync_orphan_cleanup" in orphan_sql
 
     def cleanup_failure(sql, _params):
         if sql.startswith("INSERT INTO goi_thau"):
@@ -568,6 +572,8 @@ def test_sync_deletion_privileged_error_and_item_errors_roll_back(monkeypatch):
     )
     assert response.status_code == 200
     assert _body(response)["orphanedIds"] == []
+    cleanup_sql = [sql for sql, _params in tx3._cursor.calls]
+    assert "ROLLBACK TO SAVEPOINT sync_orphan_cleanup" in cleanup_sql
 
 
 def test_sync_contract_reference_violation_becomes_item_error(monkeypatch):
@@ -765,6 +771,48 @@ def test_sync_serializes_typed_values_and_owns_managed_images(monkeypatch):
     assert json.dumps([1, 2]) in params
     assert "FALLBACK" in params
     assert "images/chuyen_gia/new.png" in params
+
+
+def test_sync_binds_blank_optional_date_as_database_null(monkeypatch):
+    schema = {
+        "columns": {
+            "id": "TEXT NOT NULL",
+            "organization_id": "TEXT NOT NULL",
+            "owner_type": "TEXT NOT NULL",
+            "id_goc": "TEXT",
+            "ngay_tuy_chon": "TEXT",
+            "row_version": "INTEGER",
+            "sync_version": "INTEGER",
+            "updated_at": "TEXT",
+        }
+    }
+    auth = _Connection(_Cursor())
+    tx = _Connection(_Cursor())
+    _install_core_defaults(monkeypatch, [auth, tx])
+    monkeypatch.setattr(service, "SCHEMA_DINH_NGHIA", {"ke_hoach_lcnt": schema})
+    monkeypatch.setattr(
+        service,
+        "iter_sync_table_payloads",
+        lambda data: [("kehoach", "ke_hoach_lcnt", data.get("kehoach", []))],
+    )
+    monkeypatch.setattr(service, "canonicalize_payload_item", lambda _table, item: item)
+    monkeypatch.setattr(service, "json_key_for_column", lambda _table, column: column)
+    monkeypatch.setattr(service, "get_payload_value", lambda _table, item, column: item.get(column))
+
+    response = service._process_sync_request_blocking(
+        _Request(),
+        {"kehoach": [{"id": "kh-1", "ngay_tuy_chon": "   "}]},
+    )
+
+    assert response.status_code == 200
+    insert_sql, insert_params = next(
+        call for call in tx._cursor.calls if call[0].startswith("INSERT INTO ke_hoach_lcnt")
+    )
+    inserted_columns = [
+        column.strip()
+        for column in insert_sql.split("(", 1)[1].split(")", 1)[0].split(",")
+    ]
+    assert insert_params[inserted_columns.index("ngay_tuy_chon")] is None
 
 
 @pytest.mark.parametrize("image_value", ["data:image/png;base64,AAA", "images/chuyen_gia/unowned.png"])

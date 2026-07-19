@@ -364,10 +364,6 @@ from backend.api.org_routes import (
     update_document_export_capabilities_api,
     update_organization_subscription_api,
 )
-from backend.api.personal_import_routes import (
-    import_personal_experts_api,
-    preview_personal_experts_api,
-)
 from backend.auth.auth_routes import (
     login_api,
     check_session_api,
@@ -711,8 +707,6 @@ routes = [
     Route("/api/auth/users/remove-from-org", remove_user_from_org_api, methods=["POST"]),
     Route("/api/organizations/subscription", update_organization_subscription_api, methods=["POST"]),
     Route("/api/organizations/former-members", list_former_organization_members_api, methods=["GET"]),
-    Route("/api/personal-import/experts/preview", preview_personal_experts_api, methods=["GET"]),
-    Route("/api/personal-import/experts", import_personal_experts_api, methods=["POST"]),
     Route(
         "/api/organizations/document-export-capabilities/{user_id}",
         get_document_export_capabilities_api,
