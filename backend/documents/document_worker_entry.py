@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
-import pickle
 import socket
 import sys
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+
+from backend.documents.document_ipc import read_job_manifest, write_result
 
 
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
@@ -40,6 +41,8 @@ def _apply_resource_limits() -> None:
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
         resource.setrlimit(resource.RLIMIT_FSIZE, (output_bytes, output_bytes))
         resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+        if hasattr(resource, "RLIMIT_NPROC"):
+            resource.setrlimit(resource.RLIMIT_NPROC, (1, 1))
     except (ImportError, OSError, ValueError):
         if os.environ.get("APP_ENV", "").lower() in {"prod", "production"}:
             raise RuntimeError("Không thể áp dụng giới hạn tài nguyên cho worker.")
@@ -79,17 +82,15 @@ def _validate_job_paths(input_path: Path, result_path: Path) -> None:
     job_dir = Path(os.environ["DOCUMENT_WORKER_JOB_DIR"]).resolve()
     if input_path.resolve().parent != job_dir or result_path.resolve().parent != job_dir:
         raise ValueError("Đường dẫn tác vụ tài liệu không hợp lệ.")
-    if input_path.name != "input.pkl" or result_path.name != "result.pkl":
+    if input_path.name != "input.json" or result_path.name != "result.json":
         raise ValueError("Tên tệp tác vụ tài liệu không hợp lệ.")
 
 
 def _payload_content(payload):
-    if "content_path" in payload:
-        path = Path(str(payload["content_path"])).resolve()
-        if not path.is_file() or path.stat().st_size > MAX_INPUT_CONTENT_BYTES:
-            raise ValueError("Tệp công việc không tồn tại hoặc vượt giới hạn.")
-        return path.read_bytes()
-    return payload["content"]
+    content = payload.get("content")
+    if not isinstance(content, bytes) or len(content) > MAX_INPUT_CONTENT_BYTES:
+        raise ValueError("Tệp công việc không tồn tại hoặc vượt giới hạn.")
+    return content
 
 
 def _run_operation(operation: str, payload: dict[str, Any]) -> Any:
@@ -207,28 +208,19 @@ def main() -> int:
         _apply_resource_limits()
         _drop_privileges()
         _disable_network()
-        with input_path.open("rb") as input_file:
-            job = pickle.load(input_file)
-        if not isinstance(job, dict) or not isinstance(job.get("payload"), dict):
-            raise ValueError("Dữ liệu tác vụ tài liệu không hợp lệ.")
-        envelope = {
-            "ok": True,
-            "result": _run_operation(job.get("operation"), job["payload"]),
-        }
+        operation, payload = read_job_manifest(input_path, input_path.parent.resolve())
+        result = _run_operation(operation, payload)
+        write_result(result_path, result=result)
     except Exception as exc:
         envelope = _safe_error(exc)
-
-    temporary_result = result_path.with_suffix(".tmp")
-    try:
-        with temporary_result.open("wb") as result_file:
-            pickle.dump(envelope, result_file, protocol=pickle.HIGHEST_PROTOCOL)
-        if temporary_result.stat().st_size > MAX_OUTPUT_BYTES:
-            temporary_result.unlink(missing_ok=True)
-            return 3
-        os.replace(temporary_result, result_path)
-    except Exception:
-        temporary_result.unlink(missing_ok=True)
-        return 4
+        try:
+            write_result(
+                result_path,
+                error_type=envelope["error_type"],
+                message=envelope["message"],
+            )
+        except Exception:
+            return 4
     return 0
 
 

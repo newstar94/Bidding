@@ -8,6 +8,7 @@ import time
 from contextlib import asynccontextmanager
 
 from backend.auth.auth_helper import _session_cache_cleanup
+from backend.auth.email_delivery_service import fail_stale_email_deliveries
 from backend.documents.document_worker import (
     cleanup_stale_document_jobs,
     validate_document_worker_configuration,
@@ -92,10 +93,19 @@ def _purge_retained_rows(database):
         )
         idempotency_days = max(1, int(os.environ.get("API_IDEMPOTENCY_RETENTION_DAYS", "7")))
         conn.execute("DELETE FROM api_idempotency WHERE created_at < ?", (int(time.time()) - idempotency_days * 86400,))
+        conn.execute(
+            "DELETE FROM rate_limit_buckets WHERE expires_at <= ?",
+            (int(time.time()),),
+        )
+        conn.execute(
+            "DELETE FROM partner_lookup_cache WHERE expires_at <= ?",
+            (int(time.time()),),
+        )
         # Audit history is immutable. Retention requires a separately signed
         # checkpoint/partition archival workflow and must never be a blind row
         # delete from the application cleanup loop.
         conn.commit()
+        fail_stale_email_deliveries(database)
     except Exception as exc:
         log_error(exc, "retention_cleanup", level="WARN")
     finally:

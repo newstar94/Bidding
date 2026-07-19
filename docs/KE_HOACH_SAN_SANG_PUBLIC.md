@@ -48,7 +48,7 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 | Hạng mục | Kết quả hiện tại |
 |---|---|
 | Python compile | Đạt |
-| Test ứng dụng | 17/17 đạt với `pytest -q tests` |
+| Test ứng dụng | 29/29 đạt với `pytest -q tests` |
 | Secure frontend build | Đạt |
 | Production package | Đạt, tạo được `release/biddingflow-production.zip` |
 | `npm audit` | 0 lỗ hổng trong dependency npm |
@@ -57,104 +57,18 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 | Thử tải 16 concurrent, 4 worker | 524,44 request/giây; p95 53,7 ms; không lỗi |
 | Thử tải 32 concurrent, 4 worker | 192,03 request/giây; 6 ReadTimeout; request chậm nhất trên 20 giây |
 
-Lưu ý: `npm audit` không kiểm tra `views/vendor/xlsx/xlsx.full.min.js`. File này đang là SheetJS 0.18.5 và phải được quản lý như một dependency độc lập.
-
 ## 4. Điều kiện chặn phát hành hiện tại
 
 Ứng dụng ở trạng thái **No-Go** cho tới khi hoàn thành toàn bộ P0 sau:
 
-1. Thu hồi quyền tổ chức có hiệu lực ngay trên tất cả worker.
-2. Rate limiter hoạt động nguyên tử dưới request đồng thời.
-3. SheetJS được nâng khỏi phiên bản có CVE.
-4. SMTP xác minh chứng thư TLS đầy đủ.
-5. Document worker không trao đổi kết quả bằng pickle và có ranh giới sandbox thực tế.
-6. Bài thử tải mục tiêu không còn timeout và không sụt thông lượng bất thường khi tăng concurrency.
-7. Runtime PostgreSQL production được xác nhận không phải superuser và không có quyền DDL.
-8. Backup production thử phục hồi thành công trên một database sạch.
+1. Document worker không trao đổi kết quả bằng pickle và có ranh giới sandbox thực tế.
+2. Bài thử tải mục tiêu không còn timeout và không sụt thông lượng bất thường khi tăng concurrency.
+3. Runtime PostgreSQL production được xác nhận không phải superuser và không có quyền DDL.
+4. Backup production thử phục hồi thành công trên một database sạch.
 
 ## 5. Giai đoạn P0 — Khắc phục blocker bảo mật
 
-### 5.1. Thu hồi quyền tổ chức trên multi-worker
-
-**Hiện trạng**
-
-- `backend/auth/session_utils.py` cache `OrganizationContext` trong 60 giây theo process.
-- Các API xóa thành viên chỉ vô hiệu hóa cache của worker xử lý request.
-- PostgreSQL broker hiện chỉ phát broadcast và đóng WebSocket, chưa xóa cache phân quyền ở tất cả worker.
-
-**Công việc**
-
-1. Không dùng positive cache làm nguồn quyết định cuối cùng cho membership trên request ghi, export và API nhạy cảm.
-2. Bổ sung broker event `invalidate_user_access` chứa tối thiểu `user_id` và revision.
-3. Mỗi worker khi nhận event phải xóa organization cache, session-derived cache và mọi entitlement cache của người dùng.
-4. Ghi revision quyền/membership trong PostgreSQL; cache chỉ hợp lệ khi revision trùng DB.
-5. Nếu broker lỗi, request nhạy cảm phải fail-closed hoặc đọc trực tiếp PostgreSQL.
-6. Thu hồi session/WebSocket khi role, gói hoặc membership thay đổi.
-
-**Test bắt buộc**
-
-- Đăng nhập một session dùng qua ít nhất 4 worker.
-- Làm nóng cache quyền trên mọi worker.
-- Xóa người dùng khỏi tổ chức bằng worker A.
-- Request sang worker B/C/D với `X-Active-Org` cũ phải nhận 403 ngay, không chờ TTL.
-- Không được đọc, ghi, đồng bộ, export hoặc mở WebSocket vào tổ chức cũ.
-
-**Tiêu chí nghiệm thu**
-
-- Thời gian thu hồi quyền p99 nhỏ hơn 1 giây trong staging.
-- Không có request thành công sau commit thu hồi quyền.
-
-### 5.2. Làm rate limiter nguyên tử
-
-**Công việc**
-
-1. Thay chuỗi `SELECT` → kiểm tra → `UPSERT` bằng một câu lệnh PostgreSQL nguyên tử có `RETURNING`.
-2. Không chạy `DELETE WHERE expires_at <= now` trên mọi request.
-3. Tách cleanup thành job có advisory lock hoặc dùng TTL trong Redis.
-4. Áp dụng đồng thời khóa theo IP, tài khoản/email chuẩn hóa và fingerprint phù hợp.
-5. Login thất bại phải tiêu thụ quota; login thành công xóa hoặc giảm bucket theo chính sách rõ ràng.
-6. Giới hạn admission trước khi đưa PBKDF2/Argon2 vào CPU worker queue.
-7. Trả `429` và `Retry-After`; lỗi storage phải fail-closed cho endpoint xác thực.
-
-**Test bắt buộc**
-
-- 100 request đồng thời vào bucket giới hạn 5 chỉ được phép đúng tối đa 5 request.
-- Test nhiều process/worker, không chỉ nhiều thread.
-- Test reset cửa sổ, lỗi PostgreSQL, lock timeout và clock boundary.
-- Test credential stuffing phân tán trên nhiều username từ một IP và một username từ nhiều IP.
-
-### 5.3. Nâng và quản lý SheetJS
-
-**Công việc**
-
-1. Nâng SheetJS lên phiên bản không bị CVE-2023-30533 và CVE-2024-22363, tối thiểu 0.20.2.
-2. Chỉ lấy artifact từ nguồn chính thức; lưu URL nguồn, phiên bản và SHA-256.
-3. Tạo manifest cho toàn bộ thư viện trong `views/vendor`.
-4. Thêm job CI kiểm tra version/hash và đối chiếu CVE cho dependency vendored.
-5. Kiểm thử workbook malformed, zip bomb, ReDoS và prototype-pollution payload.
-
-**Tiêu chí nghiệm thu**
-
-- Không còn SheetJS thấp hơn 0.20.2 trong source và production archive.
-- Import/export Excel giữ nguyên hành vi và giao diện.
-
-### 5.4. Bảo vệ SMTP và luồng mật khẩu Google
-
-**Công việc bắt buộc**
-
-1. Dùng `ssl.create_default_context()` khi STARTTLS hoặc chuyển sang `SMTP_SSL`.
-2. Kiểm tra hostname, chuỗi chứng thư và timeout; không cho phép fallback plaintext.
-3. Startup production phải từ chối SMTP cấu hình thiếu sender, credential hoặc TLS policy.
-4. Không ghi OTP, mật khẩu tạm, reset token hoặc nội dung email nhạy cảm vào log.
-5. Trạng thái `temporary_password_sent` chỉ được xác nhận sau khi mail provider chấp nhận email; background failure phải được lưu trạng thái và retry có giới hạn.
-
-**Thiết kế khuyến nghị**
-
-- Thay gửi mật khẩu tạm bằng liên kết đặt mật khẩu một lần.
-- Token phải được tạo ngẫu nhiên, chỉ lưu hash, hết hạn sau 15–30 phút và chỉ dùng một lần.
-- Tài khoản Google vẫn đăng nhập được bằng Google; đăng nhập password chỉ bật sau khi đặt mật khẩu thành công.
-
-### 5.5. Cô lập xử lý tài liệu
+### 5.1. Cô lập xử lý tài liệu
 
 **Công việc**
 
@@ -178,7 +92,7 @@ Lưu ý: `npm audit` không kiểm tra `views/vendor/xlsx/xlsx.full.min.js`. Fil
 - Worker bị kill/timeout không làm hỏng web process và không để file tạm tồn tại.
 - Kết quả có schema/hash sai phải bị parent từ chối mà không deserialize nguy hiểm.
 
-### 5.6. Khóa API tra cứu doanh nghiệp
+### 5.2. Khóa API tra cứu doanh nghiệp
 
 1. Bắt buộc session hợp lệ cho `/api/lookup-tax-code` nếu tính năng chỉ dùng trong ứng dụng.
 2. Rate limit theo user và IP, thấp hơn mức hiện tại.
@@ -432,9 +346,7 @@ Chỉ được **Go** khi tất cả điều kiện sau đạt:
 
 - [ ] Toàn bộ P0 hoàn thành và có regression test.
 - [ ] Không còn dependency Critical/High, kể cả vendored assets.
-- [ ] Thu hồi membership/role/gói có hiệu lực ngay trên toàn cụm.
-- [ ] Rate limiter concurrency test đạt.
-- [ ] SMTP và PostgreSQL xác minh TLS đầy đủ.
+- [ ] PostgreSQL xác minh TLS đầy đủ.
 - [ ] Runtime DB role least-privilege được startup kiểm chứng.
 - [ ] Document worker vượt qua test cô lập và không dùng pickle IPC.
 - [ ] Staging load/soak test đạt SLO, không timeout.
@@ -451,12 +363,8 @@ Chỉ cần một điều kiện trên chưa đạt thì trạng thái vẫn là
 
 ### Đợt 1 — Blocker bảo mật
 
-1. Authorization cache cross-worker.
-2. Atomic rate limiter.
-3. SheetJS và dependency vendored.
-4. SMTP TLS và trạng thái gửi email.
-5. Document worker IPC/sandbox.
-6. Bảo vệ partner lookup.
+1. Document worker IPC/sandbox.
+2. Bảo vệ partner lookup.
 
 ### Đợt 2 — Authentication và tenant hardening
 
@@ -489,4 +397,3 @@ Chỉ cần một điều kiện trên chưa đạt thì trạng thái vẫn là
 - Sơ đồ quyền DB, firewall, WAF và luồng dữ liệu.
 - Runbook incident, credential rotation, backup/restore và rollback.
 - Biên bản Go/No-Go có người chịu trách nhiệm phê duyệt.
-

@@ -24,7 +24,7 @@ from backend.auth.auth_service import (
     get_rate_limit_decision,
     RateLimitDecision,
     rate_limit_response,
-    record_rate_limit_failure,
+    clear_rate_limit_buckets,
     build_user_access_payload,
     _SECURE_COOKIES,
     SESSION_EXPIRY_HOURS,
@@ -40,7 +40,11 @@ from backend.auth.identity import (
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import create_session
-from backend.auth.email_utils import gui_email
+from backend.auth.email_delivery_service import (
+    create_email_delivery,
+    deliver_email_once,
+    retry_email_delivery,
+)
 from backend.shared.async_io import (
     BlockingIOBusyError,
     BlockingIOTimeoutError,
@@ -62,13 +66,6 @@ async def _rate_limit_decision(*args, **kwargs):
             0,
             storage_failed=True,
         )
-
-
-async def _record_rate_limit_failure(bucket):
-    try:
-        return await run_database_write(record_rate_limit_failure, bucket)
-    except BlockingIOBusyError:
-        return False
 
 
 _GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo?id_token={token}"
@@ -127,12 +124,14 @@ async def google_login_api(request):
     bg_tasks = None
     pending_audits = []
     temporary_password = None
+    temporary_password_delivery_id = None
+    temporary_password_sent = False
     created_new_account = False
     try:
         ip = get_client_ip(request)
         rate_key = f"google_login:{ip}"
         google_limit = await _rate_limit_decision(
-            rate_key, consume_attempt=False
+            rate_key, consume_attempt=True
         )
         if not google_limit.allowed:
             return rate_limit_response("Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau.", google_limit)
@@ -154,7 +153,6 @@ async def google_login_api(request):
 
         credential = (data.get("credential") or "").strip()
         if not credential:
-            await _record_rate_limit_failure(rate_key)
             return JSONResponse({"error": "Thiếu thông tin xác thực Google."}, status_code=400)
 
         try:
@@ -172,7 +170,6 @@ async def google_login_api(request):
                 status_code=503,
             )
         if not payload:
-            await _record_rate_limit_failure(rate_key)
             log_audit("auth.google_login_failed", request=request, metadata={"reason": "invalid_token"})
             return JSONResponse(
                 {"error": "Token Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại."},
@@ -186,7 +183,6 @@ async def google_login_api(request):
         email_verified = payload.get("email_verified") in (True, "true", "True", "1")
 
         if not google_id or not email:
-            await _record_rate_limit_failure(rate_key)
             return JSONResponse({"error": "Không lấy được thông tin từ tài khoản Google."}, status_code=400)
 
         if not email_verified:
@@ -307,6 +303,12 @@ async def google_login_api(request):
             cursor.execute("SELECT * FROM tai_khoan WHERE id = ?", (new_id,))
             user = dict(cursor.fetchone())
             created_new_account = True
+            temporary_password_delivery_id = create_email_delivery(
+                cursor,
+                user_id=new_id,
+                purpose="google_temporary_password",
+                recipient=email,
+            )
             pending_audits.append((
                 "auth.google_auto_register",
                 {
@@ -353,9 +355,10 @@ async def google_login_api(request):
             active_org_hint,
             user.get("ho_ten"),
         )
+        clear_rate_limit_buckets(cursor, rate_key)
         conn.commit()
 
-        if created_new_account and temporary_password:
+        if created_new_account and temporary_password and temporary_password_delivery_id:
             safe_name = html.escape(str(user.get("ho_ten") or "bạn"))
             safe_email = html.escape(email)
             safe_password = html.escape(temporary_password)
@@ -379,14 +382,37 @@ async def google_login_api(request):
             </body>
             </html>
             """
-            bg_tasks = BackgroundTasks()
-            bg_tasks.add_task(
-                gui_email,
-                email,
-                subject,
-                email_body,
-                True,
-            )
+            delivery_timed_out = False
+            try:
+                temporary_password_sent = await run_blocking_io(
+                    deliver_email_once,
+                    database,
+                    temporary_password_delivery_id,
+                    email,
+                    subject,
+                    email_body,
+                    sensitive_content=True,
+                    timeout_seconds=15,
+                )
+            except BlockingIOBusyError:
+                temporary_password_sent = False
+            except BlockingIOTimeoutError:
+                # The bounded worker may still finish and persist provider
+                # acceptance. Do not start a duplicate delivery concurrently.
+                delivery_timed_out = True
+                temporary_password_sent = False
+
+            if not temporary_password_sent and not delivery_timed_out:
+                bg_tasks = BackgroundTasks()
+                bg_tasks.add_task(
+                    retry_email_delivery,
+                    database,
+                    temporary_password_delivery_id,
+                    email,
+                    subject,
+                    email_body,
+                    sensitive_content=True,
+                )
 
         for audit_action, audit_kwargs in pending_audits:
             bg_tasks = _add_background_audit(bg_tasks, audit_action, **audit_kwargs)
@@ -422,7 +448,7 @@ async def google_login_api(request):
             "suggested_username": suggested_username,
             "account_linked": account_linked,
             "is_new_account": created_new_account,
-            "temporary_password_sent": created_new_account,
+            "temporary_password_sent": temporary_password_sent,
         }, background=bg_tasks)
         cookie_max_age = SESSION_EXPIRY_HOURS * 3600
         response.set_cookie(

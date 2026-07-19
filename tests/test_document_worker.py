@@ -1,0 +1,180 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import zipfile
+from io import BytesIO
+
+import pytest
+
+from backend.documents.document_ipc import (
+    DocumentIpcError,
+    read_job_manifest,
+    read_result,
+    write_job_manifest,
+    write_result,
+)
+from backend.documents.document_worker import (
+    DocumentWorkerInputError,
+    run_document_job,
+)
+from backend.documents.document_sandbox import build_bwrap_command
+from backend.shared.paths import PROJECT_ROOT
+
+
+def _minimal_xlsx(extra_entries=None, *, content_types=None) -> bytes:
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            content_types or """<?xml version="1.0" encoding="UTF-8"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+            </Types>""",
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>""",
+        )
+        for name, content in extra_entries or []:
+            archive.writestr(name, content)
+    return output.getvalue()
+
+
+def _mark_first_entry_encrypted(content: bytes) -> bytes:
+    patched = bytearray(content)
+    local = patched.find(b"PK\x03\x04")
+    central = patched.find(b"PK\x01\x02")
+    assert local >= 0 and central >= 0
+    patched[local + 6] |= 0x01
+    patched[central + 8] |= 0x01
+    return bytes(patched)
+
+
+def test_document_ipc_uses_json_and_hashed_binary_sidecars(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "input.json"
+    content = _minimal_xlsx()
+    write_job_manifest(
+        manifest_path,
+        "validate_ooxml",
+        {"content": content, "kind": "xlsx"},
+        image_root=tmp_path / "images",
+    )
+
+    assert manifest_path.read_bytes().startswith(b'{"format":"biddingflow-document-job"')
+    operation, payload = read_job_manifest(manifest_path, tmp_path.resolve())
+    assert operation == "validate_ooxml"
+    assert payload == {"content": content, "kind": "xlsx"}
+
+    sidecar = next(tmp_path.glob("input-*.bin"))
+    sidecar.write_bytes(sidecar.read_bytes() + b"tampered")
+    with pytest.raises(DocumentIpcError, match="Kích thước|Hash"):
+        read_job_manifest(manifest_path, tmp_path.resolve())
+
+
+def test_parent_rejects_tampered_binary_result(tmp_path: Path) -> None:
+    result_path = tmp_path / "result.json"
+    write_result(result_path, result=b"safe-result")
+    result_binary = tmp_path / "result.bin"
+    result_binary.write_bytes(b"attacker-controlled")
+    with pytest.raises(DocumentIpcError, match="Kích thước|Hash"):
+        read_result(result_path, tmp_path.resolve())
+
+
+def test_parent_rejects_result_schema_confusion(tmp_path: Path) -> None:
+    result_path = tmp_path / "result.json"
+    result_path.write_text(
+        json.dumps({"format": "biddingflow-document-result", "version": 1, "ok": True, "result": True, "extra": "payload"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(DocumentIpcError, match="Schema"):
+        read_result(result_path, tmp_path.resolve())
+
+
+def test_document_subprocess_roundtrip_and_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    worker_root = tmp_path / "worker-jobs"
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(worker_root))
+    monkeypatch.setenv("APP_ENV", "test")
+
+    assert run_document_job(
+        "validate_ooxml",
+        {"content": _minimal_xlsx(), "kind": "xlsx"},
+        timeout_seconds=15,
+    ) is True
+    exported = run_document_job(
+        "export_excel",
+        {"function": "create_mothau_template", "args": ["TU_VAN", []]},
+        timeout_seconds=15,
+    )
+    assert isinstance(exported, bytes) and exported.startswith(b"PK\x03\x04")
+    assert not worker_root.exists() or not any(worker_root.iterdir())
+
+
+def test_document_subprocess_rejects_malformed_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path / "worker-jobs"))
+    monkeypatch.setenv("APP_ENV", "test")
+    with pytest.raises(DocumentWorkerInputError):
+        run_document_job(
+            "validate_ooxml",
+            {"content": b"not-an-xlsx", "kind": "xlsx"},
+            timeout_seconds=15,
+        )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        _minimal_xlsx([("../escape.xml", "<safe/>")]),
+        _minimal_xlsx([("xl/worksheets/sheet1.xml", "0" * 1_000_000)]),
+        _minimal_xlsx([
+            (
+                "_rels/.rels",
+                """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                <Relationship Id="rId1" Target="https://attacker.invalid" TargetMode="External" Type="x"/>
+                </Relationships>""",
+            )
+        ]),
+        _mark_first_entry_encrypted(_minimal_xlsx()),
+        _minimal_xlsx(
+            content_types="""<!DOCTYPE x [<!ENTITY payload "boom">]>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+            </Types>"""
+        ),
+    ],
+    ids=["zip-slip", "zip-bomb", "external-relationship", "encrypted", "entity-expansion"],
+)
+def test_document_subprocess_rejects_hostile_ooxml(
+    content: bytes,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DOCUMENT_WORKER_TEMP_DIR", str(tmp_path / "worker-jobs"))
+    monkeypatch.setenv("APP_ENV", "test")
+    with pytest.raises(DocumentWorkerInputError):
+        run_document_job(
+            "validate_ooxml",
+            {"content": content, "kind": "xlsx"},
+            timeout_seconds=15,
+        )
+
+
+def test_bwrap_command_mounts_backend_not_project_secrets(tmp_path: Path) -> None:
+    job_dir = tmp_path.resolve()
+    command = build_bwrap_command(
+        ["/usr/bin/python3", "-m", "backend.documents.document_worker_entry"],
+        job_dir,
+        {"PYTHONPATH": str(PROJECT_ROOT)},
+        executable="/usr/bin/bwrap",
+    )
+    mounts = [
+        (command[index + 1], command[index + 2])
+        for index, value in enumerate(command[:-2])
+        if value in {"--ro-bind", "--bind"}
+    ]
+    assert (str((PROJECT_ROOT / "backend").resolve()), str((PROJECT_ROOT / "backend").resolve())) in mounts
+    assert (str(PROJECT_ROOT.resolve()), str(PROJECT_ROOT.resolve())) not in mounts
+    assert (str(job_dir), str(job_dir)) in mounts
+    assert "--unshare-all" in command
+    assert "--clearenv" in command

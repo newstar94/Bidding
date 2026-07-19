@@ -24,12 +24,13 @@
     },
     {
       "name": "SheetJS Community Edition",
-      "version": "0.18.5",
+      "version": "0.20.3",
+      "securityMinimumVersion": "0.20.2",
       "license": "Apache-2.0",
-      "source": "https://cdn.sheetjs.com/xlsx-0.18.5/package/dist/xlsx.full.min.js",
+      "source": "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js",
       "updateSource": "https://docs.sheetjs.com/docs/getting-started/installation/standalone/",
       "files": {
-        "xlsx/xlsx.full.min.js": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99"
+        "xlsx/xlsx.full.min.js": "cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41"
       }
     },
     {

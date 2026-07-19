@@ -27,7 +27,7 @@ export function loadScriptOnce(src, globalName) {
   return promise;
 }
 export function ensureXlsxLoaded() {
-  return loadScriptOnce("/vendor/xlsx/xlsx.full.min.js?v=0.18.5", "XLSX");
+  return loadScriptOnce("/vendor/xlsx/xlsx.full.min.js?v=0.20.3", "XLSX");
 }
 export function loadStyleOnce(href) {
   if (document.querySelector(`link[href="${href}"]`)) {

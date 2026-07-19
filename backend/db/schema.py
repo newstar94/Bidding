@@ -107,12 +107,48 @@ SCHEMA_DINH_NGHIA = {
             "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
         ]
     },
+    "email_delivery_status": {
+        "columns": {
+            "id": "TEXT PRIMARY KEY",
+            "user_id": "TEXT NOT NULL",
+            "purpose": "TEXT NOT NULL CHECK(purpose IN ('google_temporary_password'))",
+            "recipient_hash": "TEXT NOT NULL CHECK(recipient_hash != '')",
+            "status": "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'sending', 'retry', 'sent', 'failed'))",
+            "attempt_count": "INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0)",
+            "last_error_code": "TEXT",
+            "next_attempt_at": "INTEGER",
+            "accepted_at": "INTEGER",
+            "created_at": "INTEGER NOT NULL CHECK(created_at > 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
+        },
+        "foreign_keys": [
+            "FOREIGN KEY (user_id) REFERENCES tai_khoan(id) ON DELETE CASCADE"
+        ]
+    },
     "rate_limit_buckets": {
         "columns": {
             "bucket_key": "TEXT PRIMARY KEY",
             "window_started_at": "INTEGER NOT NULL",
             "attempt_count": "INTEGER NOT NULL CHECK(attempt_count >= 0)",
             "expires_at": "INTEGER NOT NULL"
+        }
+    },
+    "partner_lookup_cache": {
+        "columns": {
+            "cache_key": "TEXT PRIMARY KEY",
+            "result_json": "TEXT",
+            "found": "INTEGER NOT NULL CHECK(found IN (0,1))",
+            "expires_at": "INTEGER NOT NULL CHECK(expires_at > 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
+        }
+    },
+    "partner_upstream_health": {
+        "columns": {
+            "upstream": "TEXT PRIMARY KEY CHECK(upstream IN ('muasamcong', 'vietqr', 'escodata'))",
+            "failure_count": "INTEGER NOT NULL DEFAULT 0 CHECK(failure_count >= 0)",
+            "opened_until": "INTEGER NOT NULL DEFAULT 0 CHECK(opened_until >= 0)",
+            "probe_locked_until": "INTEGER NOT NULL DEFAULT 0 CHECK(probe_locked_until >= 0)",
+            "updated_at": "INTEGER NOT NULL CHECK(updated_at > 0)"
         }
     },
     "websocket_events": {

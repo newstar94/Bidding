@@ -5,10 +5,8 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import os
-import pickle
 import shutil
 import signal
-import stat
 import subprocess
 import sys
 import tempfile
@@ -18,6 +16,15 @@ from pathlib import Path
 from typing import Any
 
 from backend.shared.paths import IMAGE_DIR, PROJECT_ROOT, resolve_runtime_path
+from backend.documents.document_ipc import (
+    DocumentIpcError,
+    read_result,
+    write_job_manifest,
+)
+from backend.documents.document_sandbox import (
+    sandbox_worker_command,
+    validate_document_sandbox_configuration,
+)
 from backend.observability.metrics import (
     document_worker_acquired,
     document_worker_finished,
@@ -138,6 +145,10 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
             "PYTHONPATH": str(PROJECT_ROOT),
             "PYTHONUNBUFFERED": "1",
             "DOCUMENT_WORKER_JOB_DIR": str(job_dir),
+            "BIDDING_DATA_DIR": str(job_dir / "assets"),
+            "BIDDING_LOG_DIR": str(job_dir / "logs"),
+            "BIDDING_UPLOAD_DIR": str(job_dir / "assets" / "images"),
+            "BIDDING_WORD_TEMPLATE_DIR": str(job_dir / "assets" / "words"),
             "TEMP": str(job_dir),
             "TMP": str(job_dir),
         }
@@ -145,7 +156,7 @@ def _worker_environment(job_dir: Path) -> dict[str, str]:
     return environment
 
 
-def _prepare_privilege_drop(job_dir: Path, input_path: Path) -> None:
+def _prepare_privilege_drop(job_dir: Path) -> None:
     if os.name != "posix" or not hasattr(os, "chown"):
         return
     uid_raw = os.environ.get("DOCUMENT_WORKER_UID", "").strip()
@@ -155,9 +166,10 @@ def _prepare_privilege_drop(job_dir: Path, input_path: Path) -> None:
     uid = int(uid_raw) if uid_raw else -1
     gid = int(gid_raw) if gid_raw else -1
     os.chown(job_dir, uid, gid)
-    os.chown(input_path, uid, gid)
     os.chmod(job_dir, 0o700)
-    os.chmod(input_path, 0o600)
+    for child in job_dir.rglob("*"):
+        os.chown(child, uid, gid)
+        os.chmod(child, 0o700 if child.is_dir() else 0o600)
 
 
 def _terminate_process(process: subprocess.Popen[bytes]) -> None:
@@ -239,7 +251,9 @@ def _assign_windows_job_object(process: subprocess.Popen[bytes]) -> int | None:
     # A Windows venv ``python.exe`` launcher creates the real interpreter as
     # one child process. The job therefore needs two slots while still
     # preventing the document code from creating an unbounded process tree.
-    limits.BasicLimitInformation.ActiveProcessLimit = 2
+    limits.BasicLimitInformation.ActiveProcessLimit = (
+        1 if Path(sys.executable).resolve() == Path(getattr(sys, "_base_executable", sys.executable)).resolve() else 2
+    )
     limits.ProcessMemoryLimit = (
         _positive_int_env("DOCUMENT_WORKER_MAX_MEMORY_MB", 768, 128, 2_048)
         * 1024
@@ -268,26 +282,22 @@ def _close_windows_job_object(job_handle: int | None) -> None:
         kernel32.CloseHandle(job_handle)
 
 
-def _read_result(result_path: Path) -> Any:
-    try:
-        file_stat = result_path.lstat()
-    except FileNotFoundError as exc:
+def _read_result(result_path: Path, job_dir: Path) -> Any:
+    if not result_path.exists():
         raise DocumentWorkerError(
             "Tiến trình xử lý tài liệu kết thúc mà không trả về kết quả."
-        ) from exc
-    if not stat.S_ISREG(file_stat.st_mode) or file_stat.st_size > MAX_RESULT_BYTES:
-        raise DocumentWorkerError("Kết quả xử lý tài liệu không hợp lệ.")
-    with result_path.open("rb") as result_file:
-        envelope = pickle.load(result_file)
-    if not isinstance(envelope, dict) or not isinstance(envelope.get("ok"), bool):
-        raise DocumentWorkerError("Kết quả xử lý tài liệu không hợp lệ.")
-    if envelope["ok"]:
-        return envelope.get("result")
-
-    message = str(envelope.get("message") or "Tác vụ tài liệu không thành công.")[:500]
-    error_type = str(envelope.get("error_type") or "")
-    if error_type in {"TemplateRenderError", "UnsafeArchiveError", "ValueError"}:
+        )
+    try:
+        ok, result, error_type, message = read_result(result_path, job_dir)
+    except (DocumentIpcError, OSError) as exc:
+        raise DocumentWorkerError("Kết quả xử lý tài liệu không hợp lệ.") from exc
+    if ok:
+        return result
+    message = str(message or "Tác vụ tài liệu không thành công.")[:500]
+    if error_type in {"TemplateRenderError", "UnsafeArchiveError", "ValueError", "DocumentIpcError"}:
         raise DocumentWorkerInputError(message)
+    if not isinstance(ok, bool):
+        raise DocumentWorkerError("Kết quả xử lý tài liệu không hợp lệ.")
     raise DocumentWorkerError(message)
 
 
@@ -323,28 +333,29 @@ def run_document_job(
     try:
         with tempfile.TemporaryDirectory(prefix="job-", dir=job_root) as raw_job_dir:
             job_dir = Path(raw_job_dir).resolve()
-            input_path = job_dir / "input.pkl"
-            result_path = job_dir / "result.pkl"
-            with input_path.open("wb") as input_file:
-                pickle.dump(
-                    {"operation": operation, "payload": payload},
-                    input_file,
-                    protocol=pickle.HIGHEST_PROTOCOL,
-                )
-            if input_path.stat().st_size > MAX_JOB_BYTES:
-                raise DocumentWorkerInputError("Dữ liệu đầu vào của tác vụ quá lớn.")
-            _prepare_privilege_drop(job_dir, input_path)
+            input_path = job_dir / "input.json"
+            result_path = job_dir / "result.json"
+            try:
+                write_job_manifest(input_path, operation, payload, image_root=IMAGE_DIR)
+            except (DocumentIpcError, OSError) as exc:
+                raise DocumentWorkerInputError(str(exc)) from exc
+            _prepare_privilege_drop(job_dir)
 
-            command = [
+            base_command = [
                 sys.executable,
                 "-m",
                 "backend.documents.document_worker_entry",
                 str(input_path),
                 str(result_path),
             ]
+            worker_environment = _worker_environment(job_dir)
+            try:
+                command = sandbox_worker_command(base_command, job_dir, worker_environment)
+            except RuntimeError as exc:
+                raise DocumentWorkerError("Không thể khởi tạo sandbox xử lý tài liệu.") from exc
             popen_kwargs: dict[str, Any] = {
                 "cwd": str(job_dir),
-                "env": _worker_environment(job_dir),
+                "env": worker_environment,
                 "stdin": subprocess.DEVNULL,
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.PIPE,
@@ -376,7 +387,7 @@ def run_document_job(
                 raise DocumentWorkerError(
                     "Tiến trình xử lý tài liệu đã dừng bất thường."
                 )
-            result = _read_result(result_path)
+            result = _read_result(result_path, job_dir)
             outcome = "completed"
             return result
     except DocumentWorkerTimeoutError:
@@ -466,6 +477,7 @@ def cleanup_stale_document_jobs(max_age_seconds: int = 3_600) -> int:
 def validate_document_worker_configuration() -> None:
     """Fail startup when production would run document parsers with admin rights."""
 
+    validate_document_sandbox_configuration()
     if os.environ.get("APP_ENV", "development").lower() not in {"prod", "production"}:
         return
     require_drop = os.environ.get(

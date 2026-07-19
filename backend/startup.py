@@ -9,6 +9,8 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+from backend.auth.email_utils import smtp_configuration_errors
+
 
 class StartupValidationError(RuntimeError):
     """Raised when the process cannot safely start serving traffic."""
@@ -20,7 +22,10 @@ REQUIRED_APPLICATION_TABLES = frozenset({
     "thanh_vien_to_chuc",
     "database_metadata",
     "password_reset_tokens",
+    "email_delivery_status",
     "rate_limit_buckets",
+    "partner_lookup_cache",
+    "partner_upstream_health",
 })
 
 def _validate_postgresql_configuration(database, environ, *, production):
@@ -83,6 +88,11 @@ def validate_startup_configuration(database, environ=None):
     _validate_postgresql_configuration(database, environ, production=is_production)
     requires_bootstrap = database_requires_admin_bootstrap(database)
     if is_production:
+        smtp_errors = smtp_configuration_errors(environ, production=True)
+        if smtp_errors:
+            raise StartupValidationError(
+                "Invalid production SMTP configuration: " + "; ".join(smtp_errors)
+            )
         audit_hmac_key = str(environ.get("AUDIT_CHECKPOINT_HMAC_KEY", ""))
         if len(audit_hmac_key.encode("utf-8")) < 32:
             raise StartupValidationError(

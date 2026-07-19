@@ -1,7 +1,6 @@
 import { setRuntimeStyle } from "../shared/runtimeStyles.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { triggerExcelTemplateDownload as triggerTemplateDownload } from "./excelTemplateAdapter.js";
-import { ensureXlsxLoaded } from "../shared/externalAssets.js";
 import { apiFetch } from "../shared/apiClient.js";
 import { readExcelRows, showExcelImportSaveButton } from "./excelFileReader.js";
 import {
@@ -531,15 +530,8 @@ export function exportEditTuyChonMuaThemExcel() {
   }).catch((err) => this.view.customAlert("Lỗi tải mẫu", "Không thể tải Excel mẫu: " + err.message, "x-circle"));
 }
 export async function importPhatHanhPhanLoExcel(file) {
-  const XLSX = await ensureXlsxLoaded();
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const data = e.target.result;
-      const workbook = XLSX.read(data, { type: "binary" });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const json = XLSX.utils.sheet_to_json(sheet);
+  try {
+      const json = await readExcelRows(file);
       let count = 0;
       const trList = document.querySelectorAll("#phathanh-phanlo-baodam-tbody tr");
       json.forEach((row, rowIndex) => {
@@ -587,11 +579,9 @@ export async function importPhatHanhPhanLoExcel(file) {
       } else {
         this.view.customAlert("Không nhập được dữ liệu", "Không thể đồng bộ dữ liệu phần lô nào từ file Excel!", "alert-triangle");
       }
-    } catch (err) {
+  } catch (err) {
       this.view.customAlert("Lỗi đọc file", "Không thể đọc file Excel: " + err.message, "x-circle");
-    }
-  };
-  reader.readAsBinaryString(file);
+  }
 }
 export function revalidateExcelImportData() {
   const apiType = this._excelImportType;

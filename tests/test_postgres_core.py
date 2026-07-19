@@ -15,6 +15,9 @@ from backend.db.postgres_schema import (
     initialize_postgres_database,
 )
 from backend.db.schema import SCHEMA_DINH_NGHIA
+from backend.auth import auth_service
+from backend.auth import email_delivery_service
+from backend.auth.email_utils import EmailDeliveryResult
 from backend.shared.audit_chain import insert_audit_row, inspect_audit_chain
 from backend.sync.repository import next_sync_version
 from backend.shared.date_utils import VIETNAM_TIMEZONE_NAME, vietnam_now
@@ -145,6 +148,158 @@ def test_sync_versions_are_unique_under_concurrency(
         values = list(executor.map(allocate, range(64)))
     assert len(set(values)) == 64
     assert sorted(values) == list(range(min(values), max(values) + 1))
+
+
+def test_rate_limit_reservation_is_atomic_under_concurrency(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        auth_service,
+        "_get_rate_limit_database",
+        lambda: postgres_database,
+    )
+    bucket = "test-atomic-rate-limit"
+
+    def reserve(_: int) -> bool:
+        return auth_service.get_rate_limit_decision(
+            bucket,
+            consume_attempt=True,
+            max_attempts=5,
+            window_seconds=60,
+        ).allowed
+
+    with ThreadPoolExecutor(max_workers=32) as executor:
+        results = list(executor.map(reserve, range(100)))
+
+    assert sum(results) == 5
+    with postgres_database.get_connection() as connection:
+        row = connection.execute(
+            "SELECT attempt_count FROM rate_limit_buckets WHERE bucket_key = ?",
+            (auth_service.rate_limit_bucket_hash(bucket),),
+        ).fetchone()
+        assert row is not None
+        assert row[0] == 6
+
+
+def test_email_delivery_retries_and_marks_provider_acceptance(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = "user-email-delivery-test"
+    with postgres_database.get_connection() as connection:
+        connection.execute(
+            """INSERT INTO tai_khoan
+               (id, ten_dang_nhap, username_norm, mat_khau, ho_ten, vai_tro,
+                email, email_norm, da_xac_minh)
+               VALUES (?, ?, ?, ?, ?, 'user', ?, ?, 1)
+               ON CONFLICT (id) DO NOTHING""",
+            (user_id, "emaildelivery", "emaildelivery", "test-hash", "Email Delivery", "delivery@example.test", "delivery@example.test"),
+        )
+        delivery_id = email_delivery_service.create_email_delivery(
+            connection.cursor(),
+            user_id=user_id,
+            purpose="google_temporary_password",
+            recipient="delivery@example.test",
+        )
+
+    results = iter([
+        EmailDeliveryResult(False, "smtp", "SMTP_TEMPORARY_FAILURE"),
+        EmailDeliveryResult(True, "smtp"),
+    ])
+    monkeypatch.setattr(email_delivery_service, "gui_email", lambda *_args, **_kwargs: next(results))
+    monkeypatch.setattr(email_delivery_service.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(email_delivery_service.random, "uniform", lambda _left, _right: 0.0)
+
+    assert not email_delivery_service.deliver_email_once(
+        postgres_database,
+        delivery_id,
+        "delivery@example.test",
+        "Subject",
+        "sensitive temporary password",
+    )
+    assert email_delivery_service.retry_email_delivery(
+        postgres_database,
+        delivery_id,
+        "delivery@example.test",
+        "Subject",
+        "sensitive temporary password",
+    )
+
+    with postgres_database.get_connection() as connection:
+        row = connection.execute(
+            "SELECT status, attempt_count, accepted_at FROM email_delivery_status WHERE id = ?",
+            (delivery_id,),
+        ).fetchone()
+        columns = {
+            item[0]
+            for item in connection.execute(
+                """SELECT column_name FROM information_schema.columns
+                   WHERE table_schema = current_schema() AND table_name = 'email_delivery_status'"""
+            ).fetchall()
+        }
+    assert row["status"] == "sent"
+    assert row["attempt_count"] == 2
+    assert row["accepted_at"] is not None
+    assert not {"recipient", "subject", "body", "password", "token"}.intersection(columns)
+
+
+def test_rate_limit_resets_expired_window_and_clears_success(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        auth_service,
+        "_get_rate_limit_database",
+        lambda: postgres_database,
+    )
+    bucket = "test-expired-rate-limit"
+    bucket_hash = auth_service.rate_limit_bucket_hash(bucket)
+    with postgres_database.get_connection() as connection:
+        connection.execute(
+            """INSERT INTO rate_limit_buckets
+               (bucket_key, window_started_at, attempt_count, expires_at)
+               VALUES (?, 1, 5, 1)
+               ON CONFLICT(bucket_key) DO UPDATE SET
+                   window_started_at = 1, attempt_count = 5, expires_at = 1""",
+            (bucket_hash,),
+        )
+
+    decision = auth_service.get_rate_limit_decision(
+        bucket,
+        consume_attempt=True,
+        max_attempts=5,
+        window_seconds=60,
+    )
+    assert decision.allowed
+    assert decision.remaining == 4
+
+    with postgres_database.get_connection() as connection:
+        connection.execute("BEGIN")
+        auth_service.clear_rate_limit_buckets(connection.cursor(), bucket)
+        connection.commit()
+        assert connection.execute(
+            "SELECT 1 FROM rate_limit_buckets WHERE bucket_key = ?",
+            (bucket_hash,),
+        ).fetchone() is None
+
+
+def test_rate_limit_storage_failure_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingDatabase:
+        @staticmethod
+        def get_connection():
+            raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(
+        auth_service,
+        "_get_rate_limit_database",
+        lambda: FailingDatabase(),
+    )
+    decision = auth_service.get_rate_limit_decision("test-storage-failure")
+    assert not decision.allowed
+    assert decision.storage_failed
 
 
 def test_audit_chain_has_no_forks_under_concurrency(

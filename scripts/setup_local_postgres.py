@@ -28,6 +28,7 @@ API_TEST_DATABASE = "biddingflow_api_test"
 RESTORE_DRILL_DATABASE = "biddingflow_restore_drill"
 MULTIWORKER_TEST_DATABASE = "biddingflow_multiworker_test"
 LOAD_TEST_DATABASE = "biddingflow_load_test"
+VIETNAM_TIMEZONE = "Asia/Ho_Chi_Minh"
 LOCAL_DATABASES = (
     DATABASE,
     TEST_DATABASE,
@@ -197,6 +198,22 @@ def main() -> None:
                 database_name,
                 env=child_env,
             )
+        _run(
+            str(bin_dir / "psql.exe"),
+            "-h",
+            "127.0.0.1",
+            "-p",
+            str(PORT),
+            "-U",
+            "postgres",
+            "-d",
+            "postgres",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            f'ALTER DATABASE "{database_name}" SET timezone TO \'{VIETNAM_TIMEZONE}\'',
+            env=child_env,
+        )
 
     database_url = (
         f"postgresql://postgres:{quote(password, safe='')}@127.0.0.1:"

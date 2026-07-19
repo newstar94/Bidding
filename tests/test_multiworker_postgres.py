@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import subprocess
@@ -13,6 +14,7 @@ import psycopg
 import pytest
 import websockets
 
+from backend.auth.auth_helper import hash_password
 from scripts.process_utils import popen_group_options, terminate_process_tree
 
 
@@ -58,6 +60,7 @@ def multiworker_cluster():
             "ENABLE_PARTNER_LOOKUP_WORKER": "false",
             "BACKGROUND_STARTUP_DELAY_SECONDS": "0",
             "AUDIT_CHECKPOINT_DIR": "",
+            "TRUSTED_PROXY_CIDRS": "127.0.0.1/32,::1/128",
             "ALLOWED_WS_ORIGINS": ",".join(
                 f"http://127.0.0.1:{port}" for port in PORTS
             ),
@@ -177,3 +180,163 @@ def test_postgres_broker_delivers_between_workers(multiworker_cluster) -> None:
     finally:
         first.close()
         second.close()
+
+
+def test_membership_revocation_is_immediate_across_workers(
+    multiworker_cluster,
+) -> None:
+    database_url = multiworker_cluster
+    user_id = "user-" + uuid4().hex
+    username = "revoked_" + uuid4().hex[:10]
+    password = "Cross-Worker-Revocation-2026!"
+    email = f"{username}@example.test"
+    with psycopg.connect(database_url) as connection:
+        connection.execute(
+            """INSERT INTO tai_khoan
+               (id, ten_dang_nhap, username_norm, mat_khau, ho_ten,
+                vai_tro, email, email_norm, da_xac_minh)
+               VALUES (%s, %s, %s, %s, %s, 'user', %s, %s, 1)""",
+            (
+                user_id,
+                username,
+                username,
+                hash_password(password),
+                "Revoked Worker User",
+                email,
+                email,
+            ),
+        )
+
+    admin = httpx.Client(base_url=f"http://127.0.0.1:{PORTS[1]}", timeout=30)
+    member = httpx.Client(base_url=f"http://127.0.0.1:{PORTS[0]}", timeout=30)
+    try:
+        admin.get("/")
+        admin_login = admin.post(
+            "/api/auth/login",
+            json={
+                "username": os.environ.get("ADMIN_USERNAME", "admin"),
+                "password": os.environ["ADMIN_PASSWORD"],
+                "remember": False,
+            },
+            headers={"X-CSRF-Token": admin.cookies["csrf_token"]},
+        )
+        assert admin_login.status_code == 200, admin_login.text
+        organization_id = admin_login.json()["active_org_id"]
+        admin_headers = {
+            "X-CSRF-Token": admin.cookies["csrf_token"],
+            "X-Active-Org": organization_id,
+        }
+        added = admin.post(
+            "/api/auth/users/add-to-org",
+            json={
+                "user_id": user_id,
+                "employee_name": "Revoked Worker User",
+                "phone": "0900000000",
+            },
+            headers=admin_headers,
+        )
+        assert added.status_code == 200, added.text
+
+        member.get("/")
+        member_login = member.post(
+            "/api/auth/login",
+            json={
+                "username": username,
+                "password": password,
+                "remember": False,
+            },
+            headers={"X-CSRF-Token": member.cookies["csrf_token"]},
+        )
+        assert member_login.status_code == 200, member_login.text
+        member_headers = {"X-Active-Org": organization_id}
+        warmed = member.get("/api/sync-version", headers=member_headers)
+        assert warmed.status_code == 200, warmed.text
+
+        removed = admin.post(
+            "/api/auth/users/remove-from-org",
+            json={"user_id": user_id},
+            headers=admin_headers,
+        )
+        assert removed.status_code == 200, removed.text
+
+        denied = member.get("/api/sync-version", headers=member_headers)
+        assert denied.status_code == 403, denied.text
+    finally:
+        admin.close()
+        member.close()
+
+
+def test_login_rate_limit_is_atomic_across_workers(multiworker_cluster) -> None:
+    del multiworker_cluster
+
+    def invalid_login(index: int) -> int:
+        port = PORTS[index % len(PORTS)]
+        with httpx.Client(
+            base_url=f"http://127.0.0.1:{port}",
+            timeout=30,
+        ) as client:
+            response = client.post(
+                "/api/auth/login",
+                json={
+                    "username": "missing-rate-limited-user",
+                    "password": "Invalid-Password-2026!",
+                    "remember": False,
+                },
+            )
+            return response.status_code
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        statuses = list(executor.map(invalid_login, range(10)))
+
+    assert statuses.count(400) == 5
+    assert statuses.count(429) == 5
+
+
+def test_login_rate_limit_covers_ip_and_account_distribution(
+    multiworker_cluster,
+) -> None:
+    del multiworker_cluster
+
+    def invalid_login(index: int, *, username: str, client_ip: str) -> int:
+        port = PORTS[index % len(PORTS)]
+        with httpx.Client(
+            base_url=f"http://127.0.0.1:{port}",
+            timeout=30,
+        ) as client:
+            return client.post(
+                "/api/auth/login",
+                json={
+                    "username": username,
+                    "password": "Invalid-Password-2026!",
+                    "remember": False,
+                },
+                headers={"X-Forwarded-For": client_ip},
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        same_ip = list(
+            executor.map(
+                lambda index: invalid_login(
+                    index,
+                    username=f"missing-ip-spread-{index}",
+                    client_ip="198.51.100.10",
+                ),
+                range(10),
+            )
+        )
+    assert same_ip.count(400) == 5
+    assert same_ip.count(429) == 5
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        same_account = list(
+            executor.map(
+                lambda index: invalid_login(
+                    index,
+                    username="missing-account-spread",
+                    client_ip=f"203.0.113.{index + 1}",
+                ),
+                range(10),
+            )
+        )
+    assert same_account.count(400) == 5
+    assert same_account.count(429) == 5

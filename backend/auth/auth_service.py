@@ -46,11 +46,7 @@ def get_rate_limit_decision(
     max_attempts: int = RATE_LIMIT_MAX,
     window_seconds: int = RATE_LIMIT_WINDOW,
 ) -> RateLimitDecision:
-    """Check a persistent fixed-window bucket using an atomic DB transaction.
-
-    Mac dinh van ghi nhan attempt de giu tuong thich voi cac flow OTP.
-    Login dung consume_attempt=False de chi ghi nhan khi xac thuc that bai.
-    """
+    """Check or atomically consume a persistent fixed-window bucket."""
     now = int(time.time())
     max_attempts = max(1, int(max_attempts))
     window_seconds = max(1, int(window_seconds))
@@ -58,33 +54,45 @@ def get_rate_limit_decision(
     conn = None
     try:
         conn = _get_rate_limit_database().get_connection()
-        conn.execute("BEGIN")
-        conn.execute("DELETE FROM rate_limit_buckets WHERE expires_at <= ?", (now,))
-        row = conn.execute(
-            "SELECT attempt_count, expires_at FROM rate_limit_buckets WHERE bucket_key = ?",
-            (bucket_key,),
-        ).fetchone()
-        attempt_count = int(row[0]) if row is not None else 0
-        expires_at = int(row[1]) if row is not None else now + window_seconds
-        if attempt_count >= max_attempts:
-            conn.commit()
-            return RateLimitDecision(False, max(1, expires_at - now), 0)
         if consume_attempt:
-            conn.execute(
+            row = conn.execute(
                 """
                 INSERT INTO rate_limit_buckets (
                     bucket_key, window_started_at, attempt_count, expires_at
                 ) VALUES (?, ?, 1, ?)
                 ON CONFLICT(bucket_key) DO UPDATE SET
-                    attempt_count = rate_limit_buckets.attempt_count + 1
+                    window_started_at = CASE
+                        WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
+                        THEN excluded.window_started_at
+                        ELSE rate_limit_buckets.window_started_at
+                    END,
+                    attempt_count = CASE
+                        WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
+                        THEN 1
+                        ELSE LEAST(rate_limit_buckets.attempt_count + 1, ?)
+                    END,
+                    expires_at = CASE
+                        WHEN rate_limit_buckets.expires_at <= excluded.window_started_at
+                        THEN excluded.expires_at
+                        ELSE rate_limit_buckets.expires_at
+                    END
+                RETURNING attempt_count, expires_at
                 """,
-                (bucket_key, now, now + window_seconds),
-            )
-            attempt_count += 1
+                (bucket_key, now, now + window_seconds, max_attempts + 1),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """SELECT attempt_count, expires_at
+                   FROM rate_limit_buckets
+                   WHERE bucket_key = ? AND expires_at > ?""",
+                (bucket_key, now),
+            ).fetchone()
+        attempt_count = int(row[0]) if row is not None else 0
+        expires_at = int(row[1]) if row is not None else now + window_seconds
         conn.commit()
         return RateLimitDecision(
-            True,
-            0,
+            attempt_count <= max_attempts,
+            max(1, expires_at - now) if attempt_count > max_attempts else 0,
             max(0, max_attempts - attempt_count),
         )
     except Exception as rate_limit_error:
@@ -131,6 +139,22 @@ def rate_limit_response(message, decision=None):
 def record_rate_limit_failure(ip: str) -> bool:
     """Ghi nhan mot lan that bai vao rate limiter."""
     return check_rate_limit(ip, consume_attempt=True)
+
+
+def rate_limit_bucket_hash(bucket: str) -> str:
+    """Return the opaque database key for one logical rate-limit bucket."""
+
+    return hashlib.sha256(str(bucket or "unknown").encode("utf-8")).hexdigest()
+
+
+def clear_rate_limit_buckets(cursor, *buckets: str) -> None:
+    """Clear successful-authentication buckets inside the caller's transaction."""
+
+    for bucket in {str(value) for value in buckets if value}:
+        cursor.execute(
+            "DELETE FROM rate_limit_buckets WHERE bucket_key = ?",
+            (rate_limit_bucket_hash(bucket),),
+        )
 
 
 async def get_rate_limit_decision_async(

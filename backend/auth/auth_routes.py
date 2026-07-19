@@ -66,7 +66,7 @@ from backend.auth.auth_service import (
     get_rate_limit_decision,
     RateLimitDecision,
     rate_limit_response,
-    record_rate_limit_failure,
+    clear_rate_limit_buckets,
     build_user_access_payload,
     _SECURE_COOKIES,
     SESSION_EXPIRY_HOURS,
@@ -143,13 +143,6 @@ async def _get_rate_limit_decision_off_event_loop(*args, **kwargs):
         )
 
 
-async def _record_rate_limit_failure_off_event_loop(bucket):
-    try:
-        return await run_database_write(record_rate_limit_failure, bucket)
-    except BlockingIOBusyError:
-        return False
-
-
 def _load_login_user(username):
     conn = database.get_connection()
     try:
@@ -163,9 +156,7 @@ def _load_login_user(username):
 
 
 def _record_failed_login(ip_rate_key, user_rate_key, request):
-    record_rate_limit_failure(ip_rate_key)
-    if user_rate_key:
-        record_rate_limit_failure(user_rate_key)
+    del ip_rate_key, user_rate_key
     log_audit(
         "auth.login_failed",
         request=request,
@@ -182,6 +173,8 @@ def _commit_successful_login(
     device_info,
     active_org_hint,
     request,
+    ip_rate_key,
+    user_rate_key,
 ):
     conn = database.get_connection()
     try:
@@ -219,6 +212,7 @@ def _commit_successful_login(
             cursor=cursor,
             required=True,
         )
+        clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
         _session_cache_invalidate_by_user_id(user["id"])
         return access_payload
@@ -309,7 +303,7 @@ async def login_api(request):
         ip_rate_key = f"login:{ip}"
         try:
             ip_limit = await run_database_write(
-                get_rate_limit_decision, ip_rate_key, consume_attempt=False
+                get_rate_limit_decision, ip_rate_key, consume_attempt=True
             )
         except BlockingIOBusyError:
             return _database_lane_unavailable_response(request, write=True)
@@ -335,7 +329,7 @@ async def login_api(request):
         try:
             user_limit = (
                 await run_database_write(
-                    get_rate_limit_decision, user_rate_key, consume_attempt=False
+                    get_rate_limit_decision, user_rate_key, consume_attempt=True
                 )
                 if user_rate_key
                 else None
@@ -410,6 +404,8 @@ async def login_api(request):
                 device_info,
                 _active_org_hint(request),
                 request,
+                ip_rate_key,
+                user_rate_key,
             )
         except BlockingIOBusyError:
             return _database_lane_unavailable_response(request, write=True)
@@ -1308,10 +1304,10 @@ async def privileged_reauth_api(request):
         ip_rate_key = f"privileged_reauth:{ip}"
         user_rate_key = f"privileged_reauth_user:{role_or_err.user_id}"
         reauth_ip_limit = await _get_rate_limit_decision_off_event_loop(
-            ip_rate_key, consume_attempt=False
+            ip_rate_key, consume_attempt=True
         )
         reauth_user_limit = await _get_rate_limit_decision_off_event_loop(
-            user_rate_key, consume_attempt=False
+            user_rate_key, consume_attempt=True
         )
         if not reauth_ip_limit.allowed or not reauth_user_limit.allowed:
             return rate_limit_response(
@@ -1357,8 +1353,6 @@ async def privileged_reauth_api(request):
             except (BlockingIOBusyError, BlockingIOTimeoutError):
                 return _password_cpu_unavailable_response(request)
         if not password_verified:
-            await _record_rate_limit_failure_off_event_loop(ip_rate_key)
-            await _record_rate_limit_failure_off_event_loop(user_rate_key)
             log_audit(
                 "admin.privileged_reauth_failed" if is_super_admin else "security.password_reauth_failed",
                 actor_user_id=role_or_err.user_id,
@@ -1371,6 +1365,7 @@ async def privileged_reauth_api(request):
             cursor, request.cookies.get('session_token'), reauthenticated_at
         ):
             return JSONResponse({"error": "Phiên người dùng không còn hợp lệ."}, status_code=403)
+        clear_rate_limit_buckets(cursor, ip_rate_key, user_rate_key)
         conn.commit()
         _session_cache_invalidate_by_user_id(role_or_err.user_id)
         log_audit(
