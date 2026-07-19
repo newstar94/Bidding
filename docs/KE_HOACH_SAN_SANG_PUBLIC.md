@@ -122,8 +122,6 @@ ranh giới sandbox trên máy Linux staging tương đương production.
 
 ### 9.1. Pipeline cho mọi pull request
 
-- Đẩy workflow lên GitHub, chạy xanh trên một pull request thật và lưu evidence
-  artifact theo commit SHA.
 - Bật branch protection bắt buộc workflow này đạt trước khi merge vào `main`.
 
 ### 9.2. Ma trận kiểm thử bảo mật
