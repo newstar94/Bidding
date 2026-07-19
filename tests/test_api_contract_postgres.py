@@ -6,6 +6,7 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from uuid import uuid4
 
@@ -68,29 +69,34 @@ def api_server(api_database_url: str):
             "ADMIN_PASSWORD": API_ADMIN_PASSWORD,
         }
     )
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "backend.app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(API_PORT),
-            "--no-access-log",
-        ],
-        cwd=ROOT,
-        env=environment,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        **popen_group_options(),
-    )
-    try:
-        _wait_for_server(process)
-        yield
-    finally:
-        terminate_process_tree(process, timeout=15)
+    with tempfile.TemporaryFile(mode="w+b") as server_log:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(ROOT / "tests" / "support" / "uvicorn_test_server.py"),
+                "backend.app:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(API_PORT),
+                "--no-access-log",
+            ],
+            cwd=ROOT,
+            env=environment,
+            stdout=server_log,
+            stderr=subprocess.STDOUT,
+            **popen_group_options(),
+        )
+        try:
+            try:
+                _wait_for_server(process)
+            except RuntimeError as error:
+                server_log.seek(0)
+                diagnostic = server_log.read().decode("utf-8", errors="replace")
+                raise RuntimeError(f"{error}\n{diagnostic}") from error
+            yield
+        finally:
+            terminate_process_tree(process, timeout=15)
 
 
 @contextmanager

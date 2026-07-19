@@ -12,6 +12,7 @@ from backend.shared.async_io import (
     run_blocking_io,
 )
 from backend.shared.database_io import run_database_write
+from backend.shared.safe_http import open_allowlisted_https
 from backend.observability.metrics import record_partner_lookup
 from backend.auth.auth_service import (
     get_client_ip,
@@ -59,7 +60,11 @@ def _observe_partner_lookup(request, outcome, *, user_id=None, organization_id=N
 
 def _fetch_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "BiddingApp/1.0"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with open_allowlisted_https(
+        req,
+        allowed_hosts={"provinces.open-api.vn"},
+        timeout=10,
+    ) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

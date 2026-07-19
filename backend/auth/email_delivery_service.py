@@ -278,7 +278,7 @@ def _finish_email_delivery(
 ) -> bool:
     current_time = int(time.time() if now is None else now)
     attempts = int(claimed["attempt_count"])
-    accepted = bool(result)
+    accepted = bool(getattr(result, "accepted", result))
     if accepted:
         status = "sent"
         next_attempt_at = None

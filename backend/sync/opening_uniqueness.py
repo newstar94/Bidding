@@ -13,8 +13,11 @@ def normalize_lot_scope(value):
 
 
 def _contractor_root_ids(cursor, organization_id, contractor_ids):
-    clean_ids = {clean_id(value) for value in contractor_ids}
-    clean_ids.discard("")
+    clean_ids = {
+        normalized
+        for value in contractor_ids
+        if (normalized := clean_id(value))
+    }
     if not clean_ids:
         return {}
     placeholders = ", ".join("?" for _ in clean_ids)

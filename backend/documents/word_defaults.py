@@ -405,7 +405,9 @@ WORD_CONTEXT_MAPPINGS = [
 
 
 def _stable_word_mapping_id(organization_id, ten_bien):
-    digest = hashlib.sha1(f"{organization_id}:{ten_bien}".encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha256(
+        f"{organization_id}:{ten_bien}".encode("utf-8")
+    ).hexdigest()[:16]
     return f"wdef-{digest}"
 
 

@@ -1,0 +1,82 @@
+{
+  "files": {
+    "backend/api/personal_import_routes.py": {
+      "count": 2,
+      "sha256": "edd519295569257fa5cb26b4c3d6cd23ba32d1d8e25f7cc171fd526368e072ca"
+    },
+    "backend/auth/admin_user_routes.py": {
+      "count": 5,
+      "sha256": "36ff0f50d2e5eac965904035c70c3a4dce0a2c694c7fa9d04af069bcbc53c3bd"
+    },
+    "backend/auth/auth_routes.py": {
+      "count": 1,
+      "sha256": "c24d4d31f4f01747665f9286a95ed73f2f2bde5a80c1ddd453ee2a44c7d97836"
+    },
+    "backend/db/db_utils.py": {
+      "count": 2,
+      "sha256": "e80160242376f23c40dc1b4c9affff35fce900546b3ae3b2ac6e2959e7835169"
+    },
+    "backend/db/postgres_schema.py": {
+      "count": 17,
+      "sha256": "e5e32e6ff011a5c2012b3a946b4f029785009be386fd2d0fef552fc921881599"
+    },
+    "backend/documents/docx_service.py": {
+      "count": 1,
+      "sha256": "5210a2d364440916a6652537bdee0a515338f737526c05857af13001610ec38e"
+    },
+    "backend/shared/access_policy.py": {
+      "count": 7,
+      "sha256": "89bf1c90e05b3c970486da0fee44a86519a776b41f2e87ea9c2c438d17401687"
+    },
+    "backend/sync/dashboard_summary.py": {
+      "count": 11,
+      "sha256": "8619c9bdb9dffccebea44b9727c12ff5cc4720e93cdb5f2e4c8898a8b10c24a5"
+    },
+    "backend/sync/delete_policy.py": {
+      "count": 2,
+      "sha256": "c986a504c99453ae37c6c5880c2aee5834fb955f67fc372c32bcecdfaa27f419"
+    },
+    "backend/sync/deletion_service.py": {
+      "count": 2,
+      "sha256": "576c5b3f1f21f0d028b42616b8c7d5218ac6cdedc1ca2e2aed0e591059e5bfa0"
+    },
+    "backend/sync/mapper.py": {
+      "count": 5,
+      "sha256": "03b714366174e48d55004526a75103eee7e5b1a77a20479835001ed707e48974"
+    },
+    "backend/sync/opening_uniqueness.py": {
+      "count": 2,
+      "sha256": "1c57a9728e9db25e46f4c1e4dabd446d4153ef8a66f58dfab4c1f7819e76d71c"
+    },
+    "backend/sync/ownership.py": {
+      "count": 2,
+      "sha256": "35810670c4a911eef79332331c6c34e726c58e87f29fd7e83f18e416a746bede"
+    },
+    "backend/sync/pagination.py": {
+      "count": 1,
+      "sha256": "e7d2103ecdcc62167980f48d8225b2d64c5797236c65b397949231584595a927"
+    },
+    "backend/sync/queries.py": {
+      "count": 2,
+      "sha256": "338fe465d147d899bb93541f506de2a08a1cc8d8af1e0d47ce1f83ba55934264"
+    },
+    "backend/sync/read_service.py": {
+      "count": 6,
+      "sha256": "52c598e51456910774966d0c67635102402ccc147d49f8303f7983e89a5676d8"
+    },
+    "backend/sync/service.py": {
+      "count": 10,
+      "sha256": "8c614fc7e5f2d7aa4b33f025be7eaa562f9ac65e4770a42df6efeeca33c4f2e8"
+    },
+    "backend/sync/websocket.py": {
+      "count": 1,
+      "sha256": "5d99720f58210dfb003cc029a401e0260f5a51dd09ec8ba3cd3b94e94bc11ad4"
+    },
+    "scripts/run_load_rehearsal.py": {
+      "count": 1,
+      "sha256": "ceca14d57f7ced1c4c8ea6a74c3ab40acee6f35cd3f0ad8b7e522671aadb5e7c"
+    }
+  },
+  "formatVersion": 1,
+  "reviewPolicy": "Every change to string-built SQL requires review that all identifiers originate from schema-owned allowlists; values remain bound parameters."
+}

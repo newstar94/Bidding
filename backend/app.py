@@ -222,7 +222,7 @@ def _build_index_response_payload():
     html_content = compile_html(os.path.join(project_root, 'views', 'index.html'))
     google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     html_content = html_content.replace("__GOOGLE_CLIENT_ID__", google_client_id)
-    etag = f'"{hashlib.md5(html_content.encode("utf-8")).hexdigest()}"'
+    etag = f'"{hashlib.sha256(html_content.encode("utf-8")).hexdigest()}"'
     if IS_PRODUCTION:
         with _compiled_html_lock:
             _index_response_cache = (html_content, etag)
@@ -306,7 +306,9 @@ async def index(request):
         log_error(exc, "index_session_bootstrap")
         session_bootstrap = {"valid": False, "reason": "bootstrap_error"}
     safe_bootstrap = json.dumps(session_bootstrap, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
-    response_etag = f'"{hashlib.md5((etag + safe_bootstrap).encode("utf-8")).hexdigest()}"'
+    response_etag = (
+        f'"{hashlib.sha256((etag + safe_bootstrap).encode("utf-8")).hexdigest()}"'
+    )
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and if_none_match == response_etag:
         return HTMLResponse(content="", status_code=304, headers={"ETag": response_etag, "Vary": "Cookie", "Cache-Control": "private, no-cache"})

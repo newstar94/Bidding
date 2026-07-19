@@ -53,4 +53,7 @@ def generate_record_id(record_type):
 
 
 def stable_org_id(org_name):
-    return "org-" + hashlib.md5(str(org_name or "").encode("utf-8")).hexdigest()[:16]
+    return (
+        "org-"
+        + hashlib.sha256(str(org_name or "").encode("utf-8")).hexdigest()[:16]
+    )

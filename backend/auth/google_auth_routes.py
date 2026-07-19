@@ -84,6 +84,7 @@ _UNICODE_MAP = str.maketrans(
 )
 
 from backend.auth.username_validator import generate_suggested_username
+from backend.shared.safe_http import open_allowlisted_https
 
 
 def _verify_google_token(id_token: str):
@@ -93,7 +94,11 @@ def _verify_google_token(id_token: str):
     try:
         url = _GOOGLE_TOKENINFO_URL.format(token=urllib.parse.quote(id_token))
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with open_allowlisted_https(
+            req,
+            allowed_hosts={"oauth2.googleapis.com"},
+            timeout=10,
+        ) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, Exception):
         return None

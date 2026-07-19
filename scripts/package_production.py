@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -208,8 +209,42 @@ def build_archive(output: Path) -> tuple[int, int]:
 
 def smoke_test_archive(archive_path: Path, extraction_root: Path) -> None:
     """Boot the application from extracted bytes, not from the source tree."""
+    extraction_root = extraction_root.resolve()
     with zipfile.ZipFile(archive_path) as archive:
-        archive.extractall(extraction_root)
+        members = archive.infolist()
+        if len(members) > 20_000:
+            raise RuntimeError("Production archive contains too many entries.")
+        declared_total = sum(max(0, item.file_size) for item in members)
+        if declared_total > 1024 * 1024 * 1024:
+            raise RuntimeError("Production archive expands beyond 1 GiB.")
+        for member in members:
+            mode = member.external_attr >> 16
+            if stat.S_ISLNK(mode):
+                raise RuntimeError(
+                    f"Production archive contains a symlink: {member.filename}"
+                )
+            destination = (extraction_root / member.filename).resolve()
+            if destination != extraction_root and extraction_root not in destination.parents:
+                raise RuntimeError(
+                    f"Production archive path escapes extraction root: {member.filename}"
+                )
+            if member.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            copied = 0
+            with archive.open(member) as source, destination.open("wb") as target:
+                while chunk := source.read(1024 * 1024):
+                    copied += len(chunk)
+                    if copied > member.file_size:
+                        raise RuntimeError(
+                            f"Archive entry exceeds declared size: {member.filename}"
+                        )
+                    target.write(chunk)
+            if copied != member.file_size:
+                raise RuntimeError(
+                    f"Archive entry size mismatch: {member.filename}"
+                )
     database_url = (
         os.environ.get("PACKAGE_SMOKE_DATABASE_URL")
         or os.environ.get("API_TEST_DATABASE_URL")

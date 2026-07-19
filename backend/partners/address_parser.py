@@ -3,6 +3,8 @@ import re
 import unicodedata
 import urllib.request
 
+from backend.shared.safe_http import open_allowlisted_https
+
 
 PROVINCES_API_BASE = "https://provinces.open-api.vn/api/v2"
 _PROVINCES_CACHE = None
@@ -39,7 +41,11 @@ def strip_vietnam_country_suffix(parts):
 
 def _fetch_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "BiddingApp/1.0"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with open_allowlisted_https(
+        req,
+        allowed_hosts={"provinces.open-api.vn"},
+        timeout=10,
+    ) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

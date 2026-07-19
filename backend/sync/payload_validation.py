@@ -490,6 +490,7 @@ def validate_sync_payload_shape(payload):
                 column = key_to_column[key]
                 value = item[key]
                 definition = columns[column].upper()
+                declared_type = definition.split(None, 1)[0]
                 field_path = f"{item_path}.{key}"
                 if value is None:
                     if "NOT NULL" in definition:
@@ -498,18 +499,18 @@ def validate_sync_payload_shape(payload):
                 if (table_name, column) in MONEY_COLUMNS:
                     if parse_vnd_amount(value) is None:
                         errors.append(_field_error(field_path, "INVALID_MONEY", "Số tiền phải là số nguyên không âm hợp lệ."))
-                elif "INTEGER" in definition:
+                elif declared_type == "INTEGER":
                     if column in BOOLEAN_COLUMNS:
                         if not (isinstance(value, bool) or (_is_strict_integer(value) and value in (0, 1))):
                             errors.append(_field_error(field_path, "INVALID_BOOLEAN", "Giá trị phải là boolean hoặc 0/1."))
                     elif not _is_strict_integer(value):
                         errors.append(_field_error(field_path, "INVALID_INTEGER", "Giá trị phải là số nguyên."))
-                elif "REAL" in definition:
+                elif declared_type == "REAL":
                     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                         errors.append(_field_error(field_path, "INVALID_NUMBER", "Giá trị phải là số hữu hạn."))
                     elif not _has_supported_decimal_precision(value):
                         errors.append(_field_error(field_path, "DECIMAL_PRECISION_EXCEEDED", "Giá trị chỉ được có tối đa 4 chữ số thập phân."))
-                elif "TEXT" in definition and not isinstance(value, str):
+                elif declared_type == "TEXT" and not isinstance(value, str):
                     errors.append(_field_error(field_path, "INVALID_STRING", "Giá trị phải là chuỗi."))
                 elif isinstance(value, str) and len(value) > MAX_SYNC_TEXT_LENGTH:
                     errors.append(_field_error(field_path, "STRING_TOO_LONG", "Chuỗi vượt quá giới hạn cho phép."))

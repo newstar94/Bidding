@@ -48,7 +48,8 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 | Hạng mục | Kết quả hiện tại |
 |---|---|
 | Python compile | Đạt |
-| Test ứng dụng | 29/29 đạt với `pytest -q tests` |
+| Test ứng dụng | 274 đạt, 1 bỏ qua có điều kiện với `pytest -q tests --cov=backend --cov-branch` |
+| Branch coverage backend | 40%; phép đo đã bao gồm các Uvicorn subprocess |
 | Secure frontend build | Đạt |
 | Production package | Đạt, tạo được `release/biddingflow-production.zip` |
 | `npm audit` | 0 lỗ hổng trong dependency npm |
@@ -59,10 +60,8 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 
 ## 4. Điều kiện chặn phát hành hiện tại
 
-Ứng dụng ở trạng thái **No-Go** cho tới khi hoàn thành toàn bộ P0 sau:
-
-1. Document worker không trao đổi kết quả bằng pickle và có ranh giới sandbox thực tế.
-2. Backup production thử phục hồi thành công trên một database sạch.
+Ứng dụng ở trạng thái **No-Go** cho tới khi document worker được kiểm chứng
+ranh giới sandbox trên máy Linux staging tương đương production.
 
 ## 5. Giai đoạn P0 — Khắc phục blocker bảo mật
 
@@ -127,23 +126,15 @@ Ngoại lệ duy nhất ở frontend là nâng thư viện vendored có lỗ h�
 
 ### 9.1. Pipeline cho mọi pull request
 
-1. Cài dependency trong môi trường sạch bằng lockfile/hash.
-2. `python -m compileall -q backend scripts tests`.
-3. `pytest -q tests` trên PostgreSQL disposable.
-4. `npm ci` và `npm run build:secure`.
-5. `npm audit` và `pip-audit`.
-6. Scan dependency vendored bằng manifest/hash.
-7. Secret scan, SAST và rule phát hiện `pickle.load`, `shell=True`, SQL động, unsafe HTML sink.
-8. Kiểm tra production archive chỉ chứa allowlist runtime file.
-9. Sinh SBOM cho Python, npm và vendored assets.
-
-Thêm cấu hình pytest để chỉ thu thập `tests/**`, không đi vào `data/tools`, `node_modules`, `dist` hoặc môi trường portable.
+- Đẩy workflow lên GitHub, chạy xanh trên một pull request thật và lưu evidence
+  artifact theo commit SHA.
+- Bật branch protection bắt buộc workflow này đạt trước khi merge vào `main`.
 
 ### 9.2. Coverage tối thiểu
 
-- Backend tổng thể: bắt đầu từ 70%, nâng dần theo release.
-- Module xác thực, phân quyền, subscription, tenant scope, sync/delete và archive validation: tối thiểu 90% branch coverage.
-- Mọi bug bảo mật phải có regression test trước khi đóng.
+- Nâng branch coverage backend tổng thể từ baseline 40% lên tối thiểu 70%.
+- Nâng các endpoint route xác thực và các module sync còn lại lên tối thiểu
+  90% branch coverage; không hạ ngưỡng để làm release gate đạt giả tạo.
 
 ### 9.3. Ma trận kiểm thử bảo mật
 

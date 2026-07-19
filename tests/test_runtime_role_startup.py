@@ -10,6 +10,7 @@ import httpx
 import psycopg
 import pytest
 
+from backend.auth.auth_helper import hash_password
 from backend.db.db_helper import PostgresDatabase
 from backend.startup import verify_database_runtime_role
 from scripts.process_utils import popen_group_options, terminate_process_tree
@@ -36,8 +37,12 @@ def _wait_ready(process: subprocess.Popen[bytes]) -> None:
 
 def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> None:
     database_url = os.environ.get("RUNTIME_DATABASE_URL", "").strip()
+    admin_database_url = os.environ.get("DATABASE_ADMIN_URL", "").strip()
     if not database_url:
         pytest.skip("RUNTIME_DATABASE_URL is not configured")
+    if not admin_database_url:
+        pytest.skip("DATABASE_ADMIN_URL is not configured")
+    runtime_test_password = "Runtime role test password 2026!"
     runtime_database = PostgresDatabase(database_url)
     try:
         verify_database_runtime_role(
@@ -53,6 +58,20 @@ def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> Non
             connection.execute("CREATE TABLE runtime_role_escape_probe(id integer)")
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             connection.execute("CREATE TEMP TABLE runtime_temp_escape_probe(id integer)")
+    with psycopg.connect(admin_database_url, autocommit=True) as connection:
+        original_password_row = connection.execute(
+            "SELECT mat_khau FROM tai_khoan WHERE ten_dang_nhap = %s",
+            (os.environ.get("ADMIN_USERNAME", "admin"),),
+        ).fetchone()
+        assert original_password_row is not None
+        original_password_hash = original_password_row[0]
+        connection.execute(
+            "UPDATE tai_khoan SET mat_khau = %s WHERE ten_dang_nhap = %s",
+            (
+                hash_password(runtime_test_password),
+                os.environ.get("ADMIN_USERNAME", "admin"),
+            ),
+        )
     environment = os.environ.copy()
     environment.update(
         {
@@ -65,27 +84,28 @@ def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> Non
             "ENABLE_PARTNER_LOOKUP_WORKER": "false",
             "BACKGROUND_STARTUP_DELAY_SECONDS": "0",
             "AUDIT_CHECKPOINT_DIR": "",
+            "ADMIN_PASSWORD": runtime_test_password,
         }
     )
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "backend.app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(PORT),
-            "--no-access-log",
-        ],
-        cwd=ROOT,
-        env=environment,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        **popen_group_options(),
-    )
+    process = None
     try:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(ROOT / "tests" / "support" / "uvicorn_test_server.py"),
+                "backend.app:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(PORT),
+                "--no-access-log",
+            ],
+            cwd=ROOT,
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **popen_group_options(),
+        )
         _wait_ready(process)
         with httpx.Client(base_url=BASE_URL, timeout=20) as client:
             assert client.get("/").status_code == 200
@@ -93,7 +113,7 @@ def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> Non
                 "/api/auth/login",
                 json={
                     "username": os.environ.get("ADMIN_USERNAME", "admin"),
-                    "password": os.environ["ADMIN_PASSWORD"],
+                    "password": runtime_test_password,
                     "remember": False,
                 },
                 headers={"X-CSRF-Token": client.cookies["csrf_token"]},
@@ -107,7 +127,16 @@ def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> Non
             assert data.status_code == 200, data.text
             assert isinstance(data.json().get("dashboardSummary"), dict)
     finally:
-        terminate_process_tree(process, timeout=15)
+        if process is not None:
+            terminate_process_tree(process, timeout=15)
+        with psycopg.connect(admin_database_url, autocommit=True) as connection:
+            connection.execute(
+                "UPDATE tai_khoan SET mat_khau = %s WHERE ten_dang_nhap = %s",
+                (
+                    original_password_hash,
+                    os.environ.get("ADMIN_USERNAME", "admin"),
+                ),
+            )
 
 
 def test_backup_role_is_read_only_and_cannot_create_objects() -> None:
@@ -156,8 +185,7 @@ def test_runtime_startup_fails_closed_when_schema_is_missing() -> None:
     process = subprocess.Popen(
         [
             sys.executable,
-            "-m",
-            "uvicorn",
+            str(ROOT / "tests" / "support" / "uvicorn_test_server.py"),
             "backend.app:app",
             "--host",
             "127.0.0.1",

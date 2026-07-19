@@ -3,6 +3,8 @@
 from backend.db.db_helper import DatabaseError
 
 import base64
+import hashlib
+import hmac
 import json
 
 from starlette.responses import JSONResponse
@@ -44,10 +46,33 @@ from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.database_io import run_database_read
 
 
-def _encode_keyset_cursor(table_name, column, direction, value, record_id):
+def _urlsafe_b64encode(payload):
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _urlsafe_b64decode(payload):
+    if not isinstance(payload, str) or not payload:
+        raise ValueError("invalid base64 payload")
+    padding = "=" * (-len(payload) % 4)
+    return base64.b64decode(
+        payload + padding,
+        altchars=b"-_",
+        validate=True,
+    )
+
+
+def _encode_keyset_cursor(
+    table_name,
+    column,
+    direction,
+    value,
+    record_id,
+    *,
+    signing_key,
+):
     payload = json.dumps(
         {
-            "v": 1,
+            "v": 2,
             "table": table_name,
             "column": column,
             "direction": direction,
@@ -57,19 +82,48 @@ def _encode_keyset_cursor(table_name, column, direction, value, record_id):
         ensure_ascii=True,
         separators=(",", ":"),
     ).encode("utf-8")
-    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+    key = str(signing_key or "").encode("utf-8")
+    if not key:
+        raise ValueError("cursor signing key is required")
+    encoded_payload = _urlsafe_b64encode(payload)
+    signature = hmac.new(key, encoded_payload.encode("ascii"), hashlib.sha256).digest()
+    return f"{encoded_payload}.{_urlsafe_b64encode(signature)}"
 
 
-def _decode_keyset_cursor(raw_cursor, table_name, column, direction):
-    if not raw_cursor or len(raw_cursor) > 2048:
+def _decode_keyset_cursor(
+    raw_cursor,
+    table_name,
+    column,
+    direction,
+    *,
+    signing_key,
+):
+    if (
+        not isinstance(raw_cursor, str)
+        or not raw_cursor
+        or len(raw_cursor) > 2048
+        or raw_cursor.count(".") != 1
+    ):
         return None
     try:
-        padding = "=" * (-len(raw_cursor) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(raw_cursor + padding).decode("utf-8"))
+        encoded_payload, encoded_signature = raw_cursor.split(".", 1)
+        signature = _urlsafe_b64decode(encoded_signature)
+        key = str(signing_key or "").encode("utf-8")
+        if not key or len(signature) != hashlib.sha256().digest_size:
+            return None
+        expected_signature = hmac.new(
+            key,
+            encoded_payload.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        if not hmac.compare_digest(signature, expected_signature):
+            return None
+        payload = json.loads(_urlsafe_b64decode(encoded_payload).decode("utf-8"))
     except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     if (
-        payload.get("v") != 1
+        not isinstance(payload, dict)
+        or payload.get("v") != 2
         or payload.get("table") != table_name
         or payload.get("column") != column
         or payload.get("direction") != direction
@@ -361,7 +415,11 @@ def _paginate_records_blocking(request):
         raw_cursor = params.get("cursor", "").strip()
         if cursor_mode and raw_cursor:
             decoded_cursor = _decode_keyset_cursor(
-                raw_cursor, table_name, sort_column, sort_order
+                raw_cursor,
+                table_name,
+                sort_column,
+                sort_order,
+                signing_key=media_session_token,
             )
             if decoded_cursor is None:
                 return JSONResponse({"error": "Cursor phân trang không hợp lệ"}, status_code=400)
@@ -400,6 +458,7 @@ def _paginate_records_blocking(request):
                 sort_order,
                 last_row[sort_column],
                 last_row["id"],
+                signing_key=media_session_token,
             )
 
 

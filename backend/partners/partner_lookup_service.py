@@ -14,6 +14,7 @@ from backend.partners.address_parser import compose_external_address, parse_viet
 from backend.shared.text_utils import normalize_organization_name, normalize_person_name
 from backend.shared.logging_utils import log_error, log_structured_event
 from backend.observability.metrics import record_partner_upstream
+from backend.shared.safe_http import open_allowlisted_https
 
 
 PARTNER_LOOKUP_RETRY_SECONDS = 6 * 60 * 60
@@ -310,8 +311,9 @@ def _post_muasamcong_json(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(
+        with open_allowlisted_https(
             request,
+            allowed_hosts={"muasamcong.mpi.gov.vn"},
             timeout=timeout,
             context=MUASAMCONG_SSL_CONTEXT,
         ) as response:
@@ -444,8 +446,9 @@ def fetch_vietqr_info(tax_code):
     url = f"https://api.vietqr.io/v2/business/{tax_code}"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     try:
-        with urllib.request.urlopen(
+        with open_allowlisted_https(
             req,
+            allowed_hosts={"api.vietqr.io"},
             timeout=_bounded_env_float(
                 "PARTNER_VIETQR_TIMEOUT_SECONDS", 4.0, 1.0, 10.0
             ),
@@ -483,8 +486,9 @@ def fetch_escodata_info(tax_code):
     url = f"https://escodata.net/api-mst/{digits_only}.htm"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     try:
-        with urllib.request.urlopen(
+        with open_allowlisted_https(
             req,
+            allowed_hosts={"escodata.net"},
             timeout=_bounded_env_float(
                 "PARTNER_ESCODATA_TIMEOUT_SECONDS", 4.0, 1.0, 10.0
             ),

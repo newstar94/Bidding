@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import posixpath
 import zipfile
-from xml.etree import ElementTree
+from defusedxml import ElementTree
 
 
 MAX_ARCHIVE_ENTRIES = 2_048
@@ -45,7 +45,7 @@ def _normalise_entry_name(name: str) -> str:
     candidate = name.replace("\\", "/")
     if not candidate or candidate.startswith("/"):
         raise UnsafeArchiveError("Tệp Office chứa đường dẫn nội bộ không hợp lệ.")
-    if "\x00" in candidate or candidate.split("/", 1)[0].endswith(":"):
+    if "\x00" in candidate or ":" in candidate.split("/", 1)[0]:
         raise UnsafeArchiveError("Tệp Office chứa đường dẫn nội bộ không hợp lệ.")
 
     path_without_directory_suffix = candidate[:-1] if candidate.endswith("/") else candidate

@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import time
+import urllib.request
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -35,6 +36,7 @@ from backend.startup import (
     validate_secret_separation,
 )
 from backend.shared import media_helper
+from backend.shared.safe_http import UnsafeOutboundUrl, open_allowlisted_https
 from backend.observability.metrics import _restore_drill_timestamp
 
 
@@ -581,3 +583,42 @@ def test_runtime_database_role_rejects_database_schema_creation(identity_index):
 
     with pytest.raises(StartupValidationError, match="CREATE or TEMP"):
         validate_runtime_role_snapshot(snapshot)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://api.example.com/data",
+        "https://user:password@api.example.com/data",
+        "https://api.example.com:8443/data",
+        "https://unapproved.example.com/data",
+    ],
+)
+def test_outbound_http_rejects_urls_outside_exact_https_allowlist(url):
+    request = urllib.request.Request(url)
+
+    with pytest.raises(UnsafeOutboundUrl):
+        open_allowlisted_https(
+            request,
+            allowed_hosts={"api.example.com"},
+            timeout=1,
+        )
+
+
+def test_outbound_http_rejects_allowlisted_host_resolving_private(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "backend.shared.safe_http.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (2, 1, 6, "", ("127.0.0.1", 443)),
+        ],
+    )
+    request = urllib.request.Request("https://api.example.com/data")
+
+    with pytest.raises(UnsafeOutboundUrl, match="non-public"):
+        open_allowlisted_https(
+            request,
+            allowed_hosts={"api.example.com"},
+            timeout=1,
+        )

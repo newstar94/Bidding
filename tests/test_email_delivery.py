@@ -107,3 +107,142 @@ def test_starttls_uses_verified_tls_context_and_provider_acceptance(monkeypatch:
     assert observed["context"].verify_mode == ssl.CERT_REQUIRED
     assert observed["context"].minimum_version == ssl.TLSVersion.TLSv1_2
     assert observed["envelope"] == ("mailer@example.test", ["owner@example.test"])
+
+
+def test_smtp_configuration_rejects_invalid_bounds_and_sender(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    environment = {
+        "SMTP_SECURITY": "plain",
+        "SMTP_PORT": "invalid",
+        "SMTP_TIMEOUT_SECONDS": "0",
+        "SMTP_SENDER": "bad\r\nBcc: attacker@example.test",
+        "SMTP_CA_FILE": str(tmp_path / "missing.pem"),
+    }
+    errors = email_utils.smtp_configuration_errors(environment)
+    assert any("SMTP_SECURITY" in error for error in errors)
+    assert any("SMTP_PORT" in error for error in errors)
+    assert any("SMTP_TIMEOUT_SECONDS" in error for error in errors)
+    assert any("SMTP_SENDER" in error for error in errors)
+    assert any("SMTP_CA_FILE" in error for error in errors)
+
+    environment.update(
+        {
+            "SMTP_SECURITY": "ssl",
+            "SMTP_PORT": "65536",
+            "SMTP_TIMEOUT_SECONDS": "31",
+            "SMTP_SENDER": "mailer@example.test",
+        }
+    )
+    errors = email_utils.smtp_configuration_errors(environment)
+    assert any("SMTP_PORT" in error for error in errors)
+    assert any("SMTP_TIMEOUT_SECONDS" in error for error in errors)
+
+    ca_file = tmp_path / "ca.pem"
+    ca_file.write_text("test", encoding="utf-8")
+    environment.update(
+        {
+            "SMTP_PORT": "465",
+            "SMTP_TIMEOUT_SECONDS": "10",
+            "SMTP_CA_FILE": str(ca_file),
+        }
+    )
+    assert email_utils.smtp_configuration_errors(environment) == []
+
+
+def test_smtp_configuration_loading_is_optional_but_invalid_values_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in SMTP_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    assert email_utils._load_configuration() is None
+    monkeypatch.setenv("SMTP_USER", "mailer@example.test")
+    assert email_utils._load_configuration() is None
+
+    monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("SMTP_PORT", "invalid")
+    with pytest.raises(ValueError):
+        email_utils._load_configuration()
+
+    monkeypatch.setenv("SMTP_PORT", "465")
+    monkeypatch.setenv("SMTP_SECURITY", "ssl")
+    configuration = email_utils._load_configuration()
+    assert configuration.host == "smtp.gmail.com"
+    assert configuration.sender == "mailer@example.test"
+    assert configuration.security == "ssl"
+
+
+@pytest.mark.parametrize(
+    ("recipient", "subject"),
+    [
+        ("invalid", "subject"),
+        ("owner@example.test\r\nBcc: attacker@example.test", "subject"),
+        ("owner@example.test", "subject\nBcc: attacker@example.test"),
+    ],
+)
+def test_email_message_headers_are_injection_safe(
+    monkeypatch: pytest.MonkeyPatch, recipient: str, subject: str
+) -> None:
+    events = []
+    monkeypatch.setattr(
+        email_utils,
+        "log_structured_event",
+        lambda *args, **kwargs: events.append((args, kwargs)),
+    )
+    result = email_utils.gui_email(recipient, subject, "body")
+    assert not result
+    assert result.error_code == "EMAIL_MESSAGE_INVALID"
+    assert events[-1][0][0] == "email.message_invalid"
+
+
+def test_invalid_runtime_smtp_configuration_returns_stable_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_smtp(monkeypatch)
+    monkeypatch.setenv("SMTP_TIMEOUT_SECONDS", "invalid")
+    result = email_utils.gui_email("owner@example.test", "subject", "body")
+    assert not result.accepted
+    assert result.error_code == "SMTP_CONFIGURATION_INVALID"
+
+
+def test_ssl_delivery_recipient_refusal_and_transport_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_smtp(monkeypatch)
+    monkeypatch.setenv("SMTP_SECURITY", "ssl")
+    observed = {}
+
+    class FakeSslSmtp:
+        def __init__(self, host, port, timeout, context):
+            observed.update(
+                host=host, port=port, timeout=timeout, context=context
+            )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def login(self, username, password):
+            observed["login"] = (username, password)
+
+        def send_message(self, *_args, **_kwargs):
+            return {"owner@example.test": (550, b"refused")}
+
+    monkeypatch.setattr(email_utils.smtplib, "SMTP_SSL", FakeSslSmtp)
+    refused = email_utils.gui_email(
+        "owner@example.test", "subject", "body"
+    )
+    assert not refused.accepted
+    assert refused.error_code == "SMTP_RECIPIENT_REFUSED"
+    assert observed["context"].check_hostname
+
+    class FailedSslSmtp:
+        def __init__(self, *_args, **_kwargs):
+            raise email_utils.smtplib.SMTPConnectError(421, "unavailable")
+
+    monkeypatch.setattr(email_utils.smtplib, "SMTP_SSL", FailedSslSmtp)
+    failed = email_utils.gui_email("owner@example.test", "subject", "body")
+    assert not failed.accepted
+    assert failed.error_code == "SMTPCONNECTERROR"
