@@ -13,7 +13,11 @@ import pytest
 from backend.auth.auth_helper import hash_password
 from backend.db.db_helper import PostgresDatabase
 from backend.startup import verify_database_runtime_role
-from scripts.process_utils import popen_group_options, terminate_process_tree
+from scripts.process_utils import (
+    coverage_python_prefix,
+    popen_group_options,
+    terminate_process_tree,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,8 +94,8 @@ def test_runtime_role_starts_without_ddl_and_serves_authenticated_reads() -> Non
     process = None
     try:
         process = subprocess.Popen(
-            [
-                sys.executable,
+            coverage_python_prefix(environment)
+            + [
                 str(ROOT / "tests" / "support" / "uvicorn_test_server.py"),
                 "backend.app:app",
                 "--host",
@@ -183,8 +187,8 @@ def test_runtime_startup_fails_closed_when_schema_is_missing() -> None:
         }
     )
     process = subprocess.Popen(
-        [
-            sys.executable,
+        coverage_python_prefix(environment)
+        + [
             str(ROOT / "tests" / "support" / "uvicorn_test_server.py"),
             "backend.app:app",
             "--host",

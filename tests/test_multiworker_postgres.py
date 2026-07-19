@@ -15,7 +15,11 @@ import pytest
 import websockets
 
 from backend.auth.auth_helper import hash_password
-from scripts.process_utils import popen_group_options, terminate_process_tree
+from scripts.process_utils import (
+    coverage_python_prefix,
+    popen_group_options,
+    terminate_process_tree,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,29 +70,31 @@ def multiworker_cluster():
             ),
         }
     )
-    processes = [
-        subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "backend.app:app",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-                "--workers",
-                "1",
-                "--no-access-log",
-            ],
-            cwd=ROOT,
-            env=environment,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            **popen_group_options(),
+    processes = []
+    for port in PORTS:
+        worker_environment = environment.copy()
+        processes.append(
+            subprocess.Popen(
+                coverage_python_prefix(worker_environment)
+                + [
+                    "-m",
+                    "uvicorn",
+                    "backend.app:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                    "--workers",
+                    "1",
+                    "--no-access-log",
+                ],
+                cwd=ROOT,
+                env=worker_environment,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                **popen_group_options(),
+            )
         )
-        for port in PORTS
-    ]
     try:
         _wait_ready(processes)
         yield database_url

@@ -3,8 +3,36 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import signal
 import subprocess
+import sys
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def coverage_python_prefix(environment: dict[str, str]) -> list[str]:
+    """Return a Python command that records parallel subprocess coverage.
+
+    Coverage's implicit subprocess patch is platform-dependent at interpreter
+    startup.  When pytest exports a serialized child configuration, consume
+    that marker and launch coverage explicitly so Linux and Windows produce
+    the same integration-test evidence.
+    """
+
+    serialized_config = environment.pop("COVERAGE_PROCESS_CONFIG", None)
+    if not serialized_config:
+        return [sys.executable]
+    return [
+        sys.executable,
+        "-m",
+        "coverage",
+        "run",
+        "--parallel-mode",
+        "--rcfile",
+        str(ROOT / "pyproject.toml"),
+    ]
 
 
 def popen_group_options() -> dict[str, object]:

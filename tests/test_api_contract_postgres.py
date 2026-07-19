@@ -15,7 +15,11 @@ import psycopg
 import pytest
 
 from backend.auth.auth_helper import hash_password
-from scripts.process_utils import popen_group_options, terminate_process_tree
+from scripts.process_utils import (
+    coverage_python_prefix,
+    popen_group_options,
+    terminate_process_tree,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,8 +72,8 @@ def api_server(api_database_url: str):
     )
     with tempfile.TemporaryFile(mode="w+b") as server_log:
         process = subprocess.Popen(
-            [
-                sys.executable,
+            coverage_python_prefix(environment)
+            + [
                 str(ROOT / "tests" / "support" / "uvicorn_test_server.py"),
                 "backend.app:app",
                 "--host",

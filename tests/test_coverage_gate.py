@@ -8,6 +8,7 @@ from scripts.check_coverage_thresholds import (
     required_critical_modules,
     validate_coverage,
 )
+from scripts.process_utils import coverage_python_prefix
 from tests.support import uvicorn_test_server
 
 
@@ -70,3 +71,13 @@ def test_uvicorn_test_server_starts_exported_subprocess_coverage(monkeypatch):
     uvicorn_test_server._start_subprocess_coverage()
 
     assert calls == ["start"]
+
+
+def test_coverage_subprocess_command_is_explicit_and_consumes_marker():
+    environment = {"COVERAGE_PROCESS_CONFIG": "serialized-config"}
+
+    command = coverage_python_prefix(environment)
+
+    assert command[1:5] == ["-m", "coverage", "run", "--parallel-mode"]
+    assert command[-2:] == ["--rcfile", str(uvicorn_test_server.ROOT / "pyproject.toml")]
+    assert "COVERAGE_PROCESS_CONFIG" not in environment
