@@ -72,7 +72,7 @@ def _many_rows(cursor, table):
     )
 
 
-def test_mapper_key_resolution_canonicalization_and_db_serialization():
+def test_mapper_key_resolution_canonicalization_and_db_serialization(monkeypatch):
     assert mapper.json_key_for_column("goi_thau", "id_goc") == "rootId"
     assert mapper.db_column_for_json_key("goi_thau", "maGoiThau") == "ma_goi_thau"
     assert mapper.db_column_for_json_key("unknown", "unsafeCamel") == "unsafe_camel"
@@ -148,11 +148,27 @@ def test_mapper_key_resolution_canonicalization_and_db_serialization():
         {
             "id": "package-1",
             "gia_goi_thau": "123456",
-            "phan_lo_list": "{broken",
         },
     )
     assert package["giaGoiThau"] == "123456"
-    assert package["phanLoList"] == []
+
+    monkeypatch.setitem(
+        mapper.SCHEMA_DINH_NGHIA,
+        "json_test",
+        {
+            "columns": {"id": "TEXT", "payload_list": "TEXT"},
+            "json_fields": ["payload_list"],
+        },
+    )
+    assert mapper.map_db_to_json(
+        "json_test", {"id": "1", "payload_list": '[{"safe":true}]'}
+    )["payloadList"] == [{"safe": True}]
+    assert mapper.map_db_to_json(
+        "json_test", {"id": "1", "payload_list": "{broken"}
+    )["payloadList"] == []
+    assert mapper.map_db_to_json(
+        "json_test", {"id": "1", "payload_list": ""}
+    )["payloadList"] == []
 
 
 def test_child_value_helpers_are_strict_and_deduplicate():
