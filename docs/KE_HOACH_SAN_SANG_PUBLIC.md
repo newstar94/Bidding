@@ -67,23 +67,18 @@ ranh giới sandbox trên máy Linux staging tương đương production.
 
 ### 5.1. Cô lập xử lý tài liệu
 
-**Công việc**
+Phần mã nguồn, IPC JSON, parser sandbox Bubblewrap/seccomp, systemd unit,
+AppArmor, giới hạn tài nguyên, tách secret/DB role và regression test đã hoàn
+tất. Production package cũng đã chứa trình kiểm chứng triển khai
+`scripts/verify_document_worker_deployment.py`.
 
-1. Chạy worker bằng UID/GID riêng, không cùng tài khoản với web service.
-2. Đặt worker trong container hoặc systemd service riêng với:
-   - read-only root filesystem;
-   - thư mục job riêng, quyền `0700`;
-   - network namespace không có egress;
-   - giới hạn CPU, RAM, file size, file descriptor, process count;
-   - seccomp/AppArmor/SELinux;
-   - timeout và kill toàn bộ process tree.
-3. Không mount source chứa secrets, file `.env`, backup hoặc Unix socket PostgreSQL vào worker.
+**Việc còn lại duy nhất trước khi xóa blocker này khỏi kế hoạch**
 
-**Test bắt buộc**
-
-- Zip-slip, zip bomb, external relationship, encrypted OOXML, entity expansion và file hỏng.
-- Worker cố mở socket, đọc `.env`, truy cập DB hoặc tạo child process phải thất bại.
-- Worker bị kill/timeout không làm hỏng web process và không để file tạm tồn tại.
+- Triển khai web và document worker trên Linux staging tương đương production,
+  chạy verifier bằng `root`, lưu JSON evidence không chứa secret và xác nhận
+  probe chạy bằng đúng UID/GID dịch vụ cùng PostgreSQL TLS/least-privilege.
+- Chỉ chuyển trạng thái sang Go sau khi evidence được người vận hành phê duyệt;
+  không dùng kết quả chạy Windows hoặc test parser đơn lẻ để thay thế.
 
 ## 8. Giai đoạn P1 — Hạ tầng chặn tấn công và vận hành
 
@@ -214,7 +209,7 @@ Chỉ cần một điều kiện trên chưa đạt thì trạng thái vẫn là
 
 ### Đợt 1 — Blocker bảo mật
 
-1. Document worker IPC/sandbox.
+1. Chạy verifier document worker trên Linux staging và lưu evidence triển khai.
 
 ### Đợt 2 — Authentication và tenant hardening
 
