@@ -23,6 +23,7 @@ _partner_worker_started = False
 _partner_worker_lock = threading.Lock()
 _partner_work_event = threading.Event()
 _lookup_locks = tuple(threading.Lock() for _ in range(64))
+PARTNER_LOOKUP_CACHE_VERSION = "2"
 
 
 class PartnerLookupBusyError(RuntimeError):
@@ -55,7 +56,10 @@ _outbound_slots = threading.BoundedSemaphore(
 
 
 def _lookup_cache_key(tax_code, org_code, role_name):
-    material = f"{tax_code or ''}\0{org_code or ''}\0{role_name or ''}".encode("utf-8")
+    material = (
+        f"{PARTNER_LOOKUP_CACHE_VERSION}\0{tax_code or ''}\0"
+        f"{org_code or ''}\0{role_name or ''}"
+    ).encode("utf-8")
     return hashlib.sha256(material).hexdigest()
 
 
@@ -273,10 +277,16 @@ MUASAMCONG_INVESTOR_SERVICE_BASE = (
 
 
 def _create_muasamcong_ssl_context():
-    # Keep certificate/hostname verification and the platform's modern cipher
-    # policy. An obsolete upstream must fail closed instead of lowering OpenSSL
-    # security for the application process.
-    return ssl.create_default_context()
+    # Keep certificate and hostname verification while avoiding the upstream's
+    # obsolete finite-field DHE parameters. MuaSamCong also supports modern
+    # ECDHE suites, so preferring those resolves DH_KEY_TOO_SMALL without
+    # lowering OpenSSL's security level or weakening the application process.
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.set_ciphers(
+        "ECDHE+AESGCM:ECDHE+CHACHA20:!DHE:!aNULL:!eNULL:!MD5:!DSS"
+    )
+    return context
 
 
 MUASAMCONG_SSL_CONTEXT = _create_muasamcong_ssl_context()
@@ -566,11 +576,6 @@ def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
             if info:
                 return _cache_put(cache_key, info)
 
-            if has_explicit_procurement_org_code:
-                if not msc_available:
-                    raise PartnerUpstreamError("MuaSamCong is unavailable")
-                _cache_put(cache_key, None)
-                return None
             if not cleaned_tax_code:
                 if not msc_available:
                     raise PartnerUpstreamError("MuaSamCong is unavailable")
@@ -582,6 +587,8 @@ def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
             )
             if info:
                 info["tax_code"] = cleaned_tax_code
+                if has_explicit_procurement_org_code:
+                    info["org_code"] = procurement_org_code
                 return _cache_put(cache_key, info)
 
             escodata_available, info = _call_upstream(
@@ -589,11 +596,17 @@ def lookup_partner_info(tax_code="", org_code=None, role_name="NT"):
             )
             if info:
                 info["tax_code"] = cleaned_tax_code
+                if has_explicit_procurement_org_code:
+                    info["org_code"] = procurement_org_code
                 return _cache_put(cache_key, info)
 
-            # A negative result is trustworthy only if every relevant upstream
-            # completed. Never cache a transient outage as "not found".
-            if not (msc_available and vietqr_available and escodata_available):
+            # Once a valid tax code is available, the tax-code providers are
+            # sufficient fallback sources. MuaSamCong may be unavailable (for
+            # example because its TLS endpoint is temporarily incompatible)
+            # without turning a completed tax-code lookup into a 502.
+            # A negative result is still cached only when both fallback
+            # providers completed successfully.
+            if not (vietqr_available and escodata_available):
                 raise PartnerUpstreamError("One or more partner upstreams are unavailable")
             _cache_put(cache_key, None)
             return None

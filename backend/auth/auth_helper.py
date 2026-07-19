@@ -7,6 +7,7 @@ from datetime import datetime
 from backend.db.db_helper import database
 from backend.shared.client_ip import get_client_ip, is_client_ip_allowed
 from backend.auth.roles import effective_access_roles, normalize_platform_role
+from backend.auth.mfa_service import is_mfa_required_for_role
 from backend.auth.session_store import load_session_user, session_invalid_reason, touch_session
 from argon2 import PasswordHasher, Type
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -158,7 +159,10 @@ def verify_super_admin_controls(request, user, *, require_reauth=None):
     """Apply network allowlisting and recent password step-up after authentication."""
     if not is_client_ip_allowed(get_client_ip(request)):
         return False, SUPER_ADMIN_NETWORK_DENIED
-    if not bool(user.get("mfa_enabled")) or not user.get("mfa_verified_at"):
+    if (
+        is_mfa_required_for_role("super_admin")
+        and (not bool(user.get("mfa_enabled")) or not user.get("mfa_verified_at"))
+    ):
         return False, SUPER_ADMIN_MFA_REQUIRED
     unsafe_method = str(getattr(request, "method", "GET") or "GET").upper() not in {
         "GET", "HEAD", "OPTIONS"
@@ -186,7 +190,7 @@ def verify_recent_reauthentication(user):
         return False, PRIVILEGED_REAUTH_REQUIRED
     return True, None
 
-def verify_session(request, required_role=None):
+def verify_session(request, required_role=None, *, allow_pending_mfa=False):
     token = (request.cookies.get('session_token') or '').strip()
     if not token:
         return False, "Thiếu thông tin xác thực phiên làm việc!"
@@ -197,7 +201,7 @@ def verify_session(request, required_role=None):
     now = int(time.time())
     if (
         user
-        and not session_invalid_reason(user, now)
+        and not session_invalid_reason(user, now, allow_pending_mfa)
         and now - int(user.get("last_seen_at") or 0) >= SESSION_ACTIVITY_TOUCH_SECONDS
     ):
         touch_session(
@@ -208,8 +212,11 @@ def verify_session(request, required_role=None):
         )
     if not user:
         return False, "Phiên làm việc đã hết hạn hoặc không hợp lệ!"
-    if session_invalid_reason(user):
+    invalid_reason = session_invalid_reason(user, None, allow_pending_mfa)
+    if invalid_reason:
         _session_cache_invalidate(token)
+        if invalid_reason == "mfa_verification_required":
+            return False, "Bạn phải hoàn tất xác thực hai lớp trước khi sử dụng ứng dụng."
         return False, "Phiên đăng nhập đã hết hạn! Vui lòng đăng nhập lại."
 
     if required_role and required_role not in get_effective_roles(user['vai_tro']):

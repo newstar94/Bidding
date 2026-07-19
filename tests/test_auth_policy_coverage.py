@@ -112,12 +112,22 @@ def test_super_admin_controls_network_mfa_and_reauthentication(
     assert auth_helper.verify_super_admin_controls(request, user)[0] is False
 
     monkeypatch.setattr(auth_helper, "is_client_ip_allowed", lambda _ip: True)
+    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "true")
     assert auth_helper.verify_super_admin_controls(
         request, {**user, "mfa_enabled": False}
     )[0] is False
     assert auth_helper.verify_super_admin_controls(
         request, {**user, "mfa_verified_at": None}
     )[0] is False
+    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "false")
+    assert auth_helper.verify_super_admin_controls(
+        request,
+        {
+            **user,
+            "mfa_enabled": False,
+            "mfa_verified_at": None,
+        },
+    ) == (True, None)
     assert auth_helper.verify_super_admin_controls(
         request, {**user, "privileged_reauth_at": "invalid"}
     )[0] is False
@@ -173,6 +183,35 @@ def test_verify_session_rejects_missing_invalid_revoked_and_wrong_role(
     monkeypatch.setattr(auth_helper, "load_session_user", lambda *_args: user)
     monkeypatch.setattr(auth_helper, "session_invalid_reason", lambda *_args: None)
     assert auth_helper.verify_session(request, "super_admin")[0] is False
+
+
+def test_verify_session_restricts_pending_mandatory_mfa_to_enrollment_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(time.time())
+    request = _Request(cookies={"session_token": "pending-token"})
+    pending_user = {
+        "id": "admin",
+        "vai_tro": "super_admin",
+        "last_seen_at": now,
+        "idle_expires_at": now + 300,
+        "absolute_expires_at": now + 600,
+        "revoked_at": None,
+        "session_id": "pending-session",
+        "mfa_verified_at": None,
+    }
+    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "true")
+    monkeypatch.setattr(
+        auth_helper, "load_session_user", lambda *_args: pending_user
+    )
+
+    valid, message = auth_helper.verify_session(request)
+    assert not valid
+    assert "xác thực hai lớp" in message
+
+    valid, role = auth_helper.verify_session(request, allow_pending_mfa=True)
+    assert valid
+    assert role.user_id == "admin"
 
 
 def test_verify_session_touches_activity_sets_state_and_admin_controls(

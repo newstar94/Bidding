@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import inspect
 import os
+import ssl
 import threading
 import time
 from zoneinfo import ZoneInfo
@@ -650,6 +651,68 @@ def test_partner_lookup_caches_positive_and_negative_results(
     assert len(rows) == 1
     assert rows[0]["found"] == 0
     assert rows[0]["result_json"] is None
+
+
+def test_muasamcong_tls_context_prefers_secure_ecdhe_without_weak_dhe() -> None:
+    context = partner_lookup_service._create_muasamcong_ssl_context()
+    cipher_names = {cipher["name"] for cipher in context.get_ciphers()}
+
+    assert context.minimum_version == ssl.TLSVersion.TLSv1_2
+    assert any(name.startswith("ECDHE-") for name in cipher_names)
+    assert not any(name.startswith("DHE-") for name in cipher_names)
+
+
+def test_partner_lookup_falls_back_to_tax_provider_when_muasamcong_is_unavailable(
+    postgres_database: PostgresDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(partner_lookup_service, "database", postgres_database)
+    monkeypatch.setenv("PARTNER_UPSTREAM_MAX_ATTEMPTS", "1")
+    with postgres_database.get_connection() as connection:
+        connection.execute("DELETE FROM partner_lookup_cache")
+        connection.execute("DELETE FROM partner_upstream_health")
+
+    def unavailable_muasamcong(*_args, **_kwargs):
+        try:
+            raise TimeoutError("simulated TLS failure")
+        except TimeoutError as error:
+            raise partner_lookup_service.PartnerUpstreamError(
+                "MuaSamCong unavailable"
+            ) from error
+
+    monkeypatch.setattr(
+        partner_lookup_service,
+        "fetch_muasamcong_info",
+        unavailable_muasamcong,
+    )
+    monkeypatch.setattr(
+        partner_lookup_service,
+        "fetch_vietqr_info",
+        lambda _tax_code: {
+            "name": "Fallback business",
+            "address": "Ha Noi",
+            "source": "VietQR",
+        },
+    )
+    monkeypatch.setattr(
+        partner_lookup_service,
+        "fetch_escodata_info",
+        lambda _tax_code: None,
+    )
+
+    result = partner_lookup_service.lookup_partner_info(
+        "0109965278",
+        org_code="vn0109965278",
+        role_name="NT",
+    )
+
+    assert result == {
+        "name": "Fallback business",
+        "address": "Ha Noi",
+        "source": "VietQR",
+        "tax_code": "0109965278",
+        "org_code": "vn0109965278",
+    }
 
 
 def test_partner_lookup_circuit_breaker_opens_after_failures(

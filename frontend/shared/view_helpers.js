@@ -94,6 +94,68 @@ export function formatDate(dateStr) {
 export function formatDateOnly(dateStr) {
   return formatDisplayDateOnly(dateStr);
 }
+
+function customSelectOptionsSignature(options) {
+  return JSON.stringify(options.map((option) => [
+    String(option.value ?? ""),
+    String(option.text ?? ""),
+    Boolean(option.selected)
+  ]));
+}
+
+function renderCustomSelectOptions(optionsList, options, isVersionSelect) {
+  const signature = customSelectOptionsSignature(options);
+  if (optionsList.dataset.optionsSignature === signature) return false;
+  const fragment = document.createDocumentFragment();
+  options.forEach((option) => {
+    const item = document.createElement("li");
+    item.dataset.value = String(option.value ?? "");
+    item.className = `custom-option-item${option.selected ? " selected" : ""}`;
+    item.textContent = String(option.text ?? "");
+    setRuntimeStyle(item, "padding", isVersionSelect ? "4px 14px" : "8px 14px");
+    setRuntimeStyle(item, "fontSize", "0.85rem");
+    setRuntimeStyle(item, "cursor", "pointer");
+    setRuntimeStyle(item, "whiteSpace", "nowrap");
+    setRuntimeStyle(item, "color", "var(--text-main)");
+    fragment.appendChild(item);
+  });
+  optionsList.replaceChildren(fragment);
+  optionsList.dataset.optionsSignature = signature;
+  return true;
+}
+
+function bindCustomSelectOptions(optionsList) {
+  if (optionsList.__bfCustomSelectEventsBound) return;
+  optionsList.__bfCustomSelectEventsBound = true;
+  optionsList.addEventListener("mouseover", (event) => {
+    const item = event.target.closest?.(".custom-option-item");
+    if (!item || !optionsList.contains(item) || item.classList.contains("selected")) return;
+    setRuntimeStyle(item, "backgroundColor", "var(--neutral-soft)");
+    setRuntimeStyle(item, "color", "var(--primary)");
+  });
+  optionsList.addEventListener("mouseout", (event) => {
+    const item = event.target.closest?.(".custom-option-item");
+    if (!item || !optionsList.contains(item) || item.classList.contains("selected")) return;
+    setRuntimeStyle(item, "backgroundColor", "");
+    setRuntimeStyle(item, "color", "var(--text-main)");
+  });
+  optionsList.addEventListener("click", (event) => {
+    const item = event.target.closest?.(".custom-option-item");
+    if (!item || !optionsList.contains(item)) return;
+    event.stopPropagation();
+    const targetId = optionsList.dataset.parent;
+    const targetSelect = document.getElementById(targetId);
+    const targetWrapper = document.querySelector(`.custom-select-container[data-target="${targetId}"]`);
+    if (!targetSelect || !targetWrapper) return;
+    targetSelect.value = item.dataset.value || "";
+    targetSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    targetWrapper.classList.remove("open");
+    setRuntimeStyle(optionsList, "display", "none");
+    targetWrapper.appendChild(optionsList);
+    initCustomSelect(targetId);
+  });
+}
+
 export function initCustomSelect(selectId) {
   const select = document.getElementById(selectId);
   if (!select) return;
@@ -137,9 +199,8 @@ export function initCustomSelect(selectId) {
     triggerText = "Th" + coreText;
   }
   const isVersionSelect = select.classList.contains("page-version-select") || select.classList.contains("version-select") || select.classList.contains("phienban-select") || select.classList.contains("modal-version-select") || select.classList.contains("version-droplist");
-  const safeSelectId = escapeHtml(selectId);
-  const safeTriggerText = escapeHtml(triggerText);
   if (!wrapper) {
+    document.querySelectorAll(`body > .custom-select-options[data-parent="${selectId}"]`).forEach((stale) => stale.remove());
     wrapper = document.createElement("div");
     wrapper.className = "custom-select-container";
     if (select.closest("table")) wrapper.classList.add("table-select");
@@ -148,25 +209,40 @@ export function initCustomSelect(selectId) {
     wrapper.setAttribute("data-target", selectId);
     setRuntimeStyle(wrapper, "position", "relative");
     select.parentNode.insertBefore(wrapper, select.nextSibling);
-    wrapper.innerHTML = trustedHTML(`
-            <div class="custom-select-trigger">
-                <span>${safeTriggerText}</span>
-                ${isVersionSelect ? "" : `
-                <div class="custom-select-trigger-arrow">
-                    <i data-lucide="chevron-down" class="bf-s-58050124fc"></i>
-                </div>
-                `}
-            </div>
-            <ul class="custom-select-options" data-parent="${safeSelectId}" style="display: none; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: ${isVersionSelect ? "4px" : "var(--radius-md)"}; box-shadow: var(--shadow-lg); z-index: 999999; list-style: none; padding: 6px 0; margin: 0; max-height: 220px; overflow-y: auto;">
-                ${options.map((opt) => `
-                    <li data-value="${escapeHtml(opt.value)}" class="custom-option-item ${opt.selected ? "selected" : ""}" style="padding: ${isVersionSelect ? "4px 14px" : "8px 14px"}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${escapeHtml(opt.text)}</li>
-                `).join("")}
-            </ul>
-        `);
+    const trigger = document.createElement("div");
+    trigger.className = "custom-select-trigger";
+    const triggerLabel = document.createElement("span");
+    triggerLabel.textContent = triggerText;
+    trigger.appendChild(triggerLabel);
+    if (!isVersionSelect) {
+      const arrow = document.createElement("div");
+      arrow.className = "custom-select-trigger-arrow";
+      const icon = document.createElement("i");
+      icon.dataset.lucide = "chevron-down";
+      icon.className = "bf-s-58050124fc";
+      arrow.appendChild(icon);
+      trigger.appendChild(arrow);
+    }
+    const optionsList = document.createElement("ul");
+    optionsList.className = "custom-select-options";
+    optionsList.dataset.parent = selectId;
+    setRuntimeStyle(optionsList, "display", "none");
+    setRuntimeStyle(optionsList, "backgroundColor", "var(--bg-card)");
+    setRuntimeStyle(optionsList, "border", "1px solid var(--border-color)");
+    setRuntimeStyle(optionsList, "borderRadius", isVersionSelect ? "4px" : "var(--radius-md)");
+    setRuntimeStyle(optionsList, "boxShadow", "var(--shadow-lg)");
+    setRuntimeStyle(optionsList, "zIndex", "999999");
+    setRuntimeStyle(optionsList, "listStyle", "none");
+    setRuntimeStyle(optionsList, "padding", "6px 0");
+    setRuntimeStyle(optionsList, "margin", "0");
+    setRuntimeStyle(optionsList, "maxHeight", "220px");
+    setRuntimeStyle(optionsList, "overflowY", "auto");
+    renderCustomSelectOptions(optionsList, options, isVersionSelect);
+    bindCustomSelectOptions(optionsList);
+    wrapper.append(trigger, optionsList);
     if (select.disabled) {
       wrapper.classList.add("disabled");
     }
-    const trigger = wrapper.querySelector(".custom-select-trigger");
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
       if (select.disabled || wrapper.classList.contains("disabled")) return;
@@ -195,17 +271,22 @@ export function initCustomSelect(selectId) {
       }
     });
     if (window.lucide && typeof window.lucide.createIcons === "function") {
-      window.lucide.createIcons();
+      window.lucide.createIcons({ root: wrapper });
     }
   } else {
+    const existingTrigger = wrapper.querySelector(".custom-select-trigger");
+    if (!existingTrigger) {
+      wrapper.remove();
+      setRuntimeStyle(select, "display", "");
+      return initCustomSelect(selectId);
+    }
     if (isVersionSelect && !wrapper.classList.contains("version-select-container")) wrapper.classList.add("version-select-container");
     if (select.classList.contains("page-version-select") && !wrapper.classList.contains("page-version-select")) wrapper.classList.add("page-version-select");
     wrapper.classList.toggle("disabled", !!select.disabled);
     const optionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector(".custom-select-options");
     if (optionsList) {
-      optionsList.innerHTML = trustedHTML(options.map((opt) => `
-                <li data-value="${escapeHtml(opt.value)}" class="custom-option-item ${opt.selected ? "selected" : ""}" style="padding: ${isVersionSelect ? "4px 14px" : "8px 14px"}; font-size: 0.85rem; cursor: pointer; white-space: nowrap; color: var(--text-main);">${escapeHtml(opt.text)}</li>
-            `).join(""));
+      renderCustomSelectOptions(optionsList, options, isVersionSelect);
+      bindCustomSelectOptions(optionsList);
     }
     const activeSelectedOption = select.options[select.selectedIndex] || select.options[0] || { text: "", value: "" };
     let activeTriggerText = activeSelectedOption.text.trim();
@@ -216,34 +297,12 @@ export function initCustomSelect(selectId) {
       activeTriggerText = "Th" + coreText;
     }
     const triggerSpan = wrapper.querySelector(".custom-select-trigger span");
-    if (triggerSpan) triggerSpan.textContent = activeTriggerText;
+    if (triggerSpan && triggerSpan.textContent !== activeTriggerText) {
+      triggerSpan.textContent = activeTriggerText;
+    }
   }
   const activeOptionsList = document.querySelector(`.custom-select-options[data-parent="${selectId}"]`) || wrapper.querySelector(".custom-select-options");
-  if (activeOptionsList) {
-    activeOptionsList.querySelectorAll(".custom-option-item").forEach((li) => {
-      li.addEventListener("mouseover", () => {
-        if (!li.classList.contains("selected")) {
-          setRuntimeStyle(li, "backgroundColor", "var(--neutral-soft)");
-          setRuntimeStyle(li, "color", "var(--primary)");
-        }
-      });
-      li.addEventListener("mouseout", () => {
-        if (!li.classList.contains("selected")) {
-          setRuntimeStyle(li, "backgroundColor", "");
-          setRuntimeStyle(li, "color", "var(--text-main)");
-        }
-      });
-      li.addEventListener("click", (e) => {
-        e.stopPropagation();
-        select.value = li.getAttribute("data-value");
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-        wrapper.classList.remove("open");
-        setRuntimeStyle(activeOptionsList, "display", "none");
-        wrapper.appendChild(activeOptionsList);
-        initCustomSelect(selectId);
-      });
-    });
-  }
+  if (activeOptionsList) bindCustomSelectOptions(activeOptionsList);
 }
 export function syncCustomSelectDisabled(selectEl) {
   if (!selectEl || !selectEl.id) return;

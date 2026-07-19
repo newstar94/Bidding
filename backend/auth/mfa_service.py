@@ -21,6 +21,19 @@ TOTP_WINDOW = 1
 RECOVERY_CODE_COUNT = 10
 
 
+def is_mfa_required_for_role(role: str | None, environ=None) -> bool:
+    """Return whether policy forces MFA for the supplied platform role.
+
+    MFA is opt-in by default. Deployments that explicitly require it for
+    Super Admin accounts can enable REQUIRE_SUPER_ADMIN_MFA.
+    """
+    source = os.environ if environ is None else environ
+    require_super_admin = str(
+        source.get("REQUIRE_SUPER_ADMIN_MFA", "false")
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    return require_super_admin and str(role or "").strip().casefold() == "super_admin"
+
+
 class MfaConfigurationError(RuntimeError):
     pass
 
@@ -112,11 +125,10 @@ def get_mfa_status(cursor, user_id: str, role: str | None = None) -> dict:
         (user_id,),
     ).fetchone()
     enabled = bool(row and row[0])
-    normalized_role = str(role or "").strip().casefold()
     return {
         "enabled": enabled,
-        "required": normalized_role == "super_admin",
-        "recommended": normalized_role in {"manager", "super_admin"},
+        "required": is_mfa_required_for_role(role),
+        "recommended": str(role or "").strip().casefold() in {"manager", "super_admin"},
         "enabled_at": int(row[1]) if row and row[1] is not None else None,
         "last_used_at": int(row[2]) if row and row[2] is not None else None,
     }

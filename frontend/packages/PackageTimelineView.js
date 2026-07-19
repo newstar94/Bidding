@@ -5,7 +5,6 @@ import { getJson } from "../shared/apiClient.js";
 import { loadPaginatedRecords } from "../shared/tableDataUtils.js";
 import { authFetchDownload } from "../shared/workflow_helpers.js";
 import { escapeHtml, safeAttr } from "../shared/view_helpers.js";
-import { makeSearchableSelect } from "../shared/PartnerHelpers.js";
 import {
   applyTimelineApplicability,
   applyAutomaticTimelineSources,
@@ -166,15 +165,11 @@ function findContracts(view, packageRecord) {
   ));
 }
 
-function makeTimelineSelectSearchable(select, placeholder) {
+function prepareTimelineNativeSelect(select, label) {
   if (!select) return null;
-  makeSearchableSelect(select, placeholder);
-  const input = select.parentNode?.querySelector(`.custom-select-wrapper[data-select-id="${select.id}"] .custom-select-search`);
-  if (input) {
-    input.placeholder = placeholder;
-    input.setAttribute("aria-label", placeholder);
-  }
-  return input;
+  select.setAttribute("data-no-custom", "true");
+  select.setAttribute("aria-label", label);
+  return select;
 }
 
 function syncTimelineSelectValue(select, value) {
@@ -240,7 +235,7 @@ function renderPlanOptions(view) {
     `<option value="${safeAttr(plan.id)}" data-search="${safeAttr(`${plan.maKeHoach || ""} ${plan.tenKeHoach || plan.tenDuAnDuToan || ""}`)}">${escapeHtml(plan.maKeHoach || "--")} — ${escapeHtml(plan.tenKeHoach || plan.tenDuAnDuToan || "")}</option>`
   )).join("")}`);
   select.value = plans.some((plan) => String(plan.id) === current) ? current : "";
-  makeTimelineSelectSearchable(select, "Tìm kế hoạch theo mã hoặc tên");
+  prepareTimelineNativeSelect(select, "Chọn kế hoạch theo mã hoặc tên");
 }
 
 function renderPackageOptions(view, records, search = "") {
@@ -255,20 +250,7 @@ function renderPackageOptions(view, records, search = "") {
     `<option value="${safeAttr(pkg.id)}" data-search="${safeAttr(`${pkg.maGoiThau || ""} ${pkg.tenGoiThau || ""}`)}">${escapeHtml(pkg.maGoiThau || "--")} — ${escapeHtml(pkg.tenGoiThau || "")}</option>`
   )).join("")}`);
   select.value = records.some((pkg) => String(pkg.id) === String(selectedId)) ? selectedId : "";
-  const searchPlaceholder = hasPlan ? "Tìm gói thầu theo mã hoặc tên" : "Chọn kế hoạch trước";
-  const searchInput = makeTimelineSelectSearchable(select, searchPlaceholder);
-  if (searchInput) {
-    const selectedOption = select.options[select.selectedIndex];
-    searchInput.value = search || (selectedOption?.value ? selectedOption.text : "");
-    if (searchInput.dataset.timelineRemoteSearchBound !== "true") {
-      searchInput.dataset.timelineRemoteSearchBound = "true";
-      searchInput.addEventListener("input", () => {
-        state.packageQuery = searchInput.value.trim();
-        clearTimeout(state.packageSearchTimer);
-        state.packageSearchTimer = setTimeout(() => loadPackageOptions(view, state.packageQuery), 250);
-      });
-    }
-  }
+  prepareTimelineNativeSelect(select, hasPlan ? "Chọn gói thầu theo mã hoặc tên" : "Chọn kế hoạch trước");
 }
 
 async function loadPackageOptions(view, search = timelineState(view).packageQuery) {
@@ -649,6 +631,17 @@ function bindTimelineEvents(view, pane) {
   element("timeline-copy-previous")?.addEventListener("click", () => copyPreviousTimeline(view));
 }
 
+export function suspendPackageTimeline() {
+  const state = this?._packageTimelineState;
+  if (!state) return null;
+  clearTimeout(state.packageSearchTimer);
+  state.loading = false;
+  state.restoringSelection = false;
+  state.selectionRequestVersion = Number(state.selectionRequestVersion || 0) + 1;
+  state.optionsRequestVersion = Number(state.optionsRequestVersion || 0) + 1;
+  return state;
+}
+
 export function resetPackageTimeline() {
   const state = resetTimelineSession(this);
   const planSelect = element("timeline-plan-select");
@@ -661,7 +654,7 @@ export function resetPackageTimeline() {
   if (packageSelect) {
     packageSelect.innerHTML = trustedHTML(`<option value="">Chọn kế hoạch trước</option>`);
     packageSelect.disabled = true;
-    makeTimelineSelectSearchable(packageSelect, "Chọn kế hoạch trước");
+    prepareTimelineNativeSelect(packageSelect, "Chọn kế hoạch trước");
     syncTimelineSelectValue(packageSelect, "");
   }
   renderVersionOptions(null);

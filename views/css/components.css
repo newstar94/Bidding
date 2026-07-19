@@ -789,6 +789,12 @@
   height: auto !important;
   min-height: max-content;
 }
+
+/* Authentication can invoke the shared prompt for MFA before the auth overlay
+   closes. Keep that dialog above the overlay so login never appears frozen. */
+#modal-custom-dialog {
+  z-index: 10001;
+}
 #modal-phathanh-hsmt .modal-card,
 #modal-phathanh-hsmt .modal-card > form,
 #modal-phathanh-hsmt .modal-body {

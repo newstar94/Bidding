@@ -217,7 +217,7 @@ def test_mfa_routes_require_live_session(monkeypatch, handler):
     monkeypatch.setattr(
         mfa_routes,
         "verify_session",
-        lambda _request: (False, "Phiên hết hạn"),
+        lambda _request, **_kwargs: (False, "Phiên hết hạn"),
     )
 
     response = asyncio.run(handler(_request()))
@@ -228,7 +228,7 @@ def test_mfa_routes_require_live_session(monkeypatch, handler):
 
 def test_mfa_status_success_and_failure_are_non_cacheable(monkeypatch):
     monkeypatch.setattr(
-        mfa_routes, "verify_session", lambda _request: (True, _role())
+        mfa_routes, "verify_session", lambda _request, **_kwargs: (True, _role())
     )
 
     async def read_ok(*args, **kwargs):
@@ -275,7 +275,7 @@ def _install_json(monkeypatch, payload, *, validation_response=None):
 )
 def test_mfa_json_and_schema_errors_short_circuit(monkeypatch, handler):
     monkeypatch.setattr(
-        mfa_routes, "verify_session", lambda _request: (True, _role())
+        mfa_routes, "verify_session", lambda _request, **_kwargs: (True, _role())
     )
     json_error = JSONResponse({"error": "bad json"}, status_code=400)
 
@@ -292,7 +292,7 @@ def test_mfa_json_and_schema_errors_short_circuit(monkeypatch, handler):
 
 def test_mfa_setup_success_and_expected_failures(monkeypatch):
     monkeypatch.setattr(
-        mfa_routes, "verify_session", lambda _request: (True, _role())
+        mfa_routes, "verify_session", lambda _request, **_kwargs: (True, _role())
     )
     _install_json(monkeypatch, {"password": "correct"})
 
@@ -353,7 +353,7 @@ def test_mfa_setup_success_and_expected_failures(monkeypatch):
 
 def test_mfa_confirm_success_notification_and_failures(monkeypatch):
     monkeypatch.setattr(
-        mfa_routes, "verify_session", lambda _request: (True, _role())
+        mfa_routes, "verify_session", lambda _request, **_kwargs: (True, _role())
     )
     _install_json(monkeypatch, {"code": "123456"})
 
@@ -391,7 +391,7 @@ def test_mfa_confirm_success_notification_and_failures(monkeypatch):
 
 def test_mfa_disable_enforces_role_password_code_and_busy_paths(monkeypatch):
     monkeypatch.setattr(
-        mfa_routes, "verify_session", lambda _request: (True, _role())
+        mfa_routes, "verify_session", lambda _request, **_kwargs: (True, _role())
     )
     _install_json(monkeypatch, {"password": "correct", "code": "123456"})
 
@@ -412,6 +412,9 @@ def test_mfa_disable_enforces_role_password_code_and_busy_paths(monkeypatch):
             ("hash", "owner@example.test", "Owner", "super_admin")
         ),
     )
+    monkeypatch.setattr(
+        mfa_routes, "is_mfa_required_for_role", lambda _role: True
+    )
     assert asyncio.run(mfa_routes.mfa_disable_api(_request())).status_code == 403
 
     monkeypatch.setattr(
@@ -420,6 +423,9 @@ def test_mfa_disable_enforces_role_password_code_and_busy_paths(monkeypatch):
         lambda *args, **kwargs: result(
             ("hash", "owner@example.test", "Owner", "employee")
         ),
+    )
+    monkeypatch.setattr(
+        mfa_routes, "is_mfa_required_for_role", lambda _role: False
     )
     monkeypatch.setattr(
         mfa_routes, "run_cpu_bound", lambda *args, **kwargs: result(False)

@@ -220,11 +220,21 @@ function renderChangedState(controller, changedKeys, { isBackground = false } = 
   renderIfChanged(["nhathau", "goithau", "hopdong", "thongtinmothau"], controller.view.renderNhaThauTable, "tab-nhathau");
   renderIfChanged(["chuyengia", "assignments"], controller.view.renderChuyenGiaTable, "tab-chuyengia");
   renderIfChanged(["hopdong", "goithau", "nhathau", "chudautu"], controller.view.renderHopDongTable, "tab-hopdong");
-  if (isBackground && typeof controller.handlePathRouting === "function") {
+  if (isBackground) {
     requestAnimationFrame(() => {
-      if (shouldRefreshRouteAfterBackgroundSync(document)) {
-        controller.handlePathRouting(window.location.pathname, false, true);
-      }
+      if (!shouldRefreshRouteAfterBackgroundSync(document)) return;
+      const detailTabs = new Set([
+        "kehoach-detail",
+        "goithau-detail",
+        "hopdong-detail",
+        "chudautu-detail",
+        "nhathau-detail",
+        "mothau",
+        "danhgiahsdt"
+      ]);
+      const activeTab = controller.model?.state?.activetab;
+      if (!detailTabs.has(activeTab)) return;
+      controller.renderTabData?.(activeTab, controller.model?.state?.activeaction || null);
     });
   }
   return Promise.all(renderPromises);

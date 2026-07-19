@@ -1,6 +1,7 @@
 """Persistent, revocable multi-device authentication sessions."""
 
 from backend.db.db_helper import OperationalError
+from backend.auth.mfa_service import is_mfa_required_for_role
 
 import hashlib
 import time
@@ -87,7 +88,7 @@ def load_session_user(database, token):
         )
 
 
-def session_invalid_reason(user, now=None):
+def session_invalid_reason(user, now=None, allow_pending_mfa=False):
     if not user:
         return "user_not_found"
     current = int(time.time() if now is None else now)
@@ -97,6 +98,12 @@ def session_invalid_reason(user, now=None):
         return "token_expired"
     if current >= int(user.get("idle_expires_at") or 0):
         return "session_idle_expired"
+    if (
+        not allow_pending_mfa
+        and is_mfa_required_for_role(user.get("vai_tro"))
+        and not user.get("mfa_verified_at")
+    ):
+        return "mfa_verification_required"
     return None
 
 

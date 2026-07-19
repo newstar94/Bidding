@@ -540,25 +540,41 @@ def test_password_cpu_queue_failure_rolls_back_new_account(monkeypatch):
     assert connection.rollbacks == 1
 
 
-@pytest.mark.parametrize("super_admin", [True, False])
+@pytest.mark.parametrize(
+    ("policy_required", "mfa_enabled", "expected_status"),
+    [
+        (True, False, 403),
+        (False, True, 403),
+        (False, False, 200),
+    ],
+)
 def test_google_login_requires_password_flow_for_mfa_accounts(
-    monkeypatch, super_admin
+    monkeypatch, policy_required, mfa_enabled, expected_status
 ):
-    user = _user(vai_tro="super_admin" if super_admin else "user")
+    user = _user(vai_tro="super_admin" if policy_required else "user")
     cursor = _GoogleCursor(identity_user=user)
     connection = _Connection(cursor)
     _install_common(monkeypatch, connection=connection)
     monkeypatch.setattr(
         google_auth_routes,
         "is_mfa_enabled",
-        lambda *args: not super_admin,
+        lambda *args: mfa_enabled,
+    )
+    monkeypatch.setattr(
+        google_auth_routes,
+        "is_mfa_required_for_role",
+        lambda *args: policy_required,
     )
 
     response = asyncio.run(google_auth_routes.google_login_api(_request()))
 
-    assert response.status_code == 403
-    assert _body(response)["code"] == "MFA_PASSWORD_LOGIN_REQUIRED"
-    assert connection.rollbacks == 1
+    assert response.status_code == expected_status
+    if expected_status == 403:
+        assert _body(response)["code"] == "MFA_PASSWORD_LOGIN_REQUIRED"
+        assert connection.rollbacks == 1
+    else:
+        assert _body(response)["success"] is True
+        assert connection.commits == 1
 
 
 def test_new_device_notification_is_added_without_exposing_identity(monkeypatch):

@@ -38,6 +38,7 @@ from backend.auth.auth_helper import (
 )
 from backend.auth.session_store import (
     create_session,
+    hash_session_token,
     load_session_user,
     revoke_session,
     revoke_user_sessions,
@@ -1319,6 +1320,14 @@ async def change_password_api(request):
             return JSONResponse({"error": "Mật khẩu cũ không chính xác!"}, status_code=400)
 
         old_token = request.cookies.get('session_token')
+        current_mfa_session = (
+            cursor.execute(
+                "SELECT mfa_verified_at FROM auth_sessions WHERE token_hash = ?",
+                (hash_session_token(old_token),),
+            ).fetchone()
+            if old_token
+            else None
+        )
         new_token = str(uuid.uuid4())
         token_expiry = int(time.time() + SESSION_EXPIRY_HOURS * 3600)
         conn.execute("BEGIN")
@@ -1335,6 +1344,7 @@ async def change_password_api(request):
             idle_timeout_seconds=SESSION_INACTIVITY_TIMEOUT_HOURS * 3600,
             remember=False,
             device_info=None,
+            mfa_verified=bool(current_mfa_session and current_mfa_session[0]),
         )
         log_audit(
             "auth.password_changed",

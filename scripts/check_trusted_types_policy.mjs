@@ -3,6 +3,26 @@ import {
   assertSafeScriptURL,
   assertSafeStyleURL
 } from "../frontend/shared/trustedTypes.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const trustedTypesSource = readFileSync(
+  fileURLToPath(new URL("../frontend/shared/trustedTypes.js", import.meta.url)),
+  "utf8"
+);
+if (!/createPolicy\?\.\("biddingflow-dompurify"/.test(trustedTypesSource)) {
+  throw new Error(
+    "DOMPurify must use the CSP-approved first-party parser policy"
+  );
+}
+if (!/TRUSTED_TYPES_POLICY\s*:\s*domPurifyTrustedTypesPolicy/.test(trustedTypesSource)) {
+  throw new Error("DOMPurify must receive TrustedHTML for its inert parsing document");
+}
+for (const requiredContext of ["tbody", "tr", "table", "select"]) {
+  if (!trustedTypesSource.includes(`unwrapTag: "${requiredContext}"`)) {
+    throw new Error(`Trusted HTML sanitizer is missing the ${requiredContext} fragment context`);
+  }
+}
 
 const maliciousHtml = [
   ["username", '<img src=x onerror="alert(1)">'],

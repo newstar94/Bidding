@@ -184,15 +184,26 @@ def test_password_policy_requires_8_characters_and_blocks_common_values():
     assert validate_new_password("passwordpassword")[0] is False
 
 
-def test_super_admin_controls_require_mfa_and_recent_reauthentication():
+def test_super_admin_controls_make_mfa_optional_by_default_and_enforce_policy(
+    monkeypatch,
+):
     request = SimpleNamespace(
         method="POST",
         client=SimpleNamespace(host="127.0.0.1"),
         headers={},
     )
-    allowed, message = verify_super_admin_controls(
-        request, {"mfa_enabled": 0, "mfa_verified_at": None}
-    )
+    user_without_mfa = {
+        "mfa_enabled": 0,
+        "mfa_verified_at": None,
+        "privileged_reauth_at": int(time.time()),
+    }
+    monkeypatch.delenv("REQUIRE_SUPER_ADMIN_MFA", raising=False)
+    allowed, message = verify_super_admin_controls(request, user_without_mfa)
+    assert allowed
+    assert message is None
+
+    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "true")
+    allowed, message = verify_super_admin_controls(request, user_without_mfa)
     assert not allowed
     assert "MFA" in message
 
@@ -263,7 +274,8 @@ def test_csp_enforces_explicit_trusted_types_policy_without_default_policy():
     }
     csp = headers["content-security-policy"]
     assert "require-trusted-types-for 'script'" in csp
-    assert "trusted-types biddingflow-html goog#html 'allow-duplicates'" in csp
+    assert "trusted-types biddingflow-html biddingflow-dompurify goog#html 'allow-duplicates'" in csp
+    assert "trusted-types dompurify" not in csp
     assert "default" not in csp.split("trusted-types ", 1)[1]
 
 

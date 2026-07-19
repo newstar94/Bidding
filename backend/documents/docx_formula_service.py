@@ -257,8 +257,10 @@ def apply_computed_mappings(context, mappings_rows):
                 variables[ten_bien] = value
                 del pending[ten_bien]
                 progressed = True
-            except ValueError as exc:
-                if 'chua co gia tri' not in str(exc):
+            except (ValueError, ArithmeticError, TypeError) as exc:
+                if isinstance(exc, ValueError) and 'chua co gia tri' in str(exc):
+                    continue
+                else:
                     context[ten_bien] = f'-- Lỗi công thức: {exc}'
                     variables[ten_bien] = context[ten_bien]
                     del pending[ten_bien]
@@ -268,6 +270,5 @@ def apply_computed_mappings(context, mappings_rows):
 
     for ten_bien, formula in pending.items():
         context[ten_bien] = '-- Lỗi công thức: vòng lặp hoặc thiếu biến nguồn'
-
 
 

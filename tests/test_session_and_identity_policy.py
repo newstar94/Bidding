@@ -148,6 +148,19 @@ def test_session_invalid_reason(user, now: int, reason: str | None) -> None:
     assert session_store.session_invalid_reason(user, now) == reason
 
 
+def test_pending_mandatory_mfa_session_is_restricted(monkeypatch) -> None:
+    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "true")
+    user = {
+        "revoked_at": None,
+        "absolute_expires_at": 200,
+        "idle_expires_at": 150,
+        "vai_tro": "super_admin",
+        "mfa_verified_at": None,
+    }
+    assert session_store.session_invalid_reason(user, 100) == "mfa_verification_required"
+    assert session_store.session_invalid_reason(user, 100, True) is None
+
+
 def test_touch_session_commits_and_updates_local_state() -> None:
     connection = _Connection()
     user = {"session_id": "session", "absolute_expires_at": 1_000}

@@ -17,6 +17,7 @@ from backend.auth.mfa_service import (
     consume_mfa_code,
     disable_mfa,
     get_mfa_status,
+    is_mfa_required_for_role,
 )
 from backend.shared.async_io import BlockingIOBusyError, BlockingIOTimeoutError
 from backend.shared.cpu_io import run_cpu_bound
@@ -154,7 +155,7 @@ def _security_notification(email, display_name, subject, message):
 
 
 async def mfa_status_api(request):
-    valid, role_or_error = verify_session(request)
+    valid, role_or_error = verify_session(request, allow_pending_mfa=True)
     if not valid:
         return JSONResponse({"error": role_or_error}, status_code=401)
     try:
@@ -168,7 +169,7 @@ async def mfa_status_api(request):
 
 
 async def mfa_setup_api(request):
-    valid, role_or_error = verify_session(request)
+    valid, role_or_error = verify_session(request, allow_pending_mfa=True)
     if not valid:
         return JSONResponse({"error": role_or_error}, status_code=401)
     data, json_error = await read_json_object(request)
@@ -212,7 +213,7 @@ async def mfa_setup_api(request):
 
 
 async def mfa_confirm_api(request):
-    valid, role_or_error = verify_session(request)
+    valid, role_or_error = verify_session(request, allow_pending_mfa=True)
     if not valid:
         return JSONResponse({"error": role_or_error}, status_code=401)
     data, json_error = await read_json_object(request)
@@ -281,7 +282,7 @@ async def mfa_disable_api(request):
         )
         if not account:
             return JSONResponse({"error": "Không tìm thấy tài khoản."}, status_code=404)
-        if str(account[3]).strip().casefold() == "super_admin":
+        if is_mfa_required_for_role(account[3]):
             return JSONResponse(
                 {"error": "Super Admin bắt buộc phải duy trì MFA."},
                 status_code=403,

@@ -40,7 +40,7 @@ from backend.auth.identity import (
 from backend.shared.request_validation import read_json_object, validate_or_response
 from backend.auth.profile_validation import ProfileValidationError, validate_profile_fields
 from backend.auth.session_store import create_session
-from backend.auth.mfa_service import is_mfa_enabled
+from backend.auth.mfa_service import is_mfa_enabled, is_mfa_required_for_role
 from backend.auth.security_notifications import (
     build_security_notification_tasks,
     device_fingerprint,
@@ -370,9 +370,9 @@ async def google_login_api(request):
             user["da_xac_minh"] = 1
 
         # The Google token is not a substitute for this application's second
-        # factor. Accounts protected by MFA, and every Super Admin account,
-        # must use the password + TOTP login flow.
-        if user.get("vai_tro") == "super_admin" or is_mfa_enabled(cursor, user["id"]):
+        # factor. Accounts that enabled MFA (or are covered by an explicitly
+        # configured mandatory policy) must use password + TOTP.
+        if is_mfa_required_for_role(user.get("vai_tro")) or is_mfa_enabled(cursor, user["id"]):
             conn.rollback()
             return JSONResponse(
                 {

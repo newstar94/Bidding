@@ -11,22 +11,22 @@
       <div class="timeline-toolbar" aria-label="Bộ chọn timeline">
         <div class="timeline-field">
             <label for="timeline-plan-select">Kế hoạch LCNT <span class="required">*</span></label>
-            <select id="timeline-plan-select"><option value="">Chọn kế hoạch</option></select>
+            <select id="timeline-plan-select" data-no-custom="true"><option value="">Chọn kế hoạch</option></select>
         </div>
         <div class="timeline-field timeline-field-package">
             <label for="timeline-package-select">Gói thầu</label>
-            <select id="timeline-package-select" disabled><option value="">Chọn kế hoạch trước</option></select>
+            <select id="timeline-package-select" data-no-custom="true" disabled><option value="">Chọn kế hoạch trước</option></select>
         </div>
         <div class="timeline-field">
             <label for="timeline-version-select">Phiên bản</label>
-            <select id="timeline-version-select" disabled><option value="">--</option></select>
+            <select id="timeline-version-select" data-no-custom="true" disabled><option value="">--</option></select>
         </div>
       </div>
 
       <div class="timeline-actionbar">
         <div class="timeline-filters" aria-label="Lọc mốc timeline">
             <label class="timeline-filter-label" for="timeline-status-filter">Trạng thái</label>
-            <select id="timeline-status-filter">
+            <select id="timeline-status-filter" data-no-custom="true">
                 <option value="">Tất cả</option>
                 <option value="PENDING">Chưa thực hiện</option>
                 <option value="IN_PROGRESS">Đang thực hiện</option>

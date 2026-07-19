@@ -47,7 +47,8 @@ Chỉ chuyển traffic khi cả `/health/live` và `/health/ready` trả 200.
 
 - Mật khẩu mới dùng Argon2id, tối thiểu 8 và tối đa 256 ký tự; mật khẩu PBKDF2 cũ chỉ được giữ để nâng cấp tự động ở lần đăng nhập thành công tiếp theo.
 - `MFA_ENCRYPTION_KEY` là khóa Fernet 32 byte dùng mã hóa bí mật TOTP. Lưu khóa trong secret manager; không commit và không đổi khóa nếu chưa có quy trình giải mã/mã hóa lại các bí mật đang tồn tại.
-- Super Admin bắt buộc thiết lập MFA ở lần đăng nhập đầu tiên. Tài khoản quản lý được khuyến nghị bật MFA trong trang **Thông tin tài khoản cá nhân**. Mã khôi phục chỉ hiển thị một lần và mỗi mã chỉ dùng một lần.
+- MFA mặc định tắt và chỉ được bật khi người dùng chủ động thiết lập trong trang **Thông tin tài khoản cá nhân**. Đặt `REQUIRE_SUPER_ADMIN_MFA=true` nếu môi trường triển khai muốn bắt buộc Super Admin dùng MFA. Mã khôi phục chỉ hiển thị một lần và mỗi mã chỉ dùng một lần.
+- Khi chính sách bắt buộc MFA được bật, phiên chưa xác minh chỉ được gọi API trạng thái/thiết lập/xác nhận MFA; tải lại trang hoặc gọi API nghiệp vụ không thể bỏ qua bước xác minh.
 - Tài khoản đã bật MFA phải dùng luồng mật khẩu + TOTP/mã khôi phục; Google Sign-In không được dùng để bỏ qua yếu tố thứ hai.
 
 Trước khi triển khai lên một loại máy chủ mới, chạy benchmark với đúng cấu hình production:

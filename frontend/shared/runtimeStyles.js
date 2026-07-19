@@ -47,8 +47,9 @@ export function setRuntimeStyle(element, property, value) {
     elementProperties.set(element, applied);
   }
   const previous = applied.get(key);
-  if (previous) element.classList.remove(previous);
   const className = classForDeclaration(key, value);
+  if (previous === className) return value;
+  if (previous) element.classList.remove(previous);
   if (className) {
     element.classList.add(className);
     applied.set(key, className);

@@ -3,6 +3,21 @@ import DOMPurify from "../../node_modules/dompurify/dist/purify.es.mjs";
 
 const trustedTypesApi = globalThis.trustedTypes;
 
+// DOMPurify needs a TrustedHTML value for its inert parsing document when
+// `require-trusted-types-for 'script'` is enforced. This narrowly scoped
+// policy only signs DOMPurify's parser input; DOMPurify still sanitizes that
+// input before the outer `biddingflow-html` policy returns it to a live sink.
+const createDOMPurifyPolicy = () => trustedTypesApi?.createPolicy?.("biddingflow-dompurify", {
+  createHTML(value) {
+    return migrateStyleAttributes(assertSafeHTML(value));
+  },
+  createScriptURL(value) {
+    return assertSafeScriptURL(value);
+  }
+}) || null;
+
+const domPurifyTrustedTypesPolicy = createDOMPurifyPolicy();
+
 const UNSAFE_HTML_PATTERNS = [
   /<\/?(?:script|iframe|object|embed|base|meta)\b/i,
   /\s(?:on[a-z]+|srcdoc)\s*=/i,
@@ -36,6 +51,32 @@ function migrateStyleAttributes(source) {
   });
 }
 
+function contextualSanitizerWrapper(source) {
+  const trimmed = String(source || "").trimStart();
+  if (/^<tr\b/i.test(trimmed)) {
+    return { prefix: "<table><tbody>", suffix: "</tbody></table>", unwrapTag: "tbody" };
+  }
+  if (/^<(?:td|th)\b/i.test(trimmed)) {
+    return { prefix: "<table><tbody><tr>", suffix: "</tr></tbody></table>", unwrapTag: "tr" };
+  }
+  if (/^<(?:caption|colgroup|thead|tbody|tfoot)\b/i.test(trimmed)) {
+    return { prefix: "<table>", suffix: "</table>", unwrapTag: "table" };
+  }
+  if (/^<(?:option|optgroup)\b/i.test(trimmed)) {
+    return { prefix: "<select>", suffix: "</select>", unwrapTag: "select" };
+  }
+  return null;
+}
+
+function unwrapSanitizedContext(source, tagName) {
+  const html = String(source || "");
+  const opening = new RegExp(`<${tagName}\\b[^>]*>`, "i").exec(html);
+  const closingToken = `</${tagName}>`;
+  const closingIndex = html.toLowerCase().lastIndexOf(closingToken);
+  if (!opening || closingIndex < opening.index + opening[0].length) return "";
+  return html.slice(opening.index + opening[0].length, closingIndex);
+}
+
 export function assertSafeScriptURL(value) {
   const source = String(value ?? "");
   if (/^\/(?:frontend|vendor)\/[A-Za-z0-9._~!$&'()*+,;=:@/%?-]+$/.test(source)) return source;
@@ -58,7 +99,10 @@ function sanitizeHTML(value) {
   if (!DOMPurify.isSupported) {
     throw new TypeError("HTML sanitizer is unavailable in this browser");
   }
-  return DOMPurify.sanitize(migrated, {
+  const context = contextualSanitizerWrapper(migrated);
+  const payload = context ? `${context.prefix}${migrated}${context.suffix}` : migrated;
+  const sanitized = DOMPurify.sanitize(payload, {
+    TRUSTED_TYPES_POLICY: domPurifyTrustedTypesPolicy,
     RETURN_TRUSTED_TYPE: false,
     USE_PROFILES: { html: true, svg: true, svgFilters: true },
     FORBID_TAGS: ["script", "iframe", "object", "embed", "base", "meta"],
@@ -66,6 +110,7 @@ function sanitizeHTML(value) {
     ALLOW_UNKNOWN_PROTOCOLS: false,
     SANITIZE_DOM: true
   });
+  return context ? unwrapSanitizedContext(sanitized, context.unwrapTag) : sanitized;
 }
 
 // Every first-party sink explicitly calls trustedHTML. There is intentionally no

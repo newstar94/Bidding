@@ -314,29 +314,48 @@ export function shouldAutoOpenCreateModal(state, tabName) {
   return state?.activetab === tabName && state?.activeaction === "taomoi";
 }
 
-export function switchTab(tabName, action = null, updateState = true) {
+export function switchTab(tabName, action = null, updateState = true, transitionVersion = null) {
+  if (transitionVersion == null) {
+    this._tabTransitionVersion = Number(this._tabTransitionVersion || 0) + 1;
+    transitionVersion = this._tabTransitionVersion;
+  }
+  const isCurrentTransition = () => transitionVersion === this._tabTransitionVersion;
+  if (!isCurrentTransition()) return;
   const guardedRoute = guardTabAccess(this, tabName, action, updateState);
   tabName = guardedRoute.tabName;
   action = guardedRoute.action;
   if (!this.view.areViewModulesReady(tabName)) {
-    return this.view.ensureViewModules(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+    return this.view.ensureViewModules(tabName).then(() => {
+      if (!isCurrentTransition()) return;
+      return this.switchTab(tabName, action, updateState, transitionVersion);
+    }).catch((err) => {
+      if (!isCurrentTransition()) return;
       console.error("Failed to load view module:", tabName, err);
       this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
     });
   }
   const workflowTabs = ["mothau", "danhgiahsdt", "goithau-detail"];
   if (!this._workflowModulesReady && (action === "taomoi" || workflowTabs.includes(tabName))) {
-    return this.ensureWorkflowModules().then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+    return this.ensureWorkflowModules().then(() => {
+      if (!isCurrentTransition()) return;
+      return this.switchTab(tabName, action, updateState, transitionVersion);
+    }).catch((err) => {
+      if (!isCurrentTransition()) return;
       console.error("Failed to load workflow module:", tabName, err);
       this.view?.showToast?.("Không tải được chức năng", "Vui lòng thử lại.", "error");
     });
   }
   if (!document.getElementById(`tab-${tabName}`) && this.lazyTabPartials?.[tabName]) {
-    return this.ensureLazyTab(tabName).then(() => this.switchTab(tabName, action, updateState)).catch((err) => {
+    return this.ensureLazyTab(tabName).then(() => {
+      if (!isCurrentTransition()) return;
+      return this.switchTab(tabName, action, updateState, transitionVersion);
+    }).catch((err) => {
+      if (!isCurrentTransition()) return;
       console.error("Failed to lazy-load tab:", tabName, err);
       this.view?.showToast?.("Không tải được giao diện", "Vui lòng tải lại trang và thử lại.", "error");
     });
   }
+  if (!isCurrentTransition()) return;
   resetTimelineOnNavigation(this, tabName);
   this.model.state.activetab = tabName;
   this.model.state.activeaction = action;
@@ -469,7 +488,7 @@ export function switchTab(tabName, action = null, updateState = true) {
 export function resetTimelineOnNavigation(controller, nextTab) {
   const currentTab = controller?.model?.state?.activetab;
   if (currentTab === "goithau-timeline" && nextTab !== currentTab) {
-    controller.view?.resetPackageTimeline?.();
+    controller.view?.suspendPackageTimeline?.();
     return true;
   }
   return false;

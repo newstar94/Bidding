@@ -73,7 +73,8 @@ def test_totp_generation_normalization_and_recovery_digest_are_stable(
     )
 
 
-def test_mfa_status_and_enabled_flags() -> None:
+def test_mfa_status_and_enabled_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REQUIRE_SUPER_ADMIN_MFA", raising=False)
     assert mfa_service.is_mfa_enabled(_Cursor(rows=[(1,)]), "user")
     assert not mfa_service.is_mfa_enabled(_Cursor(rows=[None]), "user")
     status = mfa_service.get_mfa_status(
@@ -81,7 +82,7 @@ def test_mfa_status_and_enabled_flags() -> None:
     )
     assert status == {
         "enabled": True,
-        "required": True,
+        "required": False,
         "recommended": True,
         "enabled_at": 100,
         "last_used_at": 200,
@@ -90,6 +91,12 @@ def test_mfa_status_and_enabled_flags() -> None:
     assert not status["enabled"]
     assert not status["required"]
     assert not status["recommended"]
+
+    monkeypatch.setenv("REQUIRE_SUPER_ADMIN_MFA", "true")
+    assert mfa_service.get_mfa_status(
+        _Cursor(rows=[None]), "user", "super_admin"
+    )["required"]
+    assert not mfa_service.is_mfa_required_for_role("employee")
 
 
 def test_begin_enrollment_replaces_pending_secret(

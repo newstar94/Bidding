@@ -76,7 +76,8 @@ export class BiddingView {
       tabPanes: document.querySelectorAll(".tab-pane")
     };
     if (!this._tableObserver) {
-      this._tableObserver = new MutationObserver(() => {
+      this._tableObserver = new MutationObserver((mutations) => {
+        if (!this.mutationsNeedEnhancement(mutations)) return;
         if (this._enhanceFrame) return;
         this._enhanceFrame = requestAnimationFrame(() => {
           this._enhanceFrame = null;
@@ -86,6 +87,16 @@ export class BiddingView {
       this._tableObserver.observe(document.body, { childList: true, subtree: true });
     }
     setTimeout(() => this.enhanceVisibleContent(), 100);
+  }
+  mutationsNeedEnhancement(mutations = []) {
+    const selector = "table, select, input.flatpickr-date, input.flatpickr-datetime";
+    return mutations.some((mutation) => {
+      const nodes = [...(mutation.addedNodes || []), ...(mutation.removedNodes || [])];
+      return nodes.some((node) => (
+        node?.nodeType === 1
+        && (node.matches?.(selector) || node.querySelector?.(selector))
+      ));
+    });
   }
   getActiveEnhancementRoot() {
     const activeModal = document.querySelector(".modal-overlay.active:not(#modal-custom-dialog)");
@@ -102,6 +113,8 @@ export class BiddingView {
   createIconsScoped(root = document) {
     const iconLibrary = window.lucide;
     if (!iconLibrary || typeof iconLibrary.createIcons !== "function") return;
+    const hasPendingIcon = root?.matches?.("i[data-lucide]") || root?.querySelector?.("i[data-lucide]");
+    if (!hasPendingIcon) return;
     try {
       iconLibrary.createIcons({ root });
     } catch (error) {

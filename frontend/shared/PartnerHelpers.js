@@ -463,11 +463,24 @@ export function makeSearchableSelect(select, placeholder) {
   });
   observer.observe(select, { childList: true, attributes: true, attributeFilter: ["disabled"] });
 }
+function searchableSelectSignature(select) {
+  return JSON.stringify({
+    disabled: Boolean(select.disabled),
+    options: Array.from(select.options).map((option) => [
+      String(option.value ?? ""),
+      String(option.text ?? ""),
+      String(option.getAttribute("data-search") || ""),
+      Boolean(option.selected)
+    ])
+  });
+}
 function refreshCustomOptions(select, wrapper) {
   const input = wrapper.querySelector(".custom-select-search");
   const optionsList = document.querySelector(`.custom-select-options[data-parent="${select.id}"]`) || wrapper.querySelector(".custom-select-options");
-  if (!optionsList) return;
+  if (!input || !optionsList) return false;
   input.disabled = select.disabled;
+  const signature = searchableSelectSignature(select);
+  if (wrapper.dataset.optionsSignature === signature) return false;
   optionsList.innerHTML = trustedHTML("");
   const options = Array.from(select.options);
   options.forEach((opt) => {
@@ -491,4 +504,6 @@ function refreshCustomOptions(select, wrapper) {
     });
     optionsList.appendChild(li);
   });
+  wrapper.dataset.optionsSignature = signature;
+  return true;
 }
