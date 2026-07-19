@@ -17,8 +17,12 @@ def configured_sandbox_mode(environ=None) -> str:
     return str(environment.get("DOCUMENT_WORKER_SANDBOX", default)).strip().casefold()
 
 
-def _directory_creation_args(paths: list[Path]) -> list[str]:
-    created = {Path("/")}
+def _directory_creation_args(
+    paths: list[Path],
+    *,
+    existing: tuple[Path, ...] = (),
+) -> list[str]:
+    created = {Path("/"), *(Path(path) for path in existing)}
     arguments: list[str] = []
     for path in sorted(paths, key=lambda value: (len(value.parts), str(value))):
         current = Path("/")
@@ -109,12 +113,31 @@ def build_bwrap_command(
         "ALL",
         "--clearenv",
     ]
-    arguments.extend(_directory_creation_args(mount_destinations))
+    # Mount the private temporary filesystem before any job directory below
+    # /tmp. Doing this afterwards would hide the job bind mount and make the
+    # worker's chdir fail even though the host directory exists.
+    arguments.extend(
+        [
+            "--dir",
+            "/tmp",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--tmpfs",
+            "/tmp",
+        ]
+    )
+    arguments.extend(
+        _directory_creation_args(
+            mount_destinations,
+            existing=(Path("/tmp"), Path("/proc"), Path("/dev")),
+        )
+    )
     for root in read_only_roots:
         arguments.extend(["--ro-bind", str(root), str(root)])
     arguments.extend(["--ro-bind", str(backend_source), str(backend_source)])
     arguments.extend(["--bind", str(job_dir), str(job_dir)])
-    arguments.extend(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
     for key, value in sorted(environment.items()):
         arguments.extend(["--setenv", key, value])
     arguments.extend(["--chdir", str(job_dir), "--"])

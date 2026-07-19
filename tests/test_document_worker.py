@@ -197,6 +197,27 @@ def test_bwrap_command_mounts_backend_not_project_secrets(tmp_path: Path) -> Non
     assert "--clearenv" in command
 
 
+def test_bwrap_tmpfs_is_mounted_before_job_directory_below_tmp(
+    tmp_path: Path,
+) -> None:
+    job_dir = (tmp_path / "worker-jobs" / "job-1").resolve()
+    job_dir.mkdir(parents=True)
+    command = build_bwrap_command(
+        ["/usr/bin/python3", "-m", "backend.documents.document_worker_entry"],
+        job_dir,
+        {"PYTHONPATH": str(PROJECT_ROOT)},
+        executable="/usr/bin/bwrap",
+    )
+
+    tmpfs_index = command.index("--tmpfs")
+    job_bind_index = next(
+        index
+        for index, value in enumerate(command)
+        if value == "--bind" and command[index + 1] == str(job_dir)
+    )
+    assert tmpfs_index < job_bind_index
+
+
 def test_document_sandbox_identity_must_differ_from_web_service() -> None:
     environment = {
         "DOCUMENT_WORKER_SANDBOX_UID": "65534",
