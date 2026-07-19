@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import sys
+from types import SimpleNamespace
 
 from scripts.check_coverage_thresholds import (
     required_critical_modules,
     validate_coverage,
 )
+from tests.support import uvicorn_test_server
 
 
 def _report(overall, critical=95):
@@ -37,3 +40,19 @@ def test_coverage_gate_reports_total_critical_and_missing_modules(tmp_path):
     assert any("backend total" in failure for failure in failures)
     assert any("auth_routes.py" in failure for failure in failures)
     assert any("missing" in failure for failure in failures)
+
+
+def test_uvicorn_test_server_flushes_subprocess_coverage(monkeypatch):
+    calls = []
+    active_coverage = SimpleNamespace(
+        stop=lambda: calls.append("stop"),
+        save=lambda: calls.append("save"),
+    )
+    fake_coverage = SimpleNamespace(
+        Coverage=SimpleNamespace(current=lambda: active_coverage)
+    )
+    monkeypatch.setitem(sys.modules, "coverage", fake_coverage)
+
+    uvicorn_test_server._flush_subprocess_coverage()
+
+    assert calls == ["stop", "save"]

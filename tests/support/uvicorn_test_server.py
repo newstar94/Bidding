@@ -23,6 +23,26 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+def _flush_subprocess_coverage() -> None:
+    """Persist coverage before a POSIX test server process exits.
+
+    Uvicorn handles SIGTERM gracefully, but coverage's atexit hook is not a
+    reliable synchronization boundary on every Linux runner.  The parent
+    pytest process can only combine this server's parallel data after the
+    server has stopped, so save the active measurement explicitly.
+    """
+
+    try:
+        import coverage
+    except ImportError:
+        return
+    active_coverage = coverage.Coverage.current()
+    if active_coverage is None:
+        return
+    active_coverage.stop()
+    active_coverage.save()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("application")
@@ -45,7 +65,10 @@ def main() -> int:
             lambda _signum, _frame: setattr(server, "should_exit", True),
         )
 
-    server.run()
+    try:
+        server.run()
+    finally:
+        _flush_subprocess_coverage()
     return 0 if server.started else 3
 
 
