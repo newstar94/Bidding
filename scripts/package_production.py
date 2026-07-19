@@ -40,6 +40,7 @@ RUNTIME_FILES = (
     "scripts/configure_database_roles.py",
     "scripts/manage_database.py",
     "scripts/run_document_worker.py",
+    "scripts/verify_document_worker_deployment.py",
     "scripts/benchmark_password_hash.py",
     "scripts/verify_document_sandbox.py",
 )

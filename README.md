@@ -135,6 +135,23 @@ sudo systemctl enable --now biddingflow.service
 
 Probe trong `ExecStartPre` của [unit worker](deploy/biddingflow-document-worker.service.example) phải xác nhận parser không mở được socket mạng/Unix, không tạo được child process, không thấy `.env`/DB credential, không còn capability và dùng UID sandbox. Unit daemon chỉ cho egress tới loopback/RFC1918/ULA để kết nối PostgreSQL private; chính parser luôn có network namespace rỗng. Probe hoặc kiểm tra DB role thất bại thì worker không khởi động và web cũng không nhận traffic.
 
+Trước mỗi lần public, sau khi hai unit đã ở trạng thái `active`, phải chạy thêm
+kiểm chứng ranh giới triển khai bằng `root` trên Linux staging tương đương
+production. Lệnh này kiểm tra UID/GID thật của hai PID, hardening systemd,
+AppArmor, quyền file environment/thư mục trao đổi, tách secret web-worker,
+PostgreSQL TLS và ACL role, rồi chạy lại sandbox probe bằng đúng tài khoản
+worker. Nó ghi bằng chứng JSON không chứa giá trị secret để lưu cùng hồ sơ
+release:
+
+```bash
+sudo /opt/biddingflow/.venv/bin/python \
+  /opt/biddingflow/scripts/verify_document_worker_deployment.py \
+  --evidence /var/lib/biddingflow/release-evidence/document-worker.json
+```
+
+Lệnh phải trả về `verification passed`; nếu bất kỳ kiểm tra nào thất bại thì
+không được public hoặc bỏ qua lỗi để khởi động web.
+
 ## Phát triển cục bộ trên Windows
 
 Script sau dùng PostgreSQL 17 portable đã giải nén tại `data/tools/postgresql17/pgsql`, tạo các database dev/test riêng và không in credential:

@@ -44,6 +44,11 @@ from scripts.run_document_worker import (
     _validate_document_worker_database_url,
     _validate_worker_secret_boundary,
 )
+from scripts.verify_document_worker_deployment import (
+    VerificationError,
+    parse_environment_file,
+    validate_worker_unit_properties,
+)
 
 
 def _minimal_xlsx(extra_entries=None, *, content_types=None) -> bytes:
@@ -421,6 +426,79 @@ def test_worker_database_url_and_secret_boundary_fail_closed() -> None:
     _validate_worker_secret_boundary({"PATH": "/usr/bin"})
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
         _validate_worker_secret_boundary({"DATABASE_URL": "postgresql://secret"})
+
+
+def test_deployment_verifier_parses_only_strict_environment_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment_file = tmp_path / "document-worker.env"
+    environment_file.write_text(
+        "# comment\nAPP_ENV=production\nDOCUMENT_WORKER_SANDBOX=\"bwrap\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "scripts.verify_document_worker_deployment._secure_regular_file",
+        lambda *args, **kwargs: None,
+    )
+    assert parse_environment_file(environment_file) == {
+        "APP_ENV": "production",
+        "DOCUMENT_WORKER_SANDBOX": "bwrap",
+    }
+    environment_file.write_text("export APP_ENV=production\n", encoding="utf-8")
+    with pytest.raises(VerificationError, match="Unsupported environment syntax"):
+        parse_environment_file(environment_file)
+
+
+def test_deployment_verifier_rejects_weaker_systemd_limits(tmp_path: Path) -> None:
+    environment_file = tmp_path / "document-worker.env"
+    environment_file.write_text("placeholder", encoding="utf-8")
+    worker = {
+        "ActiveState": "active",
+        "SubState": "running",
+        "User": "biddingflow-document-worker",
+        "Group": "biddingflow-documents",
+        "NoNewPrivileges": "yes",
+        "CapabilityBoundingSet": "",
+        "AmbientCapabilities": "",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProtectHome": "yes",
+        "ProtectSystem": "strict",
+        "ProtectProc": "invisible",
+        "ProcSubset": "pid",
+        "KillMode": "control-group",
+        "RestrictAddressFamilies": "AF_UNIX AF_INET AF_INET6",
+        "IPAddressDeny": "any",
+        "IPAddressAllow": "localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fd00::/8",
+        "ReadWritePaths": str(tmp_path / "exchange"),
+        "EnvironmentFiles": f"{environment_file} (ignore_errors=no)",
+        "CPUQuotaPerSecUSec": "2s",
+        "MemoryMax": str(2 * 1024 * 1024 * 1024),
+        "TasksMax": "64",
+        "LimitNOFILE": "512",
+        "LimitFSIZE": str(128 * 1024 * 1024),
+        "MainPID": "1234",
+        "FragmentPath": "/etc/systemd/system/biddingflow-document-worker.service",
+    }
+    web = {
+        "ActiveState": "active",
+        "SubState": "running",
+        "User": "biddingflow",
+        "Group": "biddingflow",
+        "SupplementaryGroups": "biddingflow-documents",
+        "BindsTo": "biddingflow-document-worker.service",
+        "MainPID": "2345",
+    }
+    environment_file.parent.joinpath("exchange").mkdir()
+    worker["MemoryMax"] = str(2 * 1024 * 1024 * 1024 + 1)
+    with pytest.raises(VerificationError, match="MemoryMax"):
+        validate_worker_unit_properties(
+            worker,
+            web,
+            exchange_root=Path(worker["ReadWritePaths"]),
+            environment_file=environment_file,
+        )
 
 
 def test_systemd_units_keep_web_and_document_worker_boundaries_separate() -> None:
