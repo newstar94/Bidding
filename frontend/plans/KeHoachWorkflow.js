@@ -793,10 +793,10 @@ export async function savePlanBreakdown() {
     updateModalReturnAction(finalPlanId);
   }
   const syncResult = await persistAndSync(this, ["kehoach", "goithau", "thongtinmothau"], {
-    afterPersist: () => {
-      this.view.renderKeHoachTable();
-      this.view.renderGoiThauTable();
-    }
+    afterPersist: () => Promise.all([
+      this.view.renderKeHoachTable(),
+      this.view.renderGoiThauTable()
+    ])
   });
   if (!syncResult?.ok) return;
   this.closeModal("modal-plan-breakdown");

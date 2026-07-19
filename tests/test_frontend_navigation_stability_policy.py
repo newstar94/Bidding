@@ -122,3 +122,13 @@ def test_server_paginated_mutations_render_only_after_sync_confirmation():
     post_sync_render = source.index('if (usesServerPagination && syncResult?.ok !== false')
 
     assert pre_sync_render < sync_call < post_sync_render
+
+
+def test_plan_success_waits_for_paginated_tables_to_finish_refreshing():
+    source = _source("frontend/plans/KeHoachWorkflow.js")
+    save_block = source[source.index('const syncResult = await persistAndSync(this, ["kehoach"'):]
+    save_block = save_block[:save_block.index('await this.view.customAlert("Thành công"')]
+
+    assert "afterPersist: () => Promise.all([" in save_block
+    assert "this.view.renderKeHoachTable()" in save_block
+    assert "this.view.renderGoiThauTable()" in save_block
