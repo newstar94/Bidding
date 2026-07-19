@@ -31,6 +31,30 @@ Sau đó khởi động ứng dụng bằng runtime role không có quyền DDL:
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000 --workers 4
 ```
 
+### Cấu hình đăng nhập Google
+
+`GOOGLE_CLIENT_ID` phải là client OAuth loại **Web application**. Trong Google Cloud
+Console, mở **APIs & Services** → **Credentials** → đúng OAuth 2.0 Client ID đang
+được khai báo trong `.env`, rồi thêm các giá trị sau vào **Authorized JavaScript
+origins** cho môi trường phát triển:
+
+```text
+http://127.0.0.1:8000
+http://localhost:8000
+```
+
+Origin phải khớp tuyệt đối giao thức, hostname và cổng đang hiện trên thanh địa chỉ;
+không thêm đường dẫn hoặc dấu `/` cuối. Khi triển khai production, thêm origin HTTPS
+thật, ví dụ `https://app.example.vn`. Khởi động lại backend sau khi thay
+`GOOGLE_CLIENT_ID`; thay đổi danh sách origin trên Google Cloud có thể cần vài phút
+để có hiệu lực.
+
+Nếu console trình duyệt báo `[GSI_LOGGER]: The given origin is not allowed for the
+given client ID`, đây là lỗi cấu hình OAuth trên Google Cloud, không phải CORS của
+backend. Cảnh báo Tracking Prevention có thể do chính sách riêng tư của trình duyệt;
+hãy xử lý lỗi origin trước và thử trong cửa sổ thường với cookie bên thứ ba/FedCM
+được phép cho Google nếu trình duyệt vẫn chặn đăng nhập.
+
 Ở production, web worker chỉ được nhận `DATABASE_URL` của runtime role. Không đưa
 `MIGRATOR_DATABASE_URL`, `DATABASE_ADMIN_URL` hay mật khẩu migrator/admin vào
 environment của dịch vụ web. `DATABASE_AUTO_MIGRATE=false`,

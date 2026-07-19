@@ -1439,8 +1439,6 @@ table th {
   font-weight: 600;
   line-height: 1.35;
   caret-color: var(--brand);
-  outline: 2px solid transparent;
-  outline-offset: 2px;
   transition:
     border-color var(--transition-fast),
     background-color var(--transition-fast),
@@ -1455,7 +1453,8 @@ table th {
 #modal-excel-preview .excel-preview-input:focus-visible {
   border-color: var(--brand);
   background: var(--surface);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 #modal-excel-preview .excel-preview-input--numeric {
@@ -1477,7 +1476,8 @@ table th {
 
 #modal-excel-preview .excel-preview-input.is-invalid:focus,
 #modal-excel-preview .excel-preview-input[aria-invalid="true"]:focus {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
+  outline: none !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 #modal-excel-preview .excel-preview-input:disabled,
@@ -2872,8 +2872,8 @@ table th {
 
 .timeline-page .bf-combobox-input:focus {
   border-color: var(--brand);
-  outline: none;
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .timeline-page .bf-combobox-input:disabled {
@@ -2963,8 +2963,9 @@ table th {
 }
 
 .timeline-page .bf-combobox-empty {
-  color: var(--ink-muted);
-  text-align: center;
+  color: var(--ink);
+  font-weight: 600;
+  text-align: left;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -68,6 +68,31 @@ def test_timeline_hides_completed_plans_and_debounces_package_search():
     assert "loadPackageOptions(view, query), 300" in timeline
 
 
+def test_timeline_combobox_uses_standard_control_focus_ring():
+    stylesheet = _source("views/css/views.css")
+    focus_rule = stylesheet[
+        stylesheet.index(".timeline-page .bf-combobox-input:focus {"):
+        stylesheet.index(".timeline-page .bf-combobox-input:disabled")
+    ]
+
+    assert "outline: none !important;" in focus_rule
+    assert "box-shadow: 0 0 0 2px var(--focus-ring);" in focus_rule
+    assert "0 0 0 3px" not in focus_rule
+
+
+def test_timeline_combobox_empty_state_is_compact_and_readable():
+    stylesheet = _source("views/css/views.css")
+    empty_rule = stylesheet[
+        stylesheet.index(".timeline-page .bf-combobox-empty {"):
+        stylesheet.index("@media (prefers-reduced-motion", stylesheet.index(".timeline-page .bf-combobox-empty {"))
+    ]
+
+    assert "color: var(--ink);" in empty_rule
+    assert "font-weight: 600;" in empty_rule
+    assert "text-align: left;" in empty_rule
+    assert "text-align: center;" not in empty_rule
+
+
 def test_runtime_style_assignment_is_idempotent():
     source = _source("frontend/shared/runtimeStyles.js")
 

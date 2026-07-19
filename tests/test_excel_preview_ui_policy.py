@@ -25,10 +25,15 @@ def test_excel_preview_styles_cover_interaction_and_validation_states():
     assert "#modal-excel-preview .excel-preview-input:disabled" in stylesheet
     assert "var(--focus-ring)" in stylesheet
     assert "var(--danger-soft)" in stylesheet
+    assert "box-shadow: 0 0 0 2px var(--focus-ring);" in stylesheet
+    assert "box-shadow: 0 0 0 3px var(--focus-ring);" not in stylesheet[
+        stylesheet.index("#modal-excel-preview .excel-preview-input {"):
+        stylesheet.index("#modal-excel-preview .excel-preview-feedback")
+    ]
 
 
 def test_excel_preview_stylesheet_cache_version_is_current():
     index = (ROOT / "views" / "index.html").read_text(encoding="utf-8")
 
-    assert '/css/views.css?v=6.28' in index
+    assert '/css/views.css?v=6.29' in index
     assert index.count('/frontend/app/app.js?v=6.40') == 2
